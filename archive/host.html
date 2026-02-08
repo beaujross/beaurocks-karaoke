@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bross Karaoke - Host</title>
+    <!-- Dependencies -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        /* Base Reset */
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #000; color: white; font-family: 'Saira Condensed', sans-serif; }
+        
+        /* Boot Screen */
+        #boot-screen {
+            position: fixed; inset: 0; z-index: 99999;
+            background: #000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.5s ease-out;
+        }
+        .spinner {
+            width: 50px; height: 50px; border: 5px solid #333; border-top-color: #d946ef; border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* App Background */
+        #app-bg { 
+            position: fixed; inset: 0; z-index: -10; 
+            background: radial-gradient(circle at center, #2e1065 0%, #000000 100%);
+        }
+
+        /* Utilities */
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #18181b; border: 1px solid #d946ef; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #00000050; }
+        #debug-log { display: none; position: fixed; bottom: 0; left: 0; width: 100%; height: 150px; background: rgba(50,0,0,0.95); border-top: 2px solid red; overflow: auto; padding: 10px; font-family: monospace; font-size: 12px; z-index: 100000; color: #ffcccc; }
+        
+        /* Force readable selects */
+        select { color: black !important; background-color: white !important; } 
+
+        /* Animations */
+        .animate-in { animation: fadeIn 0.5s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+
+    <!-- Error Handler -->
+    <script>
+        window.onerror = function(msg, url, line) {
+            const log = document.getElementById('debug-log');
+            if(log){
+                log.style.display = 'block';
+                log.innerHTML += `<div>ERROR: ${msg} (Line ${line})</div>`;
+            }
+            const status = document.getElementById('boot-status');
+            if(status) status.innerText = "CRITICAL ERROR. SEE CONSOLE.";
+        };
+    </script>
+
+    <!-- Firebase Module -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, where, onSnapshot, updateDoc, doc, setDoc, serverTimestamp, deleteDoc, getDocs, writeBatch, increment, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "AIzaSyAXF_1iWXznoVnk70llosbBAKYkASg066A",
+            authDomain: "beaurocks-karaoke.firebaseapp.com",
+            projectId: "beaurocks-karaoke",
+            storageBucket: "beaurocks-karaoke.firebasestorage.app",
+            messagingSenderId: "827532526758",
+            appId: "1:827532526758:web:a28f7db2fe4ca765b2e067"
+        };
+
+        try {
+            const app = initializeApp(firebaseConfig);
+            window.db = getFirestore(app);
+            window.auth = getAuth(app);
+            window.firebase = { collection, addDoc, query, where, onSnapshot, updateDoc, doc, setDoc, serverTimestamp, deleteDoc, getDocs, writeBatch, increment, orderBy, limit, signInAnonymously, onAuthStateChanged, signInWithCustomToken };
+            window.isFirebaseReady = true;
+
+            const initAuth = async () => { 
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) { 
+                        await signInWithCustomToken(window.auth, __initial_auth_token); 
+                    } else { 
+                        await signInAnonymously(window.auth); 
+                    }
+                } catch(err) { console.error("AUTH FAILED", err); }
+            };
+            initAuth();
+        } catch (e) {
+            console.error("FIREBASE INIT ERROR", e);
+            document.getElementById('boot-status').innerText = "DB Error: " + e.message;
+        }
+    </script>
+</head>
+<body>
+    <div id="boot-screen">
+        <div class="spinner"></div>
+        <div id="boot-status" class="text-xl font-mono text-fuchsia-400">CONNECTING...</div>
+    </div>
+    <div id="debug-log"></div>
+    <div id="app-bg"></div>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, createContext, useContext } = React;
+        const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'bross-app'; 
+        const VERSION = "v21.8.0-HOST-HYBRID";
+
+        // --- LOCAL LIBRARY MOCK ---
+        // Simulating a local database of files for the Universal Player
+        const LOCAL_LIBRARY = [
+            { title: "Big Buck Bunny (Test)", artist: "Blender", url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" },
+            { title: "Sintel (Test)", artist: "Blender", url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4" },
+            { title: "Tears of Steel (Test)", artist: "Blender", url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4" },
+            { title: "Archive.org Sample", artist: "Internet Archive", url: "https://archive.org/download/Popeye_forPresident/Popeye_forPresident_512kb.mp4" }
+        ];
+
+        // --- STYLES ---
+        const STYLES = {
+            btnStd: "rounded-lg font-bold transition-all active:scale-95 shadow-md uppercase tracking-wider flex items-center justify-center border text-[10px] sm:text-xs py-2 px-2 cursor-pointer whitespace-nowrap backdrop-blur-sm gap-2",
+            btnPrimary: "bg-gradient-to-r from-fuchsia-600 to-purple-700 text-white hover:from-fuchsia-500 hover:to-purple-600 border-white/20 shadow-lg shadow-purple-900/40",
+            btnHighlight: "bg-gradient-to-r from-cyan-400 to-cyan-700 text-white border-none shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:brightness-110",
+            btnNeutral: "bg-zinc-800 border-zinc-600 text-zinc-400 hover:bg-gradient-to-r hover:from-pink-600 hover:to-purple-600 hover:text-white hover:border-transparent hover:shadow-lg hover:shadow-pink-500/20 transition-all",
+            btnDanger: "bg-red-950/50 text-red-200 border-red-800 hover:bg-red-900 hover:text-white hover:border-red-500",
+            btnInfo: "bg-indigo-900/50 text-indigo-200 border-indigo-500/50 hover:bg-indigo-800 hover:text-white",
+            btnSuccess: "bg-green-900/50 text-green-200 border-green-500/50 hover:bg-green-800 hover:text-white",
+            btnBrand: "bg-gradient-to-r from-pink-500 to-rose-600 text-white border-white/20 hover:from-pink-400 hover:to-rose-500 shadow-lg",
+            btnStandardBrandHover: "bg-zinc-800 border-zinc-600 text-zinc-400 hover:bg-gradient-to-r hover:from-pink-600 hover:to-purple-600 hover:text-white hover:border-transparent hover:shadow-lg hover:shadow-pink-500/20 transition-all",
+            panel: "bg-zinc-900/95 border border-white/10 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden",
+            input: "bg-zinc-950 border border-zinc-700 rounded-lg p-2 text-sm text-white focus:border-fuchsia-500 outline-none transition-colors w-full placeholder-zinc-600",
+            header: "text-xs font-bold text-fuchsia-400 mb-2 tracking-widest uppercase border-b border-white/5 pb-1 flex justify-between items-center"
+        };
+
+        // --- ASSETS & CONTENT ---
+        const SOUNDS = [ 
+            { name: "Airhorn", icon: "fa-bullhorn", url: "https://beauross.com/wp-content/uploads/dj-airhorn-sound-39405.mp3" }, 
+            { name: "Applause", icon: "fa-hands-clapping", url: "https://beauross.com/wp-content/uploads/1185_applause-02-1.mp3" }, 
+            { name: "Fail", icon: "fa-thumbs-down", url: "https://beauross.com/wp-content/uploads/fail-trumpet-242645.mp3" }, 
+            { name: "Fail 2", icon: "fa-circle-down", url: "https://beauross.com/wp-content/uploads/whistle-slide-down-02-350715-1-1.mp3" },
+            { name: "Drumroll", icon: "fa-drum", url: "https://beauross.com/wp-content/uploads/1415_dhol-drums-01.mp3" }, 
+            { name: "Crickets", icon: "fa-bug", url: "https://beauross.com/wp-content/uploads/cricket-chirps-331498.mp3" }, 
+            { name: "Laugh", icon: "fa-face-laugh-squint", url: "https://beauross.com/wp-content/uploads/1825_laughter-01.mp3" },
+            { name: "Rimshot", icon: "fa-drum-steelpan", url: "https://beauross.com/wp-content/uploads/ba-dum-tss-8279.mp3" },
+            { name: "Cheer", icon: "fa-users", url: "https://beauross.com/wp-content/uploads/1194_crowd-cheering-01.mp3" },
+            { name: "Boo", icon: "fa-thumbs-down", url: "https://beauross.com/wp-content/uploads/boo-6377.mp3" },
+            { name: "Scratch", icon: "fa-compact-disc", url: "https://beauross.com/wp-content/uploads/1448_record-scratch-01.mp3" }
+        ];
+        const BG_TRACKS = [
+            { name: "Retro Lounge", url: "https://beauross.com/wp-content/uploads/retro-lounge-389644.mp3" },
+            { name: "Inspiring Synth", url: "https://beauross.com/wp-content/uploads/inspiring-motivation-synthwave-398285.mp3" },
+            { name: "80s Retro", url: "https://beauross.com/wp-content/uploads/synthwave-80s-retro-background-music-400483.mp3" },
+            { name: "Synth BG", url: "https://beauross.com/wp-content/uploads/synthwave-background-music-155701.mp3" },
+            { name: "Classic 80s", url: "https://beauross.com/wp-content/uploads/2023/09/synthwave-80s-110045.mp3" },
+            { name: "Chill", url: "https://cdn.pixabay.com/audio/2022/01/18/audio_d0a13f69d2.mp3" }
+        ];
+
+        const TRIVIA_BANK = [{ q: "Who is the 'Queen of Pop'?", correct: "Madonna", w1: "Lady Gaga", w2: "Beyoncé", w3: "Britney Spears" }];
+        const WYR_BANK = [{ q: "Fight one horse-sized duck or 100 duck-sized horses?", a: "Horse-sized Duck", b: "100 Tiny Horses" }];
+        const CLASSIC_PRESETS = { "Party Vibes": [ 'Power Ballad', 'Crowd Singalong', 'Mic Drop', 'Air Guitar', 'Duet', 'False Start', 'High Note Fail', 'Perfect Score', 'Bo Sings', 'Tears', 'Drunk Singer', 'Wedding Song', 'FREE', 'Rap God', 'Country Road', '80s Hit', 'Boy Band', 'Girl Power', 'Disney Song', 'Movie Track', 'Headbanger', 'Piano Man', 'Sax Solo', 'Dance Move', 'Mic Stand' ], "80s Night": ["Synth Solo", "Mullet", "Neon", "Power Suit", "Spandex", "Hair Metal", "Key Change", "Saxophone", "Walkman", "Arcade", "Breakdance", "Moonwalk", "FREE", "Robot Dance", "Leg Warmers", "Madonna", "Prince", "MJ", "Queen", "Bon Jovi", "Wham!", "Journey", "Toto", "Air Drums", "Lighter Wave"] };
+        const MYSTERY_PRESETS = { "Top Hits": [ 
+            { title: "Bohemian Rhapsody", artist: "Queen", clue: "Mamma Mia!", art: "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/83/13/46/8313466f-b528-760b-ba62-2591ae95521b/16UMGIM08204.rgb.jpg/600x600bb.jpg" }, 
+            { title: "I Will Survive", artist: "Gloria Gaynor", clue: "Breakup Anthem", art: "https://is1-ssl.mzstatic.com/image/thumb/Music118/v4/44/1a/0c/441a0c0c-7b98-3c35-1d0b-689e4c3d82a7/00602537554988.rgb.jpg/600x600bb.jpg" }, 
+            { title: "Sweet Caroline", artist: "Neil Diamond", clue: "BA BA BA!", art: "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/0d/17/2d/0d172d56-788c-6e69-026c-9477e6417726/06UMGIM01962.rgb.jpg/600x600bb.jpg" }, 
+            { title: "Don't Stop Believin'", artist: "Journey", clue: "Small Town Girl", art: "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/c6/16/3b/c6163b2f-76a6-e3d6-444f-c7c4f4d1d911/886443542289.jpg/600x600bb.jpg" }, 
+            { title: "Mr. Brightside", artist: "The Killers", clue: "Coming out of my cage", art: "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/89/3e/72/893e7284-5f50-324d-0428-3e1f1484545d/00602517042079.rgb.jpg/600x600bb.jpg" }
+        ] };
+
+        const ToastContext = createContext();
+        const ToastProvider = ({ children }) => {
+            const [toasts, setToasts] = useState([]);
+            const addToast = (msg) => { const id = Date.now() + Math.random(); setToasts(prev => [...prev, { id, msg }]); setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000); };
+            return ( <ToastContext.Provider value={addToast}>{children}<div className="fixed top-4 right-4 z-[200] flex flex-col gap-2 pointer-events-none">{toasts.map(t => (<div key={t.id} className="bg-zinc-800 border border-fuchsia-500 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 animate-bounce border-l-4"><span>🔔</span> {t.msg}</div>))}</div></ToastContext.Provider> );
+        };
+        const useToast = () => useContext(ToastContext);
+
+        // --- AI GENERATION ---
+        const generateAIContent = async (type, context) => {
+            const key = localStorage.getItem('bross_ai_key');
+            if(!key) { alert("Please set your Gemini API Key in the settings (top right)."); return null; }
+            
+            try {
+                let prompt = "";
+                // Handling different types
+                if (type === 'bingo_board') {
+                      const { title, size, mode } = context;
+                      const count = size * size;
+                      if (mode === 'mystery') {
+                          prompt = `Generate ${count} pairs of (Clue, Song Title, Artist) for a music bingo game with the theme "${title}". Format strictly as JSON array of objects: [{"clue": "...", "title": "...", "artist": "..."}]. Do not include markdown formatting.`;
+                      } else {
+                          prompt = `Generate ${count} short bingo terms (1-3 words) for a bingo game with the theme "${title}". Format strictly as JSON array of strings. Do not include markdown formatting.`;
+                      }
+                } else if (type === 'lyrics') {
+                      const { title, artist } = context;
+                      prompt = `Generate the full lyrics for the song "${title}" by "${artist}". Format strictly as JSON object with a single key "lyrics" containing the text with \\n for line breaks. Example: {"lyrics": "Line 1\\nLine 2"}. Do not include markdown formatting.`;
+                } else {
+                      const songs = context.slice(0, 5).map(s => `${s.songTitle} by ${s.artist}`).join(", ");
+                      prompt = type === 'trivia' 
+                        ? `Generate 3 trivia questions based on these songs/artists: ${songs}. Format strictly as JSON array of objects: [{q, correct, w1, w2, w3}]`
+                        : type === 'wyr'
+                        ? `Generate 3 "Would You Rather" questions based on the theme of these songs: ${songs}. Format strictly as JSON array: [{q, a, b}]`
+                        : `Generate 16 bingo square terms (short, 1-3 words) based on karaoke tropes and these songs: ${songs}. Format strictly as JSON array of strings.`;
+                }
+
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${key}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
+                });
+                const data = await response.json();
+                return JSON.parse(data.candidates[0].content.parts[0].text);
+            } catch (e) { console.error("AI Error", e); return null; }
+        };
+
+        // Helper for reliable shuffling
+        const shuffleArray = (array) => {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        };
+
+        // Polyphonic SFX
+        const playSfx = (url) => { 
+            const a = new Audio(url); 
+            a.volume = 0.5; 
+            a.play().catch(e => console.log("SFX Play Error", e)); 
+        };
+        
+        const openYT = (query) => window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' karaoke')}`, '_blank');
+        const exportToCSV = (data, filename) => { const csvContent = "data:text/csv;charset=utf-8," + [Object.keys(data[0]||{}).join(",")].concat(data.map(r => Object.values(r).join(","))).join("\n"); const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", filename); document.body.appendChild(link); link.click(); document.body.removeChild(link); };
+
+        const HostFlappyGame = ({ roomCode, updateRoom, onStop }) => {
+            return ( <div className="p-8 text-center"><h2 className="text-2xl font-bold mb-4">GAME CONTROLS</h2><button onClick={onStop} className={`${STYLES.btnStd} ${STYLES.btnDanger} py-4 px-8 text-xl`}><i className="fa-solid fa-stop mr-2"></i> STOP GAME</button></div> );
+        };
+
+        const LiveWaveform = ({ level = 0 }) => {
+            const canvasRef = useRef(null);
+            const levelRef = useRef(level);
+
+            useEffect(() => { levelRef.current = level; }, [level]);
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                let raf;
+
+                const render = () => {
+                    const width = canvas.clientWidth || 1;
+                    const height = canvas.clientHeight || 1;
+                    const dpr = window.devicePixelRatio || 1;
+                    canvas.width = width * dpr;
+                    canvas.height = height * dpr;
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    ctx.clearRect(0, 0, width, height);
+
+                    const bars = 36;
+                    const gap = 3;
+                    const barWidth = (width - gap * (bars - 1)) / bars;
+                    const base = Math.min(1, (levelRef.current || 0) / 100);
+                    const gradient = ctx.createLinearGradient(0, 0, width, 0);
+                    gradient.addColorStop(0, '#00C4D9');
+                    gradient.addColorStop(0.5, '#d946ef');
+                    gradient.addColorStop(1, '#00C4D9');
+                    ctx.fillStyle = gradient;
+
+                    for (let i = 0; i < bars; i++) {
+                        const jitter = 0.4 + Math.random() * 0.6;
+                        const amp = Math.max(0.08, base * jitter);
+                        const barHeight = amp * height;
+                        const x = i * (barWidth + gap);
+                        const y = (height - barHeight) / 2;
+                        ctx.fillRect(x, y, barWidth, barHeight);
+                    }
+
+                    raf = requestAnimationFrame(render);
+                };
+
+                render();
+                return () => { if (raf) cancelAnimationFrame(raf); };
+            }, []);
+
+            return (
+                <div className="w-full h-16">
+                    <canvas ref={canvasRef} className="w-full h-full" />
+                </div>
+            );
+        };
+
+        const useMicLevel = (isActive = true) => {
+            const [level, setLevel] = useState(0);
+            const rafRef = useRef(null);
+            const streamRef = useRef(null);
+            const audioCtxRef = useRef(null);
+
+            useEffect(() => {
+                if (!isActive) return;
+                let analyser;
+                let source;
+                let dataArray;
+
+                const start = async () => {
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        streamRef.current = stream;
+                        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                        await audioCtxRef.current.resume();
+                        analyser = audioCtxRef.current.createAnalyser();
+                        analyser.fftSize = 256;
+                        source = audioCtxRef.current.createMediaStreamSource(stream);
+                        source.connect(analyser);
+                        dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                        const tick = () => {
+                            if (!analyser) return;
+                            analyser.getByteFrequencyData(dataArray);
+                            let sum = 0;
+                            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                            setLevel(sum / dataArray.length);
+                            rafRef.current = requestAnimationFrame(tick);
+                        };
+                        tick();
+                    } catch (e) {
+                        console.error("Mic Visualizer Error:", e);
+                    }
+                };
+
+                start();
+                return () => {
+                    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+                    if (source) source.disconnect();
+                    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+                    if (audioCtxRef.current) audioCtxRef.current.close();
+                };
+            }, [isActive]);
+
+            return level;
+        };
+
+        const VoiceGameTab = ({ room, roomCode, updateRoom, users }) => {
+            const [isHostPlaying, setIsHostPlaying] = useState(false); const toast = useToast();
+            const stopGame = async () => { setIsHostPlaying(false); await updateRoom({ activeMode: 'karaoke', gameData: null }); toast("Game Stopped"); };
+            // Fix: Add Vocal Challenge Button
+            const startGroupGame = async () => { await updateRoom({ activeMode: 'flappy_bird', gameData: { playerId: 'GROUP', playerName: 'THE CROWD', playerAvatar: '👨‍👩‍👧‍👦', status: 'waiting', score: 0, lives: 3, timestamp: Date.now() } }); toast("Group Game Started!"); };
+            if (isHostPlaying || room?.activeMode === 'flappy_bird') return <HostFlappyGame roomCode={roomCode} updateRoom={updateRoom} onStop={stopGame} />;
+            return ( <div className="grid grid-cols-2 gap-6 h-full p-8 text-center flex flex-col items-center justify-center"> 
+                <div><h2 className="text-3xl font-bold text-[#00C4D9] mb-8">FLAPPY BIRD</h2> <button onClick={startGroupGame} className={`${STYLES.btnStd} ${STYLES.btnPrimary} py-6 px-12 text-2xl w-full max-w-md shadow-2xl`}><i className="fa-solid fa-rocket mr-2"></i> START FLAPPY</button></div>
+                <div><h2 className="text-3xl font-bold text-pink-500 mb-8">VOCAL CHALLENGE</h2> <button onClick={()=>updateRoom({activeMode: 'flappy_bird', gameData: { playerId: 'GROUP', playerName: 'VOCAL HERO', playerAvatar: '🎤', status: 'waiting', score: 0, lives: 3, timestamp: Date.now() }})} className={`${STYLES.btnStd} ${STYLES.btnHighlight} py-6 px-12 text-2xl w-full max-w-md shadow-2xl`}><i className="fa-solid fa-music mr-2"></i> START VOCAL GAME</button></div>
+            </div> );
+        };
+
+        // Fix: Added skipBg to props destructuring
+        const QueueTab = ({ songs, room, roomCode, updateRoom, toggleBgMusic, setBgMusic, playingBg, bgVolume, setBgVolume, currentTrackIdx, silenceAll, setShowAnnounceModal, skipBg }) => {
+            const [searchQ, setSearchQ] = useState(''); const [results, setResults] = useState([]); const [manual, setManual] = useState({ song:'', artist:'', singer:'Host', url:'' }); 
+            const [editingSongId, setEditingSongId] = useState(null); 
+            // Updated Edit Form to include lyrics and duration
+            const [editForm, setEditForm] = useState({ title: '', artist: '', singer: '', url: '', art: '', lyrics: '', duration: 180 }); 
+            const [customBonus, setCustomBonus] = useState(''); const toast = useToast();
+            const localMicLevel = useMicLevel(true);
+            const current = songs.find(s => s.status === 'performing'); 
+            
+            const toggleWaveform = () => updateRoom({ hideWaveform: !room?.hideWaveform });
+            const toggleLogo = () => updateRoom({ hideLogo: !room?.hideLogo });
+
+            // Fix: Sort by priorityScore ASC (FIFO) - matching index.html
+            const queue = songs.filter(s => s.status === 'requested').sort((a,b) => {
+                if ((a.priorityScore || 0) !== (b.priorityScore || 0)) return (a.priorityScore || 0) - (b.priorityScore || 0);
+                return (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0);
+            });
+            const pending = songs.filter(s => s.status === 'pending');
+            
+            // HYBRID SEARCH: LOCAL + ITUNES
+            useEffect(() => { 
+                if(searchQ.length < 3) { setResults([]); return; } 
+                const t = setTimeout(async () => { 
+                    // 1. Local Search
+                    const localMatches = LOCAL_LIBRARY.filter(s => 
+                        s.title.toLowerCase().includes(searchQ.toLowerCase()) || 
+                        s.artist.toLowerCase().includes(searchQ.toLowerCase())
+                    ).map(s => ({ ...s, source: 'local', trackName: s.title, artistName: s.artist, artworkUrl100: '' }));
+
+                    try { 
+                        // 2. iTunes Search
+                        // Try standard fetch, catch error if CORS/redirect fails
+                        const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(searchQ)}&media=music&entity=song&limit=5`); 
+                        if (!res.ok) throw new Error('Network response was not ok');
+                        const data = await res.json(); 
+                        const itunesMatches = (data.results || []).map(r => ({ ...r, source: 'itunes' }));
+                        
+                        setResults([...localMatches, ...itunesMatches]); 
+                    } catch(e) { 
+                        // Fallback to just local if fetch fails
+                        setResults(localMatches);
+                    } 
+                }, 500); 
+                return () => clearTimeout(t); 
+            }, [searchQ]);
+
+            const handleResultClick = (r) => {
+                if (r.source === 'local') {
+                    // Auto-fill everything including URL for Local
+                    setManual({ ...manual, song: r.trackName, artist: r.artistName, url: r.url, art: '' });
+                } else {
+                    // iTunes: Fill metadata but clear URL (user finds YouTube link)
+                    setManual({ ...manual, song: r.trackName, artist: r.artistName, url: '', art: r.artworkUrl100.replace('100x100','600x600') });
+                }
+                setResults([]); 
+                setSearchQ('');
+            };
+
+            const toggleVideo = async () => { const isPlaying = room?.videoPlaying; const updates = { videoPlaying: !isPlaying }; if (!isPlaying && !room?.videoStartTimestamp) updates.videoStartTimestamp = Date.now(); await updateRoom(updates); };
+            const restartVideo = async () => await updateRoom({ videoPlaying: true, videoStartTimestamp: Date.now() });
+            const syncAudience = async () => await updateRoom({ singAlongMode: !room?.singAlongMode });
+            const setVideoVolume = async (val) => await updateRoom({ videoVolume: parseInt(val) });
+
+            const addSong = async () => { 
+                if(!manual.song) return; 
+                await window.firebase.addDoc(window.firebase.collection(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), { 
+                    roomCode, songTitle: manual.song, artist: manual.artist, singerName: manual.singer, mediaUrl: manual.url, albumArtUrl: manual.art || '', 
+                    status: 'requested', timestamp: window.firebase.serverTimestamp(), priorityScore: Date.now(), emoji: '🎤' 
+                }); 
+                setManual({ song:'', artist:'', singer:'Host', url:'' }); setSearchQ(''); toast("Song Added to Queue!"); 
+            };
+
+            const updateStatus = async (id, status) => { 
+                await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), { status }); 
+                if(status==='performing') { 
+                    const s = songs.find(x=>x.id===id); 
+                    await updateRoom({ activeMode: 'karaoke', 'announcement.active': false, mediaUrl: s?.mediaUrl || '', singAlongMode: false, videoPlaying: false, videoStartTimestamp: null, videoVolume: 100, showLyrics: false }); 
+                }
+                if(status==='performed') { const s = songs.find(x=>x.id===id); if(s) { await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), { applauseScore: room?.applausePeak||0 }); await updateRoom({ lastPerformance: { ...s, applauseScore: room?.applausePeak||0, timestamp: Date.now() }, activeMode: 'karaoke', mediaUrl: '', singAlongMode: false, videoPlaying: false, showLyrics: false }); toast("Performance Finished"); } } 
+            };
+            const triggerApplause = () => { if (room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') updateRoom({ activeMode: 'karaoke' }); else updateRoom({ activeMode: 'applause_countdown', applausePeak: 0, applauseSinger: current?.singerName || 'Singer' }); };
+            
+            // Full Song Edit
+            const startEdit = (s) => { 
+                setEditingSongId(s.id); 
+                setEditForm({ 
+                    title: s.songTitle, artist: s.artist, singer: s.singerName, url: s.mediaUrl || '', art: s.albumArtUrl || '', 
+                    lyrics: s.lyrics || '', duration: s.duration || 180 
+                }); 
+            }; 
+            const saveEdit = async () => {
+                await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', editingSongId), {
+                    songTitle: editForm.title, artist: editForm.artist, singerName: editForm.singer, mediaUrl: editForm.url, albumArtUrl: editForm.art,
+                    lyrics: editForm.lyrics, duration: parseInt(editForm.duration)
+                });
+                setEditingSongId(null);
+                toast("Song Updated");
+            };
+
+            const generateLyrics = async () => {
+                if(!editForm.title || !editForm.artist) return toast("Needs Title & Artist");
+                toast("Generating Lyrics...");
+                const res = await generateAIContent('lyrics', { title: editForm.title, artist: editForm.artist });
+                if(res && res.lyrics) {
+                    setEditForm(prev => ({ ...prev, lyrics: res.lyrics }));
+                    toast("Lyrics Generated!");
+                } else {
+                    toast("Gen Failed");
+                }
+            };
+
+            const addBonusToCurrent = async (amt) => { if (!current) return; await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', current.id), { hostBonus: window.firebase.increment(amt) }); toast(`Added ${amt} Bonus Pts!`); };
+
+            const renderNowPlaying = () => (
+                <div className={`${STYLES.panel} p-4`}> 
+                    <div className="flex justify-between items-center mb-2"><div className={STYLES.header}>NOW PLAYING</div>{room?.activeMode === 'applause' && (<div className="text-[#00C4D9] animate-pulse font-bold">🎤 APPLAUSE!</div>)}</div> 
+                    {current ? ( <div className="text-center relative"> 
+                    <div className="text-xl font-bold">{current.songTitle}</div> 
+                    <div className="text-fuchsia-400 mb-4">{current.singerName}</div>
+                    
+                    <button onClick={()=>window.open(current.mediaUrl || `https://www.youtube.com/results?search_query=${encodeURIComponent(current.songTitle + ' karaoke')}`, '_blank')} className="absolute top-0 right-0 text-cyan-400 hover:text-white" title="Pop Out Video"><i className="fa-solid fa-external-link-alt"></i></button>
+
+                    <div className="bg-black/30 p-2 rounded mb-4 border border-white/5">
+                        <div className="text-[10px] text-zinc-500 uppercase font-bold mb-2">VIDEO CONTROLS</div>
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                            <button onClick={toggleVideo} className={`${STYLES.btnStd} ${room?.videoPlaying ? STYLES.btnNeutral : STYLES.btnHighlight}`}>{room?.videoPlaying ? <><i className="fa-solid fa-pause"></i> PAUSE</> : <><i className="fa-solid fa-play"></i> PLAY</>}</button>
+                            <button onClick={restartVideo} className={`${STYLES.btnStd} ${STYLES.btnInfo}`}><i className="fa-solid fa-rotate-left"></i> RESTART</button>
+                            <button onClick={syncAudience} className={`${STYLES.btnStd} ${room?.singAlongMode ? STYLES.btnHighlight : STYLES.btnNeutral}`}><i className="fa-solid fa-mobile-screen"></i> SYNC PHONE</button>
+                            <button onClick={()=>window.open(current.mediaUrl, '_blank')} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}><i className="fa-solid fa-external-link-alt"></i> POP OUT</button>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-zinc-400"><span>VOL ({room?.videoVolume||100}%)</span><input type="range" min="0" max="100" value={room?.videoVolume||100} onChange={(e)=>setVideoVolume(e.target.value)} className="w-full h-1 bg-zinc-800 accent-pink-500 rounded-lg appearance-none cursor-pointer"/></div>
+                    </div>
+                    {/* Lyrics Toggle */}
+                    <div className="mb-2">
+                        <button onClick={()=>updateRoom({ showLyrics: !room?.showLyrics, videoPlaying: room?.showLyrics })} className={`${STYLES.btnStd} w-full ${room?.showLyrics ? STYLES.btnHighlight : STYLES.btnNeutral}`}>
+                            <i className="fa-solid fa-align-left mr-2"></i> {room?.showLyrics ? 'HIDE LYRICS (SHOW VIDEO)' : 'SHOW LYRICS ON TV'}
+                        </button>
+                    </div>
+
+                    {/* BUTTON SWAP & RENAMING */}
+                    <div className="grid grid-cols-2 gap-2">
+                        <button onClick={triggerApplause} className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}><i className="fa-solid fa-hands-clapping mr-1"></i> MEASURE APPLAUSE</button>
+                        <button onClick={()=>updateStatus(current.id, 'performed')} className={`${STYLES.btnStd} ${STYLES.btnBrand}`}><i className="fa-solid fa-stop mr-1"></i> END PERFORMANCE</button>
+                    </div> 
+                    <div className="mt-4 pt-4 border-t border-white/10 flex gap-2 items-center"><input type="number" value={customBonus} onChange={e=>setCustomBonus(e.target.value)} className={`${STYLES.input} w-20`} placeholder="Pts"/><button onClick={()=>addBonusToCurrent(parseInt(customBonus)||0)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>BONUS</button></div></div> ) : (
+                        <div className="text-center py-4 text-zinc-500"><div>Stage Empty</div></div>
+                    )} 
+                </div> 
+            );
+
+            return ( <div className="flex flex-col md:flex-row gap-6 h-full overflow-hidden"> 
+                {/* Left Column - Controls - Fixed width on Desktop, Full on Mobile */}
+                <div className="w-full md:w-96 flex-shrink-0 space-y-4 overflow-y-auto pr-2 custom-scrollbar"> 
+                    {renderNowPlaying()}
+                    <div className={`${STYLES.panel} p-4 space-y-3`}>
+                         <div className={STYLES.header}>STAGE DISPLAY</div>
+                         <div className="flex gap-1 mb-2"><button onClick={()=>updateRoom({layoutMode: 'standard'})} className={`${STYLES.btnStd} flex-1 ${room?.layoutMode!=='minimal'&&room?.layoutMode!=='cinema'?STYLES.btnHighlight:STYLES.btnNeutral}`}><i className="fa-solid fa-expand mr-1"></i> STD</button><button onClick={()=>updateRoom({layoutMode: 'minimal'})} className={`${STYLES.btnStd} flex-1 ${room?.layoutMode==='minimal'?STYLES.btnHighlight:STYLES.btnNeutral}`}><i className="fa-solid fa-compress mr-1"></i> MIN</button><button onClick={()=>updateRoom({layoutMode: 'cinema'})} className={`${STYLES.btnStd} flex-1 ${room?.layoutMode==='cinema'?STYLES.btnHighlight:STYLES.btnNeutral}`}><i className="fa-solid fa-film mr-1"></i> CIN</button></div>
+                         <div className="grid grid-cols-2 gap-2">
+                             <button onClick={toggleWaveform} className={`${STYLES.btnStd} ${!room?.hideWaveform ? STYLES.btnHighlight : STYLES.btnNeutral}`}><i className="fa-solid fa-wave-square mr-1"></i> WAVE</button>
+                             <button onClick={toggleLogo} className={`${STYLES.btnStd} ${!room?.hideLogo ? STYLES.btnHighlight : STYLES.btnNeutral}`}><i className="fa-solid fa-star mr-1"></i> LOGO</button>
+                         </div>
+                         <div className="grid grid-cols-2 gap-2">
+                            <button onClick={()=>updateRoom({hideOverlay: !room?.hideOverlay})} className={`${STYLES.btnStd} w-full ${room?.hideOverlay ? STYLES.btnNeutral : STYLES.btnHighlight}`}><i className={`fa-solid ${room?.hideOverlay?'fa-eye':'fa-eye-slash'} mr-1`}></i> {room?.hideOverlay ? 'SHOW INFO' : 'HIDE INFO'}</button>
+                            <button onClick={()=>updateRoom({ activeMode: 'karaoke', announcement: {active: false}, mediaUrl: '', singAlongMode: false, videoPlaying: false, showFullQueue: false })} className={`${STYLES.btnStd} ${STYLES.btnStandardBrandHover}`}><i className="fa-solid fa-power-off mr-1"></i> RESET</button>
+                         </div>
+                         {/* Toggle Corner Info Button */}
+                         <button onClick={()=>updateRoom({hideCornerOverlay: !room?.hideCornerOverlay})} className={`${STYLES.btnStd} w-full ${room?.hideCornerOverlay ? STYLES.btnNeutral : STYLES.btnHighlight}`}><i className={`fa-solid ${room?.hideCornerOverlay?'fa-eye':'fa-eye-slash'} mr-1`}></i> {room?.hideCornerOverlay ? 'SHOW CORNER INFO' : 'HIDE CORNER INFO'}</button>
+                    </div>
+                    <div className={`${STYLES.panel} p-4`}>
+                        <div className={STYLES.header}>LIVE WAVEFORM</div>
+                        <div className="bg-black/30 border border-white/10 rounded-lg p-2">
+                            <LiveWaveform level={localMicLevel} />
+                        </div>
+                        <div className="text-[10px] text-zinc-500 mt-2 uppercase tracking-wider">LOCAL MIC</div>
+                    </div>
+                    <div className={`${STYLES.panel} p-4 space-y-3`}>
+                         <div className={STYLES.header}>ACTIONS</div>
+                         <div className="grid grid-cols-2 gap-2">
+                             <button onClick={()=>updateRoom({autoDjMode:!room?.autoDjMode})} className={`${STYLES.btnStd} ${room?.autoDjMode?STYLES.btnHighlight:STYLES.btnNeutral}`}><i className="fa-solid fa-robot mr-1"></i> AUTO DJ</button>
+                             <button onClick={()=>updateRoom({bouncerMode:!room?.bouncerMode})} className={`${STYLES.btnStd} ${room?.bouncerMode?STYLES.btnDanger:STYLES.btnNeutral}`}><i className="fa-solid fa-lock mr-1"></i> LOCK</button>
+                             <button onClick={()=>{updateRoom({readyCheck:{active:true, startTime: Date.now()}}); setTimeout(()=>updateRoom({'readyCheck.active':false}), 10000);}} className={`${STYLES.btnStd} ${STYLES.btnStandardBrandHover}`}><i className="fa-solid fa-check mr-1"></i> READY?</button>
+                             <button onClick={()=>updateRoom({activeScreen: room?.activeScreen==='leaderboard'?'stage':'leaderboard'})} className={`${STYLES.btnStd} ${room?.activeScreen==='leaderboard'?STYLES.btnHighlight:STYLES.btnNeutral}`}><i className="fa-solid fa-trophy mr-1"></i> LEADERBOARD</button>
+                             <button onClick={()=>updateRoom({activeScreen: room?.activeScreen==='tipping'?'stage':'tipping'})} className={`${STYLES.btnStd} ${room?.activeScreen==='tipping'?STYLES.btnHighlight:STYLES.btnNeutral}`}><i className="fa-solid fa-coins mr-1"></i> TIP</button>
+                             <button onClick={()=>setShowAnnounceModal(true)} className={`${STYLES.btnStd} ${STYLES.btnStandardBrandHover}`}><i className="fa-solid fa-bullhorn mr-1"></i> ANNOUNCE</button>
+                         </div>
+                         <button onClick={()=>updateRoom({showFullQueue: !room?.showFullQueue})} className={`${STYLES.btnStd} ${room?.showFullQueue ? STYLES.btnHighlight : STYLES.btnNeutral} w-full`}><i className="fa-solid fa-list mr-1"></i> {room?.showFullQueue ? 'HIDE QUEUE' : 'SHOW FULL QUEUE'}</button>
+                    </div>
+                    {/* Fixed BG Music Controls */}
+                    <div className={`${STYLES.panel} p-4`}>
+                        <div className="flex justify-between items-center mb-2">
+                            <div className={STYLES.header}>BG MUSIC</div>
+                        </div>
+                        <div className="flex gap-2 mb-2 items-center">
+                            <div className="flex-1 bg-black/30 p-2 rounded text-xs truncate border border-white/10 font-bold text-zinc-300">{BG_TRACKS[currentTrackIdx].name}</div>
+                            <button onClick={toggleBgMusic} className={`${STYLES.btnStd} ${playingBg?STYLES.btnHighlight:STYLES.btnNeutral} w-10 h-10 p-0 flex items-center justify-center`}><i className={`fa-solid ${playingBg?'fa-pause':'fa-play'}`}></i></button>
+                            <button onClick={skipBg} className={`${STYLES.btnStd} ${STYLES.btnNeutral} w-10 h-10 p-0 flex items-center justify-center`}><i className="fa-solid fa-forward"></i></button>
+                        </div>
+                        <input type="range" min="0" max="1" step="0.1" value={bgVolume} onChange={e=>setBgVolume(parseFloat(e.target.value))} className="w-full h-1 bg-zinc-800 accent-pink-500 rounded-lg appearance-none cursor-pointer mb-2"/>
+                    </div>
+                    {/* Fixed Vibe Sync Buttons */}
+                    <div className={`${STYLES.panel} p-4`}>
+                        <div className="header text-xs font-bold text-fuchsia-400 mb-2 tracking-widest uppercase border-b border-white/5 pb-1">VIBE SYNC</div>
+                        <div className="grid grid-cols-3 gap-2">
+                            <button onClick={()=>updateRoom({lightMode:'off'})} className={`${STYLES.btnStd} ${STYLES.btnNeutral} truncate`}><i className="fa-solid fa-ban mr-1"></i> OFF</button>
+                            <button onClick={()=>updateRoom({lightMode:'strobe'})} className={`${STYLES.btnStd} ${room?.lightMode==='strobe'?STYLES.btnHighlight:STYLES.btnNeutral} truncate`}><i className="fa-solid fa-bolt mr-1"></i> STROBE</button>
+                            <button onClick={()=>updateRoom({lightMode:'guitar'})} className={`${STYLES.btnStd} ${room?.lightMode==='guitar'?STYLES.btnHighlight:STYLES.btnNeutral} truncate`}><i className="fa-solid fa-guitar mr-1"></i> GUITAR</button>
+                            <button onClick={()=>updateRoom({lightMode:'banger'})} className={`${STYLES.btnStd} ${room?.lightMode==='banger'?STYLES.btnHighlight:STYLES.btnNeutral} truncate`}><i className="fa-solid fa-fire mr-1"></i> BANGER</button>
+                            <button onClick={()=>updateRoom({lightMode:'ballad'})} className={`${STYLES.btnStd} ${room?.lightMode==='ballad'?STYLES.btnHighlight:STYLES.btnNeutral} truncate`}><i className="fa-solid fa-feather mr-1"></i> BALLAD</button>
+                            <button onClick={()=>updateRoom({lightMode:'storm'})} className={`${STYLES.btnStd} ${room?.lightMode==='storm'?STYLES.btnHighlight:STYLES.btnNeutral} truncate`}><i className="fa-solid fa-cloud-bolt mr-1"></i> STORM</button>
+                        </div>
+                    </div>
+                    <div className={`${STYLES.panel} p-4`}>
+                        <div className="header text-xs font-bold text-fuchsia-400 mb-2 tracking-widest uppercase border-b border-white/5 pb-1">SOUNDBOARD</div>
+                        <div className="grid grid-cols-3 gap-2">{SOUNDS.map(s => <button key={s.name} onClick={()=>playSfx(s.url)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} truncate`}><i className={`fa-solid ${s.icon} mr-1`}></i>{s.name}</button>)}</div>
+                        <button onClick={silenceAll} className={`${STYLES.btnStd} ${STYLES.btnStandardBrandHover} w-full mt-2`}><i className="fa-solid fa-volume-xmark mr-1"></i> SILENCE FX</button>
+                    </div>
+                </div> 
+
+                {/* Right Column - Queue/List - Takes remaining space */}
+                <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0`}> 
+                    <div className="p-4 border-b border-white/10 bg-black/20">
+                         <div className="relative mb-2">
+                            <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} className={STYLES.input} placeholder="Search Local + iTunes..."/>
+                            {results.length > 0 && (<div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-600 z-50 max-h-64 overflow-y-auto shadow-2xl">
+                                {results.map((r, idx) => (
+                                    <div key={idx} onClick={()=>handleResultClick(r)} className="p-2 hover:bg-zinc-800 text-xs cursor-pointer flex gap-3 items-center border-b border-white/5">
+                                        <div className="w-8 h-8 flex items-center justify-center bg-zinc-800 rounded">
+                                            {r.source === 'local' ? <i className="fa-solid fa-hard-drive text-[#00C4D9]"></i> : <img src={r.artworkUrl100} className="w-8 h-8 rounded"/>}
+                                        </div>
+                                        <div>
+                                            <div className="font-bold text-white">{r.trackName}</div>
+                                            <div className="text-zinc-400">{r.artistName} <span className="text-[8px] uppercase opacity-50 ml-1 border px-1 rounded">{r.source}</span></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>)}
+                         </div>
+                         <div className="flex gap-2 mb-2">
+                            <input value={manual.song} onChange={e=>setManual({...manual, song:e.target.value})} className={STYLES.input} placeholder="Song Title"/>
+                            <input value={manual.artist} onChange={e=>setManual({...manual, artist:e.target.value})} className={STYLES.input} placeholder="Artist"/>
+                            <input value={manual.singer} onChange={e=>setManual({...manual, singer:e.target.value})} className={`${STYLES.input} w-32`} placeholder="Singer"/>
+                         </div>
+                         <div className="flex gap-2">
+                            <input value={manual.url} onChange={e=>setManual({...manual, url:e.target.value})} className={STYLES.input} placeholder="YouTube or Direct URL"/>
+                            <button onClick={()=>openYT(manual.song + " " + manual.artist)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} border-[#00C4D9] text-[#00C4D9] px-3`}>🔎 YT</button>
+                            <button onClick={addSong} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-4`}><i className="fa-solid fa-plus mr-2"></i> ADD</button>
+                         </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                        {/* Pending Songs Section */}
+                        {pending.length > 0 && (
+                            <div className="mb-4 border-b border-white/10 pb-2">
+                                <div className="text-xs text-orange-400 font-bold mb-2 uppercase tracking-wider">PENDING APPROVAL ({pending.length})</div>
+                                {pending.map(s => (
+                                    <div key={s.id} className="bg-orange-950/30 p-2 rounded flex justify-between items-center border border-orange-500/30 mb-2">
+                                            <div className="flex items-center gap-2">
+                                                {s.albumArtUrl && <img src={s.albumArtUrl} className="w-8 h-8 rounded"/>}
+                                                <div><div className="text-sm font-bold">{s.songTitle}</div><div className="text-[10px] text-zinc-400">{s.singerName}</div></div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={()=>openYT(s.songTitle + " " + s.artist)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2`}>🔎</button>
+                                                <button onClick={()=>updateStatus(s.id, 'requested')} className={`${STYLES.btnStd} ${STYLES.btnSuccess} px-2`}>✓</button>
+                                                <button onClick={()=>window.firebase.deleteDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', s.id))} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2`}>X</button>
+                                            </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        
+                        {queue.map((s,i) => (<div key={s.id} className="bg-zinc-900/50 p-3 rounded-lg flex flex-col gap-2 group border border-white/5 hover:border-white/20 transition-colors">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <span className="font-mono text-zinc-500 w-6 text-center">{i+1}</span>
+                                    {s.albumArtUrl && <img src={s.albumArtUrl} className="w-10 h-10 rounded shadow-sm"/>}
+                                    <div className="min-w-0"><div className="font-bold text-lg leading-none text-white truncate">{s.songTitle}</div><div className="text-xs text-zinc-400 flex gap-2"><span>{s.singerName}</span><span className="text-zinc-600">|</span><span>{new Date(s.timestamp?.seconds*1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div></div>
+                                </div>
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={()=>openYT(s.songTitle + " " + s.artist)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2`} title="Search YouTube">🔎</button>
+                                    <button onClick={()=>startEdit(s)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2`}>EDIT</button>
+                                    <button onClick={()=>window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', s.id), {priorityScore: Date.now()})} className={`${STYLES.btnStd} ${STYLES.btnInfo} px-2`}>⬆</button>
+                                    <button onClick={()=>updateStatus(s.id, 'performing')} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 text-black`}>PLAY</button>
+                                    <button onClick={()=>window.firebase.deleteDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', s.id))} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2`}>X</button>
+                                </div>
+                            </div>
+                            
+                            {/* Full Edit Modal */}
+                            {editingSongId === s.id && (
+                                <div className="mt-2 bg-zinc-800 p-4 rounded border border-white/10 space-y-2">
+                                    <div className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold mb-1">Editing Details</div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input value={editForm.title} onChange={e=>setEditForm({...editForm, title:e.target.value})} className={STYLES.input} placeholder="Title"/>
+                                        <input value={editForm.artist} onChange={e=>setEditForm({...editForm, artist:e.target.value})} className={STYLES.input} placeholder="Artist"/>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input value={editForm.singer} onChange={e=>setEditForm({...editForm, singer:e.target.value})} className={STYLES.input} placeholder="Singer"/>
+                                        <input value={editForm.art} onChange={e=>setEditForm({...editForm, art:e.target.value})} className={STYLES.input} placeholder="Album Art URL"/>
+                                    </div>
+                                    <input value={editForm.url} onChange={e=>setEditForm({...editForm, url:e.target.value})} className={STYLES.input} placeholder="YouTube URL"/>
+                                    
+                                    {/* New Lyrics & Duration Section */}
+                                    <div className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold mt-2">Lyrics & Timing</div>
+                                    <div className="flex gap-2 items-center">
+                                        <div className="text-xs">Scroll Duration (s):</div>
+                                        <input type="range" min="60" max="600" value={editForm.duration} onChange={e=>setEditForm({...editForm, duration:e.target.value})} className="flex-1 accent-pink-500"/>
+                                        <div className="text-xs font-mono w-10 text-right">{editForm.duration}s</div>
+                                    </div>
+                                    <textarea value={editForm.lyrics} onChange={e=>setEditForm({...editForm, lyrics:e.target.value})} className={`${STYLES.input} h-32 font-mono text-xs`} placeholder="Paste lyrics here or Generate with AI..."></textarea>
+                                    <button onClick={generateLyrics} className={`${STYLES.btnStd} ${STYLES.btnInfo} w-full`}><i className="fa-solid fa-wand-magic-sparkles mr-2"></i> GENERATE LYRICS WITH AI</button>
+
+                                    <div className="flex gap-2 justify-end mt-2">
+                                        <button onClick={()=>setEditingSongId(null)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>CANCEL</button>
+                                        <button onClick={saveEdit} className={`${STYLES.btnStd} ${STYLES.btnSuccess}`}>SAVE CHANGES</button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>))}
+                    </div> 
+                </div> 
+            </div> );
+        };
+
+        const QATab = ({ room, roomCode, updateRoom, users, songs }) => {
+            const [newTrivia, setNewTrivia] = useState({ q: '', correct: '', w1: '', w2: '', w3: '', points: 100 });
+            const [newWyr, setNewWyr] = useState({ q: 'Would you rather...', a: '', b: '', points: 50 });
+            const [triviaBank, setTriviaBank] = useState(() => JSON.parse(localStorage.getItem('bross_trivia') || JSON.stringify(TRIVIA_BANK)));
+            const [wyrBank, setWyrBank] = useState(() => JSON.parse(localStorage.getItem('bross_wyr') || JSON.stringify(WYR_BANK)));
+            const toast = useToast();
+            useEffect(() => { const unsub = window.firebase.onSnapshot(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), s => { const d = s.data(); if(d) { setTriviaBank(d.trivia || TRIVIA_BANK); setWyrBank(d.wyr || WYR_BANK); } else { window.firebase.setDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { trivia: TRIVIA_BANK, wyr: WYR_BANK }); } }); return () => unsub(); }, [roomCode]);
+            const updateBank = async (type, newData) => await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { [type]: newData });
+            
+            const handleAIGenerate = async (type) => {
+                const history = songs.filter(s => s.status === 'performed').slice(0, 5);
+                toast("Generating with AI...");
+                const result = await generateAIContent(type, history);
+                if(result && Array.isArray(result)) {
+                      if(type === 'trivia') {
+                          const mapped = result.map(i => ({ id: Date.now()+Math.random(), q: i.q, correct: i.correct, w1: i.w1, w2: i.w2, w3: i.w3, points: 100, asked: false }));
+                          updateBank('trivia', [...triviaBank, ...mapped]);
+                      } else if (type === 'wyr') {
+                          const mapped = result.map(i => ({ id: Date.now()+Math.random(), q: i.q, a: i.a, b: i.b, points: 50, asked: false }));
+                          updateBank('wyr', [...wyrBank, ...mapped]);
+                      }
+                      toast("AI Content Added!");
+                } else {
+                    toast("AI Failed or Format Error");
+                }
+            };
+
+            const saveTrivia = () => { if(newTrivia.q){ updateBank('trivia', [...triviaBank, {id:Date.now(), ...newTrivia, asked:false}]); setNewTrivia({q:'', correct:'', w1:'', w2:'', w3:'', points:100}); toast("Trivia Saved"); } };
+            const saveWyr = () => { if(newWyr.a){ updateBank('wyr', [...wyrBank, {id:Date.now(), ...newWyr, asked:false}]); setNewWyr({q:'Would you rather...', a:'', b:'', points:50}); toast("WYR Saved"); } };
+            
+            // Fix: Improved Shuffle Logic for Trivia Answers
+            const launchTrivia = (t) => { 
+                const opts = shuffleArray([t.correct, t.w1, t.w2, t.w3].filter(x=>x)); 
+                updateRoom({ activeMode: 'trivia_pop', triviaQuestion: { q: t.q, options: opts, correct: opts.indexOf(t.correct), id: Date.now().toString(), status:'asking', rewarded:false, points: t.points||100 } }); 
+                updateBank('trivia', triviaBank.map(x=>x.id===t.id?{...x,asked:true}:x)); 
+            };
+            
+            const launchWyr = (w) => { updateRoom({ activeMode: 'wyr', wyrData: { question: w.q, optionA: w.a, optionB: w.b, id: Date.now().toString(), rewarded:false, points: w.points||50 } }); updateBank('wyr', wyrBank.map(x=>x.id===w.id?{...x,asked:true}:x)); };
+            const deleteItem = (type, id) => type==='trivia' ? updateBank('trivia', triviaBank.filter(x=>x.id!==id)) : updateBank('wyr', wyrBank.filter(x=>x.id!==id));
+            const revealAndReward = async (type) => { 
+                if((type==='trivia' && room?.triviaQuestion?.rewarded) || (type==='wyr' && room?.wyrData?.rewarded)) return toast("Already rewarded!"); 
+                
+                await updateRoom({ activeMode: type==='trivia'?'trivia_reveal':'wyr_reveal', [type==='trivia'?'triviaQuestion':'wyrData']: { ...room[type==='trivia'?'triviaQuestion':'wyrData'], rewarded: true } }); 
+                
+                let qId = type==='trivia' ? room.triviaQuestion.id : room.wyrData.id; 
+                let winningVal = type==='trivia' ? room.triviaQuestion.correct : null; 
+                
+                if(type==='wyr') { 
+                    const snap = await window.firebase.getDocs(window.firebase.query(window.firebase.collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), window.firebase.where('roomCode','==',roomCode), window.firebase.where('questionId','==',qId))); 
+                    let a=0, b=0; snap.docs.forEach(d => { if(d.data().val === 'A') a++; else b++; }); 
+                    winningVal = a > b ? 'A' : b > a ? 'B' : null; 
+                    if(!winningVal) return toast("Tie! No points."); 
+                } 
+                
+                const snap = await window.firebase.getDocs(window.firebase.query(window.firebase.collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), window.firebase.where('roomCode','==',roomCode), window.firebase.where('questionId','==',qId), window.firebase.where('val','==',winningVal))); 
+                if(snap.empty) return toast("No winners."); 
+                
+                let count = 0; 
+                snap.docs.forEach(d => { 
+                    const u = users.find(u => u.name === d.data().userName); 
+                    if(u) { window.firebase.updateDoc(window.firebase.doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', u.id), { points: window.firebase.increment(type==='trivia'?room.triviaQuestion.points:room.wyrData.points) }); count++; } 
+                }); 
+                toast(`Rewarded ${count} winners!`); 
+            };
+            const pickRandomTrivia = () => { if(TRIVIA_BANK.length) launchTrivia({...TRIVIA_BANK[Math.floor(Math.random()*TRIVIA_BANK.length)], id:Date.now()}); };
+            const pickRandomWyr = () => { if(WYR_BANK.length) launchWyr({...WYR_BANK[Math.floor(Math.random()*WYR_BANK.length)], id:Date.now()}); };
+
+            return ( <div className="grid grid-cols-2 gap-6 h-full"> <div className={`${STYLES.panel} p-4 flex flex-col`}> <div className={STYLES.header}>TRIVIA <div className="flex gap-2"><button onClick={()=>handleAIGenerate('trivia')} className={`${STYLES.btnStd} ${STYLES.btnInfo} px-2`} title="Generate from recent songs">✨ AI</button><button onClick={pickRandomTrivia} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-xs`}>QUICK</button><button onClick={()=>revealAndReward('trivia')} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 text-xs`}>REVEAL</button><button onClick={()=>updateRoom({activeMode:'karaoke'})} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 text-xs`}>STOP</button></div></div> <div className="space-y-2 bg-zinc-900/50 p-3 rounded mb-4 border border-white/5"><input value={newTrivia.q} onChange={e=>setNewTrivia({...newTrivia, q:e.target.value})} className={STYLES.input} placeholder="Question"/><div className="flex gap-2"><input value={newTrivia.correct} onChange={e=>setNewTrivia({...newTrivia, correct:e.target.value})} className={`${STYLES.input} border-emerald-900/50`} placeholder="Correct Answer"/><input type="number" value={newTrivia.points} onChange={e=>setNewTrivia({...newTrivia, points:parseInt(e.target.value)})} className={`${STYLES.input} w-20 text-center`} placeholder="Pts"/></div><div className="grid grid-cols-3 gap-1">{['w1','w2','w3'].map(k=><input key={k} value={newTrivia[k]} onChange={e=>setNewTrivia({...newTrivia, [k]:e.target.value})} className={STYLES.input} placeholder="Wrong"/>)}</div><button onClick={saveTrivia} className={`${STYLES.btnStd} ${STYLES.btnNeutral} w-full py-2 text-sm`}>SAVE CUSTOM</button></div> <div className="border-t border-white/10 pt-2 flex-1 flex flex-col min-h-0"><div className="text-[10px] text-zinc-500 uppercase mb-1">Custom Library</div><div className="space-y-2 overflow-y-auto flex-1 custom-scrollbar">{triviaBank.map((t, i) => (<div key={t.id || i} className={`bg-zinc-900 p-2 rounded flex justify-between items-center border ${t.asked?'border-zinc-700 opacity-50':'border-zinc-600'}`}><div className="text-xs truncate w-2/3">{t.q} ({t.points}pts)</div><div className="flex gap-1"><button onClick={()=>launchTrivia(t)} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-2 py-1 text-[10px]`}>GO</button><button onClick={()=>deleteItem('trivia',t.id)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 text-[10px]`}>X</button></div></div>))}</div></div> </div> <div className={`${STYLES.panel} p-4 flex flex-col`}> <div className={STYLES.header}>WOULD YOU RATHER <div className="flex gap-2"><button onClick={()=>handleAIGenerate('wyr')} className={`${STYLES.btnStd} ${STYLES.btnInfo} px-2`} title="Generate from recent songs">✨ AI</button><button onClick={pickRandomWyr} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-xs`}>QUICK</button><button onClick={()=>revealAndReward('wyr')} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 text-xs`}>REVEAL</button><button onClick={()=>updateRoom({activeMode:'karaoke'})} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 text-xs`}>STOP</button></div></div> <div className="space-y-2 bg-zinc-900/50 p-3 rounded mb-4 border border-white/5"><input value={newWyr.q} onChange={e=>setNewWyr({...newWyr, q:e.target.value})} className={STYLES.input} placeholder="Question"/><div className="flex gap-2"><input value={newWyr.a} onChange={e=>setNewWyr({...newWyr, a:e.target.value})} className={`${STYLES.input} flex-1`} placeholder="Option A"/><input value={newWyr.b} onChange={e=>setNewWyr({...newWyr, b:e.target.value})} className={`${STYLES.input} flex-1`} placeholder="Option B"/><input type="number" value={newWyr.points} onChange={e=>setNewWyr({...newWyr, points:parseInt(e.target.value)})} className={`${STYLES.input} w-20 text-center`} placeholder="Pts"/></div><button onClick={saveWyr} className={`${STYLES.btnStd} ${STYLES.btnNeutral} w-full py-2 text-sm`}>SAVE CUSTOM</button></div> <div className="border-t border-white/10 pt-2 flex-1 flex flex-col min-h-0"><div className="text-[10px] text-zinc-500 uppercase mb-1">Custom Library</div><div className="space-y-2 overflow-y-auto flex-1 custom-scrollbar">{wyrBank.map((w, i) => (<div key={w.id || i} className={`bg-zinc-900 p-2 rounded flex justify-between items-center border ${w.asked?'border-zinc-700 opacity-50':'border-zinc-600'}`}><div className="text-xs truncate w-2/3">{w.a} vs {w.b}</div><div className="flex gap-1"><button onClick={()=>launchWyr(w)} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-2 py-1 text-[10px]`}>GO</button><button onClick={()=>deleteItem('wyr',w.id)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 text-[10px]`}>X</button></div></div>))}</div></div> </div> </div> );
+        };
+
+        const BingoTab = ({ room, roomCode, updateRoom, songs }) => {
+            const [newBoardForm, setNewBoardForm] = useState({ title: '', size: '5', mode: 'classic' });
+            const [savedBoards, setSavedBoards] = useState([]);
+            const [bingoBoard, setBingoBoard] = useState([]);
+            const [editTile, setEditTile] = useState(null);
+            const [searchQ, setSearchQ] = useState(''); 
+            const [results, setResults] = useState([]);
+            const toast = useToast();
+
+            useEffect(() => { 
+                const unsub = window.firebase.onSnapshot(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), s => { 
+                    const d = s.data(); 
+                    if(d?.bingo) setSavedBoards(d.bingo);
+                    else if(!d) window.firebase.setDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { bingo: [] });
+                });
+                return () => unsub(); 
+            }, [roomCode]);
+
+            const generateGrid = (size, mode) => {
+                let tiles = []; 
+                const source = mode==='mystery' ? MYSTERY_PRESETS["Top Hits"] : CLASSIC_PRESETS["Party Vibes"]; 
+                while(tiles.length < size*size) { 
+                    const content = source[Math.floor(Math.random()*source.length)]; 
+                    tiles.push({ id: tiles.length, type: mode, text: mode==='mystery'?content.clue:content, status: 'hidden', content: mode==='mystery'?content:null }); 
+                }
+                return tiles;
+            };
+
+            const createNewBoard = () => {
+                if(!newBoardForm.title) return toast("Enter a title");
+                const tiles = generateGrid(parseInt(newBoardForm.size), newBoardForm.mode);
+                const newBoard = { id: Date.now(), ...newBoardForm, tiles };
+                window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { 
+                    bingo: [...savedBoards, newBoard] 
+                });
+                toast("Board Created!");
+                setBingoBoard(tiles); // Load it
+            };
+
+            const handleAIGenerateBoard = async () => {
+                if (!newBoardForm.title) return toast("Enter a theme title first!");
+                toast("Generating with AI...");
+                const size = parseInt(newBoardForm.size);
+                const content = await generateAIContent('bingo_board', { title: newBoardForm.title, size, mode: newBoardForm.mode });
+                
+                if (content && Array.isArray(content)) {
+                      // Map AI content to tiles
+                      let tiles = [];
+                      for(let i=0; i<size*size; i++) {
+                          // Fallback if AI returns fewer items
+                          const item = content[i % content.length];
+                          if (newBoardForm.mode === 'mystery') {
+                             // AI returns objects {clue, title, artist}
+                             tiles.push({ id: i, type: 'mystery', text: item.clue || "Unknown Clue", status: 'hidden', content: { title: item.title || "Unknown", artist: item.artist || "Unknown", art: "" } });
+                          } else {
+                             // AI returns strings
+                             tiles.push({ id: i, type: 'classic', text: typeof item === 'string' ? item : "Free", status: 'hidden', content: null });
+                          }
+                      }
+                      const newBoard = { id: Date.now(), ...newBoardForm, tiles };
+                      window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { 
+                        bingo: [...savedBoards, newBoard] 
+                      });
+                      toast("AI Board Created!");
+                      setBingoBoard(tiles);
+                } else {
+                    toast("AI Generation Failed");
+                }
+            };
+
+            const loadBoard = (board) => {
+                setBingoBoard(board.tiles);
+                updateRoom({ bingoData: board.tiles, activeMode: 'bingo', bingoSize: parseInt(board.size), bingoMode: board.mode });
+                toast(`Loaded: ${board.title}`);
+            };
+
+            const deleteBoard = async (id) => {
+                const newBoards = savedBoards.filter(b => b.id !== id);
+                await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { bingo: newBoards });
+            };
+
+            const toggleBingoSquare = (idx) => { 
+                const newBoard = (room?.bingoData || bingoBoard).map((b, i) => i === idx ? { ...b, status: b.status === 'hidden' ? 'revealed' : 'hidden' } : b); 
+                updateRoom({ bingoData: newBoard, activeMode: 'bingo' }); 
+            };
+            
+            const openEditTile = (e, tile, i) => { e.preventDefault(); setEditTile({ ...tile, index: i }); setSearchQ(''); setResults([]); };
+
+            const saveTileEdit = () => {
+                const newBoard = [...(room?.bingoData || bingoBoard)];
+                newBoard[editTile.index] = editTile;
+                updateRoom({ bingoData: newBoard, activeMode: 'bingo' });
+                setEditTile(null);
+            };
+
+            const addToQueue = (content) => {
+                 if(!content || !content.title) return;
+                 window.firebase.addDoc(window.firebase.collection(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), { 
+                     roomCode, songTitle: content.title, artist: content.artist, singerName: "Bingo Winner", 
+                     mediaUrl: content.url || "", albumArtUrl: content.art, status: 'requested', timestamp: window.firebase.serverTimestamp(), priorityScore: Date.now(), emoji: '🎱' 
+                 });
+                 toast("Bingo Song Added!");
+            };
+
+            // Fix: CORS Error Handling for Search
+            useEffect(() => { 
+                if(searchQ.length < 3) { setResults([]); return; } 
+                const t = setTimeout(async () => { 
+                    try { 
+                        // Use a CORS proxy
+                        const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://itunes.apple.com/search?term=${encodeURIComponent(searchQ)}&media=music&entity=song&limit=5`)}`); 
+                        if (!res.ok) throw new Error('Network response was not ok');
+                        const data = await res.json();
+                        const parsed = JSON.parse(data.contents);
+                        setResults(parsed.results || []); 
+                    } catch(e) { 
+                        setResults([]);
+                    } 
+                }, 500); 
+                return () => clearTimeout(t); 
+            }, [searchQ]);
+
+            const openYT = (query) => window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' karaoke')}`, '_blank');
+            
+            // Calculate grid size based on actual tile data, fallback to 5
+            const currentData = room?.bingoData || bingoBoard;
+            const gridSize = Math.sqrt(currentData.length) || 5;
+
+            return ( <div className="grid grid-cols-12 gap-6 h-full relative"> 
+                {editTile && (
+                    <div className="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4 backdrop-blur-sm">
+                        <div className={`${STYLES.panel} p-6 w-96 border-white/20 max-h-full overflow-y-auto custom-scrollbar`}>
+                            <h3 className="text-xl font-bold mb-4 text-center">EDIT TILE</h3>
+                            <div className="space-y-3">
+                                <div><label className="text-xs text-zinc-400 uppercase">Clue / Text (Front)</label><input value={editTile.text} onChange={e=>setEditTile({...editTile, text:e.target.value})} className={`${STYLES.input} w-full`}/></div>
+                                
+                                {editTile.type === 'mystery' && (
+                                    <div className="bg-zinc-800/50 p-3 rounded border border-white/5 mt-4">
+                                            <div className="text-[10px] text-fuchsia-400 font-bold uppercase mb-2">Actions</div>
+                                            <button onClick={()=>addToQueue(editTile.content)} className={`${STYLES.btnStd} ${STYLES.btnSuccess} w-full mb-4`}><i className="fa-solid fa-plus mr-2"></i> ADD SONG TO QUEUE</button>
+
+                                            <div className="border-t border-white/10 pt-2 mt-2">
+                                                <label className="text-xs text-zinc-400 uppercase">Auto-Fill Song (Back)</label>
+                                                <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} className={STYLES.input} placeholder="Search iTunes..."/>
+                                                {results.length > 0 && (<div className="bg-zinc-800 border border-zinc-600 max-h-32 overflow-y-auto mt-1">{results.map(r => (<div key={r.trackId} onClick={()=>{ setEditTile({...editTile, content: { title: r.trackName, artist: r.artistName, art: r.artworkUrl100.replace('100x100','600x600') } }); setResults([]); setSearchQ(''); }} className="p-2 hover:bg-zinc-700 text-xs cursor-pointer flex gap-2 items-center"><img src={r.artworkUrl100} className="w-6 h-6 rounded"/><div><div className="font-bold">{r.trackName}</div><div className="text-zinc-400">{r.artistName}</div></div></div>))}</div>)}
+                                            </div>
+                                            <div className="mt-2 space-y-2">
+                                                <div><label className="text-xs text-zinc-400 uppercase">Song Title</label><input value={editTile.content?.title || ''} onChange={e=>setEditTile({...editTile, content: {...editTile.content, title:e.target.value}})} className={`${STYLES.input} w-full`}/></div>
+                                                <div><label className="text-xs text-zinc-400 uppercase">Artist</label><input value={editTile.content?.artist || ''} onChange={e=>setEditTile({...editTile, content: {...editTile.content, artist:e.target.value}})} className={`${STYLES.input} w-full`}/></div>
+                                                <div><label className="text-xs text-zinc-400 uppercase">Artwork URL</label><input value={editTile.content?.art || ''} onChange={e=>setEditTile({...editTile, content: {...editTile.content, art:e.target.value}})} className={`${STYLES.input} w-full`}/></div>
+                                            </div>
+                                            <div className="mt-2">
+                                                <label className="text-xs text-zinc-400 uppercase">Backing Video URL (YouTube)</label>
+                                                <div className="flex gap-2">
+                                                    <input value={editTile.content?.url || ''} onChange={e=>setEditTile({...editTile, content: {...editTile.content, url:e.target.value}})} className={`${STYLES.input} w-full`} placeholder="https://youtube.com/..."/>
+                                                    <button onClick={()=>openYT(editTile.content?.title + " " + editTile.content?.artist)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3`}>🔎</button>
+                                                </div>
+                                            </div>
+                                    </div>
+                                )}
+                                <div className="flex gap-2 mt-4 pt-4 border-t border-white/10">
+                                    <button onClick={()=>setEditTile(null)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2`}>CANCEL (CLOSE)</button>
+                                    <button onClick={saveTileEdit} className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1 py-2`}>SAVE TILE</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Left Column: Board Bank */}
+                <div className="col-span-5 flex flex-col gap-4">
+                      <div className={`${STYLES.panel} p-4 flex-1 flex flex-col`}>
+                        <div className={STYLES.header}>BOARD BANK</div>
+                        <div className="bg-zinc-900/50 p-3 rounded mb-4 border border-white/5 space-y-2">
+                            <input value={newBoardForm.title} onChange={e=>setNewBoardForm({...newBoardForm, title:e.target.value})} className={STYLES.input} placeholder="New Board Title"/>
+                            <div className="flex gap-2">
+                                <div className="flex bg-zinc-950 rounded-lg p-1 border border-zinc-700 flex-1">
+                                    {['classic', 'mystery'].map(m => (
+                                        <button key={m} onClick={()=>setNewBoardForm({...newBoardForm, mode:m})} className={`flex-1 py-1 rounded text-xs uppercase font-bold transition-all ${newBoardForm.mode===m ? 'bg-zinc-700 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}>{m}</button>
+                                    ))}
+                                </div>
+                                <div className="flex bg-zinc-950 rounded-lg p-1 border border-zinc-700 w-32">
+                                    {['3', '4', '5'].map(s => (
+                                        <button key={s} onClick={()=>setNewBoardForm({...newBoardForm, size:s})} className={`flex-1 py-1 rounded text-xs font-bold transition-all ${newBoardForm.size===s ? 'bg-zinc-700 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}>{s}x{s}</button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={createNewBoard} className={`${STYLES.btnStd} ${STYLES.btnNeutral} flex-1`}>CREATE BLANK</button>
+                                <button onClick={handleAIGenerateBoard} className={`${STYLES.btnStd} ${STYLES.btnInfo} flex-1`}><i className="fa-solid fa-wand-magic-sparkles mr-1"></i> AI GENERATE</button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
+                            {savedBoards.map(b => (
+                                <div key={b.id} className="bg-zinc-900 p-3 rounded flex justify-between items-center border border-zinc-700 hover:border-zinc-500">
+                                    <div>
+                                        <div className="font-bold text-sm">{b.title}</div>
+                                        <div className="text-[10px] text-zinc-500 uppercase">{b.mode} • {b.size}x{b.size}</div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={()=>loadBoard(b)} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 text-xs`}>LOAD</button>
+                                        <button onClick={()=>deleteBoard(b.id)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 text-xs`}>X</button>
+                                    </div>
+                                </div>
+                            ))}
+                            {savedBoards.length === 0 && <div className="text-center text-zinc-600 text-xs mt-4">No saved boards</div>}
+                        </div>
+                      </div>
+                </div>
+
+                {/* Right Column: Active Board */}
+                <div className="col-span-7 flex flex-col gap-4 h-full overflow-hidden">
+                    <div className={`${STYLES.panel} p-4 flex flex-col h-full`}>
+                        <div className="flex justify-between items-center mb-4">
+                            <div className={STYLES.header}>ACTIVE BOARD EDITOR</div>
+                            <div className="flex gap-2">
+                                <button onClick={()=>updateRoom({activeMode: 'bingo'})} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-6`}>🚀 LAUNCH ON TV</button>
+                                <button onClick={()=>updateRoom({activeMode: 'karaoke'})} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-4`}>STOP GAME</button>
+                            </div>
+                        </div>
+                        
+                        <div className="mb-2 text-xs text-zinc-400 bg-black/20 p-2 rounded border border-white/5 text-center">
+                            Right Click Tile to Edit • Left Click to Toggle Status
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto custom-scrollbar flex justify-center items-center bg-zinc-950/50 rounded-xl border border-white/5 p-4 relative">
+                             <div className={`grid gap-2 h-full max-h-full aspect-square`} style={{gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${gridSize}, minmax(0, 1fr))`}}> 
+                                {currentData.map((b,i) => ( 
+                                    <button key={i} onClick={()=>toggleBingoSquare(i)} onContextMenu={(e)=>openEditTile(e, b, i)} className={`relative w-full h-full flex flex-col items-center justify-center text-[10px] sm:text-xs leading-tight border-2 rounded-lg p-1 text-center transition-all duration-200 overflow-hidden ${b.status==='revealed' ? 'bg-amber-500 text-black border-amber-300' : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700'}`}> 
+                                        <div className="line-clamp-3">{b.status==='revealed' ? '✅' : b.text}</div>
+                                        {room?.highlightedTile === i && <div className="absolute inset-0 border-4 border-rose-500 animate-ping rounded-lg"></div>} 
+                                        {/* Mystery Push to Queue Button */}
+                                        {b.status==='revealed' && b.type==='mystery' && (
+                                            <div
+                                                onClick={(e) => { e.stopPropagation(); addToQueue(b.content); }}
+                                                className="absolute bottom-1 right-1 bg-green-600 text-white text-[8px] px-1 rounded hover:bg-green-500 z-10 shadow-md font-bold"
+                                                title="Add Song to Queue"
+                                            >
+                                                +Q
+                                            </div>
+                                        )}
+                                    </button> 
+                                ))} 
+                             </div> 
+                        </div>
+                    </div>
+                </div>
+            </div> );
+        };
+
+        const HostApp = () => {
+            const [roomCode, setRoomCode] = useState(''); const [view, setView] = useState('landing'); const [room, setRoom] = useState(null); const [songs, setSongs] = useState([]); const [users, setUsers] = useState([]); const [contacts, setContacts] = useState([]); const [activities, setActivities] = useState([]); const [tab, setTab] = useState('stage'); const [announceText, setAnnounceText] = useState(''); const [showAnnounceModal, setShowAnnounceModal] = useState(false); const [modifyingScoreId, setModifyingScoreId] = useState(null); const [scoreForm, setScoreForm] = useState({ hype:0, applause:0, bonus:0 }); const [bgVolume, setBgVolume] = useState(0.3); const [currentTrackIdx, setCurrentTrackIdx] = useState(0); const bgAudio = useRef(null); const [playingBg, setPlayingBg] = useState(false); const [isReady, setIsReady] = useState(false); const [apiKey, setApiKey] = useState(localStorage.getItem('bross_ai_key')||''); const [showSettings, setShowSettings] = useState(false); const toast = useToast();
+            
+            useEffect(() => { bgAudio.current = new Audio(BG_TRACKS[0].url); bgAudio.current.loop = true; bgAudio.current.volume = 0.3; }, []); useEffect(() => { if(bgAudio.current) bgAudio.current.volume = bgVolume; }, [bgVolume]);
+            
+            useEffect(() => { 
+                const interval = setInterval(() => {
+                    if (window.firebase && window.isFirebaseReady) {
+                        setIsReady(true);
+                        const bootScreen = document.getElementById('boot-screen');
+                        if(bootScreen) bootScreen.style.opacity = '0';
+                        setTimeout(() => { if(bootScreen) bootScreen.style.display = 'none'; }, 500);
+                        clearInterval(interval);
+                    }
+                }, 100);
+                return () => clearInterval(interval);
+            }, []);
+
+            // Fix 1: Robust URL Bootstrapping for Host
+            useEffect(() => { 
+                if(!isReady || !window.db) return;
+                const params = new URLSearchParams(window.location.search); 
+                const r = params.get('room');
+                if (r) {
+                    setRoomCode(r.toUpperCase());
+                    setView('panel');
+                }
+            }, [isReady]);
+
+            useEffect(() => { 
+                if(!isReady || !roomCode || !window.db) return; 
+                const db = window.db; const { doc, collection, query, where, onSnapshot, limit } = window.firebase; 
+                
+                // Fix 10: Invalid Room Handling
+                const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => {
+                    if (!s.exists()) {
+                        toast("Room Not Found");
+                        setRoomCode('');
+                        setView('landing');
+                        window.history.pushState({}, '', window.location.pathname);
+                    } else {
+                        setRoom(s.data());
+                    }
+                }); 
+                
+                const unsubSongs = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), where('roomCode', '==', roomCode)), s => setSongs(s.docs.map(d => ({id:d.id, ...d.data()})))); 
+                const unsubUsers = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode)), s => setUsers(s.docs.map(d => ({id:d.id, ...d.data()})))); 
+                const unsubActivity = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), where('roomCode', '==', roomCode), limit(50)), s => {
+                    const sorted = s.docs.map(d => d.data()).sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+                    setActivities(sorted);
+                });
+                
+                if (tab === 'vip') window.firebase.getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'contacts'), where('roomCode', '==', roomCode))).then(snap => setContacts(snap.docs.map(d => d.data())));
+                return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubActivity(); }; 
+            }, [roomCode, view, tab, isReady]);
+
+            const updateRoom = async (d) => window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), d);
+            const createRoom = async () => { const c = Math.random().toString(36).substring(2,6).toUpperCase(); await window.firebase.setDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', c), { createdAt: window.firebase.serverTimestamp(), activeMode: 'karaoke', hideWaveform: false, videoVolume: 100, bgMusicVolume: 0.3, bgMusicPlaying: false }); setRoomCode(c); setView('panel'); };
+            
+            // Fix: Sync BG Music to Firestore
+            const toggleBgMusic = () => { 
+                const newState = !playingBg;
+                setPlayingBg(newState);
+                if(newState) bgAudio.current.play(); else bgAudio.current.pause();
+                updateRoom({ bgMusicPlaying: newState, bgMusicUrl: BG_TRACKS[currentTrackIdx].url });
+            }; 
+            const setBgMusic = (idx) => { 
+                setCurrentTrackIdx(idx); 
+                bgAudio.current.src = BG_TRACKS[idx].url; 
+                if(playingBg) {
+                    bgAudio.current.play(); 
+                    updateRoom({ bgMusicUrl: BG_TRACKS[idx].url });
+                }
+            };
+            const skipBg = () => { const next = (currentTrackIdx + 1) % BG_TRACKS.length; setBgMusic(next); };
+            const silenceAll = () => { /* if(activeSfx) { activeSfx.pause(); activeSfx = null; } */ };
+            // Removed Purge Button as requested
+            const purgeReactions = async () => { /* Placeholder to prevent crashes if called, but UI removed */ };
+            const sendUserMessage = async (uid, msg) => { await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { spotlightUser: msg ? {id: uid, msg: msg} : null }); toast(msg ? "Spotlight ON" : "Spotlight OFF"); };
+            const kickUser = async (uid) => { await window.firebase.deleteDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`)); toast("User Kicked"); };
+            const openModifyScore = (s) => { setModifyingScoreId(s.id); setScoreForm({ hype: s.hypeScore||0, applause: s.applauseScore||0, bonus: s.hostBonus||0 }); }; const saveModifiedScore = async () => { await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', modifyingScoreId), { hypeScore: parseInt(scoreForm.hype), applauseScore: parseInt(scoreForm.applause), hostBonus: parseInt(scoreForm.bonus) }); setModifyingScoreId(null); toast("Score Updated"); };
+            const history = songs.filter(s => s.status === 'performed').sort((a,b) => b.timestamp?.seconds - a.timestamp?.seconds);
+            const saveApiKey = () => { localStorage.setItem('bross_ai_key', apiKey); setShowSettings(false); toast("API Key Saved"); };
+
+            if (!isReady) return null; // Handled by #boot-screen HTML
+
+            if(view === 'landing') return ( <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center relative z-10"> <div className="bg-zinc-900/80 p-8 rounded-3xl border border-zinc-700 backdrop-blur-md max-w-lg w-full shadow-2xl relative z-20"> <img src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png" className="w-3/4 mx-auto mb-4 drop-shadow-xl"/> <h1 className="text-4xl font-bebas mb-6 text-white tracking-widest">HOST PORTAL</h1> <button onClick={createRoom} className={`${STYLES.btnStd} ${STYLES.btnPrimary} w-full py-4 text-xl mb-4`}>START NEW ROOM</button> <div className="flex gap-2 justify-center"> <input value={roomCode} onChange={e=>setRoomCode(e.target.value.toUpperCase())} placeholder="CODE" className="input-std text-center text-lg font-mono w-full"/> <button onClick={()=>roomCode && setView('panel')} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6`}>JOIN</button> </div> <div className="mt-6 text-xs text-zinc-500 font-mono tracking-widest">{VERSION}</div> </div> </div> );
+
+            return (
+                <div className="h-screen flex flex-col relative bg-zinc-950 text-white font-saira">
+                    {showAnnounceModal && ( <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-8 backdrop-blur-sm"><div className={`${STYLES.panel} p-6 w-full max-w-2xl border-white/20`}><h3 className="text-2xl font-bold mb-4 text-center">ANNOUNCEMENT</h3><textarea value={announceText} onChange={e=>setAnnounceText(e.target.value)} className={`${STYLES.input} h-40 text-2xl text-center mb-4`} placeholder="Type message..."></textarea><div className="flex gap-4"><button onClick={()=>{updateRoom({'announcement.active':false}); setShowAnnounceModal(false)}} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-3`}>HIDE</button><button onClick={()=>{updateRoom({announcement:{text:announceText, active:true}}); setShowAnnounceModal(false)}} className={`${STYLES.btnStd} ${STYLES.btnDanger} flex-1 py-3`}>SHOW ON TV</button></div></div></div> )}
+                    {modifyingScoreId && ( <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-8 backdrop-blur-sm"><div className={`${STYLES.panel} p-6 w-96 border-white/20`}><h3 className="text-xl font-bold mb-4 text-center">EDIT SCORES</h3><div className="space-y-3"><div><label className="text-xs text-zinc-400 uppercase">Hype Score</label><input type="number" value={scoreForm.hype} onChange={e=>setScoreForm({...scoreForm, hype:e.target.value})} className={`${STYLES.input} w-full`}/></div><div><label className="text-xs text-zinc-400 uppercase">Applause Level</label><input type="number" value={scoreForm.applause} onChange={e=>setScoreForm({...scoreForm, applause:e.target.value})} className={`${STYLES.input} w-full`}/></div><div><label className="text-xs text-zinc-400 uppercase">Host Bonus</label><input type="number" value={scoreForm.bonus} onChange={e=>setScoreForm({...scoreForm, bonus:e.target.value})} className={`${STYLES.input} w-full`}/></div><div className="flex gap-2 mt-4"><button onClick={()=>setModifyingScoreId(null)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2`}>CANCEL</button><button onClick={saveModifiedScore} className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1 py-2`}>SAVE</button></div></div></div></div> )}
+                    {showSettings && (<div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-8 backdrop-blur-sm"><div className={`${STYLES.panel} p-6 w-96 border-white/20`}><h3 className="text-xl font-bold mb-4 text-center">SETTINGS</h3><div className="mb-4"><label className="text-xs text-zinc-400 uppercase">Gemini API Key</label><input value={apiKey} onChange={e=>setApiKey(e.target.value)} className={`${STYLES.input} w-full`} placeholder="AI Key..."/></div><div className="flex gap-2"><button onClick={()=>setShowSettings(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} flex-1 py-2`}>CANCEL</button><button onClick={saveApiKey} className={`${STYLES.btnStd} ${STYLES.btnSuccess} flex-1 py-2`}>SAVE</button></div></div></div>)}
+                    
+                    <div className="bg-zinc-900 px-6 py-4 flex justify-between items-center shadow-2xl shrink-0 relative z-20 border-b border-zinc-800 brand-gradient">
+                        <div className="flex items-center gap-6">
+                            {/* Increased Logo Size by ~20% */}
+                            <img src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png" className="h-[115px] drop-shadow-lg"/>
+                            <div className="h-12 w-px bg-zinc-700"></div>
+                            <div className="text-3xl font-mono font-bold text-[#00C4D9] tracking-wider bg-black/40 px-4 py-2 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
+                            <div className="flex gap-2">
+                                <button onClick={() => window.open(`index.html?room=${roomCode}&mode=tv`, '_blank')} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-4 py-2 text-sm flex items-center gap-2`}><i className="fa-solid fa-tv"></i> <span className="text-lg">DASHBOARD</span></button>
+                                <button onClick={() => window.open(`index.html?room=${roomCode}`, '_blank')} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm flex items-center gap-2`}><i className="fa-solid fa-mobile-screen"></i> <span className="text-lg">AUDIENCE</span></button>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <button onClick={()=>setShowSettings(true)} className="text-zinc-500 hover:text-white transition-colors"><i className="fa-solid fa-gear text-xl"></i></button>
+                            <div className="flex gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800"> 
+                                {[{id:'stage', i:'fa-microphone-lines', l:'Stage'}, {id:'game', i:'fa-gamepad', l:'Game'}, {id:'qa', i:'fa-circle-question', l:'Q&A'}, {id:'bingo', i:'fa-table-cells', l:'Bingo'}, {id:'lobby', i:'fa-users', l:'Lobby'}, {id:'history', i:'fa-clock-rotate-left', l:'History'}, {id:'vip', i:'fa-gem', l:'VIP'}, {id:'activity', i:'fa-list', l:'Activity'}].map(t => (
+                                    <button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-bold uppercase transition-all flex items-center gap-2 ${tab===t.id?'bg-[#00C4D9] text-black shadow-lg shadow-[#00C4D9]/20':'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'}`}>
+                                            <i className={`fa-solid ${t.i}`}></i><span className="hidden xl:inline">{t.l}</span>
+                                    </button>
+                                ))} 
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-hidden p-6 relative z-10">
+                        {/* Fix: Passed skipBg function to QueueTab */}
+                        {tab === 'stage' && <QueueTab songs={songs} room={room} roomCode={roomCode} updateRoom={updateRoom} toggleBgMusic={toggleBgMusic} setBgMusic={setBgMusic} playingBg={playingBg} bgVolume={bgVolume} setBgVolume={setBgVolume} currentTrackIdx={currentTrackIdx} silenceAll={silenceAll} setShowAnnounceModal={setShowAnnounceModal} skipBg={skipBg} />}
+                        {tab === 'game' && <VoiceGameTab room={room} roomCode={roomCode} updateRoom={updateRoom} users={users} />}
+                        {tab === 'qa' && <QATab room={room} roomCode={roomCode} updateRoom={updateRoom} users={users} songs={songs} />}
+                        {tab === 'bingo' && <BingoTab room={room} roomCode={roomCode} updateRoom={updateRoom} songs={songs} />}
+                        {/* Updated Lobby Tab for Toggle */}
+                        {tab === 'lobby' && <div className="grid grid-cols-6 gap-4">{users.map(u=>{
+                            const isSpotlight = room?.spotlightUser?.id === u.id.split('_')[1];
+                            return (
+                                <div key={u.id} className={`${STYLES.panel} p-4 flex items-center gap-3 relative group ${isSpotlight ? 'border-yellow-500 bg-yellow-900/20' : ''}`}>
+                                    <span className="text-3xl">{u.avatar}</span>
+                                    <div className="min-w-0">
+                                        <div className="font-bold truncate text-lg text-white">{u.name}</div>
+                                        <div className="text-xs text-zinc-500">{u.points} PTS</div>
+                                    </div>
+                                    <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl">
+                                            <button onClick={()=>sendUserMessage(u.id.split('_')[1], isSpotlight ? null : 'SPOTLIGHT')} className={`${STYLES.btnStd} ${isSpotlight ? STYLES.btnNeutral : STYLES.btnPrimary} px-3 py-1 text-xs`}>
+                                                {isSpotlight ? 'UNSPOTLIGHT' : 'SPOTLIGHT'}
+                                            </button>
+                                            <button onClick={()=>kickUser(u.id.split('_')[1])} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs`}>KICK</button>
+                                    </div>
+                                    {isSpotlight && <div className="absolute top-2 right-2 text-yellow-400 text-xs animate-pulse">LIVE</div>}
+                                </div>
+                            );
+                        })}</div>}
+                        {tab === 'history' && <div className="flex flex-col h-full"><div className="flex justify-end mb-2"><button onClick={()=>exportToCSV(history, 'history.csv')} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs`}>EXPORT CSV</button></div><div className="space-y-2 overflow-y-auto flex-1 pr-2 custom-scrollbar">{history.map(s => (<div key={s.id} className="bg-zinc-900 p-4 rounded-xl flex justify-between border border-zinc-800 hover:border-zinc-700 transition-colors"><div><span className="font-bold text-lg">{s.songTitle}</span> <span className="text-zinc-500">-</span> <span className="text-zinc-300">{s.singerName}</span></div><div className="flex gap-4 text-xs text-zinc-500 items-center"><span>{new Date(s.timestamp?.seconds*1000).toLocaleTimeString()}</span><span className="text-yellow-400 font-bold">Total: {(s.hypeScore||0)+(s.applauseScore||0)+(s.hostBonus||0)}</span><button onClick={()=>openModifyScore(s)} className="text-blue-400 hover:text-blue-300 font-bold">EDIT</button></div></div>))}</div></div>}
+                        {tab === 'vip' && <div className="flex flex-col h-full"><div className="flex justify-end mb-2"><button onClick={()=>exportToCSV(contacts, 'vip_contacts.csv')} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs`}>EXPORT CSV</button></div><div className="space-y-2 overflow-y-auto flex-1 pr-2 custom-scrollbar">{contacts.map((c,i) => {
+                            const u = users.find(user => user.name === c.name);
+                            const uid = u?.id.split('_')[1];
+                            const isSpotlight = uid && room?.spotlightUser?.id === uid;
+                            
+                            return (
+                                <div key={i} className="bg-zinc-900 p-4 rounded-xl flex justify-between border border-yellow-500/20 shadow-lg">
+                                    <div className="font-bold text-lg">{c.name}</div>
+                                    <div className="text-sm text-zinc-400">{c.email}</div>
+                                    {uid ? (
+                                        <button onClick={()=>sendUserMessage(uid, isSpotlight ? null : 'VIP Spotlight!')} className={`${STYLES.btnStd} ${isSpotlight ? STYLES.btnStandardBrandHover : STYLES.btnPrimary} px-3 py-1 text-xs`}>
+                                            {isSpotlight ? 'UNSPOTLIGHT' : 'SPOTLIGHT VIP'}
+                                        </button>
+                                    ) : <span className="text-xs text-zinc-600 italic">Offline</span>}
+                                </div>
+                            );
+                        })}</div></div>}
+                        
+                        {/* New Activity Tab */}
+                        {tab === 'activity' && (
+                             <div className="flex flex-col h-full">
+                                <div className="text-sm text-zinc-400 mb-2 font-bold uppercase tracking-wider border-b border-white/10 pb-2">Room Activity Log</div>
+                                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
+                                    {activities.map((a, i) => (
+                                        <div key={i} className="flex gap-3 items-center bg-zinc-900/50 p-2 rounded border border-white/5 text-sm">
+                                            <span className="text-xl">{a.icon}</span>
+                                            <div>
+                                                <span className="font-bold text-white mr-1">{a.user}</span>
+                                                <span className="text-zinc-400">{a.text}</span>
+                                                <div className="text-[10px] text-zinc-600 mt-0.5">{new Date(a.timestamp?.seconds*1000).toLocaleTimeString()}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {activities.length === 0 && <div className="text-center text-zinc-500 py-8 italic">No activity recorded yet</div>}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ToastProvider><HostApp /></ToastProvider>);
+    </script>
+</body>
+</html>

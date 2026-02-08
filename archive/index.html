@@ -1,0 +1,1666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bross Karaoke - Party</title>
+    <!-- Dependencies -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Saira+Condensed:wght@300;400;600;900&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <style>
+        /* Base Reset */
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background-color: #000; color: white; touch-action: manipulation; font-family: 'Saira Condensed', sans-serif; transition: background 1s; }
+        #root { height: 100%; width: 100%; }
+        
+        /* Boot Screen */
+        #boot-screen {
+            position: fixed; inset: 0; z-index: 99999;
+            background: #000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.5s ease-out;
+        }
+        .spinner {
+            width: 50px; height: 50px; border: 5px solid #333; border-top-color: #00C4D9; border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Error Overlay */
+        #debug-log { display: none; position: fixed; bottom: 0; left: 0; width: 100%; height: 150px; background: rgba(50,0,0,0.95); border-top: 2px solid red; overflow: auto; padding: 10px; font-family: monospace; font-size: 12px; z-index: 100000; color: #ffcccc; }
+
+        /* --- VISUALS --- */
+        .font-bebas { font-family: 'Bebas Neue', sans-serif; }
+        .font-pixel { font-family: 'Press Start 2P', cursive; }
+        .perspective-1000 { perspective: 1000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+        .rotate-y-0 { transform: rotateY(0deg); }
+        
+        /* COMBO BAR & BACKGROUNDS */
+        .bg-combo-1 { background: radial-gradient(circle at center, #1e1b4b 0%, #000000 100%); transition: background 1s ease; }
+        .bg-combo-2 { 
+            background: linear-gradient(-45deg, #be185d, #4c1d95, #0f172a);
+            background-size: 400% 400%;
+            animation: gradientShift 6s ease infinite; 
+        }
+        .bg-combo-4 { 
+            background: conic-gradient(from 0deg at 50% 50%, #ff00cc, #3333ff, #00ffff, #ffff00, #ff00cc);
+            background-size: 200% 200%;
+            animation: groovyPulse 4s ease-in-out infinite alternate;
+            filter: hue-rotate(0deg);
+        }
+        .groovy-overlay {
+            position: absolute; inset: 0; 
+            background: repeating-radial-gradient(circle at center, transparent 0, transparent 20px, rgba(255,255,255,0.1) 21px, transparent 22px);
+            animation: zoomOut 20s linear infinite;
+            pointer-events: none; mix-blend-mode: overlay;
+        }
+
+        /* Synthwave Grid */
+        .bg-synthwave {
+            background-image: 
+                linear-gradient(rgba(18, 16, 99, 0.9), rgba(0, 0, 0, 0.9)),
+                linear-gradient(transparent 95%, #ff00cc 95%),
+                linear-gradient(90deg, transparent 95%, #00ffff 95%);
+            background-size: 100% 100%, 40px 40px, 40px 40px;
+            animation: gridMove 20s linear infinite;
+        }
+        @keyframes gridMove { 0% { background-position: 0 0, 0 0, 0 0; } 100% { background-position: 0 0, 0 40px, 0 40px; } }
+
+        @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @keyframes groovyPulse { 0% { filter: hue-rotate(0deg); } 100% { filter: hue-rotate(45deg); } }
+        @keyframes zoomOut { 0% { transform: scale(1); } 100% { transform: scale(2); opacity: 0; } }
+        
+        /* ANIMATIONS */
+        .animate-in { animation: fadeIn 0.5s ease-out forwards; }
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        .zoom-in { animation: zoomIn 0.3s ease-out forwards; }
+        .slide-in-from-bottom { animation: slideUp 0.5s ease-out forwards; opacity: 0; }
+        
+        /* Reaction Float Animations - COMBINED MOVEMENTS */
+        @keyframes heartFloat { 
+            0% { transform: translateY(0) scale(1); opacity: 1; } 
+            25% { transform: translateY(-20vh) scale(1.4); } 
+            50% { transform: translateY(-50vh) scale(1); } 
+            100% { transform: translateY(-120vh) scale(1.2); opacity: 0; } 
+        }
+        @keyframes fireFloat { 
+            0% { transform: translateY(0) scale(1); filter: brightness(1); } 
+            10% { transform: translateY(-10vh) scale(1.2) rotate(-5deg); filter: brightness(1.5); }
+            100% { transform: translateY(-120vh) scale(1.5) rotate(5deg); opacity: 0; } 
+        }
+        @keyframes diamondFloat { 
+            0% { transform: translateY(0) rotate(0deg) scale(0.5); opacity: 1; } 
+            100% { transform: translateY(-120vh) rotate(360deg) scale(1.5); opacity: 0; } 
+        }
+        @keyframes cheersFly { 
+            0% { transform: translateY(0) rotate(0deg) scale(0.5); opacity: 0; } 
+            10% { transform: translateY(-10vh) rotate(-20deg) scale(1.2); opacity: 1; } 
+            30% { transform: translateY(-20vh) rotate(10deg) scale(1.2); } 
+            50% { transform: translateY(-40vh) rotate(-10deg) scale(1.2); } 
+            100% { transform: translateY(-120vh) rotate(0deg) scale(1); opacity: 0; } 
+        }
+        @keyframes wobbleFloat {
+            0% { transform: translateY(0) rotate(-10deg); }
+            100% { transform: translateY(-120vh) rotate(10deg); opacity: 0; }
+        }
+        @keyframes shootUp {
+            0% { transform: translateY(100%) scale(0.5); opacity: 0; }
+            10% { opacity: 1; transform: translateY(0) scale(1.2); }
+            100% { transform: translateY(-80vh) scale(1); opacity: 0; }
+        }
+        
+        .animate-rocket-fly { animation: rocketFly 3s ease-in forwards; filter: drop-shadow(0 0 20px orange); }
+        .animate-heart-beat { animation: heartFloat 4s linear forwards; }
+        .animate-fire-flicker { animation: fireFloat 3s linear forwards; }
+        .animate-diamond-shine { animation: diamondFloat 5s linear forwards; filter: drop-shadow(0 0 15px cyan); }
+        .animate-crown-bounce { animation: wobbleFloat 5s linear forwards; filter: drop-shadow(0 0 15px gold); } 
+        .animate-money-wobble { animation: wobbleFloat 5s linear forwards; filter: drop-shadow(0 0 10px lime); }
+        .animate-clap-shake { animation: heartFloat 3s linear forwards; } /* Reusing simple float */
+        .animate-drink-sway { animation: cheersFly 4s ease-out forwards; filter: drop-shadow(0 0 10px white); }
+        .animate-float { animation: floatUp 4s ease-in forwards; }
+        .animate-pop { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .animate-shoot-up { animation: shootUp 2s ease-out forwards; }
+
+        /* Custom Keyframes */
+        @keyframes rocketFly { 
+            0% { transform: translateY(0) scale(1); opacity: 1; } 
+            20% { transform: translateY(10px) scale(0.9); }
+            40% { transform: translateY(-50px) scale(1.5); }
+            100% { transform: translateY(-150vh) scale(2); opacity: 0; } 
+        }
+        @keyframes popIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes floatUp { 0% { transform: translateY(100px) scale(0.5); opacity: 0; } 10% { opacity: 1; transform: translateY(0) scale(1); } 100% { transform: translateY(-120vh) scale(1.5); opacity: 0; } }
+
+        /* VIBE MODES */
+        .vibe-strobe { animation: strobe 0.1s infinite; }
+        @keyframes strobe { 0% { background: #ec4899; opacity: 0.8; } 50% { background: #2dd4bf; opacity: 0.8; } 100% { background: #ec4899; opacity: 0.8; } }
+        .vibe-storm { animation: flash 10s infinite; pointer-events: none; }
+        @keyframes flash { 0%, 95%, 100% { opacity: 0; } 96%, 98% { opacity: 0.8; background: white; } }
+        
+        .rain { 
+            position: absolute; left: 0; top: -100%; width: 100%; height: 200%; z-index: 10; 
+            background: repeating-linear-gradient(transparent, transparent 10px, rgba(255, 255, 255, 0.1) 10px, rgba(255, 255, 255, 0.1) 20px);
+            animation: rain 0.5s linear infinite; 
+            pointer-events: none; opacity: 0.3;
+        }
+        @keyframes rain { 0% { transform: translateY(0); } 100% { transform: translateY(50%); } }
+        
+        .fire-overlay {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to top, rgba(255, 50, 0, 0.4), transparent);
+            pointer-events: none; z-index: 10;
+        }
+        .fire-particle {
+            position: absolute; bottom: -50px;
+            animation: floatUp 2s linear forwards;
+            font-size: 3rem;
+        }
+
+        .vibe-banger { animation: pulseFast 0.4s infinite; mix-blend-mode: overlay; background: radial-gradient(circle, rgba(255,0,0,0.5) 0%, rgba(0,0,0,0) 70%); }
+        @keyframes pulseFast { 0% { transform: scale(1); opacity: 0.5; } 50% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); opacity: 0.5; } }
+        
+        /* Ballad/Lighter Mode */
+        .vibe-ballad { background: black; }
+        .lighter-flame {
+            width: 200px; height: 350px; /* Increased Size Significantly */
+            background: radial-gradient(ellipse at bottom, #ffff00 0%, #ff8800 50%, transparent 80%);
+            border-radius: 50% 50% 20% 20%;
+            animation: flicker 0.1s infinite alternate;
+            filter: blur(15px);
+            opacity: 0.9;
+        }
+        @keyframes flicker { 0% { transform: scale(1) rotate(-1deg); opacity: 0.9; } 100% { transform: scale(1.05) rotate(1deg); opacity: 1; } }
+
+        /* GUITAR & ANIMATION */
+        .guitar-string { height: 100%; width: 6px; background: rgba(255,255,255,0.3); position: relative; transition: all 0.05s ease-out; border-radius: 3px; }
+        /* Improved string vibration logic in CSS + JS */
+        .guitar-string.vibrating { 
+            background: #00C4D9; 
+            box-shadow: 0 0 25px #00C4D9, 0 0 10px white;
+            animation: stringShake 0.15s infinite; 
+            width: 8px; /* Thickness on strum */
+        }
+        @keyframes stringShake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(4px); }
+            50% { transform: translateX(-4px); }
+            75% { transform: translateX(2px); }
+            100% { transform: translateX(0); }
+        }
+        
+        @keyframes burst { 0% { transform: scale(0); opacity: 1; } 100% { transform: scale(3); opacity: 0; } }
+
+        @keyframes danceFlip { 0% { transform: scaleX(1) translateY(0); } 25% { transform: scaleX(1) translateY(-20px) rotate(5deg); } 50% { transform: scaleX(-1) translateY(0); } 75% { transform: scaleX(-1) translateY(-10px) rotate(-5deg); } 100% { transform: scaleX(1) translateY(0); } }
+        .dancing-emoji { display: inline-block; animation: danceFlip 1s infinite steps(2); font-size: 8rem; }
+        .autodj-bg { background: linear-gradient(270deg, #ec4899, #8b5cf6, #3b82f6); background-size: 600% 600%; animation: gradientShift 10s ease infinite; }
+        .bird-flap { animation: flap 0.3s steps(1) infinite; }
+        @keyframes flap { 0% { transform: scaleY(1); } 50% { transform: scaleY(0.9); } }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #00C4D9; border-radius: 4px; }
+        
+        /* Lyrics Scrolling */
+        .mask-linear-fade {
+             mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+             -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+        }
+    </style>
+
+    <!-- Error Handler -->
+    <script>
+        window.onerror = function(msg, url, line) {
+            const log = document.getElementById('debug-log');
+            if(log){
+                log.style.display = 'block';
+                log.innerHTML += `<div>ERROR: ${msg} (Line ${line})</div>`;
+            }
+            const status = document.getElementById('boot-status');
+            if(status) status.innerText = "CRITICAL ERROR. SEE CONSOLE.";
+        };
+    </script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, where, onSnapshot, updateDoc, doc, setDoc, serverTimestamp, increment, deleteDoc, orderBy, limit, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "AIzaSyAXF_1iWXznoVnk70llosbBAKYkASg066A", authDomain: "beaurocks-karaoke.firebaseapp.com", projectId: "beaurocks-karaoke", storageBucket: "beaurocks-karaoke.firebasestorage.app", messagingSenderId: "827532526758", appId: "1:827532526758:web:a28f7db2fe4ca765b2e067" };
+        
+        try {
+            const app = initializeApp(firebaseConfig); 
+            window.db = getFirestore(app); 
+            window.auth = getAuth(app); 
+            window.firebase = { collection, addDoc, query, where, onSnapshot, updateDoc, doc, setDoc, serverTimestamp, increment, deleteDoc, orderBy, limit, getDocs, writeBatch, signInAnonymously, onAuthStateChanged, signInWithCustomToken };
+            window.isFirebaseReady = true;
+
+            const initAuth = async () => { if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) { await signInWithCustomToken(window.auth, __initial_auth_token); } else { await signInAnonymously(window.auth); } }; 
+            initAuth();
+        } catch (e) {
+            console.error("Firebase Init Failed:", e);
+            document.getElementById('boot-status').innerText = "Database Error: " + e.message;
+        }
+    </script>
+</head>
+<body>
+    <!-- Boot Screen -->
+    <div id="boot-screen">
+        <div class="spinner"></div>
+        <div id="boot-status" class="text-xl font-mono text-cyan-400">CONNECTING...</div>
+    </div>
+    <div id="debug-log"></div>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, createContext, useContext, useMemo } = React;
+        const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'bross-app';
+        const ASSETS = { logo: "https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png", venmoQr: "https://beauross.com/wp-content/uploads/2025/08/MyVenmoQRCode-2.png" };
+        const GAME_ASSETS = { 
+            coin: "https://beauross.com/wp-content/uploads/audio_121db7b43f.mp3", 
+            fail: "https://beauross.com/wp-content/uploads/fail-trumpet-242645.mp3" 
+        };
+        const AVATARS = ['😀','😎','🤠','👽','🤖','👻','🦄','🐯','🐶','🎤','🎧','🎸','🎹','🥁','🎷','🎺','🦊','🐻','🐨','🦁'];
+        const STORM_SOUND_URL = "https://beauross.com/wp-content/uploads/heavy-rain-nature-sounds-8186.mp3";
+        const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+        const playSfx = (url) => { 
+            try { const a = new Audio(url); a.volume = 0.5; a.play().catch(e=>{}); } catch(e){} 
+        };
+
+        // --- MANZANA LYRICS ENGINE (Apple Music Style) ---
+        const AppleLyricsRenderer = ({ lyrics, duration, art, isActive }) => {
+            const containerRef = useRef(null);
+            // Simple newline split for now. In a full version, we'd use timestamps.
+            const lines = useMemo(() => lyrics ? lyrics.split('\n').filter(l => l.trim()) : ["(Instrumental)"], [lyrics]);
+            
+            useEffect(() => {
+                if(!isActive || !containerRef.current) return;
+                const start = Date.now();
+                // Duration passed in seconds, convert to ms
+                const totalMs = (duration || 180) * 1000;
+                
+                const animate = () => {
+                    const now = Date.now();
+                    const elapsed = now - start;
+                    const progress = Math.min(1, elapsed / totalMs);
+                    
+                    if(containerRef.current) {
+                        const scrollH = containerRef.current.scrollHeight - containerRef.current.clientHeight;
+                        // Basic linear scroll based on song progress
+                        containerRef.current.scrollTop = scrollH * progress;
+                    }
+                    
+                    if(progress < 1) requestAnimationFrame(animate);
+                };
+                requestAnimationFrame(animate);
+            }, [isActive, duration, lyrics]);
+
+            return (
+                <div className="absolute inset-0 z-50 bg-black overflow-hidden flex items-center justify-center font-bebas animate-in fade-in">
+                     {/* Blurred Album Art Background */}
+                     <div className="absolute inset-0 z-0 opacity-40 blur-[80px] scale-150 transition-all duration-1000" 
+                          style={{
+                              backgroundImage: `url(${art || ASSETS.logo})`, 
+                              backgroundSize: 'cover', 
+                              backgroundPosition:'center'
+                          }}>
+                     </div>
+                     <div className="absolute inset-0 z-10 bg-black/40"></div>
+                     
+                     {/* Scrolling Lyrics Container */}
+                     <div ref={containerRef} className="relative z-20 w-full h-full overflow-hidden px-8 py-[40vh] text-center space-y-8 scroll-smooth mask-linear-fade">
+                        {lines.map((l,i) => (
+                            <div key={i} className="text-4xl md:text-7xl font-bold text-white drop-shadow-xl leading-tight transition-all duration-500 opacity-90 hover:opacity-100 hover:scale-105 transform origin-center">
+                                {l}
+                            </div>
+                        ))}
+                     </div>
+                     
+                     <div className="absolute top-8 right-8 z-30 bg-black/60 backdrop-blur-md px-6 py-2 rounded-full border border-white/20 text-sm font-bold text-zinc-300 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> LYRICS MODE
+                     </div>
+                </div>
+            )
+        };
+
+        const AudioVisualizer = ({ onVolume, isActive, externalCtx }) => {
+            const canvasRef = useRef(null); 
+            const onVolumeRef = useRef(onVolume);
+            
+            useEffect(() => { onVolumeRef.current = onVolume; }, [onVolume]);
+            
+            useEffect(() => { 
+                if(!isActive || !externalCtx) return; 
+                
+                let animationFrame;
+                let analyser;
+                let source;
+                let stream;
+                let dataArray;
+
+                const init = async () => { 
+                    try { 
+                        // Ensure context is running
+                        if (externalCtx.state === 'suspended') {
+                            await externalCtx.resume();
+                        }
+
+                        stream = await navigator.mediaDevices.getUserMedia({ audio: true }); 
+                        
+                        analyser = externalCtx.createAnalyser(); 
+                        analyser.fftSize = 256; 
+                        
+                        source = externalCtx.createMediaStreamSource(stream); 
+                        source.connect(analyser); 
+                        
+                        dataArray = new Uint8Array(analyser.frequencyBinCount); 
+                        
+                        const canvas = canvasRef.current; 
+                        const ctx = canvas ? canvas.getContext('2d') : null; 
+                        
+                        const render = () => { 
+                            if (!canvasRef.current) return;
+                            
+                            analyser.getByteFrequencyData(dataArray); 
+                            
+                            let sum = 0; 
+                            for(let i=0; i<dataArray.length; i++) sum += dataArray[i]; 
+                            const avg = sum / dataArray.length;
+
+                            if (onVolumeRef.current) onVolumeRef.current(avg); 
+                            
+                            if (ctx) {
+                                const width = canvas.width; 
+                                const height = canvas.height; 
+                                const centerY = height / 2;
+                                ctx.clearRect(0, 0, width, height);
+                                
+                                const gradient = ctx.createLinearGradient(0, 0, width, 0);
+                                gradient.addColorStop(0, '#ec4899'); 
+                                gradient.addColorStop(0.5, '#00C4D9'); 
+                                gradient.addColorStop(1, '#ec4899');
+                                
+                                ctx.strokeStyle = gradient; 
+                                ctx.lineWidth = 4; 
+                                ctx.lineCap = 'round'; 
+                                ctx.shadowBlur = 10; 
+                                ctx.shadowColor = '#00C4D9';
+                                ctx.beginPath(); 
+                                
+                                const bars = 64; 
+                                const barWidth = width / bars; 
+                                let x = 0;
+                                
+                                for(let i = 0; i < bars; i++) {
+                                    const index = Math.floor(i * (dataArray.length / bars)); 
+                                    const val = dataArray[index] / 255.0; 
+                                    const h = val * height * 0.8;
+                                    ctx.moveTo(x, centerY - h / 2); 
+                                    ctx.lineTo(x, centerY + h / 2); 
+                                    x += barWidth;
+                                }
+                                ctx.stroke(); 
+                                ctx.shadowBlur = 0; 
+                            }
+                            
+                            animationFrame = requestAnimationFrame(render); 
+                        }; 
+                        render(); 
+                    } catch (e) { 
+                        console.error("Visualizer Init Error:", e);
+                    } 
+                }; 
+                
+                init(); 
+                
+                return () => { 
+                    if (animationFrame) cancelAnimationFrame(animationFrame); 
+                    if (source) source.disconnect();
+                    if (stream) stream.getTracks().forEach(t => t.stop()); 
+                }; 
+            }, [isActive, externalCtx]);
+            
+            return <canvas ref={canvasRef} width={800} height={300} className="w-full h-full opacity-90 mix-blend-screen" />;
+        };
+
+        const usePitch = (isActive) => {
+            const [pitch, setPitch] = useState(0); const [volume, setVolume] = useState(0); const [note, setNote] = useState('-'); const audioCtx = useRef(null); const streamRef = useRef(null);
+            useEffect(() => {
+                if(!isActive) { 
+                    if(audioCtx.current) { audioCtx.current.close(); audioCtx.current = null; } 
+                    if(streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; } 
+                    return; 
+                }
+                let analyser, source, raf; const buf = new Float32Array(2048);
+                const autoCorrelate = (buf, sampleRate) => { let SIZE = buf.length, rms = 0; for (let i=0;i<SIZE;i++) { let val = buf[i]; rms+=val*val; } rms = Math.sqrt(rms/SIZE); if (rms<0.01) return -1; let r1=0, r2=SIZE-1, thres=0.2; for (let i=0; i<SIZE/2; i++) if (Math.abs(buf[i])<thres) { r1=i; break; } for (let i=1; i<SIZE/2; i++) if (Math.abs(buf[SIZE-i])<thres) { r2=SIZE-i; break; } buf = buf.slice(r1,r2); SIZE = buf.length; let c = new Array(SIZE).fill(0); for (let i=0; i<SIZE; i++) for (let j=0; j<SIZE-i; j++) c[i] = c[i] + buf[j]*buf[j+i]; let d=0; while (c[d]>c[d+1]) d++; let maxval=-1, maxpos=-1; for (let i=d; i<SIZE; i++) if (c[i] > maxval) { maxval = c[i]; maxpos = i; } return sampleRate/maxpos; };
+                
+                const start = async () => { 
+                    try { 
+                        const stream = await navigator.mediaDevices.getUserMedia({audio:true}); 
+                        streamRef.current = stream; 
+                        audioCtx.current = new (window.AudioContext||window.webkitAudioContext)(); 
+                        await audioCtx.current.resume(); 
+                        analyser = audioCtx.current.createAnalyser(); 
+                        analyser.fftSize = 2048; 
+                        source = audioCtx.current.createMediaStreamSource(stream); 
+                        source.connect(analyser); 
+                        
+                        const update = () => { 
+                            analyser.getFloatTimeDomainData(buf); 
+                            const ac = autoCorrelate(buf, audioCtx.current.sampleRate); 
+                            let sum=0; for(let i=0; i<buf.length; i++) sum += buf[i]*buf[i]; 
+                            const vol = Math.sqrt(sum/buf.length);
+                            setVolume(vol); 
+                            if (ac !== -1) {
+                                setPitch(ac);
+                                const noteNum = 12 * (Math.log(ac / 440) / Math.log(2)) + 69;
+                                const noteIndex = Math.round(noteNum) % 12;
+                                setNote(NOTE_NAMES[noteIndex >= 0 ? noteIndex : 0]);
+                            }
+                            raf = requestAnimationFrame(update); 
+                        }; 
+                        update(); 
+                    } catch(e) { console.error("Mic Error", e); } 
+                }; 
+                start(); 
+                return () => { if(raf) cancelAnimationFrame(raf); if(source) source.disconnect(); if(audioCtx.current) audioCtx.current.close(); if(streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop()); };
+            }, [isActive]);
+            return { pitch, volume, note };
+        };
+
+        const ToastContext = createContext();
+        const ToastProvider = ({ children }) => {
+            const [toasts, setToasts] = useState([]);
+            const addToast = (msg) => { const id = Date.now() + Math.random(); setToasts(prev => [...prev, { id, msg }]); setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 2500); };
+            return ( <ToastContext.Provider value={addToast}>{children}<div className="fixed top-24 left-0 w-full flex flex-col items-center gap-2 pointer-events-none z-[200]">{toasts.map(t => <div key={t.id} className="bg-zinc-800/90 border border-pink-500 text-white px-6 py-3 rounded-2xl shadow-2xl font-bold animate-pop text-center backdrop-blur-sm">🔔 {t.msg}</div>)}</div></ToastContext.Provider> );
+        };
+        const useToast = () => useContext(ToastContext);
+
+        // Improved Guitar Sparks Component - Musical Notes
+        const GuitarSparks = ({ sparks }) => {
+            return (
+                <div className="absolute inset-0 pointer-events-none overflow-hidden z-[200]">
+                    {sparks.map(s => (
+                        <div key={s.id} className="absolute flex flex-col items-center animate-shoot-up" style={{ left: s.left, bottom: '0' }}>
+                             {/* Note Graphic */}
+                             <div className="text-6xl filter drop-shadow-lg" style={{color: s.color}}>{s.icon}</div>
+                             {/* Spark Burst */}
+                             <div className="absolute top-0 w-20 h-20 bg-white rounded-full mix-blend-overlay animate-ping opacity-75"></div>
+                             <div className="mt-2 text-xl font-black text-white bg-black/60 px-3 py-1 rounded-full border border-white/50 backdrop-blur-sm shadow-xl">{s.user}</div>
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
+        const BingoTile = ({ tile, size }) => {
+            const isRevealed = tile.status === 'revealed'; const isMystery = tile.type === 'mystery';
+            return ( <div className="relative w-full h-full perspective-1000 group"> <div className={`relative w-full h-full duration-700 transform-style-3d transition-transform ${isRevealed ? 'rotate-y-180' : 'rotate-y-0'}`}> <div className="absolute inset-0 backface-hidden bg-zinc-800 border-4 border-zinc-600 rounded-xl flex flex-col items-center justify-center p-2 text-center shadow-lg"> <div className="text-6xl mb-2 opacity-50">{isMystery ? '❓' : '🎵'}</div> <div className={`font-bebas uppercase leading-none ${size>4 ? 'text-2xl' : 'text-4xl'}`}>{isMystery ? tile.text : tile.text}</div> {isMystery && <div className="text-xs text-yellow-400 mt-2 font-bold animate-pulse">MYSTERY SONG</div>} </div> <div className="absolute inset-0 backface-hidden rotate-y-180 bg-gradient-to-br from-purple-900 to-indigo-900 border-4 border-yellow-400 rounded-xl flex flex-col items-center justify-center p-2 text-center shadow-[0_0_30px_rgba(250,204,21,0.5)] overflow-hidden"> {isMystery ? ( <> <img src={tile.content.art} className="absolute inset-0 w-full h-full object-cover opacity-40 blur-sm"/> <div className="relative z-10"> <img src={tile.content.art} className="w-24 h-24 rounded-lg shadow-xl mx-auto mb-2 border-2 border-white"/> <div className={`font-black uppercase leading-none text-white drop-shadow-md ${size>4 ? 'text-xl' : 'text-3xl'}`}>{tile.content.title}</div> <div className="text-yellow-300 font-bold mt-1">{tile.content.artist}</div> </div> </> ) : ( <div className="text-green-400 text-8xl">✅</div> )} </div> </div> </div> );
+        };
+
+        const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource }) => {
+            const { pitch, volume } = usePitch(inputSource === 'local'); const [birdY, setBirdY] = useState(50); const [score, setScore] = useState(0); const [obstacles, setObstacles] = useState([]); const [coins, setCoins] = useState([]); const [gameState, setGameState] = useState('ready'); const [lives, setLives] = useState(3); const [invincible, setInvincible] = useState(false); const [screechActive, setScreechActive] = useState(false); const birdYRef = useRef(50); const obstaclesRef = useRef([]); const coinsRef = useRef([]); const scoreRef = useRef(0); const speedRef = useRef(0.6); const gameLoopRef = useRef(null); const lastSync = useRef(0);
+            
+            useEffect(() => { if(!isPlayer) return; const sync = setInterval(async () => { await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { 'gameData.birdY': birdYRef.current, 'gameData.score': scoreRef.current, 'gameData.lives': lives, 'gameData.status': gameState, 'gameData.obstacles': obstaclesRef.current, 'gameData.coins': coinsRef.current }); }, 200); return () => clearInterval(sync); }, [score, lives, gameState, isPlayer, roomCode]);
+            useEffect(() => { if(isPlayer) return; const unsub = window.firebase.onSnapshot(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => { const d = s.data()?.gameData; if(d) { setBirdY(d.birdY || 50); setScore(d.score || 0); setLives(d.lives || 3); setObstacles(d.obstacles || []); setCoins(d.coins || []); } }); return () => unsub(); }, [isPlayer, roomCode]);
+            
+            useEffect(() => {
+                if(!isPlayer || gameState !== 'playing') return;
+                let raf;
+                const loop = () => {
+                    let targetY = birdYRef.current;
+                    if (pitch > 150) targetY -= 1.0; else if (pitch < 100 && pitch > 50) targetY += 1.0; else targetY += 0.5; 
+                    targetY = Math.max(0, Math.min(100, targetY)); birdYRef.current = targetY; setBirdY(targetY); setScreechActive(volume > 0.3);
+                    if (Math.random() < 0.015) { const height = Math.random() * 40 + 20; const gapTop = Math.random() * (100 - height - 20) + 10; obstaclesRef.current.push({ x: 100, gapTop, gapHeight: height, id: Date.now() }); if(Math.random() > 0.5) coinsRef.current.push({ x: 100, y: gapTop + height/2, id: Date.now() }); }
+                    obstaclesRef.current = obstaclesRef.current.map(o => ({...o, x: o.x - speedRef.current})).filter(o => o.x > -20);
+                    coinsRef.current = coinsRef.current.map(c => ({...c, x: c.x - speedRef.current})).filter(c => c.x > -20);
+                    coinsRef.current = coinsRef.current.filter(c => { const collected = c.x < 20 && c.x > 10 && Math.abs(c.y - targetY) < 5; if(collected) { scoreRef.current += 10; playSfx(GAME_ASSETS.coin); } return !collected; }); setCoins([...coinsRef.current]);
+                    if (!invincible && !(volume>0.3)) { let hit = false; obstaclesRef.current.forEach(o => { if (o.x < 20 && o.x > 0) { if (targetY < o.gapTop || targetY > o.gapTop + o.gapHeight) hit = true; } }); if (hit) { playSfx(GAME_ASSETS.fail); setLives(prev => { const newLives = prev - 1; if (newLives <= 0) { setGameState('gameover'); if(onGameOver) onGameOver(scoreRef.current); } else { setInvincible(true); setTimeout(() => setInvincible(false), 2000); } return newLives; }); } }
+                    scoreRef.current += 1; if(scoreRef.current % 50 === 0) setScore(scoreRef.current); raf = requestAnimationFrame(loop);
+                }; 
+                raf = requestAnimationFrame(loop); return () => cancelAnimationFrame(raf);
+            }, [gameState, isPlayer, pitch, volume, invincible, onGameOver]);
+
+            return ( <div className="relative w-full h-full bg-cyan-900 overflow-hidden font-pixel"> 
+                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-20 scrolling-bg-slow"></div> 
+                <div className="absolute inset-0 flex flex-col justify-evenly opacity-30 pointer-events-none">
+                    {[1,2,3,4,5].map(i => <div key={i} className="w-full h-0.5 bg-white shadow-[0_0_10px_white]"></div>)}
+                </div>
+                <div className="absolute top-4 left-4 z-20 flex gap-4"> <div className="bg-black/50 p-2 rounded text-yellow-400 border-2 border-white">SCORE: {score}</div> <div className="bg-black/50 p-2 rounded text-red-500 border-2 border-white flex gap-1">{[...Array(3)].map((_,i) => <span key={i}>{i < lives ? '❤️' : '💀'}</span>)}</div> </div> <div className={`absolute left-[15%] w-12 h-12 transition-transform duration-75 flex items-center justify-center text-4xl bird-flap ${invincible ? 'opacity-50 animate-pulse' : ''} ${screechActive ? 'drop-shadow-[0_0_15px_rgba(255,255,0,0.8)] scale-125' : ''}`} style={{ top: `${birdY}%`, transform: `translateY(-50%)` }}>{playerData.playerAvatar || '🐦'}</div> {obstacles.map(o => ( <div key={o.id} className="absolute w-[10%] bg-green-800 border-4 border-green-900" style={{ left: `${o.x}%`, top: 0, height: '100%' }}><div className="absolute w-full bg-cyan-900" style={{ top: `${o.gapTop}%`, height: `${o.gapHeight}%`, left: '-4px', width: 'calc(100% + 8px)', borderTop: '4px solid #14532d', borderBottom: '4px solid #14532d' }}></div></div> ))} {coins.map(c => (<div key={c.id} className="absolute text-3xl animate-spin" style={{left: `${c.x}%`, top: `${c.y}%`}}>🪙</div>))} {!isPlayer && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="text-white/50 animate-pulse text-xl">WATCHING LIVE FEED</div></div>} {isPlayer && gameState === 'ready' && <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50 text-center"><h1 className="text-4xl text-yellow-400 mb-4">VOICE CONTROL</h1><p>Sing HIGH = Fly Up</p><p>Sing LOW = Fly Down</p><p>SCREAM = Shield!</p><button onClick={()=>setGameState('playing')} className="bg-green-600 px-8 py-4 rounded text-white font-bold animate-bounce mt-4 text-2xl">START</button></div>} {gameState === 'gameover' && <div className="absolute inset-0 bg-red-900/90 flex flex-col items-center justify-center z-50 text-center"><h1 className="text-4xl text-white mb-4">GAME OVER</h1><div className="text-2xl text-yellow-400 mb-8">SCORE: {score}</div></div>} </div> );
+        };
+
+        const SingingGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource }) => {
+            const { pitch, note } = usePitch(inputSource === 'local');
+            const [charY, setCharY] = useState(50);
+            const [score, setScore] = useState(0);
+            const [items, setItems] = useState([]); 
+            const [gameState, setGameState] = useState('ready');
+            const itemsRef = useRef([]);
+            const scoreRef = useRef(0);
+            const speedRef = useRef(0.8);
+            
+            // Sync logic
+            useEffect(() => { 
+                if(!isPlayer) return; 
+                const sync = setInterval(async () => { await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { 'gameData.birdY': charY, 'gameData.score': scoreRef.current, 'gameData.status': gameState, 'gameData.items': itemsRef.current, 'gameData.note': note }); }, 100); 
+                return () => clearInterval(sync); 
+            }, [charY, score, gameState, note]);
+
+            useEffect(() => { 
+                if(isPlayer) return; 
+                const unsub = window.firebase.onSnapshot(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => { const d = s.data()?.gameData; if(d) { setCharY(d.birdY || 50); setScore(d.score || 0); setItems(d.items || []); setGameState(d.status); } }); 
+                return () => unsub(); 
+            }, [isPlayer]);
+            
+            // Game Loop
+            useEffect(() => {
+                if(!isPlayer || gameState !== 'playing') return;
+                let raf;
+                const loop = () => {
+                    let targetY = 50;
+                    if (pitch > 100) {
+                        const minLog = Math.log(130); const maxLog = Math.log(1000);
+                        const pLog = Math.log(pitch);
+                        const pct = (pLog - minLog) / (maxLog - minLog);
+                        targetY = 100 - (Math.max(0, Math.min(1, pct)) * 100); 
+                    }
+                    setCharY(prev => prev + (targetY - prev) * 0.1);
+                    if (Math.random() < 0.02) itemsRef.current.push({ x: 100, y: Math.random() * 80 + 10, type: Math.random() > 0.3 ? 'coin' : 'rock', id: Date.now() });
+                    itemsRef.current = itemsRef.current.map(i => ({...i, x: i.x - speedRef.current})).filter(i => i.x > -10);
+                    itemsRef.current = itemsRef.current.filter(i => {
+                        const hit = i.x < 15 && i.x > 5 && Math.abs(i.y - charY) < 10;
+                        if (hit) {
+                            if (i.type === 'coin') { scoreRef.current += 100; playSfx(GAME_ASSETS.coin); }
+                            if (i.type === 'rock') { scoreRef.current = Math.max(0, scoreRef.current - 50); playSfx(GAME_ASSETS.fail); }
+                        }
+                        return !hit;
+                    });
+                    setItems([...itemsRef.current]); setScore(scoreRef.current); raf = requestAnimationFrame(loop);
+                }; 
+                raf = requestAnimationFrame(loop); return () => cancelAnimationFrame(raf);
+            }, [gameState, isPlayer, pitch]);
+
+            // Batch Reward
+            const handleGroupGameOver = async () => {
+                const batch = window.firebase.writeBatch(window.db);
+                const usersSnap = await window.firebase.getDocs(window.firebase.query(window.firebase.collection(window.db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), window.firebase.where('roomCode', '==', roomCode)));
+                usersSnap.docs.forEach(doc => {
+                    batch.update(doc.ref, { points: window.firebase.increment(score) });
+                });
+                await batch.commit();
+                onGameOver(score);
+            };
+
+            return ( <div className="relative w-full h-full bg-indigo-950 overflow-hidden font-pixel"> <div className="absolute inset-0 flex flex-col justify-center space-y-8 opacity-30">{[1,2,3,4,5].map(i => <div key={i} className="w-full h-1 bg-white"></div>)}</div><div className="absolute top-4 left-4 z-20 text-yellow-400 text-4xl drop-shadow-md">SCORE: {score}</div><div className="absolute left-[10%] w-16 h-16 transition-transform duration-75 flex flex-col items-center justify-center text-6xl drop-shadow-xl z-30" style={{ top: `${charY}%`, transform: `translateY(-50%)` }}><span>{playerData.playerAvatar || '🎤'}</span><span className="text-sm font-bold text-white bg-black/50 px-2 rounded mt-1">{note}</span></div>{items.map(i => (<div key={i.id} className="absolute text-5xl transition-none" style={{left: `${i.x}%`, top: `${i.y}%`, transform: 'translateY(-50%)'}}>{i.type === 'coin' ? '🪙' : '🪨'}</div>))}{!isPlayer && <div className="absolute bottom-10 w-full text-center text-white/50 animate-pulse text-2xl">WATCH THE BIG SCREEN</div>}{isPlayer && gameState === 'ready' && (<div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50 text-center p-8"><h1 className="text-6xl text-yellow-400 mb-8">VOCAL CHALLENGE</h1><div className="text-2xl text-white mb-8 space-y-4"><p>🎤 Sing HIGH to go UP</p><p>🎤 Sing LOW to go DOWN</p><p>🪙 Collect Coins for the Group!</p></div><button onClick={()=>setGameState('playing')} className="bg-green-600 px-12 py-6 rounded-2xl text-white font-bold animate-bounce text-4xl">START</button></div>)}{isPlayer && <div className="absolute top-4 right-4 z-50"><button onClick={handleGroupGameOver} className="bg-red-600 px-4 py-2 rounded text-white font-bold">END GAME & REWARD</button></div>}</div> );
+        };
+
+        const Stage = ({ room, current, started, handleVolume, ASSETS, combo }) => {
+            const mediaUrl = current?.mediaUrl || room?.mediaUrl;
+            
+            // Detect Native Video
+            const isNativeVideo = mediaUrl && /\.(mp4|webm|ogg)$/i.test(mediaUrl);
+            
+            // Detect YouTube (fallback)
+            const isYoutube = mediaUrl && mediaUrl.includes('youtube');
+            const youtubeId = isYoutube ? mediaUrl.split('v=')[1]?.split('&')[0] : null;
+            
+            const layout = room?.layoutMode || 'standard'; const minimalUI = layout === 'minimal';
+            const totalScore = (current?.hypeScore || 0) + (current?.applauseScore || 0) + (current?.hostBonus || 0);
+            
+            // Safe to useMemo here because Stage is a component, not a conditional function
+            const iframeSrc = useMemo(() => {
+                const start = room?.videoStartTimestamp ? (Date.now() - room.videoStartTimestamp) / 1000 : 0;
+                return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&start=${Math.floor(Math.max(0, start))}&enablejsapi=1`;
+            }, [youtubeId, room?.videoStartTimestamp]);
+
+            const iframeRef = useRef(null);
+            const nativeVideoRef = useRef(null);
+            
+            // YouTube Volume Control
+            useEffect(() => {
+                if (iframeRef.current && room?.videoVolume !== undefined) {
+                    iframeRef.current.contentWindow.postMessage(JSON.stringify({
+                        "event": "command",
+                        "func": "setVolume",
+                        "args": [room.videoVolume]
+                    }), "*");
+                }
+            }, [room?.videoVolume]);
+
+            // Native Video Volume Control
+            useEffect(() => {
+                if (nativeVideoRef.current && room?.videoVolume !== undefined) {
+                    nativeVideoRef.current.volume = room.videoVolume / 100;
+                }
+            }, [room?.videoVolume]);
+
+            // Smart Sync for Native Video
+            useEffect(() => {
+                if (!isNativeVideo || !nativeVideoRef.current || !room?.videoStartTimestamp) return;
+                
+                const syncInterval = setInterval(() => {
+                    const video = nativeVideoRef.current;
+                    if (!video) return;
+
+                    if (room.videoPlaying) {
+                         const targetTime = (Date.now() - room.videoStartTimestamp) / 1000;
+                         // Drift correction > 0.5s
+                         if (Math.abs(video.currentTime - targetTime) > 0.5) {
+                             video.currentTime = targetTime;
+                         }
+                         if (video.paused) video.play().catch(e => console.log("Auto-play blocked", e));
+                    } else {
+                        if (!video.paused) video.pause();
+                    }
+                }, 1000);
+                
+                return () => clearInterval(syncInterval);
+            }, [isNativeVideo, room?.videoPlaying, room?.videoStartTimestamp]);
+
+            if (!current && !room?.mediaUrl) { 
+                if (room?.autoDjMode) { 
+                    return (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center text-center z-50 autodj-bg">
+                            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                <div className="flex gap-4 mb-8">
+                                    <span className="dancing-emoji">💃</span>
+                                    <span className="dancing-emoji" style={{animationDelay:'0.5s'}}>🕺</span>
+                                    <span className="dancing-emoji">👯‍♀️</span>
+                                </div>
+                                <h1 className="text-9xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-purple-200 to-pink-200 drop-shadow-xl animate-pulse">AUTO DJ ACTIVE</h1>
+                                <div className="text-4xl font-bold text-white mt-4 tracking-widest bg-black/50 px-8 py-2 rounded-full animate-bounce">SCAN QR TO REQUEST A SONG!</div>
+                            </div>
+                        </div>
+                    ); 
+                } 
+                return <div className="text-center opacity-50"><div className="text-9xl mb-4">🎤</div><div className="text-4xl font-bebas">WAITING FOR SINGER</div></div>; 
+            }
+
+            // --- MANZANA LYRICS ENGINE INTEGRATION ---
+            if (room?.showLyrics && current?.lyrics) {
+                return (
+                    <AppleLyricsRenderer 
+                        lyrics={current.lyrics} 
+                        duration={current.duration || 180} 
+                        art={current.albumArtUrl} 
+                        isActive={true} 
+                    />
+                );
+            }
+
+            return (
+                <React.Fragment> 
+                    {/* Standard or Minimal Layout */}
+                    {layout !== 'cinema' && (
+                        isNativeVideo ? (
+                            <video 
+                                ref={nativeVideoRef}
+                                src={mediaUrl}
+                                className="absolute inset-0 w-full h-full object-cover opacity-70"
+                                muted={false} 
+                                playsInline
+                                loop={false}
+                            />
+                        ) : (isYoutube && youtubeId ? (
+                            room?.videoPlaying ? 
+                                <iframe 
+                                    ref={iframeRef}
+                                    className="absolute inset-0 w-full h-full opacity-70" 
+                                    src={iframeSrc}
+                                    allow="autoplay"
+                                ></iframe> 
+                            : <div className="absolute inset-0 w-full h-full bg-black/50 flex items-center justify-center text-2xl font-bold opacity-50">VIDEO PAUSED</div>
+                        ) : null)
+                    )}
+
+                    {(layout !== 'cinema' && !isYoutube && !isNativeVideo) && <div className="absolute inset-0 flex items-end"></div>}
+                    
+                    {/* Cinema Layout */}
+                    {layout === 'cinema' && (
+                         isNativeVideo ? (
+                            <video 
+                                ref={nativeVideoRef}
+                                src={mediaUrl}
+                                className="absolute inset-0 w-full h-full z-50 object-contain bg-black"
+                                playsInline
+                            />
+                        ) : (isYoutube && youtubeId && (
+                            room?.videoPlaying ? 
+                                <iframe 
+                                    ref={iframeRef}
+                                    className="absolute inset-0 w-full h-full z-50" 
+                                    src={iframeSrc}
+                                    allow="autoplay"
+                                ></iframe> 
+                            : <div className="absolute inset-0 z-50 bg-black flex items-center justify-center text-4xl font-bold">WAITING FOR HOST TO PLAY VIDEO...</div>
+                        ))
+                    )}
+                    
+                    {!room?.hideOverlay && current && layout !== 'cinema' && ( 
+                        <div className="absolute inset-0 pointer-events-none flex flex-col justify-center items-center z-10 p-8">
+                            {/* Removed Duplicate Logo */}
+                            {!minimalUI && <div className="bg-pink-600 text-white px-6 py-2 rounded-full font-bold tracking-widest inline-block mb-8 shadow-lg">NOW PERFORMING</div>}
+                            <div className="flex flex-col items-center gap-4 max-w-5xl mx-auto w-full">
+                                {current.albumArtUrl && !minimalUI && <img src={current.albumArtUrl} className="w-[30vh] h-[30vh] rounded-2xl shadow-2xl border-4 border-white/20 object-cover"/>}
+                                <div className="text-center relative z-20 w-full">
+                                    <h1 className={`${minimalUI ? 'text-[8vw]' : 'text-[10vw]'} font-bebas text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 leading-none mb-2 drop-shadow-xl px-4 truncate`}>{current.songTitle}</h1>
+                                    <h2 className={`${minimalUI ? 'text-[3vw]' : 'text-[5vw]'} text-zinc-300 font-light truncate`}>{current.artist}</h2>
+                                </div>
+                            </div>
+                        </div> 
+                    )} 
+                    
+                    {/* HYPE METER (Previously Combo Bar) - Replaces the top bar and toast logic */}
+                    <div className="absolute top-0 left-0 w-full h-10 z-[60] bg-black/60 border-b border-white/15 flex items-center shadow-[0_6px_18px_rgba(0,0,0,0.45)]">
+                        <div className="absolute inset-0 border-y border-white/10 pointer-events-none"></div>
+                        <div className="absolute left-4 z-10 font-bold text-xs uppercase tracking-widest flex gap-2 items-center">
+                            <span>🔥 HYPE METER</span>
+                            {room?.multiplier > 1 && <span className="bg-red-600 text-white px-2 py-0.5 rounded animate-pulse">x{room.multiplier} ACTIVE</span>}
+                        </div>
+                        <div 
+                            className={`h-full transition-all duration-200 ${combo > 90 ? 'bg-gradient-to-r from-red-500 via-yellow-400 to-red-500 animate-pulse' : combo > 50 ? 'bg-gradient-to-r from-yellow-500 to-orange-500' : 'bg-gradient-to-r from-cyan-600 to-blue-600'}`} 
+                            style={{width: `${Math.min(100, Math.max(5, combo))}%`, boxShadow: `0 0 20px ${combo > 50 ? 'orange' : 'cyan'}`}}
+                        ></div>
+                        <div className="absolute left-1/2 top-0 h-full w-1 bg-cyan-400/60 -translate-x-1/2"></div>
+                        <div className="absolute left-1/2 top-1 -translate-x-1/2 text-[10px] font-bold text-cyan-200 bg-black/70 px-1.5 py-0.5 rounded">2x</div>
+                        <div className="absolute left-[90%] top-0 h-full w-1 bg-purple-400/60 -translate-x-1/2"></div>
+                        <div className="absolute left-[90%] top-1 -translate-x-1/2 text-[10px] font-bold text-purple-200 bg-black/70 px-1.5 py-0.5 rounded">4x</div>
+                    </div>
+                    
+                    {/* Live Score Counter Overlay */}
+                    {current && (
+                        <div className="absolute top-12 right-4 z-[70] flex flex-col items-end animate-in fade-in">
+                            <div className="bg-black/60 backdrop-blur rounded-full px-6 py-2 border border-white/20 flex flex-col items-end">
+                                <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-yellow-600 drop-shadow-lg font-mono leading-none">
+                                    {totalScore}
+                                </div>
+                                <div className="text-[10px] text-yellow-400 font-bold uppercase tracking-widest mt-1">Live Score</div>
+                            </div>
+                            {room?.multiplier > 1 && <div className="bg-red-600 text-white px-3 py-1 rounded-full text-sm font-bold mt-2 animate-pulse border border-white/30 shadow-lg">x{room.multiplier} COMBO</div>}
+                        </div>
+                    )}
+                    
+                    {/* Fix 11: Increased Size & Always show performer name overlay (bottom left) - Now respects hideCornerOverlay */}
+                    {!room?.hideCornerOverlay && current && !layout.includes('cinema') && (
+                        <div className="absolute bottom-8 left-8 z-50 bg-black/60 p-6 rounded-2xl border border-white/20 flex gap-6 items-center animate-slide-in-from-bottom max-w-[80vw]">
+                            {current.albumArtUrl && <img src={current.albumArtUrl} className="w-24 h-24 sm:w-32 sm:h-32 rounded-xl shadow-lg"/>}
+                            <div className="min-w-0">
+                                <div className="text-lg text-zinc-400 uppercase tracking-widest font-bold mb-1">On Stage</div>
+                                <div className="text-5xl sm:text-8xl font-black text-white leading-none mb-1 truncate">{current.singerName}</div>
+                                <div className="text-2xl sm:text-4xl text-fuchsia-400 leading-none truncate">{current.songTitle}</div>
+                            </div>
+                        </div>
+                    )}
+                </React.Fragment>
+            );
+        };
+
+        const PublicTV = ({ roomCode }) => {
+            const [room, setRoom] = useState(null); const [songs, setSongs] = useState([]); const [reactions, setReactions] = useState([]); const [activities, setActivities] = useState([]); const [users, setUsers] = useState([]); const [qrMode, setQrMode] = useState('join'); const [recap, setRecap] = useState(null); const [started, setStarted] = useState(false); const [audioCtx, setAudioCtx] = useState(null); const [micVolume, setMicVolume] = useState(0); const [applauseMax, setApplauseMax] = useState(0); const [votes, setVotes] = useState([]); const [combo, setCombo] = useState(0); const [multiplier, setMultiplier] = useState(1); const [applauseStep, setApplauseStep] = useState('idle'); const [countdown, setCountdown] = useState(3); const [measure, setMeasure] = useState(5); const [tvSparks, setTvSparks] = useState([]); const lastUpdate = useRef(0);
+            const [readyTimer, setReadyTimer] = useState(10); 
+            const [lbSort, setLbSort] = useState('total');
+            
+            const bgAudioRef = useRef(null);
+            const stormAudioRef = useRef(null);
+            const lastVolumeUpdate = useRef(0);
+            
+            // Define current song EARLY to ensure scope availability
+            const current = songs.find(s => s.status === 'performing');
+
+            // Cycle Leaderboard Sort
+            useEffect(() => {
+                if(room?.activeScreen === 'leaderboard') {
+                    const i = setInterval(() => {
+                        setLbSort(prev => prev === 'total' ? 'hype' : prev === 'hype' ? 'applause' : 'total');
+                    }, 4000);
+                    return () => clearInterval(i);
+                }
+            }, [room?.activeScreen]);
+
+            const handleVolume = (vol) => { 
+                const now = Date.now();
+                if (now - lastVolumeUpdate.current > 60) {
+                    setMicVolume(vol); 
+                    lastVolumeUpdate.current = now;
+                }
+
+                if (applauseStep === 'measuring') { 
+                    const normalized = Math.min(100, Math.round((vol / 1.2))); 
+                    if (normalized > applauseMax) setApplauseMax(normalized); 
+                    if(now - lastUpdate.current > 200) { 
+                        window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { currentApplauseLevel: normalized }); 
+                        lastUpdate.current = now; 
+                    } 
+                } 
+            };
+            
+            // --- REMOTE BG MUSIC ---
+            useEffect(() => {
+                if (!started) return;
+                if (!bgAudioRef.current) { bgAudioRef.current = new Audio(); bgAudioRef.current.loop = true; }
+                const audio = bgAudioRef.current;
+                if (room?.bgMusicUrl && audio.src !== room.bgMusicUrl) { audio.src = room.bgMusicUrl; if (room.bgMusicPlaying) audio.play().catch(e => console.log("Autoplay blocked", e)); }
+                if (room?.bgMusicVolume !== undefined) audio.volume = room.bgMusicVolume;
+                if (room?.bgMusicPlaying && audio.paused) audio.play().catch(e => console.log("BG Play Error", e)); else if (!room?.bgMusicPlaying && !audio.paused) audio.pause();
+            }, [room?.bgMusicUrl, room?.bgMusicVolume, room?.bgMusicPlaying, started]);
+
+            // --- STORM SOUND ---
+            useEffect(() => {
+                if (!stormAudioRef.current) { stormAudioRef.current = new Audio(STORM_SOUND_URL); stormAudioRef.current.loop = true; }
+                const storm = stormAudioRef.current;
+                if (room?.lightMode === 'storm') storm.play().catch(e=>console.log(e)); else { storm.pause(); storm.currentTime = 0; }
+            }, [room?.lightMode]);
+
+            useEffect(() => { const db = window.db; const unsubRoom = window.firebase.onSnapshot(window.firebase.doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => setRoom(s.data())); const unsubSongs = window.firebase.onSnapshot(window.firebase.query(window.firebase.collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), window.firebase.where('roomCode', '==', roomCode)), s => setSongs(s.docs.map(d => ({id:d.id, ...d.data()})))); const unsubUsers = window.firebase.onSnapshot(window.firebase.query(window.firebase.collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), window.firebase.where('roomCode', '==', roomCode)), s => setUsers(s.docs.map(d => ({id:d.id, ...d.data()})))); 
+            const unsubAct = window.firebase.onSnapshot(window.firebase.query(window.firebase.collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), window.firebase.where('roomCode', '==', roomCode), window.firebase.limit(50)), s => { const all = s.docs.map(d => d.data()).sort((a,b) => (b.timestamp?.seconds||0) - (a.timestamp?.seconds||0)).slice(0,6); setActivities(all); });
+            const unsubReact = window.firebase.onSnapshot(window.firebase.query(window.firebase.collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), window.firebase.where('roomCode', '==', roomCode), window.firebase.limit(50)), s => { s.docChanges().forEach(c => { if(c.type==='added') { const d = c.doc.data(); 
+                if(d.type.startsWith('vote_')) { setVotes(prev => [...prev, {id: c.doc.id, ...d}]); }
+                if(d.type==='strum') { 
+                    const sparkId = Date.now() + Math.random();
+                    const color = ['#22d3ee', '#e879f9', '#facc15', '#4ade80'][Math.floor(Math.random()*4)];
+                    const icons = ['♪', '♫', '♬', '⚡️', '🎸'];
+                    const icon = icons[Math.floor(Math.random()*icons.length)];
+                    setTvSparks(p => [...p, {id: sparkId, user:d.userName, left: `${Math.random() * 90 + 5}%`, color, icon}]); 
+                    setTimeout(()=>setTvSparks(prev => prev.filter(s => s.id !== sparkId)), 1500); 
+                } else if (Date.now()-(d.timestamp?.seconds*1000||Date.now())<5000) { 
+                const lastChar = c.doc.id.slice(-1).charCodeAt(0) || 0; d.stableLeft = (lastChar % 80) + 10;
+                setReactions(p=>[...p, {id:c.doc.id,...d}]); const val={fire:5,heart:5,clap:3,drink:10,rocket:15,diamond:30,crown:50,money:25}[d.type]||5; setCombo(prev=>Math.min(100,prev + val)); } } }); }); return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubAct(); unsubReact(); }; }, [roomCode]);
+            
+            useEffect(() => { const i = setInterval(() => { setCombo(prev => Math.max(0, prev - 0.1)); let newMult = 1; if(combo > 90) newMult = 4; else if(combo > 50) newMult = 2; if(newMult !== multiplier) { setMultiplier(newMult); window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { multiplier: newMult }); } }, 100); return () => clearInterval(i); }, [combo, multiplier, roomCode]);
+            
+            useEffect(() => { const i = setInterval(() => setReactions(prev => prev.filter(r => Date.now() - (r.timestamp?.seconds*1000 || Date.now()) < 4000)), 1000); return () => clearInterval(i); }, []);
+            useEffect(() => { if (room?.activeMode === 'applause_countdown' && applauseStep === 'idle') { setApplauseStep('countdown'); setCountdown(3); setApplauseMax(0); } }, [room?.activeMode]);
+            useEffect(() => { let timer; if (applauseStep === 'countdown') { if (countdown > 0) timer = setTimeout(() => setCountdown(c => c - 1), 1000); else { setApplauseStep('measuring'); setMeasure(5); window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { activeMode: 'applause' }); } } else if (applauseStep === 'measuring') { if (measure > 0) timer = setTimeout(() => setMeasure(m => m - 1), 1000); else { setApplauseStep('result'); window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { applausePeak: applauseMax, activeMode: 'applause_result' }); setTimeout(() => { setApplauseStep('idle'); window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { activeMode: 'karaoke' }); }, 5000); } } return () => clearTimeout(timer); }, [applauseStep, countdown, measure, applauseMax, roomCode]);
+            
+            // Fix: Ready Check Animation
+            useEffect(() => {
+                if (room?.readyCheck?.active) {
+                    const start = room.readyCheck.startTime || Date.now();
+                    const end = start + 10000;
+                    const i = setInterval(() => {
+                        const left = Math.max(0, Math.ceil((end - Date.now())/1000));
+                        setReadyTimer(left);
+                    }, 100);
+                    return () => clearInterval(i);
+                }
+            }, [room?.readyCheck?.active, room?.readyCheck?.startTime]);
+
+            // Auto Progress Logic - Ensures recap vanishes
+            useEffect(() => { 
+                if(room?.lastPerformance) { 
+                    const timeSinceEnd = Date.now() - (room.lastPerformance.timestamp || 0);
+                    
+                    if (timeSinceEnd < 10000) { 
+                        if (!recap || room.lastPerformance.timestamp !== recap.timestamp) {
+                            setRecap(room.lastPerformance); 
+                        }
+                        
+                        const remaining = 10000 - timeSinceEnd;
+                        const autoProgressTimer = setTimeout(() => {
+                            const nextSong = songs.filter(s => s.status === 'requested').sort((a,b) => {
+                                 if ((a.priorityScore || 0) !== (b.priorityScore || 0)) return (a.priorityScore || 0) - (b.priorityScore || 0);
+                                 return (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0);
+                            })[0];
+
+                            if (nextSong) {
+                                 window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', nextSong.id), { status: 'performing' });
+                                 window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { 
+                                     activeMode: 'karaoke', 
+                                     mediaUrl: nextSong.mediaUrl || '', 
+                                     videoPlaying: false, 
+                                     videoStartTimestamp: null 
+                                 });
+                            }
+                            setRecap(null);
+                        }, remaining);
+                        return () => clearTimeout(autoProgressTimer);
+                    } else {
+                        if(recap) setRecap(null);
+                    }
+                } 
+            }, [room?.lastPerformance, songs, recap]); // Added recap to deps
+            
+            useEffect(() => { const i = setInterval(()=>setQrMode(m=>m==='join'?'tip':'join'), 15000); return ()=>clearInterval(i); }, []);
+            const qrRef = useRef(null);
+            useEffect(() => { if(started && roomCode && qrRef.current) { qrRef.current.innerHTML = ""; const url = new URL(window.location.href); url.searchParams.delete('mode'); url.searchParams.set('room', roomCode); new QRCode(qrRef.current, { text: url.toString(), width: 200, height: 200 }); } }, [started, roomCode, qrMode]);
+
+            if (!started) return (
+                <div className="h-screen w-screen bg-zinc-900 flex flex-col items-center justify-center">
+                    <button onClick={async ()=>{ 
+                        try {
+                            const ctx = new (window.AudioContext || window.webkitAudioContext)(); 
+                            await ctx.resume(); 
+                            setAudioCtx(ctx); 
+                            setStarted(true); 
+                            if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+                        } catch(e) {
+                            console.error("Audio Context Start Failed", e);
+                            alert("Could not start audio context. Check permissions.");
+                        }
+                    }} className="bg-red-600 hover:bg-red-500 text-white font-bebas text-6xl px-16 py-8 rounded-3xl shadow-[0_0_50px_rgba(220,38,38,0.5)] animate-pulse border-4 border-white">
+                        START SHOW
+                    </button>
+                    <p className="text-zinc-400 mt-4">Enables Mic for Visualizer & Applause</p>
+                </div>
+            );
+            
+            if (room?.activeMode === 'flappy_bird') { const isGroupMode = room.gameData?.playerId === 'GROUP'; return ( <div className="h-screen w-screen bg-black flex flex-col relative overflow-hidden"> <SingingGame isPlayer={isGroupMode} inputSource={isGroupMode?'local':'remote'} roomCode={roomCode} playerData={{...room.gameData, playerAvatar: '🎤'}} /> </div> ); }
+            
+            const getEmojiChar = (t) => ({fire:'🔥', heart:'❤️', clap:'👏', drink:'🍻', rocket:'🚀', diamond:'💎', crown:'👑', money:'💰'}[t] || (t.includes('spotlight_') ? t.split('_')[1] : '❤️'));
+            const getReactionClass = (t) => ({
+                rocket: 'animate-rocket-fly text-[10rem]', 
+                diamond: 'animate-diamond-shine text-[11rem]', 
+                crown: 'animate-crown-bounce text-[13rem]', 
+                money: 'animate-money-wobble text-[11rem]', 
+                heart: 'animate-heart-beat text-8xl', 
+                fire: 'animate-fire-flicker text-8xl', 
+                clap: 'animate-clap-shake text-8xl', 
+                drink: 'animate-drink-sway text-9xl'
+            }[t] || 'animate-float text-8xl');
+
+            const nextUp = songs.filter(s => s.status === 'requested').sort((a,b) => {
+                if ((a.priorityScore || 0) !== (b.priorityScore || 0)) return (a.priorityScore || 0) - (b.priorityScore || 0);
+                return (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0);
+            }).slice(0,3);
+            const allQueue = songs.filter(s => s.status === 'requested').sort((a,b) => {
+                if ((a.priorityScore || 0) !== (b.priorityScore || 0)) return (a.priorityScore || 0) - (b.priorityScore || 0);
+                return (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0);
+            });
+            
+            const isReadyCheckActive = room?.readyCheck?.active;
+            
+            // --- OVERLAY LAYER ---
+            const renderOverlay = () => {
+                if (isReadyCheckActive) {
+                    return (
+                        <div className="fixed inset-0 z-[200] bg-black/95 flex flex-col items-center justify-center p-8">
+                            <div className="text-[15rem] font-black text-white leading-none mb-4">{readyTimer}</div>
+                            <h1 className="text-8xl font-bebas text-green-400 mb-2 animate-pulse">ARE YOU READY?</h1>
+                            <div className="text-4xl text-white font-bold mb-12 uppercase tracking-widest bg-zinc-800 px-8 py-2 rounded-full border border-white/20">Open Your Phone & Tap Ready!</div>
+                            <div className="grid grid-cols-6 gap-6 w-full max-w-6xl">
+                                {users.map(u => (
+                                    <div key={u.id} className={`p-4 rounded-xl border-4 flex flex-col items-center relative transition-all ${u.isReady ? 'border-green-500 bg-green-900/50 scale-110 shadow-[0_0_30px_rgba(34,197,94,0.5)]' : 'border-zinc-700 bg-zinc-800 opacity-70'}`}>
+                                        <div className="text-6xl mb-2">{u.avatar}</div>
+                                        <div className="text-xl font-bold text-white truncate w-full text-center">{u.name}</div>
+                                        {u.isReady && <div className="absolute -top-4 -right-4 bg-green-500 rounded-full p-2 text-3xl shadow-lg">✅</div>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                }
+
+                // New Leaderboard Logic (Song Performance based)
+                if(room?.activeScreen === 'leaderboard') {
+                    const topPerformances = songs
+                        .filter(s => s.status === 'performed')
+                        .map(s => ({
+                            ...s,
+                            total: (s.hypeScore||0) + (s.applauseScore||0) + (s.hostBonus||0)
+                        }))
+                        .sort((a,b) => {
+                            if (lbSort === 'hype') return (b.hypeScore||0) - (a.hypeScore||0);
+                            if (lbSort === 'applause') return (b.applauseScore||0) - (a.applauseScore||0);
+                            return b.total - a.total;
+                        })
+                        .slice(0, 5);
+
+                    const getLabel = () => {
+                        if (lbSort === 'hype') return 'MOST HYPE 🔥';
+                        if (lbSort === 'applause') return 'LOUDEST 👏';
+                        return 'TOP OVERALL 🏆';
+                    };
+
+                    return (
+                        <div className="fixed inset-0 z-[100] bg-zinc-900 flex flex-col items-center justify-center p-12 animate-in fade-in"> 
+                            {/* Visualizer Removed Here as it persists in main */}
+                            <h1 className="text-8xl font-bebas text-yellow-400 mb-2">LEADERBOARD</h1>
+                            <div className="text-4xl font-bold text-white mb-8 bg-zinc-800 px-8 py-2 rounded-full border border-zinc-600 uppercase tracking-widest">{getLabel()}</div>
+                            
+                            <div className="w-full max-w-6xl space-y-4">
+                                <div className="grid grid-cols-12 gap-4 px-4 text-zinc-500 font-bold uppercase text-lg border-b border-zinc-700 pb-2 mb-2">
+                                    <div className="col-span-1">#</div>
+                                    <div className="col-span-5">Performance</div>
+                                    <div className={`col-span-2 text-center ${lbSort==='hype'?'text-orange-400':''}`}>Vibe</div>
+                                    <div className={`col-span-2 text-center ${lbSort==='applause'?'text-yellow-400':''}`}>Applause</div>
+                                    <div className={`col-span-2 text-right ${lbSort==='total'?'text-green-400':''}`}>Total</div>
+                                </div>
+                                
+                                {topPerformances.length === 0 ? (
+                                    <div className="text-center text-zinc-500 text-3xl py-12 italic">No performances recorded yet!</div>
+                                ) : (
+                                    topPerformances.map((s,i)=>(
+                                        <div key={s.id} className="grid grid-cols-12 gap-4 items-center bg-zinc-800 p-4 rounded-xl border border-zinc-700 animate-in slide-in-from-bottom shadow-lg" style={{animationDelay: `${i*100}ms`}}>
+                                            <div className="col-span-1 font-bebas text-5xl text-zinc-500 text-center">{i+1}</div>
+                                            <div className="col-span-5 flex items-center gap-4">
+                                                {s.albumArtUrl ? <img src={s.albumArtUrl} className="w-16 h-16 rounded-lg shadow-md"/> : <div className="w-16 h-16 bg-zinc-700 rounded-lg flex items-center justify-center text-2xl">🎤</div>}
+                                                <div className="min-w-0">
+                                                    <div className="text-3xl font-bold text-white truncate">{s.songTitle}</div>
+                                                    <div className="text-xl text-fuchsia-400 truncate">{s.singerName}</div>
+                                                </div>
+                                            </div>
+                                            <div className={`col-span-2 text-center text-3xl font-mono ${lbSort==='hype'?'text-orange-400 font-bold scale-110':''}`}>{s.hypeScore || 0}</div>
+                                            <div className={`col-span-2 text-center text-3xl font-mono ${lbSort==='applause'?'text-yellow-400 font-bold scale-110':''}`}>{s.applauseScore || 0}</div>
+                                            <div className={`col-span-2 text-right text-4xl font-mono ${lbSort==='total'?'text-green-400 font-bold scale-110':''}`}>{s.total}</div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    );
+                }
+
+                if(room?.activeMode === 'bingo') { return ( <div className="h-screen w-screen bg-zinc-900 flex flex-col items-center justify-center p-8 relative overflow-hidden z-[100]"> <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 animate-pulse"></div> <h1 className="text-8xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 mb-8 z-10 drop-shadow-lg"> {room.bingoMode === 'mystery' ? 'MYSTERY BINGO' : 'PARTY BINGO'} </h1> <div className="w-full max-w-[1400px] aspect-video flex items-center justify-center z-10"> <div className="grid gap-6 w-full h-full" style={{gridTemplateColumns: `repeat(${room.bingoSize || 5}, minmax(0, 1fr))`}}>{room.bingoData && room.bingoData.map((tile, i) => ( <BingoTile key={i} tile={tile} size={room.bingoSize} /> ))} </div> </div> </div> ); }
+                
+                if(recap) return <div className="fixed inset-0 z-[100] bg-zinc-900 flex flex-col items-center justify-center p-12 text-center animate-in zoom-in duration-500"> <div className="bg-gradient-to-r from-purple-900 to-indigo-900 p-12 rounded-3xl border-4 border-yellow-400 shadow-[0_0_100px_rgba(250,204,21,0.3)] max-w-4xl w-full relative overflow-hidden"><h2 className="text-4xl font-bebas text-yellow-400 mb-2 tracking-widest relative z-10">PERFORMANCE SUMMARY</h2><div className="text-6xl font-black text-white mb-8 relative z-10">{recap.songTitle}</div><div className="text-3xl text-zinc-300 mb-8 font-bold relative z-10">{recap.singerName}</div><div className="grid grid-cols-3 gap-8 mb-12 relative z-10"><div className="bg-black/30 p-4 rounded-xl border border-pink-500/30"><div className="text-xl text-pink-400 uppercase font-bold">Vibe</div><div className="text-6xl font-mono text-white">{recap.hypeScore || 0}</div></div><div className="bg-black/30 p-4 rounded-xl border border-yellow-500/30"><div className="text-xl text-yellow-400 uppercase font-bold">Applause</div><div className="text-6xl font-mono text-white">{Math.round(recap.applauseScore || 0)}</div></div><div className="bg-black/30 p-4 rounded-xl border border-green-500/30"><div className="text-xl text-green-400 uppercase font-bold">Bonus</div><div className="text-6xl font-mono text-white">{recap.hostBonus || 0}</div></div></div><div className="text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-white to-yellow-300 relative z-10">{(recap.hypeScore||0)+(Math.round(recap.applauseScore||0))+(recap.hostBonus||0)} PTS</div></div></div>;
+                
+                if(room?.activeScreen === 'tipping') return <div className="fixed inset-0 z-[100] bg-green-900/95 flex flex-col items-center justify-center p-12 text-center animate-in zoom-in duration-500">  <h1 className="text-9xl font-bebas text-white mb-8">TIP THE HOST!</h1><div className="bg-white p-8 rounded-3xl shadow-2xl"><img src={ASSETS.venmoQr} className="w-[500px] h-[500px]"/></div><h2 className="text-4xl text-green-200 mt-8 font-bold">@Beau-Ross-2</h2></div>;
+                
+                // Fix: Improved Trivia/Reveal screen showing voters
+                if(room?.activeMode === 'trivia_reveal' || room?.activeMode === 'trivia_pop') { 
+                    const q = room.triviaQuestion; 
+                    return <div className="fixed inset-0 z-[100] bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex flex-col items-center justify-center p-8"> {started && <div className="absolute inset-0 opacity-10 pointer-events-none"><AudioVisualizer onVolume={handleVolume} isActive={true} externalCtx={audioCtx} /></div>} <h1 className="text-4xl font-bebas text-yellow-400 mb-8 tracking-widest drop-shadow-md">{room.activeMode==='trivia_reveal'?'ANSWER REVEALED':'TRIVIA TIME'}</h1><h2 className="text-6xl font-bold text-white mb-12 text-center max-w-5xl leading-tight drop-shadow-xl">{q.q}</h2><div className="grid grid-cols-2 gap-6 w-full max-w-6xl">{q.options.map((o,i)=>{ 
+                        const voters = room.activeMode==='trivia_reveal' ? users.filter(u => votes.some(v => v.userName === u.name && v.val === i)) : []; 
+                        return <div key={i} className={`p-6 rounded-3xl text-3xl font-bold text-center border-4 relative transition-all flex flex-col items-center shadow-lg ${room.activeMode==='trivia_reveal' && i===q.correct?'bg-green-600 border-white scale-105 shadow-green-500/50':'bg-black/30 border-white/10'}`}>{o} {room.activeMode==='trivia_reveal' && i===q.correct && <div className="flex flex-wrap gap-2 mt-4 justify-center">{voters.map((u,idx)=><div key={idx} className="flex items-center bg-black/40 rounded-full px-2 py-1 text-sm border border-white/20"><span className="text-xl mr-1">{u.avatar}</span><span className="font-bold">{u.name}</span></div>)}</div>}</div> })}</div></div>; 
+                }
+                
+                if(room?.activeMode === 'wyr_reveal' || room?.activeMode === 'wyr') { 
+                    // Fix: Strict string comparison for questionId
+                    const aVoters = votes.filter(v=>String(v.questionId)===String(room.wyrData.id) && v.val==='A'); 
+                    const bVoters = votes.filter(v=>String(v.questionId)===String(room.wyrData.id) && v.val==='B'); 
+                    const total = aVoters.length+bVoters.length||1; 
+                    const perA = Math.round((aVoters.length/total)*100); 
+                    
+                    const renderVoters = (voterList) => (
+                        <div className="flex flex-wrap gap-2 mt-4 justify-center">
+                            {voterList.map((v, i) => {
+                                const u = users.find(user => user.name === v.userName);
+                                return <div key={i} className="flex items-center bg-black/40 rounded-full px-2 py-1 text-sm border border-white/20"><span className="text-xl mr-1">{u?.avatar||'👤'}</span><span className="font-bold">{v.userName}</span></div>
+                            })}
+                        </div>
+                    );
+
+                    return <div className="fixed inset-0 z-[100] bg-gradient-to-br from-slate-900 via-zinc-900 to-slate-900 flex flex-col items-center justify-center p-8"> {started && <div className="absolute inset-0 opacity-10 pointer-events-none"><AudioVisualizer onVolume={handleVolume} isActive={true} externalCtx={audioCtx} /></div>} <h1 className="text-4xl font-bebas text-white mb-8 tracking-widest">WOULD YOU RATHER...</h1><h2 className="text-6xl font-black text-center mb-12 uppercase max-w-4xl leading-tight">{room.wyrData.question}</h2><div className="flex w-full max-w-7xl gap-8 h-[60vh] items-end"><div className="flex-1 bg-pink-600 rounded-t-3xl flex flex-col items-center justify-center relative overflow-hidden transition-all duration-1000 border-4 border-white shadow-[0_0_50px_rgba(219,39,119,0.3)]" style={{height: room.activeMode==='wyr_reveal' ? `${Math.max(15,perA)}%` : '50%'}}><div className="z-10 text-6xl font-bold text-center p-4">{room.wyrData.optionA}</div>{room.activeMode==='wyr_reveal' && <div className="z-10 flex flex-col items-center"><div className="text-9xl font-bebas mt-4">{perA}%</div>{renderVoters(aVoters)}</div>}</div><div className="flex-1 bg-cyan-600 rounded-t-3xl flex flex-col items-center justify-center relative overflow-hidden transition-all duration-1000 border-4 border-white shadow-[0_0_50px_rgba(8,145,178,0.3)]" style={{height: room.activeMode==='wyr_reveal' ? `${Math.max(15,100-perA)}%` : '50%'}}><div className="z-10 text-6xl font-bold text-center p-4">{room.wyrData.optionB}</div>{room.activeMode==='wyr_reveal' && <div className="z-10 flex flex-col items-center"><div className="text-9xl font-bebas mt-4">{100-perA}%</div>{renderVoters(bVoters)}</div>}</div></div></div>; 
+                }
+                
+                // Fix 9: Announcement Screen Styling (Retro Synthwave)
+                if(room?.announcement?.active) return <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center p-8 text-center animate-in zoom-in bg-black/95 backdrop-blur-md bg-synthwave"><div className="bg-black/80 border-4 border-pink-500 p-12 rounded-3xl shadow-[0_0_100px_rgba(236,72,153,0.5)] max-w-6xl relative overflow-hidden"><div className="absolute inset-0 bg-gradient-to-br from-purple-900/50 to-cyan-900/50 pointer-events-none"></div><h1 className="text-9xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-pink-500 to-cyan-400 mb-12 drop-shadow-[0_0_10px_rgba(255,255,255,0.5)] tracking-widest relative z-10">ANNOUNCEMENT</h1><div className="text-7xl font-bold text-white leading-tight uppercase font-bebas relative z-10 animate-pulse">{room.announcement.text}</div></div></div>;
+                
+                // --- APPLAUSE METER OVERLAY ---
+                if (applauseStep !== 'idle') {
+                    const gaugeVal = applauseStep === 'result' ? applauseMax : Math.min(100, Math.round(micVolume));
+                    const strokeDashoffset = 251.2 * (1 - (gaugeVal / 100)); // 2*PI*40 = 251.2
+
+                    return (
+                        <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center animate-in fade-in">
+                            <h1 className="text-6xl font-bebas text-white mb-8 tracking-widest animate-pulse">NOISE LEVEL</h1>
+                            
+                            {/* Gauge Container */}
+                            <div className="relative w-[500px] h-[500px] flex items-center justify-center">
+                                {/* Background Circle */}
+                                <div className="absolute inset-0 rounded-full border-[20px] border-zinc-800"></div>
+                                
+                                {/* Active Circle (SVG) */}
+                                <svg className="absolute inset-0 w-full h-full -rotate-90 transform drop-shadow-[0_0_30px_rgba(251,191,36,0.6)]" viewBox="0 0 100 100">
+                                    <circle cx="50" cy="50" r="40" stroke="#fbbf24" strokeWidth="8" fill="none" 
+                                        strokeDasharray="251.2" 
+                                        strokeDashoffset={strokeDashoffset} 
+                                        strokeLinecap="round"
+                                        className="transition-all duration-75 ease-linear"
+                                    />
+                                </svg>
+                                
+                                {/* Text Value */}
+                                <div className="relative z-10 flex flex-col items-center">
+                                    <div className="text-[10rem] font-black text-white font-mono leading-none">
+                                        {Math.round(gaugeVal)}
+                                    </div>
+                                    <div className="text-2xl text-zinc-500 font-bold">dB</div>
+                                </div>
+                            </div>
+
+                            <div className="mt-8 text-4xl text-yellow-400 font-bebas tracking-widest animate-bounce">
+                                {applauseStep === 'countdown' ? `GET READY... ${countdown}` : applauseStep === 'measuring' ? "MAKE SOME NOISE!" : "PEAK LEVEL REACHED"}
+                            </div>
+                        </div>
+                    );
+                }
+
+                if(room?.spotlightUser) {
+                    const spUser = users.find(u => u.id.endsWith(room.spotlightUser.id));
+                    const isVipSpotlight = spUser?.isVip || false;
+
+                    return (
+                        <div className={`fixed inset-0 z-[200] flex flex-col items-center justify-center p-8 text-center animate-in zoom-in overflow-hidden ${isVipSpotlight ? 'bg-black/95 border-[20px] border-yellow-500 shadow-[inset_0_0_100px_rgba(253,224,71,0.5)]' : 'bg-zinc-900/95'}`}>
+                            {/* Render Reactions on top of Spotlight - High Z-Index */}
+                            <div className="absolute inset-0 z-[201] pointer-events-none overflow-hidden">
+                                {reactions.map(r => (
+                                    <div key={r.id} className={`absolute bottom-0 flex flex-col items-center ${getReactionClass(r.type)}`} style={{left: `${r.stableLeft}%`}}>
+                                        <div className="text-8xl filter drop-shadow-xl">{getEmojiChar(r.type)}</div>
+                                        <div className={`bg-black/60 backdrop-blur px-3 py-1 rounded-full text-sm mt-2 font-bold ${r.isVip ? 'text-yellow-400 border border-yellow-400' : 'text-white'}`}>{r.userName}</div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Standard Spotlight Beam Effect */}
+                            {!isVipSpotlight && <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.1)_0%,transparent_70%)] pointer-events-none"></div>}
+
+                            <div className="relative z-[202]">
+                                <div className={`text-5xl font-bebas mb-8 tracking-widest ${isVipSpotlight ? 'text-yellow-400 animate-pulse drop-shadow-[0_0_10px_rgba(250,204,21,0.8)]' : 'text-white drop-shadow-xl'}`}>
+                                    {isVipSpotlight ? '💎 VIP SPOTLIGHT 💎' : '✨ AUDIENCE SPOTLIGHT ✨'}
+                                </div>
+                                <div className={`text-[15rem] animate-bounce mb-4 filter ${isVipSpotlight ? 'drop-shadow-[0_0_50px_rgba(250,204,21,0.5)]' : 'drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]'}`}>
+                                    {spUser?.avatar || '😎'}
+                                </div>
+                                <h1 className={`text-9xl font-bebas mb-8 ${isVipSpotlight ? 'text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-500 to-yellow-200' : 'text-white'}`}>
+                                    {spUser?.name || 'Someone'}
+                                </h1>
+                                <div className={`text-5xl font-bold max-w-5xl leading-tight mx-auto ${isVipSpotlight ? 'text-white' : 'text-zinc-300'}`}>
+                                    {room.spotlightUser.msg}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+                return null;
+            };
+
+            const bgClass = multiplier >= 4 ? 'bg-combo-4' : multiplier >= 2 ? 'bg-combo-2' : 'bg-combo-1';
+
+            return (
+                <div className={`h-screen w-screen relative overflow-hidden font-saira text-white transition-colors duration-1000 ${bgClass}`}>
+                    {multiplier >= 4 && <div className="groovy-overlay"></div>}
+                    {!room?.hideLogo && <img src={ASSETS.logo} className="absolute top-[-25px] left-6 w-[20%] z-50 drop-shadow-xl transition-all duration-500" />}
+                    
+                    {/* Fix: Always render Visualizer but control visibility via opacity to ensure audio processing for applause meter */}
+                    <div className={`absolute inset-0 z-0 pointer-events-none mix-blend-screen ${room?.hideWaveform && applauseStep === 'idle' ? 'opacity-0' : 'opacity-50'}`}>
+                        <AudioVisualizer onVolume={handleVolume} isActive={started} externalCtx={audioCtx} />
+                    </div>
+
+                    {/* Vibe Overlays */}
+                    {room?.lightMode === 'guitar' && (
+                        <div className="absolute inset-0 z-[85] pointer-events-none flex flex-col items-center justify-center">
+                             <GuitarSparks sparks={tvSparks} />
+                             <div className="text-[12rem] font-bebas text-transparent bg-clip-text bg-gradient-to-t from-yellow-400 via-orange-500 to-red-600 drop-shadow-[0_0_30px_rgba(255,100,0,0.8)] animate-pulse">GUITAR SOLO!</div>
+                        </div>
+                    )}
+                    {room?.lightMode === 'strobe' && <div className="absolute inset-0 z-[150] pointer-events-none vibe-strobe opacity-50 mix-blend-screen"></div>}
+                    {room?.lightMode === 'storm' && <><div className="absolute inset-0 z-[150] pointer-events-none vibe-storm mix-blend-overlay"></div><div className="rain"></div></>}
+                    {room?.lightMode === 'banger' && <div className="absolute inset-0 z-[140] pointer-events-none vibe-banger mix-blend-overlay bg-red-500/20"></div>}
+                    {room?.lightMode === 'ballad' && (
+                        <div className="absolute inset-0 z-[200] pointer-events-none vibe-ballad overflow-hidden">
+                            {[...Array(20)].map((_, i) => (
+                                <div key={i} className="absolute bottom-0 lighter-flame" style={{
+                                    left: `${Math.random() * 100}%`,
+                                    animationDelay: `${Math.random() * 2}s`,
+                                    transform: `scale(${1.5 + Math.random()})` 
+                                }}></div>
+                            ))}
+                        </div>
+                    )}
+                    {room?.lightMode === 'banger' && <div className="fire-overlay">
+                        {[...Array(15)].map((_, i) => (
+                            <div key={i} className="fire-particle" style={{
+                                left: `${Math.random() * 100}%`,
+                                animationDelay: `${Math.random() * 2}s`
+                            }}>
+                                {['🔥', '🚒', '🧑‍🚒', '🧯', '🧨'][Math.floor(Math.random() * 5)]}
+                            </div>
+                        ))}
+                    </div>}
+
+                    {/* Reactions Layer */}
+                    <div className="absolute bottom-1/3 left-0 w-full h-1/2 z-[90] pointer-events-none overflow-hidden">
+                        {reactions.map(r => (
+                            <div key={r.id} className={`absolute bottom-0 flex flex-col items-center ${getReactionClass(r.type)}`} style={{left: `${r.stableLeft}%`}}><div className="text-8xl filter drop-shadow-xl">{getEmojiChar(r.type)}</div><div className={`bg-black/60 backdrop-blur px-3 py-1 rounded-full text-sm mt-2 font-bold ${r.isVip ? 'text-yellow-400 border border-yellow-400' : 'text-white'}`}>{r.userName}</div></div>))}</div>
+
+                    {/* Main Content Grid */}
+                    <div className="relative z-10 h-full grid grid-cols-12 gap-6 p-4 md:p-6 pt-12"> <div className="col-span-12 md:col-span-8 flex flex-col"><div className="flex-1 bg-black/30 backdrop-blur-md rounded-3xl border border-white/10 p-4 flex flex-col items-center justify-center relative shadow-2xl overflow-hidden min-h-[50vh]"><Stage room={room} current={current} started={started} handleVolume={handleVolume} ASSETS={ASSETS} combo={combo} /></div></div> 
+                    
+                    <div className="col-span-12 md:col-span-4 flex flex-col gap-4 h-full pb-4 min-h-0"> 
+                        <div className={`p-4 md:p-6 rounded-3xl text-center shadow-lg transition-all duration-500 h-auto flex-1 max-h-[40%] flex flex-col items-center justify-center relative overflow-hidden bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20 min-h-[200px]`}> 
+                            <div className="animate-in fade-in flex flex-col items-center h-full justify-center">
+                                <div className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-cyan-400 mb-4 uppercase tracking-wide drop-shadow-sm">JOIN THE PARTY</div>
+                                <div ref={qrRef} className="mx-auto p-4 bg-white rounded-2xl inline-block shadow-2xl"></div>
+                                <div className="text-6xl font-bebas text-white mt-4 tracking-[0.2em] drop-shadow-lg">{roomCode}</div>
+                                <div className="text-xl font-bold text-zinc-300 mt-2">beauross.com/beaurocks-karaoke</div>
+                            </div>
+                        </div> 
+                        
+                        {room?.showFullQueue ? (
+                            <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl p-12 flex flex-col animate-in zoom-in duration-300">
+                                <div className="flex justify-between items-center mb-8 border-b border-white/20 pb-4">
+                                    <h1 className="text-6xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500">UPCOMING PERFORMANCES</h1>
+                                    <div className="text-2xl text-zinc-400 font-bold">{allQueue.length} SONGS</div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 overflow-y-auto">
+                                    {allQueue.map((s, i) => (<div key={s.id} className="bg-zinc-800/50 p-4 rounded-xl flex items-center gap-4 border border-white/10"><div className="font-bebas text-5xl text-zinc-500 w-16 text-center">#{i+1}</div>{s.albumArtUrl && <img src={s.albumArtUrl} className="w-16 h-16 rounded-lg"/>}<div><div className="text-2xl font-bold text-white">{s.songTitle}</div><div className="text-xl text-fuchsia-400">{s.singerName}</div></div></div>))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex-1 bg-zinc-800/80 backdrop-blur rounded-3xl p-6 border border-white/10 flex flex-col h-full overflow-hidden min-h-[300px]">
+                                <h3 className="text-4xl font-bebas text-cyan-400 mb-4 border-b border-white/10 pb-2">UP NEXT</h3>
+                                <div className="space-y-3 mb-6 flex-1 overflow-y-auto custom-scrollbar">
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {nextUp.slice(0, 3).map((s, i) => (<div key={s.id} className="bg-zinc-700/50 p-2 rounded-xl flex items-center gap-3 border-l-4 border-pink-500"><div className="font-bebas text-4xl text-zinc-400">#{i+1}</div><div className="min-w-0"><div className="font-bold truncate text-xl leading-none">{s.songTitle}</div><div className="text-sm text-zinc-400 truncate">{s.singerName}</div></div></div>))}
+                                    </div>
+                                </div>
+                                <h3 className="text-4xl font-bebas text-green-400 mb-2 border-b border-white/10 pb-2">ACTIVITY</h3>
+                                <div className="h-48 overflow-y-auto space-y-2 text-lg pr-2 custom-scrollbar">{activities.map((a, i) => (<div key={i} className="flex gap-2 items-center text-zinc-300"><span>{a.icon}</span><span><span className="font-bold text-white">{a.user}</span> {a.text}</span></div>))}</div>
+                            </div> 
+                        )}
+                    </div> 
+                    </div>
+
+                    {/* Render Overlays Last */}
+                    {renderOverlay()}
+                </div>
+            );
+        };
+
+        const SingerApp = ({ roomCode, uid }) => {
+            const [user, setUser] = useState(null); const [room, setRoom] = useState(null); const [songs, setSongs] = useState([]); const [tab, setTab] = useState('home'); const [form, setForm] = useState({ name: '', emoji: '😀', song: '', artist: '' }); const [vipForm, setVipForm] = useState({email:''}); const [searchQ, setSearchQ] = useState(''); const [results, setResults] = useState([]); const [showProfile, setShowProfile] = useState(false); const [showPointsHelp, setShowPointsHelp] = useState(false); const [hasVoted, setHasVoted] = useState(false); const [myVote, setMyVote] = useState(null); const [localReactions, setLocalReactions] = useState([]); const [viewLyrics, setViewLyrics] = useState(false); const toast = useToast(); 
+            
+            // Fix: Changed currentSinger to State to ensure re-renders
+            const [currentSinger, setCurrentSinger] = useState(null);
+            
+            // Fix 1: Define Helper Functions locally
+            const getEmojiChar = (t) => ({fire:'🔥', heart:'❤️', clap:'👏', drink:'🍻', rocket:'🚀', diamond:'💎', crown:'👑', money:'💰'}[t] || '❤️');
+            const getReactionClass = (t) => (t==='rocket'||t==='diamond'||t==='crown'||t==='money') ? `animate-${t}` : 'animate-float';
+
+            // Guitar Logic (Audience Side)
+            const [strings, setStrings] = useState([0,0,0,0,0]);
+            const lastStrum = useRef(0);
+            
+            // New: Canvas based guitar handling
+            const handleGuitarTouch = (e) => {
+                if (!user) return;
+                const touch = e.touches[0];
+                const rect = e.target.getBoundingClientRect();
+                const x = touch.clientX - rect.left;
+                const stringWidth = rect.width / 5;
+                const stringIdx = Math.floor(x / stringWidth);
+                
+                if (stringIdx >= 0 && stringIdx < 5) {
+                        handleStrum(stringIdx);
+                }
+            };
+
+            const handleStrum = (i) => {
+                if(!user) return;
+                
+                // Visual update - use functional update to avoid stale state issues
+                setStrings(prev => {
+                    const next = [...prev];
+                    next[i] = 1;
+                    return next;
+                });
+                
+                // Clear visual after delay - use functional update to preserve other strings
+                setTimeout(() => {
+                    setStrings(prev => {
+                        const next = [...prev];
+                        next[i] = 0;
+                        return next;
+                    });
+                }, 150);
+
+                // Fix: Try/Catch for vibration to suppress intervention errors
+                try {
+                    if(window.navigator && window.navigator.vibrate) {
+                           window.navigator.vibrate(50);
+                    }
+                } catch(e) {
+                    // Ignore vibration errors
+                }
+
+                const now = Date.now();
+                if(now - lastStrum.current > 100) {
+                    window.firebase.addDoc(window.firebase.collection(window.db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), { roomCode, type: 'strum', userName: user.name, avatar: user.avatar, isVip: !!user.isVip, timestamp: window.firebase.serverTimestamp() });
+                    lastStrum.current = now;
+                }
+            };
+
+            // Fix 7: Points Drip
+            useEffect(() => {
+                if(!user) return;
+                const interval = setInterval(() => {
+                    window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { points: window.firebase.increment(10) });
+                }, 60000); 
+                return () => clearInterval(interval);
+            }, [user, roomCode, uid]);
+
+            useEffect(() => { const db = window.db; const unsubRoom = window.firebase.onSnapshot(window.firebase.doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => { const r = s.data(); setRoom(r); if(!r.activeMode.startsWith('trivia') && !r.activeMode.startsWith('wyr')) { setHasVoted(false); setMyVote(null); } if(r.activeMode === 'trivia_reveal' && myVote !== null) { if (myVote === r.triviaQuestion.correct) toast(`🏆 CORRECT! +${r.triviaQuestion.points} PTS`); else toast("❌ WRONG ANSWER"); setMyVote(null); } }); const unsubUser = window.firebase.onSnapshot(window.firebase.doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), s => { if(s.exists()) setUser(s.data()); }); const unsubSong = window.firebase.onSnapshot(window.firebase.query(window.firebase.collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), window.firebase.where('roomCode','==',roomCode), window.firebase.where('status','==','performing')), s => { if (!s.empty) setCurrentSinger(s.docs[0]); else setCurrentSinger(null); }); 
+            const unsubMySongs = window.firebase.onSnapshot(window.firebase.query(window.firebase.collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), window.firebase.where('roomCode','==',roomCode)), s => setSongs(s.docs.map(d=>({id:d.id,...d.data()}))));
+            return () => { unsubRoom(); unsubUser(); unsubSong(); unsubMySongs(); }; }, [roomCode, uid, myVote]);
+            
+            const triggerLocalReaction = (type) => { const id = Date.now(); setLocalReactions(prev => [...prev, { id, type, left: Math.random() * 80 + 10 }]); setTimeout(() => setLocalReactions(prev => prev.filter(r => r.id !== id)), 4000); };
+            const log = async (text, icon) => { if(user) window.firebase.addDoc(window.firebase.collection(window.db, 'artifacts', APP_ID, 'public', 'data', 'activities'), { roomCode, user: user.name, text, icon, timestamp: window.firebase.serverTimestamp() }); };
+            const join = async () => { if(!form.name) return; await window.firebase.setDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { uid, roomCode, name: form.name, avatar: form.emoji, points: 100, lastSeen: window.firebase.serverTimestamp() }); window.firebase.addDoc(window.firebase.collection(window.db, 'artifacts', APP_ID, 'public', 'data', 'activities'), { roomCode, user: form.name, text: 'joined the lobby', icon: '👋', timestamp: window.firebase.serverTimestamp() }); };
+            const updateProfile = async () => { await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { name: form.name, avatar: form.emoji }); setShowProfile(false); toast("Profile Updated"); };
+            
+            const react = async (type, cost=10) => { 
+                if(!user || user.points < cost) return toast(`Need ${cost} pts!`); 
+                triggerLocalReaction(type); const multiplier = room?.multiplier || 1; 
+                const uniqueId = Date.now() + Math.random().toString(36).substr(2, 5); 
+                try {
+                    await window.firebase.setDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'reactions', uniqueId), { roomCode, type, userName: user.name, avatar: user.avatar, isVip: !!user.isVip, timestamp: window.firebase.serverTimestamp() }); 
+                    if (cost > 0) { 
+                        await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { points: window.firebase.increment(-cost) }); 
+                        if (currentSinger && currentSinger.ref) {
+                            try { await window.firebase.updateDoc(currentSinger.ref, { hypeScore: window.firebase.increment(cost * multiplier) }); } catch (err) { console.warn("Could not update singer score", err); }
+                        }
+                    } 
+                    if (!type.includes('spotlight')) toast(`-${cost} pts`); 
+                } catch (error) { console.error("Error sending reaction:", error); }
+            };
+            
+            const vote = async (type, val) => { if(hasVoted) return; setHasVoted(true); setMyVote(val); const qId = room?.triviaQuestion?.id || room?.wyrData?.id || 'unknown'; await window.firebase.addDoc(window.firebase.collection(window.db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), { roomCode, type, val, questionId: qId, userName: user.name, avatar: user.avatar, timestamp: window.firebase.serverTimestamp() }); toast("Vote Locked!"); }
+            const readyUp = async () => { await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { isReady: true, points: window.firebase.increment(100) }); toast("READY! +100 PTS"); };
+            const becomeVIP = async () => { if(!vipForm.email || !vipForm.email.includes('@')) return toast("Invalid Email"); await window.firebase.addDoc(window.firebase.collection(window.db, 'artifacts', APP_ID, 'public', 'data', 'contacts'), { roomCode, name: user.name, email: vipForm.email, timestamp: window.firebase.serverTimestamp() }); await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { isVip: true, points: window.firebase.increment(5000) }); log('became a VIP!', '💎'); setTab('home'); toast("VIP UNLOCKED! +5000 PTS"); };
+            
+            // Fix: Correct input handling
+            const submitSong = async (s, a, art) => { 
+                if(!user) return; 
+                try {
+                    const song = s || form.song; const artist = a || form.artist; const artwork = art || form.art; 
+                    if(!song) return; 
+                    await window.firebase.addDoc(window.firebase.collection(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), { roomCode, songTitle: song, artist: artist, albumArtUrl: artwork||'', singerName: user.name, emoji: user.avatar, status: room?.bouncerMode?'pending':'requested', timestamp: window.firebase.serverTimestamp(), priorityScore: Date.now(), emoji: '🎤' }); 
+                    log(`requested ${song}`, '🎵'); 
+                    setForm({name:user.name, emoji:user.avatar, song:'', artist:'', art:''}); 
+                    toast("Request Sent!"); 
+                    // setTab('home'); // REMOVED: User stays on request tab
+                } catch(e) { toast("Error sending request"); console.error(e); }
+            };
+            const deleteMyRequest = async (id) => { await window.firebase.deleteDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id)); toast("Request Deleted"); };
+            const suggestBingo = async (idx) => { await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { highlightedTile: idx }); setTimeout(()=> window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { highlightedTile: null }), 1000); toast("Suggested!"); };
+            const handleGameOver = async (finalScore) => { await window.firebase.updateDoc(window.firebase.doc(window.db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { points: window.firebase.increment(finalScore) }); toast(`GAME OVER! Earned ${finalScore} PTS`); };
+            
+            // Fix: CORS Error Handling for Search
+            useEffect(() => { 
+                if(searchQ.length < 3) { setResults([]); return; } 
+                const t = setTimeout(async () => { 
+                    try { 
+                        // Use a CORS proxy
+                        const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://itunes.apple.com/search?term=${encodeURIComponent(searchQ)}&media=music&entity=song&limit=5`)}`); 
+                        if (!res.ok) throw new Error('Network response was not ok');
+                        const data = await res.json();
+                        // Guard against malformed JSON in the proxy response
+                        try {
+                            const parsed = JSON.parse(data.contents);
+                            setResults(parsed.results || []); 
+                        } catch (parseError) {
+                            console.log("Auto-complete parse error", parseError);
+                            setResults([]);
+                        }
+                    } catch(e) { 
+                        setResults([]);
+                    } 
+                }, 500); 
+                return () => clearTimeout(t); 
+            }, [searchQ]);
+
+            if(!user) return (
+                <div className="h-[100dvh] w-full bg-zinc-900 overflow-y-auto custom-scrollbar flex flex-col items-center p-6 text-center font-saira">
+                    <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md my-auto min-h-0">
+                        <img src={ASSETS.logo} className="w-48 mb-4 mt-4 object-contain shrink-0" />
+                        <h2 className="text-2xl font-bold mb-4 text-white shrink-0">CREATE PROFILE</h2>
+                        <div className="grid grid-cols-5 gap-2 mb-4 w-full shrink-0">
+                            {AVATARS.map(a => (
+                                <button key={a} onClick={() => setForm({ ...form, emoji: a })} className={`bg-zinc-800 p-2 rounded-lg text-2xl hover:bg-zinc-700 transition-colors ${form.emoji === a ? 'border-2 border-pink-500 bg-zinc-700' : ''}`}>
+                                    {a}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="text-6xl mb-6 p-4 bg-zinc-800/50 rounded-full border border-white/10 shrink-0">{form.emoji}</div>
+                        <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full bg-zinc-950 p-4 rounded-xl mb-6 text-center border border-zinc-700 text-xl focus:border-pink-500 outline-none text-white placeholder-zinc-500 shrink-0" placeholder="Enter Your Name" />
+                        <button onClick={join} className="w-full bg-gradient-to-r from-pink-600 to-purple-600 py-4 rounded-xl font-bold text-xl shadow-lg text-white mb-8 shrink-0 active:scale-95 transition-transform">
+                            JOIN PARTY
+                        </button>
+                    </div>
+                </div>
+            );
+            
+            // Fix: Spotlight Takeover
+            if (room?.spotlightUser?.id === uid) {
+                return (
+                    <div className="fixed inset-0 z-[200] bg-black flex flex-col items-center justify-center p-8 text-center animate-in">
+                        <h1 className="text-6xl font-bebas text-yellow-400 mb-4 animate-pulse">YOU ARE LIVE!</h1>
+                        <div className="text-2xl text-white mb-8">{room.spotlightUser.msg}</div>
+                        <div className="grid grid-cols-2 gap-4 w-full max-w-md">
+                            {['👋','😎','🔥','🎤','🤘','💋'].map(e => (
+                                <button key={e} onClick={()=>react('spotlight_' + e, 0, e)} className="bg-zinc-800 p-6 rounded-2xl text-6xl shadow-lg active:scale-90 transition-transform border border-white/20">{e}</button>
+                            ))}
+                        </div>
+                        <div className="mt-8 text-zinc-500">The host has given you the spotlight!</div>
+                    </div>
+                )
+            }
+
+            // --- LYRICS VIEW TOGGLE FOR AUDIENCE ---
+            if (viewLyrics && currentSinger && currentSinger.data().lyrics) {
+                return (
+                    <div className="h-screen relative overflow-hidden">
+                        <AppleLyricsRenderer lyrics={currentSinger.data().lyrics} speed={currentSinger.data().duration || 180} art={currentSinger.data().albumArtUrl} isActive={true} />
+                        <button onClick={()=>setViewLyrics(false)} className="absolute bottom-10 right-10 z-[100] bg-white/20 backdrop-blur-lg px-6 py-3 rounded-full font-bold border border-white/30">CLOSE LYRICS</button>
+                    </div>
+                );
+            }
+
+            // New Lighter Mode Overlay
+            if(room?.lightMode === 'ballad') return (
+                <div className="h-screen bg-black flex flex-col items-center justify-center p-8 text-center text-white relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-t from-orange-500/40 via-orange-900/40 to-transparent animate-pulse"></div>
+                    <div className="text-[15rem] mb-12 relative z-10 filter drop-shadow-[0_0_60px_rgba(255,165,0,0.8)]">🕯️</div>
+                    <h1 className="text-6xl font-bebas text-yellow-500 animate-pulse mb-8 relative z-10">RAISE YOUR PHONE</h1>
+                    <p className="text-xl text-zinc-400 relative z-10">Sway to the music!</p>
+                </div>
+            );
+
+            if(room?.activeMode === 'flappy_bird' && room.gameData?.playerId === uid) return <FlappyGame isPlayer={true} roomCode={roomCode} playerData={{...room.gameData, playerAvatar: user.avatar}} onGameOver={handleGameOver} />;
+            if(room?.activeMode === 'flappy_bird') return <div className="h-screen bg-black flex flex-col items-center justify-center p-8 text-center text-white"><div className="text-6xl mb-4 animate-bounce">{room.gameData?.playerAvatar}</div><h1 className="text-3xl text-yellow-400 font-bold mb-2">{room.gameData?.playerName} IS PLAYING!</h1><p className="text-zinc-500 mb-8">Watch the big screen!</p><div className="text-4xl font-pixel text-white border-4 border-white p-4 rounded-xl">SCORE: {room.gameData?.score || 0}</div></div>;
+            
+            if(room?.singAlongMode && currentSinger) { 
+                const vidId = currentSinger.data().mediaUrl?.split('v=')[1]?.split('&')[0]; 
+                const startTime = room?.videoStartTimestamp ? (Date.now() - room.videoStartTimestamp) / 1000 : 0;
+                
+                if(vidId) return (
+                    <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+                        <div className="absolute top-4 left-0 w-full text-center text-white/50 animate-pulse pointer-events-none z-50">Rotate Phone for Full Screen</div>
+                        <iframe 
+                            key={room.videoStartTimestamp || 'init'}
+                            className="w-full h-full" 
+                            src={`https://www.youtube.com/embed/${vidId}?autoplay=1&mute=1&controls=0&start=${Math.floor(Math.max(0, startTime))}&playsinline=1&enablejsapi=1`} 
+                            allow="autoplay"
+                        ></iframe>
+                        <button onClick={()=>window.location.reload()} className="absolute bottom-4 right-4 bg-red-600 px-4 py-2 rounded text-white font-bold z-50">EXIT</button>
+                    </div>
+                ); 
+            }
+            
+            if (showProfile) return <div className="fixed inset-0 bg-zinc-900 z-[100] p-6 flex flex-col items-center justify-center font-saira text-white"><h2 className="text-3xl font-bebas text-cyan-400 mb-6">EDIT PROFILE</h2><div className="grid grid-cols-5 gap-2 mb-4">{AVATARS.map(a=><button key={a} onClick={()=>setForm({...form, emoji:a})} className="bg-zinc-800 p-2 rounded text-2xl">{a}</button>)}</div><div className="text-6xl mb-4">{form.emoji || user.avatar}</div><input value={form.name || user.name} onChange={e=>setForm({...form, name:e.target.value})} className="w-full bg-zinc-900 p-3 rounded-xl mb-4 text-center border border-zinc-600" placeholder="Your Name"/><div className="flex gap-2 w-full"><button onClick={()=>setShowProfile(false)} className="flex-1 bg-zinc-700 py-3 rounded-xl font-bold">CANCEL</button><button onClick={updateProfile} className="flex-1 bg-green-600 py-3 rounded-xl font-bold">SAVE</button></div></div>;
+            if (showPointsHelp) return <div className="fixed inset-0 bg-zinc-900/95 z-[100] p-8 flex flex-col items-center justify-center font-saira text-white text-center"><h2 className="text-3xl font-bold text-yellow-400 mb-4">EARNING POINTS</h2><p className="mb-4">1. You get 10 PTS every minute just for being here.</p><p className="mb-4">2. Win Trivia/Polls for big bonuses.</p><p className="mb-4">3. Become a VIP for 5000 PTS instant bonus.</p><button onClick={()=>setShowPointsHelp(false)} className="bg-zinc-700 px-6 py-2 rounded-xl">GOT IT</button><button onClick={()=>window.open('https://venmo.com/u/Beau-Ross-2')} className="w-full bg-green-600 py-3 rounded-xl text-white font-bold mt-4">Send a Tip 💰</button></div>;
+            if(room?.readyCheck?.active) return <div className="fixed inset-0 z-50 bg-zinc-900 flex flex-col items-center justify-center p-6 text-white font-saira">{user.isReady ? <h1 className="text-4xl font-bebas text-green-400">YOU ARE READY!</h1> : <div className="text-center animate-pulse"><h1 className="text-5xl font-bebas mb-8">ARE YOU READY?</h1><button onClick={readyUp} className="w-64 h-64 bg-green-500 rounded-full flex items-center justify-center border-8 border-green-300 shadow-2xl"><span className="text-4xl font-bold">YES!</span></button></div>}</div>;
+            if(room?.activeMode === 'trivia_pop' && room?.triviaQuestion?.status === 'asking') return <div className="fixed inset-0 z-50 bg-blue-900 p-6 flex flex-col items-center justify-center text-center font-saira text-white"><h1 className="text-3xl font-bebas mb-4">TRIVIA TIME</h1><h2 className="text-xl font-bold mb-8">{room.triviaQuestion.q}</h2>{hasVoted ? <div className="text-2xl animate-pulse">Answer Locked!</div> : <div className="grid grid-cols-2 gap-4 w-full">{room.triviaQuestion.options.map((o,i) => (<button key={i} onClick={()=>vote('vote_trivia', i)} className="bg-zinc-800 p-6 rounded-xl font-bold border-b-4 border-zinc-950 active:translate-y-1 active:border-b-0">{o}</button>))}</div>}</div>;
+            if(room?.activeMode === 'wyr') return <div className="fixed inset-0 z-50 bg-purple-900 p-6 flex flex-col items-center justify-center text-center font-saira text-white"><h1 className="text-3xl font-bebas mb-8">{room.wyrData.question}</h1>{hasVoted ? <div className="text-2xl animate-pulse">Vote Locked!</div> : <><button onClick={()=>vote('vote_a', 'A')} className="w-full bg-pink-600 p-6 rounded-xl font-bold mb-4 text-2xl shadow-lg active:scale-95">{room.wyrData.optionA}</button><div className="font-bold my-2">OR</div><button onClick={()=>vote('vote_b', 'B')} className="w-full bg-cyan-600 p-6 rounded-xl font-bold mt-4 text-2xl shadow-lg active:scale-95">{room.wyrData.optionB}</button></>}</div>;
+            if (room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') return <div className="fixed inset-0 z-50 bg-yellow-900/50 flex flex-col items-center justify-center p-6 text-white font-saira"><h1 className="text-5xl font-bebas mb-8 text-yellow-400 animate-bounce">APPLAUSE METER!</h1><button onClick={()=>react('clap', 0)} className="w-full h-64 bg-yellow-500 rounded-full flex items-center justify-center border-8 border-yellow-300 shadow-2xl active:scale-95 transition-transform"><span className="text-8xl">👏</span></button><p className="mt-8 font-bold">TAP FAST!</p></div>;
+            if(room?.activeMode === 'bingo') return <div className="h-[100dvh] bg-zinc-900 text-white flex flex-col font-saira"><div className="bg-purple-900 p-4 pb-2 flex justify-between items-center shadow-lg z-10 relative flex-none"><div className="flex items-center gap-2"><span className="text-2xl">{user.avatar}</span><span className="font-bold">{user.name}</span></div><h2 className="font-bebas text-2xl">BINGO LIVE</h2></div><div className="flex-1 p-4 flex flex-col items-center justify-center"><div className="w-full max-w-sm aspect-square grid gap-2" style={{gridTemplateColumns: `repeat(${room.bingoSize || 5}, minmax(0, 1fr))`}}>{room.bingoData && room.bingoData.map((tile, i) => (<button key={i} onClick={()=>suggestBingo(i)} className={`relative rounded transition-all active:scale-90 ${tile.status==='revealed' ? 'bg-yellow-500' : 'bg-zinc-700'}`}>{tile.status === 'revealed' ? '✅' : '❓'}</button>))}</div><div className="text-center mt-8 text-zinc-400">Tap a square to suggest it to the host!</div></div></div>;
+
+            return (
+                <div className={`h-[100dvh] bg-zinc-900 text-white flex flex-col font-saira overflow-hidden`}>
+                      {/* Vibe Mode Overlays */}
+                      {room?.lightMode === 'guitar' && <div className="absolute inset-0 z-[150] bg-black/90 flex justify-around items-center px-8" 
+                          onTouchStart={(e)=>handleGuitarTouch(e)} 
+                          onTouchMove={(e)=>handleGuitarTouch(e)}
+                      >
+                          {[0,1,2,3,4].map(i => <div key={i} className={`flex-1 h-full border-r border-white/10 flex items-center justify-center relative guitar-string-zone`}>
+                             <div className={`guitar-string ${strings[i]?'vibrating':''}`} key={Date.now()}></div>
+                          </div>)}
+                          <div className="absolute pointer-events-none text-4xl text-white font-bebas opacity-50">STRUM!</div>
+                      </div>}
+                      {room?.lightMode === 'strobe' && <div className="absolute inset-0 z-[150] pointer-events-none vibe-strobe opacity-50 mix-blend-screen"></div>}
+                      {room?.lightMode === 'storm' && <><div className="absolute inset-0 z-[150] pointer-events-none vibe-storm mix-blend-overlay"></div><div className="rain"></div></>}
+                      {room?.lightMode === 'banger' && <div className="absolute inset-0 z-[140] pointer-events-none vibe-banger mix-blend-overlay bg-red-500/20"></div>}
+                      {room?.lightMode === 'ballad' && <div className="absolute inset-0 z-[140] pointer-events-none vibe-ballad mix-blend-overlay bg-yellow-100/10"></div>}
+                      
+                      <div className="bg-zinc-900 p-6 flex justify-between items-center shadow-lg z-10 relative flex-none border-b border-zinc-800">
+                          <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center justify-center h-full"> 
+                            <img src={ASSETS.logo} className="h-20 w-auto drop-shadow-md scale-125 object-contain"/>
+                          </div>
+                          <div className="flex items-center gap-2 z-20" onClick={()=>setShowProfile(true)}>
+                             <span className="text-4xl">{user.avatar}</span>
+                             <span className="font-bold text-lg truncate max-w-[100px] text-white shadow-black drop-shadow-md">{user.name}</span>
+                          </div>
+                          <div className="bg-zinc-800 px-4 py-2 rounded-full border border-yellow-500/50 flex items-center gap-2 z-20">
+                            <span className="text-yellow-400 font-bold text-xl">{user.points}</span><span className="text-xs text-zinc-400">PTS</span>
+                          </div>
+                    </div>
+                    {/* Local Reactions Layer */}
+                    <div className="absolute inset-0 z-[90] pointer-events-none overflow-hidden">{localReactions.map(r => (<div key={r.id} className={`absolute bottom-0 flex flex-col items-center ${getReactionClass(r.type)}`} style={{left: `${r.left}%`}}><div className="text-8xl filter drop-shadow-xl">{getEmojiChar(r.type)}</div></div>))}</div>
+
+                    {/* Multiplier Indicator */}
+                    {room?.multiplier > 1 && <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-black font-black px-4 py-1 rounded-full z-50 animate-bounce shadow-lg border-2 border-white text-sm">🔥 {room.multiplier}X POINTS ACTIVE! 🔥</div>}
+                    
+                    {/* Updated Audience Layout: Reduced padding-top from pt-20 to pt-16 */}
+                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar min-h-0">
+                        {currentSinger && (
+                            <div className="bg-indigo-900/80 p-4 rounded-2xl border border-indigo-500/30 shadow-lg mb-4 backdrop-blur-md flex items-center gap-4">
+                                {currentSinger.data().albumArtUrl ? (
+                                    <img src={currentSinger.data().albumArtUrl} className="w-16 h-16 rounded-lg shadow-md object-cover flex-shrink-0" />
+                                ) : (
+                                     <div className="w-16 h-16 rounded-lg bg-indigo-700/50 flex items-center justify-center text-4xl shadow-md flex-shrink-0">
+                                          {currentSinger.data().emoji || '🎤'}
+                                     </div>
+                                )}
+                                <div className="min-w-0 text-left">
+                                    <div className="text-[10px] text-indigo-300 uppercase tracking-widest font-bold mb-1">NOW PERFORMING</div>
+                                    <div className="font-bold text-xl leading-none truncate text-white">{currentSinger.data().singerName}</div>
+                                    <div className="text-sm text-indigo-200 italic truncate">{currentSinger.data().songTitle}</div>
+                                    {/* Lyrics Button */}
+                                    {currentSinger.data().lyrics && <button onClick={()=>setViewLyrics(true)} className="mt-2 bg-white/20 px-3 py-1 rounded text-xs font-bold border border-white/30 active:scale-95 transition-transform"><i className="fa-solid fa-align-left mr-1"></i> LYRICS</button>}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {tab==='home' && (<div className="space-y-4"><div className="grid grid-cols-2 gap-4">
+                            <button onClick={()=>react('fire', 10)} className="bg-orange-900/40 border-2 border-orange-500 rounded-2xl p-4 flex flex-col items-center active:bg-orange-500 active:scale-95 transition-all"><span className="text-5xl mb-2">🔥</span><span className="font-bold text-orange-200 text-xs">HYPE (10)</span></button>
+                            <button onClick={()=>react('heart', 10)} className="bg-pink-900/40 border-2 border-pink-500 rounded-2xl p-4 flex flex-col items-center active:bg-pink-500 active:scale-95 transition-all"><span className="text-5xl mb-2">❤️</span><span className="font-bold text-pink-200 text-xs">LOVE (10)</span></button>
+                            <button onClick={()=>react('clap', 5)} className="bg-yellow-900/40 border-2 border-yellow-500 rounded-2xl p-4 flex flex-col items-center active:bg-yellow-500 active:scale-95 transition-all"><span className="text-5xl mb-2">👏</span><span className="font-bold text-yellow-200 text-xs">CLAP (5)</span></button>
+                            <button onClick={()=>react('drink', 50)} className="bg-blue-900/40 border-2 border-blue-500 rounded-2xl p-4 flex flex-col items-center active:bg-blue-500 active:scale-95 transition-all"><span className="text-5xl mb-2">🍻</span><span className="font-bold text-blue-200 text-xs">CHEERS (50)</span></button>
+                        </div>
+                        {/* Fix 4: Swapped Money/Crown order & Updated Costs */}
+                        <div className="grid grid-cols-2 gap-4">{['rocket','diamond','money','crown'].map(t => (<button key={t} onClick={()=>user.isVip ? react(t, t==='rocket'?20:t==='diamond'?100:t==='crown'?500:250) : setTab('vip')} className={`p-4 rounded-2xl flex flex-col items-center border-2 transition-all relative active:scale-95 ${user.isVip ? 'bg-zinc-800 border-yellow-500 shadow-[0_0_15px_rgba(253,224,71,0.3)]' : 'bg-zinc-900 border-zinc-700 opacity-60'}`}><span className={`text-5xl mb-2 animate-${t}`}>{{rocket:'🚀',diamond:'💎',crown:'👑',money:'💰'}[t]}</span><span className="font-bold text-xs uppercase">{{rocket:'BOOST (20)',diamond:'GEM (100)',crown:'ROYAL (500)',money:'RICH (250)'}[t]}</span>{!user.isVip && <div className="absolute top-2 right-2 text-yellow-400">🔒</div>}</button>))}</div>
+                        {!user.isVip && <button onClick={()=>setTab('vip')} className="w-full bg-gradient-to-r from-yellow-600 to-yellow-400 text-black py-4 rounded-xl font-bold shadow-lg mt-2 animate-pulse">UNLOCK VIP & 5000 PTS 💎</button>}<div className="flex gap-2"><button onClick={()=>setShowPointsHelp(true)} className="flex-1 bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-sm">ℹ️ Points Info</button><button onClick={()=>setShowProfile(true)} className="flex-1 bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-sm">Edit Profile</button></div></div>)}
+                        
+                        {tab==='vip' && <div className="bg-zinc-800 p-6 rounded-2xl border border-yellow-500 text-center"><h3 className="text-2xl font-bold text-yellow-400 mb-4">BECOME A VIP</h3><p className="mb-4 text-zinc-300">Unlock premium reactions and get 5000 bonus points!</p><input value={vipForm.email} onChange={e=>setVipForm({email:e.target.value})} className="w-full bg-zinc-900 p-4 rounded-xl mb-4 border border-zinc-600" placeholder="Email Address" type="email"/><button onClick={becomeVIP} className="w-full bg-yellow-500 text-black py-4 rounded-xl font-bold text-xl">UNLOCK NOW</button><button onClick={()=>setTab('home')} className="mt-4 text-zinc-500 underline block">Cancel</button></div>}
+                        
+                        {tab==='request' && (
+                            <>
+                            <div className="flex flex-col h-full">
+                                <div className="space-y-4">
+                                    <h2 className="text-2xl font-bebas text-cyan-400">Request Song</h2>
+                                    <div className="relative z-50">
+                                        <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} className="w-full bg-zinc-800 border border-zinc-600 rounded-lg p-3 text-sm text-white outline-none" placeholder="Search song..." />
+                                        {results.length > 0 && <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 z-50 shadow-xl max-h-60 overflow-y-auto">{results.map(r=><div key={r.trackId} onClick={()=>{submitSong(r.trackName, r.artistName, r.artworkUrl100.replace('100x100','600x600')); setResults([]); setSearchQ('');}} className="p-3 border-b border-zinc-800 hover:bg-zinc-800 flex gap-3"><img src={r.artworkUrl100} className="w-10 h-10 rounded"/><div><div className="font-bold text-sm">{r.trackName}</div><div className="text-xs text-zinc-400">{r.artistName}</div></div></div>)}</div>}
+                                    </div>
+                                    <div className="text-xs text-zinc-500 text-center my-2">- OR MANUAL -</div>
+                                    <input value={form.song} onChange={e=>setForm({...form, song:e.target.value})} className="w-full bg-zinc-800 p-4 rounded-xl border border-zinc-600" placeholder="Song Title"/><input value={form.artist} onChange={e=>setForm({...form, artist:e.target.value})} className="w-full bg-zinc-800 p-4 rounded-xl border border-zinc-600" placeholder="Artist"/><button onClick={()=>submitSong()} className="w-full bg-green-600 py-4 rounded-xl font-bold text-xl mt-4">SEND REQUEST</button>
+                                </div>
+                                <div className="mt-6 border-t border-zinc-800 pt-4 flex-1">
+                                    <h3 className="text-sm font-bold text-zinc-400 mb-2">MY REQUESTS</h3>
+                                    {songs.filter(s=>s.singerName===user.name).length===0 ? <div className="text-zinc-600 text-xs italic">No active requests</div> : songs.filter(s=>s.singerName===user.name).map(s=><div key={s.id} className="flex justify-between items-center bg-zinc-800 p-2 rounded mb-1"><span className="text-sm">{s.songTitle}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-[10px] px-2 py-0.5 rounded ${s.status==='performed'?'bg-zinc-600':s.status==='performing'?'bg-green-600 animate-pulse':s.status==='requested'?'bg-blue-600':'bg-orange-600'}`}>{s.status.toUpperCase()}</span>
+                                        {/* Fix 3: Delete Button for Own Requests */}
+                                        {(s.status === 'requested' || s.status === 'pending') && <button onClick={()=>deleteMyRequest(s.id)} className="text-red-400 hover:text-red-300 px-2"><i className="fa-solid fa-trash"></i></button>}
+                                    </div>
+                                    </div>)}
+                                </div>
+                            </div>
+                            </>
+                        )}
+                    </div>
+                    <div className="bg-zinc-950 p-2 flex border-t border-zinc-800 flex-none"><button onClick={()=>setTab('home')} className={`flex-1 py-4 flex flex-col items-center ${tab==='home'?'text-pink-500':'text-zinc-500'}`}><span className="text-2xl">⚡️</span><span className="text-xs font-bold">PARTY</span></button><button onClick={()=>setTab('request')} className={`flex-1 py-4 flex flex-col items-center ${tab==='request'?'text-cyan-500':'text-zinc-500'}`}><span className="text-2xl">🎵</span><span className="text-xs font-bold">SONGS</span></button></div>
+                </div>
+            );
+        };
+
+        const Landing = ({ onJoin, onHost }) => {
+            const [code, setCode] = useState('');
+            // Added h-full overflow-y-auto to allow scrolling on small screens
+            // Added min-h-full to flex container to ensure vertical centering when content fits
+            return ( 
+                <div className="h-full w-full overflow-y-auto bg-zinc-900 relative">
+                    <div className="min-h-full flex flex-col items-center justify-center p-6 text-center">
+                        <div className="bg-zinc-900/90 p-8 rounded-3xl border border-zinc-700 backdrop-blur-md max-w-md w-full shadow-2xl relative z-10">
+                            <img src={ASSETS.logo} className="w-96 mx-auto mb-6 drop-shadow-xl"/>
+                            <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="ROOM CODE" className="w-full bg-zinc-800 border-2 border-zinc-600 p-4 text-center text-3xl font-mono tracking-widest rounded-xl text-white uppercase mb-4 focus:border-pink-500 outline-none transition-colors"/>
+                            <button onClick={()=>code && onJoin(code)} className="w-full bg-pink-600 py-4 rounded-xl font-bold text-xl mb-4 text-white shadow-lg hover:bg-pink-500 transition-colors">JOIN PARTY (MOBILE)</button>
+                            <button onClick={()=>code && (window.location.href = `index.html?room=${code}&mode=tv`)} className="w-full bg-cyan-600 py-3 rounded-xl font-bold text-lg text-white mb-2 hover:bg-cyan-500 transition-colors">LAUNCH TV DISPLAY</button>
+                            <button onClick={()=>window.location.href = code ? `host.html?room=${code}` : 'host.html'} className="w-full bg-zinc-700 py-2 rounded-xl font-bold text-sm text-zinc-300 hover:bg-zinc-600 hover:text-white transition-colors mt-2"><i className="fa-solid fa-lock mr-2"></i>HOST CONTROLS</button>
+                        </div>
+                    </div>
+                </div> 
+            );
+        };
+
+        const App = () => {
+            const [view, setView] = useState('landing');
+            const [roomCode, setRoomCode] = useState('');
+            const [uid, setUid] = useState(null);
+            const [isReady, setIsReady] = useState(false);
+
+            useEffect(() => { 
+                const interval = setInterval(() => {
+                    if (window.firebase && window.isFirebaseReady) {
+                        setIsReady(true);
+                        const bootScreen = document.getElementById('boot-screen');
+                        if(bootScreen) bootScreen.style.opacity = '0';
+                        setTimeout(() => { if(bootScreen) bootScreen.style.display = 'none'; }, 500);
+                        clearInterval(interval);
+                    }
+                }, 100);
+                return () => clearInterval(interval);
+            }, []);
+
+            useEffect(() => { 
+                if(!isReady || !window.db) return;
+                
+                // 1. Parse URL immediately
+                const params = new URLSearchParams(window.location.search); 
+                const r = params.get('room');
+                const m = params.get('mode');
+                
+                if (r) {
+                    setRoomCode(r.toUpperCase());
+                    if (m === 'tv') setView('tv');
+                    else setView('mobile');
+                }
+
+                // 2. Set up Auth Listener (once)
+                const unsub = window.firebase.onAuthStateChanged(window.auth, u => { 
+                    if(u) setUid(u.uid); 
+                }); 
+                return () => unsub(); 
+            }, [isReady]);
+
+            if (!isReady) return null; // Let the HTML boot screen handle visuals
+
+            if(view === 'landing') return <Landing onJoin={(c)=>{setRoomCode(c); setView('mobile')}} onHost={(c)=>{setRoomCode(c); setView('tv')}} />;
+            if(view === 'tv') return <PublicTV roomCode={roomCode} />;
+            if(view === 'mobile') return uid ? <ToastProvider><SingerApp roomCode={roomCode} uid={uid} /></ToastProvider> : <div className="h-screen w-screen bg-black flex items-center justify-center text-white"><div className="spinner"></div></div>;
+            return null;
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

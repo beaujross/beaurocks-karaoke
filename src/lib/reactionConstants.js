@@ -1,0 +1,10 @@
+export const REACTION_COSTS = {
+    fire: 10,
+    heart: 10,
+    clap: 5,
+    drink: 50,
+    rocket: 20,
+    diamond: 100,
+    money: 250,
+    crown: 500
+};

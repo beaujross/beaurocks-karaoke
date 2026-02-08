@@ -1,0 +1,42 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    function roomDocPath(roomCode) {
+      return /databases/(default)/documents/artifacts/beaurocks-karaoke-v2/public/data/rooms/$(roomCode);
+    }
+
+    function isRoomHost(roomCode) {
+      return isAuthed()
+        && firestore.exists(roomDocPath(roomCode))
+        && (
+          firestore.get(roomDocPath(roomCode)).data.hostUid == request.auth.uid
+          || (
+            firestore.get(roomDocPath(roomCode)).data.hostUids != null
+            && request.auth.uid in firestore.get(roomDocPath(roomCode)).data.hostUids
+          )
+        );
+    }
+
+    function isAllowedMediaUpload() {
+      return request.resource != null
+        && request.resource.size <= 150 * 1024 * 1024
+        && request.resource.contentType != null
+        && request.resource.contentType.matches('^(audio|video)/.*$');
+    }
+
+    match /room_uploads/{roomCode}/{fileName} {
+      allow read: if isRoomHost(roomCode);
+      allow create: if isRoomHost(roomCode) && isAllowedMediaUpload();
+      allow delete: if isRoomHost(roomCode);
+      allow update: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
