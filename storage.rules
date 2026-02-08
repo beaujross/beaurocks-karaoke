@@ -6,7 +6,7 @@ service firebase.storage {
     }
 
     function roomDocPath(roomCode) {
-      return /databases/(default)/documents/artifacts/beaurocks-karaoke-v2/public/data/rooms/$(roomCode);
+      return /databases/(default)/documents/artifacts/bross-app/public/data/rooms/$(roomCode);
     }
 
     function isRoomHost(roomCode) {
