@@ -62,19 +62,60 @@ import {
   deleteObject
 } from "firebase/storage";
 
-// Configuration
-// Falls back to hardcoded keys for local dev if window.__firebase_config isn't set
-const firebaseConfig = typeof window !== 'undefined' && window.__firebase_config 
-  ? JSON.parse(window.__firebase_config) 
-  : { 
-      apiKey: "AIzaSyBmX0XXpGE0wGcR9YXw3oKOqnJE9GT6_Jc", 
-      authDomain: "beaurocks-karaoke-v2.firebaseapp.com", 
-      projectId: "beaurocks-karaoke-v2", 
-      storageBucket: "beaurocks-karaoke-v2.firebasestorage.app", 
-      messagingSenderId: "426849563936", 
-      appId: "1:426849563936:web:03c1d7eefd0c66e4649345",
-      measurementId: "G-KRHWBTB7V7"
-    };
+const readEnv = (name) => {
+  if (typeof import.meta === "undefined" || !import.meta?.env) return "";
+  const value = import.meta.env[name];
+  return typeof value === "string" ? value.trim() : "";
+};
+
+const parseRuntimeFirebaseConfig = () => {
+  if (typeof window === "undefined") return null;
+  const runtime = window.__firebase_config;
+  if (!runtime) return null;
+  if (typeof runtime === "object") return runtime;
+  if (typeof runtime === "string") {
+    try {
+      return JSON.parse(runtime);
+    } catch (err) {
+      console.warn("[firebase] invalid window.__firebase_config JSON", err);
+      return null;
+    }
+  }
+  return null;
+};
+
+const resolveFirebaseConfig = () => {
+  const runtimeConfig = parseRuntimeFirebaseConfig();
+  if (runtimeConfig) {
+    return runtimeConfig;
+  }
+  const envConfig = {
+    apiKey: readEnv("VITE_FIREBASE_API_KEY"),
+    authDomain: readEnv("VITE_FIREBASE_AUTH_DOMAIN"),
+    projectId: readEnv("VITE_FIREBASE_PROJECT_ID"),
+    storageBucket: readEnv("VITE_FIREBASE_STORAGE_BUCKET"),
+    messagingSenderId: readEnv("VITE_FIREBASE_MESSAGING_SENDER_ID"),
+    appId: readEnv("VITE_FIREBASE_APP_ID"),
+    measurementId: readEnv("VITE_FIREBASE_MEASUREMENT_ID"),
+  };
+  const required = [
+    "apiKey",
+    "authDomain",
+    "projectId",
+    "storageBucket",
+    "messagingSenderId",
+    "appId",
+  ];
+  const missing = required.filter((key) => !envConfig[key]);
+  if (!missing.length) {
+    return envConfig;
+  }
+  throw new Error(
+    `Missing Firebase config: ${missing.join(", ")}. Set window.__firebase_config or VITE_FIREBASE_* env vars.`
+  );
+};
+
+const firebaseConfig = resolveFirebaseConfig();
 
 // Initialize
 const app = initializeApp(firebaseConfig);

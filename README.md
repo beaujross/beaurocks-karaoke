@@ -11,6 +11,11 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 
 ## Development
 
+- Create local env file before running dev:
+  - `cp .env.example .env` (or copy manually on Windows)
+  - Fill `VITE_FIREBASE_*` and `VITE_RECAPTCHA_V3_SITE_KEY`
+  - Alternative runtime injection is supported via `window.__firebase_config`
+
 - `npm run dev` - start local frontend
 - `npm run build` - production build
 - `npm run preview` - preview built app

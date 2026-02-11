@@ -231,7 +231,8 @@
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, query, where, onSnapshot, updateDoc, doc, setDoc, serverTimestamp, increment, deleteDoc, orderBy, limit, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "AIzaSyAXF_1iWXznoVnk70llosbBAKYkASg066A", authDomain: "beaurocks-karaoke.firebaseapp.com", projectId: "beaurocks-karaoke", storageBucket: "beaurocks-karaoke.firebasestorage.app", messagingSenderId: "827532526758", appId: "1:827532526758:web:a28f7db2fe4ca765b2e067" };
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        if (!firebaseConfig) throw new Error("Missing __firebase_config runtime payload.");
         
         try {
             const app = initializeApp(firebaseConfig); 
