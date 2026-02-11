@@ -10,7 +10,14 @@ import {
 } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
 import { EMOJI } from '../../../lib/emoji';
-import { buildSongKey, ensureSong, ensureTrack, extractYouTubeId } from '../../../lib/songCatalog';
+import {
+    buildSongKey,
+    ensureSong,
+    ensureTrack,
+    resolveSongCatalog,
+    upsertSongLyrics,
+    extractYouTubeId
+} from '../../../lib/songCatalog';
 import { normalizeBackingChoice } from '../../../lib/playbackSource';
 
 const useQueueSongActions = ({
@@ -34,16 +41,52 @@ const useQueueSongActions = ({
     const fetchAppleTimedLyrics = async (title, artist) => {
         const safeTitle = (title || '').trim();
         if (!safeTitle) return null;
+        const safeArtist = (artist || '').trim();
+        try {
+            const cached = await resolveSongCatalog({
+                title: safeTitle,
+                artist: safeArtist || 'Unknown'
+            });
+            const hasTimed = Array.isArray(cached?.lyrics?.timedLyrics) && cached.lyrics.timedLyrics.length > 0;
+            const hasText = !!(cached?.lyrics?.lyrics || '').trim();
+            if (hasTimed || hasText) {
+                return {
+                    appleMusicId: cached?.lyrics?.appleMusicId || cached?.track?.appleMusicId || '',
+                    lyrics: cached?.lyrics?.lyrics || '',
+                    lyricsTimed: hasTimed ? cached.lyrics.timedLyrics : null,
+                    lyricsSource: cached?.lyrics?.source || 'catalog',
+                    needsUserToken: false
+                };
+            }
+        } catch (err) {
+            console.warn('Catalog lyrics lookup failed', err);
+        }
+
         try {
             const musicUserToken = getAppleMusicUserToken?.() || '';
             const res = await callFunction('appleMusicLyrics', {
                 title: safeTitle,
-                artist: (artist || '').trim(),
+                artist: safeArtist,
                 storefront: 'us',
                 musicUserToken
             });
             if (!res?.found && !res?.songId) return null;
             const hasTimedLyrics = Array.isArray(res?.timedLyrics) && res.timedLyrics.length > 0;
+            if (hasTimedLyrics || res?.lyrics) {
+                try {
+                    await upsertSongLyrics({
+                        title: res?.title || safeTitle,
+                        artist: res?.artist || safeArtist || 'Unknown',
+                        lyrics: res?.lyrics || '',
+                        lyricsTimed: hasTimedLyrics ? res.timedLyrics : null,
+                        lyricsSource: hasTimedLyrics || res?.lyrics ? 'apple' : '',
+                        appleMusicId: res?.songId ? String(res.songId) : '',
+                        verifiedBy: hostName || 'host'
+                    });
+                } catch (cacheErr) {
+                    console.warn('upsertSongLyrics failed', cacheErr);
+                }
+            }
             return {
                 appleMusicId: res?.songId ? String(res.songId) : '',
                 lyrics: res?.lyrics || '',

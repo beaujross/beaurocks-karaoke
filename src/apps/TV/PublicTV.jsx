@@ -1274,9 +1274,6 @@ const PublicTV = ({ roomCode }) => {
             label: 'Requests need approval'
         }] : [])
     ];
-    const leftJoinRules = queueRules.slice(0, Math.ceil(queueRules.length / 2));
-    const rightJoinRules = queueRules.slice(Math.ceil(queueRules.length / 2));
-
     // --- RENDER ---
     
     if (!started) {

@@ -78,6 +78,7 @@ Global and historical catalog/leaderboard data:
 - `users`
 - `songs`
 - `tracks`
+- `song_lyrics`
 - `performances`
 - `song_hall_of_fame`
 - `song_hall_of_fame_weeks`

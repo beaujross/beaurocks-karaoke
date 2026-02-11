@@ -61,6 +61,28 @@ async function run() {
       await assertFails(db.doc(`users/${GUEST_UID}`).get());
     }],
 
+    ["firestore: public can read canonical song lyrics", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc("song_lyrics/test-song").set({
+          songId: "test-song",
+          lyrics: "line one\nline two",
+        });
+      });
+      const db = testEnv.unauthenticatedContext().firestore();
+      await assertSucceeds(db.doc("song_lyrics/test-song").get());
+    }],
+
+    ["firestore: clients cannot write canonical song lyrics", async () => {
+      const db = testEnv.authenticatedContext(HOST_UID).firestore();
+      await assertFails(
+        db.doc("song_lyrics/test-song").set({
+          songId: "test-song",
+          lyrics: "forbidden write",
+        })
+      );
+    }],
+
     ["firestore: user can write own profile", async () => {
       const db = testEnv.authenticatedContext(GUEST_UID).firestore();
       await assertSucceeds(

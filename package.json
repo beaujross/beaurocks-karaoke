@@ -8,6 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "lint:emoji": "node scripts/scan-emoji.js",
+    "test:unit:usage": "node tests/unit/entitlementsUsage.test.cjs",
     "test:rules": "npx firebase-tools emulators:exec --project demo-bross --only firestore,storage \"node tests/security/rules.test.cjs\"",
     "preview": "vite preview",
     "deploy:hosting": "npm run build && npx firebase-tools deploy --only hosting",

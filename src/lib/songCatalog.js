@@ -73,9 +73,54 @@ const ensureTrack = async ({
   return { trackId: res?.trackId || null };
 };
 
+const resolveSongCatalog = async ({ songId, title, artist } = {}) => {
+  const payload = {};
+  if (songId) payload.songId = songId;
+  if (title) payload.title = title;
+  if (artist) payload.artist = artist;
+  const res = await callFunction('resolveSongCatalog', payload);
+  return res || null;
+};
+
+const upsertSongLyrics = async ({
+  songId,
+  title,
+  artist,
+  lyrics,
+  lyricsTimed,
+  lyricsSource,
+  appleMusicId,
+  language,
+  artworkUrl,
+  verifiedBy
+} = {}) => {
+  const payload = {
+    songId: songId || '',
+    title: title || '',
+    artist: artist || '',
+    lyrics: lyrics || '',
+    lyricsTimed: Array.isArray(lyricsTimed) ? lyricsTimed : null,
+    lyricsSource: lyricsSource || '',
+    appleMusicId: appleMusicId || '',
+    language: language || 'en',
+    artworkUrl: artworkUrl || '',
+    verifiedBy: verifiedBy || 'host'
+  };
+  const res = await callFunction('upsertSongLyrics', payload);
+  return res || null;
+};
+
 const isSongVerified = (songDoc) => {
   const meta = songDoc?.verifiedMeta || {};
   return !!(meta.title && meta.artist && meta.artworkUrl);
 };
 
-export { buildSongKey, ensureSong, ensureTrack, extractYouTubeId, isSongVerified };
+export {
+  buildSongKey,
+  ensureSong,
+  ensureTrack,
+  resolveSongCatalog,
+  upsertSongLyrics,
+  extractYouTubeId,
+  isSongVerified
+};

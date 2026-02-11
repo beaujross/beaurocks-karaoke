@@ -76,6 +76,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /song_lyrics/{songId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     match /performances/{docId} {
       allow read: if true;
       allow write: if false;

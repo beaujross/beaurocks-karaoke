@@ -5,128 +5,21 @@ const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const jwt = require("jsonwebtoken");
 const Stripe = require("stripe");
+const {
+  BASE_CAPABILITIES,
+  PLAN_DEFINITIONS,
+  USAGE_METER_DEFINITIONS,
+  getPlanDefinition,
+  isEntitledStatus,
+  buildCapabilitiesForPlan,
+  resolveUsageMeterQuota,
+  buildUsageMeterSummary,
+} = require("./lib/entitlementsUsage");
 
 admin.initializeApp();
 const APP_ID = "bross-app";
 const ORGS_COLLECTION = "organizations";
 const STRIPE_SUBSCRIPTIONS_COLLECTION = "stripe_subscriptions";
-
-const BASE_CAPABILITIES = Object.freeze({
-  "ai.generate_content": false,
-});
-
-const PLAN_DEFINITIONS = Object.freeze({
-  free: {
-    id: "free",
-    name: "Free",
-    tier: "free",
-    interval: null,
-    amountCents: 0,
-    capabilities: {},
-  },
-  vip_monthly: {
-    id: "vip_monthly",
-    name: "VIP Monthly",
-    tier: "vip",
-    interval: "month",
-    amountCents: 999,
-    capabilities: {},
-  },
-  host_monthly: {
-    id: "host_monthly",
-    name: "Host Monthly",
-    tier: "host",
-    interval: "month",
-    amountCents: 1500,
-    capabilities: {
-      "ai.generate_content": true,
-    },
-  },
-  host_annual: {
-    id: "host_annual",
-    name: "Host Annual",
-    tier: "host",
-    interval: "year",
-    amountCents: 15000,
-    capabilities: {
-      "ai.generate_content": true,
-    },
-  },
-});
-
-const ENTITLED_STATUSES = new Set(["active", "trialing", "past_due"]);
-
-const USAGE_METER_DEFINITIONS = Object.freeze({
-  ai_generate_content: {
-    id: "ai_generate_content",
-    label: "AI generations",
-    unit: "request",
-    includedByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 750,
-      host_annual: 1200,
-    }),
-    hardLimitByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 2500,
-      host_annual: 4000,
-    }),
-    overageRateCentsByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 3,
-      host_annual: 2,
-    }),
-  },
-  youtube_data_request: {
-    id: "youtube_data_request",
-    label: "YouTube Data API requests",
-    unit: "request",
-    includedByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 6000,
-      host_annual: 9000,
-    }),
-    hardLimitByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 25000,
-      host_annual: 35000,
-    }),
-    overageRateCentsByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 1,
-      host_annual: 1,
-    }),
-  },
-  apple_music_request: {
-    id: "apple_music_request",
-    label: "Apple Music API requests",
-    unit: "request",
-    includedByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 2000,
-      host_annual: 3000,
-    }),
-    hardLimitByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 10000,
-      host_annual: 15000,
-    }),
-    overageRateCentsByPlan: Object.freeze({
-      free: 0,
-      vip_monthly: 0,
-      host_monthly: 2,
-      host_annual: 2,
-    }),
-  },
-});
 
 setGlobalOptions({
   region: "us-west1",
@@ -307,22 +200,6 @@ const normalizeOrgName = (value = "", uid = "") => {
   return `Workspace ${token.toUpperCase()}`;
 };
 
-const getPlanDefinition = (planId = "") => PLAN_DEFINITIONS[String(planId || "").trim()] || null;
-
-const isEntitledStatus = (status = "") => ENTITLED_STATUSES.has(String(status || "").toLowerCase());
-
-const buildCapabilitiesForPlan = (planId = "free", status = "inactive") => {
-  const caps = { ...BASE_CAPABILITIES };
-  if (!isEntitledStatus(status)) {
-    return caps;
-  }
-  const plan = getPlanDefinition(planId) || PLAN_DEFINITIONS.free;
-  Object.entries(plan.capabilities || {}).forEach(([key, enabled]) => {
-    caps[key] = !!enabled;
-  });
-  return caps;
-};
-
 const normalizeCapabilities = (input = {}) => {
   const caps = { ...BASE_CAPABILITIES };
   Object.entries(input || {}).forEach(([key, value]) => {
@@ -390,67 +267,6 @@ const toWholeNumber = (value, fallback = 0) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(0, Math.floor(n));
-};
-
-const resolveUsageMeterQuota = ({ meterId = "", planId = "free", status = "inactive" }) => {
-  const meter = USAGE_METER_DEFINITIONS[meterId];
-  if (!meter) {
-    return {
-      meterId,
-      included: 0,
-      hardLimit: 0,
-      overageRateCents: 0,
-    };
-  }
-  const normalizedPlan = getPlanDefinition(planId)?.id || "free";
-  const entitled = isEntitledStatus(status);
-  const included = entitled
-    ? toWholeNumber(meter.includedByPlan?.[normalizedPlan], 0)
-    : 0;
-  const hardLimit = entitled
-    ? toWholeNumber(meter.hardLimitByPlan?.[normalizedPlan], 0)
-    : 0;
-  const overageRateCents = entitled
-    ? toWholeNumber(meter.overageRateCentsByPlan?.[normalizedPlan], 0)
-    : 0;
-  return {
-    meterId: meter.id,
-    included,
-    hardLimit,
-    overageRateCents,
-  };
-};
-
-const buildUsageMeterSummary = ({ meterId, used = 0, quota, periodKey = "" }) => {
-  const meter = USAGE_METER_DEFINITIONS[meterId] || {
-    id: meterId,
-    label: meterId,
-    unit: "unit",
-  };
-  const safeUsed = toWholeNumber(used, 0);
-  const included = toWholeNumber(quota?.included, 0);
-  const hardLimit = toWholeNumber(quota?.hardLimit, 0);
-  const overageRateCents = toWholeNumber(quota?.overageRateCents, 0);
-  const overageUnits = Math.max(0, safeUsed - included);
-  const estimatedOverageCents = overageUnits * overageRateCents;
-  const remainingIncluded = Math.max(0, included - safeUsed);
-  const remainingToHardLimit = hardLimit > 0 ? Math.max(0, hardLimit - safeUsed) : null;
-  const hardLimitReached = hardLimit > 0 && safeUsed >= hardLimit;
-  return {
-    meterId: meter.id,
-    label: meter.label,
-    unit: meter.unit,
-    period: periodKey,
-    used: safeUsed,
-    included,
-    overageUnits,
-    overageRateCents,
-    estimatedOverageCents,
-    hardLimit,
-    hardLimitReached,
-    remainingIncluded,
-    remainingToHardLimit,
-  };
 };
 
 const readOrganizationUsageSummary = async ({
@@ -553,6 +369,12 @@ const buildUsageInvoiceDraft = ({
   const invoiceId = `INV-${sanitizeOrgToken(orgId).toUpperCase().slice(-12) || "ORG"}-${period}`;
   const lineItems = [];
   const billingEntity = String(customerName || "").trim() || String(orgName || "").trim() || orgId || "Customer";
+  const rateCardSnapshot = {
+    generatedAtMs: nowMs(),
+    planId: safeEntitlements.planId || "free",
+    planStatus: safeEntitlements.status || "inactive",
+    meters: {},
+  };
 
   if (includeBasePlan && isEntitledStatus(safeEntitlements.status) && plan.amountCents > 0) {
     lineItems.push({
@@ -572,8 +394,25 @@ const buildUsageInvoiceDraft = ({
   );
   meters.forEach((meter) => {
     const overageUnits = toWholeNumber(meter?.overageUnits, 0);
-    const overageRateCents = toWholeNumber(meter?.overageRateCents, 0);
-    if (!overageUnits || !overageRateCents) return;
+    const passThroughUnitCostCents = toWholeNumber(meter?.passThroughUnitCostCents, 0);
+    const markupMultiplier = Number.isFinite(Number(meter?.markupMultiplier))
+      ? Math.max(0, Number(meter?.markupMultiplier))
+      : 1;
+    const billableUnitRateCents = toWholeNumber(
+      meter?.billableUnitRateCents,
+      toWholeNumber(meter?.overageRateCents, 0)
+    );
+    rateCardSnapshot.meters[meter.meterId] = {
+      meterId: meter.meterId,
+      label: meter.label || meter.meterId,
+      unit: meter.unit || "unit",
+      includedUnits: toWholeNumber(meter?.included, 0),
+      hardLimitUnits: toWholeNumber(meter?.hardLimit, 0),
+      passThroughUnitCostCents,
+      markupMultiplier,
+      billableUnitRateCents,
+    };
+    if (!overageUnits || !billableUnitRateCents) return;
     lineItems.push({
       id: `overage_${meter.meterId}`,
       type: "overage",
@@ -581,8 +420,13 @@ const buildUsageInvoiceDraft = ({
       description: `${meter.label} overage (${periodLabel})`,
       quantity: overageUnits,
       unit: meter.unit || "unit",
-      unitPriceCents: overageRateCents,
-      amountCents: overageUnits * overageRateCents,
+      includedUnits: toWholeNumber(meter?.included, 0),
+      overageUnits,
+      passThroughUnitCostCents,
+      markupMultiplier,
+      billableUnitRateCents,
+      unitPriceCents: billableUnitRateCents,
+      amountCents: overageUnits * billableUnitRateCents,
       period,
     });
   });
@@ -605,7 +449,21 @@ const buildUsageInvoiceDraft = ({
     .join("\n");
 
   const lineItemCsvRows = [
-    ["InvoiceNumber", "InvoiceDate", "DueDate", "Customer", "Description", "Qty", "UnitPrice", "Amount"],
+    [
+      "InvoiceNumber",
+      "InvoiceDate",
+      "DueDate",
+      "Customer",
+      "Description",
+      "Qty",
+      "UnitPrice",
+      "Amount",
+      "IncludedUnits",
+      "OverageUnits",
+      "PassThroughUnitCost",
+      "MarkupMultiplier",
+      "BillableUnitRate",
+    ],
     ...lineItems.map((line) => ([
       invoiceId,
       new Date(issueDateMs).toISOString().slice(0, 10),
@@ -615,6 +473,11 @@ const buildUsageInvoiceDraft = ({
       String(line.quantity || 0),
       centsToDollarString(line.unitPriceCents || 0),
       centsToDollarString(line.amountCents || 0),
+      String(toWholeNumber(line.includedUnits, 0)),
+      String(toWholeNumber(line.overageUnits, 0)),
+      centsToDollarString(line.passThroughUnitCostCents || 0),
+      Number(line.markupMultiplier || 1).toFixed(2),
+      centsToDollarString(line.billableUnitRateCents || line.unitPriceCents || 0),
     ])),
   ];
   const lineItemCsv = lineItemCsvRows
@@ -640,6 +503,7 @@ const buildUsageInvoiceDraft = ({
       taxCents,
       totalCents,
     },
+    rateCardSnapshot,
     usageSummary: safeUsage,
     quickbooks: {
       selfEmployed: {
@@ -718,6 +582,9 @@ const reserveOrganizationUsageUnits = async ({
       [`meters.${meterId}.included`]: quota.included,
       [`meters.${meterId}.hardLimit`]: quota.hardLimit,
       [`meters.${meterId}.overageRateCents`]: quota.overageRateCents,
+      [`meters.${meterId}.passThroughUnitCostCents`]: quota.passThroughUnitCostCents,
+      [`meters.${meterId}.markupMultiplier`]: quota.markupMultiplier,
+      [`meters.${meterId}.billableUnitRateCents`]: quota.billableUnitRateCents,
       [`meters.${meterId}.updatedAt`]: now,
     };
     if (!snap.exists) {
@@ -858,6 +725,10 @@ const resolveUserEntitlements = async (uid) => {
   const capabilities = normalizeCapabilities(entitlements.capabilities || {});
   if (legacyTier === "host" || legacyTier === "host_plus") {
     capabilities["ai.generate_content"] = true;
+    capabilities["api.youtube_data"] = true;
+    capabilities["api.apple_music"] = true;
+    capabilities["billing.invoice_drafts"] = true;
+    capabilities["workspace.onboarding"] = true;
   }
   return {
     orgId,
@@ -1288,6 +1159,112 @@ const ensureTrackAdmin = async ({
   return { trackId: docRef.id };
 };
 
+const normalizeLyricsText = (value = "") =>
+  typeof value === "string"
+    ? value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim()
+    : "";
+
+const normalizeTimedLyrics = (timedLyrics = []) => {
+  if (!Array.isArray(timedLyrics)) return [];
+  const normalized = [];
+  for (const raw of timedLyrics) {
+    const text = normalizeLyricsText(raw?.text || "");
+    if (!text) continue;
+    const startMs = Math.max(0, Math.round(Number(raw?.startMs || 0)));
+    const endCandidate = Math.round(Number(raw?.endMs || startMs + 2500));
+    const endMs = Math.max(startMs + 300, endCandidate);
+    normalized.push({ text, startMs, endMs });
+  }
+  return normalized;
+};
+
+const toMillisSafe = (value) => {
+  if (!value) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  if (typeof value?.seconds === "number") return value.seconds * 1000;
+  return 0;
+};
+
+const scoreTrack = (track = {}) => {
+  const source = String(track.source || "").toLowerCase();
+  const sourceScore = source === "apple" ? 30 : source === "youtube" ? 20 : source ? 10 : 0;
+  const backingScore = track.backingOnly ? 5 : 0;
+  return sourceScore + backingScore;
+};
+
+const pickBestTrack = (tracks = []) => {
+  if (!Array.isArray(tracks) || !tracks.length) return null;
+  return tracks
+    .slice()
+    .sort((a, b) => {
+      const scoreDiff = scoreTrack(b) - scoreTrack(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return toMillisSafe(b.updatedAt) - toMillisSafe(a.updatedAt);
+    })[0];
+};
+
+const ensureSongLyricsAdmin = async ({
+  songId,
+  title,
+  artist,
+  lyrics,
+  lyricsTimed,
+  lyricsSource,
+  appleMusicId,
+  language = "en",
+  verifiedBy = "system",
+}) => {
+  const safeSongId = String(songId || "").trim();
+  if (!safeSongId) return { songId: "", hasLyrics: false, hasTimedLyrics: false };
+
+  const normalizedLyrics = normalizeLyricsText(lyrics || "");
+  const normalizedTimed = normalizeTimedLyrics(lyricsTimed);
+  if (!normalizedLyrics && !normalizedTimed.length) {
+    return { songId: safeSongId, hasLyrics: false, hasTimedLyrics: false };
+  }
+
+  const ref = admin.firestore().collection("song_lyrics").doc(safeSongId);
+  const snap = await ref.get();
+  const payload = {
+    songId: safeSongId,
+    title: (title || "").trim() || null,
+    artist: (artist || "").trim() || null,
+    lyrics: normalizedLyrics || "",
+    lyricsTimed: normalizedTimed.length ? normalizedTimed : null,
+    hasTimedLyrics: normalizedTimed.length > 0,
+    lineCount: normalizedTimed.length
+      || (normalizedLyrics ? normalizedLyrics.split("\n").filter(Boolean).length : 0),
+    lyricsSource: (lyricsSource || (normalizedTimed.length ? "timed" : "text")).trim() || null,
+    appleMusicId: appleMusicId ? String(appleMusicId) : null,
+    language: (language || "en").trim() || "en",
+    verifiedBy: (verifiedBy || "system").trim() || "system",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (!snap.exists) {
+    payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+  }
+
+  await ref.set(payload, { merge: true });
+  await admin.firestore().collection("songs").doc(safeSongId).set(
+    {
+      hasLyrics: true,
+      hasTimedLyrics: normalizedTimed.length > 0,
+      canonicalLyricsSource: payload.lyricsSource || null,
+      canonicalLyricsUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return {
+    songId: safeSongId,
+    hasLyrics: true,
+    hasTimedLyrics: normalizedTimed.length > 0,
+  };
+};
+
 const isSongVerified = (songDoc) => {
   const meta = songDoc?.verifiedMeta || {};
   return !!(meta.title && meta.artist && meta.artworkUrl);
@@ -1495,8 +1472,7 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
 
 exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_search");
-  const uid = requireAuth(request);
-  const entitlements = await resolveUserEntitlements(uid);
+  const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_search");
   const query = request.data?.query || "";
   ensureString(query, "query");
@@ -1529,8 +1505,7 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
 
 exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_playlist");
-  const uid = requireAuth(request);
-  const entitlements = await resolveUserEntitlements(uid);
+  const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_playlist");
   const playlistId = request.data?.playlistId || "";
   ensureString(playlistId, "playlistId");
@@ -1572,8 +1547,7 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
 
 exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_status");
-  const uid = requireAuth(request);
-  const entitlements = await resolveUserEntitlements(uid);
+  const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_status");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   if (!ids.length) return { items: [] };
@@ -1613,8 +1587,7 @@ const parseIsoDuration = (value = "") => {
 
 exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_details");
-  const uid = requireAuth(request);
-  const entitlements = await resolveUserEntitlements(uid);
+  const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_details");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   if (!ids.length) return { items: [] };
@@ -1682,21 +1655,209 @@ exports.geminiGenerate = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async
   }
 });
 
+const cacheSongLyricsFromQueueDoc = async (data = {}, verifiedBy = "queue") => {
+  const rawTitle = (data.songTitle || data.title || "").trim();
+  if (!rawTitle) return null;
+  const rawArtist = (data.artist || "Unknown").trim() || "Unknown";
+  const fallbackSongId = buildSongKey(rawTitle, rawArtist);
+  const songId = (data.songId || "").trim() || fallbackSongId;
+
+  const songResult = await ensureSongAdmin({
+    title: rawTitle,
+    artist: rawArtist,
+    artworkUrl: data.albumArtUrl || "",
+    appleMusicId: data.appleMusicId || "",
+    verifyMeta: {
+      lyricsSource: data.lyricsSource || null,
+      lyricsTimed: Array.isArray(data.lyricsTimed) && data.lyricsTimed.length > 0,
+    },
+    verifiedBy,
+  });
+  const resolvedSongId = songResult?.songId || songId;
+  const lyricRes = await ensureSongLyricsAdmin({
+    songId: resolvedSongId,
+    title: rawTitle,
+    artist: rawArtist,
+    lyrics: data.lyrics || "",
+    lyricsTimed: data.lyricsTimed || null,
+    lyricsSource: data.lyricsSource || "queue",
+    appleMusicId: data.appleMusicId || "",
+    verifiedBy,
+  });
+
+  if (data.appleMusicId) {
+    const trackResult = await ensureTrackAdmin({
+      songId: resolvedSongId,
+      source: "apple",
+      mediaUrl: "",
+      appleMusicId: String(data.appleMusicId),
+      duration: data.duration ?? null,
+      audioOnly: true,
+      backingOnly: true,
+      addedBy: verifiedBy,
+    });
+    if (trackResult?.trackId) {
+      await admin.firestore().collection("songs").doc(resolvedSongId).set(
+        {
+          primaryTrackId: trackResult.trackId,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  }
+
+  return {
+    songId: resolvedSongId,
+    hasLyrics: !!lyricRes?.hasLyrics,
+    hasTimedLyrics: !!lyricRes?.hasTimedLyrics,
+  };
+};
+
+exports.resolveSongCatalog = onCall({ cors: true }, async (request) => {
+  requireAuth(request);
+  const data = request.data || {};
+  const rawSongId = (data.songId || "").trim();
+  const title = (data.title || "").trim();
+  const artist = (data.artist || "Unknown").trim() || "Unknown";
+  const songId = rawSongId || (title ? buildSongKey(title, artist) : "");
+  if (!songId) {
+    throw new HttpsError("invalid-argument", "songId or title is required.");
+  }
+
+  const songRef = admin.firestore().collection("songs").doc(songId);
+  const lyricsRef = admin.firestore().collection("song_lyrics").doc(songId);
+  const trackQuery = admin.firestore().collection("tracks").where("songId", "==", songId).limit(20);
+
+  const [songSnap, lyricsSnap, trackSnap] = await Promise.all([
+    songRef.get(),
+    lyricsRef.get(),
+    trackQuery.get(),
+  ]);
+
+  const tracks = trackSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+  const bestTrack = pickBestTrack(tracks);
+  const lyrics = lyricsSnap.exists ? lyricsSnap.data() : null;
+
+  return {
+    found: !!(songSnap.exists || lyrics || bestTrack),
+    songId,
+    song: songSnap.exists ? { id: songSnap.id, ...songSnap.data() } : null,
+    track: bestTrack ? {
+      id: bestTrack.id,
+      source: bestTrack.source || null,
+      mediaUrl: bestTrack.mediaUrl || "",
+      appleMusicId: bestTrack.appleMusicId || "",
+      duration: bestTrack.duration || null,
+      backingOnly: !!bestTrack.backingOnly,
+      audioOnly: !!bestTrack.audioOnly,
+      updatedAt: bestTrack.updatedAt || null,
+    } : null,
+    lyrics: lyrics ? {
+      lyrics: lyrics.lyrics || "",
+      timedLyrics: Array.isArray(lyrics.lyricsTimed) ? lyrics.lyricsTimed : null,
+      source: lyrics.lyricsSource || null,
+      appleMusicId: lyrics.appleMusicId || "",
+      hasTimedLyrics: !!lyrics.hasTimedLyrics,
+      updatedAt: lyrics.updatedAt || null,
+    } : null,
+  };
+});
+
+exports.upsertSongLyrics = onCall({ cors: true }, async (request) => {
+  const uid = requireAuth(request);
+  const data = request.data || {};
+  const title = (data.title || "").trim();
+  const artist = (data.artist || "Unknown").trim() || "Unknown";
+  const explicitSongId = (data.songId || "").trim();
+  if (!explicitSongId && !title) {
+    throw new HttpsError("invalid-argument", "songId or title is required.");
+  }
+
+  let songId = explicitSongId;
+  if (!songId) {
+    const songResult = await ensureSongAdmin({
+      title,
+      artist,
+      artworkUrl: data.artworkUrl || "",
+      appleMusicId: data.appleMusicId || "",
+      verifyMeta: false,
+      verifiedBy: data.verifiedBy || uid,
+    });
+    songId = songResult?.songId || buildSongKey(title, artist);
+  }
+
+  if (title) {
+    await ensureSongAdmin({
+      title,
+      artist,
+      artworkUrl: data.artworkUrl || "",
+      appleMusicId: data.appleMusicId || "",
+      verifyMeta: {
+        lyricsSource: data.lyricsSource || null,
+        lyricsTimed: Array.isArray(data.lyricsTimed) && data.lyricsTimed.length > 0,
+      },
+      verifiedBy: data.verifiedBy || uid,
+    });
+  }
+
+  const lyricResult = await ensureSongLyricsAdmin({
+    songId,
+    title,
+    artist,
+    lyrics: data.lyrics || "",
+    lyricsTimed: data.lyricsTimed || null,
+    lyricsSource: data.lyricsSource || "manual",
+    appleMusicId: data.appleMusicId || "",
+    language: data.language || "en",
+    verifiedBy: data.verifiedBy || uid,
+  });
+
+  return {
+    songId,
+    hasLyrics: !!lyricResult?.hasLyrics,
+    hasTimedLyrics: !!lyricResult?.hasTimedLyrics,
+  };
+});
+
 exports.appleMusicLyrics = onCall(
   { cors: true, secrets: [APPLE_MUSIC_TEAM_ID, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_PRIVATE_KEY] },
   async (request) => {
     checkRateLimit(request.rawRequest, "apple_music");
     const uid = requireAuth(request);
-    const entitlements = await resolveUserEntitlements(uid);
     enforceAppCheckIfEnabled(request, "apple_music_lyrics");
-    const title = request.data?.title || "";
-    const artist = request.data?.artist || "";
+    const title = (request.data?.title || "").trim();
+    const artist = (request.data?.artist || "").trim();
+    const safeArtist = artist || "Unknown";
+    const requestedSongId = (request.data?.songId || "").trim();
+    const canonicalSongId = requestedSongId || buildSongKey(title, safeArtist);
     const musicUserToken = (request.data?.musicUserToken || "").trim();
     ensureString(title, "title");
     const storefront = request.data?.storefront || "us";
-    const term = `${title} ${artist}`.trim();
+    const term = `${title} ${safeArtist}`.trim();
     if (!term) throw new HttpsError("invalid-argument", "Missing title/artist.");
 
+    const cachedLyricsSnap = canonicalSongId
+      ? await admin.firestore().collection("song_lyrics").doc(canonicalSongId).get()
+      : null;
+    if (cachedLyricsSnap?.exists) {
+      const cached = cachedLyricsSnap.data() || {};
+      const cachedTimed = normalizeTimedLyrics(cached.lyricsTimed);
+      const cachedText = normalizeLyricsText(cached.lyrics || "");
+      if (cachedTimed.length || cachedText) {
+        return {
+          found: true,
+          cached: true,
+          songId: cached.appleMusicId || "",
+          title: cached.title || title,
+          artist: cached.artist || safeArtist,
+          timedLyrics: cachedTimed,
+          lyrics: cachedText,
+        };
+      }
+    }
+
+    const entitlements = await resolveUserEntitlements(uid);
     const token = getAppleMusicToken();
     const headers = { Authorization: `Bearer ${token}` };
     if (musicUserToken) {
@@ -1723,14 +1884,46 @@ exports.appleMusicLyrics = onCall(
     if (!song?.id) {
       return { found: false, message: "No Apple Music match." };
     }
-    const songId = song.id;
+    const appleSongId = song.id;
+    const resolvedTitle = song.attributes?.name || title;
+    const resolvedArtist = song.attributes?.artistName || safeArtist;
+
+    const songResult = await ensureSongAdmin({
+      title: resolvedTitle,
+      artist: resolvedArtist,
+      appleMusicId: appleSongId,
+      verifyMeta: false,
+      verifiedBy: "apple_music",
+    });
+    const resolvedSongId = songResult?.songId || canonicalSongId || buildSongKey(resolvedTitle, resolvedArtist);
+    const appleTrack = await ensureTrackAdmin({
+      songId: resolvedSongId,
+      source: "apple",
+      mediaUrl: "",
+      appleMusicId: appleSongId,
+      label: "Apple Music",
+      duration: null,
+      audioOnly: true,
+      backingOnly: true,
+      addedBy: "apple_music",
+    });
+    if (appleTrack?.trackId) {
+      await admin.firestore().collection("songs").doc(resolvedSongId).set(
+        {
+          primaryTrackId: appleTrack.trackId,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+
     await reserveOrganizationUsageUnits({
       orgId: entitlements.orgId,
       entitlements,
       meterId: "apple_music_request",
       units: 1,
     });
-    const lyricsUrl = `https://api.music.apple.com/v1/catalog/${storefront}/songs/${songId}/lyrics`;
+    const lyricsUrl = `https://api.music.apple.com/v1/catalog/${storefront}/songs/${appleSongId}/lyrics`;
     const lyricsRes = await fetch(lyricsUrl, {
       headers,
     });
@@ -1741,9 +1934,9 @@ exports.appleMusicLyrics = onCall(
       if (lyricsRes.status === 400 && text.includes("\"code\":\"40012\"")) {
         return {
           found: true,
-          songId,
-          title: song.attributes?.name || title,
-          artist: song.attributes?.artistName || artist,
+          songId: appleSongId,
+          title: resolvedTitle,
+          artist: resolvedArtist,
           timedLyrics: [],
           lyrics: "",
           needsUserToken: !musicUserToken,
@@ -1757,11 +1950,34 @@ exports.appleMusicLyrics = onCall(
     const ttml = attrs.ttml || "";
     const plainLyrics = attrs.lyrics || "";
     const timedLyrics = parseTtml(ttml);
+
+    const lyricResult = await ensureSongLyricsAdmin({
+      songId: resolvedSongId,
+      title: resolvedTitle,
+      artist: resolvedArtist,
+      lyrics: plainLyrics,
+      lyricsTimed: timedLyrics,
+      lyricsSource: (timedLyrics.length || plainLyrics) ? "apple" : "",
+      appleMusicId: appleSongId,
+      language: attrs.language || "en",
+      verifiedBy: "apple_music",
+    });
+    if (lyricResult?.hasLyrics) {
+      await admin.firestore().collection("songs").doc(resolvedSongId).set(
+        {
+          primaryLyricsId: resolvedSongId,
+          canonicalLyricsUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+
     return {
       found: true,
-      songId,
-      title: song.attributes?.name || title,
-      artist: song.attributes?.artistName || artist,
+      songId: appleSongId,
+      title: resolvedTitle,
+      artist: resolvedArtist,
       timedLyrics,
       lyrics: plainLyrics,
     };
@@ -1776,7 +1992,14 @@ exports.autoAppleLyrics = onDocumentCreated(
   async (event) => {
     const data = event.data?.data();
     if (!data) return;
-    if (data.lyricsTimed?.length || data.lyrics) return;
+    if (data.lyricsTimed?.length || data.lyrics) {
+      try {
+        await cacheSongLyricsFromQueueDoc(data, "auto_queue_seed");
+      } catch (err) {
+        console.warn("autoAppleLyrics queue seed cache failed", err?.message || err);
+      }
+      return;
+    }
     if (data.lyricsSource) return;
     const rawTitle = data.songTitle || data.title || "";
     const rawArtist = data.artist || "";
@@ -1834,6 +2057,15 @@ exports.autoAppleLyrics = onDocumentCreated(
         },
         { merge: true }
       );
+      await cacheSongLyricsFromQueueDoc({
+        ...data,
+        songTitle: data.songTitle || cleanedTitle,
+        artist: data.artist || cleanedArtist || "Unknown",
+        lyrics: plainLyrics || "",
+        lyricsTimed: timedLyrics || null,
+        appleMusicId: songId,
+        lyricsSource: timedLyrics?.length ? "apple" : plainLyrics ? "apple" : "",
+      }, "auto_apple");
     } catch (err) {
       console.error("autoAppleLyrics failed", err?.message || err);
     }
@@ -2000,6 +2232,45 @@ exports.ensureOrganization = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.bootstrapOnboardingWorkspace = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "bootstrap_onboarding_workspace", { perMinute: 20, perHour: 200 });
+  const { uid } = await requireCapability(request, "workspace.onboarding");
+  enforceAppCheckIfEnabled(request, "bootstrap_onboarding_workspace");
+  const orgName = typeof request.data?.orgName === "string" ? request.data.orgName : "";
+  const hostName = normalizeOptionalName(request.data?.hostName, "Host");
+  const logoUrl = typeof request.data?.logoUrl === "string"
+    ? request.data.logoUrl.trim().slice(0, 2048)
+    : "";
+  const planPreference = getPlanDefinition(request.data?.planId || "")
+    ? request.data.planId
+    : null;
+  const ensured = await ensureOrganizationForUser({ uid, orgName });
+  const orgRef = orgsCollection().doc(ensured.orgId);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  await orgRef.set({
+    name: normalizeOrgName(orgName, uid),
+    onboardingDefaults: {
+      hostName,
+      logoUrl: logoUrl || null,
+      planPreference,
+    },
+    onboarding: {
+      initializedAt: now,
+      initializedBy: uid,
+      updatedAt: now,
+      updatedBy: uid,
+    },
+    updatedAt: now,
+  }, { merge: true });
+  const entitlements = await resolveUserEntitlements(uid);
+  return {
+    ok: true,
+    orgId: ensured.orgId,
+    role: ensured.role,
+    entitlements,
+  };
+});
+
 exports.getMyEntitlements = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "get_my_entitlements", { perMinute: 30, perHour: 300 });
   const uid = requireAuth(request);
@@ -2027,7 +2298,7 @@ exports.getMyUsageSummary = onCall({ cors: true }, async (request) => {
 
 exports.getMyUsageInvoiceDraft = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "get_my_usage_invoice_draft", { perMinute: 20, perHour: 180 });
-  const uid = requireAuth(request);
+  const { entitlements } = await requireCapability(request, "billing.invoice_drafts");
   enforceAppCheckIfEnabled(request, "get_my_usage_invoice_draft");
   const requestedPeriod = normalizeUsagePeriodKey(request.data?.period || "");
   if (!requestedPeriod) {
@@ -2038,7 +2309,6 @@ exports.getMyUsageInvoiceDraft = onCall({ cors: true }, async (request) => {
   const customerName = typeof request.data?.customerName === "string"
     ? request.data.customerName.trim().slice(0, 160)
     : "";
-  const entitlements = await resolveUserEntitlements(uid);
   const role = String(entitlements?.role || "").toLowerCase();
   if (!["owner", "admin"].includes(role)) {
     throw new HttpsError("permission-denied", "Only organization owners/admins can generate invoice drafts.");
@@ -2069,7 +2339,7 @@ exports.getMyUsageInvoiceDraft = onCall({ cors: true }, async (request) => {
 
 exports.saveMyUsageInvoiceDraft = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "save_my_usage_invoice_draft", { perMinute: 20, perHour: 180 });
-  const uid = requireAuth(request);
+  const { uid, entitlements } = await requireCapability(request, "billing.invoice_drafts");
   enforceAppCheckIfEnabled(request, "save_my_usage_invoice_draft");
   const requestedPeriod = normalizeUsagePeriodKey(request.data?.period || "");
   if (!requestedPeriod) {
@@ -2085,7 +2355,6 @@ exports.saveMyUsageInvoiceDraft = onCall({ cors: true }, async (request) => {
     ? request.data.notes.trim().slice(0, 5000)
     : "";
 
-  const entitlements = await resolveUserEntitlements(uid);
   const role = String(entitlements?.role || "").toLowerCase();
   if (!["owner", "admin"].includes(role)) {
     throw new HttpsError("permission-denied", "Only organization owners/admins can save invoice drafts.");
@@ -2130,6 +2399,7 @@ exports.saveMyUsageInvoiceDraft = onCall({ cors: true }, async (request) => {
     taxRatePercent: Number(taxRatePercent || 0),
     lineItemCount: Array.isArray(invoiceDraft.lineItems) ? invoiceDraft.lineItems.length : 0,
     totals: invoiceDraft.totals || { subtotalCents: 0, taxCents: 0, totalCents: 0 },
+    rateCardSnapshot: invoiceDraft.rateCardSnapshot || null,
     invoiceDraft,
     createdAt: now,
     updatedAt: now,
@@ -2146,9 +2416,8 @@ exports.saveMyUsageInvoiceDraft = onCall({ cors: true }, async (request) => {
 
 exports.listMyUsageInvoices = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "list_my_usage_invoices", { perMinute: 30, perHour: 240 });
-  const uid = requireAuth(request);
+  const { entitlements } = await requireCapability(request, "billing.invoice_drafts");
   enforceAppCheckIfEnabled(request, "list_my_usage_invoices");
-  const entitlements = await resolveUserEntitlements(uid);
   const role = String(entitlements?.role || "").toLowerCase();
   if (!["owner", "admin"].includes(role)) {
     throw new HttpsError("permission-denied", "Only organization owners/admins can view invoice history.");
