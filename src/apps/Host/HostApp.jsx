@@ -33,7 +33,8 @@ import {
     callFunction,
     ensureOrganization,
     getMyEntitlements,
-    getMyUsageSummary
+    getMyUsageSummary,
+    getMyUsageInvoiceDraft
 } from '../../lib/firebase';
 import { ASSETS, AVATARS, APP_ID } from '../../lib/assets';
 import { playSfx, setSfxMasterVolume, stopAllSfx } from '../../lib/utils';
@@ -246,6 +247,28 @@ const estimateStorageMonthly = (bytes = 0) => {
 const formatUsdFromCents = (cents = 0) => {
     const amount = Number(cents || 0) / 100;
     return `$${amount.toFixed(2)}`;
+};
+
+const getCurrentUsagePeriodKey = () => {
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+    return `${y}${m}`;
+};
+
+const buildRecentUsagePeriods = (count = 6) => {
+    const periods = [];
+    const cursor = new Date();
+    cursor.setUTCDate(1);
+    for (let i = 0; i < count; i += 1) {
+        const y = cursor.getUTCFullYear();
+        const m = String(cursor.getUTCMonth() + 1).padStart(2, '0');
+        const key = `${y}${m}`;
+        const label = cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+        periods.push({ key, label });
+        cursor.setUTCMonth(cursor.getUTCMonth() - 1);
+    }
+    return periods;
 };
 
 const toMs = (t) => {
@@ -2437,12 +2460,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [subscriptionActionLoading, setSubscriptionActionLoading] = useState('');
     const [usageSummary, setUsageSummary] = useState({
         orgId: '',
-        period: '',
+        period: getCurrentUsagePeriodKey(),
         meters: {},
         totals: { estimatedOverageCents: 0 },
         loading: false,
         error: ''
     });
+    const [selectedUsagePeriod, setSelectedUsagePeriod] = useState(getCurrentUsagePeriodKey());
+    const [invoiceDraft, setInvoiceDraft] = useState(null);
+    const [invoiceDraftLoading, setInvoiceDraftLoading] = useState(false);
+    const [invoiceCustomerName, setInvoiceCustomerName] = useState('');
+    const [invoiceIncludeBasePlan, setInvoiceIncludeBasePlan] = useState(false);
+    const [invoiceTaxRatePercent, setInvoiceTaxRatePercent] = useState('0');
     const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
     const [onboardingStep, setOnboardingStep] = useState(0);
     const [onboardingBusy, setOnboardingBusy] = useState(false);
@@ -2477,6 +2506,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const meters = Object.values(usageSummary?.meters || {});
         return meters.sort((a, b) => String(a?.label || '').localeCompare(String(b?.label || '')));
     }, [usageSummary?.meters]);
+    const usagePeriodOptions = useMemo(() => buildRecentUsagePeriods(12), []);
     const aiUsageMeter = useMemo(() => usageSummary?.meters?.ai_generate_content || null, [usageSummary?.meters]);
     const usageHardLimitHits = useMemo(() => {
         return usageMeters.filter(meter => !!meter?.hardLimitReached);
@@ -2525,7 +2555,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }));
             setUsageSummary({
                 orgId: '',
-                period: '',
+                period: selectedUsagePeriod,
                 meters: {},
                 totals: { estimatedOverageCents: 0 },
                 loading: false,
@@ -2539,7 +2569,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             try {
                 await ensureOrganization('');
                 const entitlements = await getMyEntitlements();
-                const usage = await getMyUsageSummary();
+                const usage = await getMyUsageSummary(selectedUsagePeriod);
                 if (cancelled) return;
                 setOrgContext({
                     orgId: entitlements?.orgId || '',
@@ -2569,7 +2599,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
         })();
         return () => { cancelled = true; };
-    }, [uid]);
+    }, [uid, selectedUsagePeriod]);
 
     useEffect(() => {
         if (!onboardingWorkspaceName.trim()) {
@@ -2583,6 +2613,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setOnboardingLogoUrl((logoUrl || ASSETS.logo || '').trim() || ASSETS.logo);
         }
     }, [logoUrl, showOnboardingWizard]);
+
+    useEffect(() => {
+        if ((invoiceCustomerName || '').trim()) return;
+        const fallback = (hostName || '').trim() || (orgContext?.orgId || '').trim() || 'Workspace Customer';
+        setInvoiceCustomerName(fallback);
+    }, [hostName, orgContext?.orgId, invoiceCustomerName]);
+
+    useEffect(() => {
+        setInvoiceDraft(null);
+    }, [selectedUsagePeriod, invoiceIncludeBasePlan, invoiceTaxRatePercent, invoiceCustomerName]);
 
     useEffect(() => {
         try {
@@ -4225,6 +4265,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         a.click();
         URL.revokeObjectURL(url);
     };
+    const downloadTextFile = (filename, payload, mimeType = 'text/plain') => {
+        const blob = new Blob([String(payload || '')], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
     const downloadRoomData = async () => {
         if (!roomCode) return;
         setExportingRoom(true);
@@ -4449,13 +4498,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return null;
         }
     };
-    const refreshUsageSummary = async (showToast = false) => {
+    const refreshUsageSummary = async (showToast = false, periodOverride = '') => {
         setUsageSummary(prev => ({ ...prev, loading: true, error: '' }));
         try {
-            const usage = await getMyUsageSummary();
+            const targetPeriod = String(periodOverride || selectedUsagePeriod || '').trim();
+            const usage = await getMyUsageSummary(targetPeriod);
             setUsageSummary({
                 orgId: usage?.orgId || orgContext?.orgId || '',
-                period: usage?.period || '',
+                period: usage?.period || targetPeriod || '',
                 meters: usage?.meters || {},
                 totals: usage?.totals || { estimatedOverageCents: 0 },
                 loading: false,
@@ -4469,6 +4519,49 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (showToast) toast('Could not refresh usage summary');
             return null;
         }
+    };
+    const generateUsageInvoiceDraft = async (showToast = false) => {
+        setInvoiceDraftLoading(true);
+        try {
+            const targetPeriod = String(selectedUsagePeriod || usageSummary?.period || '').trim();
+            const taxRatePercent = Math.max(0, Math.min(100, Number(invoiceTaxRatePercent || 0)));
+            const draft = await getMyUsageInvoiceDraft({
+                period: targetPeriod,
+                includeBasePlan: !!invoiceIncludeBasePlan,
+                taxRatePercent,
+                customerName: (invoiceCustomerName || '').trim()
+            });
+            setInvoiceDraft(draft || null);
+            if (showToast) toast('Invoice draft generated');
+            return draft;
+        } catch (e) {
+            console.error('Invoice draft generation failed', e);
+            toast('Could not generate invoice draft');
+            return null;
+        } finally {
+            setInvoiceDraftLoading(false);
+        }
+    };
+    const downloadQbseCsv = (kind = 'line_items') => {
+        if (!invoiceDraft?.quickbooks?.selfEmployed) {
+            toast('Generate invoice draft first');
+            return;
+        }
+        const qb = invoiceDraft.quickbooks.selfEmployed;
+        const period = String(invoiceDraft?.period || selectedUsagePeriod || getCurrentUsagePeriodKey());
+        if (kind === 'transactions') {
+            downloadTextFile(
+                `bross-qbse-transactions-${period}.csv`,
+                qb.qbseTransactionCsv || '',
+                'text/csv;charset=utf-8'
+            );
+            return;
+        }
+        downloadTextFile(
+            `bross-invoice-lines-${period}.csv`,
+            qb.lineItemCsv || '',
+            'text/csv;charset=utf-8'
+        );
     };
     const openSubscriptionCheckout = async (planId, orgNameOverride = '') => {
         if (subscriptionActionLoading) return;
@@ -4538,13 +4631,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         getMyEntitlements()
             .then((entitlements) => {
                 syncOrgContextFromEntitlements(entitlements);
-                return getMyUsageSummary();
+                return getMyUsageSummary(selectedUsagePeriod);
             })
             .then((usage) => {
                 if (!usage) return;
                 setUsageSummary({
                     orgId: usage?.orgId || orgContext?.orgId || '',
-                    period: usage?.period || '',
+                    period: usage?.period || selectedUsagePeriod || '',
                     meters: usage?.meters || {},
                     totals: usage?.totals || { estimatedOverageCents: 0 },
                     loading: false,
@@ -6120,6 +6213,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <div className="text-xs uppercase tracking-widest text-zinc-500">Usage ({usagePeriodLabel})</div>
                                         {usageSummary?.loading && <div className="text-[10px] uppercase tracking-widest text-zinc-500">Refreshing...</div>}
                                     </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        <div>
+                                            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Billing Period</div>
+                                            <select
+                                                value={selectedUsagePeriod}
+                                                onChange={(e) => setSelectedUsagePeriod(e.target.value)}
+                                                className={STYLES.input}
+                                            >
+                                                {usagePeriodOptions.map((option) => (
+                                                    <option key={`usage-period-${option.key}`} value={option.key}>
+                                                        {option.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Invoice Customer</div>
+                                            <input
+                                                value={invoiceCustomerName}
+                                                onChange={(e) => setInvoiceCustomerName(e.target.value)}
+                                                className={STYLES.input}
+                                                placeholder="Customer / client name"
+                                            />
+                                        </div>
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                         <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
                                             <div className="text-xs uppercase tracking-widest text-zinc-500">Overage Estimate</div>
@@ -6183,6 +6301,85 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     {usageSummary?.error && (
                                         <div className="text-sm text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2">
                                             {usageSummary.error}
+                                        </div>
+                                    )}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                        <label className="flex items-center gap-2 text-xs text-zinc-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={invoiceIncludeBasePlan}
+                                                onChange={(e) => setInvoiceIncludeBasePlan(e.target.checked)}
+                                                className="accent-[#00C4D9]"
+                                            />
+                                            Include base plan line item
+                                        </label>
+                                        <div>
+                                            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Tax Rate %</div>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                step="0.01"
+                                                value={invoiceTaxRatePercent}
+                                                onChange={(e) => setInvoiceTaxRatePercent(e.target.value)}
+                                                className={STYLES.input}
+                                                placeholder="0"
+                                            />
+                                        </div>
+                                        <div className="flex items-end">
+                                            <button
+                                                onClick={() => generateUsageInvoiceDraft(true)}
+                                                disabled={invoiceDraftLoading}
+                                                className={`${STYLES.btnStd} ${STYLES.btnPrimary} w-full ${invoiceDraftLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                            >
+                                                {invoiceDraftLoading ? 'Generating draft...' : 'Generate Invoice Draft'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {invoiceDraft && (
+                                        <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3 space-y-2">
+                                            <div className="text-xs uppercase tracking-widest text-zinc-500">Invoice Draft ({invoiceDraft.periodLabel || invoiceDraft.period})</div>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                                                <div className="text-zinc-300">Invoice ID: <span className="text-white font-mono">{invoiceDraft.invoiceId}</span></div>
+                                                <div className="text-zinc-300">Line Items: <span className="text-white">{Number(invoiceDraft?.lineItems?.length || 0)}</span></div>
+                                                <div className="text-zinc-300">Total: <span className="text-white">{formatUsdFromCents(invoiceDraft?.totals?.totalCents || 0)}</span></div>
+                                            </div>
+                                            <div className="max-h-40 overflow-y-auto custom-scrollbar border border-zinc-800 rounded">
+                                                {(invoiceDraft?.lineItems || []).length === 0 && (
+                                                    <div className="px-3 py-2 text-xs text-zinc-500">No billable line items for this period.</div>
+                                                )}
+                                                {(invoiceDraft?.lineItems || []).map((line) => (
+                                                    <div key={`invoice-line-${line.id}`} className="px-3 py-2 text-xs border-b border-zinc-800 flex items-center justify-between gap-2">
+                                                        <div className="text-zinc-300 truncate">{line.description}</div>
+                                                        <div className="text-zinc-100 whitespace-nowrap">
+                                                            {Number(line.quantity || 0).toLocaleString()} x {formatUsdFromCents(line.unitPriceCents || 0)} = {formatUsdFromCents(line.amountCents || 0)}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    onClick={() => downloadQbseCsv('line_items')}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
+                                                >
+                                                    Download Line-Item CSV
+                                                </button>
+                                                <button
+                                                    onClick={() => downloadQbseCsv('transactions')}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                                >
+                                                    Download QBSE Transaction CSV
+                                                </button>
+                                                <button
+                                                    onClick={() => downloadJson(`bross-invoice-draft-${invoiceDraft?.period || selectedUsagePeriod}.json`, invoiceDraft)}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                                >
+                                                    Download Draft JSON
+                                                </button>
+                                            </div>
+                                            <div className="text-[11px] text-zinc-500">
+                                                QuickBooks Self-Employed flow: create invoice manually from Line-Item CSV, then reconcile payments with Transaction CSV import.
+                                            </div>
                                         </div>
                                     )}
                                 </div>

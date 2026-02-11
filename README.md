@@ -8,6 +8,7 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 - Technical risks and priorities: `docs/TECH_RISKS_PRIORITIES.md`
 - Billing notes (web Stripe + iOS IAP foundation): `docs/billing-iap.md`
 - VIP SMS auth runbook: `docs/VIP_SMS_AUTH_RUNBOOK.md`
+- QuickBooks Self-Employed invoicing flow: `docs/QUICKBOOKS_SELF_EMPLOYED_INVOICE_FLOW.md`
 
 ## Development
 

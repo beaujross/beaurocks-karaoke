@@ -225,8 +225,14 @@ const getMyEntitlements = async () => {
   return data || null;
 };
 
-const getMyUsageSummary = async () => {
-  const data = await callFunction("getMyUsageSummary");
+const getMyUsageSummary = async (period = "") => {
+  const payload = period ? { period } : {};
+  const data = await callFunction("getMyUsageSummary", payload);
+  return data || null;
+};
+
+const getMyUsageInvoiceDraft = async (opts = {}) => {
+  const data = await callFunction("getMyUsageInvoiceDraft", opts || {});
   return data || null;
 };
 
@@ -430,6 +436,7 @@ export {
   ensureOrganization,
   getMyEntitlements,
   getMyUsageSummary,
+  getMyUsageInvoiceDraft,
   auth, 
   db, 
   rtdb, 

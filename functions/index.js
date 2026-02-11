@@ -365,6 +365,15 @@ const getUsagePeriodKey = (date = new Date()) => {
   return `${year}${month}`;
 };
 
+const normalizeUsagePeriodKey = (value = "") => {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return getUsagePeriodKey();
+  if (!/^\d{6}$/.test(trimmed)) return "";
+  const month = Number(trimmed.slice(4, 6));
+  if (month < 1 || month > 12) return "";
+  return trimmed;
+};
+
 const getPeriodRangeForKey = (periodKey = "") => {
   const safe = String(periodKey || "");
   if (!/^\d{6}$/.test(safe)) {
@@ -498,6 +507,163 @@ const readOrganizationUsageSummary = async ({
     },
     generatedAtMs: nowMs(),
     periodRange: getPeriodRangeForKey(periodKey),
+  };
+};
+
+const centsToDollarString = (cents = 0) => (toWholeNumber(cents, 0) / 100).toFixed(2);
+
+const csvEscape = (value = "") => {
+  const s = String(value ?? "");
+  if (s.includes(",") || s.includes("\"") || s.includes("\n")) {
+    return `"${s.replace(/"/g, "\"\"")}"`;
+  }
+  return s;
+};
+
+const formatPeriodLabel = (periodKey = "") => {
+  if (!/^\d{6}$/.test(String(periodKey || ""))) return "Current Period";
+  const year = Number(periodKey.slice(0, 4));
+  const monthIndex = Number(periodKey.slice(4, 6)) - 1;
+  const date = new Date(Date.UTC(year, monthIndex, 1));
+  return date.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+};
+
+const buildUsageInvoiceDraft = ({
+  orgId = "",
+  orgName = "",
+  entitlements = null,
+  usageSummary = null,
+  periodKey = getUsagePeriodKey(),
+  includeBasePlan = false,
+  taxRatePercent = 0,
+  customerName = "",
+}) => {
+  const safeEntitlements = entitlements || {};
+  const safeUsage = usageSummary || {
+    meters: {},
+    period: periodKey,
+    totals: { estimatedOverageCents: 0 },
+    periodRange: getPeriodRangeForKey(periodKey),
+  };
+  const period = safeUsage.period || periodKey;
+  const periodLabel = formatPeriodLabel(period);
+  const plan = getPlanDefinition(safeEntitlements.planId) || PLAN_DEFINITIONS.free;
+  const issueDateMs = safeUsage?.periodRange?.endMs || nowMs();
+  const dueDateMs = issueDateMs + (14 * 24 * 60 * 60 * 1000);
+  const invoiceId = `INV-${sanitizeOrgToken(orgId).toUpperCase().slice(-12) || "ORG"}-${period}`;
+  const lineItems = [];
+  const billingEntity = String(customerName || "").trim() || String(orgName || "").trim() || orgId || "Customer";
+
+  if (includeBasePlan && isEntitledStatus(safeEntitlements.status) && plan.amountCents > 0) {
+    lineItems.push({
+      id: `base_plan_${plan.id}`,
+      type: "base_plan",
+      description: `${plan.name} subscription (${plan.interval || "period"})`,
+      quantity: 1,
+      unit: "plan",
+      unitPriceCents: toWholeNumber(plan.amountCents, 0),
+      amountCents: toWholeNumber(plan.amountCents, 0),
+      period,
+    });
+  }
+
+  const meters = Object.values(safeUsage.meters || {}).sort((a, b) =>
+    String(a?.label || "").localeCompare(String(b?.label || ""))
+  );
+  meters.forEach((meter) => {
+    const overageUnits = toWholeNumber(meter?.overageUnits, 0);
+    const overageRateCents = toWholeNumber(meter?.overageRateCents, 0);
+    if (!overageUnits || !overageRateCents) return;
+    lineItems.push({
+      id: `overage_${meter.meterId}`,
+      type: "overage",
+      meterId: meter.meterId,
+      description: `${meter.label} overage (${periodLabel})`,
+      quantity: overageUnits,
+      unit: meter.unit || "unit",
+      unitPriceCents: overageRateCents,
+      amountCents: overageUnits * overageRateCents,
+      period,
+    });
+  });
+
+  const subtotalCents = lineItems.reduce((sum, line) => sum + toWholeNumber(line.amountCents, 0), 0);
+  const safeTaxRatePercent = Math.max(0, Math.min(100, Number(taxRatePercent || 0)));
+  const taxCents = Math.round(subtotalCents * (safeTaxRatePercent / 100));
+  const totalCents = subtotalCents + taxCents;
+
+  const qbseTransactionCsvRows = [
+    ["Date", "Description", "Amount"],
+    ...lineItems.map((line) => ([
+      new Date(issueDateMs).toISOString().slice(0, 10),
+      `${billingEntity} - ${line.description}`,
+      centsToDollarString(line.amountCents),
+    ])),
+  ];
+  const qbseTransactionCsv = qbseTransactionCsvRows
+    .map((row) => row.map((cell) => csvEscape(cell)).join(","))
+    .join("\n");
+
+  const lineItemCsvRows = [
+    ["InvoiceNumber", "InvoiceDate", "DueDate", "Customer", "Description", "Qty", "UnitPrice", "Amount"],
+    ...lineItems.map((line) => ([
+      invoiceId,
+      new Date(issueDateMs).toISOString().slice(0, 10),
+      new Date(dueDateMs).toISOString().slice(0, 10),
+      billingEntity,
+      line.description,
+      String(line.quantity || 0),
+      centsToDollarString(line.unitPriceCents || 0),
+      centsToDollarString(line.amountCents || 0),
+    ])),
+  ];
+  const lineItemCsv = lineItemCsvRows
+    .map((row) => row.map((cell) => csvEscape(cell)).join(","))
+    .join("\n");
+
+  return {
+    invoiceId,
+    orgId,
+    orgName: orgName || orgId,
+    customerName: billingEntity,
+    period,
+    periodLabel,
+    issueDateMs,
+    dueDateMs,
+    planId: safeEntitlements.planId || "free",
+    planStatus: safeEntitlements.status || "inactive",
+    includeBasePlan: !!includeBasePlan,
+    taxRatePercent: safeTaxRatePercent,
+    lineItems,
+    totals: {
+      subtotalCents,
+      taxCents,
+      totalCents,
+    },
+    usageSummary: safeUsage,
+    quickbooks: {
+      selfEmployed: {
+        apiSupported: false,
+        suggestedFlow: "Use line-item CSV for manual invoice entry and transaction CSV for income import reconciliation.",
+        lineItemCsv,
+        qbseTransactionCsv,
+      },
+      online: {
+        apiSupported: true,
+        suggestedFlow: "Map lineItems to QuickBooks Online Invoice API SalesItemLineDetail entries.",
+        invoicePayloadCandidate: {
+          customerDisplayName: billingEntity,
+          txnDate: new Date(issueDateMs).toISOString().slice(0, 10),
+          dueDate: new Date(dueDateMs).toISOString().slice(0, 10),
+          lineItems: lineItems.map((line) => ({
+            description: line.description,
+            qty: line.quantity || 0,
+            unitPrice: Number(centsToDollarString(line.unitPriceCents || 0)),
+            amount: Number(centsToDollarString(line.amountCents || 0)),
+          })),
+        },
+      },
+    },
   };
 };
 
@@ -1840,12 +2006,59 @@ exports.getMyUsageSummary = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "get_my_usage_summary", { perMinute: 30, perHour: 300 });
   const uid = requireAuth(request);
   enforceAppCheckIfEnabled(request, "get_my_usage_summary");
+  const requestedPeriod = normalizeUsagePeriodKey(request.data?.period || "");
+  if (!requestedPeriod) {
+    throw new HttpsError("invalid-argument", "period must be in YYYYMM format.");
+  }
   const entitlements = await resolveUserEntitlements(uid);
   const summary = await readOrganizationUsageSummary({
     orgId: entitlements.orgId,
     entitlements,
+    periodKey: requestedPeriod,
   });
   return summary;
+});
+
+exports.getMyUsageInvoiceDraft = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "get_my_usage_invoice_draft", { perMinute: 20, perHour: 180 });
+  const uid = requireAuth(request);
+  enforceAppCheckIfEnabled(request, "get_my_usage_invoice_draft");
+  const requestedPeriod = normalizeUsagePeriodKey(request.data?.period || "");
+  if (!requestedPeriod) {
+    throw new HttpsError("invalid-argument", "period must be in YYYYMM format.");
+  }
+  const includeBasePlan = !!request.data?.includeBasePlan;
+  const taxRatePercent = clampNumber(request.data?.taxRatePercent ?? 0, 0, 100, 0);
+  const customerName = typeof request.data?.customerName === "string"
+    ? request.data.customerName.trim().slice(0, 160)
+    : "";
+  const entitlements = await resolveUserEntitlements(uid);
+  const role = String(entitlements?.role || "").toLowerCase();
+  if (!["owner", "admin"].includes(role)) {
+    throw new HttpsError("permission-denied", "Only organization owners/admins can generate invoice drafts.");
+  }
+  const orgId = entitlements?.orgId || "";
+  if (!orgId) {
+    throw new HttpsError("failed-precondition", "Organization is not initialized.");
+  }
+  const orgSnap = await orgsCollection().doc(orgId).get();
+  const orgName = String(orgSnap.data()?.name || "").trim() || orgId;
+  const usageSummary = await readOrganizationUsageSummary({
+    orgId,
+    entitlements,
+    periodKey: requestedPeriod,
+  });
+  const invoice = buildUsageInvoiceDraft({
+    orgId,
+    orgName,
+    entitlements,
+    usageSummary,
+    periodKey: requestedPeriod,
+    includeBasePlan,
+    taxRatePercent,
+    customerName,
+  });
+  return invoice;
 });
 
 exports.awardRoomPoints = onCall({ cors: true }, async (request) => {

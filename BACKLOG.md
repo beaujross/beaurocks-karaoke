@@ -35,6 +35,7 @@ Last updated: 2026-02-11
 - Expanded VIP cosmetics: unlock visuals and badge system polish.
 
 ## Recently Completed
+- Invoice draft export foundation: added period-based invoice draft generation (`getMyUsageInvoiceDraft`) with overage line items, totals/tax support, and QuickBooks Self-Employed CSV outputs.
 - Org usage metering foundation: added per-org monthly usage ledger + hard limit enforcement for AI generations (`ai_generate_content`) and surfaced usage/overage summary in Host Billing.
 - Usage metering expansion: added per-org YouTube Data API and Apple Music API request meters with plan-based quotas/limits and detailed meter rows in Host Billing.
 - Host feature guardrails: added selector-based UI feature checklist with one-click verification action and command palette entry to catch missing controls after refactors.
