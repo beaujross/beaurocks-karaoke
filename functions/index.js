@@ -667,6 +667,12 @@ const buildUsageInvoiceDraft = ({
   };
 };
 
+const sanitizeInvoiceStatus = (value = "") => {
+  const safe = String(value || "").trim().toLowerCase();
+  if (["draft", "sent", "paid", "void"].includes(safe)) return safe;
+  return "draft";
+};
+
 const reserveOrganizationUsageUnits = async ({
   orgId = "",
   entitlements = null,
@@ -2059,6 +2065,135 @@ exports.getMyUsageInvoiceDraft = onCall({ cors: true }, async (request) => {
     customerName,
   });
   return invoice;
+});
+
+exports.saveMyUsageInvoiceDraft = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "save_my_usage_invoice_draft", { perMinute: 20, perHour: 180 });
+  const uid = requireAuth(request);
+  enforceAppCheckIfEnabled(request, "save_my_usage_invoice_draft");
+  const requestedPeriod = normalizeUsagePeriodKey(request.data?.period || "");
+  if (!requestedPeriod) {
+    throw new HttpsError("invalid-argument", "period must be in YYYYMM format.");
+  }
+  const includeBasePlan = !!request.data?.includeBasePlan;
+  const taxRatePercent = clampNumber(request.data?.taxRatePercent ?? 0, 0, 100, 0);
+  const customerName = typeof request.data?.customerName === "string"
+    ? request.data.customerName.trim().slice(0, 160)
+    : "";
+  const status = sanitizeInvoiceStatus(request.data?.status || "draft");
+  const notes = typeof request.data?.notes === "string"
+    ? request.data.notes.trim().slice(0, 5000)
+    : "";
+
+  const entitlements = await resolveUserEntitlements(uid);
+  const role = String(entitlements?.role || "").toLowerCase();
+  if (!["owner", "admin"].includes(role)) {
+    throw new HttpsError("permission-denied", "Only organization owners/admins can save invoice drafts.");
+  }
+  const orgId = entitlements?.orgId || "";
+  if (!orgId) {
+    throw new HttpsError("failed-precondition", "Organization is not initialized.");
+  }
+  const orgRef = orgsCollection().doc(orgId);
+  const orgSnap = await orgRef.get();
+  const orgName = String(orgSnap.data()?.name || "").trim() || orgId;
+  const usageSummary = await readOrganizationUsageSummary({
+    orgId,
+    entitlements,
+    periodKey: requestedPeriod,
+  });
+  const invoiceDraft = buildUsageInvoiceDraft({
+    orgId,
+    orgName,
+    entitlements,
+    usageSummary,
+    periodKey: requestedPeriod,
+    includeBasePlan,
+    taxRatePercent,
+    customerName,
+  });
+
+  const invoicesRef = orgRef.collection("invoices");
+  const docRef = invoicesRef.doc();
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  await docRef.set({
+    orgId,
+    orgName,
+    period: invoiceDraft.period,
+    invoiceId: invoiceDraft.invoiceId,
+    status,
+    notes,
+    createdBy: uid,
+    updatedBy: uid,
+    customerName: invoiceDraft.customerName || "",
+    includeBasePlan: !!includeBasePlan,
+    taxRatePercent: Number(taxRatePercent || 0),
+    lineItemCount: Array.isArray(invoiceDraft.lineItems) ? invoiceDraft.lineItems.length : 0,
+    totals: invoiceDraft.totals || { subtotalCents: 0, taxCents: 0, totalCents: 0 },
+    invoiceDraft,
+    createdAt: now,
+    updatedAt: now,
+  }, { merge: true });
+
+  return {
+    ok: true,
+    recordId: docRef.id,
+    invoiceId: invoiceDraft.invoiceId,
+    status,
+    invoiceDraft,
+  };
+});
+
+exports.listMyUsageInvoices = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "list_my_usage_invoices", { perMinute: 30, perHour: 240 });
+  const uid = requireAuth(request);
+  enforceAppCheckIfEnabled(request, "list_my_usage_invoices");
+  const entitlements = await resolveUserEntitlements(uid);
+  const role = String(entitlements?.role || "").toLowerCase();
+  if (!["owner", "admin"].includes(role)) {
+    throw new HttpsError("permission-denied", "Only organization owners/admins can view invoice history.");
+  }
+  const orgId = entitlements?.orgId || "";
+  if (!orgId) {
+    throw new HttpsError("failed-precondition", "Organization is not initialized.");
+  }
+  const maxItems = clampNumber(request.data?.limit ?? 25, 1, 100, 25);
+  const statusFilter = sanitizeInvoiceStatus(request.data?.status || "");
+  let invoiceQuery = orgsCollection()
+    .doc(orgId)
+    .collection("invoices")
+    .orderBy("createdAt", "desc")
+    .limit(maxItems);
+  if (request.data?.status) {
+    invoiceQuery = invoiceQuery.where("status", "==", statusFilter);
+  }
+  const snap = await invoiceQuery.get();
+  const invoices = snap.docs.map((docSnap) => {
+    const data = docSnap.data() || {};
+    return {
+      recordId: docSnap.id,
+      orgId: data.orgId || orgId,
+      orgName: data.orgName || "",
+      period: data.period || "",
+      invoiceId: data.invoiceId || "",
+      status: data.status || "draft",
+      notes: data.notes || "",
+      customerName: data.customerName || "",
+      includeBasePlan: !!data.includeBasePlan,
+      taxRatePercent: Number(data.taxRatePercent || 0),
+      lineItemCount: Number(data.lineItemCount || 0),
+      totals: data.totals || { subtotalCents: 0, taxCents: 0, totalCents: 0 },
+      createdBy: data.createdBy || "",
+      updatedBy: data.updatedBy || "",
+      createdAtMs: valueToMillis(data.createdAt),
+      updatedAtMs: valueToMillis(data.updatedAt),
+    };
+  });
+  return {
+    orgId,
+    count: invoices.length,
+    invoices,
+  };
 });
 
 exports.awardRoomPoints = onCall({ cors: true }, async (request) => {

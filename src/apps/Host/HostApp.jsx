@@ -34,7 +34,9 @@ import {
     ensureOrganization,
     getMyEntitlements,
     getMyUsageSummary,
-    getMyUsageInvoiceDraft
+    getMyUsageInvoiceDraft,
+    saveMyUsageInvoiceDraft,
+    listMyUsageInvoices
 } from '../../lib/firebase';
 import { ASSETS, AVATARS, APP_ID } from '../../lib/assets';
 import { playSfx, setSfxMasterVolume, stopAllSfx } from '../../lib/utils';
@@ -2469,9 +2471,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [selectedUsagePeriod, setSelectedUsagePeriod] = useState(getCurrentUsagePeriodKey());
     const [invoiceDraft, setInvoiceDraft] = useState(null);
     const [invoiceDraftLoading, setInvoiceDraftLoading] = useState(false);
+    const [invoiceSaveLoading, setInvoiceSaveLoading] = useState(false);
+    const [invoiceHistoryLoading, setInvoiceHistoryLoading] = useState(false);
+    const [invoiceHistory, setInvoiceHistory] = useState([]);
     const [invoiceCustomerName, setInvoiceCustomerName] = useState('');
     const [invoiceIncludeBasePlan, setInvoiceIncludeBasePlan] = useState(false);
     const [invoiceTaxRatePercent, setInvoiceTaxRatePercent] = useState('0');
+    const [invoiceStatusDraft, setInvoiceStatusDraft] = useState('draft');
+    const [invoiceNotes, setInvoiceNotes] = useState('');
     const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
     const [onboardingStep, setOnboardingStep] = useState(0);
     const [onboardingBusy, setOnboardingBusy] = useState(false);
@@ -2561,6 +2568,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 loading: false,
                 error: ''
             });
+            setInvoiceHistory([]);
             return () => { cancelled = true; };
         }
         (async () => {
@@ -2570,6 +2578,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 await ensureOrganization('');
                 const entitlements = await getMyEntitlements();
                 const usage = await getMyUsageSummary(selectedUsagePeriod);
+                const historyPayload = await listMyUsageInvoices({ limit: 40 });
                 if (cancelled) return;
                 setOrgContext({
                     orgId: entitlements?.orgId || '',
@@ -2591,6 +2600,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     loading: false,
                     error: ''
                 });
+                setInvoiceHistory(Array.isArray(historyPayload?.invoices) ? historyPayload.invoices : []);
             } catch (e) {
                 console.error('Failed to sync org entitlements', e);
                 if (cancelled) return;
@@ -4489,6 +4499,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const entitlements = await getMyEntitlements();
             syncOrgContextFromEntitlements(entitlements);
             await refreshUsageSummary(false);
+            await refreshInvoiceHistory(false);
             if (showToast) toast('Billing status refreshed');
             return entitlements;
         } catch (e) {
@@ -4540,6 +4551,50 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return null;
         } finally {
             setInvoiceDraftLoading(false);
+        }
+    };
+    const refreshInvoiceHistory = async (showToast = false) => {
+        setInvoiceHistoryLoading(true);
+        try {
+            const payload = await listMyUsageInvoices({ limit: 40 });
+            const items = Array.isArray(payload?.invoices) ? payload.invoices : [];
+            setInvoiceHistory(items);
+            if (showToast) toast('Invoice history refreshed');
+            return items;
+        } catch (e) {
+            console.error('Invoice history refresh failed', e);
+            if (showToast) toast('Could not load invoice history');
+            return [];
+        } finally {
+            setInvoiceHistoryLoading(false);
+        }
+    };
+    const saveInvoiceDraftSnapshot = async () => {
+        if (invoiceSaveLoading) return;
+        setInvoiceSaveLoading(true);
+        try {
+            const targetPeriod = String(selectedUsagePeriod || usageSummary?.period || '').trim();
+            const taxRatePercent = Math.max(0, Math.min(100, Number(invoiceTaxRatePercent || 0)));
+            const payload = await saveMyUsageInvoiceDraft({
+                period: targetPeriod,
+                includeBasePlan: !!invoiceIncludeBasePlan,
+                taxRatePercent,
+                customerName: (invoiceCustomerName || '').trim(),
+                status: invoiceStatusDraft || 'draft',
+                notes: invoiceNotes || ''
+            });
+            if (payload?.invoiceDraft) {
+                setInvoiceDraft(payload.invoiceDraft);
+            }
+            await refreshInvoiceHistory(false);
+            toast(`Invoice snapshot saved (${payload?.recordId || 'ok'})`);
+            return payload;
+        } catch (e) {
+            console.error('Save invoice snapshot failed', e);
+            toast('Could not save invoice snapshot');
+            return null;
+        } finally {
+            setInvoiceSaveLoading(false);
         }
     };
     const downloadQbseCsv = (kind = 'line_items') => {
@@ -4643,6 +4698,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     loading: false,
                     error: ''
                 });
+                return listMyUsageInvoices({ limit: 40 });
+            })
+            .then((historyPayload) => {
+                if (!historyPayload) return;
+                setInvoiceHistory(Array.isArray(historyPayload?.invoices) ? historyPayload.invoices : []);
             })
             .catch((e) => {
                 console.warn('Post-billing refresh failed', e);
@@ -6380,8 +6440,82 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <div className="text-[11px] text-zinc-500">
                                                 QuickBooks Self-Employed flow: create invoice manually from Line-Item CSV, then reconcile payments with Transaction CSV import.
                                             </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                                <div>
+                                                    <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Snapshot Status</div>
+                                                    <select
+                                                        value={invoiceStatusDraft}
+                                                        onChange={(e) => setInvoiceStatusDraft(e.target.value)}
+                                                        className={STYLES.input}
+                                                    >
+                                                        <option value="draft">Draft</option>
+                                                        <option value="sent">Sent</option>
+                                                        <option value="paid">Paid</option>
+                                                        <option value="void">Void</option>
+                                                    </select>
+                                                </div>
+                                                <div className="md:col-span-2">
+                                                    <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Notes</div>
+                                                    <input
+                                                        value={invoiceNotes}
+                                                        onChange={(e) => setInvoiceNotes(e.target.value)}
+                                                        className={STYLES.input}
+                                                        placeholder="Optional notes for this invoice snapshot"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    onClick={saveInvoiceDraftSnapshot}
+                                                    disabled={invoiceSaveLoading}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} ${invoiceSaveLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                >
+                                                    {invoiceSaveLoading ? 'Saving snapshot...' : 'Save Invoice Snapshot'}
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
+                                    <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3 space-y-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="text-xs uppercase tracking-widest text-zinc-500">Invoice History</div>
+                                            <button
+                                                onClick={() => refreshInvoiceHistory(true)}
+                                                disabled={invoiceHistoryLoading}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${invoiceHistoryLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                            >
+                                                {invoiceHistoryLoading ? 'Refreshing...' : 'Refresh History'}
+                                            </button>
+                                        </div>
+                                        <div className="max-h-44 overflow-y-auto custom-scrollbar border border-zinc-800 rounded">
+                                            {invoiceHistory.length === 0 && (
+                                                <div className="px-3 py-2 text-xs text-zinc-500">No saved invoice snapshots yet.</div>
+                                            )}
+                                            {invoiceHistory.map((invoice) => (
+                                                <div key={`invoice-history-${invoice.recordId}`} className="px-3 py-2 text-xs border-b border-zinc-800 grid grid-cols-1 md:grid-cols-5 gap-2">
+                                                    <div className="text-zinc-300">
+                                                        <div className="text-zinc-500">Invoice</div>
+                                                        <div className="text-white font-mono">{invoice.invoiceId || invoice.recordId}</div>
+                                                    </div>
+                                                    <div className="text-zinc-300">
+                                                        <div className="text-zinc-500">Period</div>
+                                                        <div>{invoice.period || '--'}</div>
+                                                    </div>
+                                                    <div className="text-zinc-300">
+                                                        <div className="text-zinc-500">Status</div>
+                                                        <div className="uppercase">{invoice.status || 'draft'}</div>
+                                                    </div>
+                                                    <div className="text-zinc-300">
+                                                        <div className="text-zinc-500">Total</div>
+                                                        <div>{formatUsdFromCents(invoice?.totals?.totalCents || 0)}</div>
+                                                    </div>
+                                                    <div className="text-zinc-300">
+                                                        <div className="text-zinc-500">Saved</div>
+                                                        <div>{invoice?.createdAtMs ? new Date(invoice.createdAtMs).toLocaleString() : '--'}</div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                     <button

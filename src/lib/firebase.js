@@ -236,6 +236,16 @@ const getMyUsageInvoiceDraft = async (opts = {}) => {
   return data || null;
 };
 
+const saveMyUsageInvoiceDraft = async (opts = {}) => {
+  const data = await callFunction("saveMyUsageInvoiceDraft", opts || {});
+  return data || null;
+};
+
+const listMyUsageInvoices = async (opts = {}) => {
+  const data = await callFunction("listMyUsageInvoices", opts || {});
+  return data || null;
+};
+
 // Helper for Auth
 const initAuth = async (customToken) => {
   try {
@@ -437,6 +447,8 @@ export {
   getMyEntitlements,
   getMyUsageSummary,
   getMyUsageInvoiceDraft,
+  saveMyUsageInvoiceDraft,
+  listMyUsageInvoices,
   auth, 
   db, 
   rtdb, 
