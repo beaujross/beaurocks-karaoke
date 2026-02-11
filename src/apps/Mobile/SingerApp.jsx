@@ -63,6 +63,25 @@ const VIP_TOS_SUMMARY = [
     'VIP SMS alerts are optional and you can opt out any time.'
 ];
 
+const VIP_BIRTH_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const VIP_BIRTH_DAYS = Array.from({ length: 31 }, (_, i) => `${i + 1}`);
+
+const normalizeVipForm = (vip = {}) => ({
+    location: (vip.location || '').trim(),
+    birthMonth: (vip.birthMonth || '').trim(),
+    birthDay: (vip.birthDay || '').trim(),
+    smsOptIn: !!vip.smsOptIn,
+    tosAccepted: !!vip.tosAccepted
+});
+
+const getVipProfileValidationError = (vip = {}) => {
+    const normalized = normalizeVipForm(vip);
+    if (!normalized.location) return 'Add your location to complete VIP profile.';
+    if (!normalized.birthMonth || !normalized.birthDay) return 'Add your birthday month and day to complete VIP profile.';
+    if (!normalized.tosAccepted) return 'Please accept the VIP House Rules.';
+    return '';
+};
+
 const AVATAR_CATALOG = [
     { id: 'smile', emoji: emoji(0x1F600), label: 'Smile', flavor: 'Easy crowd-pleaser.', unlock: { type: 'free' } },
     { id: 'cool', emoji: emoji(0x1F60E), label: 'Cool', flavor: 'Smooth and steady.', unlock: { type: 'free' } },
@@ -518,6 +537,18 @@ const SingerApp = ({ roomCode, uid }) => {
 
     const isAnon = !!auth?.currentUser?.isAnonymous;
     const isVipAccount = !!user?.isVip || !!profile?.isVip || (profile?.vipLevel || 0) > 0;
+    const vipProfileData = profile?.vipProfile || {};
+    const vipTosAccepted = !!vipProfileData?.tosAccepted;
+    const vipProfileComplete = useMemo(() => {
+        if (!isVipAccount) return true;
+        const err = getVipProfileValidationError({
+            location: vipProfileData?.location || '',
+            birthMonth: vipProfileData?.birthMonth || '',
+            birthDay: vipProfileData?.birthDay || '',
+            tosAccepted: !!vipProfileData?.tosAccepted
+        });
+        return !err;
+    }, [isVipAccount, vipProfileData?.location, vipProfileData?.birthMonth, vipProfileData?.birthDay, vipProfileData?.tosAccepted]);
     const _vipCount = useMemo(() => allUsers.filter(u => u.isVip || (u.vipLevel || 0) > 0).length, [allUsers]);
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !isVipAccount;
     const tipCrates = useMemo(() => (Array.isArray(room?.tipCrates) ? room.tipCrates : []), [room?.tipCrates]);
@@ -1705,6 +1736,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [profile?.vipProfile]);
 
     useEffect(() => {
+        if (!isVipAccount || !profile) return;
+        if (vipProfileComplete) return;
+        if (showPhoneModal || showProfile || showAccount || showVipOnboarding) return;
+        setShowVipOnboarding(true);
+    }, [isVipAccount, profile, vipProfileComplete, showPhoneModal, showProfile, showAccount, showVipOnboarding]);
+
+    useEffect(() => {
         if (!user || !uid || profile?.firstPerformanceUnlocked) return;
         const didPerform = songs.some(s => s.singerName === user.name && s.status === 'performed');
         if (!didPerform) return;
@@ -2434,6 +2472,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const oldName = user.name;
         const selectedStatus = getAvatarStatus(AVATAR_CATALOG.find(a => a.emoji === form.emoji) || AVATAR_CATALOG[0]);
         const nextAvatar = selectedStatus.locked ? user.avatar : form.emoji;
+        const normalizedVipForm = normalizeVipForm(vipForm);
+        const nextVipTosAccepted = vipTosAccepted || normalizedVipForm.tosAccepted;
+        if (isVipAccount) {
+            const vipErr = getVipProfileValidationError({
+                ...normalizedVipForm,
+                tosAccepted: nextVipTosAccepted
+            });
+            if (vipErr) {
+                toast(vipErr);
+                setShowVipOnboarding(true);
+                return;
+            }
+        }
         const nameEmojiChanged = safeName !== oldName || nextAvatar !== user.avatar;
         const changeCost = getNameEmojiChangeCost();
         if (nameEmojiChanged && changeCost > 0 && getEffectivePoints() < changeCost) {
@@ -2444,12 +2495,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (uid) {
             const vipProfileUpdate = isVipAccount ? {
                 vipProfile: {
-                    location: (vipForm.location || '').trim(),
-                    birthMonth: vipForm.birthMonth || '',
-                    birthDay: vipForm.birthDay || '',
-                    smsOptIn: !!vipForm.smsOptIn,
-                    tosAccepted: !!vipForm.tosAccepted,
-                    tosAcceptedAt: vipForm.tosAccepted ? serverTimestamp() : (profile?.vipProfile?.tosAcceptedAt || null)
+                    location: normalizedVipForm.location,
+                    birthMonth: normalizedVipForm.birthMonth,
+                    birthDay: normalizedVipForm.birthDay,
+                    smsOptIn: normalizedVipForm.smsOptIn,
+                    tosAccepted: nextVipTosAccepted,
+                    tosAcceptedAt: nextVipTosAccepted
+                        ? (profile?.vipProfile?.tosAcceptedAt || serverTimestamp())
+                        : null
                 }
             } : {};
             const nameEmojiUpdate = nameEmojiChanged ? {
@@ -2468,18 +2521,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const saveVipOnboarding = async () => {
         if (!uid) return;
-        if (!vipForm.tosAccepted) {
-            toast('Please accept the VIP terms to continue.');
+        const normalizedVipForm = normalizeVipForm(vipForm);
+        const validationError = getVipProfileValidationError(normalizedVipForm);
+        if (validationError) {
+            toast(validationError);
             return;
         }
         const updates = {
             vipProfile: {
-                location: (vipForm.location || '').trim(),
-                birthMonth: vipForm.birthMonth || '',
-                birthDay: vipForm.birthDay || '',
-                smsOptIn: !!vipForm.smsOptIn,
+                location: normalizedVipForm.location,
+                birthMonth: normalizedVipForm.birthMonth,
+                birthDay: normalizedVipForm.birthDay,
+                smsOptIn: normalizedVipForm.smsOptIn,
                 tosAccepted: true,
-                tosAcceptedAt: serverTimestamp()
+                tosAcceptedAt: profile?.vipProfile?.tosAcceptedAt || serverTimestamp()
             }
         };
         await setDoc(doc(db, 'users', uid), updates, { merge: true });
@@ -4210,7 +4265,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             className="bg-zinc-900 p-4 rounded-xl border border-zinc-700 text-lg"
                         >
                             <option value="">Birth Month</option>
-                            {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(m => (
+                            {VIP_BIRTH_MONTHS.map(m => (
                                 <option key={m} value={m}>{m}</option>
                             ))}
                         </select>
@@ -4220,8 +4275,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             className="bg-zinc-900 p-4 rounded-xl border border-zinc-700 text-lg"
                         >
                             <option value="">Birth Day</option>
-                            {Array.from({ length: 31 }).map((_, i) => (
-                                <option key={i + 1} value={`${i + 1}`}>{i + 1}</option>
+                            {VIP_BIRTH_DAYS.map(day => (
+                                <option key={day} value={day}>{day}</option>
                             ))}
                         </select>
                     </div>
@@ -4236,10 +4291,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <label className="flex items-center gap-2 text-base text-zinc-200 mt-2">
                         <input
                             type="checkbox"
-                            checked={vipForm.tosAccepted}
+                            checked={vipForm.tosAccepted || vipTosAccepted}
+                            disabled={vipTosAccepted}
                             onChange={(e) => setVipForm(prev => ({ ...prev, tosAccepted: e.target.checked }))}
                         />
-                        I agree to the VIP House Rules
+                        {vipTosAccepted ? 'VIP House Rules accepted' : 'I agree to the VIP House Rules'}
                     </label>
                 </div>
             )}
@@ -4273,7 +4329,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         className="bg-zinc-900 p-4 rounded-xl border border-zinc-700 text-lg"
                     >
                         <option value="">Birth Month</option>
-                        {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(m => (
+                        {VIP_BIRTH_MONTHS.map(m => (
                             <option key={m} value={m}>{m}</option>
                         ))}
                     </select>
@@ -4283,8 +4339,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         className="bg-zinc-900 p-4 rounded-xl border border-zinc-700 text-lg"
                     >
                         <option value="">Birth Day</option>
-                        {Array.from({ length: 31 }).map((_, i) => (
-                            <option key={i + 1} value={`${i + 1}`}>{i + 1}</option>
+                        {VIP_BIRTH_DAYS.map(day => (
+                            <option key={day} value={day}>{day}</option>
                         ))}
                     </select>
                 </div>
@@ -5545,9 +5601,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 {profileSubTab === 'vip' && (
                                     <div className="text-sm text-zinc-200">
                                         {isVipAccount ? (
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div className="bg-black/30 px-3 py-2 rounded-xl">Location: <span className="font-bold text-white">{profile?.vipProfile?.location || '-'}</span></div>
-                                                <div className="bg-black/30 px-3 py-2 rounded-xl">Birthday: <span className="font-bold text-white">{profile?.vipProfile?.birthMonth && profile?.vipProfile?.birthDay ? `${profile.vipProfile.birthMonth} ${profile.vipProfile.birthDay}` : '-'}</span></div>
+                                            <div className="space-y-2">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div className="bg-black/30 px-3 py-2 rounded-xl">Location: <span className="font-bold text-white">{profile?.vipProfile?.location || '-'}</span></div>
+                                                    <div className="bg-black/30 px-3 py-2 rounded-xl">Birthday: <span className="font-bold text-white">{profile?.vipProfile?.birthMonth && profile?.vipProfile?.birthDay ? `${profile.vipProfile.birthMonth} ${profile.vipProfile.birthDay}` : '-'}</span></div>
+                                                </div>
+                                                {!vipProfileComplete && (
+                                                    <div className="bg-amber-500/10 border border-amber-400/30 text-amber-200 px-3 py-2 rounded-xl text-xs">
+                                                        VIP profile incomplete. Add required fields to keep your VIP profile active.
+                                                    </div>
+                                                )}
+                                                <button onClick={openEditProfile} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] py-2 rounded-xl text-sm font-bold">
+                                                    Edit VIP Profile
+                                                </button>
                                             </div>
                                         ) : (
                                             <div className="bg-black/30 px-3 py-2 rounded-xl">Unlock VIP to show your profile details.</div>

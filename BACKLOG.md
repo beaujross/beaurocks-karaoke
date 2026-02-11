@@ -35,6 +35,7 @@ Last updated: 2026-02-11
 - Expanded VIP cosmetics: unlock visuals and badge system polish.
 
 ## Recently Completed
+- VIP profile onboarding enforcement: required VIP profile fields (location + birthday + ToS), automatic onboarding prompt for incomplete VIP accounts, and explicit in-app VIP profile edit path from Singer Social/Profile.
 - Invoice draft export foundation: added period-based invoice draft generation (`getMyUsageInvoiceDraft`) with overage line items, totals/tax support, and QuickBooks Self-Employed CSV outputs.
 - Invoice lifecycle persistence: added org-scoped invoice snapshot save/list callables (`saveMyUsageInvoiceDraft`, `listMyUsageInvoices`) and Host Billing invoice history/status/notes workflow.
 - Org usage metering foundation: added per-org monthly usage ledger + hard limit enforcement for AI generations (`ai_generate_content`) and surfaced usage/overage summary in Host Billing.
