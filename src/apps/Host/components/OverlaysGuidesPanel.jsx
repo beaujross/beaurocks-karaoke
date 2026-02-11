@@ -17,8 +17,10 @@ const OverlaysGuidesPanel = ({
     startStormSequence,
     stopStormSequence,
     styles,
-    sectionHeader: SectionHeader
-}) => (
+    sectionHeader
+}) => {
+    const SectionHeader = sectionHeader;
+    return (
     <>
         <div className={overlaysOpen ? 'grid grid-cols-2 gap-2' : 'hidden'}>
             <button onClick={() => updateRoom({ activeScreen: room?.activeScreen === 'leaderboard' ? 'stage' : 'leaderboard' })} className={`${styles.btnStd} ${room?.activeScreen === 'leaderboard' ? styles.btnHighlight : styles.btnNeutral} flex-1`}><i className="fa-solid fa-trophy mr-2"></i>Leaderboard</button>
@@ -90,6 +92,7 @@ const OverlaysGuidesPanel = ({
             </div>
         </div>
     </>
-);
+    );
+};
 
 export default OverlaysGuidesPanel;

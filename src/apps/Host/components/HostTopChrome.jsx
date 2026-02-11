@@ -23,7 +23,7 @@ const HostTopChrome = ({
     requestStageMic,
     toggleSongMute,
     updateRoom,
-    smallWaveform: SmallWaveform,
+    smallWaveform,
     bgAnalyserActive,
     bgMeterLevel,
     bgVolume,
@@ -38,7 +38,9 @@ const HostTopChrome = ({
     currentTrackName,
     mixFader,
     handleMixFaderChange
-}) => (
+}) => {
+    const SmallWaveform = smallWaveform;
+    return (
     <div className="bg-zinc-900 px-5 py-3 flex flex-col gap-2 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full">
             <div className="flex items-center gap-3 md:gap-4">
@@ -261,6 +263,7 @@ const HostTopChrome = ({
             </div>
         </div>
     </div>
-);
+    );
+};
 
 export default HostTopChrome;

@@ -220,6 +220,11 @@ const ensureOrganization = async (orgName = "") => {
   return data || null;
 };
 
+const bootstrapOnboardingWorkspace = async (opts = {}) => {
+  const data = await callFunction("bootstrapOnboardingWorkspace", opts || {});
+  return data || null;
+};
+
 const getMyEntitlements = async () => {
   const data = await callFunction("getMyEntitlements");
   return data || null;
@@ -444,6 +449,7 @@ export {
   callFunction,
   getGoogleMapsApiKey,
   ensureOrganization,
+  bootstrapOnboardingWorkspace,
   getMyEntitlements,
   getMyUsageSummary,
   getMyUsageInvoiceDraft,

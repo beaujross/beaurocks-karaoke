@@ -2,6 +2,15 @@
 
 Last updated: 2026-02-11
 
+## Overnight Queue (Target: 2026-02-12 Morning)
+- [x] WS1 Fame XP UX: add next-unlock and points-to-next-level clarity across singer profile surfaces.
+- [x] WS2 Shared user-meta component: unify VIP badge + fame progress rendering in lobby, leaderboard, and public profile.
+- [x] WS3 Room-user data consistency: ensure `isVip`, `vipLevel`, `fameLevel`, and `totalFamePoints` are kept in sync for active room users.
+- [x] WS4 Turnkey onboarding foundation: ship account -> org/workspace -> plan -> branding baseline -> first room launch skeleton.
+- [x] WS5 Capability gating foundation: centralize entitlement keys and enforce them in both client feature gates and callable backend paths.
+- [x] WS6 Pass-through/markup invoicing: extend overage invoice logic and QBSE export mapping to prevent absorbing variable cloud/API costs.
+- Runbook: `docs/OVERNIGHT_EXECUTION_QUEUE_2026-02-11.md`
+
 ## P0 - Blocking (Launch/Safety)
 - Firebase production safety: deploy and verify updated `storage.rules` + App Check enforcement in production; run auth/upload smoke tests.
 - Host create/join reliability: run field playtest to validate new guarded join flow (auth preflight + room existence check) under poor network/re-auth scenarios.
@@ -16,7 +25,6 @@ Last updated: 2026-02-11
 - Turnkey onboarding wizard: account -> workspace -> plan -> branding -> first room launch.
 - Public TV 10-foot UX pass: continue readability polish (sidebar density, chat/activity typography, reduce overlay collision during high-intensity scenes).
 - VIP profile onboarding: enforce ToS consent and required fields; allow profile edits from app.
-- Public profile viewer: show lobby/leaderboard profiles with VIP badge + fame progress.
 - Fame XP UX: clearer "next unlock" and progress feedback in profile surfaces.
 
 ## P2 - Medium
@@ -35,6 +43,13 @@ Last updated: 2026-02-11
 - Expanded VIP cosmetics: unlock visuals and badge system polish.
 
 ## Recently Completed
+- Overnight WS1 ship: added fame unlock snapshot helper + "Next Unlock" blocks in singer profile and public profile.
+- Overnight WS2 ship: added shared `UserMetaCard` component and migrated lobby/leaderboard/public-profile surfaces to use it.
+- Overnight WS3 ship: introduced normalized room-user projection writes for join/profile/VIP/fame sync paths.
+- Overnight WS4 ship: added `bootstrapOnboardingWorkspace` callable and wired Host onboarding wizard workspace provisioning to callable bootstrap.
+- Overnight WS5 ship: added central capability keys, Host feature gating, and backend capability enforcement for YouTube + invoice draft callables.
+- Overnight WS6 ship: added pass-through + markup rate-card metadata to usage summaries/invoice drafts, expanded QBSE CSV columns, and persisted rate-card snapshots with invoice records.
+- Public profile viewer polish: aligned lobby/leaderboard/public-profile presentation with consistent VIP badge treatment and fame level/progress display.
 - VIP profile onboarding enforcement: required VIP profile fields (location + birthday + ToS), automatic onboarding prompt for incomplete VIP accounts, and explicit in-app VIP profile edit path from Singer Social/Profile.
 - Invoice draft export foundation: added period-based invoice draft generation (`getMyUsageInvoiceDraft`) with overage line items, totals/tax support, and QuickBooks Self-Employed CSV outputs.
 - Invoice lifecycle persistence: added org-scoped invoice snapshot save/list callables (`saveMyUsageInvoiceDraft`, `listMyUsageInvoices`) and Host Billing invoice history/status/notes workflow.

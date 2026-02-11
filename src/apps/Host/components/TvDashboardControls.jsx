@@ -4,9 +4,11 @@ const TvDashboardControls = ({
     tvControlsOpen,
     room,
     updateRoom,
-    toggleSwitch: ToggleSwitch,
+    toggleSwitch,
     styles
-}) => (
+}) => {
+    const ToggleSwitch = toggleSwitch;
+    return (
     <div className={tvControlsOpen ? 'block' : 'hidden'}>
         <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">PUBLIC TV LAYOUT</div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-zinc-900/60 p-2 rounded-xl border border-white/10">
@@ -70,6 +72,7 @@ const TvDashboardControls = ({
             </button>
         </div>
     </div>
-);
+    );
+};
 
 export default TvDashboardControls;

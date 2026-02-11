@@ -15,6 +15,7 @@ import QueueEditSongModal from './components/QueueEditSongModal';
 import HostLogoManager from './components/HostLogoManager';
 import ChatSettingsPanel from './components/ChatSettingsPanel';
 import HostTopChrome from './components/HostTopChrome';
+import FeatureGate from '../../components/FeatureGate';
 import useHostChat from './hooks/useHostChat';
 import useQueueDerivedState from './hooks/useQueueDerivedState';
 import useQueueMediaTools from './hooks/useQueueMediaTools';
@@ -32,6 +33,7 @@ import {
     trackEvent,
     callFunction,
     ensureOrganization,
+    bootstrapOnboardingWorkspace,
     getMyEntitlements,
     getMyUsageSummary,
     getMyUsageInvoiceDraft,
@@ -45,7 +47,8 @@ import { BROWSE_CATEGORIES, TOPIC_HITS } from '../../lib/browseLists';
 import { useToast } from '../../context/ToastContext';
 import { BG_TRACKS, SOUNDS } from '../../lib/gameDataConstants';
 import { HOST_APP_CONFIG } from '../../lib/uiConstants';
-import { buildSongKey, ensureSong, ensureTrack, extractYouTubeId } from '../../lib/songCatalog';
+import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabilities';
+import { buildSongKey, ensureSong, ensureTrack } from '../../lib/songCatalog';
 import {
     normalizeBackingChoice,
     resolveStageMediaUrl,
@@ -796,7 +799,7 @@ const GalleryTab = ({ roomCode, room, updateRoom }) => {
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, setSearchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, autoDjCountdown, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll }) => {
+const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -920,125 +923,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         }
         toast(`UI feature check passed (${HOST_UI_FEATURE_CHECKLIST.length} controls).`);
     };
-    const commandPaletteItems = useMemo(() => {
-        const nextQueueSong = queue[0];
-        return [
-            {
-                id: 'start-next',
-                label: 'Start Next Performer',
-                enabled: !!nextQueueSong,
-                hint: nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'Queue is empty',
-                keywords: 'queue start next performer',
-                run: async () => {
-                    if (!nextQueueSong) return;
-                    await updateStatus(nextQueueSong.id, 'performing');
-                }
-            },
-            {
-                id: 'toggle-source',
-                label: currentSourcePlaying ? 'Pause Current Source' : 'Play Current Source',
-                enabled: !!current,
-                hint: current ? (current.songTitle || 'Current performance') : 'No current song',
-                keywords: 'play pause toggle source backing',
-                run: async () => { await togglePlay(); }
-            },
-            {
-                id: 'open-tv',
-                label: 'Open Public TV Display',
-                enabled: !!roomCode,
-                hint: roomCode ? `Room ${roomCode}` : 'No room code',
-                keywords: 'tv display public open',
-                run: async () => { window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer'); }
-            },
-            {
-                id: 'chat-settings',
-                label: 'Open Chat Settings',
-                enabled: true,
-                hint: 'Moderation and TV chat mode',
-                keywords: 'chat settings moderation tv mode',
-                run: async () => { openChatSettings(); }
-            },
-            {
-                id: 'workspace-performance',
-                label: 'Workspace: Performance Mode',
-                enabled: true,
-                hint: 'Stage + queue focus',
-                keywords: 'workspace performance layout stage',
-                run: async () => { applyWorkspacePreset('performance'); }
-            },
-            {
-                id: 'workspace-crowd',
-                label: 'Workspace: Crowd Mode',
-                enabled: true,
-                hint: 'Chat + rewards focus',
-                keywords: 'workspace crowd audience layout',
-                run: async () => { applyWorkspacePreset('crowd'); }
-            },
-            {
-                id: 'workspace-broadcast',
-                label: 'Workspace: Broadcast Mode',
-                enabled: true,
-                hint: 'TV + overlays focus',
-                keywords: 'workspace broadcast layout tv overlay',
-                run: async () => { applyWorkspacePreset('broadcast'); }
-            },
-            {
-                id: 'expand-all',
-                label: 'Expand All Panels',
-                enabled: true,
-                hint: 'Open every section',
-                keywords: 'expand all panels layout',
-                run: async () => { expandAllPanels(); }
-            },
-            {
-                id: 'collapse-all',
-                label: 'Collapse All Panels',
-                enabled: true,
-                hint: 'Collapse every section',
-                keywords: 'collapse all panels layout',
-                run: async () => { collapseAllPanels(); }
-            },
-            {
-                id: 'reset-layout',
-                label: 'Reset Panel Layout',
-                enabled: true,
-                hint: 'Restore default layout',
-                keywords: 'reset default layout',
-                run: async () => { resetPanelLayout(); }
-            },
-            {
-                id: 'ui-feature-check',
-                label: 'Run UI Feature Check',
-                enabled: true,
-                hint: 'Verify critical host controls are present',
-                keywords: 'check verify ui features buttons controls',
-                run: async () => { runUiFeatureCheck(); }
-            }
-        ];
-    }, [
-        queue,
-        updateStatus,
-        currentSourcePlaying,
-        current,
-        togglePlay,
-        roomCode,
-        appBase,
-        openChatSettings,
-        applyWorkspacePreset,
-        expandAllPanels,
-        collapseAllPanels,
-        resetPanelLayout,
-        runUiFeatureCheck
-    ]);
-    const filteredCommands = useMemo(() => {
-        const q = (commandQuery || '').trim().toLowerCase();
-        if (!q) return commandPaletteItems;
-        return commandPaletteItems.filter((item) => {
-            const haystack = `${item.label} ${item.hint || ''} ${item.keywords || ''}`.toLowerCase();
-            return haystack.includes(q);
-        });
-    }, [commandPaletteItems, commandQuery]);
-
     useEffect(() => {
         try {
             localStorage.setItem('bross_quick_add_on_result_click', quickAddOnResultClick ? '1' : '0');
@@ -1516,7 +1400,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         }
     };
 
-    const updateStatus = async (id, status) => { 
+    async function updateStatus(id, status) { 
         if(status==='performing') { 
             const current = songs.find(x => x.status === 'performing');
             if (current && current.id !== id) {
@@ -1621,17 +1505,16 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                 toast("Performance Finished"); 
             } 
         } 
-    };
+    }
 
     // Unified play/pause for the current backing source (Apple or media URL).
-    const togglePlay = async () => {
+    async function togglePlay() {
         if (!current) return;
         const stageMediaUrl = resolveStageMediaUrl(current, room);
         const currentPlayback = normalizeBackingChoice({
             mediaUrl: stageMediaUrl,
             appleMusicId: current?.appleMusicId
         });
-        const sourceMediaUrl = currentPlayback.mediaUrl;
         const usingApple = currentPlayback.usesAppleBacking;
         if (usingApple) {
             const appleStatus = (room?.appleMusicPlayback?.status || '').toLowerCase();
@@ -1659,7 +1542,109 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             }
             await updateRoom({ videoPlaying: true, videoStartTimestamp: newStart, pausedAt: null, appleMusicPlayback: null });
         }
-    };
+    }
+
+    const nextQueueSong = queue[0];
+    const commandPaletteItems = [
+            {
+                id: 'start-next',
+                label: 'Start Next Performer',
+                enabled: !!nextQueueSong,
+                hint: nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'Queue is empty',
+                keywords: 'queue start next performer',
+                run: async () => {
+                    if (!nextQueueSong) return;
+                    await updateStatus(nextQueueSong.id, 'performing');
+                }
+            },
+            {
+                id: 'toggle-source',
+                label: currentSourcePlaying ? 'Pause Current Source' : 'Play Current Source',
+                enabled: !!current,
+                hint: current ? (current.songTitle || 'Current performance') : 'No current song',
+                keywords: 'play pause toggle source backing',
+                run: async () => { await togglePlay(); }
+            },
+            {
+                id: 'open-tv',
+                label: 'Open Public TV Display',
+                enabled: !!roomCode,
+                hint: roomCode ? `Room ${roomCode}` : 'No room code',
+                keywords: 'tv display public open',
+                run: async () => { window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer'); }
+            },
+            {
+                id: 'chat-settings',
+                label: 'Open Chat Settings',
+                enabled: true,
+                hint: 'Moderation and TV chat mode',
+                keywords: 'chat settings moderation tv mode',
+                run: async () => { openChatSettings(); }
+            },
+            {
+                id: 'workspace-performance',
+                label: 'Workspace: Performance Mode',
+                enabled: true,
+                hint: 'Stage + queue focus',
+                keywords: 'workspace performance layout stage',
+                run: async () => { applyWorkspacePreset('performance'); }
+            },
+            {
+                id: 'workspace-crowd',
+                label: 'Workspace: Crowd Mode',
+                enabled: true,
+                hint: 'Chat + rewards focus',
+                keywords: 'workspace crowd audience layout',
+                run: async () => { applyWorkspacePreset('crowd'); }
+            },
+            {
+                id: 'workspace-broadcast',
+                label: 'Workspace: Broadcast Mode',
+                enabled: true,
+                hint: 'TV + overlays focus',
+                keywords: 'workspace broadcast layout tv overlay',
+                run: async () => { applyWorkspacePreset('broadcast'); }
+            },
+            {
+                id: 'expand-all',
+                label: 'Expand All Panels',
+                enabled: true,
+                hint: 'Open every section',
+                keywords: 'expand all panels layout',
+                run: async () => { expandAllPanels(); }
+            },
+            {
+                id: 'collapse-all',
+                label: 'Collapse All Panels',
+                enabled: true,
+                hint: 'Collapse every section',
+                keywords: 'collapse all panels layout',
+                run: async () => { collapseAllPanels(); }
+            },
+            {
+                id: 'reset-layout',
+                label: 'Reset Panel Layout',
+                enabled: true,
+                hint: 'Restore default layout',
+                keywords: 'reset default layout',
+                run: async () => { resetPanelLayout(); }
+            },
+            {
+                id: 'ui-feature-check',
+                label: 'Run UI Feature Check',
+                enabled: true,
+                hint: 'Verify critical host controls are present',
+                keywords: 'check verify ui features buttons controls',
+                run: async () => { runUiFeatureCheck(); }
+            }
+        ];
+    const commandQueryNormalized = (commandQuery || '').trim().toLowerCase();
+    const filteredCommands = !commandQueryNormalized
+        ? commandPaletteItems
+        : commandPaletteItems.filter((item) => {
+            const haystack = `${item.label} ${item.hint || ''} ${item.keywords || ''}`.toLowerCase();
+            return haystack.includes(commandQueryNormalized);
+        });
     
     // Helper to open youtube search
     const _openYT = (query) => {
@@ -2329,7 +2314,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [showLaunchMenu, setShowLaunchMenu] = useState(false);
     const [showNavMenu, setShowNavMenu] = useState(false);
     const [autoOpenGameId, setAutoOpenGameId] = useState('');
-    const [appleMusicReady, setAppleMusicReady] = useState(false);
+    const [_appleMusicReady, setAppleMusicReady] = useState(false);
     const [appleMusicAuthorized, setAppleMusicAuthorized] = useState(false);
     const [appleMusicPlaying, setAppleMusicPlaying] = useState(false);
     const [appleMusicStatus, setAppleMusicStatus] = useState('');
@@ -2509,6 +2494,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const status = String(orgContext?.status || '').toLowerCase();
         return ['active', 'trialing', 'past_due'].includes(status);
     }, [orgContext?.status]);
+    const capabilities = useMemo(() => orgContext?.capabilities || {}, [orgContext?.capabilities]);
+    const canUseYouTubeData = !!capabilities[CAPABILITY_KEYS.API_YOUTUBE_DATA];
+    const canUseAppleMusicApi = !!capabilities[CAPABILITY_KEYS.API_APPLE_MUSIC];
+    const canUseWorkspaceOnboarding = !!capabilities[CAPABILITY_KEYS.WORKSPACE_ONBOARDING];
+    const sourceCapabilityMap = useMemo(() => ({
+        youtube: CAPABILITY_KEYS.API_YOUTUBE_DATA,
+        itunes: CAPABILITY_KEYS.API_APPLE_MUSIC
+    }), []);
     const usageMeters = useMemo(() => {
         const meters = Object.values(usageSummary?.meters || {});
         return meters.sort((a, b) => String(a?.label || '').localeCompare(String(b?.label || '')));
@@ -2544,6 +2537,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return true;
         });
     }, [logoLibrary]);
+
+    useEffect(() => {
+        setSearchSources(prev => ({
+            ...prev,
+            youtube: canUseYouTubeData ? prev.youtube : false,
+            itunes: canUseAppleMusicApi ? prev.itunes : false
+        }));
+    }, [canUseYouTubeData, canUseAppleMusicApi]);
 
     useEffect(() => {
         let cancelled = false;
@@ -3353,6 +3354,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     const provisionOnboardingWorkspace = async () => {
+        if (!canUseWorkspaceOnboarding) {
+            setOnboardingError(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not available on this plan.`);
+            return;
+        }
         const trimmedHost = onboardingHostName.trim();
         const trimmedWorkspace = onboardingWorkspaceName.trim();
         if (!trimmedHost) {
@@ -3370,8 +3375,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (!activeUid) {
                 throw new Error('Auth unavailable');
             }
-            await ensureOrganization(trimmedWorkspace);
-            const entitlements = await getMyEntitlements();
+            const payload = await bootstrapOnboardingWorkspace({
+                orgName: trimmedWorkspace,
+                hostName: trimmedHost,
+                logoUrl: onboardingLogoUrl
+            });
+            const entitlements = payload?.entitlements || await getMyEntitlements();
             syncOrgContextFromEntitlements(entitlements);
             setHostName(trimmedHost);
             localStorage.setItem('bross_host_name', trimmedHost);
@@ -5228,8 +5237,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <img src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png" className="w-3/4 mx-auto mb-4 drop-shadow-xl"/> 
                 <h1 className="text-4xl font-bebas mb-6 text-white tracking-widest">HOST PORTAL</h1> 
                 <button
-                    onClick={openOnboardingWizard}
-                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} w-full py-4 text-lg mb-3`}
+                    onClick={() => {
+                        if (!canUseWorkspaceOnboarding) {
+                            toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
+                            return;
+                        }
+                        openOnboardingWizard();
+                    }}
+                    disabled={!canUseWorkspaceOnboarding}
+                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} w-full py-4 text-lg mb-3 ${!canUseWorkspaceOnboarding ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                     SET UP WORKSPACE (WIZARD)
                 </button>
@@ -6200,19 +6216,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         <div className="mt-6 space-y-3">
                             <div className="text-sm uppercase tracking-widest text-zinc-400">Search sources</div>
                             <div className="flex flex-wrap gap-2">
-                                {['local', 'youtube', 'itunes'].map(src => (
+                                {['local', 'youtube', 'itunes'].map(src => {
+                                    const requiredCapability = sourceCapabilityMap[src];
+                                    const blocked = !!requiredCapability && !capabilities?.[requiredCapability];
+                                    return (
                                     <button
                                         key={src}
-                                        onClick={() => setSearchSources(prev => ({ ...prev, [src]: !prev[src] }))}
+                                        onClick={() => {
+                                            if (blocked) {
+                                                toast(`${getMissingCapabilityLabel(requiredCapability)} is required for ${src === 'youtube' ? 'YouTube' : 'Apple Music'} search.`);
+                                                return;
+                                            }
+                                            setSearchSources(prev => ({ ...prev, [src]: !prev[src] }));
+                                        }}
+                                        disabled={blocked}
                                         className={`text-sm uppercase tracking-widest px-3 py-1 rounded-full border ${
-                                            searchSources[src]
+                                            blocked
+                                                ? 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'
+                                                : searchSources[src]
                                                 ? 'bg-[#00C4D9]/20 text-[#00C4D9] border-[#00C4D9]/40'
                                                 : 'bg-zinc-800 text-zinc-400 border-zinc-700'
                                         }`}
                                     >
-                                        {src === 'youtube' ? 'YouTube' : src === 'itunes' ? 'Apple Music' : 'Local'}
+                                        {src === 'youtube' ? 'YouTube' : src === 'itunes' ? 'Apple Music' : 'Local'}{blocked ? ' (Locked)' : ''}
                                     </button>
-                                ))}
+                                    );
+                                })}
                             </div>
                             <label className="flex items-center gap-2 text-sm text-zinc-300 mt-3">
                                 <input
@@ -6326,7 +6355,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <th className="px-3 py-2">Used</th>
                                                     <th className="px-3 py-2">Included</th>
                                                     <th className="px-3 py-2">Overage Units</th>
-                                                    <th className="px-3 py-2">Overage Rate</th>
+                                                    <th className="px-3 py-2">Pass-Through</th>
+                                                    <th className="px-3 py-2">Markup</th>
+                                                    <th className="px-3 py-2">Billable Rate</th>
                                                     <th className="px-3 py-2">Est. Overage</th>
                                                     <th className="px-3 py-2">Hard Limit</th>
                                                 </tr>
@@ -6334,7 +6365,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <tbody>
                                                 {usageMeters.length === 0 && (
                                                     <tr className="bg-zinc-900/40 text-zinc-500">
-                                                        <td className="px-3 py-3" colSpan={7}>No usage data yet for this period.</td>
+                                                        <td className="px-3 py-3" colSpan={9}>No usage data yet for this period.</td>
                                                     </tr>
                                                 )}
                                                 {usageMeters.map((meter) => (
@@ -6343,7 +6374,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         <td className="px-3 py-2 text-white">{Number(meter.used || 0).toLocaleString()}</td>
                                                         <td className="px-3 py-2 text-zinc-300">{Number(meter.included || 0).toLocaleString()}</td>
                                                         <td className="px-3 py-2 text-zinc-300">{Number(meter.overageUnits || 0).toLocaleString()}</td>
-                                                        <td className="px-3 py-2 text-zinc-300">{formatUsdFromCents(meter.overageRateCents || 0)}</td>
+                                                        <td className="px-3 py-2 text-zinc-300">{formatUsdFromCents(meter.passThroughUnitCostCents || 0)}</td>
+                                                        <td className="px-3 py-2 text-zinc-300">{Number(meter.markupMultiplier || 1).toFixed(2)}x</td>
+                                                        <td className="px-3 py-2 text-zinc-300">{formatUsdFromCents(meter.billableUnitRateCents || meter.overageRateCents || 0)}</td>
                                                         <td className="px-3 py-2 text-zinc-300">{formatUsdFromCents(meter.estimatedOverageCents || 0)}</td>
                                                         <td className={`px-3 py-2 ${meter.hardLimitReached ? 'text-amber-200' : 'text-zinc-300'}`}>
                                                             {Number(meter.hardLimit || 0).toLocaleString()}
@@ -6352,6 +6385,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 ))}
                                             </tbody>
                                         </table>
+                                    </div>
+                                    <div className="text-[11px] text-zinc-500">
+                                        Pass-through cost and markup are shown per meter so overages reflect provider cost plus your margin.
                                     </div>
                                     {usageHardLimitHits.length > 0 && (
                                         <div className="text-sm text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded-lg px-3 py-2">
@@ -6363,6 +6399,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             {usageSummary.error}
                                         </div>
                                     )}
+                                    <FeatureGate
+                                        capabilities={capabilities}
+                                        capability={CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS}
+                                        fallback={(
+                                            <div className="text-sm text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded-lg px-3 py-2">
+                                                Invoice draft tools are not available on this plan.
+                                            </div>
+                                        )}
+                                    >
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                                         <label className="flex items-center gap-2 text-xs text-zinc-300">
                                             <input
@@ -6410,9 +6455,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 )}
                                                 {(invoiceDraft?.lineItems || []).map((line) => (
                                                     <div key={`invoice-line-${line.id}`} className="px-3 py-2 text-xs border-b border-zinc-800 flex items-center justify-between gap-2">
-                                                        <div className="text-zinc-300 truncate">{line.description}</div>
-                                                        <div className="text-zinc-100 whitespace-nowrap">
-                                                            {Number(line.quantity || 0).toLocaleString()} x {formatUsdFromCents(line.unitPriceCents || 0)} = {formatUsdFromCents(line.amountCents || 0)}
+                                                        <div className="text-zinc-300 truncate">
+                                                            {line.description}
+                                                            {line.type === 'overage' && (
+                                                                <div className="text-[10px] text-zinc-500 mt-1">
+                                                                    Pass-through {formatUsdFromCents(line.passThroughUnitCostCents || 0)} x Markup {Number(line.markupMultiplier || 1).toFixed(2)}x
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-zinc-100 whitespace-nowrap text-right">
+                                                            <div>{Number(line.quantity || 0).toLocaleString()} x {formatUsdFromCents(line.unitPriceCents || 0)} = {formatUsdFromCents(line.amountCents || 0)}</div>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -6516,6 +6568,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             ))}
                                         </div>
                                     </div>
+                                    </FeatureGate>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                     <button

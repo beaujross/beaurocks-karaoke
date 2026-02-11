@@ -10,9 +10,11 @@ const AutomationControls = ({
     setAutoBgMusic,
     playingBg,
     setBgMusicState,
-    toggleSwitch: ToggleSwitch,
+    toggleSwitch,
     styles
-}) => (
+}) => {
+    const ToggleSwitch = toggleSwitch;
+    return (
     <div className={automationOpen ? 'grid grid-cols-2 gap-2' : 'hidden'}>
         <button
             onClick={async () => {
@@ -49,6 +51,7 @@ const AutomationControls = ({
             <i className="fa-solid fa-compact-disc mr-2"></i>Auto BG music
         </button>
     </div>
-);
+    );
+};
 
 export default AutomationControls;

@@ -11,8 +11,10 @@ const SoundboardControls = ({
     setSfxVolume,
     sounds,
     playSfxSafe,
-    smallWaveform: SmallWaveform
-}) => (
+    smallWaveform
+}) => {
+    const SmallWaveform = smallWaveform;
+    return (
     <div className={soundboardOpen ? 'block' : 'hidden'}>
         <div className="flex items-center gap-3 bg-zinc-950/40 border border-white/10 rounded-xl p-2 mb-3">
             <div className="text-sm uppercase tracking-widest text-zinc-400">FX Volume</div>
@@ -47,6 +49,7 @@ const SoundboardControls = ({
             ))}
         </div>
     </div>
-);
+    );
+};
 
 export default SoundboardControls;

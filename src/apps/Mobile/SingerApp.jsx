@@ -22,6 +22,7 @@ import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playback
 import GameContainer from '../../components/GameContainer';
 import AppleLyricsRenderer from '../../components/AppleLyricsRenderer';
 import { FameLevelProgressBar } from '../../components/FameLevelBadge';
+import UserMetaCard from '../../components/UserMetaCard';
 import { FAME_LEVELS, getLevelFromFame, getProgressToNextLevel } from '../../lib/fameConstants';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
 
@@ -80,6 +81,46 @@ const getVipProfileValidationError = (vip = {}) => {
     if (!normalized.birthMonth || !normalized.birthDay) return 'Add your birthday month and day to complete VIP profile.';
     if (!normalized.tosAccepted) return 'Please accept the VIP House Rules.';
     return '';
+};
+
+const isVipEntity = (entity = {}) => !!entity?.isVip || (Number(entity?.vipLevel || 0) > 0);
+
+const getFameSnapshot = (entity = {}, fallbackTotal = 0) => {
+    const hasRawLevel = typeof entity?.fameLevel === 'number';
+    const rawTotal = Number(entity?.totalFamePoints);
+    let total = Number.isFinite(rawTotal) ? rawTotal : Number(fallbackTotal || 0);
+    if (!Number.isFinite(total)) total = 0;
+    const level = hasRawLevel
+        ? Math.max(0, Math.min(20, entity.fameLevel))
+        : getLevelFromFame(total);
+    if (!Number.isFinite(rawTotal) && hasRawLevel) {
+        total = Math.max(total, FAME_LEVELS?.[level]?.minFame || 0);
+    }
+    return {
+        level,
+        total,
+        levelName: FAME_LEVELS?.[level]?.name || 'Rising Star',
+        progressToNext: getProgressToNextLevel(total, level)
+    };
+};
+
+const getNextFameUnlockSnapshot = (totalFame = 0, currentLevel = 0) => {
+    const safeTotal = Number.isFinite(Number(totalFame)) ? Math.max(0, Math.floor(Number(totalFame))) : 0;
+    const safeLevel = Number.isFinite(Number(currentLevel)) ? Math.max(0, Math.min(20, Math.floor(Number(currentLevel)))) : 0;
+    for (let level = safeLevel + 1; level <= 20; level += 1) {
+        const levelData = FAME_LEVELS?.[level];
+        if (!levelData) continue;
+        const unlockLabel = String(levelData.unlock || levelData.reward || '').trim();
+        if (!unlockLabel) continue;
+        const targetFame = Number(levelData.minFame || 0);
+        return {
+            level,
+            unlockLabel,
+            targetFame,
+            pointsNeeded: Math.max(0, targetFame - safeTotal)
+        };
+    }
+    return null;
 };
 
 const AVATAR_CATALOG = [
@@ -411,6 +452,45 @@ const SingerApp = ({ roomCode, uid }) => {
     const [form, setForm] = useState({ name: '', emoji: DEFAULT_EMOJI, song: '', artist: '', art: '', backingUrl: '' });
     const NAME_LIMIT = 18;
     const clampName = (value) => value.slice(0, NAME_LIMIT);
+    const getRoomUserProjection = useMemo(() => {
+        return (overrides = {}) => {
+            const rawName = overrides.name ?? user?.name ?? form.name ?? 'Guest';
+            const safeName = clampName(String(rawName || '').trim()) || 'Guest';
+            const safeAvatar = overrides.avatar ?? user?.avatar ?? form.emoji ?? DEFAULT_EMOJI;
+            const rawTotalFame = Number(overrides.totalFamePoints ?? profile?.totalFamePoints ?? 0);
+            const totalFamePoints = Number.isFinite(rawTotalFame) ? Math.max(0, Math.floor(rawTotalFame)) : 0;
+            const rawFameLevel = overrides.fameLevel ?? profile?.currentLevel;
+            const fameLevel = typeof rawFameLevel === 'number'
+                ? Math.max(0, Math.min(20, rawFameLevel))
+                : getLevelFromFame(totalFamePoints);
+            const rawVipLevel = Number(overrides.vipLevel ?? profile?.vipLevel ?? (isVipAccount ? 1 : 0));
+            const vipLevel = Number.isFinite(rawVipLevel) ? Math.max(0, Math.floor(rawVipLevel)) : 0;
+            const projection = {
+                uid,
+                roomCode,
+                name: safeName,
+                avatar: safeAvatar || DEFAULT_EMOJI,
+                isVip: !!(overrides.isVip ?? isVipAccount),
+                vipLevel,
+                fameLevel,
+                totalFamePoints,
+                lastActiveAt: serverTimestamp()
+            };
+            if (overrides.phone !== undefined) {
+                projection.phone = overrides.phone || '';
+            }
+            if (overrides.totalEmojis !== undefined) {
+                projection.totalEmojis = Math.max(0, Number(overrides.totalEmojis) || 0);
+            }
+            if (overrides.points !== undefined) {
+                projection.points = Math.max(0, Number(overrides.points) || 0);
+            }
+            if (overrides.lastSeen) {
+                projection.lastSeen = serverTimestamp();
+            }
+            return projection;
+        };
+    }, [uid, roomCode, user?.name, user?.avatar, form.name, form.emoji, profile?.totalFamePoints, profile?.currentLevel, profile?.vipLevel, isVipAccount]);
     
     // UI State
     const [searchQ, setSearchQ] = useState('');
@@ -1352,7 +1432,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     const getUnlockHint = (item) => {
-        if (item.unlock.type === 'vip') return 'VIP only — verify to unlock.';
+        if (item.unlock.type === 'vip') return 'VIP only - verify to unlock.';
         if (item.unlock.type === 'fame') return `Reach Fame Level ${item.unlock.level} to unlock.`;
         if (item.unlock.type === 'first_performance') return 'Sing one song to unlock.';
         if (item.unlock.type === 'guitar_winner') return 'Win Guitar Mode to unlock.';
@@ -1533,7 +1613,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const favoriteSongs = useMemo(() => {
         const counts = {};
         historyItems.forEach(item => {
-            const key = `${item.songTitle} — ${item.artist}`;
+            const key = `${item.songTitle} - ${item.artist}`;
             counts[key] = (counts[key] || 0) + 1;
         });
         return Object.entries(counts)
@@ -1717,11 +1797,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const fameLevel = typeof profile.currentLevel === 'number'
             ? profile.currentLevel
             : getLevelFromFame(profile.totalFamePoints || 0);
-        updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), {
-            fameLevel,
-            totalFamePoints: profile.totalFamePoints || 0
-        }).catch(() => {});
-    }, [profile, uid, roomCode]);
+        updateDoc(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`),
+            getRoomUserProjection({
+                fameLevel,
+                totalFamePoints: profile.totalFamePoints || 0
+            })
+        ).catch(() => {});
+    }, [profile, uid, roomCode, getRoomUserProjection]);
 
     useEffect(() => {
         if (!profile?.vipProfile) return;
@@ -1829,9 +1912,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     // Sync room VIP with account status
     useEffect(() => {
         if (!user || isAnon || user.isVip) return;
-        updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { isVip: true, lastActiveAt: serverTimestamp() })
+        updateDoc(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`),
+            getRoomUserProjection({
+                isVip: true,
+                vipLevel: Math.max(1, Number(profile?.vipLevel || 1))
+            })
+        )
             .catch(() => {});
-    }, [user, isAnon, roomCode, uid]);
+    }, [user, isAnon, roomCode, uid, getRoomUserProjection, profile?.vipLevel]);
 
     // Points Drip (VIP only, requires recent activity; local accrual, sync on spend/events)
     useEffect(() => {
@@ -2085,9 +2174,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const selectedStatus = getAvatarStatus(AVATAR_CATALOG.find(a => a.emoji === rawEmoji) || AVATAR_CATALOG[0]);
         const finalEmoji = selectedStatus.locked ? DEFAULT_EMOJI : rawEmoji;
         const userRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`);
-        await setDoc(userRef, {
-            uid, roomCode, name: safeName, avatar: finalEmoji, points: 100, totalEmojis: 0, lastSeen: serverTimestamp(), lastActiveAt: serverTimestamp()
-        });
+        await setDoc(userRef, getRoomUserProjection({
+            name: safeName,
+            avatar: finalEmoji,
+            points: 100,
+            totalEmojis: 0,
+            lastSeen: true
+        }));
         try { await updateDoc(userRef, { visits: increment(1), lastSeen: serverTimestamp(), lastActiveAt: serverTimestamp() }); } catch {
             // Ignore visit tracking failures.
         }
@@ -2491,7 +2584,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             toast(`Need ${changeCost} PTS to change name/emoji.`);
             return;
         }
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { name: safeName, avatar: nextAvatar });
+        await updateDoc(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`),
+            getRoomUserProjection({ name: safeName, avatar: nextAvatar })
+        );
         if (uid) {
             const vipProfileUpdate = isVipAccount ? {
                 vipProfile: {
@@ -2858,7 +2954,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             await linkWithCredential(auth.currentUser, cred);
             // persist VIP state and phone
             const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`);
-            await updateDoc(roomUserRef, { isVip: true, points: increment(5000), phone: phoneNumber, lastActiveAt: serverTimestamp() });
+            await updateDoc(roomUserRef, {
+                ...getRoomUserProjection({ isVip: true, vipLevel: 1, phone: phoneNumber }),
+                points: increment(5000)
+            });
             await setDoc(doc(db, 'users', auth.currentUser.uid), { phone: phoneNumber, vipLevel: 1 }, { merge: true });
             setShowPhoneModal(false);
             setShowVipOnboarding(true);
@@ -2875,7 +2974,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         try {
             if (!auth.currentUser) return toast('No active session');
             const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`);
-            await updateDoc(roomUserRef, { isVip: true, points: increment(5000), lastActiveAt: serverTimestamp() });
+            await updateDoc(roomUserRef, {
+                ...getRoomUserProjection({ isVip: true, vipLevel: 1 }),
+                points: increment(5000)
+            });
             await setDoc(doc(db, 'users', auth.currentUser.uid), { vipLevel: 1, isVip: true }, { merge: true });
             setShowPhoneModal(false);
             setSmsSent(false);
@@ -3265,7 +3367,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         Rejoin
                     </button>
                 ) : null}
-                <div className="mt-4 text-xs text-zinc-200 tracking-[0.12em] uppercase">© 2026 BROSS Entertainment. All rights reserved.</div>
+                <div className="mt-4 text-xs text-zinc-200 tracking-[0.12em] uppercase">(c) 2026 BROSS Entertainment. All rights reserved.</div>
             </div>
         </div>
         {showRulesModal ? (
@@ -4127,13 +4229,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         <div className="bg-black/30 px-3 py-2 rounded-xl">Total Score: <span className="font-bold text-white">{performanceStats.totalPoints}</span></div>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                        <div className="bg-black/30 px-3 py-2 rounded-xl">Location: <span className="font-bold text-white">{profile?.vipProfile?.location || '—'}</span></div>
-                        <div className="bg-black/30 px-3 py-2 rounded-xl">Birthday: <span className="font-bold text-white">{profile?.vipProfile?.birthMonth && profile?.vipProfile?.birthDay ? `${profile.vipProfile.birthMonth} ${profile.vipProfile.birthDay}` : '—'}</span></div>
+                        <div className="bg-black/30 px-3 py-2 rounded-xl">Location: <span className="font-bold text-white">{profile?.vipProfile?.location || '-'}</span></div>
+                        <div className="bg-black/30 px-3 py-2 rounded-xl">Birthday: <span className="font-bold text-white">{profile?.vipProfile?.birthMonth && profile?.vipProfile?.birthDay ? `${profile.vipProfile.birthMonth} ${profile.vipProfile.birthDay}` : '-'}</span></div>
                     </div>
                     {performanceStats.topSong && (
                         <div className="mt-3 bg-black/30 px-3 py-2 rounded-xl text-sm">
                             Top Song: <span className="font-bold text-white">{performanceStats.topSong.songTitle}</span>
-                            <span className="text-zinc-400"> · {performanceStats.topSong.artist}</span>
+                            <span className="text-zinc-400"> - {performanceStats.topSong.artist}</span>
                         </div>
                     )}
                     {favoriteSongs.length > 0 && (
@@ -4149,7 +4251,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <div className="mt-3 bg-black/30 px-3 py-2 rounded-xl text-sm">
                         <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Fame Level</div>
                         <div className="text-sm text-zinc-200 mb-2">
-                            Level {getLevelFromFame(profile?.totalFamePoints || 0)} • {FAME_LEVELS?.[getLevelFromFame(profile?.totalFamePoints || 0)]?.title || 'Rising Star'}
+                            Level {getLevelFromFame(profile?.totalFamePoints || 0)} - {FAME_LEVELS?.[getLevelFromFame(profile?.totalFamePoints || 0)]?.name || 'Rising Star'}
                         </div>
                         <FameLevelProgressBar level={getLevelFromFame(profile?.totalFamePoints || 0)} progressToNext={getProgressToNextLevel(profile?.totalFamePoints || 0, getLevelFromFame(profile?.totalFamePoints || 0))} />
                     </div>
@@ -4194,7 +4296,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="text-sm text-zinc-400 truncate">{s.artist}</div>
                                     </div>
                                     <div className="text-xs text-zinc-500 font-mono">
-                                        {s.timestamp?.seconds ? new Date(s.timestamp.seconds * 1000).toLocaleDateString() : '—'}
+                                        {s.timestamp?.seconds ? new Date(s.timestamp.seconds * 1000).toLocaleDateString() : '-'}
                                     </div>
                                 </div>
                             ))}
@@ -4378,11 +4480,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     if (publicProfileOpen) {
         const data = publicProfileData || {};
+        const profileIdentity = { ...(publicProfileUser || {}), ...data };
         const displayName = publicProfileUser?.name || data.name || 'Guest';
         const displayAvatar = publicProfileUser?.avatar || data.avatar || DEFAULT_EMOJI;
-        const fameTotal = data.totalFamePoints || 0;
-        const fameLevel = getLevelFromFame(fameTotal);
-        const fameProgress = getProgressToNextLevel(fameTotal, fameLevel);
+        const isPublicVip = isVipEntity(profileIdentity);
+        const fame = getFameSnapshot(profileIdentity);
+        const fameLevel = fame.level;
+        const fameProgress = fame.progressToNext;
+        const nextUnlock = getNextFameUnlockSnapshot(fame.total, fameLevel);
         const topTight15 = Array.isArray(data.tight15)
             ? data.tight15.slice(0, 3)
             : Array.isArray(data.tight15Temp)
@@ -4399,13 +4504,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             <div className="fixed inset-0 bg-black/80 z-[140] flex items-center justify-center p-6 text-white font-saira">
                 <div className="w-full max-w-md bg-gradient-to-br from-[#120b1a] via-[#0f1218] to-[#0a0d12] border border-white/10 rounded-3xl p-6 shadow-2xl">
                     <div className="flex items-center justify-between mb-5">
-                        <div className="flex items-center gap-4">
-                            <div className="text-5xl drop-shadow-[0_0_16px_rgba(0,196,217,0.4)]">{displayAvatar}</div>
-                            <div>
-                                <div className="text-3xl font-black">{displayName}</div>
-                                {publicProfileUser?.isVip && <div className="text-sm uppercase tracking-widest text-cyan-300">VIP</div>}
-                            </div>
-                        </div>
+                        <UserMetaCard
+                            mode="full"
+                            avatar={displayAvatar}
+                            name={displayName}
+                            isVip={isPublicVip}
+                            showFame={false}
+                        />
                         <button onClick={() => setPublicProfileOpen(false)} className="bg-zinc-800 px-4 py-1.5 rounded-full text-sm font-bold">Close</button>
                     </div>
                     {publicProfileLoading ? (
@@ -4414,17 +4519,33 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         <>
                             <div className="bg-black/40 border border-white/10 rounded-2xl p-5 mb-4">
                                 <div className="text-xs uppercase tracking-[0.45em] text-zinc-400 mb-2">Fame Level</div>
-                                <div className="text-lg text-zinc-200 mb-3">Level {fameLevel} • {FAME_LEVELS?.[fameLevel]?.title || 'Rising Star'}</div>
-                                <FameLevelProgressBar level={fameLevel} progressToNext={fameProgress} />
+                                <div className="text-lg text-zinc-200 mb-3">Level {fameLevel} - {fame.levelName}</div>
+                                <FameLevelProgressBar level={fameLevel} progressToNext={fameProgress} showLabel={false} />
+                                <div className="mt-2 text-xs text-zinc-400">{fame.total} fame points</div>
+                                {nextUnlock ? (
+                                    <div className="mt-3 bg-black/30 border border-white/10 rounded-xl px-3 py-2">
+                                        <div className="text-[10px] uppercase tracking-widest text-zinc-400">Next Unlock</div>
+                                        <div className="text-sm text-zinc-100 mt-1">Lv {nextUnlock.level}: {nextUnlock.unlockLabel}</div>
+                                        <div className="text-[11px] text-zinc-400 mt-1">
+                                            {nextUnlock.pointsNeeded > 0
+                                                ? `${nextUnlock.pointsNeeded.toLocaleString()} fame points to go`
+                                                : 'Unlocked - refresh in-room stats if this does not show yet.'}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="mt-3 bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-zinc-300">
+                                        Max fame tier reached. No further unlocks.
+                                    </div>
+                                )}
                             </div>
                             <div className="grid grid-cols-2 gap-3 mb-4">
                                 <div className="bg-black/40 border border-white/10 rounded-xl p-4">
                                     <div className="text-xs text-zinc-400 uppercase tracking-widest mb-1">Location</div>
-                                    <div className="text-white text-lg font-bold">{data.vipProfile?.location || '—'}</div>
+                                    <div className="text-white text-lg font-bold">{data.vipProfile?.location || '-'}</div>
                                 </div>
                                 <div className="bg-black/40 border border-white/10 rounded-xl p-4">
                                     <div className="text-xs text-zinc-400 uppercase tracking-widest mb-1">Birthday</div>
-                                    <div className="text-white text-lg font-bold">{data.vipProfile?.birthMonth && data.vipProfile?.birthDay ? `${data.vipProfile.birthMonth} ${data.vipProfile.birthDay}` : '—'}</div>
+                                    <div className="text-white text-lg font-bold">{data.vipProfile?.birthMonth && data.vipProfile?.birthDay ? `${data.vipProfile.birthMonth} ${data.vipProfile.birthDay}` : '-'}</div>
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-3 mb-4">
@@ -4471,7 +4592,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <div className="text-xs uppercase tracking-[0.45em] text-zinc-400 mb-2">Performance Stats</div>
                                 <div className="text-base text-zinc-200 mb-2">Total performances: {leaderboardStats.find(s => s.uid === publicProfileUser?.uid)?.performances || 0}</div>
                                 {performanceBest ? (
-                                    <div className="text-base text-zinc-300">Best moment: {performanceBest.songTitle} • {performanceBest.score} pts</div>
+                                    <div className="text-base text-zinc-300">Best moment: {performanceBest.songTitle} - {performanceBest.score} pts</div>
                                 ) : (
                                     <div className="text-base text-zinc-400">No performances yet.</div>
                                 )}
@@ -4637,14 +4758,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         <ul className="text-lg text-zinc-100 space-y-3">
                             {active.items.map(item => (
                                 <li key={item} className="flex gap-2">
-                                    <span className="text-pink-400">•</span>
+                                    <span className="text-pink-400">*</span>
                                     <span>{item}</span>
                                 </li>
                             ))}
                         </ul>
                     </div>
                     <div className="mt-4 flex items-center justify-between text-xs text-zinc-500">
-                        <div>Swipe to browse · {howToPlayIndex + 1} of {slides.length || 1}</div>
+                        <div>Swipe to browse - {howToPlayIndex + 1} of {slides.length || 1}</div>
                         <div className="flex gap-2">
                             {slides.map((_, i) => (
                                 <span key={i} className={`h-1.5 w-6 rounded-full ${i === howToPlayIndex ? 'bg-gradient-to-r from-[#00C4D9] to-[#EC4899]' : 'bg-zinc-700'}`}></span>
@@ -4744,7 +4865,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     >
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <div className="text-sm uppercase tracking-widest text-cyan-200">Room boost • Earns a badge</div>
+                                                <div className="text-sm uppercase tracking-widest text-cyan-200">Room boost - Earns a badge</div>
                                                 <div className="text-2xl font-bold text-white flex items-center gap-2">
                                                     <span className="text-2xl">{EMOJI.crown}</span>
                                                     {label}
@@ -4809,7 +4930,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         </div>
                         <div className="min-w-0">
                             <div className="text-sm uppercase tracking-widest text-zinc-400">Current Level</div>
-                            <div className="text-lg font-bold text-white">Level {currentFameLevel} · {FAME_LEVELS?.[currentFameLevel]?.name || 'Rising Star'}</div>
+                            <div className="text-lg font-bold text-white">Level {currentFameLevel} - {FAME_LEVELS?.[currentFameLevel]?.name || 'Rising Star'}</div>
                             <div className="text-sm text-zinc-400">{currentFameTotal} Fame Points</div>
                         </div>
                     </div>
@@ -4838,12 +4959,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             {isCurrent && <div className="text-[10px] uppercase tracking-widest text-cyan-200 bg-cyan-500/15 border border-cyan-400/30 px-2 py-0.5 rounded-full">Current</div>}
                                         </div>
                                         <div className="text-base font-bold text-white">{level.name}</div>
-                                        <div className="text-xs text-zinc-400">Unlocks at {level.minFame} FP · Next {nextLabel}</div>
+                                        <div className="text-xs text-zinc-400">Unlocks at {level.minFame} FP - Next {nextLabel}</div>
                                     </div>
                                 </div>
                                 <div className="mt-3 grid gap-2">
                                     <div className="text-sm text-zinc-200">
-                                        <span className="text-zinc-400">Reward:</span> {level.reward || '—'}
+                                        <span className="text-zinc-400">Reward:</span> {level.reward || '-'}
                                     </div>
                                     {level.unlock && (
                                         <div className="text-sm text-zinc-200">
@@ -4925,6 +5046,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (hrs > 0) return `${hrs}h ${remMins}m`;
         return `${mins}m`;
     };
+    const myFame = getFameSnapshot({
+        fameLevel: typeof profile?.currentLevel === 'number' ? profile.currentLevel : undefined,
+        totalFamePoints: profile?.totalFamePoints || 0
+    });
+    const myNextUnlock = getNextFameUnlockSnapshot(myFame.total, myFame.level);
     const sortedUsers = [...allUsers].sort((a, b) => (b.points || 0) - (a.points || 0));
     const lobbyUsers = (() => {
         const list = [...allUsers];
@@ -5485,26 +5611,31 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             <div className="bg-zinc-800/60 rounded-2xl border border-zinc-700 p-4">
                                 <div className="text-[11px] uppercase tracking-widest text-zinc-300 mb-3">Leaderboard</div>
                                 <div className="space-y-2">
-                                    {sortedUsers.map(u => (
-                                        <button
-                                            key={u.uid}
-                                            onClick={() => openPublicProfile(u)}
-                                            className="w-full flex items-center justify-between bg-zinc-900/60 border border-zinc-700 rounded-xl p-3 text-left hover:border-cyan-400/40 transition"
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-2xl">{u.avatar || DEFAULT_EMOJI}</span>
-                                                <div className="text-sm text-white font-bold flex items-center gap-2">
-                                                    <span className="truncate max-w-[140px]">{u.name || 'Guest'}</span>
-                                                    {room?.showFameLevel !== false && (
-                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 border border-white/20 text-white/80">
-                                                            Lv {typeof u.fameLevel === 'number' ? u.fameLevel : getLevelFromFame(u.totalFamePoints || 0)}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="text-xs text-zinc-300">{activeLeaderboardMode.getValue(u)} {activeLeaderboardMode.unit}</div>
-                                        </button>
-                                    ))}
+                                    {sortedUsers.map(u => {
+                                        const fame = getFameSnapshot(u);
+                                        const isVip = isVipEntity(u);
+                                        return (
+                                            <button
+                                                key={u.uid || u.name}
+                                                onClick={() => openPublicProfile(u)}
+                                                className="w-full flex items-center justify-between gap-3 bg-zinc-900/60 border border-zinc-700 rounded-xl p-3 text-left hover:border-cyan-400/40 transition"
+                                            >
+                                                <UserMetaCard
+                                                    mode="compact"
+                                                    avatar={u.avatar || DEFAULT_EMOJI}
+                                                    name={u.name || 'Guest'}
+                                                    isVip={isVip}
+                                                    fameLevel={fame.level}
+                                                    fameLevelName={fame.levelName}
+                                                    fameProgressToNext={fame.progressToNext}
+                                                    fameTotal={fame.total}
+                                                    showFame={room?.showFameLevel !== false}
+                                                    showProgress={room?.showFameLevel !== false}
+                                                />
+                                                <div className="text-xs text-zinc-300 whitespace-nowrap">{activeLeaderboardMode.getValue(u)} {activeLeaderboardMode.unit}</div>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                                 <div className="mt-5 border-t border-zinc-700 pt-4">
                                     <div className="flex items-center justify-between mb-3">
@@ -5577,7 +5708,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="min-w-0">
                                             <div className="text-base font-bold text-white truncate">{user?.name || 'Guest'}</div>
                                             <div className="text-sm text-zinc-300">
-                                                Level {getLevelFromFame(profile?.totalFamePoints || 0)} • {FAME_LEVELS?.[getLevelFromFame(profile?.totalFamePoints || 0)]?.title || 'Rising Star'}
+                                                Level {myFame.level} • {myFame.levelName}
                                             </div>
                                             <button onClick={() => setShowFameLevels(true)} className="mt-2 inline-flex items-center gap-2 text-[11px] font-bold text-cyan-200 bg-cyan-500/10 border border-cyan-400/30 px-2 py-1 rounded-full">
                                                 {EMOJI.star} View Fame Levels
@@ -5588,6 +5719,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border bg-[#00C4D9]/10 text-cyan-300 border-[#00C4D9]/40">
                                             VIP
                                         </div>
+                                    )}
+                                </div>
+                                <div className="bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-200">
+                                    <div className="text-[10px] uppercase tracking-widest text-zinc-400 mb-1">Next Unlock</div>
+                                    {myNextUnlock ? (
+                                        <>
+                                            <div>Lv {myNextUnlock.level}: {myNextUnlock.unlockLabel}</div>
+                                            <div className="text-zinc-400 mt-1">
+                                                {myNextUnlock.pointsNeeded.toLocaleString()} fame points to go
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div>Max fame tier reached. No further unlocks.</div>
                                     )}
                                 </div>
                                 {profileSubTab === 'overview' && (
@@ -5663,24 +5807,28 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <div className="space-y-2">
                                     {lobbyUsers.map(u => {
                                         const isHost = !!u.isHost || (!!room?.hostName && u.name === room.hostName);
-                                        const isVip = !!u.isVip || (u.vipLevel || 0) > 0;
+                                        const isVip = isVipEntity(u);
                                         const hasRoomBoost = !!u.roomBoostBadge || !!u.roomBoosted || (u.roomBoosts || 0) > 0;
+                                        const fame = getFameSnapshot(u);
                                         return (
                                             <div key={u.uid || u.name} className={`flex items-center gap-2 rounded-xl p-3 border ${isHost ? 'bg-cyan-500/10 border-cyan-400/40' : 'bg-zinc-900/60 border-zinc-700'}`}>
                                                 <button onClick={() => openPublicProfile(u)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
-                                                    <span className="text-2xl">{u.avatar || DEFAULT_EMOJI}</span>
                                                     <div className="min-w-0 flex-1">
-                                                        <div className="text-base text-white font-bold truncate flex items-center gap-2">
-                                                            <span className="truncate max-w-[140px]">{u.name || 'Guest'}</span>
-                                                            {room?.showFameLevel !== false && (
-                                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 border border-white/20 text-white/80">
-                                                                    Lv {typeof u.fameLevel === 'number' ? u.fameLevel : getLevelFromFame(u.totalFamePoints || 0)}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        {(isHost || isVip || hasRoomBoost) && (
-                                                            <div className="mt-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full border bg-black/40 text-zinc-200 border-white/10">
-                                                                {isHost ? 'HOST' : hasRoomBoost ? `${EMOJI.money} BOOSTER` : 'VIP'}
+                                                        <UserMetaCard
+                                                            mode="compact"
+                                                            avatar={u.avatar || DEFAULT_EMOJI}
+                                                            name={u.name || 'Guest'}
+                                                            isVip={isVip}
+                                                            fameLevel={fame.level}
+                                                            fameLevelName={fame.levelName}
+                                                            fameProgressToNext={fame.progressToNext}
+                                                            fameTotal={fame.total}
+                                                            showFame={room?.showFameLevel !== false}
+                                                            showProgress={room?.showFameLevel !== false}
+                                                        />
+                                                        {(isHost || hasRoomBoost) && (
+                                                            <div className="mt-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full border bg-black/40 text-zinc-200 border-white/10 ml-8">
+                                                                {isHost ? 'HOST' : `${EMOJI.money} BOOSTER`}
                                                             </div>
                                                         )}
                                                     </div>
@@ -5720,11 +5868,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <div className="bg-black/50 border border-cyan-500/30 rounded-xl p-4 mb-4 text-left">
                                     <div className="text-xs uppercase tracking-[0.35em] text-cyan-300 mb-3">VIP Benefits</div>
                                     <ul className="space-y-2 text-sm text-zinc-200">
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">★</span> Exclusive VIP emojis + mega reaction animations.</li>
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">★</span> VIP badge on TV, queue, and chat.</li>
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">★</span> Instant +5000 bonus points on unlock.</li>
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">★</span> VIP-only chat nights when enabled by the host.</li>
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">★</span> Priority spotlight moments during the party.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> Exclusive VIP emojis + mega reaction animations.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> VIP badge on TV, queue, and chat.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> Instant +5000 bonus points on unlock.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> VIP-only chat nights when enabled by the host.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> Priority spotlight moments during the party.</li>
                                     </ul>
                                 </div>
                                 <div className="text-left bg-zinc-900/70 border border-zinc-700 rounded-xl p-4 mb-4">
@@ -5760,9 +5908,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <div className="bg-black/50 border border-cyan-500/30 rounded-xl p-4 mb-5 text-left">
                                     <div className="text-xs uppercase tracking-[0.35em] text-cyan-300 mb-3">Your Perks</div>
                                     <ul className="space-y-2 text-sm text-zinc-200">
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">★</span> VIP reactions and animated FX.</li>
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">★</span> VIP badge on TV, queue, and chat.</li>
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">★</span> Exclusive VIP emoji pack.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> VIP reactions and animated FX.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> VIP badge on TV, queue, and chat.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> Exclusive VIP emoji pack.</li>
                                     </ul>
                                 </div>
                                 <button onClick={()=>setTab('home')} className="w-full bg-[#00C4D9] text-black py-4 rounded-xl font-bold text-xl">Back to Party</button>
@@ -6187,7 +6335,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <div className="text-left mb-2">
                                     <div className="text-sm uppercase tracking-[0.35em] text-zinc-400">Tight 15</div>
                                     <h3 className="text-2xl font-bebas text-cyan-400">Tight 15</h3>
-                                    <p className="text-base text-zinc-400">Your personal 15-song setlist. Tap “Add New” or save songs during performances.</p>
+                                    <p className="text-base text-zinc-400">Your personal 15-song setlist. Tap "Add New" or save songs during performances.</p>
                                 </div>
                                 <div className="flex gap-2 mb-2">
                                     <button onClick={importRecentToTight15} className="flex-1 bg-zinc-900/70 border border-zinc-700 text-zinc-200 py-1 rounded-md text-sm font-semibold uppercase tracking-widest">Import Recent</button>
@@ -6237,7 +6385,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
                                 <div className="space-y-2">
                                 {getTight15List().length === 0 && (
-                                    <div className="text-left text-base text-zinc-500">No songs yet. Start with “Add New” or tap + TIGHT 15 during a performance.</div>
+                                    <div className="text-left text-base text-zinc-500">No songs yet. Start with "Add New" or tap + TIGHT 15 during a performance.</div>
                                 )}
                                     {getTight15List().map((item, idx) => (
                                         <div
@@ -6329,12 +6477,4 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 };
 
 export default SingerApp;
-
-
-
-
-
-
-
-
 

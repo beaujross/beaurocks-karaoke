@@ -31,6 +31,12 @@ Saved snapshots are written at:
 
 Each snapshot stores:
 - Period, customer name, line items, totals, status, and notes.
+- Rate-card snapshot metadata used to calculate overage lines:
+  - included units
+  - overage units
+  - pass-through unit cost
+  - markup multiplier
+  - final billable unit rate
 - Created/updated timestamps and user IDs.
 
 ## Important Constraint
@@ -39,6 +45,7 @@ QBSE does not currently use the same public invoice API path as QuickBooks Onlin
 This implementation therefore prioritizes:
 - Accurate line-item export for manual invoice entry.
 - Clean transaction CSV for reconciliation.
+- Transparent pass-through + markup fields in invoice artifacts so margin and cloud/API cost assumptions are auditable.
 
 ## Upgrade Path (If Moving to QuickBooks Online)
 
