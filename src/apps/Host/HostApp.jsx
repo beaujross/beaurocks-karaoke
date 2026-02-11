@@ -2473,7 +2473,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const status = String(orgContext?.status || '').toLowerCase();
         return ['active', 'trialing', 'past_due'].includes(status);
     }, [orgContext?.status]);
+    const usageMeters = useMemo(() => {
+        const meters = Object.values(usageSummary?.meters || {});
+        return meters.sort((a, b) => String(a?.label || '').localeCompare(String(b?.label || '')));
+    }, [usageSummary?.meters]);
     const aiUsageMeter = useMemo(() => usageSummary?.meters?.ai_generate_content || null, [usageSummary?.meters]);
+    const usageHardLimitHits = useMemo(() => {
+        return usageMeters.filter(meter => !!meter?.hardLimitReached);
+    }, [usageMeters]);
     const usagePeriodLabel = useMemo(() => {
         const key = String(usageSummary?.period || '');
         if (!/^\d{6}$/.test(key)) return '--';
@@ -6115,29 +6122,62 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                         <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
-                                            <div className="text-xs uppercase tracking-widest text-zinc-500">AI Generations</div>
-                                            <div className="text-white font-semibold mt-1">
-                                                {Number(aiUsageMeter?.used || 0).toLocaleString()} / {Number(aiUsageMeter?.included || 0).toLocaleString()} included
-                                            </div>
-                                            <div className="text-xs text-zinc-400 mt-1">
-                                                Hard limit: {Number(aiUsageMeter?.hardLimit || 0).toLocaleString()}
-                                                {typeof aiUsageMeter?.remainingToHardLimit === 'number' ? ` | Remaining: ${Number(aiUsageMeter.remainingToHardLimit || 0).toLocaleString()}` : ''}
-                                            </div>
-                                        </div>
-                                        <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
                                             <div className="text-xs uppercase tracking-widest text-zinc-500">Overage Estimate</div>
                                             <div className="text-white font-semibold mt-1">
                                                 {formatUsdFromCents(usageSummary?.totals?.estimatedOverageCents || 0)}
                                             </div>
                                             <div className="text-xs text-zinc-400 mt-1">
-                                                Overage units: {Number(aiUsageMeter?.overageUnits || 0).toLocaleString()}
-                                                {' '}@ {formatUsdFromCents(aiUsageMeter?.overageRateCents || 0)} each
+                                                Meters tracked: {usageMeters.length}
+                                            </div>
+                                        </div>
+                                        <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
+                                            <div className="text-xs uppercase tracking-widest text-zinc-500">AI Generations (Quick View)</div>
+                                            <div className="text-white font-semibold mt-1">
+                                                {Number(aiUsageMeter?.used || 0).toLocaleString()} / {Number(aiUsageMeter?.included || 0).toLocaleString()} included
+                                            </div>
+                                            <div className="text-xs text-zinc-400 mt-1">
+                                                Hard limit: {Number(aiUsageMeter?.hardLimit || 0).toLocaleString()}
                                             </div>
                                         </div>
                                     </div>
-                                    {aiUsageMeter?.hardLimitReached && (
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full text-xs text-left border border-zinc-800 rounded-lg overflow-hidden">
+                                            <thead className="bg-zinc-950/80 text-zinc-400 uppercase tracking-widest">
+                                                <tr>
+                                                    <th className="px-3 py-2">Meter</th>
+                                                    <th className="px-3 py-2">Used</th>
+                                                    <th className="px-3 py-2">Included</th>
+                                                    <th className="px-3 py-2">Overage Units</th>
+                                                    <th className="px-3 py-2">Overage Rate</th>
+                                                    <th className="px-3 py-2">Est. Overage</th>
+                                                    <th className="px-3 py-2">Hard Limit</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {usageMeters.length === 0 && (
+                                                    <tr className="bg-zinc-900/40 text-zinc-500">
+                                                        <td className="px-3 py-3" colSpan={7}>No usage data yet for this period.</td>
+                                                    </tr>
+                                                )}
+                                                {usageMeters.map((meter) => (
+                                                    <tr key={`usage-meter-${meter.meterId}`} className="border-t border-zinc-800 bg-zinc-900/30">
+                                                        <td className="px-3 py-2 text-zinc-200">{meter.label}</td>
+                                                        <td className="px-3 py-2 text-white">{Number(meter.used || 0).toLocaleString()}</td>
+                                                        <td className="px-3 py-2 text-zinc-300">{Number(meter.included || 0).toLocaleString()}</td>
+                                                        <td className="px-3 py-2 text-zinc-300">{Number(meter.overageUnits || 0).toLocaleString()}</td>
+                                                        <td className="px-3 py-2 text-zinc-300">{formatUsdFromCents(meter.overageRateCents || 0)}</td>
+                                                        <td className="px-3 py-2 text-zinc-300">{formatUsdFromCents(meter.estimatedOverageCents || 0)}</td>
+                                                        <td className={`px-3 py-2 ${meter.hardLimitReached ? 'text-amber-200' : 'text-zinc-300'}`}>
+                                                            {Number(meter.hardLimit || 0).toLocaleString()}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {usageHardLimitHits.length > 0 && (
                                         <div className="text-sm text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded-lg px-3 py-2">
-                                            AI monthly hard limit reached. Upgrade plan or wait for next monthly period.
+                                            Hard limit reached: {usageHardLimitHits.map(m => m.label).join(', ')}. Upgrade plan or wait for next monthly period.
                                         </div>
                                     )}
                                     {usageSummary?.error && (

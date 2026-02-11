@@ -80,6 +80,52 @@ const USAGE_METER_DEFINITIONS = Object.freeze({
       host_annual: 2,
     }),
   },
+  youtube_data_request: {
+    id: "youtube_data_request",
+    label: "YouTube Data API requests",
+    unit: "request",
+    includedByPlan: Object.freeze({
+      free: 0,
+      vip_monthly: 0,
+      host_monthly: 6000,
+      host_annual: 9000,
+    }),
+    hardLimitByPlan: Object.freeze({
+      free: 0,
+      vip_monthly: 0,
+      host_monthly: 25000,
+      host_annual: 35000,
+    }),
+    overageRateCentsByPlan: Object.freeze({
+      free: 0,
+      vip_monthly: 0,
+      host_monthly: 1,
+      host_annual: 1,
+    }),
+  },
+  apple_music_request: {
+    id: "apple_music_request",
+    label: "Apple Music API requests",
+    unit: "request",
+    includedByPlan: Object.freeze({
+      free: 0,
+      vip_monthly: 0,
+      host_monthly: 2000,
+      host_annual: 3000,
+    }),
+    hardLimitByPlan: Object.freeze({
+      free: 0,
+      vip_monthly: 0,
+      host_monthly: 10000,
+      host_annual: 15000,
+    }),
+    overageRateCentsByPlan: Object.freeze({
+      free: 0,
+      vip_monthly: 0,
+      host_monthly: 2,
+      host_annual: 2,
+    }),
+  },
 });
 
 setGlobalOptions({
@@ -1277,7 +1323,8 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
 
 exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_search");
-  requireAuth(request);
+  const uid = requireAuth(request);
+  const entitlements = await resolveUserEntitlements(uid);
   enforceAppCheckIfEnabled(request, "youtube_search");
   const query = request.data?.query || "";
   ensureString(query, "query");
@@ -1286,6 +1333,12 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
   }
+  await reserveOrganizationUsageUnits({
+    orgId: entitlements.orgId,
+    entitlements,
+    meterId: "youtube_data_request",
+    units: 1,
+  });
   const url = `https://www.googleapis.com/youtube/v3/search?key=${apiKey}&q=${encodeURIComponent(query)}&part=snippet&type=video&maxResults=${maxResults}&order=relevance`;
   const res = await fetch(url);
   if (!res.ok) {
@@ -1304,7 +1357,8 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
 
 exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_playlist");
-  requireAuth(request);
+  const uid = requireAuth(request);
+  const entitlements = await resolveUserEntitlements(uid);
   enforceAppCheckIfEnabled(request, "youtube_playlist");
   const playlistId = request.data?.playlistId || "";
   ensureString(playlistId, "playlistId");
@@ -1317,6 +1371,12 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
   let pageToken = "";
   while (items.length < maxTotal) {
     const batchSize = Math.min(50, maxTotal - items.length);
+    await reserveOrganizationUsageUnits({
+      orgId: entitlements.orgId,
+      entitlements,
+      meterId: "youtube_data_request",
+      units: 1,
+    });
     const url = `https://www.googleapis.com/youtube/v3/playlistItems?key=${apiKey}&part=snippet&maxResults=${batchSize}&playlistId=${playlistId}${pageToken ? `&pageToken=${pageToken}` : ""}`;
     const res = await fetch(url);
     if (!res.ok) {
@@ -1340,7 +1400,8 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
 
 exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_status");
-  requireAuth(request);
+  const uid = requireAuth(request);
+  const entitlements = await resolveUserEntitlements(uid);
   enforceAppCheckIfEnabled(request, "youtube_status");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   if (!ids.length) return { items: [] };
@@ -1348,6 +1409,12 @@ exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
   }
+  await reserveOrganizationUsageUnits({
+    orgId: entitlements.orgId,
+    entitlements,
+    meterId: "youtube_data_request",
+    units: 1,
+  });
   const sliced = ids.slice(0, 50);
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status&id=${sliced.join(",")}`;
   const res = await fetch(url);
@@ -1374,7 +1441,8 @@ const parseIsoDuration = (value = "") => {
 
 exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_details");
-  requireAuth(request);
+  const uid = requireAuth(request);
+  const entitlements = await resolveUserEntitlements(uid);
   enforceAppCheckIfEnabled(request, "youtube_details");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   if (!ids.length) return { items: [] };
@@ -1382,6 +1450,12 @@ exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asyn
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
   }
+  await reserveOrganizationUsageUnits({
+    orgId: entitlements.orgId,
+    entitlements,
+    meterId: "youtube_data_request",
+    units: 1,
+  });
   const sliced = ids.slice(0, 50);
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=contentDetails&id=${sliced.join(",")}`;
   const res = await fetch(url);
@@ -1440,7 +1514,8 @@ exports.appleMusicLyrics = onCall(
   { cors: true, secrets: [APPLE_MUSIC_TEAM_ID, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_PRIVATE_KEY] },
   async (request) => {
     checkRateLimit(request.rawRequest, "apple_music");
-    requireAuth(request);
+    const uid = requireAuth(request);
+    const entitlements = await resolveUserEntitlements(uid);
     enforceAppCheckIfEnabled(request, "apple_music_lyrics");
     const title = request.data?.title || "";
     const artist = request.data?.artist || "";
@@ -1455,6 +1530,12 @@ exports.appleMusicLyrics = onCall(
     if (musicUserToken) {
       headers["Music-User-Token"] = musicUserToken;
     }
+    await reserveOrganizationUsageUnits({
+      orgId: entitlements.orgId,
+      entitlements,
+      meterId: "apple_music_request",
+      units: 1,
+    });
     const searchUrl = `https://api.music.apple.com/v1/catalog/${storefront}/search?term=${encodeURIComponent(
       term
     )}&types=songs&limit=1`;
@@ -1471,6 +1552,12 @@ exports.appleMusicLyrics = onCall(
       return { found: false, message: "No Apple Music match." };
     }
     const songId = song.id;
+    await reserveOrganizationUsageUnits({
+      orgId: entitlements.orgId,
+      entitlements,
+      meterId: "apple_music_request",
+      units: 1,
+    });
     const lyricsUrl = `https://api.music.apple.com/v1/catalog/${storefront}/songs/${songId}/lyrics`;
     const lyricsRes = await fetch(lyricsUrl, {
       headers,
