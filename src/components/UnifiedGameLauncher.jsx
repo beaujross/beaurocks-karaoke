@@ -145,8 +145,26 @@ const GameConfigShell = ({ title, subtitle, accentClass, onClose, children }) =>
     );
 };
 
-const UnifiedGameLauncher = ({ room, roomCode, updateRoom, users, logActivity, songs, generateAIContent, callFunction, useToast, autoOpenGameId }) => {
+const UnifiedGameLauncher = ({
+    room,
+    roomCode,
+    updateRoom,
+    users,
+    logActivity,
+    songs,
+    generateAIContent,
+    callFunction,
+    useToast,
+    autoOpenGameId,
+    capabilities = {},
+    entitlementStatus = {}
+}) => {
     const toast = useToast() || console.log;
+    const canUseAiGeneration = !!capabilities?.['ai.generate_content'];
+    const aiGateMessage = entitlementStatus?.loading
+        ? 'Checking AI entitlement...'
+        : 'AI tools require an active Host subscription.';
+    const [subscriptionCheckoutLoading, setSubscriptionCheckoutLoading] = useState(false);
     const getTimestampMs = (value) => {
         if (!value) return 0;
         if (typeof value === 'number') return value;
@@ -680,6 +698,10 @@ const UnifiedGameLauncher = ({ room, roomCode, updateRoom, users, logActivity, s
     };
     
     const generateSelfieChallengePrompt = async () => {
+        if (!canUseAiGeneration) {
+            toast(aiGateMessage);
+            return;
+        }
         setSelfieAiLoading(true);
         try {
             const res = await generateAIContent('selfie_prompt', []);
@@ -697,6 +719,10 @@ const UnifiedGameLauncher = ({ room, roomCode, updateRoom, users, logActivity, s
     };
 
     const appendTriviaFromAI = async () => {
+        if (!canUseAiGeneration) {
+            toast(aiGateMessage);
+            return;
+        }
         if (triviaAiLoading) return;
         setTriviaAiLoading(true);
         try {
@@ -730,6 +756,10 @@ const UnifiedGameLauncher = ({ room, roomCode, updateRoom, users, logActivity, s
     };
 
     const appendWyrFromAI = async () => {
+        if (!canUseAiGeneration) {
+            toast(aiGateMessage);
+            return;
+        }
         if (wyrAiLoading) return;
         setWyrAiLoading(true);
         try {
@@ -852,6 +882,28 @@ const UnifiedGameLauncher = ({ room, roomCode, updateRoom, users, logActivity, s
         return wyrBank.filter(w => !q || `${w.q} ${w.a} ${w.b}`.toLowerCase().includes(q));
     }, [wyrBank, wyrFilter]);
 
+    const startHostSubscriptionCheckout = async () => {
+        if (subscriptionCheckoutLoading) return;
+        setSubscriptionCheckoutLoading(true);
+        try {
+            const origin = typeof window !== 'undefined' ? window.location.origin : '';
+            const payload = await callFunction('createSubscriptionCheckout', {
+                planId: 'host_monthly',
+                origin
+            });
+            if (payload?.url) {
+                window.location.href = payload.url;
+                return;
+            }
+            toast('Subscription checkout is unavailable right now.');
+        } catch (e) {
+            console.error('Subscription checkout failed', e);
+            toast('Could not open subscription checkout.');
+        } finally {
+            setSubscriptionCheckoutLoading(false);
+        }
+    };
+
     useEffect(() => {
         const rng = room?.bingoMysteryRng;
         if (!rng?.active || rng?.finalized || room?.bingoMode !== 'mystery') return;
@@ -940,6 +992,21 @@ const UnifiedGameLauncher = ({ room, roomCode, updateRoom, users, logActivity, s
                 </div>
                 <h2 className="text-3xl font-bold text-white mt-3">Launch a crowd moment</h2>
                 <div className="mt-3 h-px w-32 bg-gradient-to-r from-cyan-400/80 via-pink-500/70 to-transparent"></div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <div className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${canUseAiGeneration ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200' : 'border-amber-400/40 bg-amber-500/10 text-amber-200'}`}>
+                        <i className={`fa-solid ${canUseAiGeneration ? 'fa-bolt' : 'fa-lock'}`}></i>
+                        {canUseAiGeneration ? 'AI tools enabled for this org' : aiGateMessage}
+                    </div>
+                    {!canUseAiGeneration && !entitlementStatus?.loading && (
+                        <button
+                            onClick={startHostSubscriptionCheckout}
+                            disabled={subscriptionCheckoutLoading}
+                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-xs ${subscriptionCheckoutLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        >
+                            {subscriptionCheckoutLoading ? 'Opening checkout...' : 'Upgrade for AI'}
+                        </button>
+                    )}
+                </div>
                 {activeGameLabel && (
                     <div className="mt-4 flex flex-wrap items-center justify-between bg-zinc-900/70 border border-white/10 rounded-2xl px-4 py-3 gap-3">
                         <div>
@@ -1096,6 +1163,8 @@ const UnifiedGameLauncher = ({ room, roomCode, updateRoom, users, logActivity, s
                 setVocalGuideTone={setVocalGuideTone}
                 vocalParticipants={vocalParticipants}
                 setVocalParticipants={setVocalParticipants}
+                canUseAiGeneration={canUseAiGeneration}
+                aiGateMessage={aiGateMessage}
             />}
         </div>
     );
@@ -1314,7 +1383,19 @@ const ParticipantSelector = ({ mode, setMode, participants, setParticipants, use
     );
 };
 
-const BingoManager = ({ roomCode, room, updateRoom, generateAIContent, callFunction, toast, bingoBoards, setBingoBoards, onStartBingo }) => {
+const BingoManager = ({
+    roomCode,
+    room,
+    updateRoom,
+    generateAIContent,
+    callFunction,
+    toast,
+    bingoBoards,
+    setBingoBoards,
+    onStartBingo,
+    canUseAiGeneration,
+    aiGateMessage
+}) => {
     const [newBoardForm, setNewBoardForm] = useState({ title: '', size: '5', mode: 'karaoke', victory: defaultBingoVictory() });
     const [bingoBoard, setBingoBoard] = useState([]);
     const [activeBoardId, setActiveBoardId] = useState(null);
@@ -1391,6 +1472,10 @@ const BingoManager = ({ roomCode, room, updateRoom, generateAIContent, callFunct
     };
 
     const handleAIGenerateBoard = async () => {
+        if (!canUseAiGeneration) {
+            toast(aiGateMessage);
+            return;
+        }
         if (!newBoardForm.title.trim()) return toast('Enter a theme title first');
         setAiLoading(true);
         try {
@@ -1572,7 +1657,12 @@ const BingoManager = ({ roomCode, room, updateRoom, generateAIContent, callFunct
                     ))}
                     <div className="flex gap-2">
                         <button onClick={createNewBoard} className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1 py-2 text-sm`}>Create</button>
-                        <button onClick={handleAIGenerateBoard} disabled={aiLoading} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
+                        <button
+                            onClick={handleAIGenerateBoard}
+                            disabled={aiLoading || !canUseAiGeneration}
+                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm ${!canUseAiGeneration ? 'opacity-70 cursor-not-allowed' : ''}`}
+                            title={canUseAiGeneration ? 'Generate board with AI' : aiGateMessage}
+                        >
                             {aiLoading ? 'AI...' : 'AI Board'}
                         </button>
                     </div>
@@ -1815,7 +1905,9 @@ const GameConfigModal = ({
     setBingoParticipantMode,
     callFunction,
     toast,
-    setBingoBoards
+    setBingoBoards,
+    canUseAiGeneration,
+    aiGateMessage
 }) => {
     if (selectedGame === 'flappy_bird') {
         return (
@@ -2021,6 +2113,10 @@ const GameConfigModal = ({
                                 />
                                 <button 
                                     onClick={async () => {
+                                        if (!canUseAiGeneration) {
+                                            toast(aiGateMessage);
+                                            return;
+                                        }
                                         setDoodleAiLoading(true);
                                         try {
                                             const res = await generateAIContent('doodle_prompts', [doodleAiTopic || 'fun drawings']);
@@ -2036,10 +2132,11 @@ const GameConfigModal = ({
                                         }
                                         setDoodleAiLoading(false);
                                     }} 
-                                    disabled={doodleAiLoading}
-                                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3`}
+                                    disabled={doodleAiLoading || !canUseAiGeneration}
+                                    className={`${STYLES.btnStd} ${canUseAiGeneration ? STYLES.btnPrimary : STYLES.btnSecondary} px-3 ${!canUseAiGeneration ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    title={canUseAiGeneration ? 'Generate prompts with AI' : aiGateMessage}
                                 >
-                                    {doodleAiLoading ? '⏳' : '✨'} AI
+                                    {doodleAiLoading ? 'AI...' : 'AI'}
                                 </button>
                             </div>
                             <div className="space-y-2">
@@ -2116,10 +2213,11 @@ const GameConfigModal = ({
                             />
                             <button 
                                 onClick={generateSelfieChallengePrompt}
-                                disabled={selfieAiLoading}
-                                className={`${STYLES.btnStd} ${STYLES.btnPrimary} w-full py-2 text-sm`}
+                                disabled={selfieAiLoading || !canUseAiGeneration}
+                                className={`${STYLES.btnStd} ${canUseAiGeneration ? STYLES.btnPrimary : STYLES.btnSecondary} w-full py-2 text-sm ${!canUseAiGeneration ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                title={canUseAiGeneration ? 'Generate selfie challenge prompt with AI' : aiGateMessage}
                             >
-                                {selfieAiLoading ? '⏳ Generating...' : '✨ Generate with AI'}
+                                {selfieAiLoading ? 'Generating...' : 'Generate with AI'}
                             </button>
                         </div>
                         <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
@@ -2186,8 +2284,9 @@ const GameConfigModal = ({
                             />
                             <button
                                 onClick={onAppendTriviaFromAI}
-                                disabled={triviaAiLoading}
-                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3`}
+                                disabled={triviaAiLoading || !canUseAiGeneration}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 ${!canUseAiGeneration ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                title={canUseAiGeneration ? 'Add AI trivia prompts' : aiGateMessage}
                             >
                                 {triviaAiLoading ? 'AI...' : 'Add AI'}
                             </button>
@@ -2254,8 +2353,9 @@ const GameConfigModal = ({
                             />
                             <button
                                 onClick={onAppendWyrFromAI}
-                                disabled={wyrAiLoading}
-                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3`}
+                                disabled={wyrAiLoading || !canUseAiGeneration}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 ${!canUseAiGeneration ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                title={canUseAiGeneration ? 'Add AI WYR prompts' : aiGateMessage}
                             >
                                 {wyrAiLoading ? 'AI...' : 'Add AI'}
                             </button>
@@ -2316,6 +2416,8 @@ const GameConfigModal = ({
                             bingoBoards={bingoBoards}
                             setBingoBoards={setBingoBoards}
                             onStartBingo={onStartBingo}
+                            canUseAiGeneration={canUseAiGeneration}
+                            aiGateMessage={aiGateMessage}
                         />
                     </div>
                     <div className="lg:col-span-1">

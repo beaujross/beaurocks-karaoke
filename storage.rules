@@ -28,9 +28,23 @@ service firebase.storage {
         && request.resource.contentType.matches('^(audio|video)/.*$');
     }
 
+    function isAllowedLogoUpload() {
+      return request.resource != null
+        && request.resource.size <= 12 * 1024 * 1024
+        && request.resource.contentType != null
+        && request.resource.contentType.matches('^image/.*$');
+    }
+
     match /room_uploads/{roomCode}/{fileName} {
       allow read: if isRoomHost(roomCode);
       allow create: if isRoomHost(roomCode) && isAllowedMediaUpload();
+      allow delete: if isRoomHost(roomCode);
+      allow update: if false;
+    }
+
+    match /room_branding/{roomCode}/{fileName} {
+      allow read: if isRoomHost(roomCode);
+      allow create: if isRoomHost(roomCode) && isAllowedLogoUpload();
       allow delete: if isRoomHost(roomCode);
       allow update: if false;
     }

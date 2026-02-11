@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, addDoc, serverTimestamp, increment, trackEvent } from '../../lib/firebase';
+import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, addDoc, serverTimestamp, trackEvent } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
 import { ASSETS, STORM_SFX } from '../../lib/assets';
+import QRCode from 'qrcode';
 import { averageBand } from '../../lib/utils';
 import AudioVisualizer from '../../components/AudioVisualizer';
 import Stage from '../../components/Stage';
@@ -9,8 +10,63 @@ import GameContainer from '../../components/GameContainer';
 import { emoji, EMOJI } from '../../lib/emoji';
 import { HOW_TO_PLAY } from '../../lib/howToPlay';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
+import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
+
+const isTvVisibleChatMessage = (message) => {
+    if (!message) return false;
+    if (message.toHost || message.toUid) return false;
+    if (message.channel === 'dm') return false;
+    return true;
+};
+
+const formatWaitTime = (seconds) => {
+    const safe = Math.max(0, Number(seconds) || 0);
+    const mins = Math.floor(safe / 60);
+    const hrs = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (hrs > 0) return `${hrs}h ${remMins}m`;
+    return `${mins}m`;
+};
 
 // --- SUB-COMPONENTS ---
+const LocalQrImage = ({ value, size = 220, className = '', alt = 'QR' }) => {
+    const [src, setSrc] = useState('');
+
+    useEffect(() => {
+        let active = true;
+        if (!value) {
+            setSrc('');
+            return undefined;
+        }
+        QRCode.toDataURL(value, {
+            width: size,
+            margin: 1,
+            errorCorrectionLevel: 'M'
+        }).then((dataUrl) => {
+            if (active) setSrc(dataUrl);
+        }).catch((err) => {
+            console.warn('QR generation failed', err);
+            if (active) setSrc('');
+        });
+        return () => {
+            active = false;
+        };
+    }, [value, size]);
+
+    if (!src) {
+        return (
+            <div
+                className={`${className} bg-zinc-200/60 text-zinc-700 flex items-center justify-center text-xs font-bold`}
+                style={{ width: `${size}px`, height: `${size}px` }}
+            >
+                QR
+            </div>
+        );
+    }
+
+    return <img src={src} alt={alt} className={className} />;
+};
+
 const AnimatedPoints = ({ value }) => {
     const [display, setDisplay] = useState(value);
     const showPulse = value !== display;
@@ -164,7 +220,7 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
 
     const active = slides[index] || { title: '', items: [] };
     const appBase = `${window.location.origin}${import.meta.env.BASE_URL || '/'}`;
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(appBase + '?room=' + roomCode)}`;
+    const qrValue = `${appBase}?room=${roomCode}`;
 
     return (
         <div className="fixed inset-0 z-[200] bg-zinc-900/95 flex flex-col items-center justify-center text-white font-saira">
@@ -199,7 +255,7 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
                                 ))}
                             </div>
                             <div className="bg-white p-3 rounded-2xl shadow-xl">
-                                <img src={qrUrl} alt="Join QR" className="w-56 h-56 object-cover" />
+                                <LocalQrImage value={qrValue} size={224} alt="Join QR" className="w-56 h-56 object-cover" />
                             </div>
                         </div>
                         <div className="text-sm text-zinc-400 uppercase tracking-[0.4em]">Room {roomCode}</div>
@@ -220,11 +276,12 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
 };
 
 const MiniVideoPane = ({ room, current }) => {
-    const mediaUrl = current?.mediaUrl || room?.mediaUrl;
+    const mediaUrl = resolveStageMediaUrl(current, room);
     const isBackingAudioOnly = current?.backingAudioOnly || false;
-    const isNativeVideo = /\.(mp4|webm|ogg)$/i.test(mediaUrl || '');
-    const isYoutube = mediaUrl && mediaUrl.includes('youtube');
-    const youtubeId = isYoutube ? mediaUrl.split('v=')[1]?.split('&')[0] : null;
+    const stageBacking = normalizeBackingChoice({ mediaUrl });
+    const isNativeVideo = /\.(mp4|webm|ogg)$/i.test(stageBacking.mediaUrl || '');
+    const youtubeId = stageBacking.youtubeId;
+    const isYoutube = stageBacking.isYouTube;
 
     const iframeRef = useRef(null);
     const nativeVideoRef = useRef(null);
@@ -252,7 +309,7 @@ const MiniVideoPane = ({ room, current }) => {
             {isNativeVideo ? (
                 <video
                     ref={nativeVideoRef}
-                    src={mediaUrl}
+                    src={stageBacking.mediaUrl}
                     className="absolute inset-0 w-full h-full object-cover"
                     playsInline
                     preload="auto"
@@ -472,11 +529,8 @@ const PublicTV = ({ roomCode }) => {
             points
         };
         const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
-        const userRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${winner.uid}`);
-        Promise.all([
-            updateDoc(roomRef, { doodleOke: { ...room.doodleOke, winner: winnerPayload, winnerAwardedAt: Date.now() } }),
-            updateDoc(userRef, { points: increment(points) })
-        ]).catch((e) => console.error('Doodle winner award failed', e));
+        updateDoc(roomRef, { doodleOke: { ...room.doodleOke, winner: winnerPayload, winnerAwardedAt: Date.now() } })
+            .catch((e) => console.error('Doodle winner update failed', e));
         doodleWinnerAwardRef.current = promptId;
     }, [room?.activeMode, room?.doodleOke, doodleSubmissions, doodleVotes, roomCode]);
 
@@ -660,7 +714,10 @@ const PublicTV = ({ roomCode }) => {
             orderBy('timestamp', 'desc'),
             limit(20)
         ), s => {
-            setChatMessages(s.docs.map(d => ({ id: d.id, ...d.data() })));
+            const visibleMessages = s.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .filter(isTvVisibleChatMessage);
+            setChatMessages(visibleMessages);
         });
 
         return () => {
@@ -677,11 +734,24 @@ const PublicTV = ({ roomCode }) => {
     }, [roomCode]);
 
     useEffect(() => {
+        const tvMode = room?.chatTvMode || 'auto';
         if (chatRotateRef.current) {
             clearInterval(chatRotateRef.current);
             chatRotateRef.current = null;
         }
-        if (!room?.chatShowOnTv || chatMessages.length === 0) {
+        if (!room?.chatShowOnTv) {
+            setShowChatFeed(false);
+            return;
+        }
+        if (tvMode === 'chat') {
+            setShowChatFeed(true);
+            return;
+        }
+        if (tvMode === 'activity') {
+            setShowChatFeed(false);
+            return;
+        }
+        if (chatMessages.length === 0) {
             setShowChatFeed(false);
             return;
         }
@@ -692,7 +762,7 @@ const PublicTV = ({ roomCode }) => {
         return () => {
             if (chatRotateRef.current) clearInterval(chatRotateRef.current);
         };
-    }, [room?.chatShowOnTv, chatMessages.length]);
+    }, [room?.chatShowOnTv, room?.chatTvMode, chatMessages.length]);
 
     useEffect(() => {
         if (room?.activeMode !== 'selfie_challenge' || !room?.selfieChallenge?.promptId) {
@@ -763,9 +833,6 @@ const PublicTV = ({ roomCode }) => {
                     requestedAt: Date.now()
                 }
             }).catch(() => {});
-            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${winner.uid}`), { 
-                points: increment(200) 
-            }).catch(() => {});
             addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
                 roomCode,
                 user: winner.name,
@@ -808,9 +875,6 @@ const PublicTV = ({ roomCode }) => {
                 requestedAt: Date.now()
             }
         }).catch(() => {});
-        updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${winner.uid}`), {
-            points: increment(200)
-        }).catch(() => {});
     }, [room?.lightMode, room?.guitarSessionId, room?.guitarVictory?.status, roomCode, vibeUsers]);
 
     useEffect(() => {
@@ -837,12 +901,6 @@ const PublicTV = ({ roomCode }) => {
         const winners = candidates.slice(0, 3);
         const winner = winners[0];
         const rewards = [150, 90, 50];
-
-        winners.forEach((w, idx) => {
-            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${w.uid}`), {
-                points: increment(rewards[idx] || 25)
-            }).catch(() => {});
-        });
 
         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
             strobeWinner: { ...winner, sessionId },
@@ -1119,7 +1177,11 @@ const PublicTV = ({ roomCode }) => {
     };
 
     const allQueue = songs.filter(s => s.status === 'requested').sort((a,b) => (a.priorityScore || 0) - (b.priorityScore || 0));
-    const nextUp = allQueue.slice(0,3);
+    const nextUp = allQueue.slice(0,5);
+    const queueWaitSec = allQueue.reduce((sum, song) => {
+        const duration = Number(song?.duration);
+        return sum + (Number.isFinite(duration) && duration > 0 ? duration : 300);
+    }, 0);
     const currentMarqueeItem = marqueeItems.length ? marqueeItems[(marqueeIndex + marqueeItems.length) % marqueeItems.length] : null;
     const marqueeText = currentMarqueeItem
         ? (typeof currentMarqueeItem === 'string' ? currentMarqueeItem : currentMarqueeItem.text)
@@ -1552,7 +1614,7 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             {!room?.hideLogo && (
-                <img src="https://beauross.com/wp-content/uploads/beaurocks-karaoke-logo-2.png" className="tv-logo absolute top-8 left-8 w-96 z-50 drop-shadow-xl opacity-90" alt="Logo" />
+                <img src={room?.logoUrl || ASSETS.logo} className="tv-logo absolute top-8 left-8 w-96 z-50 drop-shadow-xl opacity-90" alt="Logo" />
             )}
             {isExperienceActive && (
                 <div className="absolute top-8 right-8 z-[240] flex items-center gap-3 bg-red-600/90 border border-red-200/40 px-4 py-2 rounded-full shadow-[0_0_30px_rgba(239,68,68,0.5)]">
@@ -1833,8 +1895,9 @@ const PublicTV = ({ roomCode }) => {
                          <div className="p-5 rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20">
                             <div className="text-4xl font-black text-cyan-200 mb-3 uppercase tracking-[0.3em]">JOIN</div>
                             <div className="bg-white p-2 rounded-2xl inline-block">
-                                <img
-                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(appBase + '?room=' + roomCode)}`}
+                                <LocalQrImage
+                                    value={`${appBase}?room=${roomCode}`}
+                                    size={220}
                                     alt="QR"
                                     className="w-[220px] h-[220px]"
                                 />
@@ -1903,6 +1966,11 @@ const PublicTV = ({ roomCode }) => {
                                             <span>{rule.label}</span>
                                         </div>
                                     ))}
+                                </div>
+                                <div className="mb-4 text-xs uppercase tracking-[0.3em] text-zinc-400">
+                                    Queue: <span className="text-white font-bold">{allQueue.length}</span> songs
+                                    {' '}
+                                    | Est wait <span className="text-white font-bold">{formatWaitTime(queueWaitSec)}</span>
                                 </div>
                                 <div className="space-y-2 mb-6">
                                     {nextUp.map((s, i) => {

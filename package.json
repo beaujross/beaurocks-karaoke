@@ -8,15 +8,20 @@
     "build": "vite build",
     "lint": "eslint .",
     "lint:emoji": "node scripts/scan-emoji.js",
-    "preview": "vite preview"
+    "test:rules": "npx firebase-tools emulators:exec --project demo-bross --only firestore,storage \"node tests/security/rules.test.cjs\"",
+    "preview": "vite preview",
+    "deploy:hosting": "npm run build && npx firebase-tools deploy --only hosting",
+    "deploy:hosting:ci": "npx firebase-tools deploy --only hosting --non-interactive"
   },
   "dependencies": {
     "firebase": "^12.7.0",
+    "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",

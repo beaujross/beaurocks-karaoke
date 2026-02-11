@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAnalytics, logEvent } from "firebase/analytics";
+import { initializeAppCheck, ReCaptchaV3Provider, getToken as getAppCheckToken } from "firebase/app-check";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { 
   getAuth, 
@@ -77,6 +78,53 @@ const firebaseConfig = typeof window !== 'undefined' && window.__firebase_config
 
 // Initialize
 const app = initializeApp(firebaseConfig);
+let appCheck = null;
+
+const getAppCheckSiteKey = () => {
+  if (typeof window === "undefined") return "";
+  const runtimeKey = typeof window.__app_check_site_key === "string"
+    ? window.__app_check_site_key.trim()
+    : "";
+  const envKey = typeof import.meta !== "undefined" && import.meta?.env?.VITE_RECAPTCHA_V3_SITE_KEY
+    ? String(import.meta.env.VITE_RECAPTCHA_V3_SITE_KEY).trim()
+    : "";
+  return runtimeKey || envKey;
+};
+
+if (typeof window !== "undefined") {
+  const host = window.location?.hostname || "";
+  try {
+    const runtimeDebugToken = typeof window.__app_check_debug_token === "string"
+      ? window.__app_check_debug_token.trim()
+      : "";
+    const storedDebugToken = window.localStorage?.getItem("bross_app_check_debug_token") || "";
+    const debugToken = runtimeDebugToken || storedDebugToken;
+    if (debugToken && (host === "localhost" || host === "127.0.0.1")) {
+      self.FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken === "true" ? true : debugToken;
+    }
+  } catch {
+    // Ignore storage access failures and continue without debug token.
+  }
+
+  const siteKey = getAppCheckSiteKey();
+  if (siteKey) {
+    try {
+      appCheck = initializeAppCheck(app, {
+        provider: new ReCaptchaV3Provider(siteKey),
+        isTokenAutoRefreshEnabled: true,
+      });
+      // Warm up token acquisition early so first callable requests include App Check.
+      getAppCheckToken(appCheck, false).catch((err) => {
+        console.warn("[app-check] initial token fetch failed", err);
+      });
+    } catch (err) {
+      console.warn("[app-check] initialization failed", err);
+    }
+  } else {
+    console.warn("[app-check] missing site key: set VITE_RECAPTCHA_V3_SITE_KEY to enable App Check.");
+  }
+}
+
 const auth = getAuth(app);
 if (typeof window !== 'undefined') {
   const host = window.location?.hostname || '';
@@ -109,6 +157,13 @@ const trackEvent = (name, params = {}) => {
 };
 
 const callFunction = async (name, data = {}) => {
+  if (appCheck) {
+    try {
+      await getAppCheckToken(appCheck, false);
+    } catch (err) {
+      console.warn("[app-check] token fetch failed before callable", { name, err });
+    }
+  }
   const fn = httpsCallable(functions, name);
   const res = await fn(data);
   return res.data;
@@ -117,6 +172,21 @@ const callFunction = async (name, data = {}) => {
 const getGoogleMapsApiKey = async () => {
   const data = await callFunction("googleMapsKey");
   return data?.apiKey || "";
+};
+
+const ensureOrganization = async (orgName = "") => {
+  const data = await callFunction("ensureOrganization", { orgName });
+  return data || null;
+};
+
+const getMyEntitlements = async () => {
+  const data = await callFunction("getMyEntitlements");
+  return data || null;
+};
+
+const getMyUsageSummary = async () => {
+  const data = await callFunction("getMyUsageSummary");
+  return data || null;
 };
 
 // Helper for Auth
@@ -181,6 +251,11 @@ const ensureUserProfile = async (uid, opts = {}) => {
           renewalDate: null,
           cancelledAt: null,
           paymentMethod: null // 'stripe', 'appstore', 'playstore'
+        },
+        organization: {
+          orgId: null,
+          role: 'member',
+          updatedAt: null
         },
 
         // VIP profile fields (public-facing)
@@ -253,6 +328,11 @@ const ensureUserProfile = async (uid, opts = {}) => {
       cancelledAt: null,
       paymentMethod: null
     };
+    if (!('organization' in data)) updates.organization = {
+      orgId: null,
+      role: 'member',
+      updatedAt: null
+    };
     if (!('vipProfile' in data)) updates.vipProfile = {
       location: '',
       birthMonth: '',
@@ -300,11 +380,15 @@ const ensureUserProfile = async (uid, opts = {}) => {
 
 export { 
   app, 
+  appCheck,
   analytics,
   trackEvent,
   functions,
   callFunction,
   getGoogleMapsApiKey,
+  ensureOrganization,
+  getMyEntitlements,
+  getMyUsageSummary,
   auth, 
   db, 
   rtdb, 

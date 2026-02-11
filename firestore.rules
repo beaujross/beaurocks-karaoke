@@ -6,6 +6,59 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isBrossApp(appId) {
+      return appId == 'bross-app';
+    }
+
+    function roomDocPath(roomCode) {
+      return /databases/$(database)/documents/artifacts/bross-app/public/data/rooms/$(roomCode);
+    }
+
+    function roomExists(roomCode) {
+      return roomCode is string && exists(roomDocPath(roomCode));
+    }
+
+    function isRoomHost(roomCode) {
+      return isAuthed()
+        && roomExists(roomCode)
+        && (
+          get(roomDocPath(roomCode)).data.hostUid == request.auth.uid
+          || (
+            get(roomDocPath(roomCode)).data.hostUids is list
+            && request.auth.uid in get(roomDocPath(roomCode)).data.hostUids
+          )
+        );
+    }
+
+    function isValidRoomUserId(roomUserId, roomCode, uid) {
+      return roomCode is string
+        && uid is string
+        && roomUserId == roomCode + "_" + uid;
+    }
+
+    function asNumberOrZero(v) {
+      return v is number ? v : 0;
+    }
+
+    function nonHostRoomWritableKeys() {
+      return [
+        'activeMode',
+        'activeScreen',
+        'applausePeak',
+        'bingoMysteryRng',
+        'currentApplauseLevel',
+        'doodleOke',
+        'gameData',
+        'guitarVictory',
+        'guitarWinner',
+        'lightMode',
+        'photoOverlay',
+        'strobeResults',
+        'strobeVictory',
+        'strobeWinner'
+      ];
+    }
+
     // User profiles
     match /users/{uid} {
       allow read: if isAuthed();
@@ -44,10 +97,190 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Public data used by TV/Singer/Host
-    match /artifacts/{appId}/public/data/{document=**} {
-      allow read: if true;
-      allow write: if isAuthed();
+    // App data used by TV/Singer/Host
+    match /artifacts/{appId}/public/data {
+      allow read: if isBrossApp(appId);
+
+      match /rooms/{roomCode} {
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.hostUid == request.auth.uid
+          && request.resource.data.hostUids is list
+          && request.auth.uid in request.resource.data.hostUids;
+
+        // Non-host updates are only allowed for explicitly whitelisted room fields
+        // and cannot mutate ownership.
+        allow update: if isBrossApp(appId)
+          && isAuthed()
+          && (
+            isRoomHost(roomCode)
+            || (
+              request.resource.data.hostUid == resource.data.hostUid
+              && request.resource.data.hostUids == resource.data.hostUids
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(nonHostRoomWritableKeys())
+            )
+          );
+
+        allow delete: if isBrossApp(appId) && isRoomHost(roomCode);
+      }
+
+      match /host_libraries/{roomCode} {
+        allow create, update, delete: if isBrossApp(appId) && isRoomHost(roomCode);
+      }
+
+      match /room_uploads/{uploadId} {
+        allow read: if isBrossApp(appId) && isAuthed() && isRoomHost(resource.data.roomCode);
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.roomCode is string
+          && isRoomHost(request.resource.data.roomCode);
+        allow delete: if isBrossApp(appId) && isAuthed() && isRoomHost(resource.data.roomCode);
+        allow update: if false;
+      }
+
+      match /room_users/{roomUserId} {
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && isValidRoomUserId(roomUserId, request.resource.data.roomCode, request.resource.data.uid)
+          && request.resource.data.uid == request.auth.uid
+          && roomExists(request.resource.data.roomCode);
+
+        allow update: if isBrossApp(appId)
+          && isAuthed()
+          && isValidRoomUserId(roomUserId, request.resource.data.roomCode, request.resource.data.uid)
+          && request.resource.data.roomCode == resource.data.roomCode
+          && request.resource.data.uid == resource.data.uid
+          && (
+            request.auth.uid == resource.data.uid
+            || isRoomHost(resource.data.roomCode)
+          );
+
+        allow delete: if isBrossApp(appId)
+          && isAuthed()
+          && (
+            request.auth.uid == resource.data.uid
+            || isRoomHost(resource.data.roomCode)
+          );
+      }
+
+      match /karaoke_songs/{songId} {
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.roomCode is string
+          && (
+            isRoomHost(request.resource.data.roomCode)
+            || request.resource.data.singerUid == request.auth.uid
+          );
+
+        allow update: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.roomCode == resource.data.roomCode
+          && (
+            isRoomHost(resource.data.roomCode)
+            || (
+              request.resource.data.diff(resource.data).changedKeys().hasOnly(['hypeScore'])
+              && request.resource.data.hypeScore is number
+              && request.resource.data.hypeScore >= asNumberOrZero(resource.data.hypeScore)
+              && request.resource.data.hypeScore <= asNumberOrZero(resource.data.hypeScore) + 500
+            )
+          );
+
+        allow delete: if isBrossApp(appId)
+          && isAuthed()
+          && (
+            isRoomHost(resource.data.roomCode)
+            || (
+              resource.data.singerUid is string
+              && resource.data.singerUid == request.auth.uid
+            )
+          );
+      }
+
+      match /selfie_submissions/{docId} {
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.roomCode is string
+          && request.resource.data.uid == request.auth.uid;
+        allow update: if false;
+        allow delete: if isBrossApp(appId)
+          && isAuthed()
+          && (
+            isRoomHost(resource.data.roomCode)
+            || resource.data.uid == request.auth.uid
+          );
+      }
+
+      match /selfie_votes/{docId} {
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.roomCode is string
+          && request.resource.data.voterUid == request.auth.uid;
+        allow update, delete: if false;
+      }
+
+      match /doodle_submissions/{docId} {
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.roomCode is string
+          && request.resource.data.uid == request.auth.uid;
+        allow update, delete: if false;
+      }
+
+      match /doodle_votes/{docId} {
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.roomCode is string
+          && request.resource.data.uid == request.auth.uid;
+        allow update, delete: if false;
+      }
+
+      match /chat_messages/{docId} {
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.roomCode is string;
+        allow update, delete: if false;
+      }
+
+      match /activities/{docId} {
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.roomCode is string;
+        allow update, delete: if false;
+      }
+
+      match /reactions/{docId} {
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.roomCode is string;
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      match /contacts/{docId} {
+        allow write: if false;
+      }
+
+      match /messages/{docId} {
+        allow write: if false;
+      }
+
+      match /smoke_tests/{docId} {
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.uid == request.auth.uid;
+        allow update: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.uid == request.auth.uid
+          && resource.data.uid == request.auth.uid;
+        allow read, delete: if isBrossApp(appId)
+          && isAuthed()
+          && resource.data.uid == request.auth.uid;
+      }
+
+      match /{document=**} {
+        allow read: if isBrossApp(appId);
+        allow write: if false;
+      }
     }
 
     // Everything else locked

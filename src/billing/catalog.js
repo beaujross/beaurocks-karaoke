@@ -23,9 +23,16 @@ export const SUBSCRIPTIONS = [
   {
     id: "vip_monthly",
     label: "VIP Monthly",
+    interval: "month",
   },
   {
     id: "host_monthly",
     label: "Host Monthly",
+    interval: "month",
+  },
+  {
+    id: "host_annual",
+    label: "Host Annual",
+    interval: "year",
   },
 ];

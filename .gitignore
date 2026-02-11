@@ -27,3 +27,10 @@ dist-ssr
 google-cloud-sdk/
 google-cloud-sdk.zip
 GoogleCloudSDKInstaller.exe
+
+# Local environment/runtime files
+.env
+.env.*
+!.env.example
+.firebase/
+functions/.env*

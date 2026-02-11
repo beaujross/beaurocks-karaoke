@@ -1,5 +1,5 @@
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
@@ -8,6 +8,79 @@ const Stripe = require("stripe");
 
 admin.initializeApp();
 const APP_ID = "bross-app";
+const ORGS_COLLECTION = "organizations";
+const STRIPE_SUBSCRIPTIONS_COLLECTION = "stripe_subscriptions";
+
+const BASE_CAPABILITIES = Object.freeze({
+  "ai.generate_content": false,
+});
+
+const PLAN_DEFINITIONS = Object.freeze({
+  free: {
+    id: "free",
+    name: "Free",
+    tier: "free",
+    interval: null,
+    amountCents: 0,
+    capabilities: {},
+  },
+  vip_monthly: {
+    id: "vip_monthly",
+    name: "VIP Monthly",
+    tier: "vip",
+    interval: "month",
+    amountCents: 999,
+    capabilities: {},
+  },
+  host_monthly: {
+    id: "host_monthly",
+    name: "Host Monthly",
+    tier: "host",
+    interval: "month",
+    amountCents: 1500,
+    capabilities: {
+      "ai.generate_content": true,
+    },
+  },
+  host_annual: {
+    id: "host_annual",
+    name: "Host Annual",
+    tier: "host",
+    interval: "year",
+    amountCents: 15000,
+    capabilities: {
+      "ai.generate_content": true,
+    },
+  },
+});
+
+const ENTITLED_STATUSES = new Set(["active", "trialing", "past_due"]);
+
+const USAGE_METER_DEFINITIONS = Object.freeze({
+  ai_generate_content: {
+    id: "ai_generate_content",
+    label: "AI generations",
+    unit: "request",
+    includedByPlan: Object.freeze({
+      free: 0,
+      vip_monthly: 0,
+      host_monthly: 750,
+      host_annual: 1200,
+    }),
+    hardLimitByPlan: Object.freeze({
+      free: 0,
+      vip_monthly: 0,
+      host_monthly: 2500,
+      host_annual: 4000,
+    }),
+    overageRateCentsByPlan: Object.freeze({
+      free: 0,
+      vip_monthly: 0,
+      host_monthly: 3,
+      host_annual: 2,
+    }),
+  },
+});
 
 setGlobalOptions({
   region: "us-west1",
@@ -72,6 +145,39 @@ const ensureString = (val, name) => {
   }
 };
 
+const getAppCheckMode = () => {
+  const mode = String(process.env.APP_CHECK_MODE || "off").trim().toLowerCase();
+  return mode === "log" || mode === "enforce" ? mode : "off";
+};
+
+const hasAppCheck = (request) =>
+  typeof request?.app?.appId === "string" && request.app.appId.trim().length > 0;
+
+const enforceAppCheckIfEnabled = (request, scope = "unknown") => {
+  if (hasAppCheck(request)) return;
+  const mode = getAppCheckMode();
+  if (mode === "off") return;
+
+  const uid = request.auth?.uid || "anonymous";
+  console.warn(`[app-check] missing token scope=${scope} uid=${uid}`);
+
+  if (mode === "log") return;
+  throw new HttpsError("failed-precondition", "App Check token required.");
+};
+
+const requireAuth = (request, message = "Sign in required.") => {
+  const uid = request.auth?.uid || "";
+  if (!uid) {
+    throw new HttpsError("unauthenticated", message);
+  }
+  return uid;
+};
+
+const normalizeOptionalName = (value, fallback = "Guest") => {
+  const name = typeof value === "string" ? value.trim().slice(0, 80) : "";
+  return name || fallback;
+};
+
 const clampNumber = (val, min, max, fallback) => {
   const num = Number(val);
   if (Number.isNaN(num)) return fallback;
@@ -134,6 +240,657 @@ const getRootRef = () =>
     .doc(APP_ID)
     .collection("public")
     .doc("data");
+
+const normalizeRoomCode = (value = "") => String(value || "").trim().toUpperCase();
+
+const sanitizeOrgToken = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 80);
+
+const buildOrgIdForUid = (uid = "") => {
+  const token = sanitizeOrgToken(uid) || "owner";
+  return `org_${token}`;
+};
+
+const normalizeOrgName = (value = "", uid = "") => {
+  const trimmed = typeof value === "string" ? value.trim().slice(0, 120) : "";
+  if (trimmed) return trimmed;
+  const token = sanitizeOrgToken(uid).slice(0, 6) || "ORG";
+  return `Workspace ${token.toUpperCase()}`;
+};
+
+const getPlanDefinition = (planId = "") => PLAN_DEFINITIONS[String(planId || "").trim()] || null;
+
+const isEntitledStatus = (status = "") => ENTITLED_STATUSES.has(String(status || "").toLowerCase());
+
+const buildCapabilitiesForPlan = (planId = "free", status = "inactive") => {
+  const caps = { ...BASE_CAPABILITIES };
+  if (!isEntitledStatus(status)) {
+    return caps;
+  }
+  const plan = getPlanDefinition(planId) || PLAN_DEFINITIONS.free;
+  Object.entries(plan.capabilities || {}).forEach(([key, enabled]) => {
+    caps[key] = !!enabled;
+  });
+  return caps;
+};
+
+const normalizeCapabilities = (input = {}) => {
+  const caps = { ...BASE_CAPABILITIES };
+  Object.entries(input || {}).forEach(([key, value]) => {
+    caps[key] = !!value;
+  });
+  return caps;
+};
+
+const isPaidPlan = (planId = "") => {
+  const plan = getPlanDefinition(planId);
+  return !!(plan && plan.id !== "free" && plan.interval && plan.amountCents > 0);
+};
+
+const planToUserTier = (planId = "") => {
+  const plan = getPlanDefinition(planId);
+  return plan?.tier || "free";
+};
+
+const planToUserPlan = (planId = "") => {
+  const plan = getPlanDefinition(planId);
+  if (plan?.interval === "year") return "yearly";
+  if (plan?.interval === "month") return "monthly";
+  return "monthly";
+};
+
+const valueToMillis = (value) => {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  if (typeof value?.seconds === "number") return value.seconds * 1000;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
+const orgsCollection = () => admin.firestore().collection(ORGS_COLLECTION);
+
+const getUsagePeriodKey = (date = new Date()) => {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}${month}`;
+};
+
+const getPeriodRangeForKey = (periodKey = "") => {
+  const safe = String(periodKey || "");
+  if (!/^\d{6}$/.test(safe)) {
+    return { startMs: 0, endMs: 0 };
+  }
+  const year = Number(safe.slice(0, 4));
+  const monthIndex = Number(safe.slice(4, 6)) - 1;
+  const start = Date.UTC(year, monthIndex, 1, 0, 0, 0, 0);
+  const end = Date.UTC(year, monthIndex + 1, 1, 0, 0, 0, 0) - 1;
+  return { startMs: start, endMs: end };
+};
+
+const toWholeNumber = (value, fallback = 0) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.floor(n));
+};
+
+const resolveUsageMeterQuota = ({ meterId = "", planId = "free", status = "inactive" }) => {
+  const meter = USAGE_METER_DEFINITIONS[meterId];
+  if (!meter) {
+    return {
+      meterId,
+      included: 0,
+      hardLimit: 0,
+      overageRateCents: 0,
+    };
+  }
+  const normalizedPlan = getPlanDefinition(planId)?.id || "free";
+  const entitled = isEntitledStatus(status);
+  const included = entitled
+    ? toWholeNumber(meter.includedByPlan?.[normalizedPlan], 0)
+    : 0;
+  const hardLimit = entitled
+    ? toWholeNumber(meter.hardLimitByPlan?.[normalizedPlan], 0)
+    : 0;
+  const overageRateCents = entitled
+    ? toWholeNumber(meter.overageRateCentsByPlan?.[normalizedPlan], 0)
+    : 0;
+  return {
+    meterId: meter.id,
+    included,
+    hardLimit,
+    overageRateCents,
+  };
+};
+
+const buildUsageMeterSummary = ({ meterId, used = 0, quota, periodKey = "" }) => {
+  const meter = USAGE_METER_DEFINITIONS[meterId] || {
+    id: meterId,
+    label: meterId,
+    unit: "unit",
+  };
+  const safeUsed = toWholeNumber(used, 0);
+  const included = toWholeNumber(quota?.included, 0);
+  const hardLimit = toWholeNumber(quota?.hardLimit, 0);
+  const overageRateCents = toWholeNumber(quota?.overageRateCents, 0);
+  const overageUnits = Math.max(0, safeUsed - included);
+  const estimatedOverageCents = overageUnits * overageRateCents;
+  const remainingIncluded = Math.max(0, included - safeUsed);
+  const remainingToHardLimit = hardLimit > 0 ? Math.max(0, hardLimit - safeUsed) : null;
+  const hardLimitReached = hardLimit > 0 && safeUsed >= hardLimit;
+  return {
+    meterId: meter.id,
+    label: meter.label,
+    unit: meter.unit,
+    period: periodKey,
+    used: safeUsed,
+    included,
+    overageUnits,
+    overageRateCents,
+    estimatedOverageCents,
+    hardLimit,
+    hardLimitReached,
+    remainingIncluded,
+    remainingToHardLimit,
+  };
+};
+
+const readOrganizationUsageSummary = async ({
+  orgId = "",
+  entitlements = null,
+  periodKey = getUsagePeriodKey(),
+}) => {
+  if (!orgId) {
+    return {
+      orgId: "",
+      period: periodKey,
+      planId: entitlements?.planId || "free",
+      status: entitlements?.status || "inactive",
+      meters: {},
+      totals: {
+        estimatedOverageCents: 0,
+      },
+      generatedAtMs: nowMs(),
+      periodRange: getPeriodRangeForKey(periodKey),
+    };
+  }
+  const usageRef = orgsCollection().doc(orgId).collection("usage").doc(periodKey);
+  const usageSnap = await usageRef.get();
+  const usageData = usageSnap.data() || {};
+  const meterData = usageData.meters || {};
+  const meters = {};
+  let estimatedOverageCents = 0;
+
+  Object.keys(USAGE_METER_DEFINITIONS).forEach((meterId) => {
+    const quota = resolveUsageMeterQuota({
+      meterId,
+      planId: entitlements?.planId || "free",
+      status: entitlements?.status || "inactive",
+    });
+    const used = toWholeNumber(meterData?.[meterId]?.used, 0);
+    const summary = buildUsageMeterSummary({
+      meterId,
+      used,
+      quota,
+      periodKey,
+    });
+    meters[meterId] = summary;
+    estimatedOverageCents += summary.estimatedOverageCents;
+  });
+
+  return {
+    orgId,
+    period: periodKey,
+    planId: entitlements?.planId || "free",
+    status: entitlements?.status || "inactive",
+    meters,
+    totals: {
+      estimatedOverageCents,
+    },
+    generatedAtMs: nowMs(),
+    periodRange: getPeriodRangeForKey(periodKey),
+  };
+};
+
+const reserveOrganizationUsageUnits = async ({
+  orgId = "",
+  entitlements = null,
+  meterId = "",
+  units = 1,
+}) => {
+  if (!orgId) {
+    throw new HttpsError("failed-precondition", "Organization is not initialized.");
+  }
+  const meter = USAGE_METER_DEFINITIONS[meterId];
+  if (!meter) {
+    throw new HttpsError("invalid-argument", `Unknown usage meter "${meterId}".`);
+  }
+  const safeUnits = Math.max(1, toWholeNumber(units, 1));
+  const periodKey = getUsagePeriodKey();
+  const quota = resolveUsageMeterQuota({
+    meterId,
+    planId: entitlements?.planId || "free",
+    status: entitlements?.status || "inactive",
+  });
+  const usageRef = orgsCollection().doc(orgId).collection("usage").doc(periodKey);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const db = admin.firestore();
+
+  const nextUsed = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(usageRef);
+    const data = snap.data() || {};
+    const currentUsed = toWholeNumber(data?.meters?.[meterId]?.used, 0);
+    const plannedUsed = currentUsed + safeUnits;
+    if (quota.hardLimit > 0 && plannedUsed > quota.hardLimit) {
+      throw new HttpsError(
+        "resource-exhausted",
+        `${meter.label} monthly hard limit reached for this workspace.`
+      );
+    }
+    const patch = {
+      orgId,
+      period: periodKey,
+      planIdSnapshot: entitlements?.planId || "free",
+      statusSnapshot: entitlements?.status || "inactive",
+      updatedAt: now,
+      [`meters.${meterId}.used`]: plannedUsed,
+      [`meters.${meterId}.included`]: quota.included,
+      [`meters.${meterId}.hardLimit`]: quota.hardLimit,
+      [`meters.${meterId}.overageRateCents`]: quota.overageRateCents,
+      [`meters.${meterId}.updatedAt`]: now,
+    };
+    if (!snap.exists) {
+      patch.createdAt = now;
+    }
+    tx.set(usageRef, patch, { merge: true });
+    return plannedUsed;
+  });
+
+  return buildUsageMeterSummary({
+    meterId,
+    used: nextUsed,
+    quota,
+    periodKey,
+  });
+};
+
+const ensureOrganizationForUser = async ({ uid, orgName = "" }) => {
+  const db = admin.firestore();
+  const userRef = db.collection("users").doc(uid);
+  const userSnap = await userRef.get();
+  const userData = userSnap.data() || {};
+  const existingOrgId = String(userData?.organization?.orgId || "").trim();
+  const orgId = sanitizeOrgToken(existingOrgId) ? existingOrgId : buildOrgIdForUid(uid);
+  const role = String(userData?.organization?.role || "owner").trim() || "owner";
+  const orgRef = orgsCollection().doc(orgId);
+  const memberRef = orgRef.collection("members").doc(uid);
+  const subscriptionRef = orgRef.collection("subscription").doc("current");
+  const entitlementsRef = orgRef.collection("entitlements").doc("current");
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  const orgSnap = await orgRef.get();
+  const batch = db.batch();
+  if (!orgSnap.exists) {
+    batch.set(orgRef, {
+      orgId,
+      name: normalizeOrgName(orgName, uid),
+      ownerUid: uid,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    }, { merge: true });
+    batch.set(subscriptionRef, {
+      orgId,
+      planId: "free",
+      status: "inactive",
+      provider: "internal",
+      createdAt: now,
+      updatedAt: now,
+    }, { merge: true });
+    batch.set(entitlementsRef, {
+      orgId,
+      planId: "free",
+      status: "inactive",
+      capabilities: { ...BASE_CAPABILITIES },
+      source: "bootstrap",
+      createdAt: now,
+      updatedAt: now,
+    }, { merge: true });
+  } else {
+    batch.set(orgRef, { updatedAt: now }, { merge: true });
+  }
+  batch.set(memberRef, {
+    uid,
+    role,
+    createdAt: now,
+    updatedAt: now,
+  }, { merge: true });
+  batch.set(userRef, {
+    organization: {
+      orgId,
+      role,
+      updatedAt: now,
+    },
+  }, { merge: true });
+  await batch.commit();
+  return { orgId, role };
+};
+
+const readOrganizationEntitlements = async (orgId = "") => {
+  if (!orgId) {
+    return {
+      orgId: "",
+      planId: "free",
+      status: "inactive",
+      capabilities: { ...BASE_CAPABILITIES },
+      provider: "internal",
+      renewalAtMs: 0,
+      cancelAtPeriodEnd: false,
+      source: "none",
+    };
+  }
+  const orgRef = orgsCollection().doc(orgId);
+  const [subscriptionSnap, entitlementsSnap] = await Promise.all([
+    orgRef.collection("subscription").doc("current").get(),
+    orgRef.collection("entitlements").doc("current").get(),
+  ]);
+
+  const subscriptionData = subscriptionSnap.data() || {};
+  const planId = String(
+    entitlementsSnap.data()?.planId
+      || subscriptionData.planId
+      || "free"
+  ).trim() || "free";
+  const status = String(
+    entitlementsSnap.data()?.status
+      || subscriptionData.status
+      || "inactive"
+  ).trim() || "inactive";
+  const capabilities = entitlementsSnap.exists
+    ? normalizeCapabilities(entitlementsSnap.data()?.capabilities || {})
+    : buildCapabilitiesForPlan(planId, status);
+  const renewalAtMs = valueToMillis(subscriptionData.currentPeriodEnd);
+  const provider = String(subscriptionData.provider || "internal").trim() || "internal";
+  const cancelAtPeriodEnd = !!subscriptionData.cancelAtPeriodEnd;
+
+  return {
+    orgId,
+    planId,
+    status,
+    provider,
+    renewalAtMs,
+    cancelAtPeriodEnd,
+    capabilities,
+    source: String(entitlementsSnap.data()?.source || "derived"),
+  };
+};
+
+const resolveUserEntitlements = async (uid) => {
+  const db = admin.firestore();
+  const { orgId, role } = await ensureOrganizationForUser({ uid });
+  const [entitlements, userSnap] = await Promise.all([
+    readOrganizationEntitlements(orgId),
+    db.collection("users").doc(uid).get(),
+  ]);
+  const userData = userSnap.data() || {};
+  const legacyTier = String(userData?.subscription?.tier || "").toLowerCase();
+  const capabilities = normalizeCapabilities(entitlements.capabilities || {});
+  if (legacyTier === "host" || legacyTier === "host_plus") {
+    capabilities["ai.generate_content"] = true;
+  }
+  return {
+    orgId,
+    role,
+    planId: entitlements.planId,
+    status: entitlements.status,
+    provider: entitlements.provider,
+    renewalAtMs: entitlements.renewalAtMs,
+    cancelAtPeriodEnd: entitlements.cancelAtPeriodEnd,
+    source: entitlements.source,
+    capabilities,
+  };
+};
+
+const requireCapability = async (request, capability) => {
+  const uid = requireAuth(request);
+  const entitlements = await resolveUserEntitlements(uid);
+  if (!entitlements.capabilities?.[capability]) {
+    throw new HttpsError(
+      "permission-denied",
+      `Capability "${capability}" requires an active subscription.`
+    );
+  }
+  return { uid, entitlements };
+};
+
+const resolvePlanIdFromStripeSubscription = ({ explicitPlanId = "", subscription = null, fallbackPlanId = "" }) => {
+  const candidates = [explicitPlanId, fallbackPlanId, subscription?.metadata?.planId || ""];
+  for (const candidate of candidates) {
+    if (getPlanDefinition(candidate)) return candidate;
+  }
+  const interval = subscription?.items?.data?.[0]?.price?.recurring?.interval || "";
+  if (interval === "year") return "host_annual";
+  if (interval === "month") return "host_monthly";
+  return "free";
+};
+
+const applyOrganizationSubscriptionState = async ({
+  orgId,
+  ownerUid = "",
+  planId = "free",
+  status = "inactive",
+  provider = "stripe",
+  stripeCustomerId = "",
+  stripeSubscriptionId = "",
+  currentPeriodEndSec = 0,
+  cancelAtPeriodEnd = false,
+  source = "stripe_webhook",
+}) => {
+  if (!orgId) return;
+  const db = admin.firestore();
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const safePlanId = getPlanDefinition(planId) ? planId : "free";
+  const plan = getPlanDefinition(safePlanId) || PLAN_DEFINITIONS.free;
+  const capabilities = buildCapabilitiesForPlan(safePlanId, status);
+  const entitlementActive = isEntitledStatus(status);
+  const currentPeriodEnd = Number(currentPeriodEndSec || 0) > 0
+    ? new Date(Number(currentPeriodEndSec) * 1000)
+    : null;
+  const orgRef = orgsCollection().doc(orgId);
+  const batch = db.batch();
+  batch.set(orgRef, {
+    orgId,
+    ownerUid: ownerUid || null,
+    billingPlanId: safePlanId,
+    billingStatus: status,
+    updatedAt: now,
+  }, { merge: true });
+  batch.set(orgRef.collection("subscription").doc("current"), {
+    orgId,
+    planId: safePlanId,
+    status,
+    provider,
+    interval: plan.interval || null,
+    amountCents: plan.amountCents || 0,
+    stripeCustomerId: stripeCustomerId || null,
+    stripeSubscriptionId: stripeSubscriptionId || null,
+    cancelAtPeriodEnd: !!cancelAtPeriodEnd,
+    currentPeriodEnd: currentPeriodEnd || null,
+    updatedAt: now,
+  }, { merge: true });
+  batch.set(orgRef.collection("entitlements").doc("current"), {
+    orgId,
+    planId: safePlanId,
+    status,
+    capabilities,
+    source,
+    updatedAt: now,
+  }, { merge: true });
+
+  if (ownerUid) {
+    const userRef = db.collection("users").doc(ownerUid);
+    batch.set(userRef, {
+      organization: {
+        orgId,
+        role: "owner",
+        updatedAt: now,
+      },
+      subscription: {
+        tier: planToUserTier(safePlanId),
+        plan: planToUserPlan(safePlanId),
+        startDate: entitlementActive ? now : null,
+        renewalDate: currentPeriodEnd || null,
+        cancelledAt: cancelAtPeriodEnd ? now : null,
+        paymentMethod: provider,
+      },
+    }, { merge: true });
+    batch.set(orgRef.collection("members").doc(ownerUid), {
+      uid: ownerUid,
+      role: "owner",
+      updatedAt: now,
+    }, { merge: true });
+  }
+
+  if (stripeSubscriptionId) {
+    batch.set(db.collection(STRIPE_SUBSCRIPTIONS_COLLECTION).doc(stripeSubscriptionId), {
+      orgId,
+      ownerUid: ownerUid || null,
+      planId: safePlanId,
+      status,
+      stripeCustomerId: stripeCustomerId || null,
+      updatedAt: now,
+    }, { merge: true });
+  }
+
+  await batch.commit();
+};
+
+const ensureRoomHostAccess = async ({
+  tx = null,
+  rootRef = getRootRef(),
+  roomCode = "",
+  callerUid = "",
+  deniedMessage = "Only room hosts can perform this action.",
+}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  if (!safeRoomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+
+  const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
+  const roomSnap = tx ? await tx.get(roomRef) : await roomRef.get();
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room not found.");
+  }
+
+  const roomData = roomSnap.data() || {};
+  const hostUid = typeof roomData.hostUid === "string" ? roomData.hostUid : "";
+  const hostUids = Array.isArray(roomData.hostUids)
+    ? roomData.hostUids.filter((u) => typeof u === "string")
+    : [];
+  const isHost = callerUid === hostUid || hostUids.includes(callerUid);
+  if (!isHost) {
+    throw new HttpsError("permission-denied", deniedMessage);
+  }
+
+  return { roomRef, roomData, roomCode: safeRoomCode };
+};
+
+const normalizeAwardKeyToken = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 120);
+
+const normalizePointAwards = (awards = []) => {
+  const aggregate = new Map();
+  (Array.isArray(awards) ? awards : []).forEach((raw) => {
+    const uid = typeof raw?.uid === "string" ? raw.uid.trim() : "";
+    const points = clampNumber(raw?.points || 0, 0, 5000, 0);
+    if (!uid || !points) return;
+    aggregate.set(uid, (aggregate.get(uid) || 0) + points);
+  });
+  const normalized = [];
+  for (const [uid, total] of aggregate.entries()) {
+    const points = clampNumber(total, 0, 5000, 0);
+    if (!points) continue;
+    normalized.push({ uid, points });
+  }
+  return normalized;
+};
+
+const applyRoomAwardsOnce = async ({
+  roomCode,
+  awardKey,
+  awards = [],
+  source = "room_signal",
+}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safeAwardKey = normalizeAwardKeyToken(awardKey);
+  const normalizedAwards = normalizePointAwards(awards);
+  if (!safeRoomCode || !safeAwardKey || !normalizedAwards.length) {
+    return { applied: false, awardedCount: 0, awardedPoints: 0 };
+  }
+
+  const rootRef = getRootRef();
+  const eventRef = rootRef.collection("room_awards").doc(safeAwardKey);
+
+  return admin.firestore().runTransaction(async (tx) => {
+    const eventSnap = await tx.get(eventRef);
+    if (eventSnap.exists) {
+      return { applied: false, duplicate: true, awardedCount: 0, awardedPoints: 0 };
+    }
+
+    const targets = normalizedAwards.map((entry) => ({
+      ...entry,
+      ref: rootRef.collection("room_users").doc(`${safeRoomCode}_${entry.uid}`),
+    }));
+    const snaps = await Promise.all(targets.map((entry) => tx.get(entry.ref)));
+
+    const appliedAwards = [];
+    const skippedUids = [];
+    targets.forEach((entry, idx) => {
+      if (!snaps[idx].exists) {
+        skippedUids.push(entry.uid);
+        return;
+      }
+      appliedAwards.push(entry);
+      tx.update(entry.ref, {
+        points: admin.firestore.FieldValue.increment(entry.points),
+        lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    let awardedPoints = 0;
+    appliedAwards.forEach((entry) => {
+      awardedPoints += entry.points;
+    });
+
+    tx.set(eventRef, {
+      roomCode: safeRoomCode,
+      source,
+      awards: appliedAwards.map(({ uid, points }) => ({ uid, points })),
+      skippedUids,
+      awardedCount: appliedAwards.length,
+      awardedPoints,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return {
+      applied: appliedAwards.length > 0,
+      duplicate: false,
+      awardedCount: appliedAwards.length,
+      awardedPoints,
+      skippedUids,
+    };
+  });
+};
 
 const decodeEntities = (input = "") =>
   input
@@ -520,6 +1277,8 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
 
 exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_search");
+  requireAuth(request);
+  enforceAppCheckIfEnabled(request, "youtube_search");
   const query = request.data?.query || "";
   ensureString(query, "query");
   const maxResults = clampNumber(request.data?.maxResults || 10, 1, 10, 10);
@@ -545,6 +1304,8 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
 
 exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_playlist");
+  requireAuth(request);
+  enforceAppCheckIfEnabled(request, "youtube_playlist");
   const playlistId = request.data?.playlistId || "";
   ensureString(playlistId, "playlistId");
   const apiKey = YOUTUBE_API_KEY.value();
@@ -579,6 +1340,8 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
 
 exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_status");
+  requireAuth(request);
+  enforceAppCheckIfEnabled(request, "youtube_status");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   if (!ids.length) return { items: [] };
   const apiKey = YOUTUBE_API_KEY.value();
@@ -611,6 +1374,8 @@ const parseIsoDuration = (value = "") => {
 
 exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_details");
+  requireAuth(request);
+  enforceAppCheckIfEnabled(request, "youtube_details");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   if (!ids.length) return { items: [] };
   const apiKey = YOUTUBE_API_KEY.value();
@@ -634,6 +1399,14 @@ exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asyn
 
 exports.geminiGenerate = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "gemini");
+  const { entitlements } = await requireCapability(request, "ai.generate_content");
+  enforceAppCheckIfEnabled(request, "gemini");
+  await reserveOrganizationUsageUnits({
+    orgId: entitlements.orgId,
+    entitlements,
+    meterId: "ai_generate_content",
+    units: 1,
+  });
   const type = request.data?.type || "";
   ensureString(type, "type");
   const prompt = buildGeminiPrompt(type, request.data?.context);
@@ -667,19 +1440,26 @@ exports.appleMusicLyrics = onCall(
   { cors: true, secrets: [APPLE_MUSIC_TEAM_ID, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_PRIVATE_KEY] },
   async (request) => {
     checkRateLimit(request.rawRequest, "apple_music");
+    requireAuth(request);
+    enforceAppCheckIfEnabled(request, "apple_music_lyrics");
     const title = request.data?.title || "";
     const artist = request.data?.artist || "";
+    const musicUserToken = (request.data?.musicUserToken || "").trim();
     ensureString(title, "title");
     const storefront = request.data?.storefront || "us";
     const term = `${title} ${artist}`.trim();
     if (!term) throw new HttpsError("invalid-argument", "Missing title/artist.");
 
     const token = getAppleMusicToken();
+    const headers = { Authorization: `Bearer ${token}` };
+    if (musicUserToken) {
+      headers["Music-User-Token"] = musicUserToken;
+    }
     const searchUrl = `https://api.music.apple.com/v1/catalog/${storefront}/search?term=${encodeURIComponent(
       term
     )}&types=songs&limit=1`;
     const searchRes = await fetch(searchUrl, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers,
     });
     if (!searchRes.ok) {
       const text = await searchRes.text();
@@ -693,10 +1473,24 @@ exports.appleMusicLyrics = onCall(
     const songId = song.id;
     const lyricsUrl = `https://api.music.apple.com/v1/catalog/${storefront}/songs/${songId}/lyrics`;
     const lyricsRes = await fetch(lyricsUrl, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers,
     });
     if (!lyricsRes.ok) {
       const text = await lyricsRes.text();
+      // Apple returns code 40012 when lyrics permission is missing from the request.
+      // This is commonly resolved by providing a Music User Token from MusicKit auth.
+      if (lyricsRes.status === 400 && text.includes("\"code\":\"40012\"")) {
+        return {
+          found: true,
+          songId,
+          title: song.attributes?.name || title,
+          artist: song.attributes?.artistName || artist,
+          timedLyrics: [],
+          lyrics: "",
+          needsUserToken: !musicUserToken,
+          message: "Apple Music lyrics require additional permissions in request (code 40012).",
+        };
+      }
       throw new HttpsError("unavailable", `Apple Music lyrics failed: ${text}`);
     }
     const lyricsData = await lyricsRes.json();
@@ -760,6 +1554,10 @@ exports.autoAppleLyrics = onDocumentCreated(
       });
       if (!lyricsRes.ok) {
         const text = await lyricsRes.text();
+        if (lyricsRes.status === 400 && text.includes("\"code\":\"40012\"")) {
+          // Server-side trigger does not have a Music User Token, so silently skip.
+          return;
+        }
         console.warn(`Apple lyrics failed (${lyricsRes.status})`, text?.slice(0, 300));
         return;
       }
@@ -783,6 +1581,118 @@ exports.autoAppleLyrics = onDocumentCreated(
   }
 );
 
+exports.processRoomAwardSignals = onDocumentUpdated(
+  `artifacts/${APP_ID}/public/data/rooms/{roomCode}`,
+  async (event) => {
+    const roomCode = normalizeRoomCode(event.params?.roomCode || "");
+    if (!roomCode) return;
+
+    const before = event.data?.before?.data() || {};
+    const after = event.data?.after?.data() || {};
+    const jobs = [];
+
+    const beforeDoodle = before?.doodleOke || {};
+    const afterDoodle = after?.doodleOke || {};
+    const doodlePromptId = normalizeAwardKeyToken(afterDoodle.promptId || "");
+    const doodleWinnerUid = typeof afterDoodle?.winner?.uid === "string"
+      ? afterDoodle.winner.uid
+      : "";
+    const beforeDoodleAwardedAt = Number(beforeDoodle.winnerAwardedAt || 0);
+    const afterDoodleAwardedAt = Number(afterDoodle.winnerAwardedAt || 0);
+    if (
+      doodlePromptId &&
+      doodleWinnerUid &&
+      afterDoodleAwardedAt &&
+      afterDoodleAwardedAt !== beforeDoodleAwardedAt
+    ) {
+      const points = clampNumber(afterDoodle?.winner?.points || 150, 0, 5000, 150);
+      if (points > 0) {
+        jobs.push(
+          applyRoomAwardsOnce({
+            roomCode,
+            awardKey: `doodle_${roomCode}_${doodlePromptId}`,
+            awards: [{ uid: doodleWinnerUid, points }],
+            source: "doodle_oke",
+          })
+        );
+      }
+    }
+
+    const beforeGuitarWinner = before?.guitarWinner || {};
+    const afterGuitarWinner = after?.guitarWinner || {};
+    const beforeGuitarVictory = before?.guitarVictory || {};
+    const afterGuitarVictory = after?.guitarVictory || {};
+    const beforeGuitarSession = normalizeAwardKeyToken(
+      beforeGuitarWinner.sessionId || beforeGuitarVictory.sessionId || ""
+    );
+    const afterGuitarSession = normalizeAwardKeyToken(
+      afterGuitarWinner.sessionId || afterGuitarVictory.sessionId || ""
+    );
+    const beforeGuitarUid = typeof beforeGuitarWinner.uid === "string"
+      ? beforeGuitarWinner.uid
+      : (typeof beforeGuitarVictory.uid === "string" ? beforeGuitarVictory.uid : "");
+    const afterGuitarUid = typeof afterGuitarWinner.uid === "string"
+      ? afterGuitarWinner.uid
+      : (typeof afterGuitarVictory.uid === "string" ? afterGuitarVictory.uid : "");
+    if (
+      afterGuitarSession &&
+      afterGuitarUid &&
+      (afterGuitarSession !== beforeGuitarSession || afterGuitarUid !== beforeGuitarUid)
+    ) {
+      const points = clampNumber(
+        afterGuitarWinner.rewardPoints || afterGuitarVictory.rewardPoints || 200,
+        0,
+        5000,
+        200
+      );
+      if (points > 0) {
+        jobs.push(
+          applyRoomAwardsOnce({
+            roomCode,
+            awardKey: `guitar_${roomCode}_${afterGuitarSession}`,
+            awards: [{ uid: afterGuitarUid, points }],
+            source: "guitar_mode",
+          })
+        );
+      }
+    }
+
+    const beforeStrobe = before?.strobeResults || {};
+    const afterStrobe = after?.strobeResults || {};
+    const beforeStrobeSession = normalizeAwardKeyToken(beforeStrobe.sessionId || "");
+    const afterStrobeSession = normalizeAwardKeyToken(afterStrobe.sessionId || "");
+    const beforeStrobeWinners = Array.isArray(beforeStrobe.winners) ? beforeStrobe.winners : [];
+    const afterStrobeWinners = Array.isArray(afterStrobe.winners) ? afterStrobe.winners : [];
+    if (
+      afterStrobeSession &&
+      afterStrobeWinners.length &&
+      (afterStrobeSession !== beforeStrobeSession || !beforeStrobeWinners.length)
+    ) {
+      const rewards = Array.isArray(afterStrobe.rewards) ? afterStrobe.rewards : [];
+      const strobeAwards = afterStrobeWinners.map((winner, idx) => ({
+        uid: typeof winner?.uid === "string" ? winner.uid : "",
+        points: clampNumber(rewards[idx] ?? winner?.points ?? 0, 0, 5000, 0),
+      }));
+      jobs.push(
+        applyRoomAwardsOnce({
+          roomCode,
+          awardKey: `strobe_${roomCode}_${afterStrobeSession}`,
+          awards: strobeAwards,
+          source: "strobe_mode",
+        })
+      );
+    }
+
+    if (!jobs.length) return;
+    const settled = await Promise.allSettled(jobs);
+    settled.forEach((res) => {
+      if (res.status === "rejected") {
+        console.error("processRoomAwardSignals failed", res.reason?.message || res.reason || res);
+      }
+    });
+  }
+);
+
 const resolveOrigin = (req, originFromClient) => {
   const origin = originFromClient || req.get("origin") || "";
   const isAllowed =
@@ -799,6 +1709,8 @@ const isAllowedOrigin = (origin = "") =>
 
 exports.googleMapsKey = onCall({ cors: true, secrets: [GOOGLE_MAPS_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "google_maps_key");
+  requireAuth(request);
+  enforceAppCheckIfEnabled(request, "google_maps_key");
   const origin = request.rawRequest?.get?.("origin") || "";
   if (origin && !isAllowedOrigin(origin)) {
     throw new HttpsError("permission-denied", "Origin not allowed.");
@@ -810,11 +1722,323 @@ exports.googleMapsKey = onCall({ cors: true, secrets: [GOOGLE_MAPS_API_KEY] }, a
   return { apiKey };
 });
 
+exports.ensureOrganization = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "ensure_organization", { perMinute: 20, perHour: 200 });
+  const uid = requireAuth(request);
+  enforceAppCheckIfEnabled(request, "ensure_organization");
+  const orgName = typeof request.data?.orgName === "string" ? request.data.orgName : "";
+  const ensured = await ensureOrganizationForUser({ uid, orgName });
+  const entitlements = await resolveUserEntitlements(uid);
+  return {
+    orgId: ensured.orgId,
+    role: ensured.role,
+    planId: entitlements.planId,
+    status: entitlements.status,
+    provider: entitlements.provider,
+    renewalAtMs: entitlements.renewalAtMs,
+    cancelAtPeriodEnd: entitlements.cancelAtPeriodEnd,
+    capabilities: entitlements.capabilities,
+  };
+});
+
+exports.getMyEntitlements = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "get_my_entitlements", { perMinute: 30, perHour: 300 });
+  const uid = requireAuth(request);
+  enforceAppCheckIfEnabled(request, "get_my_entitlements");
+  const entitlements = await resolveUserEntitlements(uid);
+  return entitlements;
+});
+
+exports.getMyUsageSummary = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "get_my_usage_summary", { perMinute: 30, perHour: 300 });
+  const uid = requireAuth(request);
+  enforceAppCheckIfEnabled(request, "get_my_usage_summary");
+  const entitlements = await resolveUserEntitlements(uid);
+  const summary = await readOrganizationUsageSummary({
+    orgId: entitlements.orgId,
+    entitlements,
+  });
+  return summary;
+});
+
+exports.awardRoomPoints = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "award_room_points", { perMinute: 20, perHour: 240 });
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+
+  const roomCode = String(request.data?.roomCode || "").trim().toUpperCase();
+  ensureString(roomCode, "roomCode");
+
+  const rawAwards = Array.isArray(request.data?.awards) ? request.data.awards : [];
+  if (!rawAwards.length) {
+    throw new HttpsError("invalid-argument", "awards must be a non-empty array.");
+  }
+  if (rawAwards.length > 25) {
+    throw new HttpsError("invalid-argument", "Too many awards in one request.");
+  }
+
+  const aggregate = new Map();
+  for (const raw of rawAwards) {
+    const uid = typeof raw?.uid === "string" ? raw.uid.trim() : "";
+    const points = clampNumber(raw?.points || 0, 0, 5000, 0);
+    if (!uid || !points) continue;
+    aggregate.set(uid, (aggregate.get(uid) || 0) + points);
+  }
+
+  if (!aggregate.size) {
+    throw new HttpsError("invalid-argument", "No valid awards to apply.");
+  }
+
+  let totalRequested = 0;
+  for (const val of aggregate.values()) totalRequested += val;
+  if (totalRequested > 50000) {
+    throw new HttpsError("invalid-argument", "Requested points exceed batch limit.");
+  }
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const callerUid = request.auth.uid;
+
+  const result = await db.runTransaction(async (tx) => {
+    const { roomCode: safeRoomCode } = await ensureRoomHostAccess({
+      tx,
+      rootRef,
+      roomCode,
+      callerUid,
+      deniedMessage: "Only room hosts can award points.",
+    });
+
+    const userAwards = Array.from(aggregate.entries()).map(([uid, points]) => ({
+      uid,
+      points,
+      ref: rootRef.collection("room_users").doc(`${safeRoomCode}_${uid}`),
+    }));
+
+    const snaps = await Promise.all(userAwards.map((entry) => tx.get(entry.ref)));
+    const awarded = [];
+    const skipped = [];
+    userAwards.forEach((entry, idx) => {
+      if (!snaps[idx].exists) {
+        skipped.push(entry.uid);
+        return;
+      }
+      awarded.push(entry);
+      tx.update(entry.ref, {
+        points: admin.firestore.FieldValue.increment(entry.points),
+        lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    let awardedPoints = 0;
+    awarded.forEach((entry) => {
+      awardedPoints += entry.points;
+    });
+    return {
+      awardedCount: awarded.length,
+      awardedPoints,
+      skipped,
+    };
+  });
+
+  return {
+    ok: true,
+    ...result,
+  };
+});
+
+exports.setSelfieSubmissionApproval = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "selfie_approval", { perMinute: 40, perHour: 400 });
+  const callerUid = request.auth?.uid || "";
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+
+  const roomCode = String(request.data?.roomCode || "").trim().toUpperCase();
+  ensureString(roomCode, "roomCode");
+  const submissionId = String(request.data?.submissionId || "").trim();
+  ensureString(submissionId, "submissionId");
+  const approved = !!request.data?.approved;
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const submissionRef = rootRef.collection("selfie_submissions").doc(submissionId);
+
+  await db.runTransaction(async (tx) => {
+    const { roomCode: safeRoomCode } = await ensureRoomHostAccess({
+      tx,
+      rootRef,
+      roomCode,
+      callerUid,
+      deniedMessage: "Only room hosts can moderate selfies.",
+    });
+    const submissionSnap = await tx.get(submissionRef);
+    if (!submissionSnap.exists) {
+      throw new HttpsError("not-found", "Selfie submission not found.");
+    }
+    const submission = submissionSnap.data() || {};
+    const submissionRoomCode = normalizeRoomCode(submission.roomCode || "");
+    if (submissionRoomCode !== safeRoomCode) {
+      throw new HttpsError("permission-denied", "Submission does not belong to this room.");
+    }
+    tx.update(submissionRef, {
+      approved,
+      moderatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      moderatedBy: callerUid,
+    });
+  });
+
+  return { ok: true, approved };
+});
+
+exports.deleteRoomReaction = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "delete_room_reaction", { perMinute: 40, perHour: 400 });
+  const callerUid = request.auth?.uid || "";
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+
+  const roomCode = String(request.data?.roomCode || "").trim().toUpperCase();
+  ensureString(roomCode, "roomCode");
+  const reactionId = String(request.data?.reactionId || "").trim();
+  ensureString(reactionId, "reactionId");
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const reactionRef = rootRef.collection("reactions").doc(reactionId);
+
+  await db.runTransaction(async (tx) => {
+    const { roomCode: safeRoomCode } = await ensureRoomHostAccess({
+      tx,
+      rootRef,
+      roomCode,
+      callerUid,
+      deniedMessage: "Only room hosts can remove reactions.",
+    });
+    const reactionSnap = await tx.get(reactionRef);
+    if (!reactionSnap.exists) {
+      throw new HttpsError("not-found", "Reaction not found.");
+    }
+    const reaction = reactionSnap.data() || {};
+    const reactionRoomCode = normalizeRoomCode(reaction.roomCode || "");
+    if (reactionRoomCode !== safeRoomCode) {
+      throw new HttpsError("permission-denied", "Reaction does not belong to this room.");
+    }
+    tx.delete(reactionRef);
+  });
+
+  return { ok: true };
+});
+
+exports.createSubscriptionCheckout = onCall(
+  { cors: true, secrets: [STRIPE_SECRET_KEY] },
+  async (request) => {
+    checkRateLimit(request.rawRequest, "stripe_checkout");
+    const callerUid = requireAuth(request);
+    enforceAppCheckIfEnabled(request, "create_subscription_checkout");
+    const planId = String(request.data?.planId || "").trim();
+    const plan = getPlanDefinition(planId);
+    if (!plan || !isPaidPlan(planId)) {
+      throw new HttpsError("invalid-argument", "Invalid subscription plan.");
+    }
+
+    const orgName = typeof request.data?.orgName === "string" ? request.data.orgName : "";
+    const { orgId } = await ensureOrganizationForUser({ uid: callerUid, orgName });
+    const origin = resolveOrigin(request.rawRequest, request.data?.origin);
+    const stripe = getStripeClient();
+    const ownerEmail = typeof request.auth?.token?.email === "string"
+      ? request.auth.token.email.trim()
+      : "";
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      payment_method_types: ["card"],
+      allow_promotion_codes: true,
+      customer_email: ownerEmail || undefined,
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            unit_amount: plan.amountCents,
+            recurring: { interval: plan.interval },
+            product_data: {
+              name: `BROSS ${plan.name}`,
+              description: `Organization subscription (${plan.id})`,
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        checkoutType: "org_subscription",
+        orgId,
+        ownerUid: callerUid,
+        planId: plan.id,
+      },
+      subscription_data: {
+        metadata: {
+          orgId,
+          ownerUid: callerUid,
+          planId: plan.id,
+        },
+      },
+      success_url: `${origin}/?mode=host&subscription=success&org=${encodeURIComponent(orgId)}`,
+      cancel_url: `${origin}/?mode=host&subscription=cancel&org=${encodeURIComponent(orgId)}`,
+    });
+
+    return {
+      url: session.url,
+      id: session.id,
+      orgId,
+      planId: plan.id,
+    };
+  }
+);
+
+exports.createSubscriptionPortalSession = onCall(
+  { cors: true, secrets: [STRIPE_SECRET_KEY] },
+  async (request) => {
+    checkRateLimit(request.rawRequest, "stripe_checkout");
+    const callerUid = requireAuth(request);
+    enforceAppCheckIfEnabled(request, "create_subscription_portal");
+    const { orgId, role } = await ensureOrganizationForUser({ uid: callerUid });
+    if (!orgId) {
+      throw new HttpsError("failed-precondition", "Organization is not initialized.");
+    }
+    if (!["owner", "admin"].includes(role)) {
+      throw new HttpsError("permission-denied", "Only organization owners/admins can manage billing.");
+    }
+    const subSnap = await orgsCollection()
+      .doc(orgId)
+      .collection("subscription")
+      .doc("current")
+      .get();
+    const sub = subSnap.data() || {};
+    const stripeCustomerId = String(sub.stripeCustomerId || "").trim();
+    if (!stripeCustomerId) {
+      throw new HttpsError(
+        "failed-precondition",
+        "No Stripe billing profile found. Start a subscription first."
+      );
+    }
+    const origin = resolveOrigin(request.rawRequest, request.data?.origin);
+    const stripe = getStripeClient();
+    const session = await stripe.billingPortal.sessions.create({
+      customer: stripeCustomerId,
+      return_url: `${origin}/?mode=host&billing=return`,
+    });
+
+    return { url: session.url };
+  }
+);
+
 exports.createTipCrateCheckout = onCall(
   { cors: true, secrets: [STRIPE_SECRET_KEY] },
   async (request) => {
     checkRateLimit(request.rawRequest, "stripe_checkout");
-    const roomCode = request.data?.roomCode || "";
+    const callerUid = requireAuth(request);
+    enforceAppCheckIfEnabled(request, "create_tip_crate_checkout");
+    const roomCode = normalizeRoomCode(request.data?.roomCode || "");
     const crateId = request.data?.crateId || "";
     ensureString(roomCode, "roomCode");
     ensureString(crateId, "crateId");
@@ -836,8 +2060,8 @@ exports.createTipCrateCheckout = onCall(
     }
     const points = clampNumber(crate.points || 0, 0, 100000, 0);
     const origin = resolveOrigin(request.rawRequest, request.data?.origin);
-    const buyerUid = request.auth?.uid || request.data?.userUid || "";
-    const buyerName = request.data?.userName || "";
+    const buyerUid = callerUid;
+    const buyerName = normalizeOptionalName(request.data?.userName || "", "Guest");
     const stripe = getStripeClient();
 
     const session = await stripe.checkout.sessions.create({
@@ -877,11 +2101,14 @@ exports.createPointsCheckout = onCall(
   { cors: true, secrets: [STRIPE_SECRET_KEY] },
   async (request) => {
     checkRateLimit(request.rawRequest, "stripe_checkout");
-    const roomCode = request.data?.roomCode || "";
+    const callerUid = requireAuth(request);
+    enforceAppCheckIfEnabled(request, "create_points_checkout");
+    const roomCode = normalizeRoomCode(request.data?.roomCode || "");
     const amount = clampNumber(request.data?.amount || 0, 1, 500, 0);
     const points = clampNumber(request.data?.points || 0, 0, 100000, 0);
-    const label = request.data?.label || "Points Pack";
+    const label = normalizeOptionalName(request.data?.label || "", "Points Pack");
     const packId = request.data?.packId || "points_pack";
+    const buyerName = normalizeOptionalName(request.data?.userName || "", "Guest");
     ensureString(roomCode, "roomCode");
     if (!amount || !points) {
       throw new HttpsError("invalid-argument", "Invalid points pack.");
@@ -914,6 +2141,8 @@ exports.createPointsCheckout = onCall(
         points: `${points}`,
         packId,
         label,
+        buyerUid: callerUid,
+        buyerName,
       },
       success_url: `${origin}/?room=${encodeURIComponent(roomCode)}&points=success`,
       cancel_url: `${origin}/?room=${encodeURIComponent(roomCode)}&points=cancel`,
@@ -925,7 +2154,18 @@ exports.createPointsCheckout = onCall(
 
 exports.createAppleMusicToken = onCall(
   { cors: true, secrets: [APPLE_MUSIC_TEAM_ID, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_PRIVATE_KEY] },
-  async () => {
+  async (request) => {
+    checkRateLimit(request.rawRequest, "apple_music_token", { perMinute: 10, perHour: 80 });
+    const callerUid = requireAuth(request);
+    enforceAppCheckIfEnabled(request, "create_apple_music_token");
+    const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+    ensureString(roomCode, "roomCode");
+    await ensureRoomHostAccess({
+      roomCode,
+      callerUid,
+      deniedMessage: "Only room hosts can request Apple Music tokens.",
+    });
+
     const teamId = APPLE_MUSIC_TEAM_ID.value();
     const keyId = APPLE_MUSIC_KEY_ID.value();
     const rawKey = APPLE_MUSIC_PRIVATE_KEY.value();
@@ -960,6 +2200,68 @@ exports.stripeWebhook = onRequest(
     if (event.type === "checkout.session.completed") {
       const session = event.data.object || {};
       const metadata = session.metadata || {};
+      const isSubscriptionCheckout =
+        session.mode === "subscription"
+        || metadata.checkoutType === "org_subscription"
+        || !!metadata.orgId;
+
+      if (isSubscriptionCheckout) {
+        const stripeSubscriptionId = typeof session.subscription === "string"
+          ? session.subscription
+          : "";
+        const stripeCustomerId = typeof session.customer === "string"
+          ? session.customer
+          : "";
+        const orgId = String(metadata.orgId || "").trim();
+        let ownerUid = String(metadata.ownerUid || "").trim();
+        let planId = String(metadata.planId || "").trim();
+        let subscription = null;
+
+        if (stripeSubscriptionId) {
+          try {
+            subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+          } catch (err) {
+            console.warn("Failed to retrieve Stripe subscription after checkout.", err?.message || err);
+          }
+        }
+
+        if (!ownerUid && subscription?.metadata?.ownerUid) {
+          ownerUid = String(subscription.metadata.ownerUid || "").trim();
+        }
+        planId = resolvePlanIdFromStripeSubscription({
+          explicitPlanId: planId,
+          subscription,
+        });
+        const status = String(
+          subscription?.status
+            || (session.payment_status === "paid" ? "active" : "incomplete")
+        ).toLowerCase();
+        const currentPeriodEndSec = Number(subscription?.current_period_end || 0);
+        const cancelAtPeriodEnd = !!subscription?.cancel_at_period_end;
+
+        if (orgId) {
+          await applyOrganizationSubscriptionState({
+            orgId,
+            ownerUid,
+            planId,
+            status,
+            provider: "stripe",
+            stripeCustomerId,
+            stripeSubscriptionId,
+            currentPeriodEndSec,
+            cancelAtPeriodEnd,
+            source: "stripe_checkout_completed",
+          });
+        }
+
+        res.json({
+          received: true,
+          subscriptionCheckout: true,
+          orgId: orgId || null,
+        });
+        return;
+      }
+
       const roomCode = metadata.roomCode;
       const points = Number(metadata.points || 0);
       const rewardScope = metadata.rewardScope || "room";
@@ -1031,11 +2333,50 @@ exports.stripeWebhook = onRequest(
         user: rewardScope === "buyer" ? buyerName : "TIP JAR",
         text:
           rewardScope === "buyer"
-            ? `${buyerName} grabbed ${label} • +${points} pts`
-            : `room tip jar hit ${amount} • everyone +${points} pts`,
-        icon: "💸",
+            ? `${buyerName} grabbed ${label} - +${points} pts`
+            : `room tip jar hit ${amount} - everyone +${points} pts`,
+        icon: "$",
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
       });
+    }
+
+    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+      const subscription = event.data.object || {};
+      const stripeSubscriptionId = String(subscription.id || "").trim();
+      if (!stripeSubscriptionId) {
+        res.json({ received: true, ignored: true });
+        return;
+      }
+      const subMapSnap = await admin
+        .firestore()
+        .collection(STRIPE_SUBSCRIPTIONS_COLLECTION)
+        .doc(stripeSubscriptionId)
+        .get();
+      const mapped = subMapSnap.data() || {};
+      const orgId = String(subscription.metadata?.orgId || mapped.orgId || "").trim();
+      const ownerUid = String(subscription.metadata?.ownerUid || mapped.ownerUid || "").trim();
+      const planId = resolvePlanIdFromStripeSubscription({
+        explicitPlanId: subscription.metadata?.planId || "",
+        subscription,
+        fallbackPlanId: mapped.planId || "",
+      });
+      const status = event.type === "customer.subscription.deleted"
+        ? "canceled"
+        : String(subscription.status || "inactive").toLowerCase();
+      if (orgId) {
+        await applyOrganizationSubscriptionState({
+          orgId,
+          ownerUid,
+          planId,
+          status,
+          provider: "stripe",
+          stripeCustomerId: String(subscription.customer || "").trim(),
+          stripeSubscriptionId,
+          currentPeriodEndSec: Number(subscription.current_period_end || 0),
+          cancelAtPeriodEnd: !!subscription.cancel_at_period_end,
+          source: "stripe_subscription_event",
+        });
+      }
     }
 
     res.json({ received: true });
@@ -1045,12 +2386,16 @@ exports.stripeWebhook = onRequest(
 exports.verifyAppleReceipt = onCall(
   { cors: true },
   async (request) => {
+    const callerUid = requireAuth(request);
     const transactionId = request.data?.transactionId || "";
     const productId = request.data?.productId || "";
     const userUid = request.data?.userUid || "";
     ensureString(transactionId, "transactionId");
     ensureString(productId, "productId");
     ensureString(userUid, "userUid");
+    if (userUid !== callerUid) {
+      throw new HttpsError("permission-denied", "userUid must match authenticated user.");
+    }
 
     // TODO: Wire App Store Server API with JWT auth and verify transaction.
     // After verification, grant entitlements and store a transaction record

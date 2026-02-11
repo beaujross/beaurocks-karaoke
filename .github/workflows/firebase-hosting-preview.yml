@@ -1,0 +1,52 @@
+name: Firebase Hosting PR Preview
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run security rules tests
+        run: npm run test:rules
+
+      - name: Build app
+        run: npm run build
+
+      - name: Deploy PR preview channel
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BEAUROCKS_KARAOKE_V2 }}
+          projectId: beaurocks-karaoke-v2
+          channelId: pr-${{ github.event.pull_request.number }}
+          expires: 7d

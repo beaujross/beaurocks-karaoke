@@ -1,4 +1,4 @@
-import { POINTS_PACKS } from "./catalog";
+import { POINTS_PACKS, SUBSCRIPTIONS } from "./catalog";
 
 export const BILLING_PLATFORMS = {
   WEB: "web",
@@ -16,6 +16,14 @@ const normalizePointsPack = (pack) => {
   if (!pack) return null;
   const match = POINTS_PACKS.find((item) => item.id === pack.id);
   return match || pack;
+};
+
+const normalizeSubscriptionPlan = (plan) => {
+  if (!plan) return null;
+  const planId = typeof plan === "string" ? plan : plan.id;
+  if (!planId) return null;
+  const match = SUBSCRIPTIONS.find((item) => item.id === planId);
+  return match || { id: planId };
 };
 
 class WebStripeBillingProvider {
@@ -56,8 +64,17 @@ class WebStripeBillingProvider {
     return payload;
   }
 
-  async purchaseSubscription() {
-    throw new Error("Subscriptions on web are not wired yet.");
+  async purchaseSubscription({ plan, orgName }) {
+    const selected = normalizeSubscriptionPlan(plan);
+    if (!selected?.id) {
+      throw new Error("Invalid subscription plan.");
+    }
+    const payload = await this.callFunction("createSubscriptionCheckout", {
+      planId: selected.id,
+      orgName: orgName || "",
+      origin: this.origin,
+    });
+    return payload;
   }
 }
 

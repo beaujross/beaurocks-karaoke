@@ -7,6 +7,7 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 - Architecture overview: `docs/ARCHITECTURE_OVERVIEW.md`
 - Technical risks and priorities: `docs/TECH_RISKS_PRIORITIES.md`
 - Billing notes (web Stripe + iOS IAP foundation): `docs/billing-iap.md`
+- VIP SMS auth runbook: `docs/VIP_SMS_AUTH_RUNBOOK.md`
 
 ## Development
 
@@ -14,6 +15,27 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 - `npm run build` - production build
 - `npm run preview` - preview built app
 - `npm run lint` - ESLint checks
+- `npm run test:rules` - Firestore + Storage emulator security checks (requires Java)
+- `npm run deploy:hosting` - build + deploy web app to Firebase Hosting
+- Optional: set `VITE_BASE_PATH` only if deploying under a subpath (example: `/karaoke/`)
+
+## Deploy (Firebase Hosting)
+
+One-time local setup:
+
+1. Install Firebase CLI and log in:
+   - `npm i -g firebase-tools`
+   - `firebase login`
+2. Confirm project mapping in `.firebaserc` (`beaurocks-karaoke-v2`).
+3. Deploy manually:
+   - `npm run deploy:hosting`
+
+Automated deploys (GitHub Actions):
+
+1. Add repo secret `FIREBASE_SERVICE_ACCOUNT_BEAUROCKS_KARAOKE_V2`.
+2. Use a service account JSON with Firebase Hosting deploy permissions for project `beaurocks-karaoke-v2`.
+3. Push to `main` to auto-deploy via `.github/workflows/firebase-hosting-deploy.yml`.
+4. Open/update a PR targeting `main` to get a preview URL via `.github/workflows/firebase-hosting-preview.yml` (channel expires in 7 days).
 
 ---
 

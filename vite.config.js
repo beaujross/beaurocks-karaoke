@@ -4,5 +4,6 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/karaoke/',
+  // Default to root for Firebase Hosting. Override with VITE_BASE_PATH when needed.
+  base: process.env.VITE_BASE_PATH || '/',
 })

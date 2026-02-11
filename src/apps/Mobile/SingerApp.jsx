@@ -18,6 +18,7 @@ import { PARTY_LIGHTS_STYLE, SINGER_APP_CONFIG } from '../../lib/uiConstants';
 import { POINTS_PACKS, SUBSCRIPTIONS } from '../../billing/catalog';
 import { BILLING_PLATFORMS, createBillingProvider, detectBillingPlatform } from '../../billing/provider';
 import { ensureSong, ensureTrack, extractYouTubeId } from '../../lib/songCatalog';
+import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
 import GameContainer from '../../components/GameContainer';
 import AppleLyricsRenderer from '../../components/AppleLyricsRenderer';
 import { FameLevelProgressBar } from '../../components/FameLevelBadge';
@@ -1330,12 +1331,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const hasLyrics = !!currentSinger?.lyrics;
     const applePlayback = room?.appleMusicPlayback || null;
-    const applePlaybackActive = !!applePlayback?.id;
-    const mediaUrl = room?.mediaUrl || currentSinger?.mediaUrl;
-    const isNativeVideo = !!mediaUrl && /\.(mp4|webm|ogg)$/i.test(mediaUrl);
-    const isAudio = !!(currentSinger?.audioOnly) || (mediaUrl && /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(mediaUrl));
-    const isYoutube = !!mediaUrl && mediaUrl.includes('youtube');
-    const youtubeId = isYoutube ? mediaUrl.split('v=')[1]?.split('&')[0] : null;
+    const mediaUrl = resolveStageMediaUrl(currentSinger, room);
+    const stageBacking = normalizeBackingChoice({
+        mediaUrl,
+        appleMusicId: currentSinger?.appleMusicId
+    });
+    const applePlaybackActive = !!applePlayback?.id && !stageBacking.mediaUrl;
+    const isNativeVideo = !!stageBacking.mediaUrl && /\.(mp4|webm|ogg)$/i.test(stageBacking.mediaUrl);
+    const isAudio = !!(currentSinger?.audioOnly) || (stageBacking.mediaUrl && /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(stageBacking.mediaUrl));
+    const youtubeId = stageBacking.youtubeId;
+    const isYoutube = stageBacking.isYouTube;
     const nowPlayingLabel = useMemo(() => {
         if (applePlaybackActive) {
             const title = applePlayback?.title || 'Apple Music';
@@ -2166,13 +2171,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
     };
 
-    const startSubscriptionCheckout = async (plan) => {
+    const _startSubscriptionCheckout = async (plan) => {
         try {
-            await billingProvider.purchaseSubscription({
+            const payload = await billingProvider.purchaseSubscription({
                 plan,
                 userUid: uid,
                 userName: user?.name || 'Guest'
             });
+            if (payload?.url) {
+                window.location.href = payload.url;
+                return;
+            }
         } catch (e) {
             console.error(e);
             if (billingPlatform === BILLING_PLATFORMS.IOS) {
@@ -2684,13 +2693,32 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const recapVerifierRef = useRef(null);
     const recapReadyRef = useRef(false);
+    const recapContainerIdRef = useRef('');
 
-    const initRecaptchaVerifier = async () => {
+    const normalizePhoneNumber = (value = '') => {
+        const trimmed = value.trim();
+        if (!trimmed) return '';
+        const cleaned = trimmed.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
+        return cleaned.startsWith('+') ? cleaned : `+${cleaned}`;
+    };
+
+    const initRecaptchaVerifier = async (containerId) => {
         if (typeof window === 'undefined') return false;
-        if (recapReadyRef.current && recapVerifierRef.current) return true;
-        const el = document.getElementById('recap-container');
+        const targetContainerId = containerId || 'recap-container-vip';
+        const hasContainerChanged = recapContainerIdRef.current && recapContainerIdRef.current !== targetContainerId;
+        if (hasContainerChanged && recapVerifierRef.current) {
+            try { recapVerifierRef.current.clear(); } catch {
+                // Ignore recaptcha cleanup errors.
+            }
+            recapVerifierRef.current = null;
+            recapReadyRef.current = false;
+            recapContainerIdRef.current = '';
+        }
+        if (recapReadyRef.current && recapVerifierRef.current && recapContainerIdRef.current === targetContainerId) return true;
+
+        const el = document.getElementById(targetContainerId);
         if (!el) {
-            console.warn('reCAPTCHA container missing');
+            console.warn('reCAPTCHA container missing', targetContainerId);
             return false;
         }
         if (recapVerifierRef.current) {
@@ -2698,10 +2726,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 // Ignore recaptcha cleanup errors.
             }
         }
-        recapVerifierRef.current = new RecaptchaVerifier(auth, 'recap-container', { size: 'invisible' });
+        recapVerifierRef.current = new RecaptchaVerifier(auth, targetContainerId, { size: 'invisible' });
         try {
             await recapVerifierRef.current.render();
             recapReadyRef.current = true;
+            recapContainerIdRef.current = targetContainerId;
             return true;
         } catch (e) {
             console.warn('reCAPTCHA render failed', e);
@@ -2710,8 +2739,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     // Phone/SMS VIP flow: send SMS and link phone to current (anonymous) user
-    const startPhoneAuth = async () => {
-        if (!phoneNumber || phoneNumber.length < 7) return toast('Enter a valid phone number (include country code)');
+    const startPhoneAuth = async (containerId) => {
+        const normalizedPhone = normalizePhoneNumber(phoneNumber);
+        if (!/^\+\d{7,15}$/.test(normalizedPhone)) {
+            toast('Enter a valid phone number in E.164 format (example: +15555555555)');
+            return;
+        }
         setPhoneLoading(true);
         try {
             if (!auth) {
@@ -2723,29 +2756,39 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             if (auth.settings && (host === 'localhost' || host === '127.0.0.1')) {
                 auth.settings.appVerificationDisabledForTesting = true;
             }
-        const bypassActive = !!auth.settings?.appVerificationDisabledForTesting;
-        let appVerifier = null;
-        if (!bypassActive) {
-            console.warn('App verification bypass is off; reCAPTCHA required.');
-        }
-        const ready = await initRecaptchaVerifier();
-        if (!ready) {
-            toast('reCAPTCHA failed to initialize. Reload and try again.');
-            setPhoneLoading(false);
-            return;
-        }
-        appVerifier = recapVerifierRef.current;
-        const confirmation = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
+            const bypassActive = !!auth.settings?.appVerificationDisabledForTesting;
+            let appVerifier = null;
+            if (!bypassActive) {
+                console.warn('App verification bypass is off; reCAPTCHA required.');
+            }
+            const ready = await initRecaptchaVerifier(containerId);
+            if (!ready) {
+                toast('reCAPTCHA failed to initialize. Reload and try again.');
+                setPhoneLoading(false);
+                return;
+            }
+            appVerifier = recapVerifierRef.current;
+            const confirmation = await signInWithPhoneNumber(auth, normalizedPhone, appVerifier);
             // confirmation may expose verificationId
-            const vid = confirmation.verificationId || (confirmation && confirmation.verificationId) || null;
+            const vid = confirmation.verificationId || null;
             setVerificationId(vid);
             // save confirmation for fallback confirm
             window._bross_confirmation = confirmation;
             setSmsSent(true);
-            toast('SMS sent — enter the code');
+            setPhoneNumber(normalizedPhone);
+            toast('SMS sent - enter the code');
         } catch (e) {
             console.error('SMS send error', e);
-            toast('Failed to send SMS');
+            const code = e?.code || '';
+            if (code.includes('too-many-requests')) {
+                toast('Too many attempts. Wait a few minutes, then try again.');
+            } else if (code.includes('invalid-phone-number')) {
+                toast('Invalid phone number format. Use +countrycode then number.');
+            } else if (code.includes('captcha-check-failed')) {
+                toast('reCAPTCHA check failed. Refresh and retry.');
+            } else {
+                toast('Failed to send SMS');
+            }
         } finally { setPhoneLoading(false); }
     };
 
@@ -3908,13 +3951,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     const value = Math.floor(Math.random() * 1000) + 1;
                                     markActive();
                                     try {
-                                        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
-                                            [`bingoMysteryRng.results.${uid}`]: {
+                                        const nextResults = {
+                                            ...(bingoRng?.results || {}),
+                                            [uid]: {
                                                 uid,
                                                 name: user.name,
                                                 avatar: user.avatar,
                                                 value,
                                                 at: serverTimestamp()
+                                            }
+                                        };
+                                        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
+                                            bingoMysteryRng: {
+                                                ...(bingoRng || {}),
+                                                results: nextResults
                                             }
                                         });
                                         await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { lastActiveAt: serverTimestamp() });
@@ -3941,13 +3991,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 const value = Math.floor(Math.random() * 1000) + 1;
                                 markActive();
                                 try {
-                                    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
-                                        [`bingoMysteryRng.results.${uid}`]: {
+                                    const nextResults = {
+                                        ...(bingoRng?.results || {}),
+                                        [uid]: {
                                             uid,
                                             name: user.name,
                                             avatar: user.avatar,
                                             value,
                                             at: serverTimestamp()
+                                        }
+                                    };
+                                    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
+                                        bingoMysteryRng: {
+                                            ...(bingoRng || {}),
+                                            results: nextResults
                                         }
                                     });
                                     await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { lastActiveAt: serverTimestamp() });
@@ -4382,7 +4439,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 {!smsSent ? (
                     <div className="flex gap-2">
                         <button onClick={()=>setShowPhoneModal(false)} className="flex-1 bg-zinc-700 py-3 rounded">Cancel</button>
-                        <button onClick={startPhoneAuth} className="flex-1 bg-cyan-500 py-3 rounded font-bold">{phoneLoading ? 'Sending...' : 'Send SMS'}</button>
+                        <button onClick={() => startPhoneAuth('recap-container-modal')} className="flex-1 bg-cyan-500 py-3 rounded font-bold">{phoneLoading ? 'Sending...' : 'Send SMS'}</button>
                     </div>
                 ) : (
                     <>
@@ -4397,7 +4454,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 <button onClick={bypassSmsVip} className="mt-4 text-xs text-cyan-300 underline underline-offset-4">Skip SMS for QA</button>
 
                 {/* reCAPTCHA container for invisible verifier */}
-                <div id="recap-container" className="mt-4"></div>
+                <div id="recap-container-modal" className="mt-4"></div>
             </div>
         </div>
     );
@@ -5418,9 +5475,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         placeholder="Filter by song or artist..."
                                     />
                                     <div className="space-y-2 max-h-[50vh] overflow-y-auto custom-scrollbar pr-1">
-                                        {hallOfFameEntries
-                                            .filter(entry => (`${entry.songTitle || ''} ${entry.artist || ''}`).toLowerCase().includes(hallOfFameFilter.toLowerCase()))
-                                            .map((entry) => (
+                                        {filteredHallOfFame.map((entry) => (
                                                 <div key={entry.id} className="flex items-center gap-3 bg-zinc-900/60 border border-zinc-700 rounded-xl p-3">
                                                     {entry.albumArtUrl ? (
                                                         <img src={entry.albumArtUrl} alt={entry.songTitle} className="w-12 h-12 rounded-lg object-cover" />
@@ -5438,8 +5493,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     </div>
                                                 </div>
                                             ))}
-                                        {hallOfFameEntries.length === 0 && (
-                                            <div className="text-center text-zinc-500 text-sm">No Hall of Fame entries yet.</div>
+                                        {filteredHallOfFame.length === 0 && (
+                                            <div className="text-center text-zinc-500 text-sm">
+                                                {hallOfFameEntries.length === 0 ? 'No Hall of Fame entries yet.' : 'No songs match that filter.'}
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -5608,7 +5665,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <label className="text-xs uppercase tracking-widest text-zinc-400">Phone Number</label>
                                     <input value={phoneNumber} onChange={e=>setPhoneNumber(e.target.value)} placeholder="+1 555 555 5555" className="w-full p-3 mt-2 rounded bg-zinc-800 border border-zinc-700 text-white" />
                                     {!smsSent ? (
-                                        <button onClick={startPhoneAuth} className="w-full bg-cyan-500 text-black py-3 rounded-lg font-bold mt-3">{phoneLoading ? 'Sending...' : 'Send SMS'}</button>
+                                        <button onClick={() => startPhoneAuth('recap-container-vip')} className="w-full bg-cyan-500 text-black py-3 rounded-lg font-bold mt-3">{phoneLoading ? 'Sending...' : 'Send SMS'}</button>
                                     ) : (
                                         <>
                                             <label className="text-xs uppercase tracking-widest text-zinc-400 mt-4 block">Verification Code</label>
@@ -5619,7 +5676,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             </div>
                                         </>
                                     )}
-                                    <div id="recap-container" className="mt-3"></div>
+                                    <div id="recap-container-vip" className="mt-3"></div>
                                 </div>
                                 {smsBypassEnabled && (
                                     <button onClick={bypassSmsVip} className="w-full bg-zinc-700 text-white py-3 rounded-lg font-bold mb-3">Bypass SMS (Test)</button>
@@ -6206,6 +6263,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 };
 
 export default SingerApp;
+
 
 
 

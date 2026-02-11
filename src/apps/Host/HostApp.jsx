@@ -1,13 +1,39 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import UnifiedGameLauncher from '../../components/UnifiedGameLauncher';
 import { GAMES_META } from '../../lib/gameRegistry';
+import StageNowPlayingPanel from './components/StageNowPlayingPanel';
+import AddToQueueFormBody from './components/AddToQueueFormBody';
+import TvDashboardControls from './components/TvDashboardControls';
+import AutomationControls from './components/AutomationControls';
+import SoundboardControls from './components/SoundboardControls';
+import HostChatPanel from './components/HostChatPanel';
+import OverlaysGuidesPanel from './components/OverlaysGuidesPanel';
+import RewardPointsPanel from './components/RewardPointsPanel';
+import QueueListPanel from './components/QueueListPanel';
+import QueueYouTubeSearchModal from './components/QueueYouTubeSearchModal';
+import QueueEditSongModal from './components/QueueEditSongModal';
+import HostLogoManager from './components/HostLogoManager';
+import ChatSettingsPanel from './components/ChatSettingsPanel';
+import HostTopChrome from './components/HostTopChrome';
+import useHostChat from './hooks/useHostChat';
+import useQueueDerivedState from './hooks/useQueueDerivedState';
+import useQueueMediaTools from './hooks/useQueueMediaTools';
+import useQueueReorder from './hooks/useQueueReorder';
+import useQueueSongActions from './hooks/useQueueSongActions';
+import useQueueTabState from './hooks/useQueueTabState';
+import HOST_UI_FEATURE_CHECKLIST from './hostUiFeatureChecklist';
 import { 
-    db, doc, collection, query, where, orderBy, onSnapshot, updateDoc, 
-    addDoc, deleteDoc, serverTimestamp, limit, getDocs, getDoc, increment, setDoc, writeBatch,
+    db, doc, collection, query, where, onSnapshot, updateDoc, 
+    addDoc, deleteDoc, serverTimestamp, limit, getDocs, getDoc, setDoc, writeBatch,
     storage, storageRef, uploadBytesResumable, getDownloadURL, deleteObject,
     arrayUnion,
+    auth,
+    initAuth,
     trackEvent,
-    callFunction
+    callFunction,
+    ensureOrganization,
+    getMyEntitlements,
+    getMyUsageSummary
 } from '../../lib/firebase';
 import { ASSETS, AVATARS, APP_ID } from '../../lib/assets';
 import { playSfx, setSfxMasterVolume, stopAllSfx } from '../../lib/utils';
@@ -17,6 +43,11 @@ import { useToast } from '../../context/ToastContext';
 import { BG_TRACKS, SOUNDS } from '../../lib/gameDataConstants';
 import { HOST_APP_CONFIG } from '../../lib/uiConstants';
 import { buildSongKey, ensureSong, ensureTrack, extractYouTubeId } from '../../lib/songCatalog';
+import {
+    normalizeBackingChoice,
+    resolveStageMediaUrl,
+    resolveQueuePlayback,
+} from '../../lib/playbackSource';
 
 // --- CONSTANTS & CONFIG ---
 const VERSION = HOST_APP_CONFIG.VERSION;
@@ -80,7 +111,12 @@ const generateAIContent = async (type, context) => {
         return data?.result || null;
     } catch (e) {
         console.error("AI Error", e);
-        alert("Gemini is not configured yet. Add server keys and try again.");
+        const code = String(e?.code || e?.message || '').toLowerCase();
+        if (code.includes('permission-denied')) {
+            alert("AI tools require an active Host subscription.");
+        } else {
+            alert("Gemini is not configured yet. Add server keys and try again.");
+        }
         return null;
     }
 };
@@ -143,6 +179,31 @@ const DEFAULT_TIP_CRATES = [
     { id: 'crate_big', label: 'Room Rager', amount: 20, points: 6000, rewardScope: 'room', awardBadge: true }
 ];
 
+const DEFAULT_LOGO_PRESETS = [
+    { id: 'default-bross', label: 'BROSS Default', url: ASSETS.logo },
+    { id: 'bross-entertainment', label: 'Bross Entertainment', url: '/images/logo-library/bross-entertainment.png' },
+    { id: 'bross-entertainment-chrome', label: 'Bross Chrome', url: '/images/logo-library/bross-entertainment-chrome.png' },
+    { id: 'beaurocks-karaoke-logo-2', label: 'Beaurocks Logo 2', url: '/images/logo-library/beaurocks-karaoke-logo-2.png' },
+    { id: 'icon-reversed-gradient', label: 'Icon Reversed Gradient', url: '/images/logo-library/icon-reversed-gradient.png' },
+    { id: 'bross-ent-favicon-1', label: 'Bross Favicon 1', url: '/images/logo-library/bross-ent-favicon-1.png' },
+    { id: 'chatgpt-2026-02-08-032254pm', label: 'ChatGPT Concept 03:22 PM', url: '/images/logo-library/chatgpt-2026-02-08-032254pm.png' },
+    { id: 'chatgpt-2026-02-08-103037pm', label: 'ChatGPT Concept 10:30 PM', url: '/images/logo-library/chatgpt-2026-02-08-103037pm.png' },
+    { id: 'chatgpt-2026-02-08-115558pm', label: 'ChatGPT Concept 11:55 PM', url: '/images/logo-library/chatgpt-2026-02-08-115558pm.png' }
+];
+
+const HOST_ONBOARDING_STEPS = [
+    { key: 'identity', label: 'Identity' },
+    { key: 'plan', label: 'Plan' },
+    { key: 'branding', label: 'Branding' },
+    { key: 'launch', label: 'Launch' }
+];
+
+const HOST_ONBOARDING_PLAN_OPTIONS = [
+    { id: 'free', label: 'Free', price: '$0', note: 'Test the workspace before upgrading.' },
+    { id: 'host_monthly', label: 'Host Monthly', price: '$19/mo', note: 'Recurring monthly host subscription.' },
+    { id: 'host_annual', label: 'Host Annual', price: '$190/yr', note: 'Lower yearly effective rate for active hosts.' }
+];
+
 const loadMusicKitScript = () => new Promise((resolve, reject) => {
     if (typeof window === 'undefined') return resolve(null);
     if (window.MusicKit) return resolve(window.MusicKit);
@@ -181,6 +242,12 @@ const estimateStorageMonthly = (bytes = 0) => {
     const monthly = gb * 0.026;
     return monthly;
 };
+
+const formatUsdFromCents = (cents = 0) => {
+    const amount = Number(cents || 0) / 100;
+    return `$${amount.toFixed(2)}`;
+};
+
 const toMs = (t) => {
     if (!t) return 0;
     if (typeof t === 'number') return t;
@@ -189,7 +256,16 @@ const toMs = (t) => {
     return 0;
 };
 
+const getTimestampMs = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'number') return value;
+    if (typeof value?.toMillis === 'function') return value.toMillis();
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    return 0;
+};
+
 const ROOM_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ123456789";
+const DEFAULT_QA_YT_PLAYLIST_URL = 'https://www.youtube.com/playlist?list=PL_3exKsBlHnEbbmolJlfODkelxx_1UMAP';
 const generateRoomCode = (length = 4) => {
     let code = "";
     for (let i = 0; i < length; i += 1) {
@@ -370,6 +446,19 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
         if (!sortedUsers.length) return;
         const shuffled = [...sortedUsers].sort(() => Math.random() - 0.5);
         setSelectedParticipants(shuffled.slice(0, count).map(u => u.id.split('_')[1]));
+    };
+    const toggleSubmissionApproval = async (submission) => {
+        if (!roomCode || !submission?.id) return;
+        try {
+            await callFunction('setSelfieSubmissionApproval', {
+                roomCode,
+                submissionId: submission.id,
+                approved: !submission.approved
+            });
+        } catch (e) {
+            console.error('Selfie moderation failed', e);
+            toast('Failed to update approval');
+        }
     };
     const startChallenge = async () => {
         if (!promptText.trim()) return toast('Add a prompt');
@@ -568,7 +657,7 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
                                 </div>
                                 {requireApproval && (
                                     <button
-                                        onClick={() => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions', s.id), { approved: !s.approved })}
+                                        onClick={() => toggleSubmissionApproval(s)}
                                         className={`${STYLES.btnStd} ${s.approved ? STYLES.btnHighlight : STYLES.btnNeutral} w-full rounded-none`}
                                     >
                                         {s.approved ? 'APPROVED' : 'APPROVE'}
@@ -590,6 +679,7 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
 const GalleryTab = ({ roomCode, room, updateRoom }) => {
     const [photos, setPhotos] = useState([]);
     const [selectedPhoto, setSelectedPhoto] = useState(null);
+    const toast = useToast() || console.log;
     useEffect(() => {
         const q = query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', roomCode), where('type', '==', 'photo'));
         const unsub = onSnapshot(q, s => setPhotos(s.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => b.timestamp - a.timestamp)));
@@ -606,7 +696,15 @@ const GalleryTab = ({ roomCode, room, updateRoom }) => {
         await updateRoom({ photoOverlay: { url: photo.url, userName: photo.userName, timestamp: serverTimestamp() }, featuredPhotoId: photo.id });
     };
     
-    const deletePhoto = (id) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'reactions', id));
+    const deletePhoto = async (id) => {
+        if (!roomCode || !id) return;
+        try {
+            await callFunction('deleteRoomReaction', { roomCode, reactionId: id });
+        } catch (e) {
+            console.error('Delete photo failed', e);
+            toast('Delete failed');
+        }
+    };
 
     const featured = room?.featuredPhotoId ? photos.find(p => p.id === room.featuredPhotoId) : null;
 
@@ -673,240 +771,432 @@ const GalleryTab = ({ roomCode, room, updateRoom }) => {
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, setSearchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, autoDjCountdown, hostName, fetchTop100Art, connectAppleMusic, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, silenceAll }) => {
-    const [stagePanelOpen, setStagePanelOpen] = useState(true);
-    const [tvControlsOpen, setTvControlsOpen] = useState(true);
-    const [soundboardOpen, setSoundboardOpen] = useState(true);
-    const [chatOpen, setChatOpen] = useState(true);
-    const [overlaysOpen, setOverlaysOpen] = useState(true);
-    const [vibeSyncOpen, setVibeSyncOpen] = useState(true);
-    const [automationOpen, setAutomationOpen] = useState(true);
-    const [crowdPointsOpen, setCrowdPointsOpen] = useState(true);
+const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, setSearchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, autoDjCountdown, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll }) => {
+    const {
+        stagePanelOpen,
+        setStagePanelOpen,
+        tvControlsOpen,
+        setTvControlsOpen,
+        soundboardOpen,
+        setSoundboardOpen,
+        chatOpen,
+        setChatOpen,
+        overlaysOpen,
+        setOverlaysOpen,
+        vibeSyncOpen,
+        setVibeSyncOpen,
+        automationOpen,
+        setAutomationOpen,
+        crowdPointsOpen,
+        setCrowdPointsOpen,
+        panelLayout,
+        activeWorkspace,
+        workspaceOptions,
+        applyWorkspacePreset,
+        expandAllPanels,
+        collapseAllPanels,
+        resetPanelLayout,
+        searchQ,
+        setSearchQ,
+        showAddForm,
+        setShowAddForm,
+        results,
+        setResults,
+        manual,
+        setManual,
+        quickAddOnResultClick,
+        setQuickAddOnResultClick,
+        quickAddLoadingKey,
+        setQuickAddLoadingKey,
+        quickAddNotice,
+        setQuickAddNotice,
+        giftTargetUid,
+        setGiftTargetUid,
+        giftAmount,
+        setGiftAmount,
+        lyricsOpen,
+        setLyricsOpen,
+        manualSingerMode,
+        setManualSingerMode,
+        editingSongId,
+        setEditingSongId,
+        editForm,
+        setEditForm,
+        customBonus,
+        setCustomBonus,
+        showQueueList,
+        setShowQueueList,
+        ytSearchOpen,
+        setYtSearchOpen,
+        ytSearchTarget,
+        setYtSearchTarget,
+        ytSearchQ,
+        setYtSearchQ,
+        ytEditingQuery,
+        setYtEditingQuery,
+        ytResults,
+        setYtResults,
+        ytLoading,
+        setYtLoading,
+        ytSearchError,
+        setYtSearchError,
+        embedCache,
+        setEmbedCache,
+        _testingVideoId,
+        setTestingVideoId,
+        _previewIframe,
+        _setPreviewIframe
+    } = useQueueTabState({ hostName, roomCode });
 
-    const SectionHeader = ({ label, open, onToggle, toneClass = '' }) => (
+    const SectionHeader = ({ label, open, onToggle, toneClass = '', featureId = '' }) => (
         <button
             onClick={onToggle}
+            data-feature-id={featureId || undefined}
             className={`w-full flex items-center justify-between ${STYLES.header} ${toneClass}`}
         >
             <span>{label}</span>
             <i className={`fa-solid fa-chevron-down transition-transform ${open ? 'rotate-180' : ''}`}></i>
         </button>
     );
-    const [searchQ, setSearchQ] = useState('');
-    const [showAddForm, setShowAddForm] = useState(true);
-    const [results, setResults] = useState([]); 
-    const [manual, setManual] = useState({ song:'', artist:'', singer: hostName || 'Host', url:'', art: '', lyrics: '', lyricsTimed: null, appleMusicId: '', duration: 180, backingAudioOnly: false, audioOnly: false }); 
-    const [giftTargetUid, setGiftTargetUid] = useState('');
-    const [giftAmount, setGiftAmount] = useState('');
-    const [lyricsOpen, setLyricsOpen] = useState(false);
-    const [manualSingerMode, setManualSingerMode] = useState('select');
-    const [editingSongId, setEditingSongId] = useState(null); 
-    const [editForm, setEditForm] = useState({ title: '', artist: '', singer: '', url: '', art: '', lyrics: '', lyricsTimed: null, appleMusicId: '', duration: 180 }); 
-    const [customBonus, setCustomBonus] = useState('');
-    const [showQueueList, setShowQueueList] = useState(true);
-      const [ytSearchOpen, setYtSearchOpen] = useState(false);
-      const [ytSearchTarget, setYtSearchTarget] = useState('manual');
-    const [ytSearchQ, setYtSearchQ] = useState('');
-    const [ytEditingQuery, setYtEditingQuery] = useState(false);
-    const [ytResults, setYtResults] = useState([]);
-    const [ytLoading, setYtLoading] = useState(false);
-    const [ytSearchError, setYtSearchError] = useState('');
-    const [embedCache, setEmbedCache] = useState({}); // { videoId: 'ok'|'fail'|'testing' }
-    const [_testingVideoId, setTestingVideoId] = useState(null);
-    const [_previewIframe, _setPreviewIframe] = useState(null);
-    const [dragQueueId, setDragQueueId] = useState(null);
-    const [dragOverId, setDragOverId] = useState(null);
-    const touchDragIdRef = useRef(null);
     const toast = useToast() || console.log;
+    const hallOfFameTimerRef = useRef(null);
+    const mediaOverrideStopRef = useRef('');
+    const commandInputRef = useRef(null);
+    const [commandOpen, setCommandOpen] = useState(false);
+    const [commandQuery, setCommandQuery] = useState('');
     const roomChatMessages = chatMessages.filter(msg => !msg.toHost);
     const hostDmMessages = chatMessages.filter(msg => msg.toHost || msg.toUid);
-    const isChatPopout = typeof window !== 'undefined'
-        && new URLSearchParams(window.location.search).get('chat') === '1';
-    const chatSectionOpen = isChatPopout ? true : chatOpen;
-    const renderChatSection = (containerClass = 'px-4 py-4 border-b border-white/10') => (
-        <section className={containerClass}>
-            <SectionHeader
-                label="Chat"
-                open={chatSectionOpen}
-                onToggle={() => {
-                    if (isChatPopout) return;
-                    setChatOpen(v => !v);
-                }}
-            />
-            <div className={chatSectionOpen ? 'block' : 'hidden'}>
-                <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                        {chatUnread && <span className="text-sm uppercase tracking-widest text-pink-300">New</span>}
-                        <button
-                            onClick={() => openChatSettings?.()}
-                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1`}
-                            title="Open chat settings"
-                        >
-                            <i className="fa-solid fa-gear"></i>
-                        </button>
-                        {!isChatPopout && (
-                            <button
-                                onClick={() => {
-                                    const target = `${appBase}?room=${roomCode}&mode=host&tab=stage&chat=1`;
-                                    window.open(target, '_blank');
-                                }}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1`}
-                                title="Pop out chat"
-                            >
-                                <i className="fa-solid fa-up-right-from-square"></i>
-                            </button>
-                        )}
-                    </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
-                    <button
-                        onClick={async () => {
-                            const next = !chatEnabled;
-                            setChatEnabled(next);
-                            await updateRoom({ chatEnabled: next });
-                        }}
-                        className={`${STYLES.btnStd} ${chatEnabled ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                        title="Enable or disable chat for the room"
-                    >
-                        <i className="fa-solid fa-comment mr-2"></i>{chatEnabled ? 'On' : 'Off'}
-                    </button>
-                    <button
-                        onClick={async () => {
-                            const next = !chatShowOnTv;
-                            setChatShowOnTv(next);
-                            await updateRoom({ chatShowOnTv: next });
-                        }}
-                        className={`${STYLES.btnStd} ${chatShowOnTv ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                        title="Show chat in the TV rotation"
-                    >
-                        <i className="fa-solid fa-tv mr-2"></i>{chatShowOnTv ? 'TV' : 'TV Off'}
-                    </button>
-                    <button
-                        onClick={async () => {
-                            const next = chatAudienceMode === 'vip' ? 'all' : 'vip';
-                            setChatAudienceMode(next);
-                            await updateRoom({ chatAudienceMode: next });
-                        }}
-                        className={`${STYLES.btnStd} ${chatAudienceMode === 'vip' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                        title="Toggle VIP-only chat"
-                    >
-                        <i className="fa-solid fa-crown mr-2"></i>{chatAudienceMode === 'vip' ? 'VIP' : 'All'}
-                    </button>
-                </div>
-                <div className="mb-3">
-                    <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Room Chat</div>
-                    <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
-                        {roomChatMessages.length === 0 && (
-                            <div className="text-xs text-zinc-500">No chat messages yet.</div>
-                        )}
-                        {roomChatMessages.map((msg, idx) => (
-                            <div key={`${msg.timestamp?.seconds || idx}`} className="text-xs text-zinc-200">
-                                <span className="text-zinc-500">{msg.name || 'Guest'}:</span> {msg.text}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-                <div className="mb-3">
-                    <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">DMs</div>
-                    <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
-                        {hostDmMessages.length === 0 && (
-                            <div className="text-xs text-zinc-500">No DMs yet.</div>
-                        )}
-                        {hostDmMessages.map((msg, idx) => (
-                            <div key={`${msg.timestamp?.seconds || idx}`} className="text-xs text-zinc-200">
-                                <span className="text-zinc-500">{msg.name || 'Guest'}:</span> {msg.text}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-                {chatViewMode === 'room' && (
-                    <div className="mt-3 flex gap-2">
-                        <input
-                            value={chatDraft}
-                            onChange={e => setChatDraft(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    sendHostChat();
-                                }
-                            }}
-                            className={`${STYLES.input} text-xs flex-1`}
-                            placeholder="Message the room..."
-                            title="Send a message to the audience"
-                        />
-                        <button onClick={sendHostChat} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3`} title="Send chat message">
-                            <i className="fa-solid fa-paper-plane mr-2"></i>Send
-                        </button>
-                    </div>
-                )}
-            </div>
-        </section>
+    const {
+        current,
+        hasLyrics,
+        queue,
+        pending,
+        lobbyCount,
+        queueCount,
+        waitTimeSec,
+        formatWaitTime,
+        currentMediaUrl,
+        currentUsesAppleBacking,
+        currentSourcePlaying,
+        currentSourceLabel,
+        currentSourceToneClass
+    } = useQueueDerivedState({ songs, room, users, appleMusicPlaying });
+    const openPanelCount = useMemo(
+        () => Object.values(panelLayout || {}).filter(Boolean).length,
+        [panelLayout]
     );
-    
-    const current = songs.find(s => s.status === 'performing'); 
-    const hasLyrics = !!current?.lyrics || (Array.isArray(current?.lyricsTimed) && current.lyricsTimed.length > 0);
-    const queue = songs.filter(s => s.status === 'requested').sort((a,b) => (a.priorityScore || 0) - (b.priorityScore || 0));
-    const nextQueued = queue[0];
-    const lobbyCount = users?.length || 0;
-    const queueCount = queue.length;
-    const waitTimeSec = queue.reduce((sum, s) => {
-        const duration = Number(s.duration);
-        return sum + (Number.isFinite(duration) && duration > 0 ? duration : 300);
-    }, 0);
-    const formatWaitTime = (seconds) => {
-        if (!seconds) return '0m';
-        const mins = Math.floor(seconds / 60);
-        const hrs = Math.floor(mins / 60);
-        const remMins = mins % 60;
-        if (hrs > 0) return `${hrs}h ${remMins}m`;
-        return `${mins}m`;
+    const runUiFeatureCheck = () => {
+        if (typeof document === 'undefined') return;
+        const missing = HOST_UI_FEATURE_CHECKLIST.filter((item) => !document.querySelector(item.selector));
+        if (missing.length) {
+            console.warn('[Host UI Feature Check] Missing controls:', missing);
+            toast(`UI feature check: ${missing.length} missing control(s).`);
+            return;
+        }
+        toast(`UI feature check passed (${HOST_UI_FEATURE_CHECKLIST.length} controls).`);
     };
-    const pending = songs.filter(s => s.status === 'pending');
+    const commandPaletteItems = useMemo(() => {
+        const nextQueueSong = queue[0];
+        return [
+            {
+                id: 'start-next',
+                label: 'Start Next Performer',
+                enabled: !!nextQueueSong,
+                hint: nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'Queue is empty',
+                keywords: 'queue start next performer',
+                run: async () => {
+                    if (!nextQueueSong) return;
+                    await updateStatus(nextQueueSong.id, 'performing');
+                }
+            },
+            {
+                id: 'toggle-source',
+                label: currentSourcePlaying ? 'Pause Current Source' : 'Play Current Source',
+                enabled: !!current,
+                hint: current ? (current.songTitle || 'Current performance') : 'No current song',
+                keywords: 'play pause toggle source backing',
+                run: async () => { await togglePlay(); }
+            },
+            {
+                id: 'open-tv',
+                label: 'Open Public TV Display',
+                enabled: !!roomCode,
+                hint: roomCode ? `Room ${roomCode}` : 'No room code',
+                keywords: 'tv display public open',
+                run: async () => { window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer'); }
+            },
+            {
+                id: 'chat-settings',
+                label: 'Open Chat Settings',
+                enabled: true,
+                hint: 'Moderation and TV chat mode',
+                keywords: 'chat settings moderation tv mode',
+                run: async () => { openChatSettings(); }
+            },
+            {
+                id: 'workspace-performance',
+                label: 'Workspace: Performance Mode',
+                enabled: true,
+                hint: 'Stage + queue focus',
+                keywords: 'workspace performance layout stage',
+                run: async () => { applyWorkspacePreset('performance'); }
+            },
+            {
+                id: 'workspace-crowd',
+                label: 'Workspace: Crowd Mode',
+                enabled: true,
+                hint: 'Chat + rewards focus',
+                keywords: 'workspace crowd audience layout',
+                run: async () => { applyWorkspacePreset('crowd'); }
+            },
+            {
+                id: 'workspace-broadcast',
+                label: 'Workspace: Broadcast Mode',
+                enabled: true,
+                hint: 'TV + overlays focus',
+                keywords: 'workspace broadcast layout tv overlay',
+                run: async () => { applyWorkspacePreset('broadcast'); }
+            },
+            {
+                id: 'expand-all',
+                label: 'Expand All Panels',
+                enabled: true,
+                hint: 'Open every section',
+                keywords: 'expand all panels layout',
+                run: async () => { expandAllPanels(); }
+            },
+            {
+                id: 'collapse-all',
+                label: 'Collapse All Panels',
+                enabled: true,
+                hint: 'Collapse every section',
+                keywords: 'collapse all panels layout',
+                run: async () => { collapseAllPanels(); }
+            },
+            {
+                id: 'reset-layout',
+                label: 'Reset Panel Layout',
+                enabled: true,
+                hint: 'Restore default layout',
+                keywords: 'reset default layout',
+                run: async () => { resetPanelLayout(); }
+            },
+            {
+                id: 'ui-feature-check',
+                label: 'Run UI Feature Check',
+                enabled: true,
+                hint: 'Verify critical host controls are present',
+                keywords: 'check verify ui features buttons controls',
+                run: async () => { runUiFeatureCheck(); }
+            }
+        ];
+    }, [
+        queue,
+        updateStatus,
+        currentSourcePlaying,
+        current,
+        togglePlay,
+        roomCode,
+        appBase,
+        openChatSettings,
+        applyWorkspacePreset,
+        expandAllPanels,
+        collapseAllPanels,
+        resetPanelLayout,
+        runUiFeatureCheck
+    ]);
+    const filteredCommands = useMemo(() => {
+        const q = (commandQuery || '').trim().toLowerCase();
+        if (!q) return commandPaletteItems;
+        return commandPaletteItems.filter((item) => {
+            const haystack = `${item.label} ${item.hint || ''} ${item.keywords || ''}`.toLowerCase();
+            return haystack.includes(q);
+        });
+    }, [commandPaletteItems, commandQuery]);
 
-    if (isChatPopout) {
-        return (
-            <div className="min-h-screen bg-zinc-950 text-white font-saira p-4">
-                <div className={`${STYLES.panel} p-4`}>
-                    {renderChatSection('')}
-                </div>
-            </div>
-        );
-    }
+    useEffect(() => {
+        try {
+            localStorage.setItem('bross_quick_add_on_result_click', quickAddOnResultClick ? '1' : '0');
+        } catch {
+            // Ignore storage failures.
+        }
+    }, [quickAddOnResultClick]);
+    useEffect(() => {
+        if (!quickAddNotice) return;
+        const timeout = setTimeout(() => setQuickAddNotice(null), 8000);
+        return () => clearTimeout(timeout);
+    }, [quickAddNotice]);
+    useEffect(() => {
+        if (!current) {
+            mediaOverrideStopRef.current = '';
+            return;
+        }
+        const stageMediaUrl = resolveStageMediaUrl(current, room);
+        const effectiveBacking = normalizeBackingChoice({
+            mediaUrl: stageMediaUrl,
+            appleMusicId: current?.appleMusicId
+        });
+        const appleStatus = (room?.appleMusicPlayback?.status || '').toLowerCase();
+        const shouldStopApple = !!effectiveBacking.mediaUrl && (appleStatus === 'playing' || appleStatus === 'paused' || appleMusicPlaying);
+        if (!shouldStopApple) {
+            mediaOverrideStopRef.current = '';
+            return;
+        }
+        const key = `${current.id || 'current'}|${effectiveBacking.mediaUrl}|${appleStatus}|${appleMusicPlaying ? '1' : '0'}`;
+        if (mediaOverrideStopRef.current === key) return;
+        mediaOverrideStopRef.current = key;
+        let cancelled = false;
+        (async () => {
+            try {
+                await stopAppleMusic?.();
+                if (!cancelled) {
+                    await updateRoom({ appleMusicPlayback: null });
+                }
+            } catch (err) {
+                console.warn('Failed to stop Apple Music during media override', err);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [current?.id, current?.mediaUrl, current?.appleMusicId, room?.mediaUrl, room?.appleMusicPlayback?.status, appleMusicPlaying, stopAppleMusic, updateRoom]);
+    useEffect(() => () => {
+        if (hallOfFameTimerRef.current) clearTimeout(hallOfFameTimerRef.current);
+    }, []);
+    useEffect(() => {
+        const onKeyDown = (event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+                event.preventDefault();
+                setCommandOpen(prev => !prev);
+                setCommandQuery('');
+                return;
+            }
+            if (event.key === 'Escape' && commandOpen) {
+                setCommandOpen(false);
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [commandOpen]);
+    useEffect(() => {
+        if (!commandOpen) return;
+        const timer = setTimeout(() => commandInputRef.current?.focus(), 0);
+        return () => clearTimeout(timer);
+    }, [commandOpen]);
 
-    const reorderQueue = async (fromId, toId) => {
-        if (!fromId || !toId || fromId === toId) return;
-        const list = [...queue];
-        const fromIdx = list.findIndex(s => s.id === fromId);
-        const toIdx = list.findIndex(s => s.id === toId);
-        if (fromIdx === -1 || toIdx === -1) return;
-        const [moved] = list.splice(fromIdx, 1);
-        list.splice(toIdx, 0, moved);
-        const base = Date.now();
-        await Promise.all(list.map((item, idx) =>
-            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', item.id), { priorityScore: base + idx })
-        ));
-        toast('Queue reordered');
-    };
-    const handleTouchStart = (id) => {
-        touchDragIdRef.current = id;
-    };
-    const handleTouchMove = (e) => {
-        const touch = e.touches[0];
-        if (!touch) return;
-        const el = document.elementFromPoint(touch.clientX, touch.clientY);
-        const row = el?.closest('[data-queue-id]');
-        if (row) {
-            setDragOverId(row.getAttribute('data-queue-id'));
+    const runPaletteCommand = async (command) => {
+        if (!command?.enabled || typeof command?.run !== 'function') return;
+        try {
+            await command.run();
+            setCommandOpen(false);
+            setCommandQuery('');
+        } catch (error) {
+            console.error('Command failed', error);
+            toast('Command failed');
         }
     };
-    const handleTouchEnd = () => {
-        if (touchDragIdRef.current && dragOverId) {
-            reorderQueue(touchDragIdRef.current, dragOverId);
+    const undoQuickAdd = async () => {
+        if (!quickAddNotice?.id) return;
+        try {
+            await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', quickAddNotice.id));
+            toast(`Removed ${quickAddNotice.songTitle}`);
+            setQuickAddNotice(null);
+        } catch {
+            toast('Undo failed');
         }
-        touchDragIdRef.current = null;
-        setDragOverId(null);
     };
+    const changeQuickAddBacking = () => {
+        if (!quickAddNotice) return;
+        startEdit({
+            id: quickAddNotice.id,
+            songTitle: quickAddNotice.songTitle,
+            artist: quickAddNotice.artist,
+            singerName: quickAddNotice.singerName,
+            mediaUrl: quickAddNotice.mediaUrl || '',
+            albumArtUrl: quickAddNotice.albumArtUrl || '',
+            lyrics: quickAddNotice.lyrics || '',
+            lyricsTimed: quickAddNotice.lyricsTimed || null,
+            appleMusicId: quickAddNotice.appleMusicId || '',
+            duration: quickAddNotice.duration || 180
+        });
+        setQuickAddNotice(null);
+    };
+    const generateManualLyrics = async () => {
+        if (!manual.song || !manual.artist) return toast('Need Song & Artist');
+        toast('Generating Lyrics...');
+        const res = await generateAIContent('lyrics', { title: manual.song, artist: manual.artist });
+        if (res && res.lyrics) {
+            setManual(prev => ({ ...prev, lyrics: res.lyrics, lyricsTimed: null, appleMusicId: '' }));
+            setLyricsOpen(true);
+            toast('Lyrics Generated!');
+        } else {
+            toast('Gen Failed');
+        }
+    };
+
+    const {
+        dragQueueId,
+        setDragQueueId,
+        dragOverId,
+        setDragOverId,
+        reorderQueue,
+        handleTouchStart,
+        handleTouchMove,
+        handleTouchEnd
+    } = useQueueReorder({
+        queue,
+        toast,
+        onPersist: async (list) => {
+            const base = Date.now();
+            await Promise.all(list.map((item, idx) =>
+                updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', item.id), { priorityScore: base + idx })
+            ));
+        }
+    });
     const isAudioUrl = (url) => /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(url || '');
+    const {
+        parseYouTubeId,
+        resolveDurationForUrl,
+        searchYouTube,
+        openYtSearch
+    } = useQueueMediaTools({
+        ytIndex,
+        setYtIndex,
+        persistYtIndex,
+        ytSearchQ,
+        setYtSearchQ,
+        setYtSearchOpen,
+        setYtSearchTarget,
+        setYtEditingQuery,
+        setYtResults,
+        setYtLoading,
+        setYtSearchError,
+        setEmbedCache
+    });
+    const {
+        addSong,
+        addSongFromResult,
+        startEdit,
+        saveEdit,
+        generateLyrics,
+        syncEditDuration,
+        addBonusToCurrent
+    } = useQueueSongActions({
+        roomCode,
+        room,
+        hostName,
+        manual,
+        setManual,
+        setSearchQ,
+        current,
+        editingSongId,
+        setEditingSongId,
+        editForm,
+        setEditForm,
+        isAudioUrl,
+        resolveDurationForUrl,
+        generateAIContent,
+        getAppleMusicUserToken,
+        toast
+    });
 
     // Hybrid Search Logic
     useEffect(() => { 
@@ -949,7 +1239,36 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         }; 
     }, [searchQ, localLibrary, ytIndex, searchSources]);
 
-    const handleResultClick = async (r) => {
+    const getResultRowKey = (r, idx = 0) => {
+        return `${r?.source || 'song'}_${r?.trackId || r?.videoId || r?.url || r?.trackName || idx}`;
+    };
+
+    const handleResultClick = async (r, idx = 0) => {
+        const rowKey = getResultRowKey(r, idx);
+        if (quickAddOnResultClick) {
+            if (quickAddLoadingKey) return;
+            setQuickAddLoadingKey(rowKey);
+            const queued = await addSongFromResult(r);
+            setQuickAddLoadingKey('');
+            if (queued?.id) {
+                setQuickAddNotice({
+                    id: queued.id,
+                    songTitle: queued.songTitle,
+                    artist: queued.artist,
+                    singerName: queued.singerName,
+                    mediaUrl: queued.mediaUrl || '',
+                    albumArtUrl: queued.albumArtUrl || '',
+                    lyrics: queued.lyrics || '',
+                    lyricsTimed: queued.lyricsTimed || null,
+                    appleMusicId: queued.appleMusicId || '',
+                    duration: queued.duration || 180,
+                    statusText: queued.statusText || 'Queued'
+                });
+            }
+            setResults([]);
+            setSearchQ('');
+            return;
+        }
         const audioOnly = r.mediaType === 'audio' || isAudioUrl(r.url);
         if (r.source === 'local') {
             setManual({ ...manual, song: r.trackName, artist: r.artistName, url: r.url, art: '', audioOnly, appleMusicId: '', duration: manual.duration || 180 });
@@ -969,156 +1288,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             if (duration) setManual(prev => ({ ...prev, duration }));
         }
         setResults([]); setSearchQ('');
-    };
-
-    const fetchEmbedStatuses = async (videoIds = []) => {
-        const ids = videoIds.filter(Boolean);
-        if (!ids.length) return;
-        try {
-            const data = await callFunction('youtubeStatus', { ids });
-            const statusMap = new Map();
-            (data?.items || []).forEach(item => {
-                statusMap.set(item.id, item.embeddable ? 'ok' : 'fail');
-            });
-            setEmbedCache(prev => {
-                const next = { ...prev };
-                ids.forEach(id => {
-                    if (statusMap.has(id)) next[id] = statusMap.get(id);
-                });
-                return next;
-            });
-        } catch (e) {
-            console.error('Embed status fetch failed', e);
-        }
-    };
-    const searchYouTubeIndex = (query) => {
-        const q = query.trim().toLowerCase();
-        if (!q) return [];
-        return ytIndex
-            .filter(item => {
-                const title = (item.trackName || '').toLowerCase();
-                const artist = (item.artistName || '').toLowerCase();
-                return title.includes(q) || artist.includes(q);
-            })
-            .slice(0, 10)
-            .map(item => ({
-                id: item.videoId,
-                title: item.trackName,
-                channel: item.artistName || 'YouTube',
-                thumbnail: item.artworkUrl100,
-                url: item.url
-            }));
-    };
-    const searchYouTube = async (queryOverride) => {
-        const query = (queryOverride ?? ytSearchQ).trim();
-        if (!query) return;
-        setYtLoading(true);
-        setYtSearchError('');
-        try {
-            const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Search timed out.')), 8000));
-            const data = await Promise.race([
-                callFunction('youtubeSearch', { query: `${query} karaoke`, maxResults: 10 }),
-                timeout
-            ]);
-            const results = (data?.items || []).map(item => ({
-                id: item.id,
-                title: item.title,
-                channel: item.channelTitle,
-                thumbnail: item.thumbnails?.medium?.url || item.thumbnails?.default?.url || '',
-                url: `https://www.youtube.com/watch?v=${item.id}`
-            }));
-            setYtResults(results);
-            const updated = (() => {
-                const existing = new Map(ytIndex.map(item => [item.videoId, item]));
-                results.forEach(item => {
-                    existing.set(item.id, {
-                        videoId: item.id,
-                        source: 'youtube',
-                        trackName: item.title,
-                        artistName: item.channel,
-                        artworkUrl100: item.thumbnail,
-                        url: item.url
-                    });
-                });
-                return Array.from(existing.values());
-            })();
-            if (persistYtIndex) {
-                persistYtIndex(updated);
-            } else {
-                setYtIndex(updated);
-            }
-            fetchEmbedStatuses(results.map(item => item.id));
-        } catch (e) {
-            console.error("YouTube search error:", e);
-            const fallbackResults = searchYouTubeIndex(query);
-            if (fallbackResults.length) {
-                setYtResults(fallbackResults);
-                setYtSearchError('Live YouTube search failed. Showing indexed playlist results.');
-            } else {
-                setYtSearchError(e?.message || 'YouTube search failed. Check server configuration.');
-            }
-        } finally {
-            setYtLoading(false);
-        }
-    };
-
-
-    const parseYouTubeId = (url = '') => {
-        const match = url.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/);
-        return match ? match[1] : '';
-    };
-    const getMediaDurationFromUrl = (url, audioOnly = false) => new Promise((resolve) => {
-        if (!url) return resolve(null);
-        const media = document.createElement(audioOnly ? 'audio' : 'video');
-        media.preload = 'metadata';
-        media.crossOrigin = 'anonymous';
-        const cleanup = () => {
-            media.removeAttribute('src');
-            media.load();
-        };
-        const timeout = setTimeout(() => {
-            cleanup();
-            resolve(null);
-        }, 4000);
-        media.onloadedmetadata = () => {
-            clearTimeout(timeout);
-            const duration = Number.isFinite(media.duration) ? Math.round(media.duration) : null;
-            cleanup();
-            resolve(duration);
-        };
-        media.onerror = () => {
-            clearTimeout(timeout);
-            cleanup();
-            resolve(null);
-        };
-        media.src = url;
-    });
-    const fetchYouTubeDuration = async (url) => {
-        const id = parseYouTubeId(url);
-        if (!id) return null;
-        try {
-            const data = await callFunction('youtubeDetails', { ids: [id] });
-            return data?.items?.[0]?.durationSec || null;
-        } catch {
-            return null;
-        }
-    };
-    const resolveDurationForUrl = async (url, audioOnly = false) => {
-        if (!url) return null;
-        const ytId = parseYouTubeId(url);
-        if (ytId) return await fetchYouTubeDuration(url);
-        return await getMediaDurationFromUrl(url, audioOnly);
-    };
-
-    const openYtSearch = (target, query) => {
-        const nextQuery = (query || '').trim();
-        setYtSearchTarget(target);
-        setYtSearchQ(nextQuery);
-        setYtSearchOpen(true);
-        setYtEditingQuery(false);
-        if (nextQuery) {
-            setTimeout(() => searchYouTube(nextQuery), 0);
-        }
     };
 
     const manualBackingChip = (() => {
@@ -1173,20 +1342,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
           toast(isFailed ? `${EMOJI.radio} Will open as backing audio` : `${EMOJI.check} Video selected!`);
       };
 
-      const syncEditDuration = async () => {
-          if (!editForm.url) {
-              toast('Add a media URL first');
-              return;
-          }
-          const duration = await resolveDurationForUrl(editForm.url, isAudioUrl(editForm.url));
-          if (duration) {
-              setEditForm(prev => ({ ...prev, duration }));
-              toast(`Duration set to ${duration}s`);
-          } else {
-              toast('Could not read duration');
-          }
-      };
-
     const testEmbedVideo = (video) => {
         if (embedCache[video.id]) return; // Already tested
         
@@ -1217,162 +1372,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         
         // Attempt to load a pixel from the iframe (hacky but works)
         img.src = `https://www.youtube.com/embed/${video.id}?start=0`;
-    };
-
-    const addSong = async () => {
-        if(!manual.song) return;
-        const manualTitle = manual.song;
-        const manualArtist = manual.artist || 'Unknown';
-        const songRecord = await ensureSong({
-            title: manualTitle,
-            artist: manualArtist,
-            artworkUrl: manual.art || '',
-            appleMusicId: manual.appleMusicId || '',
-            verifyMeta: manual.art ? {} : false,
-            verifiedBy: hostName || 'host'
-        });
-        const songId = songRecord?.songId || buildSongKey(manualTitle, manualArtist);
-        const youtubeId = extractYouTubeId(manual.url || '');
-        const trackSource = manual.appleMusicId
-            ? 'apple'
-            : youtubeId
-                ? 'youtube'
-                : manual.url
-                    ? 'custom'
-                    : '';
-        const trackRecord = trackSource
-            ? await ensureTrack({
-                songId,
-                source: trackSource,
-                mediaUrl: manual.url || '',
-                appleMusicId: manual.appleMusicId || '',
-                duration: manual.duration ? Math.round(manual.duration) : null,
-                audioOnly: manual.audioOnly || isAudioUrl(manual.url),
-                backingOnly: !!manual.backingAudioOnly,
-                addedBy: hostName || 'Host'
-            })
-            : null;
-        await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
-             roomCode,
-             songId,
-             trackId: trackRecord?.trackId || null,
-             trackSource: trackSource || null,
-             songTitle: manualTitle,
-             artist: manualArtist,
-             singerName: manual.singer,
-             mediaUrl: manual.url,
-             albumArtUrl: manual.art || '',
-             lyrics: manual.lyrics || '',
-             lyricsTimed: manual.lyricsTimed || null,
-             appleMusicId: manual.appleMusicId || '',
-             musicSource: manual.appleMusicId ? 'apple' : '',
-             lyricsSource: manual.lyricsTimed ? 'apple' : (manual.lyrics ? 'manual' : ''),
-             duration: manual.duration ? Math.round(manual.duration) : 180,
-             status: 'requested', timestamp: serverTimestamp(), priorityScore: Date.now(), emoji: EMOJI.mic,
-             backingAudioOnly: manual.backingAudioOnly || false, // Mark if video can only play as audio
-             audioOnly: manual.audioOnly || isAudioUrl(manual.url)
-        });
-        setManual({ song:'', artist:'', singer:'Host', url:'', art:'', lyrics: '', lyricsTimed: null, appleMusicId: '', duration: 180, backingAudioOnly: false, audioOnly: false }); setSearchQ(''); toast("Song Added!");
-    };
-
-    const addSongFromResult = async (r) => {
-        if (!r?.trackName) return;
-        const isApple = r.source === 'itunes';
-        const appleId = isApple ? String(r.trackId || '') : '';
-        let songId = buildSongKey(r.trackName, r.artistName || 'Unknown');
-        try {
-            const songRecord = await ensureSong({
-                title: r.trackName,
-                artist: r.artistName || 'Unknown',
-                artworkUrl: r.source === 'itunes' ? r.artworkUrl100?.replace('100x100','600x600') : r.artworkUrl100 || '',
-                itunesId: isApple ? r.trackId : '',
-                appleMusicId: appleId,
-                verifyMeta: { lyricsSource: null, lyricsTimed: false },
-                verifiedBy: hostName || 'host'
-            });
-            songId = songRecord?.songId || songId;
-        } catch (err) {
-            console.warn('ensureSong failed', err);
-        }
-        const trackSource = isApple ? 'apple' : (r.source === 'youtube' ? 'youtube' : r.source === 'local' ? 'custom' : '');
-        let trackRecord = null;
-        if (trackSource) {
-            try {
-                trackRecord = await ensureTrack({
-                    songId,
-                    source: trackSource,
-                    mediaUrl: r.source === 'youtube' || r.source === 'local' ? r.url : '',
-                    appleMusicId: appleId,
-                    duration: manual.duration || null,
-                    audioOnly: isApple ? true : r.mediaType === 'audio' || isAudioUrl(r.url),
-                    backingOnly: false,
-                    addedBy: hostName || 'Host'
-                });
-            } catch (err) {
-                console.warn('ensureTrack failed', err);
-            }
-        }
-        const nextSong = {
-            song: r.trackName,
-            artist: r.artistName || '',
-            singer: manual.singer || room?.hostName || hostName || 'Host',
-            url: r.source === 'youtube' ? r.url : r.source === 'local' ? r.url : '',
-            art: r.source === 'itunes' ? r.artworkUrl100.replace('100x100','600x600') : r.artworkUrl100 || '',
-            lyrics: '',
-            lyricsTimed: null,
-            appleMusicId: appleId,
-            duration: manual.duration || 180,
-            backingAudioOnly: false,
-            audioOnly: isApple ? true : r.mediaType === 'audio' || isAudioUrl(r.url)
-        };
-        try {
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
-                roomCode,
-                songId,
-                trackId: trackRecord?.trackId || null,
-                trackSource: trackSource || null,
-                songTitle: nextSong.song,
-                artist: nextSong.artist,
-                singerName: nextSong.singer,
-                mediaUrl: nextSong.url,
-                albumArtUrl: nextSong.art || '',
-                lyrics: '',
-                lyricsTimed: null,
-                appleMusicId: nextSong.appleMusicId,
-                musicSource: nextSong.appleMusicId ? 'apple' : '',
-                lyricsSource: '',
-                duration: nextSong.duration ? Math.round(nextSong.duration) : 180,
-                status: 'requested',
-                timestamp: serverTimestamp(),
-                priorityScore: Date.now(),
-                emoji: EMOJI.mic,
-                backingAudioOnly: nextSong.backingAudioOnly || false,
-                audioOnly: nextSong.audioOnly || isAudioUrl(nextSong.url)
-            });
-        } catch (err) {
-            console.warn('Failed to queue song', err);
-            toast('Could not add song (permissions)');
-            return;
-        }
-        toast('Song added to queue');
-        if (nextSong.appleMusicId) {
-            await playAppleMusicTrack(nextSong.appleMusicId, { title: nextSong.song, artist: nextSong.artist });
-        } else if (nextSong.url) {
-            await updateRoom({
-                activeMode: 'karaoke',
-                'announcement.active': false,
-                mediaUrl: nextSong.url,
-                singAlongMode: false,
-                videoPlaying: true,
-                videoStartTimestamp: Date.now(),
-                videoVolume: 100,
-                showLyricsTv: false,
-                showVisualizerTv: false,
-                showLyricsSinger: false
-            });
-        }
-        setSearchQ('');
-        setResults([]);
     };
 
     const _queueBrowseSong = async (song, singerOverride) => {
@@ -1423,13 +1422,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         hallOfFameTimerRef.current = setTimeout(() => {
             updateRoom({ activeMode: 'karaoke', selfieMoment: null });
         }, 12000);
-    };
-    const getTimestampMs = (value) => {
-        if (!value) return 0;
-        if (typeof value === 'number') return value;
-        if (typeof value?.toMillis === 'function') return value.toMillis();
-        if (typeof value?.seconds === 'number') return value.seconds * 1000;
-        return 0;
     };
     const logPerformance = async (songEntry) => {
         if (!songEntry?.songTitle) return;
@@ -1508,9 +1500,15 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             }
             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), { status }); 
             const s = songs.find(x=>x.id===id);
-            const hasMedia = !!(s?.mediaUrl || s?.youtubeId || s?.appleMusicId);
-            const autoStartMedia = hasMedia && (room?.autoPlayMedia !== false);
-            if (s?.appleMusicId && autoStartMedia) {
+            const stageMediaUrl = resolveStageMediaUrl(s, room);
+            const effectiveBacking = normalizeBackingChoice({
+                mediaUrl: stageMediaUrl,
+                appleMusicId: s?.appleMusicId
+            });
+            const songMediaUrl = effectiveBacking.mediaUrl;
+            const useAppleBacking = effectiveBacking.usesAppleBacking;
+            const autoStartMedia = !!(room?.autoPlayMedia !== false) && !!(songMediaUrl || useAppleBacking);
+            if (useAppleBacking && autoStartMedia) {
                 await playAppleMusicTrack(s.appleMusicId, { title: s.songTitle, artist: s.artist });
                 await updateRoom({
                     activeMode: 'karaoke',
@@ -1525,12 +1523,13 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     showLyricsSinger: false
                 });
             } else {
+                await stopAppleMusic?.();
                 await updateRoom({
                     activeMode: 'karaoke',
                     'announcement.active': false,
-                    mediaUrl: s?.mediaUrl || '',
+                    mediaUrl: songMediaUrl,
                     singAlongMode: false,
-                    videoPlaying: autoStartMedia,
+                    videoPlaying: autoStartMedia && !!songMediaUrl,
                     videoStartTimestamp: autoStartMedia ? Date.now() : null,
                     videoVolume: 100,
                     showLyricsTv: false,
@@ -1590,6 +1589,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     return (stats.guitar || stats.strobe) ? stats : null;
                 })();
                 await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), { applauseScore: room?.applausePeak||0 }); 
+                await stopAppleMusic?.();
                 await updateRoom({ lastPerformance: { ...s, applauseScore: room?.applausePeak||0, timestamp: Date.now(), albumArtUrl: s.albumArtUrl || '', topFan, vibeStats }, activeMode: 'karaoke', mediaUrl: '', singAlongMode: false, videoPlaying: false, showLyricsTv: false, showVisualizerTv: false, showLyricsSinger: false, appleMusicPlayback: null }); 
                 await logPerformance({ ...s, applauseScore: room?.applausePeak || 0 });
                 logActivity(roomCode, s.singerName, `crushed ${s.songTitle}!`, EMOJI.star);
@@ -1598,49 +1598,41 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         } 
     };
 
-    const startEdit = (s) => { setEditingSongId(s.id); setEditForm({ title: s.songTitle, artist: s.artist, singer: s.singerName, url: s.mediaUrl || '', art: s.albumArtUrl || '', lyrics: s.lyrics || '', lyricsTimed: s.lyricsTimed || null, appleMusicId: s.appleMusicId || '', duration: s.duration || 180 }); }; 
-    const saveEdit = async () => {
-        const durationNum = Number(editForm.duration);
-        const safeDuration = Number.isFinite(durationNum) && durationNum > 0 ? Math.round(durationNum) : 180;
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', editingSongId), {
-            songTitle: editForm.title,
-            artist: editForm.artist,
-            singerName: editForm.singer,
-            mediaUrl: editForm.url,
-            albumArtUrl: editForm.art,
-            lyrics: editForm.lyrics,
-            lyricsTimed: editForm.lyricsTimed || null,
-            appleMusicId: editForm.appleMusicId || '',
-            musicSource: editForm.appleMusicId ? 'apple' : '',
-            lyricsSource: editForm.lyricsTimed ? 'apple' : (editForm.lyrics ? 'manual' : ''),
-            duration: safeDuration,
-            audioOnly: isAudioUrl(editForm.url)
+    // Unified play/pause for the current backing source (Apple or media URL).
+    const togglePlay = async () => {
+        if (!current) return;
+        const stageMediaUrl = resolveStageMediaUrl(current, room);
+        const currentPlayback = normalizeBackingChoice({
+            mediaUrl: stageMediaUrl,
+            appleMusicId: current?.appleMusicId
         });
-        setEditingSongId(null); toast("Song Updated");
-    };
-    const generateLyrics = async () => {
-        if(!editForm.title || !editForm.artist) return toast("Needs Title & Artist");
-        toast("Generating Lyrics...");
-        const res = await generateAIContent('lyrics', { title: editForm.title, artist: editForm.artist });
-        if(res && res.lyrics) { setEditForm(prev => ({ ...prev, lyrics: res.lyrics })); toast("Lyrics Generated!"); } else { toast("Gen Failed"); }
-    };
-
-    const addBonusToCurrent = async (amt) => { if (!current) return; await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', current.id), { hostBonus: increment(amt) }); toast(`Added ${amt} Bonus Pts!`); };
-
-    // Improved Toggle Logic
-    const togglePlay = () => {
+        const sourceMediaUrl = currentPlayback.mediaUrl;
+        const usingApple = currentPlayback.usesAppleBacking;
+        if (usingApple) {
+            const appleStatus = (room?.appleMusicPlayback?.status || '').toLowerCase();
+            if (appleStatus === 'playing' || appleMusicPlaying) {
+                await pauseAppleMusic();
+            } else if (appleStatus === 'paused') {
+                await resumeAppleMusic();
+            } else {
+                await playAppleMusicTrack(current.appleMusicId, { title: current.songTitle, artist: current.artist });
+            }
+            await updateRoom({ mediaUrl: '', videoPlaying: false, videoStartTimestamp: null, pausedAt: null });
+            return;
+        }
+        await stopAppleMusic?.();
         const now = Date.now();
         if (room?.videoPlaying) {
-            updateRoom({ videoPlaying: false, pausedAt: now });
+            await updateRoom({ videoPlaying: false, pausedAt: now, appleMusicPlayback: null });
         } else {
             let newStart = room?.videoStartTimestamp || now;
             if (room?.pausedAt && room?.videoStartTimestamp) {
                 const elapsedBeforePause = room.pausedAt - room.videoStartTimestamp;
                 newStart = now - elapsedBeforePause;
             } else if (!room?.videoStartTimestamp) {
-                 newStart = now;
+                newStart = now;
             }
-            updateRoom({ videoPlaying: true, videoStartTimestamp: newStart, pausedAt: null });
+            await updateRoom({ videoPlaying: true, videoStartTimestamp: newStart, pausedAt: null, appleMusicPlayback: null });
         }
     };
     
@@ -1651,483 +1643,239 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
     };
 
     return (
-        <div className="flex flex-col md:flex-row gap-6 h-full overflow-hidden relative">
-            {/* YOUTUBE SEARCH MODAL */}
-            {ytSearchOpen && (
-                <div className="absolute inset-0 z-[70] bg-black/70 flex items-center justify-center p-6 backdrop-blur-sm pointer-events-none">
-                    <div className={`${STYLES.panel} p-6 w-full max-w-2xl border-white/20 max-h-[90vh] flex flex-col overflow-hidden pointer-events-auto`}>
-                        <div className="flex justify-between items-center mb-4">
-                        <div className={STYLES.header}>Search YouTube</div>
-                            <button onClick={() => setYtSearchOpen(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3`}>X</button>
+        <div className="h-full flex flex-col gap-3 overflow-hidden relative">
+            <QueueYouTubeSearchModal
+                open={ytSearchOpen}
+                styles={STYLES}
+                ytSearchQ={ytSearchQ}
+                setYtSearchQ={setYtSearchQ}
+                ytEditingQuery={ytEditingQuery}
+                setYtEditingQuery={setYtEditingQuery}
+                ytLoading={ytLoading}
+                ytSearchError={ytSearchError}
+                ytResults={ytResults}
+                embedCache={embedCache}
+                searchYouTube={searchYouTube}
+                testEmbedVideo={testEmbedVideo}
+                selectYouTubeVideo={selectYouTubeVideo}
+                onClose={() => setYtSearchOpen(false)}
+                emoji={EMOJI}
+            />
+
+            <QueueEditSongModal
+                open={!!editingSongId}
+                styles={STYLES}
+                editForm={editForm}
+                setEditForm={setEditForm}
+                openYtSearch={openYtSearch}
+                syncEditDuration={syncEditDuration}
+                generateLyrics={generateLyrics}
+                onCancel={() => setEditingSongId(null)}
+                onSave={saveEdit}
+                emoji={EMOJI}
+            />
+            {commandOpen && (
+                <div
+                    className="fixed inset-0 z-[130] bg-black/70 backdrop-blur-sm p-4 flex items-start justify-center"
+                    onClick={() => setCommandOpen(false)}
+                >
+                    <div
+                        className={`${STYLES.panel} mt-20 w-full max-w-2xl border-white/20`}
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                            <div className="text-xs uppercase tracking-[0.35em] text-[#00C4D9]">Command Palette</div>
+                            <div className="text-[11px] text-zinc-500">Ctrl/Cmd + K</div>
                         </div>
-                        
-                        <div className="flex items-center justify-between gap-2 mb-4">
-                            <div className="text-xs text-zinc-400">
-                                Searching for: <span className="text-white font-bold">{ytSearchQ || '...'}</span>
-                            </div>
-                            <button
-                                onClick={() => setYtEditingQuery(prev => !prev)}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3`}
-                            >
-                                {ytEditingQuery ? 'Done' : 'Edit'}
-                            </button>
+                        <div className="p-3 border-b border-white/10">
+                            <input
+                                ref={commandInputRef}
+                                value={commandQuery}
+                                onChange={(event) => setCommandQuery(event.target.value)}
+                                className={STYLES.input}
+                                placeholder="Type a command..."
+                            />
                         </div>
-                        {ytEditingQuery && (
-                            <div className="flex gap-2 mb-4">
-                                <input 
-                                    value={ytSearchQ} 
-                                    onChange={e => setYtSearchQ(e.target.value)} 
-                                    onKeyPress={e => e.key === 'Enter' && searchYouTube()}
-                                    className={STYLES.input} 
-                                    placeholder="Refine search..."
-                                />
-                                <button 
-                                    onClick={() => searchYouTube()} 
-                                    disabled={ytLoading}
-                                    className={`${STYLES.btnStd} ${ytLoading ? STYLES.btnNeutral : STYLES.btnHighlight} px-6 flex-shrink-0`}
+                        <div className="max-h-[50vh] overflow-y-auto custom-scrollbar p-2 space-y-1">
+                            {filteredCommands.length > 0 ? filteredCommands.map((command) => (
+                                <button
+                                    key={command.id}
+                                    onClick={() => runPaletteCommand(command)}
+                                    disabled={!command.enabled}
+                                    className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
+                                        command.enabled
+                                            ? 'border-zinc-700 bg-zinc-900/80 hover:border-[#00C4D9]/60'
+                                            : 'border-zinc-800 bg-zinc-900/40 opacity-55 cursor-not-allowed'
+                                    }`}
                                 >
-                                    {ytLoading ? EMOJI.refresh : EMOJI.magnifier}
+                                    <div className="text-sm font-bold text-white">{command.label}</div>
+                                    <div className="text-xs text-zinc-500 mt-1">{command.hint}</div>
                                 </button>
-                            </div>
-                        )}
-                        {ytSearchError && (
-                            <div className="bg-red-900/30 border border-red-500/40 text-red-200 text-xs rounded-lg px-3 py-2 mb-3">
-                                {ytSearchError}
-                            </div>
-                        )}
-                        <div className="flex-1 min-h-0">
-                            {ytResults.length > 0 && (
-                                <div className="grid grid-cols-1 gap-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1 pb-2">
-                                    {ytResults.map(video => {
-                                        const embedStatus = embedCache[video.id];
-                                        const isOk = embedStatus === 'ok';
-                                        const isFail = embedStatus === 'fail';
-                                        const isTesting = embedStatus === 'testing';
-                                        
-                                        return (
-                                            <div key={video.id} className={`bg-zinc-800/50 hover:bg-zinc-700 p-3 rounded-lg border transition-all flex gap-3 items-start ${isFail ? 'border-red-500/50 opacity-60' : isOk ? 'border-green-500/50' : 'border-white/10 hover:border-cyan-400'}`}>
-                                                <img src={video.thumbnail} className="w-24 h-16 rounded object-cover flex-shrink-0"/>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="font-bold text-white truncate">{video.title}</div>
-                                                    <div className="text-sm text-zinc-400 truncate">{video.channel}</div>
-                                                    
-                                                    {/* Embed Status & Actions */}
-                                                    <div className="flex gap-2 mt-2 items-center">
-                                                        {isTesting && <span className="text-sm text-yellow-400 animate-pulse">{EMOJI.refresh} Testing...</span>}
-                                                        {isOk && <span className="text-sm text-green-400 font-bold">{EMOJI.check} Embeddable</span>}
-                                                        {isFail && <span className="text-sm text-red-400 font-bold">{EMOJI.cross} Can't Embed</span>}
-                                                        
-                                                        {!isFail && (
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); testEmbedVideo(video); }}
-                                                                disabled={isTesting}
-                                                                className={`text-sm px-2 py-0.5 rounded ${isTesting ? 'bg-zinc-600 text-zinc-400' : isOk ? 'bg-green-900/50 text-green-300' : 'bg-yellow-900/50 text-yellow-300 hover:bg-yellow-800/50'}`}
-                                                            >
-                                                                {EMOJI.test} {isOk ? 'Verified' : 'Test'}
-                                                            </button>
-                                                        )}
-                                                        
-                                                        <button 
-                                                            onClick={() => selectYouTubeVideo(video)}
-                                                            className={`ml-auto text-sm px-3 py-0.5 rounded font-bold flex items-center gap-1 ${isFail ? 'bg-orange-900/50 text-orange-300 hover:bg-orange-800/50' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
-                                                        >
-                                                            {isFail ? (
-                                                                <>{EMOJI.radio} USE</>
-                                                            ) : (
-                                                                <>USE</>
-                                                            )}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                            )) : (
+                                <div className="text-sm text-zinc-500 px-2 py-3">No commands match your search.</div>
                             )}
                         </div>
-                        
-                        {ytSearchQ && ytResults.length === 0 && !ytLoading && (
-                            <div className="host-search-helper text-center py-8">No results found</div>
-                        )}
                     </div>
                 </div>
             )}
 
-            {/* EDIT MODAL */}
-            {editingSongId && (
-               <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6 backdrop-blur-sm">
-                   <div className={`${STYLES.panel} p-6 w-full max-w-lg border-white/20 space-y-3`}>
-                       <div className={STYLES.header}>EDIT SONG METADATA</div>
-                       <div className="grid grid-cols-2 gap-2">
-                           <input value={editForm.title} onChange={e=>setEditForm({...editForm, title:e.target.value})} className={STYLES.input} placeholder="Title"/>
-                           <input value={editForm.artist} onChange={e=>setEditForm({...editForm, artist:e.target.value})} className={STYLES.input} placeholder="Artist"/>
-                       </div>
-                       <div className="flex gap-2 items-center">
-                           <input value={editForm.url} onChange={e=>setEditForm({...editForm, url:e.target.value})} className={`${STYLES.input} flex-1`} placeholder="Media URL (YouTube/MP4)"/>
-                           <button onClick={() => openYtSearch('edit', `${editForm.title} ${editForm.artist}`.trim())} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[#00C4D9] border-[#00C4D9]`} title="Search YouTube"><i className="fa-brands fa-youtube"></i> Find</button>
-                       </div>
-                       
-                       <div className={STYLES.header}>LYRICS & TIMING</div>
-                       <div className="flex gap-2 items-center bg-black/20 p-2 rounded">
-                           <span className="text-sm text-zinc-400">Duration:</span>
-                           <input type="range" min="60" max="600" value={editForm.duration} onChange={e=>setEditForm({...editForm, duration:e.target.value})} className="flex-1 accent-pink-500"/>
-                           <span className="text-sm font-mono w-10 text-right">{editForm.duration}s</span>
-                           <button onClick={syncEditDuration} className="text-sm px-2 py-1 rounded border border-cyan-400/40 text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20" title="Sync duration from URL">Sync</button>
-                       </div>
-                       <div className="text-sm text-zinc-500">Used only when lyrics have no sync data (AI or manual). Sets scroll speed.</div>
-                       <textarea value={editForm.lyrics} onChange={e=>setEditForm({...editForm, lyrics:e.target.value})} className={`${STYLES.input} h-32 font-mono host-lyrics-input`} placeholder="Paste lyrics here..."></textarea>
-                       
-                       <div className="flex gap-2">
-                            <button onClick={generateLyrics} className={`${STYLES.btnStd} ${STYLES.btnInfo} flex-1`}>{EMOJI.robot} Auto-generate (AI)</button>
-                       </div>
-                       
-                       <div className="flex gap-2 justify-end mt-4 pt-4 border-t border-white/10">
-                           <button onClick={()=>setEditingSongId(null)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Cancel</button>
-                           <button onClick={saveEdit} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-8`}>Save changes</button>
-                       </div>
-                   </div>
-               </div>
-            )}
+            <div className={`${STYLES.panel} px-3 py-2 border border-white/10 bg-black/25`}>
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-[11px] uppercase tracking-[0.25em] text-zinc-400 mr-2">Quick Actions</div>
+                    <button
+                        onClick={() => setCommandOpen(true)}
+                        data-feature-id="quick-command-palette"
+                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 text-[10px]`}
+                    >
+                        Command Palette
+                    </button>
+                    <button
+                        onClick={() => queue[0] && updateStatus(queue[0].id, 'performing')}
+                        disabled={!queue[0]}
+                        data-feature-id="quick-start-next"
+                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 text-[10px] ${!queue[0] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        Start Next
+                    </button>
+                    <button
+                        onClick={togglePlay}
+                        disabled={!current}
+                        data-feature-id="quick-toggle-source"
+                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 text-[10px] ${!current ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        {currentSourcePlaying ? 'Pause Source' : 'Play Source'}
+                    </button>
+                    <button
+                        onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                        data-feature-id="quick-open-tv"
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[10px]`}
+                    >
+                        Open TV
+                    </button>
+                    <button
+                        onClick={openChatSettings}
+                        data-feature-id="quick-chat-settings"
+                        className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 text-[10px]`}
+                    >
+                        Chat Settings
+                    </button>
+                    <button
+                        onClick={runUiFeatureCheck}
+                        data-feature-id="quick-ui-feature-check"
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[10px]`}
+                    >
+                        UI Feature Check
+                    </button>
+                </div>
+            </div>
 
+            <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-6 overflow-hidden">
             {/* LEFT CONTROLS */}
             <div className="w-full md:w-96 flex-shrink-0 overflow-y-auto pr-2 custom-scrollbar">
                 <div className={`${STYLES.panel} overflow-hidden`}>
+                    <section className="px-4 py-4 border-b border-white/10 bg-black/30">
+                        <div className={STYLES.header}>Panel Layout</div>
+                        <div className="space-y-2">
+                            <select
+                                value={activeWorkspace}
+                                onChange={(e) => applyWorkspacePreset(e.target.value)}
+                                data-feature-id="layout-workspace-select"
+                                className={`${STYLES.input} text-xs py-2`}
+                            >
+                                {workspaceOptions.map((opt) => (
+                                    <option key={opt.id} value={opt.id}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <div className="grid grid-cols-3 gap-2">
+                                <button
+                                    onClick={expandAllPanels}
+                                    data-feature-id="layout-expand-all"
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 text-[10px]`}
+                                >
+                                    Expand All
+                                </button>
+                                <button
+                                    onClick={collapseAllPanels}
+                                    data-feature-id="layout-collapse-all"
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 text-[10px]`}
+                                >
+                                    Collapse All
+                                </button>
+                                <button
+                                    onClick={resetPanelLayout}
+                                    data-feature-id="layout-reset"
+                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} px-2 text-[10px]`}
+                                >
+                                    Reset
+                                </button>
+                            </div>
+                            <div className="text-[11px] text-zinc-500">
+                                {openPanelCount}/{Object.keys(panelLayout || {}).length} panels open
+                            </div>
+                        </div>
+                    </section>
+
+                    <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
+                        Stage Operations
+                    </div>
                     <section className="px-4 py-4 border-b border-white/10">
                         <SectionHeader
                             label="Now Playing"
                             open={stagePanelOpen}
                             onToggle={() => setStagePanelOpen(v => !v)}
+                            featureId="panel-now-playing"
                         />
                         {stagePanelOpen && (
-                        <>
-                        <div className="flex justify-end items-center mb-2">
-                            <div className="flex items-center gap-2">
-                                {room?.activeMode === 'applause' && (<div className="text-[#00C4D9] animate-pulse font-bold">{EMOJI.mic} APPLAUSE!</div>)}
-                                {room?.bouncerMode && (<div className="text-red-400 font-bold">{EMOJI.lock} LOCKED</div>)}
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
-                            <div className="bg-zinc-900/60 border border-white/10 rounded-lg px-3 py-2">
-                                <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-zinc-500">
-                                    <i className="fa-solid fa-users text-cyan-300"></i> Lobby
-                                </div>
-                                <div className="text-lg font-bold text-white">{lobbyCount}</div>
-                            </div>
-                            <div className="bg-zinc-900/60 border border-white/10 rounded-lg px-3 py-2">
-                                <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-zinc-500">
-                                    <i className="fa-solid fa-list-ol text-emerald-300"></i> Queue
-                                </div>
-                                <div className="text-lg font-bold text-white">{queueCount}</div>
-                            </div>
-                            <div className="bg-zinc-900/60 border border-white/10 rounded-lg px-3 py-2">
-                                <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-zinc-500">
-                                    <i className="fa-solid fa-clock text-amber-300"></i> Est. Wait
-                                </div>
-                                <div className="text-lg font-bold text-white">{formatWaitTime(waitTimeSec)}</div>
-                            </div>
-                        </div>
-                        {current ? ( <div className="text-center relative"> 
-                            {current.backingAudioOnly && (
-                                <div className="text-[12px] text-orange-400 font-bold mb-2 bg-orange-900/30 p-1 rounded border border-orange-500/30 flex items-center justify-center gap-1">
-                                    <i className="fa-solid fa-window-restore"></i> BACKING AUDIO (Opens in popup)
-                                </div>
-                            )}
-                            <div className="text-xl font-bold">{current.songTitle}</div> 
-                            <div className="text-fuchsia-400 mb-3">{current.singerName}</div>
-                            <div className="grid grid-cols-2 gap-2 mb-3">
-                                <button onClick={togglePlay} className={`${STYLES.btnStd} ${room?.videoPlaying ? STYLES.btnNeutral : STYLES.btnPrimary}`}>
-                                    <i className={`fa-solid ${room?.videoPlaying ? 'fa-pause' : 'fa-play'} mr-2`}></i>
-                                    {room?.videoPlaying ? 'Pause' : 'Play'}
-                                </button>
-                                <button onClick={()=>updateRoom({videoPlaying: true, videoStartTimestamp: Date.now()})} className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}>
-                                    <i className="fa-solid fa-rotate-left mr-2"></i>Restart
-                                </button>
-                                <button onClick={()=>window.open(current.mediaUrl, '_blank')} className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}>
-                                    <i className="fa-solid fa-up-right-from-square mr-2"></i>Pop out
-                                </button>
-                                <button
-                                    onClick={()=>updateRoom({audienceVideoMode: room?.audienceVideoMode === 'force' ? 'off' : 'force'})}
-                                    className={`${STYLES.btnStd} ${room?.audienceVideoMode === 'force' ? STYLES.btnHighlight : STYLES.btnSecondary}`}
-                                    title="Push the stage video to phones"
-                                >
-                                    <i className="fa-solid fa-tv mr-2"></i>Audience sync
-                                </button>
-                            </div>
-                            {hasLyrics && (
-                                <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-3">
-                                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-400 mb-2">TV Display Mode</div>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        <button
-                                            onClick={() => updateRoom({ showLyricsTv: false, showVisualizerTv: false })}
-                                            className={`${STYLES.btnStd} ${!room?.showLyricsTv && !room?.showVisualizerTv ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                        >
-                                            <i className="fa-solid fa-video mr-2"></i>Video
-                                        </button>
-                                        <button
-                                            onClick={() => updateRoom({ showLyricsTv: true, showVisualizerTv: false, lyricsMode: room?.lyricsMode || 'auto' })}
-                                            className={`${STYLES.btnStd} ${room?.showLyricsTv ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                        >
-                                            <i className="fa-solid fa-closed-captioning mr-2"></i>Lyrics
-                                        </button>
-                                        <button
-                                            onClick={() => updateRoom({ showLyricsTv: false, showVisualizerTv: true })}
-                                            className={`${STYLES.btnStd} ${room?.showVisualizerTv ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                        >
-                                            <i className="fa-solid fa-wave-square mr-2"></i>Visualizer
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                            {current?.lyrics && (
-                                <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-3">
-                                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-400 mb-2">Lyrics View</div>
-                                    <div className="flex gap-2">
-                                        <button onClick={()=>updateRoom({lyricsMode: 'auto'})} className={`${STYLES.btnStd} ${room?.lyricsMode !== 'full' ? STYLES.btnHighlight : STYLES.btnNeutral} flex-1`}>Auto scroll</button>
-                                        <button onClick={()=>updateRoom({lyricsMode: 'full'})} className={`${STYLES.btnStd} ${room?.lyricsMode === 'full' ? STYLES.btnHighlight : STYLES.btnNeutral} flex-1`}>Full view</button>
-                                    </div>
-                                </div>
-                            )}
-                            <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-3">
-                                <div className="text-sm uppercase tracking-[0.3em] text-zinc-400 mb-2">TV Visualizer Style</div>
-                                <select
-                                    value={room?.visualizerMode || 'ribbon'}
-                                    onChange={(e) => updateRoom({ visualizerMode: e.target.value })}
-                                    className={`${STYLES.input} w-full`}
-                                >
-                                    <option value="ribbon">Liquid ribbon</option>
-                                    <option value="rings">Neon rings</option>
-                                    <option value="spark">Pulse sparkline</option>
-                                    <option value="waveform">Waveform</option>
-                                </select>
-                            </div>
-                            {(current?.mediaUrl || current?.appleMusicId) && (
-                                <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-3">
-                                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-400 mb-2">Now Playing</div>
-                                    <div className="text-xs text-zinc-100 uppercase tracking-widest">
-                                        <span className={`${current?.appleMusicId ? 'text-emerald-300' : (current?.mediaUrl || '').includes('youtube') ? 'text-red-300' : 'text-cyan-200'}`}>
-                                            {current?.appleMusicId ? 'Apple Music' : (current?.mediaUrl || '').includes('youtube') ? 'YouTube' : 'Local'}
-                                        </span>
-                                        <span className="text-zinc-400 mx-2">•</span>
-                                        <span className="text-white/90">{current?.songTitle}</span>
-                                        <span className="text-zinc-400 ml-2">({current?.appleMusicId ? (room?.appleMusicPlayback?.status === 'paused' ? 'Paused' : 'Live') : (room?.videoPlaying ? 'Playing' : 'Paused')})</span>
-                                    </div>
-                                </div>
-                            )}
-                            {current?.appleMusicId && (
-                                <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-3">
-                                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-400 mb-2">Apple Music Playback</div>
-                                    <div className="flex flex-wrap gap-2">
-                                        {!appleMusicAuthorized ? (
-                                            <button onClick={connectAppleMusic} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1`}>
-                                                <i className="fa-brands fa-apple mr-2"></i>Connect
-                                            </button>
-                                        ) : (
-                                            <>
-                                                <button onClick={() => playAppleMusicTrack(current.appleMusicId, { title: current.songTitle, artist: current.artist })} className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1`}>
-                                                    <i className="fa-solid fa-play mr-2"></i>Play
-                                                </button>
-                                                <button onClick={() => (appleMusicPlaying ? pauseAppleMusic() : resumeAppleMusic())} className={`${STYLES.btnStd} ${appleMusicPlaying ? STYLES.btnSecondary : STYLES.btnPrimary} flex-1`}>
-                                                    <i className={`fa-solid ${appleMusicPlaying ? 'fa-pause' : 'fa-play'} mr-2`}></i>
-                                                    {appleMusicPlaying ? 'Pause' : 'Resume'}
-                                                </button>
-                                            </>
-                                        )}
-                                    </div>
-                                    {appleMusicStatus ? (
-                                        <div className="mt-2 text-sm text-zinc-400">{appleMusicStatus}</div>
-                                    ) : null}
-                                </div>
-                            )}
-                            <button onClick={() => startEdit(current)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} w-full mt-3`}>
-                                <i className="fa-solid fa-pen-to-square mr-2"></i>Edit current song
-                            </button>
-                            {room?.applausePeak !== undefined && room?.applausePeak !== null && (
-                                <div className="mt-3 text-xs text-zinc-300 bg-zinc-900/60 border border-zinc-700 rounded-lg px-3 py-2 flex items-center justify-between">
-                                    <span className="uppercase tracking-widest text-zinc-400">Last Applause</span>
-                                    <span className="text-[#00C4D9] font-bold">{Math.round(room.applausePeak)} dB</span>
-                                </div>
-                            )}
-                            <div className="mt-3 pt-3 border-t border-white/10 flex gap-2 items-center">
-                                <input type="number" value={customBonus} onChange={e=>setCustomBonus(e.target.value)} className={`${STYLES.input} w-20`} placeholder="Pts"/>
-                                <button onClick={()=>addBonusToCurrent(parseInt(customBonus)||0)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} w-1/2`}>
-                                    <i className="fa-solid fa-gift mr-2"></i>Bonus
-                                </button>
-                            </div>
-                            <div className="grid grid-cols-1 gap-2 mt-3">
-                                <button onClick={()=>updateRoom({activeMode: room?.activeMode === 'applause' ? 'karaoke' : 'applause_countdown', applausePeak: 0})} className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}>
-                                    <i className="fa-solid fa-microphone-lines mr-2"></i>Measure applause
-                                </button>
-                                <button onClick={()=>updateStatus(current.id, 'performed')} className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}>
-                                    <i className="fa-solid fa-flag-checkered mr-2"></i>End performance
-                                </button>
-                            </div>
-                        </div> ) : ( <div className="text-center py-4 text-zinc-500">Stage Empty</div> )} 
-                        </>
+                            <StageNowPlayingPanel
+                                room={room}
+                                current={current}
+                                hasLyrics={hasLyrics}
+                                lobbyCount={lobbyCount}
+                                queueCount={queueCount}
+                                waitTimeSec={waitTimeSec}
+                                formatWaitTime={formatWaitTime}
+                                currentSourcePlaying={currentSourcePlaying}
+                                currentUsesAppleBacking={currentUsesAppleBacking}
+                                currentMediaUrl={currentMediaUrl}
+                                currentSourceLabel={currentSourceLabel}
+                                currentSourceToneClass={currentSourceToneClass}
+                                appleMusicStatus={appleMusicStatus}
+                                togglePlay={togglePlay}
+                                playAppleMusicTrack={playAppleMusicTrack}
+                                stopAppleMusic={stopAppleMusic}
+                                updateRoom={updateRoom}
+                                startEdit={startEdit}
+                                customBonus={customBonus}
+                                setCustomBonus={setCustomBonus}
+                                addBonusToCurrent={addBonusToCurrent}
+                                updateStatus={updateStatus}
+                                styles={STYLES}
+                                emoji={EMOJI}
+                            />
                         )}
                     </section>
-
-                    <section className="px-4 py-4 border-b border-white/10 space-y-3">
-                        <SectionHeader
-                            label="TV Dashboard Controls"
-                            open={tvControlsOpen}
-                            onToggle={() => setTvControlsOpen(v => !v)}
-                        />
-                        <div className={tvControlsOpen ? 'block' : 'hidden'}>
-                        <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">PUBLIC TV LAYOUT</div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-zinc-900/60 p-2 rounded-xl border border-white/10">
-                            <button
-                                onClick={()=>updateRoom({layoutMode: 'standard'})}
-                                className={`${STYLES.btnStd} ${room?.layoutMode==='standard' ? STYLES.btnHighlight : STYLES.btnNeutral} justify-center px-2`}
-                                title="Full layout with overlays and stats"
-                            >
-                                <i className="fa-solid fa-desktop mr-2"></i> Standard
-                            </button>
-                            <button
-                                onClick={()=>updateRoom({layoutMode: 'minimal'})}
-                                className={`${STYLES.btnStd} ${room?.layoutMode==='minimal' ? STYLES.btnHighlight : STYLES.btnNeutral} justify-center px-2`}
-                                title="Compact layout for small screens"
-                            >
-                                <i className="fa-solid fa-window-minimize mr-2"></i> Minimal
-                            </button>
-                            <button
-                                onClick={()=>updateRoom({layoutMode: 'cinema'})}
-                                className={`${STYLES.btnStd} ${room?.layoutMode==='cinema' ? STYLES.btnHighlight : STYLES.btnNeutral} justify-center px-2`}
-                                title="Video-first layout with minimal UI"
-                            >
-                                <i className="fa-solid fa-film mr-2"></i> Cinema
-                            </button>
-                        </div>
-                        <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Screen elements</div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <ToggleSwitch checked={!room?.hideWaveform} onChange={(v)=>updateRoom({hideWaveform: !v})} icon={<i className="fa-solid fa-wave-square"></i>} label="Waveform" />
-                            <ToggleSwitch checked={!room?.hideOverlay} onChange={(v)=>updateRoom({hideOverlay: !v})} icon={<i className="fa-solid fa-layer-group"></i>} label="Overlay" />
-                            <ToggleSwitch checked={!room?.hideLogo} onChange={(v)=>updateRoom({hideLogo: !v})} icon={<i className="fa-solid fa-star"></i>} label="Logo" />
-                            <button onClick={()=>updateRoom({hideCornerOverlay: !room?.hideCornerOverlay})} className={`${STYLES.btnStd} ${room?.hideCornerOverlay ? STYLES.btnNeutral : STYLES.btnPrimary} flex-1`}><i className="fa-solid fa-user mr-2"></i>On Stage</button>
-                            <ToggleSwitch checked={room?.showScoring !== false} onChange={(v)=>updateRoom({showScoring: v})} icon={<i className="fa-solid fa-chart-line"></i>} label="Score HUD" />
-                        </div>
-
-                        </div>
-                    </section>
-
                     <section className="px-4 py-4 border-b border-white/10">
                         <SectionHeader
                             label="Automation"
                             open={automationOpen}
                             onToggle={() => setAutomationOpen(v => !v)}
+                            featureId="panel-automation"
                         />
-                        <div className={automationOpen ? 'grid grid-cols-2 gap-2' : 'hidden'}>
-                            <button
-                                onClick={async () => {
-                                    const next = !autoDj;
-                                    setAutoDj(next);
-                                    await updateRoom({ autoDj: next });
-                                }}
-                                className={`${STYLES.btnStd} ${autoDj ? STYLES.btnPrimary : STYLES.btnNeutral} flex-1`}
-                                title="Auto-advance the queue after each performance"
-                            >
-                                <i className="fa-solid fa-forward-fast mr-2"></i>Auto-Progress Queue
-                            </button>
-                            <ToggleSwitch checked={!!room?.bouncerMode} onChange={(v)=>updateRoom({bouncerMode: v})} icon={<i className="fa-solid fa-lock"></i>} label="Bouncer" />
-                            <button
-                                onClick={async () => {
-                                    const next = !(room?.autoPlayMedia !== false);
-                                    await updateRoom({ autoPlayMedia: !next });
-                                }}
-                                className={`${STYLES.btnStd} ${(room?.autoPlayMedia !== false) ? STYLES.btnPrimary : STYLES.btnNeutral}`}
-                                title="Auto-play media when a singer starts"
-                            >
-                                <i className="fa-solid fa-play mr-2"></i>Auto-play media
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    const next = !autoBgMusic;
-                                    setAutoBgMusic(next);
-                                    await updateRoom({ autoBgMusic: next });
-                                    if (next && !playingBg) setBgMusicState(true);
-                                }}
-                                className={`${STYLES.btnStd} ${autoBgMusic ? STYLES.btnPrimary : STYLES.btnNeutral}`}
-                                title="Keep BG music rolling between songs"
-                            >
-                                <i className="fa-solid fa-compact-disc mr-2"></i>Auto BG music
-                            </button>
-                        </div>
-                    </section>
-
-                    <section className="px-4 py-4 border-b border-white/10">
-                        <SectionHeader
-                            label="Overlays & Guides"
-                            open={overlaysOpen}
-                            onToggle={() => setOverlaysOpen(v => !v)}
+                        <AutomationControls
+                            automationOpen={automationOpen}
+                            autoDj={autoDj}
+                            setAutoDj={setAutoDj}
+                            room={room}
+                            updateRoom={updateRoom}
+                            autoBgMusic={autoBgMusic}
+                            setAutoBgMusic={setAutoBgMusic}
+                            playingBg={playingBg}
+                            setBgMusicState={setBgMusicState}
+                            toggleSwitch={ToggleSwitch}
+                            styles={STYLES}
                         />
-                        <div className={overlaysOpen ? 'grid grid-cols-2 gap-2' : 'hidden'}>
-                            <button onClick={()=>updateRoom({activeScreen: room?.activeScreen==='leaderboard'?'stage':'leaderboard'})} className={`${STYLES.btnStd} ${room?.activeScreen==='leaderboard'?STYLES.btnHighlight:STYLES.btnNeutral} flex-1`}><i className="fa-solid fa-trophy mr-2"></i>Leaderboard</button>
-                            <button onClick={()=>updateRoom({activeScreen: room?.activeScreen==='tipping'?'stage':'tipping'})} className={`${STYLES.btnStd} ${room?.activeScreen==='tipping'?STYLES.btnHighlight:STYLES.btnNeutral} flex-1`}><i className="fa-solid fa-money-bill-wave mr-2"></i>Tip CTA</button>
-                            <button onClick={toggleHowToPlay} className={`${STYLES.btnStd} ${room?.howToPlay?.active ? STYLES.btnHighlight : STYLES.btnNeutral} flex-1`}><i className="fa-solid fa-circle-question mr-2"></i>How to Play</button>
-                            <button onClick={startReadyCheck} className={`${STYLES.btnStd} ${room?.readyCheck?.active ? STYLES.btnHighlight : STYLES.btnPrimary} flex-1`}><i className="fa-solid fa-check mr-2"></i>Ready Check</button>
-                            <button
-                                onClick={async () => {
-                                    const next = !marqueeEnabled;
-                                    setMarqueeEnabled(next);
-                                    await updateRoom({ marqueeEnabled: next });
-                                }}
-                                className={`${STYLES.btnStd} ${marqueeEnabled ? STYLES.btnHighlight : STYLES.btnNeutral} flex-1`}
-                            >
-                                <i className="fa-solid fa-scroll mr-2"></i>Marquee
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    const next = !chatShowOnTv;
-                                    setChatShowOnTv(next);
-                                    await updateRoom({ chatShowOnTv: next });
-                                }}
-                                className={`${STYLES.btnStd} ${chatShowOnTv ? STYLES.btnHighlight : STYLES.btnNeutral} flex-1 relative`}
-                                title="Rotate chat onto the TV feed"
-                            >
-                                <i className="fa-solid fa-comments mr-2"></i>Chat TV
-                                {chatUnread && (
-                                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-pink-400"></span>
-                                )}
-                            </button>
-                        </div>
-                        <div className="mt-3">
-                            <SectionHeader
-                                label="Vibe Sync"
-                                open={vibeSyncOpen}
-                                onToggle={() => setVibeSyncOpen(v => !v)}
-                            />
-                        </div>
-                        <div className={vibeSyncOpen ? 'rounded-2xl border border-pink-500/30 bg-gradient-to-br from-pink-500/10 via-zinc-900/60 to-zinc-900/80 p-3 shadow-[0_0_24px_rgba(236,72,153,0.15)]' : 'hidden'}>
-                            <div className="flex items-center gap-2 text-sm uppercase tracking-widest text-pink-200 mb-3">
-                                <i className="fa-solid fa-wand-magic-sparkles"></i> Vibe Sync
-                            </div>
-                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-                                <button
-                                    onClick={() => (room?.lightMode === 'strobe' ? updateRoom({ lightMode: 'off' }) : startBeatDrop())}
-                                    className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.lightMode==='strobe' ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`}
-                                    title="5s countdown, then 15s tap battle"
-                                >
-                                    <i className="fa-solid fa-bolt"></i> Beat Drop
-                                </button>
-                                <button onClick={() => {
-                                    if (room?.lightMode === 'guitar') {
-                                        updateRoom({ lightMode: 'off' });
-                                    } else {
-                                        updateRoom({ lightMode: 'guitar', guitarSessionId: Date.now(), guitarWinner: null, guitarVictory: null });
-                                    }
-                                }} className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.lightMode==='guitar' ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`} title="Guitar vibe sync takeover"><i className="fa-solid fa-guitar"></i> Guitar</button>
-                                <button onClick={()=>updateRoom({lightMode: room?.lightMode === 'banger' ? 'off' : 'banger'})} className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.lightMode==='banger' ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`} title="High-energy fire visuals"><i className="fa-solid fa-fire"></i> Banger</button>
-                                <button onClick={()=>updateRoom({lightMode: room?.lightMode === 'ballad' ? 'off' : 'ballad'})} className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.lightMode==='ballad' ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`} title="Lighter sway mode"><i className="fa-solid fa-music"></i> Ballad</button>
-                                <button
-                                    onClick={() => (room?.lightMode === 'storm' ? stopStormSequence() : startStormSequence())}
-                                    className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.lightMode==='storm' ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`}
-                                    title="Run the storm sequence"
-                                >
-                                    <i className="fa-solid fa-cloud-bolt"></i>
-                                    {room?.lightMode === 'storm' ? `Storm (${room?.stormPhase || 'live'})` : 'Storm'}
-                                </button>
-                                <button onClick={() => updateRoom({ activeMode: room?.activeMode === 'selfie_cam' ? 'karaoke' : 'selfie_cam' })} className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.activeMode==='selfie_cam' ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`} title="Audience selfie camera"><i className="fa-solid fa-camera"></i> Cam</button>
-                            </div>
-                        </div>
                     </section>
 
                     <section className="px-4 py-4 border-b border-white/10">
@@ -2135,230 +1883,111 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                             label="Soundboard"
                             open={soundboardOpen}
                             onToggle={() => setSoundboardOpen(v => !v)}
+                            featureId="panel-soundboard"
                         />
-                        <div className={soundboardOpen ? 'block' : 'hidden'}>
-                        <div className="flex items-center gap-3 bg-zinc-950/40 border border-white/10 rounded-xl p-2 mb-3">
-                            <div className="text-sm uppercase tracking-widest text-zinc-400">FX Volume</div>
-                            <SmallWaveform level={sfxMuted ? 0 : sfxLevel} className="h-6 w-16" color={['#00C4D9', '#EC4899']} />
-                            <button
-                                onClick={() => setSfxMuted(v => {
-                                    const next = !v;
-                                    if (next) silenceAll?.();
-                                    return next;
-                                })}
-                                className={`${STYLES.btnStd} ${sfxMuted ? STYLES.btnHighlight : STYLES.btnNeutral} px-2 py-1 text-xs`}
-                            >
-                                <i className={`fa-solid ${sfxMuted ? 'fa-volume-xmark' : 'fa-volume-high'}`}></i>
-                            </button>
-                            <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                step="1"
-                                value={Math.round(sfxVolume * 100)}
-                                onChange={e=>setSfxVolume(parseInt(e.target.value, 10) / 100)}
-                                className="flex-1 h-2.5 bg-zinc-800 accent-[#00C4D9] rounded-lg appearance-none cursor-pointer"
-                                style={{ background: `linear-gradient(90deg, #00E5FF ${Math.round(sfxVolume * 100)}%, #27272a ${Math.round(sfxVolume * 100)}%)` }}
-                            />
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                            {SOUNDS.map(s => (
-                                <button key={s.name} onClick={()=>playSfxSafe(s.url)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} truncate`}>
-                                    <i className={`fa-solid ${s.icon} mr-2`}></i>
-                                    {s.name}
-                                </button>
-                            ))}
-                        </div>
-                        </div>
+                        <SoundboardControls
+                            soundboardOpen={soundboardOpen}
+                            sfxMuted={sfxMuted}
+                            setSfxMuted={setSfxMuted}
+                            silenceAll={silenceAll}
+                            styles={STYLES}
+                            sfxLevel={sfxLevel}
+                            sfxVolume={sfxVolume}
+                            setSfxVolume={setSfxVolume}
+                            sounds={SOUNDS}
+                            playSfxSafe={playSfxSafe}
+                            smallWaveform={SmallWaveform}
+                        />
                     </section>
 
+                    <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
+                        Broadcast Controls
+                    </div>
+                    <section className="px-4 py-4 border-b border-white/10 space-y-3">
+                        <SectionHeader
+                            label="TV Dashboard Controls"
+                            open={tvControlsOpen}
+                            onToggle={() => setTvControlsOpen(v => !v)}
+                            featureId="panel-tv-dashboard"
+                        />
+                        <TvDashboardControls
+                            tvControlsOpen={tvControlsOpen}
+                            room={room}
+                            updateRoom={updateRoom}
+                            toggleSwitch={ToggleSwitch}
+                            styles={STYLES}
+                        />
+                    </section>
+                    <section className="px-4 py-4 border-b border-white/10">
+                        <SectionHeader
+                            label="Overlays & Guides"
+                            open={overlaysOpen}
+                            onToggle={() => setOverlaysOpen(v => !v)}
+                            featureId="panel-overlays-guides"
+                        />
+                        <OverlaysGuidesPanel
+                            overlaysOpen={overlaysOpen}
+                            room={room}
+                            updateRoom={updateRoom}
+                            toggleHowToPlay={toggleHowToPlay}
+                            startReadyCheck={startReadyCheck}
+                            marqueeEnabled={marqueeEnabled}
+                            setMarqueeEnabled={setMarqueeEnabled}
+                            chatShowOnTv={chatShowOnTv}
+                            setChatShowOnTv={setChatShowOnTv}
+                            chatUnread={chatUnread}
+                            vibeSyncOpen={vibeSyncOpen}
+                            setVibeSyncOpen={setVibeSyncOpen}
+                            startBeatDrop={startBeatDrop}
+                            startStormSequence={startStormSequence}
+                            stopStormSequence={stopStormSequence}
+                            styles={STYLES}
+                            sectionHeader={SectionHeader}
+                        />
+                    </section>
+
+                    <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
+                        Audience Controls
+                    </div>
                     <section className="px-4 py-4 border-b border-white/10">
                         <SectionHeader
                             label="Chat"
                             open={chatOpen}
                             onToggle={() => setChatOpen(v => !v)}
+                            featureId="panel-chat"
                         />
-                        <div className={chatOpen ? 'block' : 'hidden'}>
-                        <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                                {chatUnread && <span className="text-sm uppercase tracking-widest text-pink-300">New</span>}
-                                <button
-                                    onClick={() => openChatSettings?.()}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1`}
-                                    title="Open chat settings"
-                                >
-                                    <i className="fa-solid fa-gear"></i>
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        const target = `${appBase}?room=${roomCode}&mode=host&tab=stage&chat=1`;
-                                        window.open(target, '_blank');
-                                    }}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1`}
-                                    title="Pop out chat"
-                                >
-                                    <i className="fa-solid fa-up-right-from-square"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
-                            <button
-                                onClick={async () => {
-                                    const next = !chatEnabled;
-                                    setChatEnabled(next);
-                                    await updateRoom({ chatEnabled: next });
-                                }}
-                                className={`${STYLES.btnStd} ${chatEnabled ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                title="Enable or disable chat for the room"
-                            >
-                                <i className="fa-solid fa-comment mr-2"></i>{chatEnabled ? 'On' : 'Off'}
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    const next = !chatShowOnTv;
-                                    setChatShowOnTv(next);
-                                    await updateRoom({ chatShowOnTv: next });
-                                }}
-                                className={`${STYLES.btnStd} ${chatShowOnTv ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                title="Show chat in the TV rotation"
-                            >
-                                <i className="fa-solid fa-tv mr-2"></i>{chatShowOnTv ? 'TV' : 'TV Off'}
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    const next = chatAudienceMode === 'vip' ? 'all' : 'vip';
-                                    setChatAudienceMode(next);
-                                    await updateRoom({ chatAudienceMode: next });
-                                }}
-                                className={`${STYLES.btnStd} ${chatAudienceMode === 'vip' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                title="Toggle VIP-only chat"
-                            >
-                                <i className="fa-solid fa-crown mr-2"></i>{chatAudienceMode === 'vip' ? 'VIP' : 'All'}
-                            </button>
-                        </div>
-                        <div className="mb-3">
-                            <div className="flex w-full bg-zinc-950/60 border border-white/10 rounded-t-xl overflow-hidden border-b-0">
-                                <button
-                                    onClick={() => handleChatViewMode('room')}
-                                    className={`flex-1 px-4 py-2 text-sm font-bold uppercase tracking-widest transition-all ${chatViewMode === 'room' ? 'bg-[#00C4D9] text-black shadow-inner' : 'text-zinc-300 hover:text-white'}`}
-                                    title="VIP lounge messages"
-                                >
-                                    <i className="fa-solid fa-comments mr-2"></i>VIP Lounge
-                                    {chatUnread && <span className="ml-2 inline-flex w-2 h-2 rounded-full bg-pink-400"></span>}
-                                </button>
-                                <button
-                                    onClick={() => handleChatViewMode('host')}
-                                    className={`flex-1 px-4 py-2 text-sm font-bold uppercase tracking-widest transition-all ${chatViewMode === 'host' ? 'bg-[#00C4D9] text-black shadow-inner' : 'text-zinc-300 hover:text-white'}`}
-                                    title="Direct messages to the host"
-                                >
-                                    <i className="fa-solid fa-inbox mr-2"></i>DMs
-                                    {dmUnread && <span className="ml-2 inline-flex w-2 h-2 rounded-full bg-pink-400"></span>}
-                                </button>
-                            </div>
-                            <div className="bg-zinc-900/60 border border-white/10 border-t-0 rounded-b-xl p-3 space-y-3">
-                                {chatViewMode === 'host' && (
-                                <div className="space-y-2">
-                                    <div className={STYLES.header}>Direct Message</div>
-                                    <div className="flex flex-wrap gap-2">
-                                        <select
-                                            value={dmTargetUid}
-                                            onChange={(e) => setDmTargetUid(e.target.value)}
-                                            className={`${STYLES.input} min-w-[160px] flex-1`}
-                                        >
-                                            <option value="">Select guest</option>
-                                            {users.map((u) => {
-                                                const id = u.uid || u.id?.split('_')[1] || '';
-                                                return (
-                                                    <option key={u.id || id} value={id}>
-                                                        {u.name || 'Guest'}
-                                                    </option>
-                                                );
-                                            })}
-                                        </select>
-                                    <input
-                                        value={dmDraft}
-                                        onChange={(e) => setDmDraft(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                const message = dmDraft.trim();
-                                                if (!dmTargetUid || !message) return;
-                                                sendHostDmMessage(dmTargetUid, message);
-                                                setDmDraft('');
-                                            }
-                                        }}
-                                        className={`${STYLES.input} flex-[2] min-w-[200px]`}
-                                        placeholder="Write a quick DM..."
-                                    />
-                                        <button
-                                            onClick={() => {
-                                                const message = dmDraft.trim();
-                                                if (!dmTargetUid || !message) return;
-                                                sendHostDmMessage(dmTargetUid, message);
-                                                setDmDraft('');
-                                            }}
-                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4`}
-                                        >
-                                            Send
-                                        </button>
-                                    </div>
-                                </div>
-                                )}
-                                <div className="bg-zinc-950/60 border border-white/10 rounded-xl p-3 h-40 overflow-y-auto custom-scrollbar space-y-2">
-                                    {(chatViewMode === 'room' ? roomChatMessages : hostDmMessages).length === 0 && (
-                                        <div className="text-sm text-zinc-500 h-full flex items-center justify-center">No messages yet.</div>
-                                    )}
-                                    {(chatViewMode === 'room' ? roomChatMessages : hostDmMessages).slice(0, 6).map((msg, idx) => {
-                                        const isPinned = pinnedChatIds.includes(msg.id);
-                                        const isLatest = idx === 0;
-                                        return (
-                                            <div key={msg.id} className={`text-sm rounded-lg px-2 py-2 border ${isPinned ? 'bg-yellow-500/10 border-yellow-400/40' : msg.isHost ? 'bg-cyan-500/10 border-cyan-400/30' : 'bg-zinc-900/60 border-white/5'} ${isLatest ? 'ring-1 ring-pink-400/40' : ''}`}>
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <div className="flex items-center gap-2 min-w-0">
-                                                        <span>{msg.avatar || EMOJI.sparkle}</span>
-                                                        <span className={`font-bold truncate ${msg.isHost ? 'text-cyan-300' : 'text-white'}`}>{msg.user || 'Guest'}</span>
-                                                        {msg.isVip && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-400 text-black font-black tracking-widest">VIP</span>}
-                                                        {msg.isHost && <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500 text-black font-black tracking-widest">HOST</span>}
-                                                        {isPinned && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500 text-black font-black tracking-widest">PIN</span>}
-                                                    </div>
-                                                    <button
-                                                        onClick={() => {
-                                                            setPinnedChatIds(prev => isPinned ? prev.filter(id => id !== msg.id) : [msg.id, ...prev].slice(0, 3));
-                                                        }}
-                                                        className={`${STYLES.btnStd} ${isPinned ? STYLES.btnHighlight : STYLES.btnNeutral} px-2 py-1 text-xs`}
-                                                        title={isPinned ? 'Unpin message' : 'Pin message'}
-                                                    >
-                                                        <i className="fa-solid fa-thumbtack"></i>
-                                                    </button>
-                                                </div>
-                                                <div className="text-zinc-200 mt-1 text-sm break-words">{msg.text}</div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-                        {chatViewMode === 'room' && (
-                            <div className="mt-3 flex gap-2">
-                                <input
-                                    value={chatDraft}
-                                    onChange={e => setChatDraft(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            sendHostChat();
-                                        }
-                                    }}
-                                    className={`${STYLES.input} text-xs flex-1`}
-                                    placeholder="Message the room..."
-                                    title="Send a message to the audience"
-                                />
-                                <button onClick={sendHostChat} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3`} title="Send chat message">
-                                    <i className="fa-solid fa-paper-plane mr-2"></i>Send
-                                </button>
-                            </div>
-                        )}
-                        </div>
+                        <HostChatPanel
+                            chatOpen={chatOpen}
+                            chatUnread={chatUnread}
+                            openChatSettings={openChatSettings}
+                            styles={STYLES}
+                            appBase={appBase}
+                            roomCode={roomCode}
+                            chatEnabled={chatEnabled}
+                            setChatEnabled={setChatEnabled}
+                            updateRoom={updateRoom}
+                            chatShowOnTv={chatShowOnTv}
+                            setChatShowOnTv={setChatShowOnTv}
+                            chatAudienceMode={chatAudienceMode}
+                            setChatAudienceMode={setChatAudienceMode}
+                            handleChatViewMode={handleChatViewMode}
+                            chatViewMode={chatViewMode}
+                            dmUnread={dmUnread}
+                            dmTargetUid={dmTargetUid}
+                            setDmTargetUid={setDmTargetUid}
+                            users={users}
+                            dmDraft={dmDraft}
+                            setDmDraft={setDmDraft}
+                            sendHostDmMessage={sendHostDmMessage}
+                            roomChatMessages={roomChatMessages}
+                            hostDmMessages={hostDmMessages}
+                            pinnedChatIds={pinnedChatIds}
+                            setPinnedChatIds={setPinnedChatIds}
+                            emoji={EMOJI}
+                            chatDraft={chatDraft}
+                            setChatDraft={setChatDraft}
+                            sendHostChat={sendHostChat}
+                        />
                     </section>
 
                     <section className="px-4 py-4 border-b border-white/10">
@@ -2366,64 +1995,21 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                             label="Reward Points"
                             open={crowdPointsOpen}
                             onToggle={() => setCrowdPointsOpen(v => !v)}
+                            featureId="panel-reward-points"
                         />
-                        <div className={crowdPointsOpen ? 'space-y-3' : 'hidden'}>
-                            <div>
-                                <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Tip points rate</div>
-                                <input
-                                    value={tipPointRate}
-                                    onChange={e=>setTipPointRate(e.target.value)}
-                                    className={STYLES.input}
-                                    placeholder="Points per $1 tip"
-                                    title="How many points per $1 tip"
-                                />
-                                <div className="host-form-helper">Used when awarding points by dollar amount.</div>
-                            </div>
-                            <div className="space-y-2">
-                                <div className="text-xs uppercase tracking-widest text-zinc-400">Gift individual</div>
-                                <div className="grid grid-cols-3 gap-2">
-                                    <select
-                                        value={giftTargetUid}
-                                        onChange={(e) => setGiftTargetUid(e.target.value)}
-                                        className={`${STYLES.input} text-xs w-full`}
-                                        title="Choose a lobby member"
-                                    >
-                                        <option value="">Select member...</option>
-                                        {users.map(u => (
-                                            <option key={u.uid || u.id} value={u.uid || u.id?.split('_')[1]}>
-                                                {u.name || 'Guest'}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <input
-                                        value={giftAmount}
-                                        onChange={(e) => setGiftAmount(e.target.value)}
-                                        className={`${STYLES.input} text-xs w-full`}
-                                        placeholder="Pts"
-                                        title="Points to gift"
-                                    />
-                                    <button
-                                        onClick={() => {
-                                            const amount = Math.max(1, Number(giftAmount || 0));
-                                            if (!giftTargetUid || !amount) return;
-                                            giftPointsToUser?.(giftTargetUid, amount);
-                                            setGiftAmount('');
-                                        }}
-                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight}`}
-                                    >
-                                        Gift
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <div className="text-xs uppercase tracking-widest text-zinc-400">Gift all</div>
-                            <div className="grid grid-cols-3 gap-2">
-                                {[50, 100, 250].map(val => (
-                                    <button key={val} onClick={() => dropBonus(val)} className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}>+{val} pts</button>
-                                ))}
-                            </div>
-                            </div>
-                        </div>
+                        <RewardPointsPanel
+                            crowdPointsOpen={crowdPointsOpen}
+                            tipPointRate={tipPointRate}
+                            setTipPointRate={setTipPointRate}
+                            styles={STYLES}
+                            giftTargetUid={giftTargetUid}
+                            setGiftTargetUid={setGiftTargetUid}
+                            users={users}
+                            giftAmount={giftAmount}
+                            setGiftAmount={setGiftAmount}
+                            giftPointsToUser={giftPointsToUser}
+                            dropBonus={dropBonus}
+                        />
                     </section>
 
                 </div>
@@ -2437,180 +2023,38 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                         open={showAddForm}
                         onToggle={() => setShowAddForm(v => !v)}
                         toneClass="text-base font-black text-[#00C4D9]"
+                        featureId="panel-add-to-queue"
                     />
                     {showAddForm && (
-                        <>
-                            <div className="relative mb-2">
-                                <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} className={STYLES.input} placeholder="Search Local + YouTube + Apple Music..."/>
-                            </div>
-                            {searchSources.itunes && itunesBackoffRemaining > 0 && (
-                                <div className="host-form-helper mb-2 text-yellow-300 text-xs">
-                                    Apple Music art is rate-limited. Retrying in {itunesBackoffRemaining}s.
-                                </div>
-                            )}
-                            {(results.length > 0 || searchQ.length >= 3) && (
-                                <div className="absolute top-full left-0 right-0 bg-zinc-900 border border-zinc-600 z-50 shadow-2xl">
-                                    <div className="max-h-64 overflow-y-auto">
-                                        {results.length > 0 ? results.map((r, idx) => (
-                                            <div
-                                                key={idx}
-                                                onClick={() => handleResultClick(r)}
-                                                className="p-2 hover:bg-zinc-800 text-xs flex gap-3 items-center border-b border-white/5 cursor-pointer"
-                                            >
-                                                <div className="w-8 h-8 flex items-center justify-center bg-zinc-800 rounded">
-                                                    {r.source === 'local' ? (
-                                                        <i className="fa-solid fa-hard-drive text-[#00C4D9] text-lg"></i>
-                                                    ) : r.source === 'youtube' ? (
-                                                        <div className="relative">
-                                                            <img src={r.artworkUrl100} className="w-12 h-12 rounded" />
-                                                            <i className="fa-brands fa-youtube text-red-500 absolute -bottom-1 -right-1 text-[10px] bg-black/70 rounded-full p-[2px]"></i>
-                                                        </div>
-                                                    ) : (
-                                                        <img src={r.artworkUrl100} className="w-12 h-12 rounded"/>
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <div className="font-bold text-white text-base">{r.trackName}</div>
-                                                    <div className="text-zinc-400 text-sm">{r.artistName}</div>
-                                                </div>
-                                                <div className="ml-auto flex items-center gap-2 text-xs uppercase tracking-widest text-zinc-400">
-                                                <span className="px-2 py-1 rounded-full border border-white/10 bg-black/40">Select Track</span>
-                                                    <i className="fa-solid fa-chevron-right text-zinc-500"></i>
-                                                </div>
-                                            </div>
-                                        )) : (
-                                            <div className="host-search-helper text-center py-3 text-zinc-500 text-xs uppercase tracking-widest">No results yet</div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                            <div className="mb-2 rounded-xl border border-white/10 bg-black/30 p-3">
-                                <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Song Details</div>
-                                <div className="grid grid-cols-1 md:grid-cols-[2fr_1.4fr_1.4fr_1.1fr] gap-2">
-                                    <input value={manual.song} onChange={e=>setManual({...manual, song:e.target.value})} className={STYLES.input} placeholder="Song"/>
-                                    <input value={manual.artist} onChange={e=>setManual({...manual, artist:e.target.value})} className={STYLES.input} placeholder="Artist"/>
-                                    <select
-                                        value={manualSingerMode === 'custom' ? '__custom' : manual.singer}
-                                        onChange={(e) => {
-                                            const value = e.target.value;
-                                            if (value === '__custom') {
-                                                setManualSingerMode('custom');
-                                                setManual(prev => ({ ...prev, singer: '' }));
-                                                return;
-                                            }
-                                            setManualSingerMode('select');
-                                            setManual(prev => ({ ...prev, singer: value }));
-                                        }}
-                                        className={`${STYLES.input} text-sm`}
-                                    >
-                                        <option value="">Select Performer</option>
-                                        {hostName && (
-                                            <option value={hostName}>{hostName} (Host)</option>
-                                        )}
-                                        {users.map(u => (
-                                            <option key={u.uid || u.name} value={u.name}>
-                                                {u.avatar ? `${u.avatar} ` : ''}{u.name}
-                                            </option>
-                                        ))}
-                                        <option value="__custom">Custom performer...</option>
-                                    </select>
-                                    {manualSingerMode === 'custom' && (
-                                        <input
-                                            value={manual.singer}
-                                            onChange={e=>setManual({...manual, singer:e.target.value})}
-                                            className={STYLES.input}
-                                            placeholder="Custom performer"
-                                        />
-                                    )}
-                                </div>
-                            </div>
-                            <div className="mb-2 rounded-xl border border-white/10 bg-black/30 p-3">
-                                <div className="flex items-center justify-between gap-2 mb-2">
-                                    <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-widest text-zinc-400">
-                                        <span>Lyrics</span>
-                                        <span className={statusPill}>
-                                            {manual.lyrics ? 'Added' : 'None'}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => setLyricsOpen(v => !v)}
-                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-xs min-h-[30px]`}
-                                        >
-                                            {lyricsOpen ? 'Hide lyrics' : 'Edit Lyrics'}
-                                        </button>
-                                        <button
-                                            onClick={async () => {
-                                                if (!manual.song || !manual.artist) return toast("Need Song & Artist");
-                                                toast("Generating Lyrics...");
-                                                const res = await generateAIContent('lyrics', { title: manual.song, artist: manual.artist });
-                                                if (res && res.lyrics) { 
-                                                    setManual(prev => ({ ...prev, lyrics: res.lyrics, lyricsTimed: null, appleMusicId: '' })); 
-                                                    setLyricsOpen(true);
-                                                    toast("Lyrics Generated!"); 
-                                                } else { 
-                                                    toast("Gen Failed"); 
-                                                }
-                                            }}
-                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 text-xs min-h-[30px]`}
-                                            title="Add AI Lyrics"
-                                        >
-                                            <i className="fa-solid fa-wand-magic-sparkles"></i>
-                                            Add AI Lyrics
-                                        </button>
-                                    </div>
-                                </div>
-                                {lyricsOpen && (
-                                    <textarea
-                                        value={manual.lyrics}
-                                        onChange={e=>setManual({...manual, lyrics:e.target.value})}
-                                        className={`${STYLES.input} w-full h-20 font-mono resize-none host-lyrics-input`}
-                                        placeholder="Paste lyrics here (optional)..."
-                                    />
-                                )}
-                            </div>
-                            <div className="mb-2 rounded-xl border border-white/10 bg-black/30 p-3">
-                                <div className="flex items-center justify-between gap-2 mb-2">
-                                    <div className="text-xs uppercase tracking-widest text-zinc-400">Backing Track</div>
-                                    <span
-                                        className={statusPill}
-                                        title={manualBackingChip.label === 'Apple Music'
-                                            ? 'Default backing: Apple Music'
-                                            : `Selected backing: ${manualBackingChip.label}`
-                                        }
-                                    >
-                                        {manualBackingChip.label === 'Apple Music'
-                                            ? 'Default: Apple Music'
-                                            : manualBackingChip.label
-                                        }
-                                    </span>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2 mb-2">
-                                    <button
-                                        onClick={() => setManual(prev => ({ ...prev, url: '', backingAudioOnly: false }))}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[#00C4D9] border-[#00C4D9]`}
-                                        title="Use the default Apple Music track"
-                                    >
-                                        <i className="fa-brands fa-apple mr-1"></i>
-                                        Apple Default
-                                    </button>
-                                    <button
-                                        onClick={() => openYtSearch('manual', `${manual.song} ${manual.artist}`.trim() || searchQ)}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[#00C4D9] border-[#00C4D9]`}
-                                        title="Search YouTube and pick a backing track"
-                                    >
-                                        <i className="fa-brands fa-youtube mr-1"></i>
-                                        Search YouTube
-                                    </button>
-                                </div>
-                                <div className="flex gap-2 items-center">
-                                    <input value={manual.url} onChange={e=>setManual({...manual, url:e.target.value})} className={STYLES.input} placeholder="Paste a YouTube or local URL"/>
-                                    <button onClick={addSong} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-4`}>
-                                        Add to Queue
-                                    </button>
-                                </div>
-                            </div>
-                        </>
+                        <AddToQueueFormBody
+                            searchQ={searchQ}
+                            setSearchQ={setSearchQ}
+                            styles={STYLES}
+                            quickAddOnResultClick={quickAddOnResultClick}
+                            setQuickAddOnResultClick={setQuickAddOnResultClick}
+                            results={results}
+                            getResultRowKey={getResultRowKey}
+                            quickAddLoadingKey={quickAddLoadingKey}
+                            handleResultClick={handleResultClick}
+                            searchSources={searchSources}
+                            itunesBackoffRemaining={itunesBackoffRemaining}
+                            quickAddNotice={quickAddNotice}
+                            onUndoQuickAdd={undoQuickAdd}
+                            onChangeQuickAddBacking={changeQuickAddBacking}
+                            manual={manual}
+                            setManual={setManual}
+                            manualSingerMode={manualSingerMode}
+                            setManualSingerMode={setManualSingerMode}
+                            hostName={hostName}
+                            users={users}
+                            statusPill={statusPill}
+                            lyricsOpen={lyricsOpen}
+                            setLyricsOpen={setLyricsOpen}
+                            onGenerateManualLyrics={generateManualLyrics}
+                            manualBackingChip={manualBackingChip}
+                            openYtSearch={openYtSearch}
+                            addSong={addSong}
+                        />
                     )}
                 </div>
                 <div className="flex-1 overflow-y-auto p-2 space-y-2">
@@ -2619,105 +2063,29 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                         open={showQueueList}
                         onToggle={() => setShowQueueList(v => !v)}
                         toneClass="text-base font-black text-[#00C4D9] px-1"
+                        featureId="panel-queue-list"
                     />
-                    {showQueueList && (
-                    <>
-                    {/* Pending */}
-                    {pending.length > 0 && (
-                        <div className="mb-4 border-b border-white/10 pb-2">
-                            <div className="text-sm text-orange-400 font-bold mb-2 uppercase">PENDING ({pending.length})</div>
-                            {pending.map(s => (
-                                <div key={s.id} className="bg-orange-950/30 p-2 rounded flex justify-between items-center border border-orange-500/30 mb-2">
-                                    <div><div className="text-sm font-bold">{s.songTitle}</div><div className="text-sm text-zinc-400">{s.singerName}</div></div>
-                                    <div className="flex gap-2">
-                                        <button onClick={()=>updateStatus(s.id, 'requested')} className={`${STYLES.btnStd} ${STYLES.btnSuccess} px-2`}>✓</button>
-                                        <button onClick={()=>deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', s.id))} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2`}>X</button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                    {pending.length === 0 && (
-                        <div className="host-search-helper text-center py-2 text-zinc-500 text-xs uppercase tracking-widest">
-                            No pending songs
-                        </div>
-                    )}
-                    {/* Queue */}
-                    {queue.map((s,i) => (<div
-                        key={s.id}
-                        data-queue-id={s.id}
-                        draggable
-                        onDragStart={() => setDragQueueId(s.id)}
-                        onDragEnd={() => { setDragQueueId(null); setDragOverId(null); }}
-                        onDragOver={(e) => { e.preventDefault(); setDragOverId(s.id); }}
-                        onDrop={() => { reorderQueue(dragQueueId, s.id); setDragQueueId(null); setDragOverId(null); }}
-                        onTouchStart={() => handleTouchStart(s.id)}
-                        onTouchMove={handleTouchMove}
-                        onTouchEnd={handleTouchEnd}
-                        className={`bg-zinc-900/50 p-3 rounded-lg flex flex-col gap-2 border ${dragOverId === s.id ? 'border-[#00C4D9]' : 'border-white/5'}`}
-                    >
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <span className="font-mono text-zinc-500 w-6 text-center">{i+1}</span>
-                                <i className="fa-solid fa-grip-lines text-zinc-600"></i>
-                                {s.albumArtUrl && <img src={s.albumArtUrl} className="w-10 h-10 rounded shadow-sm"/>}
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="font-bold text-white">{s.songTitle}</div>
-                                        <div className="flex items-center gap-1 text-sm">
-                                            {s.lyricsTimed?.length ? (
-                                                <i className="fa-solid fa-clock text-purple-300" title="Timed lyrics"></i>
-                                            ) : s.lyrics ? (
-                                                <i className="fa-solid fa-closed-captioning text-fuchsia-300" title="Manual lyrics"></i>
-                                            ) : (
-                                                <i className="fa-solid fa-comment-slash text-zinc-500" title="No lyrics"></i>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div className="text-sm text-zinc-400">{s.singerName}</div>
-                                    <div className="mt-1 flex flex-wrap gap-1.5 text-sm uppercase tracking-widest">
-                                        {s.appleMusicId ? (
-                                            <span className={statusPill}><i className="fa-brands fa-apple mr-1"></i>Apple Music</span>
-                                        ) : s.mediaUrl ? (
-                                            <span className={statusPill}><i className="fa-brands fa-youtube mr-1"></i>YouTube</span>
-                                        ) : (
-                                            <span className={statusPill}><i className="fa-solid fa-file-audio mr-1"></i>Local File</span>
-                                        )}
-                                        {s.lyricsTimed?.length ? (
-                                            <span className={statusPill}><i className="fa-solid fa-clock mr-1"></i>Timed Lyrics</span>
-                                        ) : s.lyrics ? (
-                                            <span className={statusPill}><i className="fa-solid fa-closed-captioning mr-1"></i>Manual Lyrics</span>
-                                        ) : (
-                                            <span className={statusPill}><i className="fa-solid fa-comment-slash mr-1"></i>No Lyrics</span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <button onClick={()=>updateStatus(s.id, 'performing')} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 text-white`}>
-                                    <i className="fa-solid fa-play mr-1"></i>Play
-                                </button>
-                                <button onClick={()=>startEdit(s)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2`}>
-                                    <i className="fa-solid fa-pen-to-square mr-1"></i>Edit
-                                </button>
-                                <button onClick={()=>deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', s.id))} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2`}>
-                                    <i className="fa-solid fa-trash mr-1"></i>Remove
-                                </button>
-                                {s.lyricsTimed?.length ? (
-                                    <span className="ml-auto flex items-center gap-1 text-xs text-purple-300" title="Timed lyrics">
-                                        <i className="fa-solid fa-clock"></i>
-                                    </span>
-                                ) : s.lyrics ? (
-                                    <span className="ml-auto flex items-center gap-1 text-xs text-fuchsia-300" title="Manual lyrics">
-                                        <i className="fa-solid fa-closed-captioning"></i>
-                                    </span>
-                                ) : null}
-                            </div>
-                        </div>
-                    </div>))}
-                        </>
-                    )}
+                    <QueueListPanel
+                        showQueueList={showQueueList}
+                        pending={pending}
+                        queue={queue}
+                        onApprovePending={(songId) => updateStatus(songId, 'requested')}
+                        onDeletePending={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
+                        dragQueueId={dragQueueId}
+                        dragOverId={dragOverId}
+                        setDragQueueId={setDragQueueId}
+                        setDragOverId={setDragOverId}
+                        reorderQueue={reorderQueue}
+                        handleTouchStart={handleTouchStart}
+                        handleTouchMove={handleTouchMove}
+                        handleTouchEnd={handleTouchEnd}
+                        updateStatus={updateStatus}
+                        startEdit={startEdit}
+                        statusPill={statusPill}
+                        styles={STYLES}
+                    />
                 </div>
+            </div>
             </div>
         </div>
     );
@@ -2726,8 +2094,12 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
 // --- MAIN HOST APP COMPONENT ---
 const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     // 1. Manage roomCode locally to fix shadowing issue
-    const [roomCode, setRoomCode] = useState(initialCode || '');
+    const normalizedInitialCode = (initialCode || '').trim().toUpperCase();
+    const [roomCode, setRoomCode] = useState('');
+    const [roomCodeInput, setRoomCodeInput] = useState(normalizedInitialCode);
     const appBase = typeof window !== 'undefined' ? `${window.location.origin}${import.meta.env.BASE_URL || '/'}` : '';
+    const isChatPopout = typeof window !== 'undefined'
+        && new URLSearchParams(window.location.search).get('chat') === '1';
 
     useEffect(() => {
         const prevOverflow = document.body.style.overflow;
@@ -2752,7 +2124,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setAppleMusicStatus('Loading Apple Music...');
         const MusicKit = await loadMusicKitScript();
         if (!MusicKit) throw new Error('MusicKit unavailable');
-        const tokenPayload = await callFunction('createAppleMusicToken');
+        const tokenPayload = await callFunction('createAppleMusicToken', { roomCode });
         if (!tokenPayload?.token) throw new Error('Missing Apple Music token');
         MusicKit.configure({
             developerToken: tokenPayload.token,
@@ -2848,6 +2220,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         }
     };
+    const stopAppleMusic = async () => {
+        const instance = appleMusicRef.current;
+        if (!instance) return;
+        try {
+            if (typeof instance.stop === 'function') {
+                await instance.stop();
+            } else {
+                await instance.pause();
+            }
+        } catch (e) {
+            console.warn('Apple Music stop failed', e);
+        }
+        setAppleMusicPlaying(false);
+    };
 
     const playAppleMusicPlaylist = async (playlistId, meta = {}) => {
         if (!playlistId) return;
@@ -2895,7 +2281,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
     
     // 2. Local State
-    const [view, setView] = useState(initialCode ? 'panel' : 'landing');
+    const [view, setView] = useState('landing');
     const [room, setRoom] = useState(null);
     const [songs, setSongs] = useState([]);
     const [users, setUsers] = useState([]);
@@ -2925,6 +2311,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [appleMusicAutoPlaylistId, setAppleMusicAutoPlaylistId] = useState('');
     const [appleMusicAutoPlaylistTitle, setAppleMusicAutoPlaylistTitle] = useState('');
     const appleMusicRef = useRef(null);
+    const getAppleMusicUserToken = () => appleMusicRef.current?.musicUserToken || '';
     const mixFadeRef = useRef(null);
     const mixFadeTargetRef = useRef(mixFader);
     const mixBeforeSongRef = useRef(mixFader);
@@ -2956,6 +2343,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [ytIndex, setYtIndex] = useState([]);
     const [searchSources, setSearchSources] = useState({ local: true, youtube: true, itunes: true });
     const [ytPlaylistUrl, setYtPlaylistUrl] = useState('');
+    const [qaYtPlaylistUrl, setQaYtPlaylistUrl] = useState(() => {
+        try {
+            if (typeof window === 'undefined') return DEFAULT_QA_YT_PLAYLIST_URL;
+            return localStorage.getItem('bross_qa_yt_playlist_url') || DEFAULT_QA_YT_PLAYLIST_URL;
+        } catch {
+            return DEFAULT_QA_YT_PLAYLIST_URL;
+        }
+    });
     const [ytPlaylistLoading, setYtPlaylistLoading] = useState(false);
     const [appleMusicPlaylistUrl, setAppleMusicPlaylistUrl] = useState('');
     const [appleMusicPlaylistStatus, setAppleMusicPlaylistStatus] = useState('');
@@ -2974,40 +2369,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const localUploadsRef = useRef([]);
     const [showSettings, setShowSettings] = useState(false);
     const [settingsTab, setSettingsTab] = useState('general');
-    const [chatEnabled, setChatEnabled] = useState(true);
-    const [chatShowOnTv, setChatShowOnTv] = useState(false);
-    const [chatSlowModeSec, setChatSlowModeSec] = useState(0);
-    const [chatAudienceMode, setChatAudienceMode] = useState('all');
-    const [chatDraft, setChatDraft] = useState('');
     const hallOfFameTimerRef = useRef(null);
-    const [dmTargetUid, setDmTargetUid] = useState('');
-    const [dmDraft, setDmDraft] = useState('');
-    const [chatMessages, setChatMessages] = useState([]);
     const [smokeRunning, setSmokeRunning] = useState(false);
     const [smokeResults, setSmokeResults] = useState([]);
     const [smokeIncludeWrite, setSmokeIncludeWrite] = useState(false);
-    const [pinnedChatIds, setPinnedChatIds] = useState([]);
-    const [chatUnread, setChatUnread] = useState(false);
-    const [dmUnread, setDmUnread] = useState(false);
-    const [chatViewMode, setChatViewMode] = useState('room');
-    const chatLastSeenRef = useRef(0);
-    const dmLastSeenRef = useRef(0);
     const layoutDefaultedRef = useRef(false);
-    const handleChatViewMode = (nextMode) => {
-        setChatViewMode(nextMode);
-        if (nextMode === 'room') {
-            const newest = chatMessages.find(msg => !msg.toHost);
-            const newestTs = newest?.timestamp?.seconds ? newest.timestamp.seconds * 1000 : 0;
-            if (newestTs) chatLastSeenRef.current = newestTs;
-            setChatUnread(false);
-        }
-        if (nextMode === 'host') {
-            const newest = chatMessages.find(msg => msg.toHost || msg.toUid);
-            const newestTs = newest?.timestamp?.seconds ? newest.timestamp.seconds * 1000 : 0;
-            if (newestTs) dmLastSeenRef.current = newestTs;
-            setDmUnread(false);
-        }
-    };
     const [clearingRoom, setClearingRoom] = useState(false);
     const [exportingRoom, setExportingRoom] = useState(false);
     const [closingRoom, setClosingRoom] = useState(false);
@@ -3016,6 +2382,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [marqueeDraftItems, setMarqueeDraftItems] = useState([]);
     const [hostName, setHostName] = useState(localStorage.getItem('bross_host_name') || 'Host');
     const [logoUrl, setLogoUrl] = useState('');
+    const [logoLibrary, setLogoLibrary] = useState([]);
+    const [logoUploading, setLogoUploading] = useState(false);
+    const [logoUploadProgress, setLogoUploadProgress] = useState(0);
+    const logoInputRef = useRef(null);
+    const autoJoinAttemptedRef = useRef(false);
     const [marqueeEnabled, setMarqueeEnabled] = useState(false);
     const [marqueeDurationSec, setMarqueeDurationSec] = useState(12);
     const [marqueeIntervalSec, setMarqueeIntervalSec] = useState(20);
@@ -3048,6 +2419,171 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [bgMuteBackup, setBgMuteBackup] = useState(0.3);
     const [tipUserId, setTipUserId] = useState('');
     const [tipAmount, setTipAmount] = useState('');
+    const [creatingRoom, setCreatingRoom] = useState(false);
+    const [joiningRoom, setJoiningRoom] = useState(false);
+    const [orgContext, setOrgContext] = useState({
+        orgId: '',
+        role: 'owner',
+        planId: 'free',
+        status: 'inactive',
+        provider: 'internal',
+        renewalAtMs: 0,
+        cancelAtPeriodEnd: false,
+        capabilities: {},
+        loading: false,
+        error: ''
+    });
+    const [billingActionLoading, setBillingActionLoading] = useState(false);
+    const [subscriptionActionLoading, setSubscriptionActionLoading] = useState('');
+    const [usageSummary, setUsageSummary] = useState({
+        orgId: '',
+        period: '',
+        meters: {},
+        totals: { estimatedOverageCents: 0 },
+        loading: false,
+        error: ''
+    });
+    const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
+    const [onboardingStep, setOnboardingStep] = useState(0);
+    const [onboardingBusy, setOnboardingBusy] = useState(false);
+    const [onboardingError, setOnboardingError] = useState('');
+    const [onboardingHostName, setOnboardingHostName] = useState(localStorage.getItem('bross_host_name') || 'Host');
+    const [onboardingWorkspaceName, setOnboardingWorkspaceName] = useState('');
+    const [onboardingPlanId, setOnboardingPlanId] = useState('host_monthly');
+    const [onboardingLogoUrl, setOnboardingLogoUrl] = useState(ASSETS.logo);
+    const planLabel = useMemo(() => {
+        const labels = {
+            free: 'Free',
+            vip_monthly: 'VIP Monthly',
+            host_monthly: 'Host Monthly',
+            host_annual: 'Host Annual'
+        };
+        return labels[orgContext?.planId] || (orgContext?.planId || 'free');
+    }, [orgContext?.planId]);
+    const renewalLabel = useMemo(() => {
+        const ms = Number(orgContext?.renewalAtMs || 0);
+        if (!ms) return 'Not scheduled';
+        return new Date(ms).toLocaleDateString();
+    }, [orgContext?.renewalAtMs]);
+    const onboardingPlanLabel = useMemo(() => {
+        const found = HOST_ONBOARDING_PLAN_OPTIONS.find(p => p.id === onboardingPlanId);
+        return found?.label || onboardingPlanId || 'Free';
+    }, [onboardingPlanId]);
+    const onboardingHasActiveSubscription = useMemo(() => {
+        const status = String(orgContext?.status || '').toLowerCase();
+        return ['active', 'trialing', 'past_due'].includes(status);
+    }, [orgContext?.status]);
+    const aiUsageMeter = useMemo(() => usageSummary?.meters?.ai_generate_content || null, [usageSummary?.meters]);
+    const usagePeriodLabel = useMemo(() => {
+        const key = String(usageSummary?.period || '');
+        if (!/^\d{6}$/.test(key)) return '--';
+        const year = Number(key.slice(0, 4));
+        const monthIndex = Number(key.slice(4, 6)) - 1;
+        return new Date(Date.UTC(year, monthIndex, 1)).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    }, [usageSummary?.period]);
+    const logoChoices = useMemo(() => {
+        const merged = [...DEFAULT_LOGO_PRESETS];
+        (logoLibrary || []).forEach((url, idx) => {
+            if (typeof url !== 'string') return;
+            const cleaned = url.trim();
+            if (!cleaned) return;
+            merged.push({
+                id: `custom-${idx}-${cleaned.slice(-24)}`,
+                label: `Custom ${idx + 1}`,
+                url: cleaned
+            });
+        });
+        const seen = new Set();
+        return merged.filter(item => {
+            if (!item?.url || seen.has(item.url)) return false;
+            seen.add(item.url);
+            return true;
+        });
+    }, [logoLibrary]);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!uid) {
+            setOrgContext(prev => ({
+                ...prev,
+                loading: false,
+                error: '',
+                orgId: '',
+                planId: 'free',
+                status: 'inactive',
+                provider: 'internal',
+                renewalAtMs: 0,
+                cancelAtPeriodEnd: false,
+                capabilities: {}
+            }));
+            setUsageSummary({
+                orgId: '',
+                period: '',
+                meters: {},
+                totals: { estimatedOverageCents: 0 },
+                loading: false,
+                error: ''
+            });
+            return () => { cancelled = true; };
+        }
+        (async () => {
+            setOrgContext(prev => ({ ...prev, loading: true, error: '' }));
+            setUsageSummary(prev => ({ ...prev, loading: true, error: '' }));
+            try {
+                await ensureOrganization('');
+                const entitlements = await getMyEntitlements();
+                const usage = await getMyUsageSummary();
+                if (cancelled) return;
+                setOrgContext({
+                    orgId: entitlements?.orgId || '',
+                    role: entitlements?.role || 'owner',
+                    planId: entitlements?.planId || 'free',
+                    status: entitlements?.status || 'inactive',
+                    provider: entitlements?.provider || 'internal',
+                    renewalAtMs: Number(entitlements?.renewalAtMs || 0),
+                    cancelAtPeriodEnd: !!entitlements?.cancelAtPeriodEnd,
+                    capabilities: entitlements?.capabilities || {},
+                    loading: false,
+                    error: ''
+                });
+                setUsageSummary({
+                    orgId: usage?.orgId || entitlements?.orgId || '',
+                    period: usage?.period || '',
+                    meters: usage?.meters || {},
+                    totals: usage?.totals || { estimatedOverageCents: 0 },
+                    loading: false,
+                    error: ''
+                });
+            } catch (e) {
+                console.error('Failed to sync org entitlements', e);
+                if (cancelled) return;
+                setOrgContext(prev => ({ ...prev, loading: false, error: 'Could not load subscription entitlements.' }));
+                setUsageSummary(prev => ({ ...prev, loading: false, error: 'Could not load usage summary.' }));
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [uid]);
+
+    useEffect(() => {
+        if (!onboardingWorkspaceName.trim()) {
+            const baseHost = onboardingHostName.trim() || hostName.trim() || 'Host';
+            setOnboardingWorkspaceName(`${baseHost} Workspace`);
+        }
+    }, [hostName, onboardingHostName, onboardingWorkspaceName]);
+
+    useEffect(() => {
+        if (!showOnboardingWizard) {
+            setOnboardingLogoUrl((logoUrl || ASSETS.logo || '').trim() || ASSETS.logo);
+        }
+    }, [logoUrl, showOnboardingWizard]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('bross_qa_yt_playlist_url', qaYtPlaylistUrl || DEFAULT_QA_YT_PLAYLIST_URL);
+        } catch {
+            // Ignore storage failures (private mode / quota).
+        }
+    }, [qaYtPlaylistUrl]);
 
     useEffect(() => {
         if (catalogueSearchQ.length < 3) { setCatalogueResults([]); return; }
@@ -3109,6 +2645,42 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const sfxPulseRef = useRef(null);
     const seededMarqueeRef = useRef(false);
     const toast = useToast();
+    const {
+        chatEnabled,
+        setChatEnabled,
+        chatShowOnTv,
+        setChatShowOnTv,
+        chatTvMode,
+        setChatTvMode,
+        chatSlowModeSec,
+        setChatSlowModeSec,
+        chatAudienceMode,
+        setChatAudienceMode,
+        chatDraft,
+        setChatDraft,
+        dmTargetUid,
+        setDmTargetUid,
+        dmDraft,
+        setDmDraft,
+        chatMessages,
+        pinnedChatIds,
+        setPinnedChatIds,
+        chatUnread,
+        dmUnread,
+        chatViewMode,
+        handleChatViewMode,
+        sendHostChat,
+        sendHostDmMessage,
+        markChatTabSeen
+    } = useHostChat({
+        roomCode,
+        room,
+        settingsTab,
+        hostName,
+        toast
+    });
+    const roomChatMessages = chatMessages.filter(msg => !msg.toHost);
+    const hostDmMessages = chatMessages.filter(msg => msg.toHost || msg.toUid);
 
     const currentSong = songs.find(s => s.status === 'performing');
     const queuedSongs = songs.filter(s => s.status === 'requested' || s.status === 'pending');
@@ -3151,6 +2723,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 if (!uid) throw new Error('No auth uid');
                 return uid;
             }),
+            runCheck('User profile read (/users/{uid})', async () => {
+                const userRef = doc(db, 'users', uid);
+                const snap = await getDoc(userRef);
+                if (!snap.exists()) return 'Missing profile doc';
+                return 'OK';
+            }),
             runCheck('Room doc read', async () => {
                 const snap = await getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode));
                 if (!snap.exists()) return 'Room doc missing';
@@ -3179,6 +2757,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             })
         ];
         if (smokeIncludeWrite) {
+            checks.push(runCheck('User profile write (/users/{uid})', async () => {
+                const userRef = doc(db, 'users', uid);
+                await setDoc(userRef, { smokeUpdatedAt: serverTimestamp() }, { merge: true });
+                return 'OK';
+            }));
             checks.push(runCheck('Write/delete smoke doc', async () => {
                 const smokeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'smoke_tests', `${roomCode}_${uid}`);
                 await setDoc(smokeRef, { roomCode, uid, createdAt: serverTimestamp() }, { merge: true });
@@ -3437,7 +3020,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setTipCrates(room.tipCrates);
         }
         if (room.hostName) setHostName(room.hostName);
-        if (room.logoUrl) setLogoUrl(room.logoUrl);
+        setLogoUrl(room.logoUrl || '');
         if (room.tipPointRate) setTipPointRate(room.tipPointRate);
         if (room.autoBgFadeOutMs !== undefined && room.autoBgFadeOutMs !== null) {
             setAutoBgFadeOutMs(room.autoBgFadeOutMs);
@@ -3487,14 +3070,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.marqueeShowMode) setMarqueeShowMode(room.marqueeShowMode);
     }, [room?.marqueeEnabled, room?.marqueeDurationMs, room?.marqueeIntervalMs, room?.marqueeItems, room?.marqueeShowMode]);
     useEffect(() => {
-        if (room?.chatEnabled !== undefined) setChatEnabled(!!room.chatEnabled);
-        if (room?.chatShowOnTv !== undefined) setChatShowOnTv(!!room.chatShowOnTv);
-        if (room?.chatSlowModeSec !== undefined && room?.chatSlowModeSec !== null) {
-            setChatSlowModeSec(room.chatSlowModeSec);
-        }
-        if (room?.chatAudienceMode) setChatAudienceMode(room.chatAudienceMode);
-    }, [room?.chatEnabled, room?.chatShowOnTv, room?.chatSlowModeSec, room?.chatAudienceMode]);
-    useEffect(() => {
         if (!room || layoutDefaultedRef.current) return;
         if (!room.layoutMode) {
             layoutDefaultedRef.current = true;
@@ -3503,36 +3078,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         layoutDefaultedRef.current = true;
     }, [room?.layoutMode, roomCode]);
-    useEffect(() => {
-        if (!roomCode) return;
-        const q = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'),
-            where('roomCode', '==', roomCode),
-            orderBy('timestamp', 'desc'),
-            limit(40)
-        );
-        const unsub = onSnapshot(q, snap => {
-            const next = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setChatMessages(next);
-            const newestRoom = next.find(msg => !msg.toHost);
-            const newestDm = next.find(msg => msg.toHost || msg.toUid);
-            const roomTs = newestRoom?.timestamp?.seconds ? newestRoom.timestamp.seconds * 1000 : 0;
-            const dmTs = newestDm?.timestamp?.seconds ? newestDm.timestamp.seconds * 1000 : 0;
-            if (chatViewMode === 'room' && roomTs) {
-                chatLastSeenRef.current = Math.max(chatLastSeenRef.current, roomTs);
-                setChatUnread(false);
-            } else if (roomTs && roomTs > chatLastSeenRef.current && settingsTab !== 'chat') {
-                setChatUnread(true);
-            }
-            if (chatViewMode === 'host' && dmTs) {
-                dmLastSeenRef.current = Math.max(dmLastSeenRef.current, dmTs);
-                setDmUnread(false);
-            } else if (dmTs && dmTs > dmLastSeenRef.current && settingsTab !== 'chat') {
-                setDmUnread(true);
-            }
-        });
-        return () => unsub();
-    }, [roomCode, settingsTab, chatViewMode]);
     useEffect(() => {
         if (!room || !roomCode || seededMarqueeRef.current) return;
         if (!room?.marqueeItems || room.marqueeItems.length === 0) {
@@ -3695,86 +3240,300 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return () => { isMounted = false; };
     }, []);
 
-    const createRoom = async () => { 
-        if (!uid) {
-            toast('Auth not ready yet. Try again in a second.');
-            return;
+    const ensureActiveUid = async () => {
+        let activeUid = auth.currentUser?.uid || uid || null;
+        if (!activeUid && typeof retryAuth === 'function') {
+            await retryAuth();
+            activeUid = auth.currentUser?.uid || null;
         }
-        let c = '';
-        let attempts = 0;
-        while (attempts < 12) {
-            const candidate = generateRoomCode(4);
-            const snap = await getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', candidate));
-            if (!snap.exists()) {
-                c = candidate;
-                break;
+        if (!activeUid) {
+            const authResult = await initAuth();
+            if (!authResult?.ok) {
+                throw authResult?.error || new Error('Auth initialization failed');
             }
-            attempts += 1;
+            activeUid = auth.currentUser?.uid || null;
         }
-        if (!c) {
-            toast('Room code collision. Please try again.');
+        return activeUid;
+    };
+
+    const syncOrgContextFromEntitlements = (entitlements = {}) => {
+        setOrgContext(prev => ({
+            ...prev,
+            orgId: entitlements?.orgId || prev.orgId || '',
+            role: entitlements?.role || prev.role || 'owner',
+            planId: entitlements?.planId || prev.planId || 'free',
+            status: entitlements?.status || prev.status || 'inactive',
+            provider: entitlements?.provider || prev.provider || 'internal',
+            renewalAtMs: Number(entitlements?.renewalAtMs || prev.renewalAtMs || 0),
+            cancelAtPeriodEnd: typeof entitlements?.cancelAtPeriodEnd === 'boolean'
+                ? entitlements.cancelAtPeriodEnd
+                : !!prev.cancelAtPeriodEnd,
+            capabilities: entitlements?.capabilities || prev.capabilities || {},
+            loading: false,
+            error: ''
+        }));
+    };
+
+    const openOnboardingWizard = () => {
+        const seededHost = (hostName || '').trim() || 'Host';
+        const seededLogo = (logoUrl || ASSETS.logo || '').trim() || ASSETS.logo;
+        const allowedPlanIds = new Set(['free', 'host_monthly', 'host_annual']);
+        const seededPlan = allowedPlanIds.has(orgContext?.planId) ? orgContext.planId : 'host_monthly';
+        setOnboardingHostName(seededHost);
+        setOnboardingWorkspaceName((onboardingWorkspaceName || '').trim() || `${seededHost} Workspace`);
+        setOnboardingPlanId(seededPlan);
+        setOnboardingLogoUrl(seededLogo);
+        setOnboardingError('');
+        setOnboardingStep(0);
+        setShowOnboardingWizard(true);
+    };
+
+    const closeOnboardingWizard = () => {
+        if (onboardingBusy || creatingRoom || subscriptionActionLoading) return;
+        setShowOnboardingWizard(false);
+        setOnboardingStep(0);
+        setOnboardingError('');
+    };
+
+    const provisionOnboardingWorkspace = async () => {
+        const trimmedHost = onboardingHostName.trim();
+        const trimmedWorkspace = onboardingWorkspaceName.trim();
+        if (!trimmedHost) {
+            setOnboardingError('Host name is required.');
             return;
         }
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', c), { 
-            createdAt: serverTimestamp(),
-            activeMode: 'karaoke',
-            hideWaveform: false,
-            hideOverlay: true,
-            videoVolume: 100,
-            bgMusicVolume: 0.3,
-            bgMusicPlaying: false,
-            mixFader: 50,
-            autoBgFadeOutMs: 900,
-            autoBgFadeInMs: 900,
-            autoBgMixDuringSong: 0,
-            autoPlayMedia: true,
-            hostName: hostName || 'Host',
-            hostUid: uid,
-            hostUids: [uid],
-            logoUrl: ASSETS.logo,
-            autoDj: false,
-            marqueeEnabled: false,
-            marqueeDurationMs: 12000,
-            marqueeIntervalMs: 20000,
-            marqueeItems: DEFAULT_MARQUEE_ITEMS,
-            marqueeShowMode: 'idle',
-            tipPointRate: 100,
-            tipCrates: DEFAULT_TIP_CRATES,
-            audienceVideoMode: 'off',
-            showLyricsTv: false,
-            showVisualizerTv: false,
-            visualizerMode: 'ribbon',
-            showLyricsSinger: false,
-            hideCornerOverlay: false,
-            howToPlay: { active: false, id: Date.now() },
-            gameRulesId: 0,
-            showScoring: true,
-            showFameLevel: true,
-            allowSingerTrackSelect: false,
-            queueSettings: {
-                limitMode: 'none',
-                limitCount: 0,
-                rotation: 'round_robin',
-                firstTimeBoost: true
-            },
-            chatEnabled: true,
-            chatShowOnTv: false,
-            chatSlowModeSec: 0,
-            chatAudienceMode: 'all'
-        }); 
-        trackEvent('host_room_created', { room_code: c });
-        setRoomCode(c); 
-        setView('panel'); 
+        if (!trimmedWorkspace) {
+            setOnboardingError('Workspace name is required.');
+            return;
+        }
+        setOnboardingBusy(true);
+        setOnboardingError('');
+        try {
+            const activeUid = await ensureActiveUid();
+            if (!activeUid) {
+                throw new Error('Auth unavailable');
+            }
+            await ensureOrganization(trimmedWorkspace);
+            const entitlements = await getMyEntitlements();
+            syncOrgContextFromEntitlements(entitlements);
+            setHostName(trimmedHost);
+            localStorage.setItem('bross_host_name', trimmedHost);
+            setOnboardingStep(1);
+        } catch (e) {
+            console.error('Onboarding workspace provision failed', e);
+            setOnboardingError('Could not initialize workspace. Please retry.');
+        } finally {
+            setOnboardingBusy(false);
+        }
     };
+
+    const launchOnboardingRoom = async () => {
+        const trimmedHost = onboardingHostName.trim();
+        const trimmedWorkspace = onboardingWorkspaceName.trim();
+        const trimmedLogo = onboardingLogoUrl.trim();
+        if (!trimmedHost || !trimmedWorkspace) {
+            setOnboardingError('Identity and workspace details are required before launch.');
+            setOnboardingStep(0);
+            return;
+        }
+        setOnboardingError('');
+        await createRoom({
+            hostName: trimmedHost,
+            orgName: trimmedWorkspace,
+            logoUrl: trimmedLogo || ASSETS.logo
+        });
+    };
+
+    const joinRoom = async (candidateCode) => {
+        if (joiningRoom) return;
+        const code = (candidateCode || roomCodeInput || '').trim().toUpperCase();
+        if (!code) {
+            toast('Enter a room code first');
+            return;
+        }
+
+        setJoiningRoom(true);
+        try {
+            const activeUid = await ensureActiveUid();
+            if (!activeUid) {
+                toast('Could not establish auth. Please retry.');
+                return;
+            }
+            const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', code);
+            const roomSnap = await getDoc(roomRef);
+            if (!roomSnap.exists()) {
+                toast(`Room ${code} not found`);
+                return;
+            }
+
+            setRoomCode(code);
+            setRoomCodeInput(code);
+            setView('panel');
+        } catch (e) {
+            const code = e?.code || '';
+            if (code.includes('permission-denied')) {
+                toast('Permission denied while opening room. Re-authenticate and try again.');
+            } else if (code.includes('unauthenticated')) {
+                toast('You are signed out. Please retry auth, then open room again.');
+            } else {
+                toast(`Failed to open room${code ? ` (${code})` : ''}`);
+            }
+        } finally {
+            setJoiningRoom(false);
+        }
+    };
+
+    const createRoom = async (options = {}) => {
+        if (creatingRoom) return;
+        const hostNameOverride = typeof options?.hostName === 'string' ? options.hostName.trim() : '';
+        const orgNameOverride = typeof options?.orgName === 'string' ? options.orgName.trim() : '';
+        const logoUrlOverride = typeof options?.logoUrl === 'string' ? options.logoUrl.trim() : '';
+        const nextHostName = hostNameOverride || (hostName || '').trim() || 'Host';
+        const nextOrgName = orgNameOverride || `${nextHostName} Workspace`;
+        const nextLogoUrl = logoUrlOverride || (logoUrl || '').trim() || ASSETS.logo;
+        setCreatingRoom(true);
+        try {
+            const activeUid = await ensureActiveUid();
+            if (!activeUid) {
+                toast('Could not establish auth. Please retry.');
+                return;
+            }
+            setHostName(nextHostName);
+            setLogoUrl(nextLogoUrl);
+            localStorage.setItem('bross_host_name', nextHostName);
+
+            let c = '';
+            let attempts = 0;
+            while (attempts < 12) {
+                const candidate = generateRoomCode(4);
+                const snap = await getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', candidate));
+                if (!snap.exists()) {
+                    c = candidate;
+                    break;
+                }
+                attempts += 1;
+            }
+            if (!c) {
+                toast('Room code collision. Please try again.');
+                return;
+            }
+
+            let activeOrgId = orgContext?.orgId || '';
+            if (!activeOrgId) {
+                try {
+                    await ensureOrganization(nextOrgName || 'BROSS Workspace');
+                    const entitlements = await getMyEntitlements();
+                    activeOrgId = entitlements?.orgId || '';
+                    syncOrgContextFromEntitlements(entitlements);
+                } catch (orgErr) {
+                    console.warn('Organization bootstrap failed during room create', orgErr);
+                }
+            }
+
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', c), {
+                createdAt: serverTimestamp(),
+                activeMode: 'karaoke',
+                hideWaveform: false,
+                hideOverlay: true,
+                videoVolume: 100,
+                bgMusicVolume: 0.3,
+                bgMusicPlaying: false,
+                mixFader: 50,
+                autoBgFadeOutMs: 900,
+                autoBgFadeInMs: 900,
+                autoBgMixDuringSong: 0,
+                autoPlayMedia: true,
+                hostName: nextHostName,
+                hostUid: activeUid,
+                hostUids: [activeUid],
+                orgId: activeOrgId || null,
+                orgName: nextOrgName,
+                logoUrl: nextLogoUrl,
+                autoDj: false,
+                marqueeEnabled: false,
+                marqueeDurationMs: 12000,
+                marqueeIntervalMs: 20000,
+                marqueeItems: DEFAULT_MARQUEE_ITEMS,
+                marqueeShowMode: 'idle',
+                tipPointRate: 100,
+                tipCrates: DEFAULT_TIP_CRATES,
+                audienceVideoMode: 'off',
+                showLyricsTv: false,
+                showVisualizerTv: false,
+                visualizerMode: 'ribbon',
+                showLyricsSinger: false,
+                hideCornerOverlay: false,
+                howToPlay: { active: false, id: Date.now() },
+                gameRulesId: 0,
+                showScoring: true,
+                showFameLevel: true,
+                allowSingerTrackSelect: false,
+                queueSettings: {
+                    limitMode: 'none',
+                    limitCount: 0,
+                    rotation: 'round_robin',
+                    firstTimeBoost: true
+                },
+                chatEnabled: true,
+                chatShowOnTv: false,
+                chatTvMode: 'auto',
+                chatSlowModeSec: 0,
+                chatAudienceMode: 'all'
+            });
+            trackEvent('host_room_created', { room_code: c });
+            setRoomCode(c);
+            setRoomCodeInput(c);
+            setView('panel');
+            setShowOnboardingWizard(false);
+            toast(`Room ${c} created`);
+            setDoc(
+                doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', c),
+                { ytIndex: [], logoLibrary: [], updatedAt: serverTimestamp() },
+                { merge: true }
+            ).catch((seedErr) => {
+                console.warn('Room created but host library seed failed', seedErr);
+            });
+        } catch (e) {
+            console.error('Failed to create room', {
+                error: e,
+                propUid: uid || null,
+                authUid: auth.currentUser?.uid || null
+            });
+            const code = e?.code || '';
+            if (code.includes('permission-denied')) {
+                toast('Permission denied while creating room. Re-authenticate and try again.');
+            } else if (code.includes('unauthenticated')) {
+                toast('You are signed out. Please retry auth, then create room again.');
+            } else {
+                toast(`Failed to create room${code ? ` (${code})` : ''}`);
+            }
+        } finally {
+            setCreatingRoom(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!normalizedInitialCode || autoJoinAttemptedRef.current) return;
+        autoJoinAttemptedRef.current = true;
+        setRoomCodeInput(normalizedInitialCode);
+        joinRoom(normalizedInitialCode);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [normalizedInitialCode]);
 
     const updateRoom = async (d) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), d);
     const toggleHowToPlay = async () => {
         const active = !room?.howToPlay?.active;
         await updateRoom({ howToPlay: { active, id: Date.now() } });
     };
-    const _saveLogoUrl = async () => {
-        await updateRoom({ logoUrl: logoUrl?.trim() || null });
-        toast("Logo updated");
+    const saveLogoUrl = async (nextLogoUrl = logoUrl) => {
+        const trimmed = (nextLogoUrl || '').trim();
+        setLogoUrl(trimmed);
+        if (!roomCode) {
+            toast('Create or open a room first');
+            return;
+        }
+        await updateRoom({ logoUrl: trimmed || null });
+        toast('Logo updated');
     };
     const clearStormTimers = () => {
         stormTimersRef.current.forEach(t => clearTimeout(t));
@@ -3937,7 +3696,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const amount = Math.max(1, Math.round(points));
         try {
             const target = users.find(u => (u.uid || u.id?.split('_')[1]) === targetUid);
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${targetUid}`), { points: increment(amount) });
+            await callFunction('awardRoomPoints', { roomCode, awards: [{ uid: targetUid, points: amount }] });
             await logActivity(roomCode, target?.name || 'Guest', `received ${amount} pts from ${hostName || 'Host'}`, EMOJI.sparkle);
             toast(`Gifted ${amount} pts`);
         } catch (e) {
@@ -3960,7 +3719,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const points = Math.round(amount * (tipPointRate || 100));
         try {
             const target = users.find(u => (u.uid || u.id?.split('_')[1]) === tipUserId);
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${tipUserId}`), { points: increment(points) });
+            await callFunction('awardRoomPoints', { roomCode, awards: [{ uid: tipUserId, points }] });
             await logActivity(roomCode, target?.name || 'Guest', `received ${points} pts for a $${amount.toFixed(2)} tip`, EMOJI.tip);
             toast(`Awarded ${points} pts`);
             setTipAmount('');
@@ -3976,7 +3735,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 tipUrl: tipSettings.link.trim() || null, 
                 tipQrUrl: tipSettings.qr.trim() || null,
                 hostName: hostName || 'Host',
-                logoUrl: logoUrl || null,
+                logoUrl: logoUrl?.trim() || null,
                 tipPointRate: tipPointRate || 100,
                 tipCrates: tipCrates.map((crate, idx) => ({
                     id: crate.id || `crate_${idx}`,
@@ -4014,11 +3773,98 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { ytIndex: next }, { merge: true });
     };
 
+    const persistLogoLibrary = async (next) => {
+        const cleaned = Array.from(new Set((next || [])
+            .filter(url => typeof url === 'string')
+            .map(url => url.trim())
+            .filter(Boolean)))
+            .slice(0, 24);
+        setLogoLibrary(cleaned);
+        if (!roomCode) return;
+        await setDoc(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode),
+            { logoLibrary: cleaned, updatedAt: serverTimestamp() },
+            { merge: true }
+        );
+    };
+
+    const uploadLogoFile = async (file) => {
+        if (!roomCode) {
+            toast('Create or open a room first');
+            return;
+        }
+        if (!file) return;
+        if (!file.type?.startsWith('image/')) {
+            toast('Please select an image file');
+            return;
+        }
+        const maxBytes = 12 * 1024 * 1024;
+        if (file.size > maxBytes) {
+            toast('Logo is too large (max 12 MB)');
+            return;
+        }
+        setLogoUploading(true);
+        setLogoUploadProgress(0);
+        try {
+            const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+            const stem = (file.name.replace(/\.[^/.]+$/, '') || 'logo')
+                .toLowerCase()
+                .replace(/[^a-z0-9_-]+/g, '-')
+                .replace(/-+/g, '-')
+                .slice(0, 60);
+            const storagePath = `room_branding/${roomCode}/${Date.now()}-${stem}.${ext}`;
+            const fileRef = storageRef(storage, storagePath);
+            const task = uploadBytesResumable(fileRef, file, {
+                contentType: file.type,
+                cacheControl: 'public,max-age=604800'
+            });
+            await new Promise((resolve, reject) => {
+                task.on('state_changed', (snap) => {
+                    const progress = snap.totalBytes
+                        ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100)
+                        : 0;
+                    setLogoUploadProgress(progress);
+                }, reject, resolve);
+            });
+            const url = await getDownloadURL(fileRef);
+            setLogoUrl(url);
+            await persistLogoLibrary([url, ...logoLibrary]);
+            await updateRoom({ logoUrl: url });
+            toast('Logo uploaded and applied');
+        } catch (e) {
+            console.error('Logo upload failed', e);
+            toast('Logo upload failed');
+        } finally {
+            setLogoUploading(false);
+            setLogoUploadProgress(0);
+            if (logoInputRef.current) logoInputRef.current.value = '';
+        }
+    };
+
+    const removeCustomLogo = async (url) => {
+        if (!url) return;
+        const next = logoLibrary.filter(item => item !== url);
+        await persistLogoLibrary(next);
+        if ((logoUrl || '').trim() === url) {
+            setLogoUrl('');
+            await updateRoom({ logoUrl: null });
+        }
+        toast('Custom logo removed');
+    };
+
     useEffect(() => {
         if (!roomCode) return;
         const unsub = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), s => {
             const data = s.data() || {};
             if (Array.isArray(data.ytIndex)) setYtIndex(data.ytIndex);
+            if (Array.isArray(data.logoLibrary)) {
+                setLogoLibrary(data.logoLibrary
+                    .filter(url => typeof url === 'string')
+                    .map(url => url.trim())
+                    .filter(Boolean));
+            } else {
+                setLogoLibrary([]);
+            }
         });
         return () => unsub();
     }, [roomCode]);
@@ -4521,8 +4367,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const next = queued[0];
         if (!next) return;
         await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', next.id), { status: 'performing' });
-        const autoStartMedia = !!(next?.mediaUrl || next?.appleMusicId) && (activeRoom?.autoPlayMedia !== false);
-        if (next?.appleMusicId && autoStartMedia) {
+        const queuePlayback = resolveQueuePlayback(next, activeRoom?.autoPlayMedia !== false);
+        const nextMediaUrl = queuePlayback.mediaUrl;
+        const useAppleBacking = queuePlayback.usesAppleBacking;
+        const autoStartMedia = queuePlayback.autoStartMedia;
+        if (useAppleBacking && autoStartMedia) {
             await playAppleMusicTrack(next.appleMusicId, { title: next.songTitle, artist: next.artist });
             await updateRoom({
                 activeMode: 'karaoke',
@@ -4537,12 +4386,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 showLyricsSinger: false
             });
         } else {
+            await stopAppleMusic();
             await updateRoom({
                 activeMode: 'karaoke',
                 'announcement.active': false,
-                mediaUrl: next.mediaUrl || '',
+                mediaUrl: nextMediaUrl,
                 singAlongMode: false,
-                videoPlaying: autoStartMedia,
+                videoPlaying: autoStartMedia && !!nextMediaUrl,
                 videoStartTimestamp: autoStartMedia ? Date.now() : null,
                 videoVolume: 100,
                 showLyricsTv: false,
@@ -4572,50 +4422,140 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         } catch(e) { console.error("Log error", e); }
     };
-    const sendHostChatMessage = async (text) => {
-        const message = (text ?? chatDraft).trim();
-        if (!message || !roomCode) return;
-        try {
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'), {
-                roomCode,
-                text: message,
-                user: hostName || 'Host',
-                avatar: EMOJI.mic,
-                isHost: true,
-                timestamp: serverTimestamp()
-            });
-            if (!text || message === chatDraft.trim()) {
-                setChatDraft('');
-            }
-        } catch (e) {
-            console.error(e);
-            toast('Chat send failed');
-        }
-    };
-    const sendHostChat = async () => sendHostChatMessage();
-    const sendHostDmMessage = async (targetUid, text) => {
-        const message = (text ?? '').trim();
-        if (!message || !roomCode || !targetUid) return;
-        try {
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'), {
-                roomCode,
-                text: message,
-                user: hostName || 'Host',
-                avatar: EMOJI.mic,
-                isHost: true,
-                toUid: targetUid,
-                channel: 'dm',
-                timestamp: serverTimestamp()
-            });
-        } catch (e) {
-            console.error(e);
-            toast('DM send failed');
-        }
-    };
     const openChatSettings = () => {
         setShowSettings(true);
         setSettingsTab('chat');
     };
+    const refreshBillingEntitlements = async (showToast = false) => {
+        setOrgContext(prev => ({ ...prev, loading: true, error: '' }));
+        try {
+            await ensureOrganization('');
+            const entitlements = await getMyEntitlements();
+            syncOrgContextFromEntitlements(entitlements);
+            await refreshUsageSummary(false);
+            if (showToast) toast('Billing status refreshed');
+            return entitlements;
+        } catch (e) {
+            console.error('Billing entitlement refresh failed', e);
+            setOrgContext(prev => ({ ...prev, loading: false, error: 'Could not refresh billing status.' }));
+            if (showToast) toast('Could not refresh billing status');
+            return null;
+        }
+    };
+    const refreshUsageSummary = async (showToast = false) => {
+        setUsageSummary(prev => ({ ...prev, loading: true, error: '' }));
+        try {
+            const usage = await getMyUsageSummary();
+            setUsageSummary({
+                orgId: usage?.orgId || orgContext?.orgId || '',
+                period: usage?.period || '',
+                meters: usage?.meters || {},
+                totals: usage?.totals || { estimatedOverageCents: 0 },
+                loading: false,
+                error: ''
+            });
+            if (showToast) toast('Usage summary refreshed');
+            return usage;
+        } catch (e) {
+            console.error('Usage summary refresh failed', e);
+            setUsageSummary(prev => ({ ...prev, loading: false, error: 'Could not refresh usage summary.' }));
+            if (showToast) toast('Could not refresh usage summary');
+            return null;
+        }
+    };
+    const openSubscriptionCheckout = async (planId, orgNameOverride = '') => {
+        if (subscriptionActionLoading) return;
+        setSubscriptionActionLoading(planId);
+        try {
+            const safeOrgName = String(orgNameOverride || onboardingWorkspaceName || hostName || 'BROSS Workspace').trim() || 'BROSS Workspace';
+            const payload = await callFunction('createSubscriptionCheckout', {
+                planId,
+                origin: window.location.origin,
+                orgName: safeOrgName
+            });
+            if (payload?.url) {
+                window.location.href = payload.url;
+                return;
+            }
+            toast('Subscription checkout is unavailable right now.');
+        } catch (e) {
+            console.error('Subscription checkout failed', e);
+            toast('Could not open subscription checkout');
+        } finally {
+            setSubscriptionActionLoading('');
+        }
+    };
+    const openBillingPortal = async () => {
+        if (billingActionLoading) return;
+        setBillingActionLoading(true);
+        try {
+            const payload = await callFunction('createSubscriptionPortalSession', {
+                origin: window.location.origin
+            });
+            if (payload?.url) {
+                window.location.href = payload.url;
+                return;
+            }
+            toast('Billing portal is unavailable right now.');
+        } catch (e) {
+            console.error('Billing portal launch failed', e);
+            const code = String(e?.code || '').toLowerCase();
+            if (code.includes('failed-precondition')) {
+                toast('No billing profile yet. Start a subscription first.');
+            } else if (code.includes('permission-denied')) {
+                toast('Only workspace owners/admins can manage billing.');
+            } else {
+                toast('Could not open billing portal');
+            }
+        } finally {
+            setBillingActionLoading(false);
+        }
+    };
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        const subscriptionStatus = String(params.get('subscription') || '').toLowerCase();
+        const billingStatus = String(params.get('billing') || '').toLowerCase();
+        if (!subscriptionStatus && !billingStatus) return;
+
+        if (subscriptionStatus === 'success') {
+            toast('Subscription checkout completed. Refreshing billing status...');
+            setShowOnboardingWizard(true);
+            setOnboardingStep(1);
+        } else if (subscriptionStatus === 'cancel') {
+            toast('Subscription checkout canceled.');
+        } else if (billingStatus === 'return') {
+            toast('Returned from billing portal. Refreshing billing status...');
+        }
+
+        getMyEntitlements()
+            .then((entitlements) => {
+                syncOrgContextFromEntitlements(entitlements);
+                return getMyUsageSummary();
+            })
+            .then((usage) => {
+                if (!usage) return;
+                setUsageSummary({
+                    orgId: usage?.orgId || orgContext?.orgId || '',
+                    period: usage?.period || '',
+                    meters: usage?.meters || {},
+                    totals: usage?.totals || { estimatedOverageCents: 0 },
+                    loading: false,
+                    error: ''
+                });
+            })
+            .catch((e) => {
+                console.warn('Post-billing refresh failed', e);
+            });
+
+        params.delete('subscription');
+        params.delete('billing');
+        params.delete('org');
+        const nextQuery = params.toString();
+        const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState({}, '', nextUrl);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     
     // History
     const history = songs.filter(s => s.status === 'performed').sort((a,b) => b.timestamp?.seconds - a.timestamp?.seconds);
@@ -5128,11 +5068,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <img src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png" className="w-3/4 mx-auto mb-4 drop-shadow-xl"/> 
                 <h1 className="text-4xl font-bebas mb-6 text-white tracking-widest">HOST PORTAL</h1> 
                 <button
-                    onClick={createRoom}
-                    disabled={!uid}
-                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-4 text-xl mb-4 ${!uid ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    onClick={openOnboardingWizard}
+                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} w-full py-4 text-lg mb-3`}
                 >
-                    {uid ? 'START NEW ROOM' : 'CONNECTING...'}
+                    SET UP WORKSPACE (WIZARD)
+                </button>
+                <button
+                    onClick={() => createRoom()}
+                    disabled={creatingRoom}
+                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-base mb-4 ${creatingRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                    {creatingRoom ? 'CREATING ROOM...' : 'QUICK START NEW ROOM'}
                 </button> 
                 {!uid && authError && (
                     <div className="mb-3 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
@@ -5142,12 +5088,261 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         )}
                     </div>
                 )}
+                <div className="text-xs text-zinc-500 uppercase tracking-widest mb-2">Join Existing Room</div>
                 <div className="flex gap-2 justify-center"> 
-                    <input value={roomCode} onChange={e=>setRoomCode(e.target.value.toUpperCase())} placeholder="CODE" className={`${STYLES.input} text-center text-lg font-mono w-full`} /> 
-                    <button onClick={()=>roomCode && setView('panel')} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6`}>Join</button> 
-                </div> 
+                    <input
+                        value={roomCodeInput}
+                        onChange={e => setRoomCodeInput(e.target.value.toUpperCase())}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') joinRoom();
+                        }}
+                        placeholder="CODE"
+                        className={`${STYLES.input} text-center text-lg font-mono w-full`}
+                    /> 
+                    <button
+                        onClick={() => joinRoom()}
+                        disabled={joiningRoom}
+                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                        {joiningRoom ? 'Joining...' : 'Join'}
+                    </button> 
+                </div>
+                <div className="mt-3 text-xs text-zinc-500">
+                    Workspace: <span className="font-mono text-zinc-300">{orgContext?.orgId || 'not-initialized'}</span>
+                    {' '}| Plan: <span className="text-zinc-300">{planLabel}</span>
+                </div>
                 <div className="mt-6 text-xs text-zinc-500 font-mono tracking-widest">{VERSION}</div> 
-            </div> 
+            </div>
+            {showOnboardingWizard && (
+                <div className="fixed inset-0 z-[95] bg-black/80 flex items-center justify-center p-4">
+                    <div className="w-full max-w-3xl bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl overflow-hidden text-left">
+                        <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between gap-3">
+                            <div>
+                                <div className="text-sm uppercase tracking-widest text-zinc-500">Turnkey Setup</div>
+                                <div className="text-xl font-bold text-white">Workspace Onboarding</div>
+                            </div>
+                            <button
+                                onClick={closeOnboardingWizard}
+                                disabled={onboardingBusy || creatingRoom}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                            >
+                                Close
+                            </button>
+                        </div>
+                        <div className="px-5 py-4 border-b border-zinc-800 flex flex-wrap gap-2">
+                            {HOST_ONBOARDING_STEPS.map((step, idx) => (
+                                <button
+                                    key={step.key}
+                                    onClick={() => {
+                                        if (onboardingBusy || creatingRoom) return;
+                                        if (idx > onboardingStep) return;
+                                        setOnboardingStep(idx);
+                                        setOnboardingError('');
+                                    }}
+                                    className={`px-3 py-1 rounded-full border text-xs uppercase tracking-widest ${
+                                        idx === onboardingStep
+                                            ? 'bg-[#00C4D9]/20 text-[#00C4D9] border-[#00C4D9]/40'
+                                            : idx < onboardingStep
+                                                ? 'bg-emerald-500/10 text-emerald-200 border-emerald-400/30'
+                                                : 'bg-zinc-900 text-zinc-500 border-zinc-700'
+                                    }`}
+                                >
+                                    {idx + 1}. {step.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="px-5 py-4 space-y-4 max-h-[65vh] overflow-y-auto custom-scrollbar">
+                            {onboardingError && (
+                                <div className="text-sm text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2">
+                                    {onboardingError}
+                                </div>
+                            )}
+                            {onboardingStep === 0 && (
+                                <div className="space-y-3">
+                                    <div>
+                                        <div className="text-xs uppercase tracking-widest text-zinc-500 mb-1">Host Name</div>
+                                        <input
+                                            value={onboardingHostName}
+                                            onChange={e => setOnboardingHostName(e.target.value)}
+                                            className={STYLES.input}
+                                            placeholder="Host name"
+                                        />
+                                    </div>
+                                    <div>
+                                        <div className="text-xs uppercase tracking-widest text-zinc-500 mb-1">Workspace Name</div>
+                                        <input
+                                            value={onboardingWorkspaceName}
+                                            onChange={e => setOnboardingWorkspaceName(e.target.value)}
+                                            className={STYLES.input}
+                                            placeholder="Workspace name"
+                                        />
+                                    </div>
+                                    <div className="host-form-helper">This creates/updates your organization record used for billing and entitlements.</div>
+                                    <div className="flex justify-end">
+                                        <button
+                                            onClick={provisionOnboardingWorkspace}
+                                            disabled={onboardingBusy}
+                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} ${onboardingBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                        >
+                                            {onboardingBusy ? 'Initializing...' : 'Continue to Plan'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            {onboardingStep === 1 && (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        {HOST_ONBOARDING_PLAN_OPTIONS.map((option) => (
+                                            <button
+                                                key={option.id}
+                                                onClick={() => setOnboardingPlanId(option.id)}
+                                                className={`text-left rounded-xl border p-3 transition-colors ${
+                                                    onboardingPlanId === option.id
+                                                        ? 'border-[#00C4D9]/60 bg-[#00C4D9]/10'
+                                                        : 'border-zinc-700 bg-zinc-950/70 hover:border-zinc-500'
+                                                }`}
+                                            >
+                                                <div className="text-white font-semibold">{option.label}</div>
+                                                <div className="text-zinc-300 text-sm">{option.price}</div>
+                                                <div className="text-zinc-500 text-xs mt-2">{option.note}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="text-sm text-zinc-300">
+                                        Current plan: <span className="text-white font-semibold">{planLabel}</span>
+                                        {' '}({orgContext?.status || 'inactive'})
+                                    </div>
+                                    {onboardingPlanId !== 'free' && (
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                onClick={() => openSubscriptionCheckout(onboardingPlanId, onboardingWorkspaceName)}
+                                                disabled={!!subscriptionActionLoading}
+                                                className={`${STYLES.btnStd} ${STYLES.btnPrimary} ${subscriptionActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                            >
+                                                {subscriptionActionLoading === onboardingPlanId ? 'Opening checkout...' : 'Open Checkout'}
+                                            </button>
+                                            <button
+                                                onClick={() => refreshBillingEntitlements(true)}
+                                                disabled={orgContext.loading}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${orgContext.loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                            >
+                                                {orgContext.loading ? 'Refreshing...' : 'I already paid - Refresh'}
+                                            </button>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between gap-2">
+                                        <button
+                                            onClick={() => setOnboardingStep(0)}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                        >
+                                            Back
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setOnboardingError('');
+                                                setOnboardingStep(2);
+                                            }}
+                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}
+                                        >
+                                            Continue to Branding
+                                        </button>
+                                    </div>
+                                    {!onboardingHasActiveSubscription && onboardingPlanId !== 'free' && (
+                                        <div className="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded-lg px-3 py-2">
+                                            Subscription is not active yet. You can continue setup now and activate billing later.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {onboardingStep === 2 && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Default Logo</div>
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <img src={onboardingLogoUrl || ASSETS.logo} alt="Onboarding logo preview" className="w-20 h-20 object-contain rounded-lg border border-zinc-700 bg-zinc-950 p-2" />
+                                            <div className="text-sm text-zinc-400">This logo becomes your initial room branding and can be changed later in settings.</div>
+                                        </div>
+                                        <input
+                                            value={onboardingLogoUrl}
+                                            onChange={e => setOnboardingLogoUrl(e.target.value)}
+                                            className={STYLES.input}
+                                            placeholder="Custom logo URL (optional)"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                        {logoChoices.slice(0, 9).map(choice => (
+                                            <button
+                                                key={`wizard-logo-${choice.id}`}
+                                                onClick={() => setOnboardingLogoUrl(choice.url)}
+                                                className={`rounded-lg border p-2 flex flex-col items-center gap-2 ${
+                                                    onboardingLogoUrl === choice.url
+                                                        ? 'border-[#00C4D9]/60 bg-[#00C4D9]/10'
+                                                        : 'border-zinc-700 bg-zinc-950/70'
+                                                }`}
+                                            >
+                                                <img src={choice.url} alt={choice.label} className="w-16 h-16 object-contain bg-zinc-950 rounded-md p-1" />
+                                                <div className="text-[10px] text-zinc-400 text-center">{choice.label}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex justify-between gap-2">
+                                        <button
+                                            onClick={() => setOnboardingStep(1)}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                        >
+                                            Back
+                                        </button>
+                                        <button
+                                            onClick={() => setOnboardingStep(3)}
+                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}
+                                        >
+                                            Continue to Launch
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            {onboardingStep === 3 && (
+                                <div className="space-y-4">
+                                    <div className="bg-zinc-950/70 border border-zinc-800 rounded-xl p-4 space-y-2 text-sm">
+                                        <div className="flex justify-between gap-2">
+                                            <span className="text-zinc-500">Host</span>
+                                            <span className="text-white font-semibold">{onboardingHostName || 'Host'}</span>
+                                        </div>
+                                        <div className="flex justify-between gap-2">
+                                            <span className="text-zinc-500">Workspace</span>
+                                            <span className="text-white font-semibold">{onboardingWorkspaceName || '--'}</span>
+                                        </div>
+                                        <div className="flex justify-between gap-2">
+                                            <span className="text-zinc-500">Plan</span>
+                                            <span className="text-white font-semibold">{onboardingPlanLabel}</span>
+                                        </div>
+                                        <div className="flex justify-between gap-2">
+                                            <span className="text-zinc-500">Billing Status</span>
+                                            <span className="text-white font-semibold">{orgContext?.status || 'inactive'}</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-sm text-zinc-400">Launch creates your first room with these defaults and opens the Host control panel.</div>
+                                    <div className="flex justify-between gap-2">
+                                        <button
+                                            onClick={() => setOnboardingStep(2)}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                        >
+                                            Back
+                                        </button>
+                                        <button
+                                            onClick={launchOnboardingRoom}
+                                            disabled={creatingRoom}
+                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${creatingRoom ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                        >
+                                            {creatingRoom ? 'Launching...' : 'Launch First Room'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div> 
     );
     if (catalogueOnly) return (
@@ -5164,7 +5359,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <input
                         value={catalogueSearchQ}
                         onChange={e=>setCatalogueSearchQ(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-white outline-none"
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white outline-none"
                         placeholder="Search Local + YouTube + Apple Music..."
                     />
                     {(catalogueResults.length > 0 || catalogueSearchQ.length >= 3) && (
@@ -5262,333 +5457,168 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         </div>
     );
 
+    const queueTabProps = {
+        songs,
+        room,
+        roomCode,
+        appBase,
+        updateRoom,
+        logActivity,
+        localLibrary,
+        playSfxSafe,
+        toggleHowToPlay,
+        startStormSequence,
+        stopStormSequence,
+        startBeatDrop,
+        users,
+        dropBonus,
+        giftPointsToUser,
+        tipPointRate,
+        setTipPointRate,
+        marqueeEnabled,
+        setMarqueeEnabled,
+        sfxMuted,
+        setSfxMuted,
+        sfxLevel,
+        sfxVolume,
+        setSfxVolume,
+        searchSources,
+        setSearchSources,
+        ytIndex,
+        setYtIndex,
+        persistYtIndex,
+        autoDj,
+        setAutoDj,
+        autoBgMusic,
+        setAutoBgMusic,
+        playingBg,
+        setBgMusicState,
+        startReadyCheck,
+        chatShowOnTv,
+        setChatShowOnTv,
+        chatUnread,
+        dmUnread,
+        chatEnabled,
+        setChatEnabled,
+        chatAudienceMode,
+        setChatAudienceMode,
+        chatDraft,
+        setChatDraft,
+        chatMessages,
+        sendHostChat,
+        sendHostDmMessage,
+        itunesBackoffRemaining,
+        pinnedChatIds,
+        setPinnedChatIds,
+        chatViewMode,
+        handleChatViewMode,
+        appleMusicPlaying,
+        appleMusicStatus,
+        playAppleMusicTrack,
+        pauseAppleMusic,
+        resumeAppleMusic,
+        stopAppleMusic,
+        autoDjCountdown,
+        hostName,
+        fetchTop100Art,
+        openChatSettings,
+        dmTargetUid,
+        setDmTargetUid,
+        dmDraft,
+        setDmDraft,
+        getAppleMusicUserToken,
+        silenceAll
+    };
+
+    if (isChatPopout) {
+        return (
+            <div className="min-h-screen bg-zinc-950 text-white font-saira p-4 md:p-6">
+                <div className={`${STYLES.panel} p-4 md:p-6 max-w-5xl mx-auto`}>
+                    <HostChatPanel
+                        chatOpen={true}
+                        chatUnread={chatUnread}
+                        openChatSettings={openChatSettings}
+                        styles={STYLES}
+                        appBase={appBase}
+                        roomCode={roomCode}
+                        chatEnabled={chatEnabled}
+                        setChatEnabled={setChatEnabled}
+                        updateRoom={updateRoom}
+                        chatShowOnTv={chatShowOnTv}
+                        setChatShowOnTv={setChatShowOnTv}
+                        chatAudienceMode={chatAudienceMode}
+                        setChatAudienceMode={setChatAudienceMode}
+                        handleChatViewMode={handleChatViewMode}
+                        chatViewMode={chatViewMode}
+                        dmUnread={dmUnread}
+                        dmTargetUid={dmTargetUid}
+                        setDmTargetUid={setDmTargetUid}
+                        users={users}
+                        dmDraft={dmDraft}
+                        setDmDraft={setDmDraft}
+                        sendHostDmMessage={sendHostDmMessage}
+                        roomChatMessages={roomChatMessages}
+                        hostDmMessages={hostDmMessages}
+                        pinnedChatIds={pinnedChatIds}
+                        setPinnedChatIds={setPinnedChatIds}
+                        emoji={EMOJI}
+                        chatDraft={chatDraft}
+                        setChatDraft={setChatDraft}
+                        sendHostChat={sendHostChat}
+                        showSettingsButton={false}
+                        showPopoutButton={false}
+                    />
+                </div>
+            </div>
+        );
+    }
+
     return (
             <div className="host-app min-h-screen md:h-screen flex flex-col relative bg-zinc-950 text-white font-saira overflow-y-auto md:overflow-hidden">
                 {/* Header */}
-            <div className="bg-zinc-900 px-5 py-3 flex flex-col gap-2 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
-                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full">
-                        <div className="flex items-center gap-3 md:gap-4">
-                        <img
-                            src={room?.logoUrl || ASSETS.logo}
-                            className="h-16 md:h-28 object-contain rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.45)] ring-1 ring-white/10 bg-black/40 p-1"
-                            alt="Beaurocks Karaoke"
-                        />
-                        <div className="text-[16px] md:text-[22px] font-mono font-bold text-[#00C4D9] bg-black/40 px-2.5 py-1 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
-                            <div className="relative">
-                                <button
-                                    onClick={() => setShowLaunchMenu(prev => !prev)}
-                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 text-sm`}
-                                >
-                                    <i className="fa-solid fa-rocket"></i>
-                                </button>
-                                {showLaunchMenu && (
-                                    <div className="absolute left-0 top-full mt-2 w-56 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-50">
-                                        <a
-                                            href={`${appBase}?room=${roomCode}&mode=tv`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            onClick={() => setShowLaunchMenu(false)}
-                                            className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900 rounded-t-xl"
-                                        >
-                                            <i className="fa-solid fa-tv mr-2 text-cyan-300"></i> Launch TV
-                                        </a>
-                                        <a
-                                            href={`${appBase}?room=${roomCode}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            onClick={() => setShowLaunchMenu(false)}
-                                            className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
-                                        >
-                                            <i className="fa-solid fa-mobile-screen-button mr-2 text-pink-300"></i> Launch Mobile
-                                        </a>
-                                        <a
-                                            href={`${appBase}?room=${roomCode}&mode=host&tab=browse&catalogue=1`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            onClick={() => setShowLaunchMenu(false)}
-                                            className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
-                                        >
-                                            <i className="fa-solid fa-book-open mr-2 text-yellow-300"></i> Launch Catalogue
-                                        </a>
-                                        <div className="px-4 py-2 text-sm uppercase tracking-[0.3em] text-zinc-500 border-t border-zinc-800">
-                                            Game Displays
-                                        </div>
-                                        {GAMES_META.map((game, idx, arr) => (
-                                            <a
-                                                key={game.id}
-                                                href={`${appBase}?room=${roomCode}&mode=host&game=${game.id}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                onClick={() => setShowLaunchMenu(false)}
-                                                className={`block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900 ${idx === arr.length - 1 ? 'rounded-b-xl' : ''}`}
-                                            >
-                                                <i className="fa-solid fa-gamepad mr-2 text-cyan-300"></i>
-                                                {game.name}
-                                            </a>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3 md:gap-4 justify-between md:justify-end">
-                            {/* Active Mode Indicator */}
-                            {room?.activeMode && room.activeMode !== 'karaoke' && (
-                                <div className="bg-red-600 px-3 py-1 rounded text-xs md:text-sm font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
-                            )}
-                            <div className="hidden md:flex items-center gap-2">
-                                {[
-                                    { key: 'stage', label: 'Stage' },
-                                    { key: 'games', label: 'Games' },
-                                    { key: 'lobby', label: 'Lobby' }
-                                ].map(t => (
-                                    <button
-                                        key={t.key}
-                                        onClick={() => setTab(t.key)}
-                                        className={`px-5 py-2 text-lg font-black uppercase tracking-[0.3em] rounded-2xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
-                                    >
-                                        {t.label}
-                                    </button>
-                                ))}
-                            </div>
-                            <button onClick={()=>{ setShowSettings(true); setSettingsTab('general'); }} className="text-zinc-500 hover:text-white"><i className="fa-solid fa-gear text-lg md:text-xl"></i></button>
-                            <div className="relative">
-                                <button
-                                    onClick={() => setShowNavMenu(prev => !prev)}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-sm md:hidden`}
-                                >
-                                    <i className="fa-solid fa-bars"></i>
-                                </button>
-                                {showNavMenu && (
-                                    <div className="absolute right-0 top-full mt-2 w-44 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-50">
-                                        {[
-                                            { key: 'stage', label: 'Stage' },
-                                            { key: 'games', label: 'Games' },
-                                            { key: 'lobby', label: 'Lobby' }
-                                        ].map(t => (
-                                            <button
-                                                key={t.key}
-                                                onClick={() => { setTab(t.key); setShowNavMenu(false); }}
-                                                className={`w-full text-left px-4 py-2 text-sm font-bold uppercase tracking-widest ${tab === t.key ? 'text-[#00C4D9]' : 'text-zinc-300'} hover:bg-zinc-900 ${t.key === 'stage' ? 'rounded-t-xl' : ''} ${t.key === 'lobby' ? 'rounded-b-xl' : ''}`}
-                                            >
-                                                {t.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                <div className="w-full">
-                    <button
-                        onClick={() => setAudioPanelOpen(v => !v)}
-                        className={`w-full flex items-center justify-between ${STYLES.header}`}
-                    >
-                        <span className="flex items-center gap-2">
-                            <i className="fa-solid fa-sliders"></i>
-                            Audio + Mix
-                        </span>
-                        <i className={`fa-solid fa-chevron-down transition-transform ${audioPanelOpen ? 'rotate-180' : ''}`}></i>
-                    </button>
-                    <div className={audioPanelOpen ? 'block' : 'hidden'}>
-                        <div className="w-full bg-gradient-to-r from-[#00E5FF]/12 via-[#2BD4C8]/10 to-[#EC4899]/12 border border-white/10 rounded-2xl p-3 overflow-hidden">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="flex items-center gap-3 bg-zinc-900/80 px-3 py-3 rounded-xl border border-white/10 h-14">
-                                <div className="text-xs uppercase tracking-widest text-zinc-400">Stage Audio</div>
-                                <SmallWaveform level={stageMeterLevel} className="h-10 w-20" color="rgba(236,72,153,0.9)" />
-                                {!stageMicReady && (
-                                    <button
-                                        onClick={requestStageMic}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-xs min-w-[30px]`}
-                                        title={stageMicError ? 'Enable mic for stage meter' : 'Enable stage meter'}
-                                    >
-                                        <i className={`fa-solid ${stageMicError ? 'fa-microphone-slash' : 'fa-microphone'} w-4 text-center`}></i>
-                                    </button>
-                                )}
-                                <button onClick={toggleSongMute} className={`${STYLES.btnStd} ${(room?.videoVolume ?? 100) === 0 ? STYLES.btnHighlight : STYLES.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}>
-                                    <i className={`fa-solid ${(room?.videoVolume ?? 100) === 0 ? 'fa-volume-xmark' : 'fa-volume-high'} w-4 text-center`}></i>
-                                </button>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="100"
-                                    step="1"
-                                    value={room?.videoVolume ?? 100}
-                                    onChange={e=>updateRoom({ videoVolume: parseInt(e.target.value, 10) })}
-                                    className="w-32 h-3 bg-zinc-800 accent-pink-500 rounded-lg appearance-none cursor-pointer stage-volume-slider"
-                                    style={{ background: `linear-gradient(90deg, #00C4D9 ${room?.videoVolume ?? 100}%, #27272a ${room?.videoVolume ?? 100}%)` }}
-                                />
-                            </div>
-                            <div className="flex items-center gap-3 bg-zinc-900/80 px-3 py-3 rounded-xl border border-white/10 h-14">
-                                <div className="text-xs uppercase tracking-widest text-zinc-400">BG</div>
-                                <SmallWaveform level={bgAnalyserRef.current ? bgMeterLevel : Math.round(bgVolume * 100)} className="h-10 w-20" color="rgba(0,196,217,0.95)" />
-                                <button onClick={toggleBgMusic} className={`${STYLES.btnStd} ${playingBg ? STYLES.btnHighlight : STYLES.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`} title="Toggle BG music">
-                                    <i className={`fa-solid ${playingBg ? 'fa-pause' : 'fa-play'} w-4 text-center`}></i>
-                                </button>
-                                <button onClick={skipBg} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`} title="Skip BG track">
-                                    <i className="fa-solid fa-forward-step w-4 text-center"></i>
-                                </button>
-                                <button
-                                    onClick={async () => {
-                                        const next = !autoBgMusic;
-                                        setAutoBgMusic(next);
-                                        await updateRoom({ autoBgMusic: next });
-                                        if (next && !playingBg) setBgMusicState(true);
-                                    }}
-                                    className={`${STYLES.btnStd} ${autoBgMusic ? STYLES.btnHighlight : STYLES.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}
-                                    title="Keep BG music rolling between songs"
-                                >
-                                    <i className="fa-solid fa-compact-disc w-4 text-center"></i>
-                                </button>
-                                <button onClick={toggleBgMute} className={`${STYLES.btnStd} ${bgVolume === 0 ? STYLES.btnHighlight : STYLES.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}>
-                                    <i className={`fa-solid ${bgVolume === 0 ? 'fa-volume-xmark' : 'fa-volume-high'} w-4 text-center`}></i>
-                                </button>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="100"
-                                    step="1"
-                                    value={Math.round(bgVolume * 100)}
-                                    onChange={e=>{
-                                        const val = parseInt(e.target.value, 10) / 100;
-                                        setBgVolume(val);
-                                        updateRoom({ bgMusicVolume: val });
-                                    }}
-                                    className="w-32 h-3 bg-zinc-800 accent-cyan-500 rounded-lg appearance-none cursor-pointer bg-volume-slider"
-                                    style={{ background: `linear-gradient(90deg, #EC4899 ${Math.round(bgVolume * 100)}%, #27272a ${Math.round(bgVolume * 100)}%)` }}
-                                />
-                                <div className="text-sm text-zinc-400 truncate max-w-[120px]">
-                                    <i className="fa-solid fa-music mr-1"></i>
-                                    {BG_TRACKS[currentTrackIdx]?.name || 'BG Track'}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3 bg-zinc-900/80 px-3 py-3 rounded-xl border border-white/10 h-14 mt-4">
-                            <div className="text-sm uppercase tracking-widest text-zinc-400">Mix</div>
-                            <div className="flex flex-col gap-3 flex-1">
-                                <div className="relative">
-                                    <span className="absolute left-1/2 top-1/2 -translate-y-1/2 -translate-x-1/2 w-0.5 h-5 bg-white/40 rounded-full"></span>
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        step="1"
-                                        value={mixFader}
-                                        onChange={e=>handleMixFaderChange(parseInt(e.target.value, 10))}
-                                        className="mix-slider w-full relative z-10"
-                                        style={{ '--mix-split': `${mixFader}%` }}
-                                    />
-                                </div>
-                                <div className="flex items-center justify-between text-sm text-zinc-400">
-                                    <span className="text-[#00C4D9]">BG Music {mixFader}%</span>
-                                    <span className="text-pink-300">Stage Audio {100 - mixFader}%</span>
-                                </div>
-                            </div>
-                        </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                <HostTopChrome
+                    room={room}
+                    appBase={appBase}
+                    roomCode={roomCode}
+                    gamesMeta={GAMES_META}
+                    tab={tab}
+                    setTab={setTab}
+                    showLaunchMenu={showLaunchMenu}
+                    setShowLaunchMenu={setShowLaunchMenu}
+                    showNavMenu={showNavMenu}
+                    setShowNavMenu={setShowNavMenu}
+                    setShowSettings={setShowSettings}
+                    setSettingsTab={setSettingsTab}
+                    styles={STYLES}
+                    logoFallback={ASSETS.logo}
+                    audioPanelOpen={audioPanelOpen}
+                    setAudioPanelOpen={setAudioPanelOpen}
+                    stageMeterLevel={stageMeterLevel}
+                    stageMicReady={stageMicReady}
+                    stageMicError={stageMicError}
+                    requestStageMic={requestStageMic}
+                    toggleSongMute={toggleSongMute}
+                    updateRoom={updateRoom}
+                    smallWaveform={SmallWaveform}
+                    bgAnalyserActive={!!bgAnalyserRef.current}
+                    bgMeterLevel={bgMeterLevel}
+                    bgVolume={bgVolume}
+                    setBgVolume={setBgVolume}
+                    toggleBgMusic={toggleBgMusic}
+                    playingBg={playingBg}
+                    skipBg={skipBg}
+                    autoBgMusic={autoBgMusic}
+                    setAutoBgMusic={setAutoBgMusic}
+                    setBgMusicState={setBgMusicState}
+                    toggleBgMute={toggleBgMute}
+                    currentTrackName={BG_TRACKS[currentTrackIdx]?.name || 'BG Track'}
+                    mixFader={mixFader}
+                    handleMixFaderChange={handleMixFaderChange}
+                />
 
             <div className="flex-1 min-h-0 p-6 overflow-y-auto md:overflow-hidden">
                 {tab === 'stage' && (
-                        <QueueTab
-                            songs={songs}
-                            room={room}
-                            roomCode={roomCode}
-                            appBase={appBase}
-                            updateRoom={updateRoom}
-                        toggleBgMusic={toggleBgMusic}
-                        playingBg={playingBg}
-                        bgVolume={bgVolume}
-                        setBgVolume={setBgVolume}
-                        currentTrackIdx={currentTrackIdx}
-                        skipBg={skipBg}
-                        silenceAll={silenceAll}
-                        logActivity={logActivity}
-                        localLibrary={localLibrary}
-                        playSfxSafe={playSfxSafe}
-                        toggleHowToPlay={toggleHowToPlay}
-                        startStormSequence={startStormSequence}
-                        stopStormSequence={stopStormSequence}
-                        startBeatDrop={startBeatDrop}
-                        users={users}
-                        tipUserId={tipUserId}
-                        setTipUserId={setTipUserId}
-                        tipAmount={tipAmount}
-                        setTipAmount={setTipAmount}
-                        tipPointRate={tipPointRate}
-                        dropBonus={dropBonus}
-                        giftPointsToUser={giftPointsToUser}
-                        tipPointRate={tipPointRate}
-                        setTipPointRate={setTipPointRate}
-                        awardTipPoints={awardTipPoints}
-                        marqueeEnabled={marqueeEnabled}
-                        setMarqueeEnabled={setMarqueeEnabled}
-                        marqueeDurationSec={marqueeDurationSec}
-                        setMarqueeDurationSec={setMarqueeDurationSec}
-                        marqueeIntervalSec={marqueeIntervalSec}
-                        setMarqueeIntervalSec={setMarqueeIntervalSec}
-                        saveMarqueeSettings={saveMarqueeSettings}
-                        marqueeItems={marqueeItems}
-                        updateMarqueeItems={updateMarqueeItems}
-                        marqueeShowMode={marqueeShowMode}
-                        setMarqueeShowMode={setMarqueeShowMode}
-                        chatShowOnTv={chatShowOnTv}
-                        setChatShowOnTv={setChatShowOnTv}
-                        chatUnread={chatUnread}
-                        dmUnread={dmUnread}
-                        chatEnabled={chatEnabled}
-                        setChatEnabled={setChatEnabled}
-                        chatSlowModeSec={chatSlowModeSec}
-                        setChatSlowModeSec={setChatSlowModeSec}
-                        chatAudienceMode={chatAudienceMode}
-                        setChatAudienceMode={setChatAudienceMode}
-                        chatDraft={chatDraft}
-                        setChatDraft={setChatDraft}
-                        chatMessages={chatMessages}
-                        sendHostChat={sendHostChat}
-                        sendHostDmMessage={sendHostDmMessage}
-                        sendHostChatMessage={sendHostChatMessage}
-                        dmTargetUid={dmTargetUid}
-                        setDmTargetUid={setDmTargetUid}
-                        dmDraft={dmDraft}
-                        setDmDraft={setDmDraft}
-                        pinnedChatIds={pinnedChatIds}
-                        setPinnedChatIds={setPinnedChatIds}
-                        chatViewMode={chatViewMode}
-                        handleChatViewMode={handleChatViewMode}
-                        sfxMuted={sfxMuted}
-                        setSfxMuted={setSfxMuted}
-                        sfxLevel={sfxLevel}
-                        sfxVolume={sfxVolume}
-                        setSfxVolume={setSfxVolume}
-                        uid={uid}
-                            searchSources={searchSources}
-                            setSearchSources={setSearchSources}
-                            ytIndex={ytIndex}
-                            setYtIndex={setYtIndex}
-                            persistYtIndex={persistYtIndex}
-                        autoDj={autoDj}
-                        setAutoDj={setAutoDj}
-                        autoBgMusic={autoBgMusic}
-                        setAutoBgMusic={setAutoBgMusic}
-                        readyCheckDurationSec={readyCheckDurationSec}
-                        readyCheckRewardPoints={readyCheckRewardPoints}
-                    startReadyCheck={startReadyCheck}
-                        itunesBackoffRemaining={itunesBackoffRemaining}
-                        appleMusicReady={appleMusicReady}
-                        appleMusicAuthorized={appleMusicAuthorized}
-                        appleMusicPlaying={appleMusicPlaying}
-                        appleMusicStatus={appleMusicStatus}
-                        playAppleMusicTrack={playAppleMusicTrack}
-                        pauseAppleMusic={pauseAppleMusic}
-                        resumeAppleMusic={resumeAppleMusic}
-                        autoDjCountdown={autoDjCountdown}
-                        hostName={hostName}
-                        fetchTop100Art={fetchTop100Art}
-                        connectAppleMusic={connectAppleMusic}
-                        openChatSettings={openChatSettings}
-                    />
+                    <QueueTab {...queueTabProps} />
                 )}
                 {tab === 'browse' && browsePanel}
                 {tab === 'games' && (
@@ -5604,6 +5634,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         callFunction={callFunction}
                         useToast={useToast}
                         autoOpenGameId={autoOpenGameId}
+                        capabilities={orgContext?.capabilities || {}}
+                        entitlementStatus={{
+                            loading: orgContext.loading,
+                            error: orgContext.error,
+                            planId: orgContext.planId,
+                            status: orgContext.status
+                        }}
                     />
                 )}
                 {/* Lobby Tab */}
@@ -5811,6 +5848,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         <div className="flex flex-wrap gap-2 mb-6">
                             {[
                                 { key: 'general', label: 'General' },
+                                { key: 'billing', label: 'Billing' },
                                 { key: 'monetization', label: 'Monetization' },
                                 { key: 'media', label: 'Media' },
                                 { key: 'marquee', label: 'Marquee' },
@@ -5822,9 +5860,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 onClick={() => {
                                     setSettingsTab(t.key);
                                     if (t.key === 'chat') {
-                                        const newest = chatMessages[0]?.timestamp?.seconds ? chatMessages[0].timestamp.seconds * 1000 : 0;
-                                        if (newest) chatLastSeenRef.current = newest;
-                                        setChatUnread(false);
+                                        markChatTabSeen();
                                     }
                                 }}
                                 className={`px-4 py-2 rounded-lg text-sm font-bold uppercase transition-all ${
@@ -5845,8 +5881,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="text-sm uppercase tracking-widest text-zinc-400">Host identity</div>
                                 <input value={hostName} onChange={e=>setHostName(e.target.value)} className={STYLES.input} placeholder="Host name" title="Shown on the TV and activity feed" />
                                 <div className="host-form-helper">Name shown in the TV header and activity feed.</div>
-                                <input value={logoUrl} onChange={e=>setLogoUrl(e.target.value)} className={STYLES.input} placeholder="Logo URL (optional)" title="Paste a public logo URL" />
-                                <div className="host-form-helper">Logo defaults to BROSS if empty. Square or wide works best.</div>
+                                <HostLogoManager
+                                    styles={STYLES}
+                                    logoUrl={logoUrl}
+                                    setLogoUrl={setLogoUrl}
+                                    logoUploading={logoUploading}
+                                    logoUploadProgress={logoUploadProgress}
+                                    logoInputRef={logoInputRef}
+                                    uploadLogoFile={uploadLogoFile}
+                                    saveLogoUrl={saveLogoUrl}
+                                    logoChoices={logoChoices}
+                                    removeCustomLogo={removeCustomLogo}
+                                    assets={ASSETS}
+                                />
                             </div>
                             <div className="space-y-2">
                                 <div className="text-sm uppercase tracking-widest text-zinc-400">Tips</div>
@@ -6021,6 +6068,126 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </>
                         )}
 
+                        {settingsTab === 'billing' && (
+                        <div className="space-y-4">
+                            <div className={STYLES.header}>Subscription & Billing</div>
+                            <div className="bg-zinc-950/60 border border-white/10 rounded-xl p-4 space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
+                                        <div className="text-xs uppercase tracking-widest text-zinc-500">Plan</div>
+                                        <div className="text-white font-semibold mt-1">{planLabel}</div>
+                                    </div>
+                                    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
+                                        <div className="text-xs uppercase tracking-widest text-zinc-500">Status</div>
+                                        <div className="mt-1">
+                                            <span className={`inline-flex px-2 py-1 rounded-full border text-xs uppercase tracking-widest ${
+                                                ['active', 'trialing', 'past_due'].includes((orgContext?.status || '').toLowerCase())
+                                                    ? 'bg-emerald-500/10 text-emerald-200 border-emerald-400/30'
+                                                    : 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                                            }`}>
+                                                {orgContext?.status || 'inactive'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
+                                        <div className="text-xs uppercase tracking-widest text-zinc-500">Next Renewal</div>
+                                        <div className="text-white font-semibold mt-1">{renewalLabel}</div>
+                                    </div>
+                                    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
+                                        <div className="text-xs uppercase tracking-widest text-zinc-500">Workspace</div>
+                                        <div className="text-zinc-200 font-mono text-xs mt-1 break-all">{orgContext?.orgId || 'Not set'}</div>
+                                    </div>
+                                </div>
+                                {orgContext?.cancelAtPeriodEnd && (
+                                    <div className="text-sm text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded-lg px-3 py-2">
+                                        Subscription is set to cancel at period end.
+                                    </div>
+                                )}
+                                {orgContext?.error && (
+                                    <div className="text-sm text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2">
+                                        {orgContext.error}
+                                    </div>
+                                )}
+                                <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3 space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="text-xs uppercase tracking-widest text-zinc-500">Usage ({usagePeriodLabel})</div>
+                                        {usageSummary?.loading && <div className="text-[10px] uppercase tracking-widest text-zinc-500">Refreshing...</div>}
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                        <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
+                                            <div className="text-xs uppercase tracking-widest text-zinc-500">AI Generations</div>
+                                            <div className="text-white font-semibold mt-1">
+                                                {Number(aiUsageMeter?.used || 0).toLocaleString()} / {Number(aiUsageMeter?.included || 0).toLocaleString()} included
+                                            </div>
+                                            <div className="text-xs text-zinc-400 mt-1">
+                                                Hard limit: {Number(aiUsageMeter?.hardLimit || 0).toLocaleString()}
+                                                {typeof aiUsageMeter?.remainingToHardLimit === 'number' ? ` | Remaining: ${Number(aiUsageMeter.remainingToHardLimit || 0).toLocaleString()}` : ''}
+                                            </div>
+                                        </div>
+                                        <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
+                                            <div className="text-xs uppercase tracking-widest text-zinc-500">Overage Estimate</div>
+                                            <div className="text-white font-semibold mt-1">
+                                                {formatUsdFromCents(usageSummary?.totals?.estimatedOverageCents || 0)}
+                                            </div>
+                                            <div className="text-xs text-zinc-400 mt-1">
+                                                Overage units: {Number(aiUsageMeter?.overageUnits || 0).toLocaleString()}
+                                                {' '}@ {formatUsdFromCents(aiUsageMeter?.overageRateCents || 0)} each
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {aiUsageMeter?.hardLimitReached && (
+                                        <div className="text-sm text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded-lg px-3 py-2">
+                                            AI monthly hard limit reached. Upgrade plan or wait for next monthly period.
+                                        </div>
+                                    )}
+                                    {usageSummary?.error && (
+                                        <div className="text-sm text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2">
+                                            {usageSummary.error}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        onClick={() => refreshBillingEntitlements(true)}
+                                        disabled={orgContext.loading}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${orgContext.loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    >
+                                        {orgContext.loading ? 'Refreshing...' : 'Refresh Status'}
+                                    </button>
+                                    <button
+                                        onClick={() => refreshUsageSummary(true)}
+                                        disabled={usageSummary.loading}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${usageSummary.loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    >
+                                        {usageSummary.loading ? 'Refreshing usage...' : 'Refresh Usage'}
+                                    </button>
+                                    <button
+                                        onClick={() => openSubscriptionCheckout('host_monthly')}
+                                        disabled={!!subscriptionActionLoading}
+                                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} ${subscriptionActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    >
+                                        {subscriptionActionLoading === 'host_monthly' ? 'Opening checkout...' : 'Host Monthly'}
+                                    </button>
+                                    <button
+                                        onClick={() => openSubscriptionCheckout('host_annual')}
+                                        disabled={!!subscriptionActionLoading}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} ${subscriptionActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    >
+                                        {subscriptionActionLoading === 'host_annual' ? 'Opening checkout...' : 'Host Annual'}
+                                    </button>
+                                    <button
+                                        onClick={openBillingPortal}
+                                        disabled={billingActionLoading}
+                                        className={`${STYLES.btnStd} ${STYLES.btnInfo} ${billingActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    >
+                                        {billingActionLoading ? 'Opening portal...' : 'Manage Billing'}
+                                    </button>
+                                </div>
+                                <div className="host-form-helper">Use checkout to start/change plans. Use Manage Billing for payment methods, invoices, and cancellations.</div>
+                            </div>
+                        </div>
+                        )}
+
                         {settingsTab === 'monetization' && (
                         <div className="space-y-4">
                             <div className={STYLES.header}>Room Tip Crates</div>
@@ -6112,7 +6279,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <input
                                     value={ytPlaylistUrl}
                                     onChange={e => setYtPlaylistUrl(e.target.value)}
-                                    className={STYLES.input}
+                                    className={`${STYLES.input} py-1.5 text-xs`}
                                     placeholder="Paste a YouTube playlist URL or ID..."
                                     title="Paste a playlist URL or ID to index"
                                 />
@@ -6123,6 +6290,48 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 >
                                     {ytPlaylistLoading ? EMOJI.refresh : 'INDEX'}
                                 </button>
+                            </div>
+                            <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">QA Shortcut</div>
+                                <div className="text-xs text-zinc-300 break-all mb-2">{qaYtPlaylistUrl}</div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        onClick={() => {
+                                            setYtPlaylistUrl(qaYtPlaylistUrl);
+                                            toast('QA playlist URL loaded');
+                                        }}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs`}
+                                    >
+                                        Use QA URL
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                await navigator.clipboard.writeText(qaYtPlaylistUrl);
+                                                toast('QA playlist URL copied');
+                                            } catch {
+                                                toast('Copy failed');
+                                            }
+                                        }}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs`}
+                                    >
+                                        Copy QA URL
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            const next = (ytPlaylistUrl || '').trim();
+                                            if (!next) {
+                                                toast('Paste a URL first');
+                                                return;
+                                            }
+                                            setQaYtPlaylistUrl(next);
+                                            toast('Saved current URL as QA shortcut');
+                                        }}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs`}
+                                    >
+                                        Save Current as QA
+                                    </button>
+                                </div>
                             </div>
                             {ytPlaylistStatus && <div className="host-form-helper">{ytPlaylistStatus}</div>}
                             <div className="host-form-helper">Indexes up to 150 videos per playlist load.</div>
@@ -6148,7 +6357,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <input
                                     value={appleMusicPlaylistUrl}
                                     onChange={e => setAppleMusicPlaylistUrl(e.target.value)}
-                                    className={STYLES.input}
+                                    className={`${STYLES.input} py-1.5 text-xs`}
                                     placeholder="Paste an Apple Music playlist URL or ID..."
                                     title="Paste a playlist URL or ID to play"
                                 />
@@ -6186,7 +6395,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <input
                                     value={appleMusicAutoPlaylistId}
                                     onChange={e => setAppleMusicAutoPlaylistId(e.target.value)}
-                                    className={STYLES.input}
+                                    className={`${STYLES.input} py-1.5 text-xs`}
                                     placeholder="Paste an Apple Music playlist URL or ID..."
                                     title="Auto-DJ uses this playlist when the queue is empty"
                                 />
@@ -6205,7 +6414,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <input
                                 value={appleMusicAutoPlaylistTitle}
                                 onChange={e => setAppleMusicAutoPlaylistTitle(e.target.value)}
-                                className={STYLES.input}
+                                className={`${STYLES.input} py-1.5 text-xs`}
                                 placeholder="Playlist title (optional)"
                                 title="Shown in Apple Music playback status"
                             />
@@ -6218,14 +6427,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <input
                                     value={ytAddTitle}
                                     onChange={e => setYtAddTitle(e.target.value)}
-                                    className={STYLES.input}
+                                    className={`${STYLES.input} py-1.5 text-xs`}
                                     placeholder="Song title"
                                     title="Title used for search and display"
                                 />
                                 <input
                                     value={ytAddArtist}
                                     onChange={e => setYtAddArtist(e.target.value)}
-                                    className={STYLES.input}
+                                    className={`${STYLES.input} py-1.5 text-xs`}
                                     placeholder="Artist (optional)"
                                     title="Optional artist name"
                                 />
@@ -6234,7 +6443,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <input
                                 value={ytAddUrl}
                                 onChange={e => setYtAddUrl(e.target.value)}
-                                className={STYLES.input}
+                                className={`${STYLES.input} py-1.5 text-xs`}
                                 placeholder="YouTube URL (optional)"
                                 title="Optional YouTube URL for the backing track"
                             />
@@ -6441,133 +6650,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                         )}
                         {settingsTab === 'chat' && (
-                            <div className="bg-zinc-950/50 border border-zinc-800 rounded-xl p-4 space-y-4">
-                                <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Chat Settings</div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <div className="text-xs uppercase tracking-widest text-zinc-400">Audience access</div>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={async () => {
-                                                    setChatAudienceMode('all');
-                                                    await updateRoom({ chatAudienceMode: 'all' });
-                                                }}
-                                                className={`${STYLES.btnStd} ${chatAudienceMode === 'all' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                                title="Everyone can chat"
-                                            >
-                                                All Users
-                                            </button>
-                                            <button
-                                                onClick={async () => {
-                                                    setChatAudienceMode('vip');
-                                                    await updateRoom({ chatAudienceMode: 'vip' });
-                                                }}
-                                                className={`${STYLES.btnStd} ${chatAudienceMode === 'vip' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                                title="Only VIPs can chat"
-                                            >
-                                                VIP Only
-                                            </button>
-                                        </div>
-                                        <div className="host-form-helper">Use VIP-only chat for premium nights.</div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <div className="text-xs uppercase tracking-widest text-zinc-400">Room status</div>
-                                        <div className="flex flex-wrap gap-2">
-                                            <button
-                                                onClick={async () => {
-                                                    const next = !chatEnabled;
-                                                    setChatEnabled(next);
-                                                    await updateRoom({ chatEnabled: next });
-                                                }}
-                                                className={`${STYLES.btnStd} ${chatEnabled ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                            >
-                                                <i className="fa-solid fa-comments mr-2"></i>
-                                                {chatEnabled ? 'Chat On' : 'Chat Off'}
-                                            </button>
-                                            <button
-                                                onClick={async () => {
-                                                    const next = !chatShowOnTv;
-                                                    setChatShowOnTv(next);
-                                                    await updateRoom({ chatShowOnTv: next });
-                                                }}
-                                                className={`${STYLES.btnStd} ${chatShowOnTv ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                            >
-                                                <i className="fa-solid fa-tv mr-2"></i>
-                                                {chatShowOnTv ? 'TV Rotation On' : 'TV Rotation Off'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <div className="text-xs uppercase tracking-widest text-zinc-400">Slow mode (seconds)</div>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        max="120"
-                                        value={chatSlowModeSec}
-                                        onChange={e => setChatSlowModeSec(e.target.value)}
-                                        onBlur={async () => {
-                                            const value = Math.max(0, Number(chatSlowModeSec || 0));
-                                            await updateRoom({ chatSlowModeSec: value });
-                                        }}
-                                        className={STYLES.input}
-                                    />
-                                    <div className="host-form-helper">0 disables slow mode. Applies to all chat senders.</div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                        onClick={() => handleChatViewMode('room')}
-                                        className={`${STYLES.btnStd} ${chatViewMode === 'room' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                    >
-                                        <i className="fa-solid fa-comments mr-2"></i>
-                                        Room Chat
-                                    </button>
-                                    <button
-                                        onClick={() => handleChatViewMode('host')}
-                                        className={`${STYLES.btnStd} ${chatViewMode === 'host' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                    >
-                                        <i className="fa-solid fa-inbox mr-2"></i>
-                                        Host DMs
-                                    </button>
-                                </div>
-                                <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Recent chat</div>
-                                <div className="max-h-56 overflow-y-auto custom-scrollbar pr-1 space-y-2">
-                                    {(chatViewMode === 'room'
-                                        ? chatMessages.filter(m => !m.toHost)
-                                        : chatMessages.filter(m => m.toHost)
-                                    ).length === 0 && (
-                                        <div className="text-zinc-500 text-xs italic">No chat yet.</div>
-                                    )}
-                                    {(chatViewMode === 'room'
-                                        ? chatMessages.filter(m => !m.toHost)
-                                        : chatMessages.filter(m => m.toHost)
-                                    ).map(m => (
-                                        <div key={m.id} className="flex items-center gap-2 bg-zinc-900/60 border border-white/5 rounded-lg px-3 py-2 text-xs text-zinc-200">
-                                            <span className="text-lg">{m.avatar || EMOJI.sparkle}</span>
-                                            <span className="font-bold text-white">{m.user || 'Guest'}</span>
-                                            <span className="text-zinc-400 truncate">{m.text}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Send a host message</div>
-                                <div className="flex gap-2">
-                                    <input
-                                        value={chatDraft}
-                                        onChange={e => setChatDraft(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                sendHostChat();
-                                            }
-                                        }}
-                                        className={`${STYLES.input} flex-1`}
-                                        placeholder="Type a hype message..."
-                                    />
-                                    <button onClick={sendHostChat} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-4`}>
-                                        Send
-                                    </button>
-                                </div>
-                            </div>
+                            <ChatSettingsPanel
+                                styles={STYLES}
+                                chatAudienceMode={chatAudienceMode}
+                                setChatAudienceMode={setChatAudienceMode}
+                                updateRoom={updateRoom}
+                                chatEnabled={chatEnabled}
+                                setChatEnabled={setChatEnabled}
+                                chatShowOnTv={chatShowOnTv}
+                                setChatShowOnTv={setChatShowOnTv}
+                                chatTvMode={chatTvMode}
+                                setChatTvMode={setChatTvMode}
+                                chatSlowModeSec={chatSlowModeSec}
+                                setChatSlowModeSec={setChatSlowModeSec}
+                                handleChatViewMode={handleChatViewMode}
+                                chatViewMode={chatViewMode}
+                                chatMessages={chatMessages}
+                                emoji={EMOJI}
+                                chatDraft={chatDraft}
+                                setChatDraft={setChatDraft}
+                                sendHostChat={sendHostChat}
+                            />
                         )}
                         {showYtIndex && (
                             <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col">
@@ -6681,7 +6784,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             >
                                                 {smokeRunning ? 'Running...' : 'Run Smoke Test'}
                                             </button>
-                                        <div className="text-sm text-zinc-500">Checks room read access + optional write/delete.</div>
+                                        <div className="text-sm text-zinc-500">Checks auth, room reads, user profile read/write, and optional write/delete.</div>
                                     </div>
                                     {smokeResults.length > 0 && (
                                         <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
