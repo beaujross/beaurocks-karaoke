@@ -24,7 +24,7 @@ const getInitialRouteState = () => {
     const pathname = window.location.pathname.replace(/\/+$/, '');
     const r = params.get('room');
     const m = params.get('mode');
-    if (m === 'marketing' || pathname.endsWith('/marketing')) {
+    if (m === 'marketing' || /\/marketing(\/.*)?$/.test(pathname)) {
         return { view: 'marketing', roomCode: '' };
     }
     if (m === 'host') {

@@ -10,6 +10,12 @@
     "lint:emoji": "node scripts/scan-emoji.js",
     "test:unit:usage": "node tests/unit/entitlementsUsage.test.cjs",
     "test:rules": "npx firebase-tools emulators:exec --project demo-bross --only firestore,storage \"node tests/security/rules.test.cjs\"",
+    "qa:p0:appcheck": "node scripts/qa/app-check-gate-smoke.mjs",
+    "qa:p0:host-join": "node scripts/qa/host-join-playtest.mjs",
+    "qa:p0:vip-readiness": "node scripts/qa/vip-sms-readiness.mjs",
+    "qa:p0:users": "node scripts/qa/users-profile-smoke.mjs",
+    "qa:p0:firebase-safety": "npm run test:rules && npm run qa:p0:appcheck",
+    "qa:p0": "npm run qa:p0:firebase-safety && npm run qa:p0:host-join && npm run qa:p0:vip-readiness && npm run qa:p0:users",
     "preview": "vite preview",
     "deploy:hosting": "npm run build && npx firebase-tools deploy --only hosting",
     "deploy:hosting:ci": "npx firebase-tools deploy --only hosting --non-interactive"
