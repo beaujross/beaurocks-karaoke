@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, addDoc, serverTimestamp, trackEvent } from '../../lib/firebase';
+import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, addDoc, serverTimestamp, trackEvent, callFunction } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
 import { ASSETS, STORM_SFX } from '../../lib/assets';
 import QRCode from 'qrcode';
@@ -453,6 +453,20 @@ const PublicTV = ({ roomCode }) => {
         clap: 'animate-clap-shake text-8xl'
     }[t] || 'animate-float text-6xl');
 
+    const awardRoomPointsOnce = useCallback(async ({ awardKey, awards = [], source = 'tv_mode' }) => {
+        if (!roomCode || !awardKey || !Array.isArray(awards) || !awards.length) return;
+        try {
+            await callFunction('awardRoomPoints', {
+                roomCode,
+                awardKey,
+                source,
+                awards
+            });
+        } catch (err) {
+            tvLogger.debug('awardRoomPoints callable failed', awardKey, err?.message || err);
+        }
+    }, [roomCode]);
+
     const startAudio = async () => {
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -554,8 +568,13 @@ const PublicTV = ({ roomCode }) => {
         const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
         updateDoc(roomRef, { doodleOke: { ...room.doodleOke, winner: winnerPayload, winnerAwardedAt: nowMs() } })
             .catch((e) => tvLogger.error('Doodle winner update failed', e));
+        awardRoomPointsOnce({
+            awardKey: `doodle_${roomCode}_${promptId}`,
+            source: 'doodle_oke',
+            awards: [{ uid: winner.uid, points }]
+        });
         doodleWinnerAwardRef.current = promptId;
-    }, [room?.activeMode, room?.doodleOke, doodleSubmissions, doodleVotes, roomCode]);
+    }, [room?.activeMode, room?.doodleOke, doodleSubmissions, doodleVotes, roomCode, awardRoomPointsOnce]);
 
     const getStormAmbientUrl = useCallback(() => {
         if (stormPhase === 'approach') return STORM_SFX.lightRain;
@@ -856,6 +875,11 @@ const PublicTV = ({ roomCode }) => {
                     requestedAt: nowMs()
                 }
             }).catch(() => {});
+            awardRoomPointsOnce({
+                awardKey: `guitar_${roomCode}_${sessionId}`,
+                source: 'guitar_mode',
+                awards: [{ uid: winner.uid, points: payload.rewardPoints || 200 }]
+            });
             addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
                 roomCode,
                 user: winner.name,
@@ -864,7 +888,7 @@ const PublicTV = ({ roomCode }) => {
                 timestamp: serverTimestamp()
             }).catch(() => {});
         }
-    }, [room, roomCode, vibeUsers, room?.guitarWinner?.sessionId]);
+    }, [room, roomCode, vibeUsers, room?.guitarWinner?.sessionId, awardRoomPointsOnce]);
 
     useEffect(() => {
         if (room?.guitarVictory?.status === 'pending') return;
@@ -898,7 +922,12 @@ const PublicTV = ({ roomCode }) => {
                 requestedAt: nowMs()
             }
         }).catch(() => {});
-    }, [room?.lightMode, room?.guitarSessionId, room?.guitarVictory?.status, room?.guitarWinner?.sessionId, roomCode, vibeUsers]);
+        awardRoomPointsOnce({
+            awardKey: `guitar_${roomCode}_${sessionId}`,
+            source: 'guitar_mode',
+            awards: [{ uid: winner.uid, points: payload.rewardPoints || 200 }]
+        });
+    }, [room?.lightMode, room?.guitarSessionId, room?.guitarVictory?.status, room?.guitarWinner?.sessionId, roomCode, vibeUsers, awardRoomPointsOnce]);
 
     useEffect(() => {
         if (room?.lightMode === 'strobe') return;
@@ -924,13 +953,22 @@ const PublicTV = ({ roomCode }) => {
         const winners = candidates.slice(0, 3);
         const winner = winners[0];
         const rewards = [150, 90, 50];
+        const strobeAwards = winners.map((entry, idx) => ({
+            uid: entry.uid,
+            points: rewards[idx] || 0
+        })).filter((entry) => entry.uid && entry.points > 0);
 
         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
             strobeWinner: { ...winner, sessionId },
             strobeResults: { sessionId, winners, rewards, awardedAt: nowMs() },
             strobeVictory: { ...winner, sessionId, status: 'pending', id: `${sessionId}` }
         }).catch(() => {});
-    }, [room?.lightMode, room?.strobeSessionId, room?.strobeEndsAt, room?.strobeResults?.sessionId, roomCode, roomUsers]);
+        awardRoomPointsOnce({
+            awardKey: `strobe_${roomCode}_${sessionId}`,
+            source: 'strobe_mode',
+            awards: strobeAwards
+        });
+    }, [room?.lightMode, room?.strobeSessionId, room?.strobeEndsAt, room?.strobeResults?.sessionId, roomCode, roomUsers, awardRoomPointsOnce]);
 
     useEffect(() => {
         const prompts = [
@@ -1196,7 +1234,6 @@ const PublicTV = ({ roomCode }) => {
         setMicVolume(level);
         if (applauseStep === 'measuring') {
             if (level > applauseMax) setApplauseMax(level);
-            if (Math.random() < 0.1) updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { currentApplauseLevel: level });
         }
     };
 

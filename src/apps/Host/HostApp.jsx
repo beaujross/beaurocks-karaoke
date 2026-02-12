@@ -4560,17 +4560,40 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const deleteRoomUploads = async () => {
         if (!roomCode) return 0;
-        const snap = await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', roomCode)));
-        if (snap.empty) return 0;
-        let deleted = 0;
-        for (const docSnap of snap.docs) {
+        const [uploadsSnap, reactionsSnap, selfieSnap] = await Promise.all([
+            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', roomCode))),
+            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', roomCode))),
+            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'), where('roomCode', '==', roomCode)))
+        ]);
+        const storagePaths = new Set();
+        uploadsSnap.docs.forEach((docSnap) => {
             const data = docSnap.data() || {};
-            const path = data.storagePath;
+            if (typeof data.storagePath === 'string' && data.storagePath) {
+                storagePaths.add(data.storagePath);
+            }
+        });
+        reactionsSnap.docs.forEach((docSnap) => {
+            const data = docSnap.data() || {};
+            if (typeof data.storagePath === 'string' && data.storagePath) {
+                storagePaths.add(data.storagePath);
+            }
+        });
+        selfieSnap.docs.forEach((docSnap) => {
+            const data = docSnap.data() || {};
+            if (typeof data.storagePath === 'string' && data.storagePath) {
+                storagePaths.add(data.storagePath);
+            }
+        });
+
+        let deleted = 0;
+        for (const path of storagePaths) {
             if (path) {
                 try { await deleteObject(storageRef(storage, path)); } catch { /* ignore delete failures */ }
             }
-            try { await deleteDoc(docSnap.ref); } catch { /* ignore delete failures */ }
             deleted += 1;
+        }
+        for (const docSnap of uploadsSnap.docs) {
+            try { await deleteDoc(docSnap.ref); } catch { /* ignore delete failures */ }
         }
         return deleted;
     };

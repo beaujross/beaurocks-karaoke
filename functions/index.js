@@ -2482,27 +2482,52 @@ exports.awardRoomPoints = onCall({ cors: true }, async (request) => {
     throw new HttpsError("invalid-argument", "Too many awards in one request.");
   }
 
-  const aggregate = new Map();
-  for (const raw of rawAwards) {
-    const uid = typeof raw?.uid === "string" ? raw.uid.trim() : "";
-    const points = clampNumber(raw?.points || 0, 0, 5000, 0);
-    if (!uid || !points) continue;
-    aggregate.set(uid, (aggregate.get(uid) || 0) + points);
-  }
-
-  if (!aggregate.size) {
+  const normalizedAwards = normalizePointAwards(rawAwards);
+  if (!normalizedAwards.length) {
     throw new HttpsError("invalid-argument", "No valid awards to apply.");
   }
 
   let totalRequested = 0;
-  for (const val of aggregate.values()) totalRequested += val;
+  normalizedAwards.forEach((entry) => {
+    totalRequested += entry.points;
+  });
   if (totalRequested > 50000) {
     throw new HttpsError("invalid-argument", "Requested points exceed batch limit.");
   }
+  const awardKey = normalizeAwardKeyToken(request.data?.awardKey || "");
+  const source = typeof request.data?.source === "string" && request.data.source.trim()
+    ? request.data.source.trim().slice(0, 80)
+    : "manual_host_award";
 
   const db = admin.firestore();
   const rootRef = getRootRef();
   const callerUid = request.auth.uid;
+
+  if (awardKey) {
+    await db.runTransaction(async (tx) => {
+      await ensureRoomHostAccess({
+        tx,
+        rootRef,
+        roomCode,
+        callerUid,
+        deniedMessage: "Only room hosts can award points.",
+      });
+    });
+    const onceResult = await applyRoomAwardsOnce({
+      roomCode,
+      awardKey,
+      awards: normalizedAwards,
+      source,
+    });
+    return {
+      ok: true,
+      awardedCount: onceResult.awardedCount || 0,
+      awardedPoints: onceResult.awardedPoints || 0,
+      skipped: Array.isArray(onceResult.skippedUids) ? onceResult.skippedUids : [],
+      duplicate: !!onceResult.duplicate,
+      applied: !!onceResult.applied,
+    };
+  }
 
   const result = await db.runTransaction(async (tx) => {
     const { roomCode: safeRoomCode } = await ensureRoomHostAccess({
@@ -2513,7 +2538,7 @@ exports.awardRoomPoints = onCall({ cors: true }, async (request) => {
       deniedMessage: "Only room hosts can award points.",
     });
 
-    const userAwards = Array.from(aggregate.entries()).map(([uid, points]) => ({
+    const userAwards = normalizedAwards.map(({ uid, points }) => ({
       uid,
       points,
       ref: rootRef.collection("room_users").doc(`${safeRoomCode}_${uid}`),

@@ -1,0 +1,4 @@
+scenario,hours,avg_active_users,page_loads,chat_messages,raw_reactions,firestore_reads_est,firestore_writes_est,infra_cogs_per_night_usd,ai_api_reserve_per_night_usd,total_variable_per_night_usd,gemini_only_ai_per_night_usd,infra_plus_gemini_per_night_usd
+Casual,3,25,45,120,1800,12200,700,0.42,2.50,2.92,0.08,0.50
+Busy,4,75,140,450,10000,45100,2640,1.38,12.40,13.78,0.36,1.74
+Tournament,6,180,320,1400,36000,149700,8250,3.89,38.00,41.89,1.20,5.09

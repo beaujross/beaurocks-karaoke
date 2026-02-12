@@ -1,0 +1,82 @@
+{
+  "as_of_date": "2026-02-12",
+  "pricing_inputs": {
+    "firestore_read_per_100k_usd": 0.06,
+    "firestore_write_per_100k_usd": 0.18,
+    "firestore_delete_per_100k_usd": 0.02,
+    "functions_invocation_per_1m_usd": 0.4,
+    "hosting_egress_per_gb_usd": 0.15,
+    "storage_per_gb_month_usd": 0.026,
+    "storage_egress_per_gb_usd": 0.12,
+    "ai_generate_content_meter_per_request_usd": 0.02,
+    "youtube_data_meter_per_request_usd": 0.01,
+    "apple_music_meter_per_request_usd": 0.01,
+    "gemini_provider_sensitivity_per_request_usd": 0.003
+  },
+  "scenarios": {
+    "casual": {
+      "hours": 3,
+      "avg_active_users": 25,
+      "audience_page_loads": 45,
+      "songs_submitted": 30,
+      "chat_messages": 120,
+      "raw_reactions": 1800,
+      "reaction_write_compression": 8,
+      "selfie_submissions": 10,
+      "game_writes": 150,
+      "room_control_writes": 120,
+      "function_invocations": 1800,
+      "hosting_egress_gb": 2.5,
+      "storage_new_gb": 0.25,
+      "storage_egress_gb": 0.3,
+      "ai_requests": 25,
+      "youtube_requests": 120,
+      "apple_requests": 80,
+      "delete_docs": 80
+    },
+    "busy": {
+      "hours": 4,
+      "avg_active_users": 75,
+      "audience_page_loads": 140,
+      "songs_submitted": 80,
+      "chat_messages": 450,
+      "raw_reactions": 10000,
+      "reaction_write_compression": 10,
+      "selfie_submissions": 40,
+      "game_writes": 600,
+      "room_control_writes": 220,
+      "function_invocations": 5500,
+      "hosting_egress_gb": 8,
+      "storage_new_gb": 1,
+      "storage_egress_gb": 1.2,
+      "ai_requests": 120,
+      "youtube_requests": 600,
+      "apple_requests": 400,
+      "delete_docs": 250
+    },
+    "tournament": {
+      "hours": 6,
+      "avg_active_users": 180,
+      "audience_page_loads": 320,
+      "songs_submitted": 180,
+      "chat_messages": 1400,
+      "raw_reactions": 36000,
+      "reaction_write_compression": 12,
+      "selfie_submissions": 120,
+      "game_writes": 2200,
+      "room_control_writes": 450,
+      "function_invocations": 14000,
+      "hosting_egress_gb": 22,
+      "storage_new_gb": 3.5,
+      "storage_egress_gb": 4,
+      "ai_requests": 400,
+      "youtube_requests": 1800,
+      "apple_requests": 1200,
+      "delete_docs": 900
+    }
+  },
+  "notes": [
+    "Meter pass-through defaults are sourced from functions/lib/entitlementsUsage.js.",
+    "Cloud pricing inputs should be refreshed monthly from provider docs."
+  ]
+}

@@ -3,6 +3,7 @@ import {
     db, doc, onSnapshot, setDoc, updateDoc, increment, serverTimestamp, 
     addDoc, collection, query, where, orderBy, limit, deleteDoc, arrayUnion,
     getDoc, runTransaction,
+    storage, storageRef, uploadBytesResumable, getDownloadURL,
     auth, ensureUserProfile, EmailAuthProvider, linkWithCredential, onAuthStateChanged,
     RecaptchaVerifier, signInWithPhoneNumber, PhoneAuthProvider,
     trackEvent,
@@ -1225,17 +1226,21 @@ const SingerApp = ({ roomCode, uid }) => {
             setChatUnread(false);
             return;
         }
+        const viewingChat = tab === 'social' && ['lounge', 'host'].includes(socialTab);
         const q = query(
             collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'),
             where('roomCode', '==', roomCode),
             orderBy('timestamp', 'desc'),
-            limit(40)
+            limit(viewingChat ? 40 : 1)
         );
         const unsub = onSnapshot(q, snap => {
             const next = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setChatMessages(next);
+            if (viewingChat) {
+                setChatMessages(next);
+            } else if (!next.length) {
+                setChatMessages([]);
+            }
             const newest = next[0]?.timestamp?.seconds ? next[0].timestamp.seconds * 1000 : 0;
-            const viewingChat = tab === 'social' && ['lounge', 'host'].includes(socialTab);
             if (newest && newest > chatLastSeenRef.current && !viewingChat) {
                 setChatUnread(true);
             }
@@ -1244,7 +1249,8 @@ const SingerApp = ({ roomCode, uid }) => {
     }, [roomCode, room?.chatEnabled, tab, socialTab]);
 
     useEffect(() => {
-        if (!roomCode) return () => {};
+        const viewingLeaderboard = tab === 'social' && socialTab === 'leaderboard';
+        if (!roomCode || !viewingLeaderboard) return () => {};
         const collectionName = hallOfFameMode === 'week' ? 'song_hall_of_fame_weeks' : 'song_hall_of_fame';
         const weekKey = getWeekKey();
         const q = hallOfFameMode === 'week'
@@ -1254,7 +1260,7 @@ const SingerApp = ({ roomCode, uid }) => {
             setHallOfFameEntries(snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() })));
         });
         return () => unsub();
-    }, [roomCode, hallOfFameMode]);
+    }, [roomCode, hallOfFameMode, tab, socialTab]);
 
     const flushReactionBuffer = useCallback(async () => {
         if (!roomCode || !user) return;
@@ -2410,40 +2416,95 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         toast(`READY! +${rewardPoints} PTS`);
     };
 
-    const takeSelfie = () => {
-        if(!videoRef.current || !user) return;
+    const captureSelfieCanvas = () => {
+        if (!videoRef.current) return null;
         const canvas = document.createElement('canvas');
-        canvas.width = videoRef.current.videoWidth;
-        canvas.height = videoRef.current.videoHeight;
-        canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
-        addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
-            roomCode, type: 'photo', url: dataUrl, userName: user.name, timestamp: serverTimestamp()
+        canvas.width = videoRef.current.videoWidth || 0;
+        canvas.height = videoRef.current.videoHeight || 0;
+        if (!canvas.width || !canvas.height) return null;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+        ctx.drawImage(videoRef.current, 0, 0);
+        return canvas;
+    };
+
+    const canvasToJpegBlob = (canvas, quality = 0.6) => new Promise((resolve, reject) => {
+        if (!canvas) {
+            reject(new Error('Missing selfie canvas'));
+            return;
+        }
+        if (canvas.toBlob) {
+            canvas.toBlob((blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error('Failed to encode selfie image'));
+            }, 'image/jpeg', quality);
+            return;
+        }
+        try {
+            const dataUrl = canvas.toDataURL('image/jpeg', quality);
+            fetch(dataUrl).then((resp) => resp.blob()).then(resolve).catch(reject);
+        } catch (err) {
+            reject(err);
+        }
+    });
+
+    const uploadSelfieBlob = async (blob, suffix = 'selfie') => {
+        if (!blob || !roomCode) throw new Error('Missing selfie payload');
+        const safeUid = (uid || user?.uid || auth?.currentUser?.uid || 'guest').trim() || 'guest';
+        const storagePath = `room_photos/${roomCode}/${safeUid}/${Date.now()}_${suffix}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+        const fileRef = storageRef(storage, storagePath);
+        const task = uploadBytesResumable(fileRef, blob, { contentType: 'image/jpeg' });
+        await new Promise((resolve, reject) => {
+            task.on('state_changed', undefined, reject, resolve);
         });
-        logActivity('shared a selfie', EMOJI.camera);
-        toast(`Snapped & Sent! ${EMOJI.camera}`);
+        const url = await getDownloadURL(task.snapshot.ref);
+        return { url, storagePath };
+    };
+
+    const captureAndUploadSelfie = async ({ quality = 0.6, suffix = 'selfie' } = {}) => {
+        const canvas = captureSelfieCanvas();
+        if (!canvas) throw new Error('Camera frame unavailable');
+        const blob = await canvasToJpegBlob(canvas, quality);
+        return uploadSelfieBlob(blob, suffix);
+    };
+
+    const takeSelfie = async () => {
+        if (!videoRef.current || !user) return;
+        try {
+            const photo = await captureAndUploadSelfie({ quality: 0.5, suffix: 'reaction' });
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
+                roomCode,
+                type: 'photo',
+                url: photo.url,
+                storagePath: photo.storagePath,
+                userName: user.name,
+                timestamp: serverTimestamp()
+            });
+            logActivity('shared a selfie', EMOJI.camera);
+            toast(`Snapped & Sent! ${EMOJI.camera}`);
+        } catch (e) {
+            console.error(e);
+            toast('Selfie upload failed');
+        }
     };
 
     const takeGuitarVictorySelfie = async () => {
         if (!videoRef.current || !user || !guitarVictoryInfo) return;
-        const canvas = document.createElement('canvas');
-        canvas.width = videoRef.current.videoWidth;
-        canvas.height = videoRef.current.videoHeight;
-        canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
         try {
+            const photo = await captureAndUploadSelfie({ quality: 0.6, suffix: 'guitar_victory' });
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
                 roomCode,
                 type: 'photo',
                 mode: 'guitar_victory',
-                url: dataUrl,
+                url: photo.url,
+                storagePath: photo.storagePath,
                 userName: user.name,
                 avatar: user.avatar,
                 timestamp: serverTimestamp()
             });
             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
                 photoOverlay: {
-                    url: dataUrl,
+                    url: photo.url,
                     userName: user.name,
                     mode: 'guitar_victory',
                     copy: `Shredded ${guitarVictoryInfo.hits || 0} hits`,
@@ -2452,7 +2513,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 guitarVictory: {
                     ...guitarVictoryInfo,
                     status: 'captured',
-                    photoUrl: dataUrl,
+                    photoUrl: photo.url,
                     capturedAt: Date.now()
                 }
             });
@@ -2466,24 +2527,21 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const takeStrobeVictorySelfie = async () => {
         if (!videoRef.current || !user || !strobeVictoryInfo) return;
-        const canvas = document.createElement('canvas');
-        canvas.width = videoRef.current.videoWidth;
-        canvas.height = videoRef.current.videoHeight;
-        canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
         try {
+            const photo = await captureAndUploadSelfie({ quality: 0.6, suffix: 'strobe_victory' });
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
                 roomCode,
                 type: 'photo',
                 mode: 'strobe_victory',
-                url: dataUrl,
+                url: photo.url,
+                storagePath: photo.storagePath,
                 userName: user.name,
                 avatar: user.avatar,
                 timestamp: serverTimestamp()
             });
             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
                 photoOverlay: {
-                    url: dataUrl,
+                    url: photo.url,
                     userName: user.name,
                     mode: 'strobe_victory',
                     copy: `Beat Drop MVP: ${strobeVictoryInfo.taps || 0} taps`,
@@ -2492,7 +2550,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 strobeVictory: {
                     ...strobeVictoryInfo,
                     status: 'captured',
-                    photoUrl: dataUrl,
+                    photoUrl: photo.url,
                     capturedAt: Date.now()
                 }
             });
@@ -2506,22 +2564,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const submitSelfieChallenge = async () => {
         if (!videoRef.current || !user || !room?.selfieChallenge?.promptId) return;
-        const canvas = document.createElement('canvas');
-        canvas.width = videoRef.current.videoWidth;
-        canvas.height = videoRef.current.videoHeight;
-        canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
-        await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'), {
-            roomCode,
-            promptId: room.selfieChallenge.promptId,
-            uid,
-            userName: user.name,
-            avatar: user.avatar,
-            url: dataUrl,
-            approved: !room?.selfieChallenge?.requireApproval,
-            timestamp: serverTimestamp()
-        });
-        toast('Selfie submitted');
+        try {
+            const photo = await captureAndUploadSelfie({ quality: 0.5, suffix: 'challenge' });
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'), {
+                roomCode,
+                promptId: room.selfieChallenge.promptId,
+                uid,
+                userName: user.name,
+                avatar: user.avatar,
+                url: photo.url,
+                storagePath: photo.storagePath,
+                approved: !room?.selfieChallenge?.requireApproval,
+                timestamp: serverTimestamp()
+            });
+            toast('Selfie submitted');
+        } catch (e) {
+            console.error(e);
+            toast('Selfie submit failed');
+        }
     };
 
     const react = async (type, cost=10) => { 
