@@ -8,6 +8,7 @@ const PublicTV = lazy(() => import('./apps/TV/PublicTV'));
 const SingerApp = lazy(() => import('./apps/Mobile/SingerApp'));
 const RecapView = lazy(() => import('./apps/Recap/RecapView'));
 const HostApp = lazy(() => import('./apps/Host/HostApp'));
+const MarketingSite = lazy(() => import('./apps/Marketing/MarketingSite'));
 
 const ViewLoader = () => (
     <div className="h-screen w-screen bg-black flex items-center justify-center text-white">
@@ -20,8 +21,12 @@ const getInitialRouteState = () => {
         return { view: 'landing', roomCode: '' };
     }
     const params = new URLSearchParams(window.location.search);
+    const pathname = window.location.pathname.replace(/\/+$/, '');
     const r = params.get('room');
     const m = params.get('mode');
+    if (m === 'marketing' || pathname.endsWith('/marketing')) {
+        return { view: 'marketing', roomCode: '' };
+    }
     if (m === 'host') {
         return { view: 'host', roomCode: r ? r.toUpperCase() : '' };
     }
@@ -75,6 +80,12 @@ const Landing = ({ onJoin }) => {
                     
                     <button onClick={handleOpenHostControls} className="w-full bg-zinc-700 py-2 rounded-xl font-bold text-sm text-zinc-300 hover:bg-zinc-600 hover:text-white transition-colors mt-2">
                         HOST CONTROLS
+                    </button>
+                    <button
+                        onClick={() => { window.location.href = `${appBase}?mode=marketing`; }}
+                        className="w-full bg-zinc-800 py-2 rounded-xl font-bold text-sm text-cyan-200 hover:bg-zinc-700 transition-colors mt-2 border border-cyan-500/30"
+                    >
+                        VIEW MARKETING SITE
                     </button>
                 </div>
                 {showHostGate && (
@@ -208,6 +219,11 @@ const App = () => {
     if (view === 'recap') return (
         <Suspense fallback={<ViewLoader />}>
             <RecapView roomCode={roomCode} />
+        </Suspense>
+    );
+    if (view === 'marketing') return (
+        <Suspense fallback={<ViewLoader />}>
+            <MarketingSite />
         </Suspense>
     );
     

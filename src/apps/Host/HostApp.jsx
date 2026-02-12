@@ -521,6 +521,125 @@ const buildBracketRound = ({ contestantUids = [], contestantsByUid = {}, roundIn
     };
 };
 
+const resolveBracketVoterUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
+
+const getBracketMatchCrowdVotes = ({ users = [], bracketId = '', match = null }) => {
+    const summary = {
+        total: 0,
+        aVotes: 0,
+        bVotes: 0
+    };
+    if (!Array.isArray(users) || !users.length || !bracketId || !match?.id) return summary;
+    users.forEach((entry) => {
+        const voterUid = resolveBracketVoterUid(entry);
+        if (!voterUid) return;
+        if (voterUid === match.aUid || voterUid === match.bUid) return;
+        const vote = entry?.bracketVote || null;
+        if (!vote || vote.bracketId !== bracketId || vote.matchId !== match.id) return;
+        if (vote.targetUid === match.aUid) {
+            summary.aVotes += 1;
+            summary.total += 1;
+        } else if (vote.targetUid === match.bUid) {
+            summary.bVotes += 1;
+            summary.total += 1;
+        }
+    });
+    return summary;
+};
+
+const appendBracketAuditEvent = (bracket = {}, event = {}) => {
+    const trail = Array.isArray(bracket?.auditTrail) ? bracket.auditTrail : [];
+    const normalized = {
+        id: event.id || `audit_${nowMs()}_${Math.random().toString(36).slice(2, 7)}`,
+        at: Number(event.at || nowMs()),
+        type: String(event.type || 'event'),
+        text: String(event.text || ''),
+        ...event
+    };
+    return {
+        ...bracket,
+        auditTrail: [...trail, normalized].slice(-200)
+    };
+};
+
+const upsertBracketMatchHistoryEntry = (bracket = {}, entry = {}) => {
+    if (!entry?.matchId) return bracket;
+    const history = Array.isArray(bracket?.matchHistory) ? bracket.matchHistory : [];
+    const nextEntry = {
+        id: entry.id || `mh_${entry.matchId}_${nowMs()}`,
+        at: Number(entry.at || nowMs()),
+        ...entry
+    };
+    const filtered = history.filter((item) => item?.matchId !== entry.matchId);
+    const next = [...filtered, nextEntry].sort((a, b) => Number(a.at || 0) - Number(b.at || 0));
+    return {
+        ...bracket,
+        matchHistory: next
+    };
+};
+
+const buildBracketSummary = (bracket = {}) => {
+    if (!bracket || (typeof bracket !== 'object')) return null;
+    if (bracket?.summaryVersion && Array.isArray(bracket?.matchHistory)) return bracket;
+    const rounds = Array.isArray(bracket?.rounds) ? bracket.rounds : [];
+    const matchHistory = Array.isArray(bracket?.matchHistory) ? bracket.matchHistory : [];
+    const auditTrail = Array.isArray(bracket?.auditTrail) ? bracket.auditTrail : [];
+    const championUid = bracket?.championUid || '';
+    const championName = bracket?.championName || bracket?.contestantsByUid?.[championUid]?.name || '';
+    const championAvatar = bracket?.contestantsByUid?.[championUid]?.avatar || EMOJI.trophy || EMOJI.star;
+    const seeds = (Array.isArray(bracket?.contestantOrder) ? bracket.contestantOrder : [])
+        .map((uid, idx) => {
+            const contestant = bracket?.contestantsByUid?.[uid] || {};
+            return {
+                seed: idx + 1,
+                uid,
+                name: contestant?.name || 'Singer',
+                avatar: contestant?.avatar || EMOJI.mic
+            };
+        });
+    const moments = matchHistory
+        .slice(-8)
+        .reverse()
+        .map((item) => {
+            const resolution = item?.resolutionType === 'forfeit_no_show_auto'
+                ? 'won by no-show forfeit'
+                : item?.resolutionType === 'forfeit_no_show_host'
+                    ? 'was awarded a host forfeit'
+                    : item?.resolutionType === 'crowd_vote'
+                        ? 'won the crowd vote'
+                        : 'advanced';
+            return {
+                id: item?.id || `moment_${item?.matchId || Math.random().toString(36).slice(2, 7)}`,
+                text: `${item?.winnerName || 'Winner'} ${resolution} in ${item?.roundName || 'Round'} (${item?.aName || 'A'} vs ${item?.bName || 'B'})`,
+                at: Number(item?.at || nowMs()),
+                winnerUid: item?.winnerUid || '',
+                matchId: item?.matchId || ''
+            };
+        });
+    return {
+        summaryVersion: 1,
+        id: bracket?.id || '',
+        style: bracket?.style || 'sweet16',
+        format: bracket?.format || 'single_elimination',
+        size: Number(bracket?.size || 0),
+        status: bracket?.status || 'setup',
+        createdAt: Number(bracket?.createdAt || 0),
+        completedAt: Number(bracket?.championCelebration?.at || 0),
+        championUid: championUid || null,
+        championName: championName || '',
+        championAvatar,
+        roundsCount: rounds.length,
+        seeds,
+        matchHistory,
+        auditTrail,
+        timeCapsule: {
+            posterTitle: championName ? `${championName} Takes The Crown` : 'Sweet 16 Showdown',
+            tagline: championName ? `Champion of Room ${bracket?.roomCode || ''}` : 'One room. One champion.',
+            moments
+        }
+    };
+};
+
 const advanceBracketState = (bracket = {}) => {
     const rounds = Array.isArray(bracket?.rounds) ? bracket.rounds : [];
     const activeRoundIndex = Math.max(0, Number(bracket?.activeRoundIndex || 0));
@@ -530,6 +649,7 @@ const advanceBracketState = (bracket = {}) => {
     if (!matches.length || !matches.every((match) => !!match?.winnerUid)) return bracket;
     const winners = matches.map((match) => match.winnerUid).filter(Boolean);
     if (winners.length <= 1) {
+        const completedAt = nowMs();
         const championUid = winners[0] || null;
         const champion = championUid ? bracket?.contestantsByUid?.[championUid] : null;
         return {
@@ -537,9 +657,17 @@ const advanceBracketState = (bracket = {}) => {
             status: 'complete',
             championUid,
             championName: champion?.name || '',
-            activeMatchId: null
+            activeMatchId: null,
+            roundTransition: null,
+            championCelebration: {
+                id: `champion_${championUid || 'winner'}_${completedAt}`,
+                at: completedAt,
+                championUid,
+                championName: champion?.name || ''
+            }
         };
     }
+    const completedAt = nowMs();
     const nextRound = buildBracketRound({
         contestantUids: winners,
         contestantsByUid: bracket?.contestantsByUid || {},
@@ -550,7 +678,14 @@ const advanceBracketState = (bracket = {}) => {
         status: 'in_progress',
         activeRoundIndex: rounds.length,
         activeMatchId: null,
-        rounds: [...rounds, nextRound]
+        rounds: [...rounds, nextRound],
+        roundTransition: {
+            id: `transition_${currentRound.id || activeRoundIndex}_${nextRound.id}_${completedAt}`,
+            at: completedAt,
+            completedRoundIndex: activeRoundIndex,
+            fromRoundName: currentRound?.name || `Round ${activeRoundIndex + 1}`,
+            toRoundName: nextRound?.name || `Round ${rounds.length + 1}`
+        }
     };
 };
 
@@ -2721,6 +2856,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const queuedCount = useMemo(() => songs.filter(s => s.status === 'requested').length, [songs]);
     const performingCount = useMemo(() => songs.filter(s => s.status === 'performing').length, [songs]);
     const activeBracket = room?.karaokeBracket || null;
+    const bracketCrowdVotingEnabled = activeBracket?.crowdVotingEnabled !== false;
+    const bracketRoundTransition = activeBracket?.roundTransition || null;
+    const bracketShowAdvancePrompt = !!bracketRoundTransition && activeBracket?.status !== 'complete' && !activeBracket?.activeMatchId;
+    const bracketNoShowCountdownSec = bracketNoShow?.deadlineMs
+        ? Math.max(0, Math.ceil((bracketNoShow.deadlineMs - bracketNoShowNow) / 1000))
+        : 0;
     const [tipSettings, setTipSettings] = useState({ link: '', qr: '' });
     const [tipCrates, setTipCrates] = useState(DEFAULT_TIP_CRATES);
     const [catalogueName, setCatalogueName] = useState('');
@@ -2821,7 +2962,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [autoBgMixDuringSong, setAutoBgMixDuringSong] = useState(0);
     const [lobbyTab, setLobbyTab] = useState('users');
     const [bracketBusy, setBracketBusy] = useState(false);
+    const [bracketNoShow, setBracketNoShow] = useState(null);
+    const [bracketNoShowNow, setBracketNoShowNow] = useState(nowMs());
+    const bracketNoShowTimeoutRef = useRef(null);
+    const bracketNoShowTickRef = useRef(null);
+    const forfeitBracketContestantRef = useRef(null);
     const [tight15QueueBusyUid, setTight15QueueBusyUid] = useState('');
+    const [tight15ProfileBusyUid, setTight15ProfileBusyUid] = useState('');
+    const [tight15Profile, setTight15Profile] = useState(null);
     const [readyCheckDurationSec, setReadyCheckDurationSec] = useState(10);
     const [readyCheckRewardPoints, setReadyCheckRewardPoints] = useState(100);
     // Announce state
@@ -4981,6 +5129,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }, null);
             const photoSnap = await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', roomCode), where('type', '==', 'photo')));
             const photos = photoSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            const tournament = (() => {
+                const roomSummary = room?.bracketLastSummary || null;
+                if (roomSummary?.summaryVersion) {
+                    const hasMoments = (roomSummary?.matchHistory || []).length > 0 || !!roomSummary?.championName;
+                    return hasMoments ? roomSummary : null;
+                }
+                const liveBracket = room?.karaokeBracket || null;
+                if (!liveBracket?.rounds?.length) return null;
+                const built = buildBracketSummary({ ...liveBracket, roomCode });
+                const hasMoments = (built?.matchHistory || []).length > 0 || !!built?.championName;
+                return hasMoments ? built : null;
+            })();
+            const tournamentMoments = (tournament?.timeCapsule?.moments || []).slice(0, 8).map((moment) => ({
+                id: moment.id || `tournament_moment_${Math.random().toString(36).slice(2, 7)}`,
+                icon: EMOJI.trophy || EMOJI.star,
+                text: moment.text || 'Tournament moment',
+                user: tournament?.championName || 'Tournament',
+                timestamp: moment?.at || nowMs()
+            }));
             const recap = {
                 roomCode,
                 generatedAt: nowMs(),
@@ -4990,7 +5157,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 topEmojis,
                 loudestPerformance,
                 photos: photos.slice(0, 24),
-                highlights: (activities || []).slice(0, 20)
+                tournament,
+                highlights: [...tournamentMoments, ...(activities || []).slice(0, 20)].slice(0, 30)
             };
             await updateRoom({ closedAt: nowMs(), recap });
             const recapUrl = `${window.location.origin}/?room=${roomCode}&mode=recap`;
@@ -5068,18 +5236,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const silenceAll = () => stopAllSfx();
     
     // Helpers for other tabs
-    const sendUserMessage = async (uid, msg) => {
+    const sendUserMessage = async (uid, msg, options = {}) => {
+        if (!uid) return;
         if (!msg) {
             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { spotlightUser: null });
             toast("Spotlight OFF");
             return;
         }
+        const providedTight15 = sanitizeTight15List(Array.isArray(options?.tight15List) ? options.tight15List : []);
+        const challengeSong = normalizeTight15Entry(options?.challengeEntry || null);
         const roomUser = users.find((u) => {
             const userUid = u.uid || u.id?.split('_')[1];
             return userUid === uid;
         });
-        let spotlightTight15 = [];
-        if (roomUser) {
+        let spotlightTight15 = providedTight15.slice(0, 3);
+        if (!spotlightTight15.length && roomUser) {
             try {
                 const fullList = await getRoomUserTight15(roomUser);
                 spotlightTight15 = fullList
@@ -5096,7 +5267,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 msg,
                 name: roomUser?.name || '',
                 avatar: roomUser?.avatar || '',
-                tight15: spotlightTight15
+                tight15: spotlightTight15,
+                challengeSong: challengeSong || null
             }
         });
         toast("Spotlight ON");
@@ -5558,10 +5730,90 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
 
-    const createSweet16Bracket = async () => {
+    const queueSelectedTight15ForUser = async (roomUser = {}, entry = null, sourceLabel = 'tight15_profile') => {
+        const singerUid = resolveRoomUserUid(roomUser) || roomUser?.id || '';
+        if (!singerUid || !entry) return;
+        if (tight15QueueBusyUid === singerUid) return;
+        setTight15QueueBusyUid(singerUid);
+        try {
+            const normalized = normalizeTight15Entry(entry);
+            if (!normalized) {
+                toast('That Tight 15 entry is invalid.');
+                return;
+            }
+            await queueTight15EntryForSinger({ roomUser, entry: normalized, sourceLabel });
+            toast(`Queued ${normalized.songTitle} for ${roomUser?.name || 'Singer'}.`);
+        } catch (error) {
+            hostLogger.error('Queue Tight 15 entry failed', error);
+            toast('Could not queue selected Tight 15 song.');
+        } finally {
+            setTight15QueueBusyUid('');
+        }
+    };
+
+    const openTight15ProfileCard = async (roomUser = {}) => {
+        const singerUid = resolveRoomUserUid(roomUser) || roomUser?.id || '';
+        if (!singerUid) return;
+        if (tight15ProfileBusyUid === singerUid) return;
+        setTight15ProfileBusyUid(singerUid);
+        try {
+            const tight15 = await getRoomUserTight15(roomUser);
+            setTight15Profile({
+                uid: singerUid,
+                name: roomUser?.name || 'Singer',
+                avatar: roomUser?.avatar || EMOJI.mic,
+                roomUser,
+                tight15
+            });
+            if (!tight15.length) {
+                toast(`${roomUser?.name || 'Singer'} has no Tight 15 songs yet.`);
+            }
+        } catch (error) {
+            hostLogger.error('Open Tight 15 profile failed', error);
+            toast('Could not load Tight 15 profile.');
+        } finally {
+            setTight15ProfileBusyUid('');
+        }
+    };
+
+    const launchSpotlightTight15Challenge = async (roomUser = {}) => {
+        const singerUid = resolveRoomUserUid(roomUser) || roomUser?.id || '';
+        if (!singerUid) return;
+        if (tight15QueueBusyUid === singerUid) return;
+        setTight15QueueBusyUid(singerUid);
+        try {
+            const tight15 = await getRoomUserTight15(roomUser);
+            if (!tight15.length) {
+                toast(`${roomUser?.name || 'Singer'} has no Tight 15 songs yet.`);
+                return;
+            }
+            const pick = tight15[Math.floor(Math.random() * tight15.length)];
+            await queueTight15EntryForSinger({
+                roomUser,
+                entry: pick,
+                sourceLabel: 'tight15_spotlight_challenge'
+            });
+            await sendUserMessage(
+                singerUid,
+                `Tight 15 Challenge: ${pick.songTitle}`,
+                { tight15List: tight15.slice(0, 3), challengeEntry: pick }
+            );
+            toast(`Spotlight challenge launched for ${roomUser?.name || 'Singer'}.`);
+        } catch (error) {
+            hostLogger.error('Launch Tight 15 spotlight challenge failed', error);
+            toast('Could not start spotlight challenge.');
+        } finally {
+            setTight15QueueBusyUid('');
+        }
+    };
+
+    const createSweet16Bracket = async (options = {}) => {
         if (bracketBusy) return;
         setBracketBusy(true);
         try {
+            const seedUids = Array.isArray(options?.seedUids) ? options.seedUids.filter(Boolean) : [];
+            const seedMode = seedUids.length ? 'manual' : 'auto';
+            const shouldRandomize = seedMode === 'manual' ? !!options?.randomize : true;
             const candidateUsers = users.filter((u) => {
                 const uid = resolveRoomUserUid(u);
                 if (!uid) return false;
@@ -5579,13 +5831,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 toast('Need at least 2 singers with Tight 15 songs for a bracket.');
                 return;
             }
-            const maxSupported = Math.min(16, eligible.length);
+            const eligibleByUid = new Map(eligible.map((entry) => [entry.uid, entry]));
+            let seededPool = eligible;
+            if (seedMode === 'manual') {
+                const seen = new Set();
+                const ordered = [];
+                seedUids.forEach((uid) => {
+                    if (seen.has(uid)) return;
+                    seen.add(uid);
+                    const entry = eligibleByUid.get(uid);
+                    if (entry) ordered.push(entry);
+                });
+                if (ordered.length < 2) {
+                    toast('Need at least 2 selected singers with Tight 15 songs.');
+                    return;
+                }
+                seededPool = ordered;
+            }
+            const maxSupported = Math.min(16, seededPool.length);
             const bracketSize = Math.pow(2, Math.floor(Math.log2(maxSupported)));
             if (bracketSize < 2) {
                 toast('Not enough bracket-ready singers.');
                 return;
             }
-            const seeded = shuffleList(eligible).slice(0, bracketSize);
+            const seeded = (shouldRandomize ? shuffleList(seededPool) : [...seededPool]).slice(0, bracketSize);
             const contestantsByUid = {};
             const contestantOrder = [];
             seeded.forEach((entry) => {
@@ -5606,6 +5875,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 id: `sweet16_${nowMs()}`,
                 style: 'sweet16',
                 format: 'single_elimination',
+                roomCode,
                 size: bracketSize,
                 status: 'setup',
                 createdAt: nowMs(),
@@ -5614,21 +5884,67 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 rounds: [firstRound],
                 activeRoundIndex: 0,
                 activeMatchId: null,
+                crowdVotingEnabled: true,
+                roundTransition: null,
+                championCelebration: null,
+                seedMode,
+                matchHistory: [],
+                auditTrail: [],
                 championUid: null,
                 championName: ''
             };
+            const seededNames = contestantOrder
+                .map((uid, idx) => `${idx + 1}. ${contestantsByUid?.[uid]?.name || 'Singer'}`)
+                .join(', ');
+            const withAudit = appendBracketAuditEvent(bracketPayload, {
+                type: 'bracket_created',
+                text: `Bracket created (${seedMode}${shouldRandomize ? '/random' : '/ordered'}).`,
+                bracketSize,
+                seedMode,
+                randomize: !!shouldRandomize,
+                seededUids: contestantOrder,
+                seededNames
+            });
             await updateRoom({
                 activeMode: 'karaoke_bracket',
-                karaokeBracket: bracketPayload,
-                gameData: bracketPayload,
+                karaokeBracket: withAudit,
+                gameData: withAudit,
                 gameParticipantMode: 'all',
                 gameParticipants: null
             });
-            await logActivity(roomCode, hostName || 'Host', `created a Sweet ${bracketSize} bracket.`, EMOJI.star);
+            await logActivity(roomCode, hostName || 'Host', `created a Sweet ${bracketSize} bracket (${seedMode}).`, EMOJI.star);
             toast(`Sweet ${bracketSize} bracket ready.`);
         } catch (error) {
             hostLogger.error('Create Sweet 16 bracket failed', error);
             toast('Could not create bracket.');
+        } finally {
+            setBracketBusy(false);
+        }
+    };
+
+    const toggleBracketCrowdVoting = async (enabled) => {
+        const bracket = room?.karaokeBracket;
+        if (!bracket?.rounds?.length || bracketBusy) return;
+        setBracketBusy(true);
+        try {
+            let nextBracket = {
+                ...bracket,
+                crowdVotingEnabled: !!enabled
+            };
+            nextBracket = appendBracketAuditEvent(nextBracket, {
+                type: 'crowd_voting_toggled',
+                text: enabled ? 'Crowd voting enabled.' : 'Crowd voting paused.',
+                enabled: !!enabled
+            });
+            await updateRoom({
+                activeMode: 'karaoke_bracket',
+                karaokeBracket: nextBracket,
+                gameData: nextBracket
+            });
+            toast(enabled ? 'Crowd voting enabled.' : 'Crowd voting paused.');
+        } catch (error) {
+            hostLogger.error('Toggle bracket crowd voting failed', error);
+            toast('Could not update crowd voting.');
         } finally {
             setBracketBusy(false);
         }
@@ -5659,6 +5975,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const target = { ...matches[matchIndex], queuedAt: nowMs() };
             const aContestant = target.aUid ? bracket?.contestantsByUid?.[target.aUid] : null;
             const bContestant = target.bUid ? bracket?.contestantsByUid?.[target.bUid] : null;
+            const presentUids = new Set(users.map((entry) => resolveRoomUserUid(entry)).filter(Boolean));
+            const aMissing = !!target?.aUid && !presentUids.has(target.aUid);
+            const bMissing = !!target?.bUid && !presentUids.has(target.bUid);
+            if (aMissing && bMissing) {
+                toast('Both singers are offline. Wait for one to return or reseed.');
+                return;
+            }
+            if (aMissing !== bMissing) {
+                const winnerUid = aMissing ? target.bUid : target.aUid;
+                const loserUid = aMissing ? target.aUid : target.bUid;
+                const winnerName = bracket?.contestantsByUid?.[winnerUid]?.name || 'Singer';
+                await setBracketMatchWinner(target.id, winnerUid, {
+                    reason: 'forfeit_no_show_auto',
+                    source: 'queue_next_auto',
+                    loserUid,
+                    allowWhileBusy: true
+                });
+                toast(`${winnerName} advances by no-show.`);
+                return;
+            }
             if (aContestant && target.aSong) {
                 await queueTight15EntryForSinger({
                     roomUser: { uid: aContestant.uid, name: aContestant.name, avatar: aContestant.avatar },
@@ -5680,12 +6016,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 status: 'in_progress',
                 rounds,
                 activeRoundIndex: roundIndex,
-                activeMatchId: target.id
+                activeMatchId: target.id,
+                roundTransition: null
             };
+            const nextWithAudit = appendBracketAuditEvent(nextBracketState, {
+                type: 'match_queued',
+                text: `Queued ${aContestant?.name || 'Singer A'} vs ${bContestant?.name || 'Singer B'} in ${round?.name || 'Round'}.`,
+                matchId: target.id,
+                roundIndex,
+                roundName: round?.name || '',
+                slot: Number(target?.slot || 0),
+                aUid: target?.aUid || null,
+                bUid: target?.bUid || null
+            });
             await updateRoom({
                 activeMode: 'karaoke_bracket',
-                karaokeBracket: nextBracketState,
-                gameData: nextBracketState
+                karaokeBracket: nextWithAudit,
+                gameData: nextWithAudit
             });
             toast(`Queued ${aContestant?.name || 'Singer'} vs ${bContestant?.name || 'Singer'}.`);
         } catch (error) {
@@ -5696,12 +6043,83 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
 
-    const setBracketMatchWinner = async (matchId, winnerUid) => {
+    const setBracketWinnerFromCrowdVotes = async (matchId) => {
+        const bracket = room?.karaokeBracket;
+        if (!bracket?.rounds?.length || !matchId) return;
+        let targetMatch = null;
+        (bracket.rounds || []).some((round) => {
+            const found = (round.matches || []).find((match) => match.id === matchId);
+            if (found) {
+                targetMatch = found;
+                return true;
+            }
+            return false;
+        });
+        if (!targetMatch) {
+            toast('Match not found.');
+            return;
+        }
+        const votes = getBracketMatchCrowdVotes({
+            users,
+            bracketId: bracket?.id || '',
+            match: targetMatch
+        });
+        if (!votes.total) {
+            toast('No crowd votes yet for this match.');
+            return;
+        }
+        if (votes.aVotes === votes.bVotes) {
+            toast('Crowd vote is tied. Mark winner manually.');
+            return;
+        }
+        const winnerUid = votes.aVotes > votes.bVotes ? targetMatch.aUid : targetMatch.bUid;
+        if (!winnerUid) {
+            toast('Crowd vote winner is unavailable.');
+            return;
+        }
+        await setBracketMatchWinner(matchId, winnerUid, {
+            reason: 'crowd_vote',
+            source: 'crowd',
+            votes
+        });
+    };
+
+    const forfeitBracketContestant = async (matchId, loserUid, source = 'host') => {
+        const bracket = room?.karaokeBracket;
+        if (!bracket?.rounds?.length || !matchId || !loserUid) return;
+        let targetMatch = null;
+        (bracket.rounds || []).some((round) => {
+            const found = (round.matches || []).find((match) => match.id === matchId);
+            if (found) {
+                targetMatch = found;
+                return true;
+            }
+            return false;
+        });
+        if (!targetMatch) {
+            toast('Match not found.');
+            return;
+        }
+        const winnerUid = targetMatch?.aUid === loserUid ? targetMatch?.bUid : targetMatch?.aUid;
+        if (!winnerUid) {
+            toast('Cannot forfeit this match yet.');
+            return;
+        }
+        await setBracketMatchWinner(matchId, winnerUid, {
+            reason: source === 'auto' ? 'forfeit_no_show_auto' : 'forfeit_no_show_host',
+            source,
+            loserUid
+        });
+    };
+
+    const setBracketMatchWinner = async (matchId, winnerUid, options = {}) => {
         const bracket = room?.karaokeBracket;
         if (!bracket?.rounds?.length || !matchId || !winnerUid) return;
-        if (bracketBusy) return;
+        if (bracketBusy && !options?.allowWhileBusy) return;
         setBracketBusy(true);
         try {
+            const resolutionType = String(options?.reason || 'host_manual');
+            const resolutionSource = String(options?.source || 'host');
             const rounds = Array.isArray(bracket.rounds) ? [...bracket.rounds] : [];
             let foundRoundIndex = -1;
             let foundMatchIndex = -1;
@@ -5724,29 +6142,98 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 toast('Winner must be one of the two singers in this match.');
                 return;
             }
+            const resolvedAt = nowMs();
+            const loserUid = options?.loserUid || (winnerUid === match?.aUid ? match?.bUid : match?.aUid);
+            const aContestant = bracket?.contestantsByUid?.[match?.aUid] || null;
+            const bContestant = bracket?.contestantsByUid?.[match?.bUid] || null;
+            const winnerName = bracket?.contestantsByUid?.[winnerUid]?.name || 'Winner';
+            const loserName = bracket?.contestantsByUid?.[loserUid]?.name || 'Singer';
+            const voteSummary = options?.votes || getBracketMatchCrowdVotes({
+                users,
+                bracketId: bracket?.id || '',
+                match
+            });
             const matches = [...round.matches];
             matches[foundMatchIndex] = {
                 ...match,
                 winnerUid,
-                completedAt: nowMs()
+                completedAt: resolvedAt,
+                resolutionType
             };
             rounds[foundRoundIndex] = { ...round, matches };
-            const nextBracket = advanceBracketState({
+            let nextBracket = advanceBracketState({
                 ...bracket,
                 rounds,
                 activeRoundIndex: foundRoundIndex
             });
+            nextBracket = upsertBracketMatchHistoryEntry(nextBracket, {
+                matchId: match.id,
+                roundIndex: foundRoundIndex,
+                roundName: round?.name || `Round ${foundRoundIndex + 1}`,
+                slot: Number(match?.slot || foundMatchIndex + 1),
+                aUid: match?.aUid || null,
+                aName: aContestant?.name || 'Singer A',
+                aSong: match?.aSong || null,
+                bUid: match?.bUid || null,
+                bName: bContestant?.name || 'Singer B',
+                bSong: match?.bSong || null,
+                winnerUid,
+                winnerName,
+                loserUid: loserUid || null,
+                loserName: loserName || '',
+                resolutionType,
+                resolutionSource,
+                votes: {
+                    total: Number(voteSummary?.total || 0),
+                    aVotes: Number(voteSummary?.aVotes || 0),
+                    bVotes: Number(voteSummary?.bVotes || 0)
+                },
+                queuedAt: Number(match?.queuedAt || 0),
+                at: resolvedAt
+            });
+            const resolutionText = resolutionType === 'crowd_vote'
+                ? `${winnerName} won the crowd vote over ${loserName}.`
+                : resolutionType === 'forfeit_no_show_auto'
+                    ? `${winnerName} advanced by automatic no-show forfeit.`
+                    : resolutionType === 'forfeit_no_show_host'
+                        ? `${winnerName} advanced by host no-show ruling.`
+                        : `${winnerName} advanced over ${loserName}.`;
+            nextBracket = appendBracketAuditEvent(nextBracket, {
+                type: 'match_resolved',
+                text: `${resolutionText} (${round?.name || 'Round'} - Match ${match?.slot || foundMatchIndex + 1})`,
+                matchId: match.id,
+                roundIndex: foundRoundIndex,
+                roundName: round?.name || '',
+                winnerUid,
+                loserUid: loserUid || null,
+                resolutionType,
+                source: resolutionSource,
+                votes: {
+                    total: Number(voteSummary?.total || 0),
+                    aVotes: Number(voteSummary?.aVotes || 0),
+                    bVotes: Number(voteSummary?.bVotes || 0)
+                }
+            });
+            const bracketSummary = buildBracketSummary(nextBracket);
             await updateRoom({
                 activeMode: 'karaoke_bracket',
                 karaokeBracket: nextBracket,
-                gameData: nextBracket
+                gameData: nextBracket,
+                bracketLastSummary: bracketSummary
             });
-            const winnerName = nextBracket?.contestantsByUid?.[winnerUid]?.name || 'Winner';
             await logActivity(roomCode, hostName || 'Host', `advanced ${winnerName} in the bracket.`, EMOJI.sparkle);
             if (nextBracket?.status === 'complete') {
+                await logActivity(roomCode, hostName || 'Host', `crowned ${nextBracket?.championName || 'the champion'} in Sweet 16.`, EMOJI.trophy || EMOJI.star);
                 toast(`${nextBracket?.championName || 'Champion'} wins the tournament.`);
+            } else if (nextBracket?.roundTransition?.id) {
+                const fromName = nextBracket?.roundTransition?.fromRoundName || 'Round';
+                const toName = nextBracket?.roundTransition?.toRoundName || 'Next round';
+                await logActivity(roomCode, hostName || 'Host', `${fromName} complete. ${toName} is ready.`, EMOJI.sparkle);
+                toast(`${fromName} complete. Queue ${toName}.`);
             } else {
-                toast(`${winnerName} advances.`);
+                if (resolutionType === 'crowd_vote') toast(`${winnerName} advances by crowd vote.`);
+                else if (resolutionType.includes('forfeit')) toast(`${winnerName} advances by forfeit.`);
+                else toast(`${winnerName} advances.`);
             }
         } catch (error) {
             hostLogger.error('Set bracket winner failed', error);
@@ -5755,6 +6242,68 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setBracketBusy(false);
         }
     };
+
+    forfeitBracketContestantRef.current = forfeitBracketContestant;
+
+    useEffect(() => {
+        if (bracketNoShowTimeoutRef.current) {
+            clearTimeout(bracketNoShowTimeoutRef.current);
+            bracketNoShowTimeoutRef.current = null;
+        }
+        if (bracketNoShowTickRef.current) {
+            clearInterval(bracketNoShowTickRef.current);
+            bracketNoShowTickRef.current = null;
+        }
+        setBracketNoShow(null);
+        const bracket = room?.karaokeBracket;
+        if (!bracket?.rounds?.length || !bracket?.activeMatchId || bracket?.status === 'complete') return undefined;
+        const rounds = Array.isArray(bracket.rounds) ? bracket.rounds : [];
+        const activeRoundIndex = Math.max(0, Number(bracket?.activeRoundIndex || 0));
+        const activeRound = rounds[activeRoundIndex] || null;
+        const fallbackMatch = rounds
+            .flatMap((round) => Array.isArray(round?.matches) ? round.matches : [])
+            .find((match) => match?.id === bracket.activeMatchId) || null;
+        const activeMatch = (activeRound?.matches || []).find((match) => match?.id === bracket.activeMatchId) || fallbackMatch;
+        if (!activeMatch || activeMatch?.winnerUid) return undefined;
+        const aUid = activeMatch?.aUid || '';
+        const bUid = activeMatch?.bUid || '';
+        if (!aUid || !bUid) return undefined;
+        const presentUids = new Set(users.map((entry) => resolveRoomUserUid(entry)).filter(Boolean));
+        const missing = [aUid, bUid].filter((uid) => !presentUids.has(uid));
+        if (missing.length !== 1) return undefined;
+        const missingUid = missing[0];
+        const winnerUid = missingUid === aUid ? bUid : aUid;
+        if (!winnerUid) return undefined;
+        const missingName = bracket?.contestantsByUid?.[missingUid]?.name || 'Singer';
+        const winnerName = bracket?.contestantsByUid?.[winnerUid]?.name || 'Singer';
+        const deadlineMs = nowMs() + 30000;
+        setBracketNoShow({
+            matchId: activeMatch.id,
+            missingUid,
+            missingName,
+            winnerUid,
+            winnerName,
+            deadlineMs
+        });
+        setBracketNoShowNow(nowMs());
+        bracketNoShowTickRef.current = setInterval(() => {
+            setBracketNoShowNow(nowMs());
+        }, 1000);
+        bracketNoShowTimeoutRef.current = setTimeout(() => {
+            const pending = forfeitBracketContestantRef.current?.(activeMatch.id, missingUid, 'auto');
+            if (pending?.catch) pending.catch(() => {});
+        }, 30000);
+        return () => {
+            if (bracketNoShowTimeoutRef.current) {
+                clearTimeout(bracketNoShowTimeoutRef.current);
+                bracketNoShowTimeoutRef.current = null;
+            }
+            if (bracketNoShowTickRef.current) {
+                clearInterval(bracketNoShowTickRef.current);
+                bracketNoShowTickRef.current = null;
+            }
+        };
+    }, [room?.karaokeBracket, users]);
 
     const clearSweet16Bracket = async () => {
         if (bracketBusy) return;
@@ -6642,6 +7191,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         onQueueNextBracketMatch={queueNextBracketMatch}
                         onClearSweet16Bracket={clearSweet16Bracket}
                         onSetBracketMatchWinner={setBracketMatchWinner}
+                        onSetBracketWinnerFromCrowdVotes={setBracketWinnerFromCrowdVotes}
+                        onToggleBracketCrowdVoting={toggleBracketCrowdVoting}
+                        onForfeitBracketContestant={forfeitBracketContestant}
                     />
                 )}
                 {/* Lobby Tab */}
@@ -6710,6 +7262,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             >
                                                 Clear
                                             </button>
+                                            <button
+                                                onClick={() => toggleBracketCrowdVoting(!bracketCrowdVotingEnabled)}
+                                                disabled={bracketBusy || !activeBracket}
+                                                className={`${STYLES.btnStd} ${bracketCrowdVotingEnabled ? STYLES.btnSecondary : STYLES.btnHighlight} px-3 py-1 text-xs ${(bracketBusy || !activeBracket) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                {bracketCrowdVotingEnabled ? 'Pause Crowd Vote' : 'Enable Crowd Vote'}
+                                            </button>
                                         </div>
                                     </div>
                                     {!activeBracket?.rounds?.length ? (
@@ -6722,7 +7281,42 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 Round: <span className="text-zinc-200 font-bold">{activeBracket?.rounds?.[activeBracket?.activeRoundIndex || 0]?.name || 'Round'}</span>
                                                 {' '}| Bracket size: <span className="text-zinc-200 font-bold">{activeBracket?.size || 0}</span>
                                                 {' '}| Status: <span className="text-zinc-200 font-bold">{activeBracket?.status || 'setup'}</span>
+                                                {' '}| Crowd voting: <span className={`font-bold ${bracketCrowdVotingEnabled ? 'text-cyan-200' : 'text-zinc-500'}`}>{bracketCrowdVotingEnabled ? 'ON' : 'OFF'}</span>
                                             </div>
+                                            {bracketShowAdvancePrompt && (
+                                                <div className="rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-3 py-3 flex flex-wrap items-center justify-between gap-3">
+                                                    <div>
+                                                        <div className="text-[10px] uppercase tracking-[0.3em] text-cyan-200">Round Complete</div>
+                                                        <div className="text-sm text-zinc-100 mt-1">
+                                                            {activeBracket?.roundTransition?.fromRoundName || 'Round'} done. Next up: <span className="font-bold text-cyan-200">{activeBracket?.roundTransition?.toRoundName || 'Next round'}</span>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={queueNextBracketMatch}
+                                                        disabled={bracketBusy || activeBracket?.status === 'complete'}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${(bracketBusy || activeBracket?.status === 'complete') ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        Start Next Round
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {bracketNoShow && (
+                                                <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-3 flex flex-wrap items-center justify-between gap-3">
+                                                    <div>
+                                                        <div className="text-[10px] uppercase tracking-[0.3em] text-amber-200">No-Show Watch</div>
+                                                        <div className="text-sm text-zinc-100 mt-1">
+                                                            {bracketNoShow.missingName} left the room. Auto-forfeit in <span className="font-bold text-amber-200">{bracketNoShowCountdownSec}s</span>.
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => forfeitBracketContestant(bracketNoShow.matchId, bracketNoShow.missingUid, 'host')}
+                                                        disabled={bracketBusy}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${bracketBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        Forfeit Now
+                                                    </button>
+                                                </div>
+                                            )}
                                             {activeBracket?.status === 'complete' && (
                                                 <div className="text-sm text-emerald-200 bg-emerald-500/10 border border-emerald-400/30 rounded-xl px-3 py-2">
                                                     Champion: {activeBracket?.championName || 'Winner'}
@@ -6733,6 +7327,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     const a = activeBracket?.contestantsByUid?.[match.aUid] || null;
                                                     const b = activeBracket?.contestantsByUid?.[match.bUid] || null;
                                                     const winnerUid = match?.winnerUid || '';
+                                                    const voteSummary = getBracketMatchCrowdVotes({
+                                                        users,
+                                                        bracketId: activeBracket?.id || '',
+                                                        match
+                                                    });
                                                     return (
                                                         <div key={match.id} className={`rounded-xl border p-3 ${activeBracket?.activeMatchId === match.id ? 'border-cyan-400/50 bg-cyan-500/10' : 'border-zinc-700 bg-zinc-950/50'}`}>
                                                             <div className="flex items-center justify-between mb-2">
@@ -6743,6 +7342,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                 <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === a?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
                                                                     <div className="font-bold text-white">{a?.name || 'TBD'}</div>
                                                                     <div className="text-zinc-400 truncate">{match?.aSong?.songTitle || '-'} {match?.aSong?.artist ? `- ${match.aSong.artist}` : ''}</div>
+                                                                    <div className="text-[11px] text-cyan-200 mt-1">{voteSummary.aVotes || 0} crowd votes</div>
                                                                     {a?.uid && (
                                                                         <button
                                                                             onClick={() => setBracketMatchWinner(match.id, a.uid)}
@@ -6752,10 +7352,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                             Mark Winner
                                                                         </button>
                                                                     )}
+                                                                    {a?.uid && b?.uid && (
+                                                                        <button
+                                                                            onClick={() => forfeitBracketContestant(match.id, b.uid, 'host')}
+                                                                            disabled={bracketBusy || !!winnerUid}
+                                                                            className={`${STYLES.btnStd} ${STYLES.btnDanger} mt-1 px-2 py-1 text-[10px] ${(bracketBusy || !!winnerUid) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                                        >
+                                                                            Opponent No-Show
+                                                                        </button>
+                                                                    )}
                                                                 </div>
                                                                 <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === b?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
                                                                     <div className="font-bold text-white">{b?.name || 'TBD'}</div>
                                                                     <div className="text-zinc-400 truncate">{match?.bSong?.songTitle || '-'} {match?.bSong?.artist ? `- ${match.bSong.artist}` : ''}</div>
+                                                                    <div className="text-[11px] text-cyan-200 mt-1">{voteSummary.bVotes || 0} crowd votes</div>
                                                                     {b?.uid && (
                                                                         <button
                                                                             onClick={() => setBracketMatchWinner(match.id, b.uid)}
@@ -6765,21 +7375,75 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                             Mark Winner
                                                                         </button>
                                                                     )}
+                                                                    {a?.uid && b?.uid && (
+                                                                        <button
+                                                                            onClick={() => forfeitBracketContestant(match.id, a.uid, 'host')}
+                                                                            disabled={bracketBusy || !!winnerUid}
+                                                                            className={`${STYLES.btnStd} ${STYLES.btnDanger} mt-1 px-2 py-1 text-[10px] ${(bracketBusy || !!winnerUid) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                                        >
+                                                                            Opponent No-Show
+                                                                        </button>
+                                                                    )}
                                                                 </div>
+                                                                <button
+                                                                    onClick={() => setBracketWinnerFromCrowdVotes(match.id)}
+                                                                    disabled={bracketBusy || !bracketCrowdVotingEnabled}
+                                                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-1 px-2 py-1 text-[10px] ${(bracketBusy || !bracketCrowdVotingEnabled) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                                >
+                                                                    Use Crowd Winner
+                                                                </button>
                                                             </div>
                                                         </div>
                                                     );
                                                 })}
+                                            </div>
+                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                                <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 p-3">
+                                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500 mb-2">Bracket Match History</div>
+                                                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                                                        {(activeBracket?.matchHistory || []).slice().reverse().slice(0, 10).map((entry) => (
+                                                            <div key={entry.id} className="rounded-lg border border-zinc-700 bg-black/30 px-2 py-2">
+                                                                <div className="text-[11px] text-zinc-300">
+                                                                    <span className="font-bold text-white">{entry.winnerName || 'Winner'}</span> beat {entry.aName || 'A'} vs {entry.bName || 'B'}
+                                                                </div>
+                                                                <div className="text-[10px] text-zinc-500 mt-1">
+                                                                    {entry.roundName || 'Round'} • Match {entry.slot || '-'} • {entry.resolutionType || 'manual'}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        {!(activeBracket?.matchHistory || []).length && (
+                                                            <div className="text-[11px] text-zinc-500">No resolved matches yet.</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 p-3">
+                                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500 mb-2">Bracket Audit Trail</div>
+                                                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                                                        {(activeBracket?.auditTrail || []).slice().reverse().slice(0, 12).map((entry) => (
+                                                            <div key={entry.id} className="rounded-lg border border-zinc-700 bg-black/30 px-2 py-2">
+                                                                <div className="text-[11px] text-zinc-200">{entry.text || entry.type || 'Event'}</div>
+                                                                <div className="text-[10px] text-zinc-500 mt-1">{new Date(Number(entry.at || nowMs())).toLocaleTimeString()}</div>
+                                                            </div>
+                                                        ))}
+                                                        {!(activeBracket?.auditTrail || []).length && (
+                                                            <div className="text-[11px] text-zinc-500">No audit events yet.</div>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
                                 </div>
                                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                                     {users.map(u => {
-                                        const isSpotlight = room?.spotlightUser?.id === u.id.split('_')[1];
-                                        const stats = userStats.get(u.uid || u.id.split('_')[1] || u.name) || {};
+                                        const userUid = u.uid || u.id.split('_')[1] || '';
+                                        const isSpotlight = room?.spotlightUser?.id === userUid;
+                                        const stats = userStats.get(userUid || u.name) || {};
                                         const isVip = u.isVip || (u.vipLevel || 0) > 0;
                                         const lastActiveMs = u.lastActiveAt?.seconds ? u.lastActiveAt.seconds * 1000 : u.lastActiveAt;
+                                        const userTight15Preview = sanitizeTight15List(u.tight15 || u.tight15Temp || []).slice(0, 3);
+                                        const queueBusy = tight15QueueBusyUid === userUid;
+                                        const profileBusy = tight15ProfileBusyUid === userUid;
                                         return (
                                             <div key={u.id} className={`relative overflow-hidden bg-zinc-900/80 border border-white/10 rounded-2xl p-4 flex flex-col gap-3 group ${isSpotlight ? 'border-yellow-500/80 shadow-[0_0_25px_rgba(234,179,8,0.2)]' : ''}`}>
                                                 <div className="flex items-center gap-3">
@@ -6794,21 +7458,47 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 <div className="text-sm text-zinc-500">
                                                     {stats.performances || 0} perf | {stats.totalEmojis || 0} emojis | {stats.loudest || 0} dB
                                                 </div>
+                                                <div className="rounded-xl border border-white/10 bg-black/30 p-2 min-h-[72px]">
+                                                    <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mb-1">Top Tight 15</div>
+                                                    {userTight15Preview.length ? (
+                                                        <div className="space-y-1">
+                                                            {userTight15Preview.map((entry) => (
+                                                                <div key={entry.id} className="text-[11px] text-zinc-300 truncate">{entry.songTitle} - {entry.artist}</div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-[11px] text-zinc-500">Load full profile to view songs.</div>
+                                                    )}
+                                                </div>
                                                 {lastActiveMs && <div className="text-sm text-zinc-500">Last active {new Date(lastActiveMs).toLocaleTimeString()}</div>}
                                                 {u.lastSeen && <div className="text-sm text-zinc-600">Last seen {new Date(u.lastSeen.seconds ? u.lastSeen.seconds * 1000 : u.lastSeen).toLocaleTimeString()}</div>}
                                                 {u.phone && <div className="text-sm text-zinc-600">Phone {u.phone}</div>}
                                                 <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={()=>sendUserMessage(u.id.split('_')[1], isSpotlight ? null : 'SPOTLIGHT')} className={`${STYLES.btnStd} ${isSpotlight ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-1 text-xs`}>
+                                                    <button onClick={()=>sendUserMessage(userUid, isSpotlight ? null : 'SPOTLIGHT')} className={`${STYLES.btnStd} ${isSpotlight ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-1 text-xs`}>
                                                         {isSpotlight ? 'UNSPOTLIGHT' : 'SPOTLIGHT'}
                                                     </button>
                                                     <button
                                                         onClick={() => queueRandomTight15ForUser(u)}
-                                                        disabled={tight15QueueBusyUid === (u.uid || u.id.split('_')[1] || u.id)}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs ${tight15QueueBusyUid === (u.uid || u.id.split('_')[1] || u.id) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        disabled={queueBusy}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs ${queueBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                     >
-                                                        {tight15QueueBusyUid === (u.uid || u.id.split('_')[1] || u.id) ? 'QUEUE...' : 'RANDOM TIGHT15'}
+                                                        {queueBusy ? 'QUEUE...' : 'RANDOM TIGHT15'}
                                                     </button>
-                                                    <button onClick={()=>kickUser(u.id.split('_')[1])} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs`}>Kick</button>
+                                                    <button
+                                                        onClick={() => launchSpotlightTight15Challenge(u)}
+                                                        disabled={queueBusy}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${queueBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        SPOTLIGHT CHALLENGE
+                                                    </button>
+                                                    <button
+                                                        onClick={() => openTight15ProfileCard(u)}
+                                                        disabled={profileBusy}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs ${profileBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {profileBusy ? 'LOADING...' : 'TIGHT15 CARD'}
+                                                    </button>
+                                                    <button onClick={()=>kickUser(userUid)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs`}>Kick</button>
                                                 </div>
                                                 {isSpotlight && <div className="absolute top-2 right-2 text-yellow-400 text-sm animate-pulse">LIVE</div>}
                                                 {isVip && (
@@ -8311,6 +9001,61 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <button onClick={saveApiKeys} className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}>Save Settings</button>
                             </div>
                         )}
+                        </div>
+                    </div>
+                </div>
+            )}
+            {tight15Profile && (
+                <div className="fixed inset-0 z-[95] bg-black/80 flex items-center justify-center p-4">
+                    <div className="w-full max-w-2xl bg-zinc-900 border border-zinc-700 rounded-3xl p-5">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="text-3xl">{tight15Profile.avatar || EMOJI.mic}</div>
+                                <div>
+                                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Singer Card</div>
+                                    <div className="text-2xl font-bebas text-cyan-300">{tight15Profile.name || 'Singer'}</div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setTight15Profile(null)}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs`}
+                            >
+                                Close
+                            </button>
+                        </div>
+                        <div className="mt-4 text-sm text-zinc-400">
+                            Tight 15 songs ({tight15Profile.tight15?.length || 0}/{TIGHT15_MAX})
+                        </div>
+                        <div className="mt-3 space-y-2 max-h-[55vh] overflow-y-auto pr-1 custom-scrollbar">
+                            {tight15Profile.tight15?.length ? (
+                                tight15Profile.tight15.map((entry, idx) => (
+                                    <div key={entry.id || `${entry.songTitle}_${entry.artist}_${idx}`} className="rounded-xl border border-zinc-700 bg-black/40 p-3 flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="font-bold text-white truncate">{entry.songTitle}</div>
+                                            <div className="text-sm text-zinc-400 truncate">{entry.artist}</div>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                onClick={() => queueSelectedTight15ForUser(tight15Profile.roomUser, entry, 'tight15_profile_card')}
+                                                disabled={tight15QueueBusyUid === tight15Profile.uid}
+                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px] ${(tight15QueueBusyUid === tight15Profile.uid) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                Queue
+                                            </button>
+                                            <button
+                                                onClick={() => sendUserMessage(tight15Profile.uid, `Tight 15 Pick: ${entry.songTitle}`, { tight15List: tight15Profile.tight15.slice(0, 3), challengeEntry: entry })}
+                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
+                                            >
+                                                Spotlight
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="rounded-xl border border-zinc-700 bg-black/40 p-4 text-sm text-zinc-500">
+                                    No Tight 15 songs found for this singer yet.
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

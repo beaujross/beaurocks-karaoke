@@ -4369,6 +4369,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     gameState={gamePayload}
                     playerData={gamePayload}
                     user={user}
+                    users={allUsers}
                     onSuggest={isBingo && isParticipant && canSuggestBingo ? suggestBingo : undefined}
                     onClose={isBingo ? () => setShowBingoOverlay(false) : undefined}
                     rulesToken={room?.gameRulesId}

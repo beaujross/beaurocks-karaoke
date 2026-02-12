@@ -39,7 +39,7 @@ const GAME_RULES = {
         lines: [
             'Head-to-head karaoke matches decide each round.',
             'Match songs are pulled randomly from each singer Tight 15.',
-            'Host advances winners until one champion remains.'
+            'Audience can vote live, then host advances winners until one champion remains.'
         ]
     },
     trivia_pop: {

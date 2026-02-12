@@ -1605,6 +1605,7 @@ const PublicTV = ({ roomCode }) => {
                 gameState={gamePayload}
                 playerData={room.gameData}
                 isPlayer={tvIsPlayer}
+                users={roomUsers}
                 inputSource={inputSource}
                 rulesToken={room?.gameRulesId}
                 view="tv"
@@ -2036,6 +2037,15 @@ const PublicTV = ({ roomCode }) => {
                                 <div className="text-2xl font-bold text-white mt-2 truncate">{room?.spotlightUser?.name || spotlightUser?.name || 'Guest'}</div>
                                 {room?.spotlightUser?.msg && (
                                     <div className="text-xs text-yellow-200 mt-1">{room.spotlightUser.msg}</div>
+                                )}
+                                {room?.spotlightUser?.challengeSong?.songTitle && (
+                                    <div className="mt-2 text-left bg-cyan-500/10 border border-cyan-300/30 rounded-xl px-3 py-2">
+                                        <div className="text-[10px] uppercase tracking-[0.3em] text-cyan-200 mb-1">Challenge Pick</div>
+                                        <div className="text-xs text-cyan-50 truncate">
+                                            {room.spotlightUser.challengeSong.songTitle}
+                                            {room?.spotlightUser?.challengeSong?.artist ? ` - ${room.spotlightUser.challengeSong.artist}` : ''}
+                                        </div>
+                                    </div>
                                 )}
                                 <div className="mt-3 text-left bg-yellow-500/10 border border-yellow-400/20 rounded-xl px-3 py-2">
                                     <div className="text-[10px] uppercase tracking-[0.3em] text-yellow-200 mb-2">Top Tight 15</div>

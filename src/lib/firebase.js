@@ -237,6 +237,11 @@ const getGoogleMapsApiKey = async () => {
   return data?.apiKey || "";
 };
 
+const submitMarketingWaitlist = async (payload = {}) => {
+  const data = await callFunction("submitMarketingWaitlist", payload || {});
+  return data || null;
+};
+
 const ensureOrganization = async (orgName = "") => {
   const data = await callFunction("ensureOrganization", { orgName });
   return data || null;
@@ -470,6 +475,7 @@ export {
   functions,
   callFunction,
   getGoogleMapsApiKey,
+  submitMarketingWaitlist,
   ensureOrganization,
   bootstrapOnboardingWorkspace,
   getMyEntitlements,

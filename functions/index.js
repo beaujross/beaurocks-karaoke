@@ -537,6 +537,48 @@ const sanitizeInvoiceStatus = (value = "") => {
   return "draft";
 };
 
+const MARKETING_WAITLIST_USE_CASES = new Set([
+  "Home Party Host",
+  "Fundraiser Organizer",
+  "Community Event Host",
+  "Venue / KJ Operator",
+]);
+
+const sanitizeWaitlistName = (value = "") => {
+  const safe = String(value || "").trim().slice(0, 80);
+  if (!safe) {
+    throw new HttpsError("invalid-argument", "name is required.");
+  }
+  return safe;
+};
+
+const sanitizeWaitlistEmail = (value = "") => {
+  const safe = String(value || "").trim().toLowerCase();
+  if (!safe || safe.length > 254) {
+    throw new HttpsError("invalid-argument", "Valid email is required.");
+  }
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safe);
+  if (!valid) {
+    throw new HttpsError("invalid-argument", "Valid email is required.");
+  }
+  return safe;
+};
+
+const sanitizeWaitlistUseCase = (value = "") => {
+  const safe = String(value || "").trim();
+  if (MARKETING_WAITLIST_USE_CASES.has(safe)) return safe;
+  return "Home Party Host";
+};
+
+const sanitizeWaitlistSource = (value = "") => {
+  const safe = String(value || "").trim().slice(0, 120);
+  if (!safe) return "marketing_site";
+  return safe;
+};
+
+const buildWaitlistDocId = (email = "") =>
+  `wl_${email.replace(/[^a-z0-9]/g, "_").replace(/_+/g, "_").slice(0, 140) || "unknown"}`;
+
 const reserveOrganizationUsageUnits = async ({
   orgId = "",
   entitlements = null,
@@ -2099,6 +2141,80 @@ exports.googleMapsKey = onCall({ cors: true, secrets: [GOOGLE_MAPS_API_KEY] }, a
     throw new HttpsError("failed-precondition", "Google Maps API key not configured.");
   }
   return { apiKey };
+});
+
+exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "submit_marketing_waitlist", { perMinute: 12, perHour: 80 });
+  enforceAppCheckIfEnabled(request, "submit_marketing_waitlist");
+
+  const name = sanitizeWaitlistName(request.data?.name || "");
+  const email = sanitizeWaitlistEmail(request.data?.email || "");
+  const useCase = sanitizeWaitlistUseCase(request.data?.useCase || "");
+  const source = sanitizeWaitlistSource(request.data?.source || "");
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const uid = request.auth?.uid || null;
+  const userAgent = String(request.rawRequest?.get?.("user-agent") || "").slice(0, 320);
+  const ip = getClientIp(request.rawRequest);
+
+  const db = admin.firestore();
+  const waitlistRef = db.collection("marketing_waitlist").doc(buildWaitlistDocId(email));
+  const metaRef = db.collection("marketing_meta").doc("waitlist");
+  let linePosition = 0;
+  let isNewSignup = false;
+
+  await db.runTransaction(async (tx) => {
+    const [signupSnap, metaSnap] = await Promise.all([tx.get(waitlistRef), tx.get(metaRef)]);
+    const currentTotal = Number(metaSnap.data()?.totalSignups || 0);
+
+    if (!signupSnap.exists) {
+      linePosition = currentTotal + 1;
+      isNewSignup = true;
+      tx.set(waitlistRef, {
+        name,
+        email,
+        useCase,
+        source,
+        status: "active",
+        linePosition,
+        createdAt: now,
+        updatedAt: now,
+        firstUid: uid,
+        lastUid: uid,
+        firstIp: ip,
+        lastIp: ip,
+        userAgent,
+        duplicateSubmitCount: 0,
+      }, { merge: true });
+      tx.set(metaRef, {
+        totalSignups: linePosition,
+        updatedAt: now,
+      }, { merge: true });
+      return;
+    }
+
+    const existing = signupSnap.data() || {};
+    linePosition = Number(existing.linePosition || currentTotal || 1);
+    tx.set(waitlistRef, {
+      name,
+      useCase,
+      source,
+      updatedAt: now,
+      lastUid: uid,
+      lastIp: ip,
+      userAgent,
+      duplicateSubmitCount: admin.firestore.FieldValue.increment(1),
+      lastSubmittedAt: now,
+    }, { merge: true });
+  });
+
+  return {
+    ok: true,
+    linePosition,
+    isNewSignup,
+    message: isNewSignup
+      ? `You are in line. Early access position: #${linePosition}.`
+      : `You are already on the list. Current position: #${linePosition}.`,
+  };
 });
 
 exports.ensureOrganization = onCall({ cors: true }, async (request) => {

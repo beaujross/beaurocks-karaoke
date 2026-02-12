@@ -60,6 +60,40 @@ const MYSTERY_PRESETS = {
     ]
 };
 
+const resolveRoomUserUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
+
+const getBracketMatchCrowdVotes = ({ users = [], bracketId = '', match = null }) => {
+    const summary = {
+        total: 0,
+        aVotes: 0,
+        bVotes: 0
+    };
+    if (!Array.isArray(users) || !users.length || !bracketId || !match?.id) return summary;
+    users.forEach((entry) => {
+        const voterUid = resolveRoomUserUid(entry);
+        if (!voterUid) return;
+        if (voterUid === match.aUid || voterUid === match.bUid) return;
+        const vote = entry?.bracketVote || null;
+        if (!vote || vote.bracketId !== bracketId || vote.matchId !== match.id) return;
+        if (vote.targetUid === match.aUid) {
+            summary.aVotes += 1;
+            summary.total += 1;
+        } else if (vote.targetUid === match.bUid) {
+            summary.bVotes += 1;
+            summary.total += 1;
+        }
+    });
+    return summary;
+};
+
+const isHostCandidate = (room = {}, user = {}) => {
+    const uid = resolveRoomUserUid(user);
+    if (!uid) return false;
+    if (room?.hostUid && uid === room.hostUid) return true;
+    if (room?.hostName && String(user?.name || '').trim() === String(room.hostName).trim()) return true;
+    return false;
+};
+
 const buildPresetTiles = (items, size, mode) => {
     const total = size * size;
     const tiles = [];
@@ -248,7 +282,10 @@ const UnifiedGameLauncher = ({
     onCreateSweet16Bracket,
     onQueueNextBracketMatch,
     onClearSweet16Bracket,
-    onSetBracketMatchWinner
+    onSetBracketMatchWinner,
+    onSetBracketWinnerFromCrowdVotes,
+    onToggleBracketCrowdVoting,
+    onForfeitBracketContestant
 }) => {
     const toast = useToast() || console.log;
     const canUseAiGeneration = !!capabilities?.['ai.generate_content'];
@@ -268,6 +305,12 @@ const UnifiedGameLauncher = ({
     const [selectedSingerId, setSelectedSingerId] = useState('');
     const sortedUsers = [...users].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     const allUserIds = useMemo(() => sortedUsers.map(u => u.id.split('_')[1]), [sortedUsers]);
+    const [bracketSeedUids, setBracketSeedUids] = useState([]);
+    const [bracketSeedRandomize, setBracketSeedRandomize] = useState(false);
+    const bracketCandidates = useMemo(
+        () => sortedUsers.filter((entry) => !isHostCandidate(room, entry)),
+        [sortedUsers, room]
+    );
     
     // Doodle-oke state
     const [doodlePromptsText, setDoodlePromptsText] = useState('');
@@ -469,6 +512,22 @@ const UnifiedGameLauncher = ({
         setShowGameConfig(true);
         autoOpenRef.current = true;
     }, [autoOpenGameId]);
+
+    useEffect(() => {
+        if (!showGameConfig || selectedGameForConfig !== 'karaoke_bracket') return;
+        const candidateUids = bracketCandidates.map((entry) => resolveRoomUserUid(entry)).filter(Boolean);
+        const candidateSet = new Set(candidateUids);
+        const bracketOrder = Array.isArray(room?.karaokeBracket?.contestantOrder)
+            ? room.karaokeBracket.contestantOrder.filter((uid) => candidateSet.has(uid))
+            : [];
+        const fallback = candidateUids.slice(0, 16);
+        setBracketSeedUids((prev) => {
+            const cleanedPrev = Array.isArray(prev) ? prev.filter((uid) => candidateSet.has(uid)) : [];
+            if (cleanedPrev.length) return cleanedPrev;
+            if (bracketOrder.length) return bracketOrder;
+            return fallback;
+        });
+    }, [showGameConfig, selectedGameForConfig, bracketCandidates, room?.karaokeBracket?.id, room?.karaokeBracket?.contestantOrder]);
 
     useEffect(() => {
         if (!selectedTriviaId && triviaBank.length) {
@@ -1349,6 +1408,7 @@ const UnifiedGameLauncher = ({
             {showGameConfig && <GameConfigModal 
                 selectedGame={selectedGameForConfig}
                 room={room}
+                users={users}
                 updateRoom={updateRoom}
                 roomCode={roomCode}
                 onClose={() => setShowGameConfig(false)}
@@ -1461,6 +1521,14 @@ const UnifiedGameLauncher = ({
                 onQueueNextBracketMatch={onQueueNextBracketMatch}
                 onClearSweet16Bracket={onClearSweet16Bracket}
                 onSetBracketMatchWinner={onSetBracketMatchWinner}
+                onSetBracketWinnerFromCrowdVotes={onSetBracketWinnerFromCrowdVotes}
+                onToggleBracketCrowdVoting={onToggleBracketCrowdVoting}
+                onForfeitBracketContestant={onForfeitBracketContestant}
+                bracketSeedUids={bracketSeedUids}
+                setBracketSeedUids={setBracketSeedUids}
+                bracketSeedRandomize={bracketSeedRandomize}
+                setBracketSeedRandomize={setBracketSeedRandomize}
+                bracketCandidates={bracketCandidates}
             />}
         </div>
     );
@@ -2191,6 +2259,7 @@ const BingoManager = ({
 const GameConfigModal = ({
     selectedGame,
     room,
+    users,
     updateRoom,
     roomCode,
     onClose,
@@ -2301,7 +2370,15 @@ const GameConfigModal = ({
     onCreateSweet16Bracket,
     onQueueNextBracketMatch,
     onClearSweet16Bracket,
-    onSetBracketMatchWinner
+    onSetBracketMatchWinner,
+    onSetBracketWinnerFromCrowdVotes,
+    onToggleBracketCrowdVoting,
+    onForfeitBracketContestant,
+    bracketSeedUids = [],
+    setBracketSeedUids,
+    bracketSeedRandomize = false,
+    setBracketSeedRandomize,
+    bracketCandidates = []
 }) => {
     if (selectedGame === 'flappy_bird') {
         return (
@@ -2820,6 +2897,23 @@ const GameConfigModal = ({
         const activeRound = activeBracket?.rounds?.[activeRoundIndex] || null;
         const matches = Array.isArray(activeRound?.matches) ? activeRound.matches : [];
         const canQueueNextMatch = !!activeBracket?.rounds?.length && activeBracket?.status !== 'complete';
+        const crowdVotingEnabled = activeBracket?.crowdVotingEnabled !== false;
+        const showAdvancePrompt = !!activeBracket?.roundTransition && activeBracket?.status !== 'complete' && !activeBracket?.activeMatchId;
+        const candidateEntries = (Array.isArray(bracketCandidates) && bracketCandidates.length ? bracketCandidates : sortedUsers)
+            .filter((entry) => !isHostCandidate(room, entry));
+        const seedSet = new Set(bracketSeedUids);
+        const selectedSeedEntries = bracketSeedUids
+            .map((uid) => candidateEntries.find((entry) => resolveRoomUserUid(entry) === uid))
+            .filter(Boolean);
+        const availableCandidates = candidateEntries.filter((entry) => !seedSet.has(resolveRoomUserUid(entry)));
+        const moveSeed = (fromIdx, toIdx) => {
+            if (!setBracketSeedUids) return;
+            if (fromIdx < 0 || toIdx < 0 || fromIdx >= bracketSeedUids.length || toIdx >= bracketSeedUids.length) return;
+            const next = [...bracketSeedUids];
+            const [item] = next.splice(fromIdx, 1);
+            next.splice(toIdx, 0, item);
+            setBracketSeedUids(next);
+        };
         return (
             <GameConfigShell
                 title="Sweet 16 Bracket"
@@ -2828,13 +2922,88 @@ const GameConfigModal = ({
                 onClose={onClose}
             >
                 <div className="space-y-4">
+                    <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+                        <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Participants + Seeding</div>
+                        <div className="text-xs text-zinc-400 mt-2">Select singers and set seed order. Only singers with Tight 15 entries will be kept when bracket is created.</div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+                            <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 p-3">
+                                <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mb-2">Available</div>
+                                <div className="space-y-2 max-h-44 overflow-y-auto pr-1 custom-scrollbar">
+                                    {availableCandidates.map((entry) => {
+                                        const uid = resolveRoomUserUid(entry);
+                                        return (
+                                            <button
+                                                key={uid || entry.id}
+                                                type="button"
+                                                onClick={() => setBracketSeedUids?.([...(bracketSeedUids || []), uid])}
+                                                className="w-full text-left rounded-lg border border-zinc-700 bg-black/30 px-2 py-2 hover:border-cyan-300/60"
+                                            >
+                                                <div className="text-sm text-white truncate">{entry?.name || 'Singer'}</div>
+                                                <div className="text-[10px] text-zinc-500">Tap to add</div>
+                                            </button>
+                                        );
+                                    })}
+                                    {!availableCandidates.length && <div className="text-[11px] text-zinc-500">No additional singers available.</div>}
+                                </div>
+                            </div>
+                            <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 p-3">
+                                <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mb-2">Seed Order</div>
+                                <div className="space-y-2 max-h-44 overflow-y-auto pr-1 custom-scrollbar">
+                                    {selectedSeedEntries.map((entry, idx) => {
+                                        const uid = resolveRoomUserUid(entry);
+                                        return (
+                                            <div key={uid || entry.id} className="rounded-lg border border-zinc-700 bg-black/30 px-2 py-2">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-sm text-white truncate">#{idx + 1} {entry?.name || 'Singer'}</div>
+                                                    <div className="flex gap-1">
+                                                        <button type="button" onClick={() => moveSeed(idx, idx - 1)} disabled={idx === 0} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-[10px] ${idx === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}>Up</button>
+                                                        <button type="button" onClick={() => moveSeed(idx, idx + 1)} disabled={idx === selectedSeedEntries.length - 1} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-[10px] ${idx === selectedSeedEntries.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}`}>Down</button>
+                                                        <button type="button" onClick={() => setBracketSeedUids?.(bracketSeedUids.filter((item) => item !== uid))} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-[10px]`}>Remove</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {!selectedSeedEntries.length && <div className="text-[11px] text-zinc-500">No seeded singers selected yet.</div>}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mt-3">
+                            <button
+                                type="button"
+                                onClick={() => setBracketSeedUids?.(candidateEntries.map((entry) => resolveRoomUserUid(entry)).filter(Boolean).slice(0, 16))}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs`}
+                            >
+                                Auto-fill Up To 16
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setBracketSeedUids?.([])}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs`}
+                            >
+                                Clear Seeds
+                            </button>
+                            <label className="inline-flex items-center gap-2 text-xs text-zinc-300 ml-auto">
+                                <input
+                                    type="checkbox"
+                                    checked={!!bracketSeedRandomize}
+                                    onChange={(e) => setBracketSeedRandomize?.(e.target.checked)}
+                                    className="accent-cyan-400"
+                                />
+                                Randomize selected seeds
+                            </label>
+                        </div>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                         <button
-                            onClick={() => onCreateSweet16Bracket?.()}
+                            onClick={() => onCreateSweet16Bracket?.({
+                                seedUids: bracketSeedUids,
+                                randomize: !!bracketSeedRandomize
+                            })}
                             disabled={bracketBusy || !onCreateSweet16Bracket}
                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm ${(bracketBusy || !onCreateSweet16Bracket) ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
-                            {bracketBusy ? 'Working...' : 'Create / Reseed'}
+                            {bracketBusy ? 'Working...' : 'Create / Reseed From Seeds'}
                         </button>
                         <button
                             onClick={() => onQueueNextBracketMatch?.()}
@@ -2849,6 +3018,13 @@ const GameConfigModal = ({
                             className={`${STYLES.btnStd} ${STYLES.btnDanger} px-4 py-2 text-sm ${(bracketBusy || !activeBracket || !onClearSweet16Bracket) ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
                             Clear
+                        </button>
+                        <button
+                            onClick={() => onToggleBracketCrowdVoting?.(!crowdVotingEnabled)}
+                            disabled={bracketBusy || !activeBracket || !onToggleBracketCrowdVoting}
+                            className={`${STYLES.btnStd} ${crowdVotingEnabled ? STYLES.btnSecondary : STYLES.btnPrimary} px-4 py-2 text-sm ${(bracketBusy || !activeBracket || !onToggleBracketCrowdVoting) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            {crowdVotingEnabled ? 'Pause Crowd Vote' : 'Enable Crowd Vote'}
                         </button>
                         <button
                             onClick={async () => {
@@ -2878,7 +3054,25 @@ const GameConfigModal = ({
                                 Round: <span className="text-zinc-200 font-bold">{activeRound?.name || 'Round'}</span>
                                 {' '}| Bracket size: <span className="text-zinc-200 font-bold">{activeBracket?.size || 0}</span>
                                 {' '}| Status: <span className="text-zinc-200 font-bold">{activeBracket?.status || 'setup'}</span>
+                                {' '}| Crowd voting: <span className={`font-bold ${crowdVotingEnabled ? 'text-cyan-200' : 'text-zinc-500'}`}>{crowdVotingEnabled ? 'ON' : 'OFF'}</span>
                             </div>
+                            {showAdvancePrompt && (
+                                <div className="rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-3 py-3 flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-[10px] uppercase tracking-[0.3em] text-cyan-200">Round Complete</div>
+                                        <div className="text-sm text-zinc-100 mt-1">
+                                            {activeBracket?.roundTransition?.fromRoundName || 'Round'} done. Next up: <span className="font-bold text-cyan-200">{activeBracket?.roundTransition?.toRoundName || 'Next round'}</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => onQueueNextBracketMatch?.()}
+                                        disabled={bracketBusy || !onQueueNextBracketMatch}
+                                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-1 text-xs ${(bracketBusy || !onQueueNextBracketMatch) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    >
+                                        Start Next Round
+                                    </button>
+                                </div>
+                            )}
                             {activeBracket?.status === 'complete' && (
                                 <div className="text-sm text-emerald-200 bg-emerald-500/10 border border-emerald-400/30 rounded-xl px-3 py-2">
                                     Champion: {activeBracket?.championName || 'Winner'}
@@ -2889,6 +3083,11 @@ const GameConfigModal = ({
                                     const a = activeBracket?.contestantsByUid?.[match.aUid] || null;
                                     const b = activeBracket?.contestantsByUid?.[match.bUid] || null;
                                     const winnerUid = match?.winnerUid || '';
+                                    const voteSummary = getBracketMatchCrowdVotes({
+                                        users,
+                                        bracketId: activeBracket?.id || '',
+                                        match
+                                    });
                                     return (
                                         <div key={match.id} className={`rounded-xl border p-3 ${activeBracket?.activeMatchId === match.id ? 'border-cyan-400/50 bg-cyan-500/10' : 'border-zinc-700 bg-zinc-950/50'}`}>
                                             <div className="flex items-center justify-between mb-2">
@@ -2899,6 +3098,7 @@ const GameConfigModal = ({
                                                 <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === a?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
                                                     <div className="font-bold text-white">{a?.name || 'TBD'}</div>
                                                     <div className="text-zinc-400 truncate">{match?.aSong?.songTitle || '-'} {match?.aSong?.artist ? `- ${match.aSong.artist}` : ''}</div>
+                                                    <div className="text-[11px] text-cyan-200 mt-1">{voteSummary.aVotes || 0} crowd votes</div>
                                                     {a?.uid && (
                                                         <button
                                                             onClick={() => onSetBracketMatchWinner?.(match.id, a.uid)}
@@ -2908,10 +3108,20 @@ const GameConfigModal = ({
                                                             Mark Winner
                                                         </button>
                                                     )}
+                                                    {a?.uid && b?.uid && (
+                                                        <button
+                                                            onClick={() => onForfeitBracketContestant?.(match.id, b.uid, 'host')}
+                                                            disabled={bracketBusy || !onForfeitBracketContestant || !!winnerUid}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnDanger} mt-1 px-2 py-1 text-[10px] ${(bracketBusy || !onForfeitBracketContestant || !!winnerUid) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            Opponent No-Show
+                                                        </button>
+                                                    )}
                                                 </div>
                                                 <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === b?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
                                                     <div className="font-bold text-white">{b?.name || 'TBD'}</div>
                                                     <div className="text-zinc-400 truncate">{match?.bSong?.songTitle || '-'} {match?.bSong?.artist ? `- ${match.bSong.artist}` : ''}</div>
+                                                    <div className="text-[11px] text-cyan-200 mt-1">{voteSummary.bVotes || 0} crowd votes</div>
                                                     {b?.uid && (
                                                         <button
                                                             onClick={() => onSetBracketMatchWinner?.(match.id, b.uid)}
@@ -2921,11 +3131,61 @@ const GameConfigModal = ({
                                                             Mark Winner
                                                         </button>
                                                     )}
+                                                    {a?.uid && b?.uid && (
+                                                        <button
+                                                            onClick={() => onForfeitBracketContestant?.(match.id, a.uid, 'host')}
+                                                            disabled={bracketBusy || !onForfeitBracketContestant || !!winnerUid}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnDanger} mt-1 px-2 py-1 text-[10px] ${(bracketBusy || !onForfeitBracketContestant || !!winnerUid) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            Opponent No-Show
+                                                        </button>
+                                                    )}
                                                 </div>
+                                                <button
+                                                    onClick={() => onSetBracketWinnerFromCrowdVotes?.(match.id)}
+                                                    disabled={bracketBusy || !onSetBracketWinnerFromCrowdVotes || !crowdVotingEnabled}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} mt-1 px-2 py-1 text-[10px] ${(bracketBusy || !onSetBracketWinnerFromCrowdVotes || !crowdVotingEnabled) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    Use Crowd Winner
+                                                </button>
                                             </div>
                                         </div>
                                     );
                                 })}
+                            </div>
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 p-3">
+                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500 mb-2">Bracket Match History</div>
+                                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                                        {(activeBracket?.matchHistory || []).slice().reverse().slice(0, 10).map((entry) => (
+                                            <div key={entry.id} className="rounded-lg border border-zinc-700 bg-black/30 px-2 py-2">
+                                                <div className="text-[11px] text-zinc-300">
+                                                    <span className="font-bold text-white">{entry.winnerName || 'Winner'}</span> beat {entry.aName || 'A'} vs {entry.bName || 'B'}
+                                                </div>
+                                                <div className="text-[10px] text-zinc-500 mt-1">
+                                                    {entry.roundName || 'Round'} • Match {entry.slot || '-'} • {entry.resolutionType || 'manual'}
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {!(activeBracket?.matchHistory || []).length && (
+                                            <div className="text-[11px] text-zinc-500">No resolved matches yet.</div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 p-3">
+                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500 mb-2">Bracket Audit Trail</div>
+                                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                                        {(activeBracket?.auditTrail || []).slice().reverse().slice(0, 12).map((entry) => (
+                                            <div key={entry.id} className="rounded-lg border border-zinc-700 bg-black/30 px-2 py-2">
+                                                <div className="text-[11px] text-zinc-200">{entry.text || entry.type || 'Event'}</div>
+                                                <div className="text-[10px] text-zinc-500 mt-1">{new Date(Number(entry.at || 0)).toLocaleTimeString()}</div>
+                                            </div>
+                                        ))}
+                                        {!(activeBracket?.auditTrail || []).length && (
+                                            <div className="text-[11px] text-zinc-500">No audit events yet.</div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}

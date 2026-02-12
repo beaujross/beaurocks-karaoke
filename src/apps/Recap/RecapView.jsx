@@ -23,6 +23,7 @@ const RecapView = ({ roomCode }) => {
     }, [roomCode]);
 
     const recap = room?.recap;
+    const tournament = recap?.tournament || null;
 
     if (!roomCode) {
         return <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">Missing room code.</div>;
@@ -64,6 +65,55 @@ const RecapView = ({ roomCode }) => {
                         <div className="text-xs uppercase tracking-[0.35em] text-zinc-500 mb-3">Loudest Performance</div>
                         <div className="text-2xl font-bold text-white">{recap.loudestPerformance.singer}</div>
                         <div className="text-sm text-zinc-400">{recap.loudestPerformance.song}</div>
+                    </div>
+                )}
+
+                {tournament && (
+                    <div className="mb-10 rounded-[2rem] border border-rose-400/30 bg-gradient-to-br from-rose-950/40 via-zinc-900 to-black p-6">
+                        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                            <div>
+                                <div className="text-xs uppercase tracking-[0.38em] text-rose-300/80">Tournament Time Capsule</div>
+                                <div className="text-3xl font-bold text-white mt-2">{tournament?.timeCapsule?.posterTitle || 'Sweet 16 Recap'}</div>
+                                <div className="text-sm text-zinc-400 mt-2">{tournament?.timeCapsule?.tagline || 'Bracket highlights from the night.'}</div>
+                            </div>
+                            <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-5 py-4 text-center min-w-[220px]">
+                                <div className="text-xs uppercase tracking-[0.32em] text-emerald-200">Champion</div>
+                                <div className="text-5xl mt-2">{tournament?.championAvatar || '🏆'}</div>
+                                <div className="text-2xl font-bold text-white mt-2">{tournament?.championName || 'Winner'}</div>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+                            <StatCard label="Bracket Size" value={tournament?.size || 0} />
+                            <StatCard label="Rounds" value={tournament?.roundsCount || 0} />
+                            <StatCard label="Resolved Matches" value={(tournament?.matchHistory || []).length} />
+                            <StatCard label="Audit Events" value={(tournament?.auditTrail || []).length} />
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+                            <div className="rounded-xl border border-zinc-700 bg-black/35 p-4">
+                                <div className="text-xs uppercase tracking-[0.32em] text-zinc-500 mb-3">Final Match Trail</div>
+                                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                                    {(tournament?.matchHistory || []).slice().reverse().slice(0, 10).map((entry) => (
+                                        <div key={entry.id} className="rounded-lg border border-zinc-700 bg-zinc-950/60 px-3 py-2">
+                                            <div className="text-sm text-white"><span className="font-bold">{entry.winnerName || 'Winner'}</span> defeated {entry.aName || 'A'} vs {entry.bName || 'B'}</div>
+                                            <div className="text-[11px] text-zinc-400 mt-1">{entry.roundName || 'Round'} • Match {entry.slot || '-'} • {entry.resolutionType || 'manual'}</div>
+                                        </div>
+                                    ))}
+                                    {!(tournament?.matchHistory || []).length && <div className="text-sm text-zinc-500">No tournament match history captured.</div>}
+                                </div>
+                            </div>
+                            <div className="rounded-xl border border-zinc-700 bg-black/35 p-4">
+                                <div className="text-xs uppercase tracking-[0.32em] text-zinc-500 mb-3">Tournament Moments</div>
+                                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                                    {(tournament?.timeCapsule?.moments || []).slice(0, 10).map((moment) => (
+                                        <div key={moment.id} className="rounded-lg border border-zinc-700 bg-zinc-950/60 px-3 py-2">
+                                            <div className="text-sm text-zinc-200">{moment.text || 'Tournament moment'}</div>
+                                            <div className="text-[11px] text-zinc-500 mt-1">{new Date(moment.at || nowMs()).toLocaleString()}</div>
+                                        </div>
+                                    ))}
+                                    {!(tournament?.timeCapsule?.moments || []).length && <div className="text-sm text-zinc-500">No tournament moments captured.</div>}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )}
 
