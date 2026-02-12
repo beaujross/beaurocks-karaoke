@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useMemo, useState } from 'react';
 import AppleLyricsRenderer from './AppleLyricsRenderer';
 import { EMOJI } from '../lib/emoji';
 
+const nowMs = () => Date.now();
+
 const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
     const mediaUrl = current?.mediaUrl || room?.mediaUrl;
     const isBackingAudioOnly = current?.backingAudioOnly || false;
@@ -9,6 +11,7 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
     const applePlaybackActive = !!applePlayback?.id;
     const showVisualizerTv = !!room?.showVisualizerTv;
     const hideVideoVisuals = showVisualizerTv;
+    const hasLyrics = !!(current?.lyrics && String(current.lyrics).trim()) || (Array.isArray(current?.lyricsTimed) && current.lyricsTimed.length > 0);
     
     const isAudioOnly = !!(current?.audioOnly) || (mediaUrl && /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(mediaUrl));
     // Detect Native Video (mp4, webm, ogg)
@@ -37,7 +40,7 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
     
     const layout = room?.layoutMode || 'standard';
     const iframeSrc = useMemo(() => {
-        const start = room?.videoStartTimestamp ? (Date.now() - room.videoStartTimestamp) / 1000 : 0;
+        const start = room?.videoStartTimestamp ? (nowMs() - room.videoStartTimestamp) / 1000 : 0;
         return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&start=${Math.floor(Math.max(0, start))}&enablejsapi=1`;
     }, [youtubeId, room?.videoStartTimestamp]);
 
@@ -47,7 +50,8 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
     const [autoplayBlocked, setAutoplayBlocked] = useState(false);
 
     useEffect(() => {
-        setAutoplayBlocked(false);
+        const resetTimer = setTimeout(() => setAutoplayBlocked(false), 0);
+        return () => clearTimeout(resetTimer);
     }, [mediaUrl]);
     
     useEffect(() => {
@@ -95,7 +99,7 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
             const video = nativeVideoRef.current;
             if (!video) return;
             if (room.videoPlaying) {
-                 const targetTime = (Date.now() - room.videoStartTimestamp) / 1000;
+                 const targetTime = (nowMs() - room.videoStartTimestamp) / 1000;
                  if (Math.abs(video.currentTime - targetTime) > 0.5) video.currentTime = targetTime;
                  if (video.paused) {
                     video.play().then(() => setAutoplayBlocked(false)).catch(e => {
@@ -116,7 +120,7 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
             const audio = audioRef.current;
             if (!audio) return;
             if (room.videoPlaying) {
-                 const targetTime = (Date.now() - room.videoStartTimestamp) / 1000;
+                 const targetTime = (nowMs() - room.videoStartTimestamp) / 1000;
                  if (Math.abs(audio.currentTime - targetTime) > 0.5) audio.currentTime = targetTime;
                  if (audio.paused) audio.play().catch(() => {});
             } else {
@@ -128,6 +132,9 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
 
     // 1. Idle State (No song)
     if (!current && !room?.mediaUrl) { 
+        if (showVisualizerTv) {
+            return null;
+        }
         if (room?.autoDjMode) { 
             return (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center z-50 bg-gradient-to-r from-purple-900 to-blue-900 animate-gradient">
@@ -201,7 +208,7 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
             </div>
 
             {/* LAYER 2: LYRICS OVERLAY (Z-Index 40 - Above Video, Below HUD) */}
-            {room?.showLyricsTv && !showVisualizerTv && current?.lyrics && (
+            {room?.showLyricsTv && hasLyrics && (
                 <div className="absolute inset-0 z-40">
                     <AppleLyricsRenderer 
                         lyrics={current.lyrics} 
@@ -215,6 +222,7 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
                         pausedAt={room.pausedAt}
                         isPlaying={room.videoPlaying}
                         showAll={room?.lyricsMode === 'full'}
+                        overlayMode={showVisualizerTv}
                     />
                 </div>
             )}
@@ -269,7 +277,7 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
                                                 ? 'text-red-300'
                                                 : 'text-cyan-200'
                                     }`}>{nowPlayingLabel.source}</span>
-                                    <span className="text-zinc-400 mr-2">•</span>
+                                    <span className="text-zinc-400 mr-2">&bull;</span>
                                     <span className="truncate">{nowPlayingLabel.title}</span>
                                     <span className="text-zinc-400 ml-2">({nowPlayingLabel.state})</span>
                                 </div>
@@ -285,3 +293,4 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
 };
 
 export default Stage;
+

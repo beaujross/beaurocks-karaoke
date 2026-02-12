@@ -598,6 +598,50 @@ html, body, #root { height: 100%; width: 100%; }
   opacity: 0.9;
 }
 
+/* UX: host-controlled lower-intensity mode for motion comfort and readability */
+.motion-safe-fx .vibe-strobe {
+  animation: none;
+  opacity: 0.14;
+}
+.motion-safe-fx .vibe-banger {
+  animation: none;
+  opacity: 0.22;
+}
+.motion-safe-fx .vibe-lightning {
+  animation-duration: 14s !important;
+  opacity: 0.12 !important;
+}
+.motion-safe-fx .rain {
+  animation-duration: 0.9s !important;
+  opacity: 0.15 !important;
+}
+.motion-safe-fx .fire-particle {
+  animation-duration: 2.4s !important;
+  opacity: 0.35;
+  filter: blur(0.5px);
+}
+.motion-safe-fx .ballad-orb {
+  animation-duration: 16s !important;
+  opacity: calc(var(--orb-alpha, 0.7) * 0.65);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vibe-strobe,
+  .vibe-banger,
+  .vibe-lightning,
+  .rain,
+  .fire-particle,
+  .ballad-orb {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .vibe-strobe { opacity: 0.12 !important; }
+  .rain { opacity: 0.12 !important; }
+  .vibe-lightning { opacity: 0.1 !important; }
+  .fire-particle { opacity: 0.3 !important; }
+}
+
 @keyframes pointsHintSwapI {
   0%, 45% { opacity: 1; transform: scale(1); color: #ff67b6; }
   55%, 100% { opacity: 0; transform: scale(0.92); color: #22d3ee; }

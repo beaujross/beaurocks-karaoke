@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { usePitch } from '../../hooks/usePitch';
 import { db, doc, updateDoc, collection, query, where, getDocs, writeBatch, increment } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
@@ -72,7 +72,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     const oscRef = useRef(null);
     const lastToneIndexRef = useRef(null);
 
-    const data = playerData || gameState || {};
+    const data = useMemo(() => (playerData || gameState || {}), [playerData, gameState]);
     const difficulty = data.difficulty || 'standard';
     const guideTone = data.guideTone !== false;
     const turnDurationMs = Math.max(10, Number(data.turnDurationMs || 30000));
@@ -81,14 +81,14 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     const summaryDurationMs = 2500;
     const { intervalMs, holdMs, minConfidence, minStability } = useMemo(() => difficultyConfig(difficulty), [difficulty]);
 
-    const writeState = async (payload) => {
+    const writeState = useCallback(async (payload) => {
         await updateDoc(
             doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode),
             { gameData: payload }
         );
-    };
+    }, [roomCode]);
 
-    const ensureInit = () => {
+    const ensureInit = useCallback(() => {
         if (!isPlayer) return;
         if (stateRef.current) return;
         const length = difficulty === 'easy' ? 6 : difficulty === 'hard' ? 10 : 8;
@@ -110,12 +110,12 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
         stateRef.current = init;
         setLocalState(init);
         writeState(init);
-    };
+    }, [isPlayer, difficulty, data, intervalMs, turnDurationMs, writeState]);
 
     useEffect(() => {
         const t = setTimeout(() => ensureInit(), 0);
         return () => clearTimeout(t);
-    }, [isPlayer]);
+    }, [ensureInit]);
 
     useEffect(() => {
         if (isPlayer) return;
@@ -126,7 +126,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             if (data.voice) setRemoteVoice(data.voice);
         }, 0);
         return () => clearTimeout(t);
-    }, [data?.phase, data?.score, data?.streak, data?.targetIndex, data?.targetNote, data?.detectedNote]);
+    }, [isPlayer, data]);
 
     useEffect(() => {
         if (!isPlayer) {
@@ -190,7 +190,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
         }, 200);
 
         return () => clearInterval(loop);
-    }, [isPlayer, stableNote, note, confidence, stability, isSinging, intervalMs, holdMs, minConfidence, minStability]);
+    }, [isPlayer, stableNote, note, confidence, stability, isSinging, intervalMs, holdMs, minConfidence, minStability, volumeNormalized, writeState]);
 
     useEffect(() => {
         if (!localState || !guideTone) return;

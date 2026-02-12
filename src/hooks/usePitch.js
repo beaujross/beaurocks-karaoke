@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { NOTE_NAMES } from '../lib/assets';
 
 const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
@@ -15,7 +15,7 @@ export const usePitch = (isActive, options = {}) => {
     const [noiseFloor, setNoiseFloor] = useState(0);
     const [isSinging, setIsSinging] = useState(false);
 
-    const opts = {
+    const opts = useMemo(() => ({
         minVolumeThreshold: 0.02,
         noiseGateMultiplier: 1.6,
         smoothingFactor: 0.6,
@@ -27,7 +27,7 @@ export const usePitch = (isActive, options = {}) => {
         stableNoteMs: 350,
         uiUpdateIntervalMs: 50,
         ...options
-    };
+    }), [options]);
 
     // Internal refs to maintain state without re-render thrashing inside the audio loop
     const audioCtx = useRef(null);
@@ -37,6 +37,7 @@ export const usePitch = (isActive, options = {}) => {
     const noteChangeAtRef = useRef(0);
     const noiseFloorRef = useRef(0);
     const calibrateRef = useRef({ start: 0, samples: [] });
+    const calibratingRef = useRef(false);
     const lastUiUpdateRef = useRef(0);
 
     useEffect(() => {
@@ -52,6 +53,7 @@ export const usePitch = (isActive, options = {}) => {
                 setStableNote('-');
                 setStability(0);
                 setCalibrating(false);
+                calibratingRef.current = false;
                 setNoiseFloor(0);
                 setIsSinging(false);
             }, 0);
@@ -154,6 +156,7 @@ export const usePitch = (isActive, options = {}) => {
                 
                 calibrateRef.current = { start: performance.now(), samples: [] };
                 noiseFloorRef.current = 0;
+                calibratingRef.current = true;
                 setCalibrating(true);
 
                 const update = () => { 
@@ -163,7 +166,7 @@ export const usePitch = (isActive, options = {}) => {
                     const { pitch: rawPitch, volume: rawVol, confidence: rawConfidence } = autoCorrelate(buf, audioCtx.current.sampleRate); 
                     const now = performance.now();
                     
-                    if (calibrating) {
+                    if (calibratingRef.current) {
                         calibrateRef.current.samples.push(rawVol);
                         if (now - calibrateRef.current.start >= opts.calibrationMs) {
                             const samples = calibrateRef.current.samples.sort((a,b) => a - b);
@@ -171,6 +174,7 @@ export const usePitch = (isActive, options = {}) => {
                             const median = samples.length ? samples[mid] : 0;
                             noiseFloorRef.current = clamp(median * opts.noiseGateMultiplier, opts.minVolumeThreshold, 0.2);
                             setNoiseFloor(noiseFloorRef.current);
+                            calibratingRef.current = false;
                             setCalibrating(false);
                         }
                     }
@@ -228,7 +232,7 @@ export const usePitch = (isActive, options = {}) => {
             if(audioCtx.current) audioCtx.current.close(); 
             if(streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop()); 
         };
-    }, [isActive]);
+    }, [isActive, opts]);
 
     return { pitch, volume, note, confidence, volumeNormalized, stableNote, stability, calibrating, noiseFloor, isSinging };
 };

@@ -38,6 +38,27 @@ const useQueueSongActions = ({
     getAppleMusicUserToken,
     toast
 }) => {
+    const fetchAiLyricsFallback = async (title, artist) => {
+        if (!room?.autoLyricsOnQueue || typeof generateAIContent !== 'function') return null;
+        const safeTitle = (title || '').trim();
+        if (!safeTitle) return null;
+        try {
+            const generated = await generateAIContent('lyrics', {
+                title: safeTitle,
+                artist: (artist || '').trim()
+            });
+            const lyrics = String(generated?.lyrics || '').trim();
+            if (!lyrics) return null;
+            return {
+                lyrics,
+                lyricsSource: 'ai'
+            };
+        } catch (err) {
+            console.warn('AI lyrics fallback failed', err);
+            return null;
+        }
+    };
+
     const fetchAppleTimedLyrics = async (title, artist) => {
         const safeTitle = (title || '').trim();
         if (!safeTitle) return null;
@@ -150,6 +171,13 @@ const useQueueSongActions = ({
                 resolvedLyricsSource = fetched.lyricsSource || '';
             }
         }
+        if (!resolvedLyrics && !resolvedTimedLyrics) {
+            const generated = await fetchAiLyricsFallback(manualTitle, manualArtist);
+            if (generated) {
+                resolvedLyrics = generated.lyrics || '';
+                resolvedLyricsSource = generated.lyricsSource || 'ai';
+            }
+        }
         await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
             roomCode,
             songId,
@@ -195,6 +223,9 @@ const useQueueSongActions = ({
         const isApple = r.source === 'itunes';
         const explicitAppleId = isApple ? String(r.trackId || '') : '';
         const fetchedApple = await fetchAppleTimedLyrics(r.trackName, r.artistName || '');
+        const fetchedAiLyrics = (!fetchedApple?.lyrics && !(Array.isArray(fetchedApple?.lyricsTimed) && fetchedApple.lyricsTimed.length))
+            ? await fetchAiLyricsFallback(r.trackName, r.artistName || '')
+            : null;
         const appleId = fetchedApple?.appleMusicId || explicitAppleId;
         const preferAppleDefault = isApple && !!appleId;
         const playbackAppleMusicId = preferAppleDefault ? appleId : '';
@@ -241,7 +272,7 @@ const useQueueSongActions = ({
             singer: manual.singer || room?.hostName || hostName || 'Host',
             url: mediaUrl,
             art: r.source === 'itunes' ? itunesArt : r.artworkUrl100 || '',
-            lyrics: fetchedApple?.lyrics || '',
+            lyrics: fetchedApple?.lyrics || fetchedAiLyrics?.lyrics || '',
             lyricsTimed: fetchedApple?.lyricsTimed || null,
             appleMusicId: playbackAppleMusicId,
             duration: manual.duration || 180,
@@ -263,7 +294,7 @@ const useQueueSongActions = ({
                 lyricsTimed: nextSong.lyricsTimed || null,
                 appleMusicId: nextSong.appleMusicId,
                 musicSource: nextSong.appleMusicId ? 'apple' : '',
-                lyricsSource: fetchedApple?.lyricsSource || '',
+                lyricsSource: fetchedApple?.lyricsSource || fetchedAiLyrics?.lyricsSource || '',
                 duration: nextSong.duration ? Math.round(nextSong.duration) : 180,
                 status: 'requested',
                 timestamp: serverTimestamp(),

@@ -127,6 +127,92 @@ const formatBingoVictorySummary = (victory) => {
     return parts.length ? parts.join(' / ') : 'None';
 };
 
+const parseRewardPoints = (value) => {
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.floor(value));
+    const asNumber = parseInt(String(value || '').replace(/[^0-9-]/g, ''), 10);
+    if (!Number.isFinite(asNumber)) return 0;
+    return Math.max(0, asNumber);
+};
+
+const buildInitialBingoRevealed = (tiles = []) => {
+    const revealed = {};
+    tiles.forEach((tile, idx) => {
+        if (tile?.free) {
+            revealed[idx] = true;
+        }
+    });
+    return revealed;
+};
+
+const detectBingoWin = ({ tiles = [], size = 5, revealed = {}, victory = defaultBingoVictory() }) => {
+    if (!Array.isArray(tiles) || !tiles.length) return null;
+    const safeSize = Math.max(1, Number(size || Math.sqrt(tiles.length) || 5));
+    const total = safeSize * safeSize;
+    const marked = (idx) => {
+        if (idx < 0 || idx >= total) return false;
+        if (revealed?.[idx]) return true;
+        return !!tiles[idx]?.free;
+    };
+    const safeVictory = normalizeBingoVictory(victory || defaultBingoVictory());
+
+    const rowWin = () => {
+        for (let r = 0; r < safeSize; r += 1) {
+            let all = true;
+            for (let c = 0; c < safeSize; c += 1) {
+                if (!marked((r * safeSize) + c)) {
+                    all = false;
+                    break;
+                }
+            }
+            if (all) return true;
+        }
+        return false;
+    };
+    const colWin = () => {
+        for (let c = 0; c < safeSize; c += 1) {
+            let all = true;
+            for (let r = 0; r < safeSize; r += 1) {
+                if (!marked((r * safeSize) + c)) {
+                    all = false;
+                    break;
+                }
+            }
+            if (all) return true;
+        }
+        return false;
+    };
+    const diagWin = () => {
+        let leftRight = true;
+        let rightLeft = true;
+        for (let i = 0; i < safeSize; i += 1) {
+            if (!marked((i * safeSize) + i)) leftRight = false;
+            if (!marked((i * safeSize) + (safeSize - 1 - i))) rightLeft = false;
+        }
+        return leftRight || rightLeft;
+    };
+    const cornersWin = () => {
+        const corners = [0, safeSize - 1, (safeSize * (safeSize - 1)), (safeSize * safeSize) - 1];
+        return corners.every((idx) => marked(idx));
+    };
+    const blackoutWin = () => {
+        for (let i = 0; i < total; i += 1) {
+            if (!marked(i)) return false;
+        }
+        return true;
+    };
+
+    if (safeVictory?.line?.enabled && (rowWin() || colWin() || diagWin())) {
+        return { type: 'line', label: 'Line Complete', reward: safeVictory?.line?.reward || '' };
+    }
+    if (safeVictory?.corners?.enabled && cornersWin()) {
+        return { type: 'corners', label: 'Four Corners', reward: safeVictory?.corners?.reward || '' };
+    }
+    if (safeVictory?.blackout?.enabled && blackoutWin()) {
+        return { type: 'blackout', label: 'Blackout', reward: safeVictory?.blackout?.reward || '' };
+    }
+    return null;
+};
+
 const GameConfigShell = ({ title, subtitle, accentClass, onClose, children }) => {
     return (
         <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
@@ -157,7 +243,12 @@ const UnifiedGameLauncher = ({
     useToast,
     autoOpenGameId,
     capabilities = {},
-    entitlementStatus = {}
+    entitlementStatus = {},
+    bracketBusy = false,
+    onCreateSweet16Bracket,
+    onQueueNextBracketMatch,
+    onClearSweet16Bracket,
+    onSetBracketMatchWinner
 }) => {
     const toast = useToast() || console.log;
     const canUseAiGeneration = !!capabilities?.['ai.generate_content'];
@@ -212,6 +303,8 @@ const UnifiedGameLauncher = ({
     const [selectedWyrId, setSelectedWyrId] = useState('');
     const [triviaParticipants, setTriviaParticipants] = useState([]);
     const [triviaParticipantMode, setTriviaParticipantMode] = useState('all');
+    const [triviaRoundSec, setTriviaRoundSec] = useState(20);
+    const [triviaAutoReveal, setTriviaAutoReveal] = useState(true);
     const [wyrParticipants, setWyrParticipants] = useState([]);
     const [wyrParticipantMode, setWyrParticipantMode] = useState('all');
     const [bingoBoards, setBingoBoards] = useState([]);
@@ -219,6 +312,7 @@ const UnifiedGameLauncher = ({
     const [bingoParticipantMode, setBingoParticipantMode] = useState('all');
     const bingoRngFinalizeRef = useRef(null);
     const bingoRngAppendRef = useRef({ startTime: null, uids: new Set() });
+    const bingoWinResolveRef = useRef('');
     const [triviaAiTopic, setTriviaAiTopic] = useState('');
     const [triviaAiLoading, setTriviaAiLoading] = useState(false);
     const [wyrAiTopic, setWyrAiTopic] = useState('');
@@ -299,6 +393,7 @@ const UnifiedGameLauncher = ({
             trivia_pop: 'Rewards: 100 pts',
             wyr: 'Rewards: 50 pts',
             bingo: 'Rewards: Custom',
+            karaoke_bracket: 'Rewards: Bracket champion',
             riding_scales: `Rewards: ${Math.max(10, Number(scaleRewardPerRound) || 50)} pts/round`,
             vocal_challenge: 'Rewards: Streak score',
             flappy_bird: 'Rewards: High score',
@@ -313,6 +408,7 @@ const UnifiedGameLauncher = ({
             trivia_pop: 'Mode: Group',
             wyr: 'Mode: Group',
             bingo: 'Mode: Group',
+            karaoke_bracket: 'Mode: 1v1 elimination',
             selfie_challenge: 'Mode: Group'
         };
         const config = participantConfigs[game.id];
@@ -340,6 +436,7 @@ const UnifiedGameLauncher = ({
         selfie_cam: 'Selfie Cam',
         doodle_oke: 'Doodle-oke',
         bingo: 'Bingo',
+        karaoke_bracket: 'Sweet 16 Bracket',
         trivia_pop: 'Trivia',
         trivia_reveal: 'Trivia',
         wyr: 'Would You Rather',
@@ -384,6 +481,16 @@ const UnifiedGameLauncher = ({
             setSelectedWyrId(wyrBank[0].id);
         }
     }, [selectedWyrId, wyrBank]);
+
+    useEffect(() => {
+        const defaults = room?.gameDefaults || {};
+        if (defaults?.triviaRoundSec !== undefined && defaults?.triviaRoundSec !== null) {
+            setTriviaRoundSec(Math.max(5, Number(defaults.triviaRoundSec) || 20));
+        }
+        if (defaults?.triviaAutoReveal !== undefined && defaults?.triviaAutoReveal !== null) {
+            setTriviaAutoReveal(!!defaults.triviaAutoReveal);
+        }
+    }, [room?.gameDefaults?.triviaRoundSec, room?.gameDefaults?.triviaAutoReveal, room?.gameDefaults]);
     
     const triggerGameRules = async () => {
         await updateRoom({ gameRulesId: Date.now() });
@@ -420,15 +527,17 @@ const UnifiedGameLauncher = ({
             vocal_challenge: `${Math.max(10, Number(vocalDurationSec) || 30)}s`,
             riding_scales: `${Math.max(10, Number(scaleDurationSec) || 30)}s`,
             selfie_challenge: 'Photo round',
-            trivia_pop: '1 question',
+            trivia_pop: `${Math.max(5, Number(triviaRoundSec) || 20)}s round`,
             wyr: '1 question',
             bingo: '1 board',
+            karaoke_bracket: 'Sweet 16 flow',
             flappy_bird: 'Quick round'
         };
         const rewardMap = {
             trivia_pop: '100 pts',
             wyr: '50 pts',
             bingo: 'Custom',
+            karaoke_bracket: 'Champion',
             riding_scales: `${Math.max(10, Number(scaleRewardPerRound) || 50)} pts`,
             vocal_challenge: 'Streak score',
             flappy_bird: 'High score',
@@ -473,6 +582,23 @@ const UnifiedGameLauncher = ({
                 return startGame(gameId);
             }
             return startSelfieChallenge();
+        }
+        if (gameId === 'karaoke_bracket') {
+            if (room?.karaokeBracket?.rounds?.length) {
+                await updateRoom({
+                    activeMode: 'karaoke_bracket',
+                    karaokeBracket: room.karaokeBracket,
+                    gameData: room.karaokeBracket,
+                    gameParticipantMode: 'all',
+                    gameParticipants: null
+                });
+                toast('Bracket launched');
+                return;
+            }
+            if (onCreateSweet16Bracket) {
+                return onCreateSweet16Bracket();
+            }
+            return startGame(gameId);
         }
         return startGame(gameId);
     };
@@ -792,10 +918,25 @@ const UnifiedGameLauncher = ({
 
     const launchTrivia = async (item) => {
         if (!item) return;
+        const durationSec = Math.max(5, Number(triviaRoundSec) || 20);
+        const startedAt = Date.now();
+        const autoReveal = !!triviaAutoReveal;
         const opts = shuffleArray([item.correct, item.w1, item.w2, item.w3].filter(Boolean));
         await updateRoom({
             activeMode: 'trivia_pop',
-            triviaQuestion: { q: item.q, options: opts, correct: opts.indexOf(item.correct), id: Date.now().toString(), status: 'asking', rewarded: false, points: item.points || 100 },
+            triviaQuestion: {
+                q: item.q,
+                options: opts,
+                correct: opts.indexOf(item.correct),
+                id: Date.now().toString(),
+                status: 'asking',
+                rewarded: false,
+                points: item.points || 100,
+                startedAt,
+                durationSec,
+                autoReveal,
+                revealAt: autoReveal ? startedAt + (durationSec * 1000) : null
+            },
             ...buildParticipantPayload(triviaParticipantMode, triviaParticipantMode === 'selected' ? triviaParticipants : [])
         });
         const nextBank = triviaBank.map(t => (t.id === item.id ? { ...t, asked: true } : t));
@@ -825,15 +966,21 @@ const UnifiedGameLauncher = ({
         if (!board?.tiles?.length) return;
         const size = board.size || Math.sqrt(board.tiles.length) || 5;
         const mode = board.mode || (board.tiles[0]?.type || 'karaoke');
+        const bingoSessionId = `bingo_${Date.now()}`;
+        const initialRevealed = buildInitialBingoRevealed(board.tiles);
+        const participantPayload = mode === 'mystery'
+            ? buildParticipantPayload(bingoParticipantMode, bingoParticipantMode === 'selected' ? bingoParticipants : [])
+            : buildParticipantPayload('all', []);
         await updateRoom({
             activeMode: 'bingo',
             bingoData: board.tiles,
             bingoSize: size,
             bingoMode: mode,
+            bingoSessionId,
             bingoBoardId: board.id || null,
             bingoVictory: board.victory || null,
             bingoWin: null,
-            bingoRevealed: {},
+            bingoRevealed: initialRevealed,
             bingoSuggestions: {},
             bingoVotingMode: mode === 'mystery' ? 'host' : (room?.bingoVotingMode || 'host+votes'),
             bingoAutoApprovePct: typeof room?.bingoAutoApprovePct === 'number' ? room.bingoAutoApprovePct : 50,
@@ -848,10 +995,13 @@ const UnifiedGameLauncher = ({
                     results: {}
                 }
                 : null,
+            bingoTurnPick: null,
             bingoTurnOrder: mode === 'mystery' ? [] : null,
             bingoTurnIndex: mode === 'mystery' ? 0 : null,
             bingoPickerUid: mode === 'mystery' ? null : null,
-            ...buildParticipantPayload(bingoParticipantMode, bingoParticipantMode === 'selected' ? bingoParticipants : [])
+            bingoPickerName: mode === 'mystery' ? null : null,
+            bingoFocus: null,
+            ...participantPayload
         });
         logActivity(roomCode, 'HOST', 'started Bingo.', 'GAME');
         toast('Bingo started');
@@ -912,40 +1062,73 @@ const UnifiedGameLauncher = ({
         if (Date.now() < start + durationMs) return;
         if (bingoRngFinalizeRef.current === start) return;
         bingoRngFinalizeRef.current = start;
+        const participantMode = room?.gameParticipantMode === 'selected' ? 'selected' : 'all';
+        const participantUids = participantMode === 'selected' ? new Set(Array.isArray(room?.gameParticipants) ? room.gameParticipants : []) : null;
         const activeCutoff = Date.now() - 5 * 60 * 1000;
+        const allScopedUsers = participantUids
+            ? users.filter((u) => participantUids.has(u.uid))
+            : users;
         const activeUsers = users.filter(u => {
             const ts = getTimestampMs(u.lastActiveAt || u.lastSeen);
             return ts && ts >= activeCutoff;
         });
+        const scopedActiveUsers = participantUids
+            ? activeUsers.filter((u) => participantUids.has(u.uid))
+            : activeUsers;
         const results = rng.results || {};
         const resultsMap = { ...results };
         const resultList = Object.values(results);
-        let eligible = resultList.filter(r => activeUsers.some(u => u.uid === r.uid));
+        const makeEntry = (u) => ({
+            uid: u.uid,
+            name: u.name,
+            avatar: u.avatar,
+            value: Math.floor(Math.random() * 1000) + 1,
+            at: Date.now()
+        });
+        let eligible = resultList.filter(r => scopedActiveUsers.some(u => u.uid === r.uid));
         if (rng.includeHost && room?.hostName) {
-            const hostUser = activeUsers.find(u => u.uid === room?.hostUid || u.name === room.hostName);
+            const hostUser = users.find(u => u.uid === room?.hostUid || u.name === room.hostName);
             if (hostUser && !eligible.some(r => r.uid === hostUser.uid)) {
-                const hostResult = {
-                    uid: hostUser.uid,
-                    name: hostUser.name,
-                    avatar: hostUser.avatar,
-                    value: Math.floor(Math.random() * 1000) + 1,
-                    at: Date.now()
-                };
+                const hostResult = makeEntry(hostUser);
                 eligible = [...eligible, hostResult];
                 resultsMap[hostUser.uid] = hostResult;
             }
         }
         if (!eligible.length) {
-            eligible = activeUsers.map(u => {
-                const entry = {
-                    uid: u.uid,
-                    name: u.name,
-                    avatar: u.avatar,
+            eligible = scopedActiveUsers.map(u => {
+                const entry = makeEntry(u);
+                resultsMap[u.uid] = entry;
+                return entry;
+            });
+        }
+        // Fallback to full scoped roster so selected mystery rounds cannot stall when nobody is recently active.
+        if (!eligible.length) {
+            eligible = allScopedUsers.map((u) => {
+                const entry = makeEntry(u);
+                resultsMap[u.uid] = entry;
+                return entry;
+            });
+        }
+        // Last-resort fallback to all connected users if participant scope resolved to empty.
+        if (!eligible.length) {
+            eligible = users.map((u) => {
+                const entry = makeEntry(u);
+                resultsMap[u.uid] = entry;
+                return entry;
+            });
+        }
+        if (participantUids && participantUids.size && !eligible.length) {
+            eligible = Array.from(participantUids).map((uid) => {
+                const fromResult = resultList.find((r) => r.uid === uid);
+                const fallback = fromResult || {
+                    uid,
+                    name: `Guest ${String(uid).slice(0, 4)}`,
+                    avatar: '🎤',
                     value: Math.floor(Math.random() * 1000) + 1,
                     at: Date.now()
                 };
-                resultsMap[u.uid] = entry;
-                return entry;
+                resultsMap[uid] = fallback;
+                return fallback;
             });
         }
         const order = [...eligible]
@@ -958,7 +1141,7 @@ const UnifiedGameLauncher = ({
             bingoTurnIndex: 0,
             bingoPickerUid: order[0] || null
         });
-    }, [room?.bingoMysteryRng?.active, room?.bingoMysteryRng?.startTime, room?.bingoMysteryRng?.durationSec, room?.bingoMysteryRng?.finalized, room?.bingoMode, room?.bingoIncludeHost, room?.hostUid, room?.hostName, users]);
+    }, [room?.bingoMysteryRng?.active, room?.bingoMysteryRng?.startTime, room?.bingoMysteryRng?.durationSec, room?.bingoMysteryRng?.finalized, room?.bingoMode, room?.bingoIncludeHost, room?.hostUid, room?.hostName, room?.gameParticipantMode, room?.gameParticipants, users, room?.bingoMysteryRng, updateRoom]);
 
     useEffect(() => {
         const rng = room?.bingoMysteryRng;
@@ -978,7 +1161,111 @@ const UnifiedGameLauncher = ({
             bingoTurnOrder: nextOrder,
             bingoMysteryRng: { ...(rng || {}), results: rng?.results || {}, order: nextOrder }
         });
-    }, [room?.bingoMysteryRng?.results, room?.bingoMysteryRng?.finalized, room?.bingoMysteryRng?.startTime, room?.bingoMode, room?.bingoTurnOrder]);
+    }, [room?.bingoMysteryRng?.results, room?.bingoMysteryRng?.finalized, room?.bingoMysteryRng?.startTime, room?.bingoMode, room?.bingoTurnOrder, room?.bingoMysteryRng, updateRoom]);
+
+    useEffect(() => {
+        if (room?.activeMode !== 'bingo') return;
+        if (room?.bingoWin?.type) return;
+        const tiles = Array.isArray(room?.bingoData) ? room.bingoData : [];
+        if (!tiles.length) return;
+        const size = Number(room?.bingoSize || Math.sqrt(tiles.length) || 5);
+        const detected = detectBingoWin({
+            tiles,
+            size,
+            revealed: room?.bingoRevealed || {},
+            victory: room?.bingoVictory || defaultBingoVictory()
+        });
+        if (!detected) return;
+        const sessionId = String(room?.bingoSessionId || room?.bingoBoardId || 'bingo');
+        const resolveKey = `${sessionId}:${detected.type}`;
+        if (bingoWinResolveRef.current === resolveKey) return;
+        bingoWinResolveRef.current = resolveKey;
+
+        const finalizeWin = async () => {
+            const rewardPoints = parseRewardPoints(detected.reward);
+            const now = Date.now();
+            const winnerUid = room?.bingoMode === 'mystery'
+                ? (room?.bingoTurnPick?.pickerUid || room?.bingoPickerUid || null)
+                : null;
+            const winnerName = winnerUid
+                ? (users.find((u) => u.uid === winnerUid)?.name || room?.bingoPickerName || 'Picker')
+                : null;
+            const bingoWinPayload = {
+                type: detected.type,
+                label: detected.label,
+                reward: detected.reward || '',
+                rewardPoints,
+                detectedAt: now,
+                mode: room?.bingoMode || 'karaoke',
+                winnerUid,
+                winnerName
+            };
+            const updatePayload = { bingoWin: bingoWinPayload };
+
+            if (rewardPoints > 0) {
+                if (room?.bingoMode === 'mystery' && winnerUid && typeof callFunction === 'function') {
+                    try {
+                        await callFunction('awardRoomPoints', { roomCode, awards: [{ uid: winnerUid, points: rewardPoints }] });
+                        updatePayload.bingoWin = {
+                            ...bingoWinPayload,
+                            awardedAt: Date.now(),
+                            awardedPoints: rewardPoints,
+                            awardMode: 'direct'
+                        };
+                        logActivity(roomCode, 'HOST', `awarded ${rewardPoints} pts to ${winnerName || 'picker'} for Mystery Bingo.`, 'GAME');
+                    } catch (err) {
+                        console.error('Bingo direct reward failed', err);
+                        updatePayload.bingoWin = {
+                            ...bingoWinPayload,
+                            awardMode: 'failed',
+                            awardError: 'Could not award winner points'
+                        };
+                    }
+                } else {
+                    updatePayload.bonusDrop = {
+                        id: now,
+                        by: `Bingo ${detected.label}`,
+                        points: rewardPoints
+                    };
+                    updatePayload.bingoWin = {
+                        ...bingoWinPayload,
+                        awardedAt: now,
+                        awardedPoints: rewardPoints,
+                        awardMode: 'room_bonus'
+                    };
+                }
+            }
+
+            try {
+                await updateRoom(updatePayload);
+                logActivity(roomCode, 'HOST', `Bingo win: ${detected.label}.`, 'GAME');
+                toast(`Bingo! ${detected.label}`);
+            } catch (err) {
+                console.error('Failed to write bingo win', err);
+                bingoWinResolveRef.current = '';
+            }
+        };
+        finalizeWin();
+    }, [
+        room?.activeMode,
+        room?.bingoData,
+        room?.bingoSize,
+        room?.bingoRevealed,
+        room?.bingoVictory,
+        room?.bingoWin,
+        room?.bingoMode,
+        room?.bingoTurnPick,
+        room?.bingoPickerUid,
+        room?.bingoPickerName,
+        room?.bingoSessionId,
+        room?.bingoBoardId,
+        users,
+        callFunction,
+        roomCode,
+        logActivity,
+        toast,
+        updateRoom
+    ]);
 
     return (
         <div className="h-full overflow-y-auto custom-scrollbar pr-2 flex flex-col">
@@ -1142,6 +1429,10 @@ const UnifiedGameLauncher = ({
                 setTriviaParticipants={setTriviaParticipants}
                 triviaParticipantMode={triviaParticipantMode}
                 setTriviaParticipantMode={setTriviaParticipantMode}
+                triviaRoundSec={triviaRoundSec}
+                setTriviaRoundSec={setTriviaRoundSec}
+                triviaAutoReveal={triviaAutoReveal}
+                setTriviaAutoReveal={setTriviaAutoReveal}
                 wyrParticipants={wyrParticipants}
                 setWyrParticipants={setWyrParticipants}
                 wyrParticipantMode={wyrParticipantMode}
@@ -1165,6 +1456,11 @@ const UnifiedGameLauncher = ({
                 setVocalParticipants={setVocalParticipants}
                 canUseAiGeneration={canUseAiGeneration}
                 aiGateMessage={aiGateMessage}
+                bracketBusy={bracketBusy}
+                onCreateSweet16Bracket={onCreateSweet16Bracket}
+                onQueueNextBracketMatch={onQueueNextBracketMatch}
+                onClearSweet16Bracket={onClearSweet16Bracket}
+                onSetBracketMatchWinner={onSetBracketMatchWinner}
             />}
         </div>
     );
@@ -1410,6 +1706,9 @@ const BingoManager = ({
     const bingoVotingMode = room?.bingoVotingMode || 'host+votes';
     const bingoAutoApprovePct = typeof room?.bingoAutoApprovePct === 'number' ? room.bingoAutoApprovePct : 50;
     const bingoShowTv = room?.bingoShowTv !== false;
+    const isMysteryLive = room?.activeMode === 'bingo' && room?.bingoMode === 'mystery';
+    const mysteryOrder = Array.isArray(room?.bingoTurnOrder) ? room.bingoTurnOrder : [];
+    const mysteryTurnIndex = Math.max(0, Number(room?.bingoTurnIndex || 0));
 
     useEffect(() => {
         if (!roomCode || seededPresets.current) return;
@@ -1559,10 +1858,55 @@ const BingoManager = ({
         toast('Votes cleared');
     };
 
+    const skipMysteryPicker = async () => {
+        if (!isMysteryLive) return;
+        if (!mysteryOrder.length) {
+            toast('No picker order yet.');
+            return;
+        }
+        const nextIndex = (mysteryTurnIndex + 1) % mysteryOrder.length;
+        await updateRoom({
+            bingoTurnIndex: nextIndex,
+            bingoPickerUid: mysteryOrder[nextIndex] || null,
+            bingoTurnPick: null
+        });
+        toast('Advanced to next picker.');
+    };
+
+    const unlockMysteryTurn = async () => {
+        if (!isMysteryLive) return;
+        await updateRoom({ bingoTurnPick: null });
+        toast('Turn unlocked.');
+    };
+
+    const rerollMysteryOrder = async () => {
+        if (room?.activeMode !== 'bingo' || room?.bingoMode !== 'mystery') {
+            toast('Start a mystery bingo round first.');
+            return;
+        }
+        await updateRoom({
+            bingoMysteryRng: {
+                ...(room?.bingoMysteryRng || {}),
+                active: true,
+                finalized: false,
+                startTime: Date.now(),
+                durationSec: Math.max(8, Number(room?.bingoMysteryRng?.durationSec || 12)),
+                results: {},
+                order: []
+            },
+            bingoTurnOrder: [],
+            bingoTurnIndex: 0,
+            bingoPickerUid: null,
+            bingoPickerName: null,
+            bingoTurnPick: null
+        });
+        toast('Mystery order reset. Spinning again...');
+    };
+
     return (
         <div className="space-y-4">
             <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
-                <div className="text-xs uppercase tracking-widest text-zinc-500">Karaoke Bingo settings</div>
+                <div className="text-xs uppercase tracking-widest text-zinc-500">Bingo settings</div>
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-2">
                     <button
                         onClick={() => updateRoom({ bingoShowTv: !bingoShowTv })}
@@ -1571,32 +1915,62 @@ const BingoManager = ({
                         <i className="fa-solid fa-tv mr-2"></i>
                         TV Board {bingoShowTv ? 'On' : 'Off'}
                     </button>
-                    <button
-                        onClick={() => updateRoom({ bingoVotingMode: bingoVotingMode === 'host+votes' ? 'host' : 'host+votes' })}
-                        className={`${STYLES.btnStd} ${bingoVotingMode === 'host+votes' ? STYLES.btnPrimary : STYLES.btnSecondary} px-3 py-2 text-sm`}
-                    >
-                        <i className="fa-solid fa-check mr-2"></i>
-                        {bingoVotingMode === 'host+votes' ? 'Host + Votes' : 'Host Only'}
-                    </button>
-                    <button
-                        onClick={() => updateRoom({ bingoIncludeHost: !room?.bingoIncludeHost })}
-                        className={`${STYLES.btnStd} ${room?.bingoIncludeHost ? STYLES.btnPrimary : STYLES.btnSecondary} px-3 py-2 text-sm`}
-                    >
-                        <i className="fa-solid fa-user-crown mr-2"></i>
-                        Include Host {room?.bingoIncludeHost ? 'On' : 'Off'}
-                    </button>
-                    <div className="flex items-center gap-2 bg-zinc-900/60 border border-zinc-700 rounded-xl px-3 py-2">
-                        <span className="text-xs uppercase tracking-widest text-zinc-400">Auto approve</span>
-                        <input
-                            type="number"
-                            min="10"
-                            max="100"
-                            value={bingoAutoApprovePct}
-                            onChange={(e) => updateRoom({ bingoAutoApprovePct: Math.max(10, Math.min(100, parseInt(e.target.value, 10) || 50)) })}
-                            className="w-20 bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-white"
-                        />
-                        <span className="text-xs text-zinc-400">% room</span>
-                    </div>
+                    {room?.bingoMode === 'mystery' ? (
+                        <>
+                            <button
+                                onClick={() => updateRoom({ bingoIncludeHost: !room?.bingoIncludeHost })}
+                                className={`${STYLES.btnStd} ${room?.bingoIncludeHost ? STYLES.btnPrimary : STYLES.btnSecondary} px-3 py-2 text-sm`}
+                            >
+                                <i className="fa-solid fa-user-crown mr-2"></i>
+                                Include Host {room?.bingoIncludeHost ? 'On' : 'Off'}
+                            </button>
+                            <button
+                                onClick={unlockMysteryTurn}
+                                disabled={!room?.bingoTurnPick?.pickerUid}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-sm ${!room?.bingoTurnPick?.pickerUid ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                <i className="fa-solid fa-lock-open mr-2"></i>
+                                Unlock Turn
+                            </button>
+                            <button
+                                onClick={skipMysteryPicker}
+                                disabled={!mysteryOrder.length}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-sm ${!mysteryOrder.length ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                <i className="fa-solid fa-forward-step mr-2"></i>
+                                Skip Picker
+                            </button>
+                            <button
+                                onClick={rerollMysteryOrder}
+                                className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-2 text-sm`}
+                            >
+                                <i className="fa-solid fa-dice mr-2"></i>
+                                Re-Spin Order
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <button
+                                onClick={() => updateRoom({ bingoVotingMode: bingoVotingMode === 'host+votes' ? 'host' : 'host+votes' })}
+                                className={`${STYLES.btnStd} ${bingoVotingMode === 'host+votes' ? STYLES.btnPrimary : STYLES.btnSecondary} px-3 py-2 text-sm`}
+                            >
+                                <i className="fa-solid fa-check mr-2"></i>
+                                {bingoVotingMode === 'host+votes' ? 'Host + Votes' : 'Host Only'}
+                            </button>
+                            <div className="flex items-center gap-2 bg-zinc-900/60 border border-zinc-700 rounded-xl px-3 py-2">
+                                <span className="text-xs uppercase tracking-widest text-zinc-400">Auto approve</span>
+                                <input
+                                    type="number"
+                                    min="10"
+                                    max="100"
+                                    value={bingoAutoApprovePct}
+                                    onChange={(e) => updateRoom({ bingoAutoApprovePct: Math.max(10, Math.min(100, parseInt(e.target.value, 10) || 50)) })}
+                                    className="w-20 bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-white"
+                                />
+                                <span className="text-xs text-zinc-400">% voters</span>
+                            </div>
+                        </>
+                    )}
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
                     <input
@@ -1612,7 +1986,18 @@ const BingoManager = ({
                         placeholder="Sponsor logo URL (optional)"
                     />
                 </div>
-                <div className="text-[10px] text-zinc-500">Votes auto-approve when the room hits the threshold. Host can always override.</div>
+                {room?.bingoMode === 'mystery' && (
+                    <div className="text-[10px] text-zinc-400">
+                        {room?.bingoTurnPick?.pickerUid
+                            ? `Current turn locked by ${room?.bingoPickerName || 'picker'} on tile #${Number(room?.bingoTurnPick?.index ?? -1) + 1}.`
+                            : `Current picker: ${room?.bingoPickerName || 'Not assigned yet'}.`}
+                    </div>
+                )}
+                <div className="text-[10px] text-zinc-500">
+                    {room?.bingoMode === 'mystery'
+                        ? 'Mystery mode is turn-based. Picker locks one tile, then performs to pass the turn.'
+                        : 'Karaoke mode supports host moderation or auto-approve voting.'}
+                </div>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
@@ -1893,6 +2278,10 @@ const GameConfigModal = ({
     setTriviaParticipants,
     triviaParticipantMode,
     setTriviaParticipantMode,
+    triviaRoundSec,
+    setTriviaRoundSec,
+    triviaAutoReveal,
+    setTriviaAutoReveal,
     wyrParticipants,
     setWyrParticipants,
     wyrParticipantMode,
@@ -1907,7 +2296,12 @@ const GameConfigModal = ({
     toast,
     setBingoBoards,
     canUseAiGeneration,
-    aiGateMessage
+    aiGateMessage,
+    bracketBusy = false,
+    onCreateSweet16Bracket,
+    onQueueNextBracketMatch,
+    onClearSweet16Bracket,
+    onSetBracketMatchWinner
 }) => {
     if (selectedGame === 'flappy_bird') {
         return (
@@ -2268,6 +2662,30 @@ const GameConfigModal = ({
             >
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
+                        <div className="text-xs uppercase tracking-widest text-zinc-500">Round settings</div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <label className="text-xs text-zinc-400 flex flex-col gap-2">
+                                Round length (seconds)
+                                <input
+                                    type="number"
+                                    min="5"
+                                    max="180"
+                                    value={triviaRoundSec}
+                                    onChange={(e) => setTriviaRoundSec(e.target.value)}
+                                    className={STYLES.input}
+                                />
+                            </label>
+                            <label className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/50 p-2 rounded-lg mt-[22px]">
+                                <input
+                                    type="checkbox"
+                                    checked={triviaAutoReveal}
+                                    onChange={(e) => setTriviaAutoReveal(e.target.checked)}
+                                    className="w-4 h-4"
+                                />
+                                <span>Auto-reveal at timer end</span>
+                            </label>
+                        </div>
+                        <div className="h-px bg-white/10"></div>
                         <div className="text-xs uppercase tracking-widest text-zinc-500">Question bank</div>
                         <input
                             value={triviaFilter}
@@ -2392,6 +2810,125 @@ const GameConfigModal = ({
                         setParticipants={setWyrParticipants}
                         users={sortedUsers}
                     />
+                </div>
+            </GameConfigShell>
+        );
+    }
+    if (selectedGame === 'karaoke_bracket') {
+        const activeBracket = room?.karaokeBracket || null;
+        const activeRoundIndex = Math.max(0, Number(activeBracket?.activeRoundIndex || 0));
+        const activeRound = activeBracket?.rounds?.[activeRoundIndex] || null;
+        const matches = Array.isArray(activeRound?.matches) ? activeRound.matches : [];
+        const canQueueNextMatch = !!activeBracket?.rounds?.length && activeBracket?.status !== 'complete';
+        return (
+            <GameConfigShell
+                title="Sweet 16 Bracket"
+                subtitle="Create or reseed a tournament, queue matches, and advance winners."
+                accentClass="text-rose-300"
+                onClose={onClose}
+            >
+                <div className="space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            onClick={() => onCreateSweet16Bracket?.()}
+                            disabled={bracketBusy || !onCreateSweet16Bracket}
+                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm ${(bracketBusy || !onCreateSweet16Bracket) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            {bracketBusy ? 'Working...' : 'Create / Reseed'}
+                        </button>
+                        <button
+                            onClick={() => onQueueNextBracketMatch?.()}
+                            disabled={bracketBusy || !canQueueNextMatch || !onQueueNextBracketMatch}
+                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-4 py-2 text-sm ${(bracketBusy || !canQueueNextMatch || !onQueueNextBracketMatch) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            Queue Next Match
+                        </button>
+                        <button
+                            onClick={() => onClearSweet16Bracket?.()}
+                            disabled={bracketBusy || !activeBracket || !onClearSweet16Bracket}
+                            className={`${STYLES.btnStd} ${STYLES.btnDanger} px-4 py-2 text-sm ${(bracketBusy || !activeBracket || !onClearSweet16Bracket) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            Clear
+                        </button>
+                        <button
+                            onClick={async () => {
+                                if (!activeBracket?.rounds?.length) return;
+                                await updateRoom({
+                                    activeMode: 'karaoke_bracket',
+                                    karaokeBracket: activeBracket,
+                                    gameData: activeBracket,
+                                    gameParticipantMode: 'all',
+                                    gameParticipants: null
+                                });
+                                toast('Bracket launched');
+                            }}
+                            disabled={!activeBracket?.rounds?.length}
+                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm ${!activeBracket?.rounds?.length ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            Go Live
+                        </button>
+                    </div>
+                    {!activeBracket?.rounds?.length ? (
+                        <div className="text-sm text-zinc-400 bg-black/40 border border-white/10 rounded-2xl p-4">
+                            Creates single-elimination 1v1 matches. Each match auto-picks random songs from each singer&apos;s Tight 15.
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <div className="text-sm text-zinc-400">
+                                Round: <span className="text-zinc-200 font-bold">{activeRound?.name || 'Round'}</span>
+                                {' '}| Bracket size: <span className="text-zinc-200 font-bold">{activeBracket?.size || 0}</span>
+                                {' '}| Status: <span className="text-zinc-200 font-bold">{activeBracket?.status || 'setup'}</span>
+                            </div>
+                            {activeBracket?.status === 'complete' && (
+                                <div className="text-sm text-emerald-200 bg-emerald-500/10 border border-emerald-400/30 rounded-xl px-3 py-2">
+                                    Champion: {activeBracket?.championName || 'Winner'}
+                                </div>
+                            )}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                {matches.map((match) => {
+                                    const a = activeBracket?.contestantsByUid?.[match.aUid] || null;
+                                    const b = activeBracket?.contestantsByUid?.[match.bUid] || null;
+                                    const winnerUid = match?.winnerUid || '';
+                                    return (
+                                        <div key={match.id} className={`rounded-xl border p-3 ${activeBracket?.activeMatchId === match.id ? 'border-cyan-400/50 bg-cyan-500/10' : 'border-zinc-700 bg-zinc-950/50'}`}>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="text-xs uppercase tracking-widest text-zinc-500">Match {match.slot}</div>
+                                                {match.queuedAt && <div className="text-[10px] uppercase tracking-widest text-cyan-200">Queued</div>}
+                                            </div>
+                                            <div className="space-y-2 text-sm">
+                                                <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === a?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
+                                                    <div className="font-bold text-white">{a?.name || 'TBD'}</div>
+                                                    <div className="text-zinc-400 truncate">{match?.aSong?.songTitle || '-'} {match?.aSong?.artist ? `- ${match.aSong.artist}` : ''}</div>
+                                                    {a?.uid && (
+                                                        <button
+                                                            onClick={() => onSetBracketMatchWinner?.(match.id, a.uid)}
+                                                            disabled={bracketBusy || !onSetBracketMatchWinner}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} mt-2 px-2 py-1 text-[10px] ${(bracketBusy || !onSetBracketMatchWinner) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            Mark Winner
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === b?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
+                                                    <div className="font-bold text-white">{b?.name || 'TBD'}</div>
+                                                    <div className="text-zinc-400 truncate">{match?.bSong?.songTitle || '-'} {match?.bSong?.artist ? `- ${match.bSong.artist}` : ''}</div>
+                                                    {b?.uid && (
+                                                        <button
+                                                            onClick={() => onSetBracketMatchWinner?.(match.id, b.uid)}
+                                                            disabled={bracketBusy || !onSetBracketMatchWinner}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} mt-2 px-2 py-1 text-[10px] ${(bracketBusy || !onSetBracketMatchWinner) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            Mark Winner
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </GameConfigShell>
         );

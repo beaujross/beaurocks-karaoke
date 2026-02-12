@@ -1,6 +1,33 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { ASSETS } from '../lib/assets';
 
+const TIME_TAG_RE = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+
+const parseEmbeddedTimedLyrics = (rawLyrics) => {
+    if (typeof rawLyrics !== 'string' || !rawLyrics.trim()) return [];
+    const entries = [];
+    rawLyrics.split(/\r?\n/).forEach((line) => {
+        const tags = Array.from(line.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g));
+        if (!tags.length) return;
+        const text = line.replace(TIME_TAG_RE, '').trim();
+        if (!text) return;
+        tags.forEach((tag) => {
+            const mins = Number(tag[1] || 0);
+            const secs = Number(tag[2] || 0);
+            const fractionRaw = String(tag[3] || '');
+            const fractionMs = fractionRaw
+                ? (fractionRaw.length === 3 ? Number(fractionRaw) : fractionRaw.length === 2 ? Number(fractionRaw) * 10 : Number(fractionRaw) * 100)
+                : 0;
+            if (!Number.isFinite(mins) || !Number.isFinite(secs) || !Number.isFinite(fractionMs)) return;
+            entries.push({
+                startMs: Math.max(0, mins * 60000 + secs * 1000 + fractionMs),
+                text
+            });
+        });
+    });
+    return entries.sort((a, b) => a.startMs - b.startMs);
+};
+
 const AppleLyricsRenderer = ({
     lyrics,
     timedLyrics,
@@ -12,16 +39,22 @@ const AppleLyricsRenderer = ({
     startTime,
     pausedAt,
     isPlaying,
-    showAll = false
+    showAll = false,
+    overlayMode = false
 }) => {
     const containerRef = useRef(null);
     const lineRefs = useRef([]);
+    const parsedTimedLyrics = useMemo(() => parseEmbeddedTimedLyrics(lyrics), [lyrics]);
+    const effectiveTimedLyrics = useMemo(() => {
+        if (Array.isArray(timedLyrics) && timedLyrics.length) return timedLyrics;
+        return parsedTimedLyrics;
+    }, [timedLyrics, parsedTimedLyrics]);
     const lines = useMemo(() => {
-        if (Array.isArray(timedLyrics) && timedLyrics.length) {
-            return timedLyrics.map(l => l.text).filter(l => l.trim());
+        if (Array.isArray(effectiveTimedLyrics) && effectiveTimedLyrics.length) {
+            return effectiveTimedLyrics.map(l => l.text).filter(l => l.trim());
         }
         return lyrics ? lyrics.split('\n').filter(l => l.trim()) : ["(Instrumental)", "Enjoy the music!"];
-    }, [lyrics, timedLyrics]);
+    }, [lyrics, effectiveTimedLyrics]);
 
     const [currentLine, setCurrentLine] = useState(0);
     const [currentMs, setCurrentMs] = useState(0);
@@ -37,10 +70,10 @@ const AppleLyricsRenderer = ({
     };
 
     const lineTimeline = useMemo(() => {
-        if (Array.isArray(timedLyrics) && timedLyrics.length) {
-            return timedLyrics.map((l, idx) => {
+        if (Array.isArray(effectiveTimedLyrics) && effectiveTimedLyrics.length) {
+            return effectiveTimedLyrics.map((l, idx) => {
                 const start = Number(l.startMs || 0);
-                const nextStart = timedLyrics[idx + 1]?.startMs;
+                const nextStart = effectiveTimedLyrics[idx + 1]?.startMs;
                 const end = Number(l.endMs || (nextStart ? Math.max(nextStart, start + 500) : start + 4000));
                 return { start, end };
             });
@@ -55,7 +88,7 @@ const AppleLyricsRenderer = ({
             acc += span;
             return { start, end: acc };
         });
-    }, [lines, duration, timedLyrics]);
+    }, [lines, duration, effectiveTimedLyrics]);
 
     useEffect(() => {
         if (!isActive || !startTime || !containerRef.current) return;
@@ -98,21 +131,23 @@ const AppleLyricsRenderer = ({
 
     return (
         <div
-            className="absolute inset-0 z-50 bg-black overflow-hidden flex items-center justify-center font-bebas animate-in fade-in"
+            className={`absolute inset-0 z-50 overflow-hidden flex items-center justify-center font-bebas animate-in fade-in ${overlayMode ? 'bg-gradient-to-b from-black/35 via-black/10 to-black/50' : 'bg-black'}`}
             onTouchStart={handleInteraction}
             onWheel={handleInteraction}
         >
-            <div className="absolute inset-0 z-0 scale-110">
-                <div
-                    className="absolute inset-0 bg-cover bg-center opacity-60 blur-[80px] animate-pulse-slow scale-150"
-                    style={{ backgroundImage: `url(${art || ASSETS.logo})` }}
-                ></div>
-                <div
-                    className="absolute inset-0 bg-cover bg-center opacity-30 blur-[40px] mix-blend-overlay"
-                    style={{ backgroundImage: `url(${art || ASSETS.logo})` }}
-                ></div>
-                <div className="absolute inset-0 bg-black/40"></div>
-            </div>
+            {!overlayMode && (
+                <div className="absolute inset-0 z-0 scale-110">
+                    <div
+                        className="absolute inset-0 bg-cover bg-center opacity-60 blur-[80px] animate-pulse-slow scale-150"
+                        style={{ backgroundImage: `url(${art || ASSETS.logo})` }}
+                    ></div>
+                    <div
+                        className="absolute inset-0 bg-cover bg-center opacity-30 blur-[40px] mix-blend-overlay"
+                        style={{ backgroundImage: `url(${art || ASSETS.logo})` }}
+                    ></div>
+                    <div className="absolute inset-0 bg-black/40"></div>
+                </div>
+            )}
 
             <div className="absolute top-6 left-6 z-30 flex items-center gap-3 bg-black/60 border border-white/15 rounded-full px-4 py-2 backdrop-blur">
                 <img src={art || ASSETS.logo} alt="Album art" className="w-10 h-10 rounded-full object-cover border border-white/20" />

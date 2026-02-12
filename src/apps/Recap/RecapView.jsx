@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { db, doc, onSnapshot } from '../../lib/firebase';
 import { APP_ID, ASSETS } from '../../lib/assets';
 
+const nowMs = () => Date.now();
+
 const StatCard = ({ label, value }) => (
     <div className="bg-zinc-900/80 border border-zinc-700 rounded-2xl p-4 text-center">
         <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-500 mb-2">{label}</div>
@@ -46,7 +48,7 @@ const RecapView = ({ roomCode }) => {
                         <div>
                             <div className="text-xs uppercase tracking-[0.4em] text-zinc-500">BROSS Karaoke Recap</div>
                             <div className="text-4xl md:text-5xl font-bold text-white mt-2">Room {roomCode}</div>
-                            <div className="text-sm text-zinc-400 mt-2">Generated {new Date(recap?.generatedAt || Date.now()).toLocaleString()}</div>
+                            <div className="text-sm text-zinc-400 mt-2">Generated {new Date(recap?.generatedAt || nowMs()).toLocaleString()}</div>
                         </div>
                         <img src={room?.logoUrl || ASSETS.logo} className="h-16 md:h-20 object-contain" alt="BROSS" />
                     </div>

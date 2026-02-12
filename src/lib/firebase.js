@@ -41,6 +41,7 @@ import {
   increment, 
   arrayUnion,
   arrayRemove,
+  runTransaction,
   writeBatch, 
   orderBy, 
   limit 
@@ -61,11 +62,39 @@ import {
   getDownloadURL,
   deleteObject
 } from "firebase/storage";
+import { createLogger } from "./logger";
+
+const firebaseLogger = createLogger("firebase");
 
 const readEnv = (name) => {
   if (typeof import.meta === "undefined" || !import.meta?.env) return "";
   const value = import.meta.env[name];
   return typeof value === "string" ? value.trim() : "";
+};
+
+const REQUIRED_FIREBASE_KEYS = [
+  "apiKey",
+  "authDomain",
+  "projectId",
+  "storageBucket",
+  "messagingSenderId",
+  "appId",
+];
+
+const sanitizeFirebaseConfig = (config) => {
+  if (!config || typeof config !== "object") return null;
+  const sanitized = {};
+  for (const [key, rawValue] of Object.entries(config)) {
+    if (rawValue == null) continue;
+    if (typeof rawValue === "string") {
+      const trimmed = rawValue.trim();
+      if (!trimmed) continue;
+      sanitized[key] = trimmed;
+      continue;
+    }
+    sanitized[key] = rawValue;
+  }
+  return sanitized;
 };
 
 const parseRuntimeFirebaseConfig = () => {
@@ -77,7 +106,7 @@ const parseRuntimeFirebaseConfig = () => {
     try {
       return JSON.parse(runtime);
     } catch (err) {
-      console.warn("[firebase] invalid window.__firebase_config JSON", err);
+      firebaseLogger.warn("invalid window.__firebase_config JSON", err);
       return null;
     }
   }
@@ -85,11 +114,8 @@ const parseRuntimeFirebaseConfig = () => {
 };
 
 const resolveFirebaseConfig = () => {
-  const runtimeConfig = parseRuntimeFirebaseConfig();
-  if (runtimeConfig) {
-    return runtimeConfig;
-  }
-  const envConfig = {
+  const runtimeConfig = sanitizeFirebaseConfig(parseRuntimeFirebaseConfig());
+  const envConfig = sanitizeFirebaseConfig({
     apiKey: readEnv("VITE_FIREBASE_API_KEY"),
     authDomain: readEnv("VITE_FIREBASE_AUTH_DOMAIN"),
     projectId: readEnv("VITE_FIREBASE_PROJECT_ID"),
@@ -97,18 +123,14 @@ const resolveFirebaseConfig = () => {
     messagingSenderId: readEnv("VITE_FIREBASE_MESSAGING_SENDER_ID"),
     appId: readEnv("VITE_FIREBASE_APP_ID"),
     measurementId: readEnv("VITE_FIREBASE_MEASUREMENT_ID"),
+  }) || {};
+  const mergedConfig = {
+    ...envConfig,
+    ...(runtimeConfig || {}),
   };
-  const required = [
-    "apiKey",
-    "authDomain",
-    "projectId",
-    "storageBucket",
-    "messagingSenderId",
-    "appId",
-  ];
-  const missing = required.filter((key) => !envConfig[key]);
+  const missing = REQUIRED_FIREBASE_KEYS.filter((key) => !mergedConfig[key]);
   if (!missing.length) {
-    return envConfig;
+    return mergedConfig;
   }
   throw new Error(
     `Missing Firebase config: ${missing.join(", ")}. Set window.__firebase_config or VITE_FIREBASE_* env vars.`
@@ -156,13 +178,13 @@ if (typeof window !== "undefined") {
       });
       // Warm up token acquisition early so first callable requests include App Check.
       getAppCheckToken(appCheck, false).catch((err) => {
-        console.warn("[app-check] initial token fetch failed", err);
+        firebaseLogger.debug("app-check initial token fetch failed", err);
       });
     } catch (err) {
-      console.warn("[app-check] initialization failed", err);
+      firebaseLogger.warn("app-check initialization failed", err);
     }
   } else {
-    console.warn("[app-check] missing site key: set VITE_RECAPTCHA_V3_SITE_KEY to enable App Check.");
+    firebaseLogger.debug("app-check missing site key: set VITE_RECAPTCHA_V3_SITE_KEY to enable App Check.");
   }
 }
 
@@ -202,7 +224,7 @@ const callFunction = async (name, data = {}) => {
     try {
       await getAppCheckToken(appCheck, false);
     } catch (err) {
-      console.warn("[app-check] token fetch failed before callable", { name, err });
+      firebaseLogger.debug("app-check token fetch failed before callable", { name, err });
     }
   }
   const fn = httpsCallable(functions, name);
@@ -258,9 +280,9 @@ const initAuth = async (customToken) => {
       await setPersistence(auth, browserSessionPersistence);
     } catch {
       try {
-        await setPersistence(auth, inMemoryPersistence);
+      await setPersistence(auth, inMemoryPersistence);
       } catch (inner) {
-        console.warn('Auth persistence fallback failed', inner);
+        firebaseLogger.debug("Auth persistence fallback failed", inner);
       }
     }
     if (customToken) {
@@ -270,7 +292,7 @@ const initAuth = async (customToken) => {
     }
     return { ok: true };
   } catch (error) {
-    console.error("Auth Error:", error);
+    firebaseLogger.error("Auth Error", error);
     return { ok: false, error };
   }
 };
@@ -281,7 +303,7 @@ const ensureUserProfile = async (uid, opts = {}) => {
     if (!uid) return;
     if (typeof window !== 'undefined') {
       const host = window.location?.hostname || 'unknown';
-      console.info('[ensureUserProfile] host=%s uid=%s authUid=%s', host, uid, auth.currentUser?.uid || 'none');
+      firebaseLogger.debug('ensureUserProfile host=%s uid=%s authUid=%s', host, uid, auth.currentUser?.uid || 'none');
     }
     const { name = 'Guest', avatar = '\uD83D\uDE00' } = opts;
     const userRef = doc(db, 'users', uid);
@@ -436,7 +458,7 @@ const ensureUserProfile = async (uid, opts = {}) => {
     
     await setDoc(userRef, updates, { merge: true });
   } catch (e) {
-    console.error('ensureUserProfile error', e);
+    firebaseLogger.error("ensureUserProfile error", e);
   }
 };
 
@@ -485,7 +507,7 @@ export {
   // Firestore Exports
   collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDoc, getDocs,
   query, where, onSnapshot, serverTimestamp, increment, writeBatch, orderBy, limit,
-  arrayUnion, arrayRemove,
+  arrayUnion, arrayRemove, runTransaction,
   // RTDB Exports
   ref, set, onValue, remove, push, rtdbTimestamp
 };

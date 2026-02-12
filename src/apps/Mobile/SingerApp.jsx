@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react';
 import { 
     db, doc, onSnapshot, setDoc, updateDoc, increment, serverTimestamp, 
     addDoc, collection, query, where, orderBy, limit, deleteDoc, arrayUnion,
-    getDoc,
+    getDoc, runTransaction,
     auth, ensureUserProfile, EmailAuthProvider, linkWithCredential, onAuthStateChanged,
     RecaptchaVerifier, signInWithPhoneNumber, PhoneAuthProvider,
     trackEvent,
@@ -40,7 +40,7 @@ const AnimatedPoints = ({ value, onClick, className = '' }) => {
             });
         }, 30);
         return () => clearInterval(interval);
-    }, [value]);
+    }, [display, value]);
 
     return (
         <button onClick={onClick} className={`bg-black/60 backdrop-blur-sm px-3 py-2 rounded-full border border-cyan-500/30 flex items-center gap-2 shadow-lg active:scale-95 transition-transform z-50 points-hint h-11 w-[120px] sm:w-[132px] justify-between ${className}`}>
@@ -56,6 +56,38 @@ const AnimatedPoints = ({ value, onClick, className = '' }) => {
 
 const DEFAULT_EMOJI = emoji(0x1F600);
 const BRAND_ICON = 'https://beauross.com/wp-content/uploads/beaurocks-karaoke-logo-2.png';
+const TIGHT15_MAX = 15;
+
+const normalizeTight15Text = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+const normalizeTight15Entry = (entry = {}) => {
+    const songTitle = String(entry.songTitle || entry.song || '').trim();
+    const artist = String(entry.artist || entry.singerName || '').trim();
+    if (!songTitle || !artist) return null;
+    return {
+        id: entry.id || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        songTitle,
+        artist,
+        albumArtUrl: String(entry.albumArtUrl || entry.artworkUrl || '').trim(),
+        addedAt: Number(entry.addedAt || Date.now())
+    };
+};
+
+const getTight15Key = (entry = {}) => `${normalizeTight15Text(entry.songTitle)}__${normalizeTight15Text(entry.artist)}`;
+
+const sanitizeTight15List = (list = []) => {
+    const seen = new Set();
+    const cleaned = [];
+    list.forEach((entry) => {
+        const normalized = normalizeTight15Entry(entry);
+        if (!normalized) return;
+        const key = getTight15Key(normalized);
+        if (seen.has(key)) return;
+        seen.add(key);
+        cleaned.push(normalized);
+    });
+    return cleaned.slice(0, TIGHT15_MAX);
+};
 
 const VIP_TOS_SUMMARY = [
     'Keep it fun: no harassment, threats, hate speech, or illegal content.',
@@ -66,6 +98,14 @@ const VIP_TOS_SUMMARY = [
 
 const VIP_BIRTH_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const VIP_BIRTH_DAYS = Array.from({ length: 31 }, (_, i) => `${i + 1}`);
+
+const loadImage = (src) => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+});
 
 const normalizeVipForm = (vip = {}) => ({
     location: (vip.location || '').trim(),
@@ -251,6 +291,7 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
         }
         const raf = requestAnimationFrame(() => scrollToSelected());
         return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [listWidth, loop]);
 
     useEffect(() => {
@@ -262,6 +303,7 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
             cancelAnimationFrame(raf);
             clearTimeout(timeout);
         };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value, itemWidth, itemGap, listWidth, items]);
 
     useEffect(() => {
@@ -390,6 +432,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const [songs, setSongs] = useState([]);
     const [tab, setTab] = useState('home');
     const currentSinger = useMemo(() => songs.find(s => s.status === 'performing'), [songs]);
+    const isAnon = !!auth?.currentUser?.isAnonymous;
+    const isVipAccount = !!user?.isVip || !!profile?.isVip || (profile?.vipLevel || 0) > 0;
     const [songsTab, setSongsTab] = useState('requests');
     const [socialTab, setSocialTab] = useState('lounge'); // Sub-tab for Social
     const [profileSubTab, setProfileSubTab] = useState('overview');
@@ -502,6 +546,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const tight15TouchRef = useRef(null);
     const tight15InputRef = useRef(null);
     const tight15SectionRef = useRef(null);
+    const tight15MigrationDoneRef = useRef('');
     const [showProfile, setShowProfile] = useState(false);
     const [showAccount, setShowAccount] = useState(false);
     const [showPoints, setShowPoints] = useState(false);
@@ -615,8 +660,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const readyCheckStartRef = useRef(null);
     const strobeWinSeenRef = useRef(null);
 
-    const isAnon = !!auth?.currentUser?.isAnonymous;
-    const isVipAccount = !!user?.isVip || !!profile?.isVip || (profile?.vipLevel || 0) > 0;
     const vipProfileData = profile?.vipProfile || {};
     const vipTosAccepted = !!vipProfileData?.tosAccepted;
     const vipProfileComplete = useMemo(() => {
@@ -634,6 +677,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const tipCrates = useMemo(() => (Array.isArray(room?.tipCrates) ? room.tipCrates : []), [room?.tipCrates]);
     const showBallad = room?.lightMode === 'ballad';
     const showBanger = room?.lightMode === 'banger';
+    const motionSafeFx = !!room?.reduceMotionFx;
 
     useEffect(() => {
         if (!room?.showLyricsSinger) {
@@ -737,6 +781,8 @@ const SingerApp = ({ roomCode, uid }) => {
         if (room?.doodleOke?.status === 'voting' && !doodleSubmitted) {
             submitDoodleDrawing();
         }
+        // submitDoodleDrawing is declared later; keep deps primitive to avoid TDZ at render.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [room?.activeMode, room?.doodleOke?.status, room?.doodleOkeConfig?.participants, uid, doodleSubmitted]);
 
     useEffect(() => {
@@ -782,17 +828,17 @@ const SingerApp = ({ roomCode, uid }) => {
                 setupStormAnalyser().catch(() => {});
             })
             .catch(() => {});
-    }, [room?.lightMode]);
+    }, [room?.lightMode, stormJoined, stormPhase]);
 
-    const getStormAmbientUrl = () => {
+    const getStormAmbientUrl = useCallback(() => {
         if (stormPhase === 'approach') return STORM_SFX.lightRain;
         if (stormPhase === 'peak') return STORM_SFX.stormLoop;
         if (stormPhase === 'pass') return STORM_SFX.bigDrops;
         if (stormPhase === 'clear') return STORM_SFX.lightRain;
         return STORM_SFX.lightRain;
-    };
+    }, [stormPhase]);
 
-    const triggerStormLightning = () => {
+    const triggerStormLightning = useCallback(() => {
         const now = Date.now();
         const minGap = {
             approach: 9000,
@@ -815,7 +861,7 @@ const SingerApp = ({ roomCode, uid }) => {
             fx.volume = stormPhase === 'peak' ? 0.85 : 0.6;
             fx.play().catch(() => {});
         }
-    };
+    }, [stormPhase]);
 
     const setupStormAnalyser = async () => {
         if (!stormAudioRef.current) return;
@@ -878,13 +924,16 @@ const SingerApp = ({ roomCode, uid }) => {
             stormRafRef.current = requestAnimationFrame(loop);
         });
 
+        const raf = stormRafRef.current;
+        const flashTimer = stormFlashTimerRef.current;
+        const flashTimeout = stormFlashTimeoutRef.current;
         return () => {
-            if (stormRafRef.current) cancelAnimationFrame(stormRafRef.current);
-            if (stormFlashTimerRef.current) clearTimeout(stormFlashTimerRef.current);
-            if (stormFlashTimeoutRef.current) clearTimeout(stormFlashTimeoutRef.current);
+            if (raf) cancelAnimationFrame(raf);
+            if (flashTimer) clearTimeout(flashTimer);
+            if (flashTimeout) clearTimeout(flashTimeout);
         };
-    }, [room?.lightMode, stormJoined, stormPhase]);
-    const sampleArt = {
+    }, [room?.lightMode, stormJoined, stormPhase, getStormAmbientUrl, triggerStormLightning]);
+    const sampleArt = useMemo(() => ({
         neon: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=200&q=80',
         crowd: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=200&q=80',
         mic: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=200&q=80',
@@ -893,8 +942,8 @@ const SingerApp = ({ roomCode, uid }) => {
         disco: 'https://images.unsplash.com/photo-1504805572947-34fad45aed93?auto=format&fit=crop&w=200&q=80',
         vinyl: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=200&q=80',
         lights: 'https://images.unsplash.com/photo-1485579149621-3123dd979885?auto=format&fit=crop&w=200&q=80'
-    };
-    const top100Seed = [
+    }), []);
+    const top100Seed = useMemo(() => ([
         { title: 'Dont Stop Believin', artist: 'Journey' },
         { title: 'Bohemian Rhapsody', artist: 'Queen' },
         { title: 'Sweet Caroline', artist: 'Neil Diamond' },
@@ -994,14 +1043,14 @@ const SingerApp = ({ roomCode, uid }) => {
         { title: 'Purple Rain', artist: 'Prince' },
         { title: 'Tennessee Whiskey', artist: 'Chris Stapleton' },
         { title: 'Before He Cheats', artist: 'Carrie Underwood' }
-    ];
+    ]), []);
     const top100Songs = useMemo(() => {
         const arts = Object.values(sampleArt);
         return top100Seed.map((s, idx) => {
             const artKey = `${s.title}__${s.artist}`;
             return { ...s, artKey, art: top100Art[artKey] || arts[idx % arts.length] };
         });
-    }, [top100Art]);
+    }, [top100Art, sampleArt, top100Seed]);
     const fetchTop100Art = async (song) => {
         const artKey = song.artKey || `${song.title}__${song.artist}`;
         if (top100Art[artKey] || top100ArtLoading[artKey]) return top100Art[artKey];
@@ -1047,14 +1096,8 @@ const SingerApp = ({ roomCode, uid }) => {
             songs
         };
     };
-    const browseCategories = useMemo(
-        () => BROWSE_CATEGORIES.map((list, idx) => buildBrowseList(list, idx)),
-        [top100Art]
-    );
-    const topicHits = useMemo(
-        () => TOPIC_HITS.map((list, idx) => buildBrowseList(list, idx + BROWSE_CATEGORIES.length)),
-        [top100Art]
-    );
+    const browseCategories = BROWSE_CATEGORIES.map((list, idx) => buildBrowseList(list, idx));
+    const topicHits = TOPIC_HITS.map((list, idx) => buildBrowseList(list, idx + BROWSE_CATEGORIES.length));
     const balladLights = [
         { left: '6%', bottom: '4%', size: '140px', sway: '7s', delay: '0s', opacity: '0.7' },
         { left: '18%', bottom: '10%', size: '170px', sway: '8s', delay: '0.6s', opacity: '0.75' },
@@ -1143,6 +1186,29 @@ const SingerApp = ({ roomCode, uid }) => {
         lastActiveAtRef.current = Date.now();
     };
 
+    const queuePointDelta = useCallback((delta) => {
+        pendingPointDelta.current += delta;
+        setLocalPointOffset(prev => prev + delta);
+    }, []);
+
+    const syncPoints = useCallback(async (force = false) => {
+        if (!user || !uid) return;
+        const delta = pendingPointDelta.current;
+        if (!delta) return;
+        const now = Date.now();
+        if (!force && Math.abs(delta) < 50 && now - lastPointsSync.current < 60000) return;
+        pendingPointDelta.current = 0;
+        lastPointsSync.current = now;
+        try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { points: increment(delta), lastActiveAt: serverTimestamp() });
+            setLocalPointOffset(prev => prev - delta);
+        } catch {
+            pendingPointDelta.current += delta;
+        }
+    }, [user, uid, roomCode]);
+
+    const getEffectivePoints = () => (user?.points || 0) + localPointOffset;
+
     const getWeekKey = (date = new Date()) => {
         const utc = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
         const day = utc.getUTCDay();
@@ -1190,7 +1256,7 @@ const SingerApp = ({ roomCode, uid }) => {
         return () => unsub();
     }, [roomCode, hallOfFameMode]);
 
-    const flushReactionBuffer = async () => {
+    const flushReactionBuffer = useCallback(async () => {
         if (!roomCode || !user) return;
         const batch = pendingReactions.current;
         const totalCount = pendingReactionCount.current;
@@ -1239,7 +1305,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    };
+    }, [roomCode, user, currentSinger, room?.multiplier, uid]);
 
     const queueReactionWrite = (type, cost) => {
         pendingReactions.current[type] = (pendingReactions.current[type] || 0) + 1;
@@ -1252,7 +1318,7 @@ const SingerApp = ({ roomCode, uid }) => {
         }, 800);
     };
 
-    const flushStrumBuffer = async () => {
+    const flushStrumBuffer = useCallback(async () => {
         if (!roomCode || !user || pendingStrumHits.current <= 0) return;
         const count = pendingStrumHits.current;
         pendingStrumHits.current = 0;
@@ -1274,7 +1340,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    };
+    }, [roomCode, user, room?.guitarSessionId, uid]);
 
     const queueStrumWrite = () => {
         pendingStrumHits.current += 1;
@@ -1285,7 +1351,7 @@ const SingerApp = ({ roomCode, uid }) => {
         }, 600);
     };
 
-    const flushStrobeBuffer = async () => {
+    const flushStrobeBuffer = useCallback(async () => {
         if (!roomCode || !user || pendingStrobeTaps.current <= 0) return;
         const count = pendingStrobeTaps.current;
         pendingStrobeTaps.current = 0;
@@ -1298,7 +1364,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    };
+    }, [roomCode, user, room?.strobeSessionId, uid]);
 
     const queueStrobeTap = () => {
         pendingStrobeTaps.current += 1;
@@ -1414,7 +1480,7 @@ const SingerApp = ({ roomCode, uid }) => {
 
 const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
-    const getAvatarStatus = (item) => {
+    const getAvatarStatus = useCallback((item) => {
         const unlocked = profile?.unlockedEmojis || [];
         const isVip = !!user?.isVip || !!profile?.isVip || (profile?.vipLevel || 0) > 0;
         const fameLevel = getLevelFromFame(profile?.totalFamePoints || 0);
@@ -1429,16 +1495,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (item.unlock.type === 'guitar_winner') return { locked: !unlocked.includes(item.id), note: 'WIN SOLO' };
         if (item.unlock.type === 'points') return { locked: !unlocked.includes(item.id), note: `${item.unlock.cost} PTS` };
         return { locked: false, note: '' };
-    };
+    }, [profile, user]);
 
-    const getUnlockHint = (item) => {
+    const getUnlockHint = useCallback((item) => {
         if (item.unlock.type === 'vip') return 'VIP only - verify to unlock.';
         if (item.unlock.type === 'fame') return `Reach Fame Level ${item.unlock.level} to unlock.`;
         if (item.unlock.type === 'first_performance') return 'Sing one song to unlock.';
         if (item.unlock.type === 'guitar_winner') return 'Win Guitar Mode to unlock.';
         if (item.unlock.type === 'points') return `Unlock for ${item.unlock.cost} points.`;
         return '';
-    };
+    }, []);
 
     const hasLyrics = !!currentSinger?.lyrics;
     const applePlayback = room?.appleMusicPlayback || null;
@@ -1477,7 +1543,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const showAudienceVideoInline = (audienceVideoForced || showAudienceVideo) && !!mediaUrl && !isAudio;
     const showAudienceVideoActive = showAudienceVideoInline || showAudienceVideoFullscreen;
 
-    const syncAudienceVideoNow = () => {
+    const syncAudienceVideoNow = useCallback(() => {
         if (!audienceVideoRef.current || !room?.videoStartTimestamp) return;
         const vid = audienceVideoRef.current;
         const targetTime = (Date.now() - room.videoStartTimestamp) / 1000;
@@ -1485,9 +1551,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (room?.videoPlaying) {
             vid.play().catch(() => {});
         }
-    };
+    }, [room?.videoStartTimestamp, room?.videoPlaying]);
 
-    const submitDoodleDrawing = async () => {
+    const submitDoodleDrawing = useCallback(async () => {
         if (!roomCode || !user || !room?.doodleOke?.promptId) return;
         if (doodleSubmitted) return;
         const canvas = doodleCanvasRef.current;
@@ -1510,7 +1576,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             console.error(e);
             toast('Submit failed');
         }
-    };
+    }, [roomCode, user, room?.doodleOke?.promptId, doodleSubmitted, uid, toast]);
 
     const submitDoodleVote = async (targetUid) => {
         if (!roomCode || !user || !room?.doodleOke?.promptId) return;
@@ -1537,7 +1603,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setShowAudienceVideo(true);
             setTimeout(syncAudienceVideoNow, 60);
         }
-    }, [audienceVideoForced]);
+    }, [audienceVideoForced, syncAudienceVideoNow]);
     useEffect(() => {
         if (!showAudienceVideoInline) {
             setShowAudienceVideoFullscreen(false);
@@ -1547,7 +1613,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (!showAudienceVideoActive || !isNativeVideo) return;
         const timer = setTimeout(syncAudienceVideoNow, 80);
         return () => clearTimeout(timer);
-    }, [showAudienceVideoActive, isNativeVideo, room?.videoStartTimestamp]);
+    }, [showAudienceVideoActive, isNativeVideo, room?.videoStartTimestamp, syncAudienceVideoNow]);
 
     useEffect(() => {
         if (!room?.howToPlay?.active || !room?.howToPlay?.id) return;
@@ -1588,8 +1654,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const selected = form.emoji || user?.avatar || DEFAULT_EMOJI;
         return AVATAR_CATALOG.find(a => a.emoji === selected) || AVATAR_CATALOG[0];
     }, [form.emoji, user?.avatar]);
-    const selectedAvatarStatus = useMemo(() => getAvatarStatus(selectedAvatar), [selectedAvatar, profile, user]);
-    const selectedAvatarUnlock = useMemo(() => getUnlockHint(selectedAvatar), [selectedAvatar, profile, user]);
+    const selectedAvatarStatus = useMemo(() => getAvatarStatus(selectedAvatar), [selectedAvatar, getAvatarStatus]);
+    const selectedAvatarUnlock = useMemo(() => getUnlockHint(selectedAvatar), [selectedAvatar, getUnlockHint]);
     const historyItems = useMemo(() => {
         const name = user?.name;
         return songs
@@ -1730,7 +1796,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             console.info('[SingerApp] ensureUserProfile call host=%s authReadyUid=%s authUid=%s', host, authReadyUid, auth.currentUser?.uid || 'none');
         }
         ensureUserProfile(authReadyUid, { name: clampName((form.name || 'Guest').trim()), avatar: form.emoji || DEFAULT_EMOJI });
-    }, [authReadyUid]);
+    }, [authReadyUid, form.emoji, form.name]);
 
     // Listen for top-level user profile (persistent across rooms)
     useEffect(() => {
@@ -1739,6 +1805,34 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const unsub = onSnapshot(uRef, s => setProfile(s.exists() ? s.data() : null));
         return () => unsub();
     }, [authReadyUid]);
+
+    useEffect(() => {
+        if (!uid || isAnon || !user || !profile) return;
+        if (tight15MigrationDoneRef.current === uid) return;
+        const tempList = Array.isArray(user?.tight15Temp) ? user.tight15Temp : [];
+        const savedList = Array.isArray(profile?.tight15) ? profile.tight15 : [];
+        if (!tempList.length || savedList.length) {
+            tight15MigrationDoneRef.current = uid;
+            return;
+        }
+        let cancelled = false;
+        const migrate = async () => {
+            try {
+                const merged = sanitizeTight15List([...savedList, ...tempList]);
+                await setDoc(doc(db, 'users', uid), { tight15: merged }, { merge: true });
+                await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { tight15Temp: [] }, { merge: true });
+                if (!cancelled) toast('Tight 15 migrated to your account.');
+            } catch (error) {
+                console.error('Tight 15 migration failed', error);
+            } finally {
+                tight15MigrationDoneRef.current = uid;
+            }
+        };
+        migrate();
+        return () => {
+            cancelled = true;
+        };
+    }, [uid, isAnon, user, profile, roomCode, toast]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -1865,7 +1959,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         queuePointDelta(drop.points || 0);
         syncPoints(true);
         toast(`Bonus drop: +${drop.points || 0} PTS`);
-    }, [room?.bonusDrop, user]);
+    }, [room?.bonusDrop, user, queuePointDelta, syncPoints, toast]);
 
     useEffect(() => {
         if (!room?.photoOverlay?.url) {
@@ -1877,6 +1971,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             .then(setComposedPhoto)
             .catch(() => setComposedPhoto(null))
             .finally(() => setIsComposing(false));
+        // composeSelfie is declared later; keep deps primitive to avoid TDZ at render.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [room?.photoOverlay?.url]);
 
     useEffect(() => {
@@ -1932,30 +2028,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             queuePointDelta(10);
         }, 60000); 
         return () => clearInterval(interval);
-    }, [user, isVipAccount]);
-
-    const queuePointDelta = (delta) => {
-        pendingPointDelta.current += delta;
-        setLocalPointOffset(prev => prev + delta);
-    };
-
-    const syncPoints = async (force = false) => {
-        if (!user || !uid) return;
-        const delta = pendingPointDelta.current;
-        if (!delta) return;
-        const now = Date.now();
-        if (!force && Math.abs(delta) < 50 && now - lastPointsSync.current < 60000) return;
-        pendingPointDelta.current = 0;
-        lastPointsSync.current = now;
-        try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { points: increment(delta), lastActiveAt: serverTimestamp() });
-            setLocalPointOffset(prev => prev - delta);
-        } catch {
-            pendingPointDelta.current += delta;
-        }
-    };
-
-    const getEffectivePoints = () => (user?.points || 0) + localPointOffset;
+    }, [user, isVipAccount, queuePointDelta]);
 
     const triggerCooldownFlash = () => {
         setCooldownFlash(true);
@@ -1976,7 +2049,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             syncPoints(false);
         }, 60000);
         return () => clearInterval(interval);
-    }, [user, roomCode, uid]);
+    }, [user, syncPoints]);
 
     useEffect(() => {
         const onUnload = () => {
@@ -1995,7 +2068,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             window.removeEventListener('beforeunload', onUnload);
             document.removeEventListener('visibilitychange', onVisibility);
         };
-    }, [user, roomCode, uid]);
+    }, [user, syncPoints, flushReactionBuffer, flushStrumBuffer, flushStrobeBuffer]);
 
     useEffect(() => {
         if (!room?.readyCheck?.active) {
@@ -2035,7 +2108,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         } else {
             setGuitarVictoryOpen(false);
         }
-    }, [room?.guitarVictory?.id, room?.guitarVictory?.status, uid]);
+    }, [room?.guitarVictory?.id, room?.guitarVictory?.status, room?.guitarVictory, uid]);
 
     useEffect(() => {
         const victory = room?.strobeVictory;
@@ -2046,7 +2119,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         } else {
             setStrobeVictoryOpen(false);
         }
-    }, [room?.strobeVictory?.id, room?.strobeVictory?.status, uid]);
+    }, [room?.strobeVictory?.id, room?.strobeVictory?.status, room?.strobeVictory, uid]);
 
     const startCamera = async () => {
         try {
@@ -2084,10 +2157,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [room?.activeMode, room?.selfieChallenge?.participants, guitarVictoryOpen, strobeVictoryOpen, user, cameraActive, uid]);
 
     useEffect(() => {
+        const videoEl = videoRef.current;
         return () => {
-            if (videoRef.current?.srcObject) {
-                videoRef.current.srcObject.getTracks().forEach(t => t.stop());
-                videoRef.current.srcObject = null;
+            if (videoEl?.srcObject) {
+                videoEl.srcObject.getTracks().forEach(t => t.stop());
+                videoEl.srcObject = null;
             }
         };
     }, []);
@@ -2670,26 +2744,43 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
     };
 
-    const canSaveTight15 = isVipAccount && !isAnon;
-    const getTight15List = () => (canSaveTight15 ? (profile?.tight15 || []) : (user?.tight15Temp || []));
+    const canSaveTight15 = !isAnon;
+    const getTight15List = () => {
+        const persistent = Array.isArray(profile?.tight15) ? profile.tight15 : [];
+        const temporary = Array.isArray(user?.tight15Temp) ? user.tight15Temp : [];
+        if (canSaveTight15) {
+            return sanitizeTight15List(persistent.length ? persistent : temporary);
+        }
+        return sanitizeTight15List(temporary);
+    };
 
     const saveTight15List = async (next) => {
         if (!uid) return;
+        const sanitized = sanitizeTight15List(next);
         if (!canSaveTight15) {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { tight15Temp: next }, { merge: true });
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { tight15Temp: sanitized }, { merge: true });
             return;
         }
-        await setDoc(doc(db, 'users', uid), { tight15: next }, { merge: true });
+        await setDoc(doc(db, 'users', uid), { tight15: sanitized }, { merge: true });
     };
 
     const addToTight15 = async (item) => {
         if (!uid) return toast('Not signed in');
         try {
             const existing = getTight15List();
-            if (existing.find(s => s.songTitle === item.songTitle && s.artist === item.artist)) return toast('Already in TIGHT 15');
-            const entry = { id: Date.now(), songTitle: item.songTitle || item.song || '', artist: item.artist || item.singerName || '', albumArtUrl: item.albumArtUrl || item.albumArtUrl || '', addedAt: Date.now() };
+            const entry = normalizeTight15Entry(item);
+            if (!entry) {
+                toast('Add both song and artist.');
+                return;
+            }
+            const nextKey = getTight15Key(entry);
+            if (existing.find(s => getTight15Key(s) === nextKey)) return toast('Already in Tight 15');
+            if (existing.length >= TIGHT15_MAX) {
+                toast(`Tight 15 is full (${TIGHT15_MAX}/${TIGHT15_MAX}). Remove one first.`);
+                return;
+            }
             await saveTight15List([...existing, entry]);
-            toast('Added to TIGHT 15');
+            toast('Added to Tight 15');
         } catch (e) { console.error(e); toast('Add failed'); }
     };
 
@@ -2742,11 +2833,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const getRecentMySongs = () => {
         const seen = new Set();
         const mine = songs
-            .filter(s => s.singerName === user?.name)
+            .filter((s) => {
+                if (uid && s.singerUid) return s.singerUid === uid;
+                return s.singerName === user?.name;
+            })
             .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
         const unique = [];
         for (const s of mine) {
-            const key = `${s.songTitle}__${s.artist}`;
+            const key = `${normalizeTight15Text(s.songTitle)}__${normalizeTight15Text(s.artist)}`;
             if (seen.has(key)) continue;
             seen.add(key);
             unique.push(s);
@@ -2760,30 +2854,36 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (!recent.length) return toast('No recent songs');
         const existing = getTight15List();
         const next = [...existing];
+        const slotsLeft = Math.max(0, TIGHT15_MAX - existing.length);
+        if (slotsLeft <= 0) {
+            toast(`Tight 15 is full (${TIGHT15_MAX}/${TIGHT15_MAX}).`);
+            return;
+        }
+        const seen = new Set(existing.map((entry) => getTight15Key(entry)));
+        let importedCount = 0;
         recent.forEach(s => {
-            if (!next.find(i => i.songTitle === s.songTitle && i.artist === s.artist)) {
-                next.push({
-                    id: Date.now() + Math.random(),
-                    songTitle: s.songTitle,
-                    artist: s.artist,
-                    albumArtUrl: s.albumArtUrl || '',
-                    addedAt: Date.now()
-                });
-            }
+            if (importedCount >= slotsLeft) return;
+            const candidate = normalizeTight15Entry({
+                songTitle: s.songTitle,
+                artist: s.artist,
+                albumArtUrl: s.albumArtUrl || ''
+            });
+            if (!candidate) return;
+            const key = getTight15Key(candidate);
+            if (seen.has(key)) return;
+            seen.add(key);
+            next.push(candidate);
+            importedCount += 1;
         });
+        if (!importedCount) {
+            toast('No new songs to import.');
+            return;
+        }
         await saveTight15List(next);
-        toast('Imported recent songs');
+        toast(`Imported ${importedCount} song${importedCount === 1 ? '' : 's'}.`);
     };
 
-    const loadImage = (src) => new Promise((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = src;
-    });
-
-    const composeSelfie = async (photoUrl) => {
+    const composeSelfie = useCallback(async (photoUrl) => {
         const base = await loadImage(photoUrl);
         const logo = await loadImage(room?.logoUrl || ASSETS.logo);
         const canvas = document.createElement('canvas');
@@ -2803,7 +2903,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         ctx.drawImage(logo, base.width - logoW - pad, base.height - logoH - pad, logoW, logoH);
 
         return canvas.toDataURL('image/jpeg', 0.92);
-    };
+    }, [room?.logoUrl]);
 
     const dataUrlToBlob = (dataUrl) => {
         const parts = dataUrl.split(',');
@@ -3513,7 +3613,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         };
 
         return (
-            <div className={`h-screen w-full relative overflow-hidden text-white font-saira storm-screen storm-phase-${stormPhase}`}>
+            <div className={`h-screen w-full relative overflow-hidden text-white font-saira storm-screen storm-phase-${stormPhase} ${motionSafeFx ? 'motion-safe-fx' : ''}`}>
                 <div className="absolute inset-0 storm-clouds mix-blend-multiply"></div>
                 <div className="absolute inset-0 vibe-lightning mix-blend-screen"></div>
                 <div className="rain"></div>
@@ -3608,11 +3708,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         };
 
         return (
-            <div className="h-screen w-full vibe-strobe flex flex-col items-center justify-center text-white relative overflow-hidden">
-                <div className="absolute inset-0 bg-white/45 mix-blend-screen"></div>
-                <div className="absolute inset-0 bg-gradient-to-b from-pink-500/25 via-transparent to-cyan-400/20"></div>
+            <div className={`h-screen w-full ${motionSafeFx ? 'motion-safe-fx' : ''} ${motionSafeFx ? '' : 'vibe-strobe'} flex flex-col items-center justify-center text-white relative overflow-hidden`}>
+                <div className={`absolute inset-0 ${motionSafeFx ? 'bg-white/28' : 'bg-white/45'} mix-blend-screen`}></div>
+                <div className={`absolute inset-0 ${motionSafeFx ? 'bg-gradient-to-b from-pink-500/12 via-transparent to-cyan-400/8' : 'bg-gradient-to-b from-pink-500/25 via-transparent to-cyan-400/20'}`}></div>
                 <div className="relative z-10 w-full max-w-sm px-6 text-center">
                     <div className="text-xs uppercase tracking-[0.45em] text-white/80 mb-4 drop-shadow-lg">Beat Drop</div>
+                    <div className="inline-block mb-3 px-3 py-1 rounded-full bg-black/65 border border-yellow-300/40 text-[10px] uppercase tracking-[0.2em] text-yellow-200">Sensitivity Warning</div>
                     {phase === 'countdown' && (
                         <>
                             <div className="text-8xl font-black drop-shadow-[0_0_25px_rgba(0,0,0,0.85)]">{countdown || 0}</div>
@@ -3962,17 +4063,27 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const isTrivia = room.activeMode.includes('trivia');
         const isWyr = room.activeMode.includes('wyr');
         const isBingo = room.activeMode === 'bingo';
+        const isBracket = room.activeMode === 'karaoke_bracket';
         const isMysteryBingo = isBingo && room?.bingoMode === 'mystery';
+        const bingoSessionId = String(room?.bingoSessionId || room?.bingoBoardId || 'default');
+        const mysteryParticipantMode = room?.gameParticipantMode === 'selected' ? 'selected' : 'all';
+        const mysteryParticipantList = mysteryParticipantMode === 'selected' && Array.isArray(room?.gameParticipants)
+            ? room.gameParticipants
+            : [];
+        const isMysteryParticipant = !isMysteryBingo || mysteryParticipantMode !== 'selected' || mysteryParticipantList.includes(uid);
         const bingoRng = room?.bingoMysteryRng;
+        const bingoTurnIndex = Math.max(0, Number(room?.bingoTurnIndex || 0));
+        const mysteryTurnLocked = isMysteryBingo
+            && Number(room?.bingoTurnPick?.turnIndex ?? -1) === bingoTurnIndex;
         const rngActive = isMysteryBingo && bingoRng?.active;
-        const canLateJoin = isMysteryBingo && !rngActive && bingoRng?.finalized && !bingoRng?.results?.[uid];
-        if (isBingo && !showBingoOverlay) {
-            return null;
-        }
+        const canLateJoin = isMysteryBingo && isMysteryParticipant && !rngActive && bingoRng?.finalized && !bingoRng?.results?.[uid];
+        const bingoSessionVotes = user?.bingoVotesBySession?.[bingoSessionId] || {};
+        const hideBingoOverlay = isBingo && !showBingoOverlay;
         
         let gamePayload = room.gameData;
         if (isTrivia) gamePayload = room.triviaQuestion;
         if (isWyr) gamePayload = room.wyrData;
+        if (isBracket) gamePayload = room.karaokeBracket || room.gameData;
         const pickerUser = isBingo ? allUsers.find(u => u.uid === room?.bingoPickerUid) : null;
         if (isBingo) gamePayload = {
             tiles: room.bingoData,
@@ -3989,11 +4100,45 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             pickerName: pickerUser?.name || room.bingoPickerName || null
         };
 
+        const submitMysterySpin = async ({ allowFinalized = false } = {}) => {
+            if (!user || !uid) return false;
+            const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+            const spinEntry = {
+                uid,
+                name: user.name,
+                avatar: user.avatar,
+                value: Math.floor(Math.random() * 1000) + 1,
+                at: serverTimestamp()
+            };
+            const accepted = await runTransaction(db, async (tx) => {
+                const snap = await tx.get(roomRef);
+                if (!snap.exists()) return false;
+                const roomData = snap.data() || {};
+                const rngState = roomData?.bingoMysteryRng || {};
+                const isOpen = !!rngState?.active || (allowFinalized && !!rngState?.finalized);
+                if (!isOpen) return false;
+                if (rngState?.results?.[uid]) return false;
+                tx.update(roomRef, { [`bingoMysteryRng.results.${uid}`]: spinEntry });
+                return true;
+            });
+            if (!accepted) return false;
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { lastActiveAt: serverTimestamp() });
+            return true;
+        };
+
         // PASS THE USER OBJECT HERE
         const suggestBingo = (idx) => {
             if (!user) return toast('Please join first');
+            if (isMysteryBingo && !isMysteryParticipant) {
+                toast('You are spectating this mystery round.');
+                return;
+            }
             if (isMysteryBingo && room?.bingoPickerUid && room.bingoPickerUid !== uid) {
                 toast('Waiting for the picker.');
+                return;
+            }
+            if (isMysteryBingo && mysteryTurnLocked && room?.bingoTurnPick?.pickerUid === uid) {
+                toast('You already locked a pick this turn. Perform to pass the turn.');
                 return;
             }
             if (room?.bingoRevealed?.[idx]) {
@@ -4008,7 +4153,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             if (!user || pendingBingoSuggest === null) return;
             const idx = pendingBingoSuggest;
             const note = bingoSuggestNote.trim().slice(0, 20);
-            if (user?.bingoVotes?.[idx]) {
+            if (bingoSessionVotes?.[idx]) {
                 toast('You already voted on that tile');
                 setPendingBingoSuggest(null);
                 return;
@@ -4017,9 +4162,49 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 const userRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`);
                 const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
                 if (isMysteryBingo) {
-                    const tile = room?.bingoData?.[idx];
+                    if (!isMysteryParticipant) {
+                        toast('You are spectating this mystery round.');
+                        setPendingBingoSuggest(null);
+                        return;
+                    }
+                    const latestSnap = await getDoc(roomRef);
+                    if (!latestSnap.exists()) {
+                        toast('Room unavailable.');
+                        setPendingBingoSuggest(null);
+                        return;
+                    }
+                    const latestRoom = latestSnap.data() || {};
+                    const latestParticipantMode = latestRoom?.gameParticipantMode === 'selected' ? 'selected' : 'all';
+                    const latestParticipants = latestParticipantMode === 'selected' && Array.isArray(latestRoom?.gameParticipants)
+                        ? latestRoom.gameParticipants
+                        : [];
+                    if (latestParticipantMode === 'selected' && !latestParticipants.includes(uid)) {
+                        toast('You are spectating this mystery round.');
+                        setPendingBingoSuggest(null);
+                        return;
+                    }
+                    const latestPickerUid = latestRoom?.bingoPickerUid || null;
+                    const latestTurnIndex = Math.max(0, Number(latestRoom?.bingoTurnIndex || 0));
+                    const latestTurnLocked = Number(latestRoom?.bingoTurnPick?.turnIndex ?? -1) === latestTurnIndex;
+                    if (latestPickerUid && latestPickerUid !== uid) {
+                        toast('Waiting for the picker.');
+                        setPendingBingoSuggest(null);
+                        return;
+                    }
+                    if (latestTurnLocked && latestRoom?.bingoTurnPick?.pickerUid === uid) {
+                        toast('You already locked a pick this turn. Perform to pass the turn.');
+                        setPendingBingoSuggest(null);
+                        return;
+                    }
+                    if (latestRoom?.bingoRevealed?.[idx]) {
+                        toast('That tile is already revealed.');
+                        setPendingBingoSuggest(null);
+                        return;
+                    }
+                    const tile = latestRoom?.bingoData?.[idx];
                     if (!tile) {
                         toast('Tile missing.');
+                        setPendingBingoSuggest(null);
                         return;
                     }
                     const songTitle = tile.content?.title || tile.text || 'Mystery Song';
@@ -4032,33 +4217,68 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         [`bingoSuggestions.${idx}.lastNote`]: note || '',
                         [`bingoSuggestions.${idx}.lastAt`]: serverTimestamp(),
                         highlightedTile: idx,
-                        bingoFocus: { index: idx, pickerUid: uid, at: serverTimestamp() }
+                        bingoFocus: { index: idx, pickerUid: uid, at: serverTimestamp() },
+                        bingoTurnPick: { pickerUid: uid, turnIndex: latestTurnIndex, index: idx, at: serverTimestamp() }
                     });
                     setTimeout(() => updateDoc(roomRef, { highlightedTile: null }).catch(() => {}), 1000);
                     toast('Mystery pick locked.');
                     setPendingBingoSuggest(null);
                     return;
                 }
-                const currentCount = room?.bingoSuggestions?.[idx]?.count || 0;
-                const roomSize = Math.max(1, allUsers.length || 1);
-                const nextCount = currentCount + 1;
-                const thresholdPct = typeof room?.bingoAutoApprovePct === 'number' ? room.bingoAutoApprovePct : 50;
-                const thresholdVotes = Math.max(1, Math.ceil((roomSize * thresholdPct) / 100));
-                const autoApprove = room?.bingoVotingMode === 'host+votes' && nextCount >= thresholdVotes;
+                const result = await runTransaction(db, async (tx) => {
+                    const roomSnap = await tx.get(roomRef);
+                    const userSnap = await tx.get(userRef);
+                    if (!roomSnap.exists()) {
+                        throw new Error('ROOM_MISSING');
+                    }
+                    const latestRoom = roomSnap.data() || {};
+                    if (latestRoom?.activeMode !== 'bingo' || latestRoom?.bingoMode === 'mystery') {
+                        throw new Error('MODE_CHANGED');
+                    }
+                    if (latestRoom?.bingoRevealed?.[idx]) {
+                        throw new Error('ALREADY_REVEALED');
+                    }
+                    const latestSessionId = String(latestRoom?.bingoSessionId || bingoSessionId || 'default');
+                    const userData = userSnap.exists() ? userSnap.data() || {} : {};
+                    const existingVotes = userData?.bingoVotesBySession?.[latestSessionId] || {};
+                    if (existingVotes?.[idx]) {
+                        throw new Error('ALREADY_VOTED');
+                    }
+                    const participantMode = latestRoom?.gameParticipantMode === 'selected' ? 'selected' : 'all';
+                    const participantList = participantMode === 'selected' && Array.isArray(latestRoom?.gameParticipants)
+                        ? latestRoom.gameParticipants
+                        : [];
+                    const eligibleVoters = participantMode === 'selected' && participantList.length
+                        ? allUsers.filter((entry) => participantList.includes(entry.uid))
+                        : allUsers;
+                    const voterCount = Math.max(1, eligibleVoters.length || 1);
+                    const currentCount = Number(latestRoom?.bingoSuggestions?.[idx]?.count || 0);
+                    const nextCount = currentCount + 1;
+                    const thresholdPct = typeof latestRoom?.bingoAutoApprovePct === 'number' ? latestRoom.bingoAutoApprovePct : 50;
+                    const thresholdVotes = Math.max(1, Math.ceil((voterCount * thresholdPct) / 100));
+                    const autoApprove = latestRoom?.bingoVotingMode === 'host+votes' && nextCount >= thresholdVotes;
 
-                await updateDoc(userRef, { [`bingoVotes.${idx}`]: true });
-                await updateDoc(roomRef, {
-                    [`bingoSuggestions.${idx}.count`]: increment(1),
-                    [`bingoSuggestions.${idx}.lastNote`]: note || '',
-                    [`bingoSuggestions.${idx}.lastAt`]: serverTimestamp(),
-                    highlightedTile: idx,
-                    ...(autoApprove ? { [`bingoRevealed.${idx}`]: true } : {})
+                    tx.set(userRef, { [`bingoVotesBySession.${latestSessionId}.${idx}`]: true }, { merge: true });
+                    tx.update(roomRef, {
+                        [`bingoSuggestions.${idx}.count`]: nextCount,
+                        [`bingoSuggestions.${idx}.lastNote`]: note || '',
+                        [`bingoSuggestions.${idx}.lastAt`]: serverTimestamp(),
+                        highlightedTile: idx,
+                        ...(autoApprove ? { [`bingoRevealed.${idx}`]: true } : {})
+                    });
+                    return { autoApprove };
                 });
                 setTimeout(() => updateDoc(roomRef, { highlightedTile: null }), 1000);
-                toast(autoApprove ? 'Auto-approved!' : 'Suggested!');
+                toast(result?.autoApprove ? 'Auto-approved!' : 'Suggested!');
             } catch (e) {
                 console.error(e);
-                toast('Suggest failed');
+                if (String(e?.message || '').includes('ALREADY_VOTED')) {
+                    toast('You already voted on that tile');
+                } else if (String(e?.message || '').includes('ALREADY_REVEALED')) {
+                    toast('That tile is already revealed.');
+                } else {
+                    toast('Suggest failed');
+                }
             } finally {
                 setPendingBingoSuggest(null);
             }
@@ -4069,13 +4289,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const isScaleGroup = room?.activeMode === 'riding_scales' && playerId === 'GROUP';
         const participantMode = room?.gameParticipantMode;
         const participantList = Array.isArray(room?.gameParticipants) ? room.gameParticipants : [];
-        const isParticipant = isBingo ? true : (participantMode !== 'selected' || participantList.includes(uid));
-        const canSuggestBingo = isBingo && (!isMysteryBingo ? true : room?.bingoPickerUid === uid);
+        const isBingoParticipant = !isMysteryBingo ? true : (participantMode !== 'selected' || participantList.includes(uid));
+        const isParticipant = isBingo ? isBingoParticipant : (participantMode !== 'selected' || participantList.includes(uid));
+        const canSuggestBingo = isBingo && (!isMysteryBingo
+            ? true
+            : isBingoParticipant && room?.bingoPickerUid === uid && !(mysteryTurnLocked && room?.bingoTurnPick?.pickerUid === uid));
         const isLocalPlayer = isVoiceGame ? (!isScaleGroup && playerId === uid) : isParticipant;
         const inputSource = isVoiceGame ? gamePayload?.inputSource : undefined;
         const showSpectatorNotice = !isVoiceGame && !isParticipant;
 
-        return (
+        if (!hideBingoOverlay) {
+            return (
             <div className="absolute inset-0">
                 <GameContainer
                     activeMode={room.activeMode}
@@ -4090,7 +4314,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     rulesToken={room?.gameRulesId}
                     view="mobile"
                 />
-                {rngActive && (
+                {rngActive && isMysteryParticipant && (
                     <div className="absolute inset-0 z-[140] bg-black/80 flex items-center justify-center p-6">
                         <div className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-3xl p-6 text-center">
                             <div className="text-xs uppercase tracking-[0.4em] text-zinc-500">Mystery Bingo</div>
@@ -4103,28 +4327,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             </div>
                             <button
                                 onClick={async () => {
-                                    if (!user || !uid || !rngActive) return;
+                                    if (!user || !uid || !rngActive || !isMysteryParticipant) return;
                                     if (bingoRng?.results?.[uid]) return;
-                                    const value = Math.floor(Math.random() * 1000) + 1;
                                     markActive();
                                     try {
-                                        const nextResults = {
-                                            ...(bingoRng?.results || {}),
-                                            [uid]: {
-                                                uid,
-                                                name: user.name,
-                                                avatar: user.avatar,
-                                                value,
-                                                at: serverTimestamp()
-                                            }
-                                        };
-                                        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
-                                            bingoMysteryRng: {
-                                                ...(bingoRng || {}),
-                                                results: nextResults
-                                            }
-                                        });
-                                        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { lastActiveAt: serverTimestamp() });
+                                        const wrote = await submitMysterySpin({ allowFinalized: false });
+                                        if (!wrote) {
+                                            toast('Spin already locked.');
+                                        }
                                     } catch (err) {
                                         console.error(err);
                                         toast('Spin failed');
@@ -4138,6 +4348,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         </div>
                     </div>
                 )}
+                {rngActive && !isMysteryParticipant && (
+                    <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[132] bg-black/75 border border-zinc-500/40 text-zinc-300 px-4 py-2 rounded-full text-[11px] uppercase tracking-[0.25em]">
+                        Spectating Mystery Round
+                    </div>
+                )}
                 {canLateJoin && (
                     <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[130] bg-black/70 border border-white/15 px-4 py-3 rounded-full flex items-center gap-3">
                         <div className="text-xs uppercase tracking-[0.35em] text-zinc-300">Join round</div>
@@ -4145,26 +4360,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             onClick={async () => {
                                 if (!user || !uid) return;
                                 if (bingoRng?.results?.[uid]) return;
-                                const value = Math.floor(Math.random() * 1000) + 1;
                                 markActive();
                                 try {
-                                    const nextResults = {
-                                        ...(bingoRng?.results || {}),
-                                        [uid]: {
-                                            uid,
-                                            name: user.name,
-                                            avatar: user.avatar,
-                                            value,
-                                            at: serverTimestamp()
-                                        }
-                                    };
-                                    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
-                                        bingoMysteryRng: {
-                                            ...(bingoRng || {}),
-                                            results: nextResults
-                                        }
-                                    });
-                                    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { lastActiveAt: serverTimestamp() });
+                                    const wrote = await submitMysterySpin({ allowFinalized: true });
+                                    if (!wrote) {
+                                        toast('Round closed.');
+                                    }
                                 } catch (err) {
                                     console.error(err);
                                     toast('Join failed');
@@ -4174,6 +4375,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         >
                             Spin In
                         </button>
+                    </div>
+                )}
+                {isMysteryBingo && mysteryTurnLocked && room?.bingoTurnPick?.pickerUid && (
+                    <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[132] bg-black/75 border border-cyan-400/40 text-cyan-200 px-4 py-2 rounded-full text-[11px] uppercase tracking-[0.25em]">
+                        Pick Locked - Waiting For Performance
                     </div>
                 )}
                 {pendingBingoSuggest !== null && (
@@ -4201,7 +4407,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     </div>
                 )}
             </div>
-        );
+            );
+        }
     }
     
 
@@ -5223,7 +5430,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                 </div>
                                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    {room?.activeMode === 'bingo' && !showBingoOverlay && (
+                                    {room?.activeMode === 'bingo' && !showBingoOverlay && room?.bingoAudienceReopenEnabled !== false && (
                                         <button
                                             onClick={(e) => { e.stopPropagation(); setShowBingoOverlay(true); }}
                                             className="flex items-center gap-1 bg-purple-500/20 text-purple-200 border border-purple-400/40 px-3 py-1.5 rounded-full text-base font-bold min-h-[28px] leading-none hover:bg-purple-500/30"
@@ -5427,7 +5634,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </button>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2 justify-end">
-                                        {room?.activeMode === 'bingo' && !showBingoOverlay && (
+                                        {room?.activeMode === 'bingo' && !showBingoOverlay && room?.bingoAudienceReopenEnabled !== false && (
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); setShowBingoOverlay(true); }}
                                                 className="flex items-center gap-1 bg-purple-500/20 text-purple-200 border border-purple-400/40 px-3 py-1.5 rounded-full text-base font-bold min-h-[28px] leading-none hover:bg-purple-500/30"
@@ -6336,6 +6543,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <div className="text-sm uppercase tracking-[0.35em] text-zinc-400">Tight 15</div>
                                     <h3 className="text-2xl font-bebas text-cyan-400">Tight 15</h3>
                                     <p className="text-base text-zinc-400">Your personal 15-song setlist. Tap "Add New" or save songs during performances.</p>
+                                    <div className="text-sm text-zinc-500 mt-1">{getTight15List().length}/{TIGHT15_MAX} songs</div>
                                 </div>
                                 <div className="flex gap-2 mb-2">
                                     <button onClick={importRecentToTight15} className="flex-1 bg-zinc-900/70 border border-zinc-700 text-zinc-200 py-1 rounded-md text-sm font-semibold uppercase tracking-widest">Import Recent</button>
@@ -6432,13 +6640,22 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
 
                                 {!canSaveTight15 && (
-                                    <button onClick={()=>setShowPhoneModal(true)} className="w-full bg-[#00C4D9] text-black py-3 rounded-xl font-bold mt-4">Unlock VIP to Save</button>
+                                    <button onClick={()=>setShowPhoneModal(true)} className="w-full bg-[#00C4D9] text-black py-3 rounded-xl font-bold mt-4">Create Account to Save Across Rooms</button>
                                 )}
                             </div>
                         )}
                     </div>
                 )}
             </div>
+            {room?.activeMode === 'bingo' && !showBingoOverlay && room?.bingoAudienceReopenEnabled !== false && (
+                <button
+                    onClick={() => setShowBingoOverlay(true)}
+                    className="fixed right-4 bottom-28 z-[95] bg-purple-500/85 text-white border border-purple-300/40 shadow-[0_10px_28px_rgba(147,51,234,0.45)] px-4 py-2 rounded-full text-sm font-black uppercase tracking-[0.2em]"
+                >
+                    <i className="fa-solid fa-table-cells mr-2"></i>
+                    Bingo Live
+                </button>
+            )}
 
             <div className="bg-gradient-to-r from-[#4b1436] via-[#3a1b5c] to-[#15899a] py-1.5 flex border-t border-pink-400/30 flex-none z-20 relative" style={{ paddingLeft: 'max(8px, env(safe-area-inset-left))', paddingRight: 'max(8px, env(safe-area-inset-right))', paddingBottom: 'calc(env(safe-area-inset-bottom) + 6px)' }}>
                 <button onClick={()=>setTab('home')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='home'?'text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]':'text-zinc-300'}`}><i className="fa-solid fa-champagne-glasses text-[28px]"></i><span className="text-base font-semibold">PARTY</span></button>

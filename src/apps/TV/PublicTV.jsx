@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, addDoc, serverTimestamp, trackEvent } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
 import { ASSETS, STORM_SFX } from '../../lib/assets';
@@ -11,6 +11,8 @@ import { emoji, EMOJI } from '../../lib/emoji';
 import { HOW_TO_PLAY } from '../../lib/howToPlay';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
 import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
+import { createLogger } from '../../lib/logger';
+import useTvVisualizerSettings from './hooks/useTvVisualizerSettings';
 
 const isTvVisibleChatMessage = (message) => {
     if (!message) return false;
@@ -28,6 +30,27 @@ const formatWaitTime = (seconds) => {
     return `${mins}m`;
 };
 
+const normalizeTight15Entry = (entry = {}) => {
+    const songTitle = String(entry.songTitle || entry.song || '').trim();
+    const artist = String(entry.artist || entry.singerName || '').trim();
+    if (!songTitle) return null;
+    return { songTitle, artist };
+};
+
+const extractTopTight15 = ({ spotlightPayload = null, roomUser = null } = {}) => {
+    const fromPayload = Array.isArray(spotlightPayload?.tight15) ? spotlightPayload.tight15 : [];
+    const fromRoom = Array.isArray(roomUser?.tight15) ? roomUser.tight15 : (
+        Array.isArray(roomUser?.tight15Temp) ? roomUser.tight15Temp : []
+    );
+    const source = fromPayload.length ? fromPayload : fromRoom;
+    return source
+        .map((entry) => normalizeTight15Entry(entry))
+        .filter(Boolean)
+        .slice(0, 3);
+};
+const nowMs = () => Date.now();
+const tvLogger = createLogger('PublicTV');
+
 // --- SUB-COMPONENTS ---
 const LocalQrImage = ({ value, size = 220, className = '', alt = 'QR' }) => {
     const [src, setSrc] = useState('');
@@ -35,7 +58,6 @@ const LocalQrImage = ({ value, size = 220, className = '', alt = 'QR' }) => {
     useEffect(() => {
         let active = true;
         if (!value) {
-            setSrc('');
             return undefined;
         }
         QRCode.toDataURL(value, {
@@ -45,7 +67,7 @@ const LocalQrImage = ({ value, size = 220, className = '', alt = 'QR' }) => {
         }).then((dataUrl) => {
             if (active) setSrc(dataUrl);
         }).catch((err) => {
-            console.warn('QR generation failed', err);
+            tvLogger.debug('QR generation failed', err);
             if (active) setSrc('');
         });
         return () => {
@@ -53,7 +75,7 @@ const LocalQrImage = ({ value, size = 220, className = '', alt = 'QR' }) => {
         };
     }, [value, size]);
 
-    if (!src) {
+    if (!value || !src) {
         return (
             <div
                 className={`${className} bg-zinc-200/60 text-zinc-700 flex items-center justify-center text-xs font-bold`}
@@ -81,7 +103,7 @@ const AnimatedPoints = ({ value }) => {
             });
         }, 30);
         return () => clearInterval(interval);
-    }, [value]);
+    }, [display, value]);
     
     return (
         <div className={`relative bg-black/60 backdrop-blur-sm px-5 py-3 rounded-full border border-yellow-500/30 flex items-center gap-3 shadow-lg transition-transform duration-200 ${showPulse ? 'scale-110' : 'scale-100'}`}>
@@ -99,12 +121,12 @@ const AnimatedPoints = ({ value }) => {
 };
 
 const LeaderboardOverlay = ({ users, songs }) => {
-    const leaderboardModes = [
+    const leaderboardModes = useMemo(() => ([
         { key: 'performances', label: 'Most Performances', unit: 'PERF', getValue: (u) => u.performances },
         { key: 'totalEmojis', label: 'Most Emojis Sent', unit: 'EMOJIS', getValue: (u) => u.totalEmojis },
         { key: 'loudest', label: 'Loudest Performance', unit: 'dB', getValue: (u) => u.loudest },
         { key: 'totalPoints', label: 'Most Points', unit: 'PTS', getValue: (u) => u.totalPoints },
-    ];
+    ]), []);
     const [modeIndex, setModeIndex] = useState(0);
 
     useEffect(() => {
@@ -112,7 +134,7 @@ const LeaderboardOverlay = ({ users, songs }) => {
             setModeIndex(prev => (prev + 1) % leaderboardModes.length);
         }, 8000);
         return () => clearInterval(timer);
-    }, []);
+    }, [leaderboardModes.length]);
 
     const leaderboardStats = useMemo(() => {
         const stats = new Map();
@@ -286,7 +308,7 @@ const MiniVideoPane = ({ room, current }) => {
     const iframeRef = useRef(null);
     const nativeVideoRef = useRef(null);
     const iframeSrc = useMemo(() => {
-        const start = room?.videoStartTimestamp ? (Date.now() - room.videoStartTimestamp) / 1000 : 0;
+        const start = room?.videoStartTimestamp ? (nowMs() - room.videoStartTimestamp) / 1000 : 0;
         return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&start=${Math.floor(Math.max(0, start))}&enablejsapi=1`;
     }, [youtubeId, room?.videoStartTimestamp]);
 
@@ -361,7 +383,7 @@ const PublicTV = ({ roomCode }) => {
     const [guitarWinner, setGuitarWinner] = useState(null);
     const [selfieSubmissions, setSelfieSubmissions] = useState([]);
     const [selfieVotes, setSelfieVotes] = useState([]);
-    const [doodleNow, setDoodleNow] = useState(Date.now());
+    const [doodleNow, setDoodleNow] = useState(nowMs());
     const [doodleSubmissions, setDoodleSubmissions] = useState([]);
     const [doodleVotes, setDoodleVotes] = useState([]);
     const [roomUsers, setRoomUsers] = useState([]);
@@ -371,7 +393,7 @@ const PublicTV = ({ roomCode }) => {
     const [readyTimer, setReadyTimer] = useState(0);
     const [chatMessages, setChatMessages] = useState([]);
     const [showChatFeed, setShowChatFeed] = useState(false);
-    const [bingoRngNow, setBingoRngNow] = useState(Date.now());
+    const [bingoRngNow, setBingoRngNow] = useState(nowMs());
     const [bonusDropBurst, setBonusDropBurst] = useState(null);
     
     const stormAudioRef = useRef(null);
@@ -397,6 +419,7 @@ const PublicTV = ({ roomCode }) => {
     const doodleWinnerAwardRef = useRef(null);
     const chatRotateRef = useRef(null);
     const messageTimeoutsRef = useRef([]);
+    const bgVisualizerAudioRef = useRef(null);
     const selfieVoteCounts = useMemo(() => {
         return selfieVotes.reduce((acc, v) => {
             acc[v.targetUid] = (acc[v.targetUid] || 0) + 1;
@@ -436,20 +459,20 @@ const PublicTV = ({ roomCode }) => {
             await ctx.resume();
             setAudioCtx(ctx);
             setStarted(true);
-        } catch(e) { console.error("Audio Context Failed", e); }
+        } catch(e) { tvLogger.error("Audio Context Failed", e); }
     };
 
-    const getStormPhase = () => {
+    const getStormPhase = useCallback(() => {
         if (room?.lightMode !== 'storm') return 'off';
         if (!room?.stormStartedAt) return room?.stormPhase || 'approach';
         const cfg = room?.stormConfig || { approachMs: 15000, peakMs: 20000, passMs: 12000, clearMs: 6000 };
-        const elapsed = Date.now() - room.stormStartedAt;
+        const elapsed = nowMs() - room.stormStartedAt;
         if (elapsed < cfg.approachMs) return 'approach';
         if (elapsed < cfg.approachMs + cfg.peakMs) return 'peak';
         if (elapsed < cfg.approachMs + cfg.peakMs + cfg.passMs) return 'pass';
         if (elapsed < cfg.approachMs + cfg.peakMs + cfg.passMs + cfg.clearMs) return 'clear';
         return 'clear';
-    };
+    }, [room?.lightMode, room?.stormStartedAt, room?.stormPhase, room?.stormConfig]);
 
     useEffect(() => {
         if (room?.lightMode !== 'storm') {
@@ -460,11 +483,11 @@ const PublicTV = ({ roomCode }) => {
         updatePhase();
         const timer = setInterval(updatePhase, 500);
         return () => clearInterval(timer);
-    }, [room?.lightMode, room?.stormStartedAt, room?.stormConfig, room?.stormPhase]);
+    }, [room?.lightMode, room?.stormStartedAt, room?.stormConfig, room?.stormPhase, getStormPhase]);
 
     useEffect(() => {
         if (room?.activeMode !== 'doodle_oke') return;
-        const tick = () => setDoodleNow(Date.now());
+        const tick = () => setDoodleNow(nowMs());
         tick();
         const timer = setInterval(tick, 200);
         return () => clearInterval(timer);
@@ -529,22 +552,22 @@ const PublicTV = ({ roomCode }) => {
             points
         };
         const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
-        updateDoc(roomRef, { doodleOke: { ...room.doodleOke, winner: winnerPayload, winnerAwardedAt: Date.now() } })
-            .catch((e) => console.error('Doodle winner update failed', e));
+        updateDoc(roomRef, { doodleOke: { ...room.doodleOke, winner: winnerPayload, winnerAwardedAt: nowMs() } })
+            .catch((e) => tvLogger.error('Doodle winner update failed', e));
         doodleWinnerAwardRef.current = promptId;
     }, [room?.activeMode, room?.doodleOke, doodleSubmissions, doodleVotes, roomCode]);
 
-    const getStormAmbientUrl = () => {
+    const getStormAmbientUrl = useCallback(() => {
         if (stormPhase === 'approach') return STORM_SFX.lightRain;
         if (stormPhase === 'peak') return STORM_SFX.stormLoop;
         if (stormPhase === 'pass') return STORM_SFX.bigDrops;
         if (stormPhase === 'clear') return STORM_SFX.lightRain;
         return STORM_SFX.lightRain;
-    };
+    }, [stormPhase]);
 
     const [stormFlash, setStormFlash] = useState(false);
-    const triggerStormLightning = () => {
-        const now = Date.now();
+    const triggerStormLightning = useCallback(() => {
+        const now = nowMs();
         const minGap = {
             approach: 9000,
             peak: 3500,
@@ -563,9 +586,9 @@ const PublicTV = ({ roomCode }) => {
             fx.volume = stormPhase === 'peak' ? 0.8 : 0.55;
             fx.play().catch(() => {});
         }
-    };
+    }, [stormPhase]);
 
-    const startStormAnalyser = () => {
+    const startStormAnalyser = useCallback(() => {
         if (!audioCtx || !stormAudioRef.current) return;
         if (stormAnalyserRef.current) return;
         const analyser = audioCtx.createAnalyser();
@@ -586,12 +609,12 @@ const PublicTV = ({ roomCode }) => {
             stormRafRef.current = requestAnimationFrame(loop);
         };
         stormRafRef.current = requestAnimationFrame(loop);
-    };
+    }, [audioCtx, stormPhase, triggerStormLightning]);
 
-    const stopStormAnalyser = () => {
+    const stopStormAnalyser = useCallback(() => {
         if (stormRafRef.current) cancelAnimationFrame(stormRafRef.current);
         stormRafRef.current = null;
-    };
+    }, []);
 
     // --- EFFECT: Storm Sound ---
     useEffect(() => {
@@ -621,14 +644,14 @@ const PublicTV = ({ roomCode }) => {
                 clear: 0.2
             }[stormPhase] || 0.5;
             storm.volume = phaseVolume;
-            storm.play().catch(e => console.warn("Storm Audio Blocked", e));
+            storm.play().catch(e => tvLogger.debug('Storm audio blocked', e));
             startStormAnalyser();
         } else {
             storm.pause();
             storm.currentTime = 0;
             stopStormAnalyser();
         }
-    }, [room?.lightMode, stormPhase, started]);
+    }, [room?.lightMode, stormPhase, started, getStormAmbientUrl, startStormAnalyser, stopStormAnalyser]);
 
     // --- EFFECT: Data Sync ---
     useEffect(() => {
@@ -647,7 +670,7 @@ const PublicTV = ({ roomCode }) => {
                 if(c.type === 'added') {
                     const d = c.doc.data();
                     // Filter old reactions (prevent flood on reload)
-                    if(Date.now() - (d.timestamp?.seconds * 1000 || Date.now()) < 5000) {
+                    if(nowMs() - (d.timestamp?.seconds * 1000 || nowMs()) < 5000) {
                         if (d.type === 'photo') {
                             setPhotoOverlay(d); 
                             setTimeout(() => setPhotoOverlay(null), 8000); // Show photo for 8s
@@ -669,7 +692,7 @@ const PublicTV = ({ roomCode }) => {
                                   }, i * 80);
                               }
                               setCombo(prev => Math.min(100, prev + totalVal));
-                              lastHypeAtRef.current = Date.now();
+                              lastHypeAtRef.current = nowMs();
                               setShowHypeMeter(true);
                           }
                     }
@@ -698,8 +721,8 @@ const PublicTV = ({ roomCode }) => {
             s.docChanges().forEach(c => {
                 if(c.type === 'added') {
                     const d = c.doc.data();
-                    if(Date.now() - (d.timestamp?.seconds * 1000 || Date.now()) < 10000) {
-                        lastRealMessageAt.current = Date.now();
+                    if(nowMs() - (d.timestamp?.seconds * 1000 || nowMs()) < 10000) {
+                        lastRealMessageAt.current = nowMs();
                         setMessages(prev => [...prev, d]);
                         const timeoutId = setTimeout(() => setMessages(p => p.filter(m => m !== d)), 15000);
                         messageTimeoutsRef.current.push(timeoutId);
@@ -731,7 +754,7 @@ const PublicTV = ({ roomCode }) => {
             messageTimeoutsRef.current.forEach(t => clearTimeout(t));
             messageTimeoutsRef.current = [];
         };
-    }, [roomCode]);
+    }, [roomCode, room?.multiplier]);
 
     useEffect(() => {
         const tvMode = room?.chatTvMode || 'auto';
@@ -813,7 +836,7 @@ const PublicTV = ({ roomCode }) => {
                 avatar: winner.avatar,
                 hits: winner.guitarHits,
                 sessionId,
-                timestamp: Date.now(),
+                timestamp: nowMs(),
                 rewardPoints: 200
             };
 
@@ -830,7 +853,7 @@ const PublicTV = ({ roomCode }) => {
                     sessionId,
                     status: 'pending',
                     rewardPoints: 200,
-                    requestedAt: Date.now()
+                    requestedAt: nowMs()
                 }
             }).catch(() => {});
             addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
@@ -858,7 +881,7 @@ const PublicTV = ({ roomCode }) => {
             avatar: winner.avatar,
             hits: winner.guitarHits,
             sessionId,
-            timestamp: Date.now(),
+            timestamp: nowMs(),
             rewardPoints: 200
         };
         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
@@ -872,16 +895,16 @@ const PublicTV = ({ roomCode }) => {
                 sessionId,
                 status: 'pending',
                 rewardPoints: 200,
-                requestedAt: Date.now()
+                requestedAt: nowMs()
             }
         }).catch(() => {});
-    }, [room?.lightMode, room?.guitarSessionId, room?.guitarVictory?.status, roomCode, vibeUsers]);
+    }, [room?.lightMode, room?.guitarSessionId, room?.guitarVictory?.status, room?.guitarWinner?.sessionId, roomCode, vibeUsers]);
 
     useEffect(() => {
         if (room?.lightMode === 'strobe') return;
         const sessionId = room?.strobeSessionId;
         if (!sessionId || !room?.strobeEndsAt) return;
-        if (Date.now() < room.strobeEndsAt) return;
+        if (nowMs() < room.strobeEndsAt) return;
         if (room?.strobeResults?.sessionId === sessionId) return;
         if (lastStrobeSessionRef.current === sessionId) return;
         lastStrobeSessionRef.current = sessionId;
@@ -904,7 +927,7 @@ const PublicTV = ({ roomCode }) => {
 
         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
             strobeWinner: { ...winner, sessionId },
-            strobeResults: { sessionId, winners, rewards, awardedAt: Date.now() },
+            strobeResults: { sessionId, winners, rewards, awardedAt: nowMs() },
             strobeVictory: { ...winner, sessionId, status: 'pending', id: `${sessionId}` }
         }).catch(() => {});
     }, [room?.lightMode, room?.strobeSessionId, room?.strobeEndsAt, room?.strobeResults?.sessionId, roomCode, roomUsers]);
@@ -919,7 +942,7 @@ const PublicTV = ({ roomCode }) => {
             "Drop a clap for the next performer"
         ];
         const interval = setInterval(() => {
-            const now = Date.now();
+            const now = nowMs();
             const isOverlayActive = !!room?.activeScreen || recap || (room?.activeMode && room.activeMode !== 'karaoke');
             if (isOverlayActive) return;
             if (now - lastPromptAt.current < 20000) return;
@@ -947,9 +970,9 @@ const PublicTV = ({ roomCode }) => {
             return;
         }
         const durationMs = Math.max(3000, Math.floor((room.readyCheck.durationSec || 10) * 1000));
-        const start = room.readyCheck.startTime || Date.now();
+        const start = room.readyCheck.startTime || nowMs();
         const tick = () => {
-            const remaining = Math.max(0, Math.ceil((durationMs - (Date.now() - start)) / 1000));
+            const remaining = Math.max(0, Math.ceil((durationMs - (nowMs() - start)) / 1000));
             setReadyTimer(remaining);
         };
         tick();
@@ -959,7 +982,7 @@ const PublicTV = ({ roomCode }) => {
 
     useEffect(() => {
         if (!room?.bingoMysteryRng?.active && !room?.bingoMysteryRng?.finalized) return;
-        const timer = setInterval(() => setBingoRngNow(Date.now()), 250);
+        const timer = setInterval(() => setBingoRngNow(nowMs()), 250);
         return () => clearInterval(timer);
     }, [room?.bingoMysteryRng?.active, room?.bingoMysteryRng?.finalized]);
 
@@ -969,7 +992,7 @@ const PublicTV = ({ roomCode }) => {
         setPhotoOverlay(room.photoOverlay);
         const t = setTimeout(() => setPhotoOverlay(null), 8000);
         return () => clearTimeout(t);
-    }, [room?.photoOverlay?.url, room?.photoOverlay?.timestamp]);
+    }, [room?.photoOverlay?.url, room?.photoOverlay?.timestamp, room?.photoOverlay]);
     useEffect(() => {
         const drop = room?.bonusDrop;
         if (!drop?.id) return;
@@ -978,13 +1001,13 @@ const PublicTV = ({ roomCode }) => {
         setBonusDropBurst({ ...drop });
         const t = setTimeout(() => setBonusDropBurst(null), 6000);
         return () => clearTimeout(t);
-    }, [room?.bonusDrop?.id]);
+    }, [room?.bonusDrop?.id, room?.bonusDrop]);
 
     // --- EFFECT: Loop & Logic ---
     useEffect(() => { comboRef.current = combo; }, [combo]);
     useEffect(() => {
         const i = setInterval(() => {
-            setReactions(prev => prev.filter(r => Date.now() - (r.timestamp?.seconds * 1000 || Date.now()) < 4000));
+            setReactions(prev => prev.filter(r => nowMs() - (r.timestamp?.seconds * 1000 || nowMs()) < 4000));
             setCombo(prev => {
                 const next = Math.max(0, prev - 0.2);
                 comboRef.current = next;
@@ -996,7 +1019,7 @@ const PublicTV = ({ roomCode }) => {
                 return next;
             });
             if (comboRef.current <= 0) {
-                const idleMs = Date.now() - (lastHypeAtRef.current || 0);
+                const idleMs = nowMs() - (lastHypeAtRef.current || 0);
                 if (idleMs > 10000) setShowHypeMeter(false);
             } else if (!showHypeMeter) {
                 setShowHypeMeter(true);
@@ -1028,6 +1051,7 @@ const PublicTV = ({ roomCode }) => {
             wyr: 'Would You Rather',
             wyr_reveal: 'Would You Rather',
             bingo: 'Bingo',
+            karaoke_bracket: 'Sweet 16 Bracket',
             flappy_bird: 'Flappy Bird',
             vocal_challenge: 'Vocal Challenge',
             riding_scales: 'Scale Ladder'
@@ -1046,7 +1070,7 @@ const PublicTV = ({ roomCode }) => {
         if(room?.lastPerformance) {
             const lastTs = getTimestampMs(room.lastPerformance.timestamp);
             if (!lastTs) return undefined;
-            const timeSinceEnd = Date.now() - lastTs;
+            const timeSinceEnd = nowMs() - lastTs;
             if (timeSinceEnd < 10000) {
                 if (!recap || room.lastPerformance.timestamp !== recap.timestamp) {
                     setRecap(room.lastPerformance);
@@ -1058,7 +1082,7 @@ const PublicTV = ({ roomCode }) => {
                 if(recap) setRecap(null);
             }
         }
-    }, [room?.lastPerformance]);
+    }, [room?.lastPerformance, room?.activeMode, room?.activeScreen, recap]);
 
     useEffect(() => {
         if (!room?.recapPreview?.timestamp) return;
@@ -1069,16 +1093,16 @@ const PublicTV = ({ roomCode }) => {
         setRecap(room.recapPreview);
         const t = setTimeout(() => setRecap(null), 10000);
         return () => clearTimeout(t);
-    }, [room?.recapPreview?.timestamp]);
+    }, [room?.recapPreview?.timestamp, room?.recapPreview]);
 
-    const triggerTipPulse = (key) => {
+    const triggerTipPulse = useCallback((key) => {
         if (!room?.tipUrl && !room?.tipQrUrl) return;
         if (lastTipKey.current === key) return;
         lastTipKey.current = key;
         setTipPulse(true);
         if (tipPulseTimer.current) clearTimeout(tipPulseTimer.current);
         tipPulseTimer.current = setTimeout(() => setTipPulse(false), 9000);
-    };
+    }, [room?.tipUrl, room?.tipQrUrl]);
     const experienceLabel = (() => {
         if (room?.activeScreen && room.activeScreen !== 'stage') {
             return formatExperienceLabel(room.activeScreen);
@@ -1096,7 +1120,7 @@ const PublicTV = ({ roomCode }) => {
                 activeMode: 'karaoke'
             });
         } catch (err) {
-            console.error('[TV] closeExperience failed', err);
+            tvLogger.error('[TV] closeExperience failed', err);
         }
     };
 
@@ -1105,7 +1129,7 @@ const PublicTV = ({ roomCode }) => {
         if (room?.activeMode === 'applause_countdown' && applauseStep === 'idle') { 
             setApplauseStep('countdown'); setCountdown(3); setApplauseMax(0); 
         } 
-    }, [room?.activeMode]);
+    }, [room?.activeMode, applauseStep]);
     useEffect(() => () => {
         if (applauseResetRef.current) clearTimeout(applauseResetRef.current);
     }, []);
@@ -1119,7 +1143,7 @@ const PublicTV = ({ roomCode }) => {
             if (measure > 0) timer = setTimeout(() => setMeasure(m => m - 1), 1000); 
             else { 
                 setApplauseStep('result'); 
-                triggerTipPulse(`applause-${Date.now()}`);
+                triggerTipPulse(`applause-${nowMs()}`);
                 updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { applausePeak: applauseMax, activeMode: 'applause_result' }); 
                 if (applauseResetRef.current) clearTimeout(applauseResetRef.current);
                 applauseResetRef.current = setTimeout(() => { 
@@ -1129,7 +1153,7 @@ const PublicTV = ({ roomCode }) => {
             } 
         } 
         return () => clearTimeout(timer); 
-    }, [applauseStep, countdown, measure, applauseMax, roomCode]);
+    }, [applauseStep, countdown, measure, applauseMax, roomCode, triggerTipPulse]);
 
     const current = songs.find(s => s.status === 'performing');
     const marqueeItems = (room?.marqueeItems || []).filter(i => i.enabled !== false);
@@ -1165,7 +1189,7 @@ const PublicTV = ({ roomCode }) => {
             clearInterval(cycleTimer);
             if (hideTimer) clearTimeout(hideTimer);
         };
-    }, [room?.marqueeEnabled, room?.marqueeDurationMs, room?.marqueeIntervalMs, room?.marqueeShowMode, room?.activeMode, messages.length, marqueeItems.length, current?.id]);
+    }, [room?.marqueeEnabled, room?.marqueeDurationMs, room?.marqueeIntervalMs, room?.marqueeShowMode, room?.activeMode, messages.length, marqueeItems.length, current?.id, current]);
 
     const handleVolume = (vol) => {
         const level = Math.min(100, Math.round(vol / 1.5));
@@ -1206,11 +1230,30 @@ const PublicTV = ({ roomCode }) => {
     const spotlightUser = room?.spotlightUser?.id
         ? roomUsers.find(u => u.uid === room.spotlightUser.id || u.id?.split('_')[1] === room.spotlightUser.id)
         : null;
+    const spotlightTopTight15 = extractTopTight15({
+        spotlightPayload: room?.spotlightUser || null,
+        roomUser: spotlightUser || null
+    });
 
     const bgClass = multiplier >= 4 ? 'bg-gradient-to-br from-pink-900 via-purple-900 to-indigo-900 animate-pulse' : 
                     multiplier >= 2 ? 'bg-gradient-to-br from-blue-900 to-black' : 
                     'bg-black';
     const waveformOpacity = current ? 'opacity-50' : 'opacity-95';
+    const {
+        bgVisualizerSimulatedLevel,
+        shouldUseBgMediaElement,
+        visualizerEnabled,
+        visualizerInputMode,
+        visualizerResolvedPreset,
+        visualizerSensitivity,
+        visualizerSmoothing
+    } = useTvVisualizerSettings({
+        room,
+        started,
+        bgVisualizerAudioRef,
+        logger: tvLogger
+    });
+    const visualizerSourceElement = shouldUseBgMediaElement ? bgVisualizerAudioRef.current : null;
     const guitarLeaders = room?.guitarSessionId
         ? vibeUsers.filter(u => u.guitarSessionId === room.guitarSessionId)
         : vibeUsers;
@@ -1225,11 +1268,14 @@ const PublicTV = ({ roomCode }) => {
     const strobeCountdownUntil = room?.strobeCountdownUntil || 0;
     const strobeEndsAt = room?.strobeEndsAt || 0;
     const strobePhase = room?.lightMode === 'strobe'
-        ? (Date.now() < strobeCountdownUntil ? 'countdown' : Date.now() < strobeEndsAt ? 'active' : 'ended')
+        ? (nowMs() < strobeCountdownUntil ? 'countdown' : nowMs() < strobeEndsAt ? 'active' : 'ended')
         : 'off';
-    const strobeCountdown = Math.max(0, Math.ceil((strobeCountdownUntil - Date.now()) / 1000));
-    const strobeRemaining = Math.max(0, Math.ceil((strobeEndsAt - Date.now()) / 1000));
+    const strobeCountdown = Math.max(0, Math.ceil((strobeCountdownUntil - nowMs()) / 1000));
+    const strobeRemaining = Math.max(0, Math.ceil((strobeEndsAt - nowMs()) / 1000));
     const strobeMeter = Math.min(100, Math.round(strobeTotalTaps * 2));
+    const motionSafeFx = !!room?.reduceMotionFx;
+    const bangerParticleCount = motionSafeFx ? 8 : 15;
+    const balladParticleCount = motionSafeFx ? 4 : 6;
     const appBase = `${window.location.origin}${import.meta.env.BASE_URL || '/'}`;
     const joinUrl = `${appBase}?room=${roomCode}`;
     const joinUrlDisplay = joinUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -1243,7 +1289,8 @@ const PublicTV = ({ roomCode }) => {
         selfie_challenge: 'Selfie Challenge',
         vocal_challenge: 'Vocal Challenge',
         riding_scales: 'Riding Scales',
-        flappy_bird: 'Flappy Bird'
+        flappy_bird: 'Flappy Bird',
+        karaoke_bracket: 'Sweet 16 Bracket'
     };
     const queueSettings = room?.queueSettings || {};
     const queueLimitMode = queueSettings.limitMode || 'none';
@@ -1274,6 +1321,7 @@ const PublicTV = ({ roomCode }) => {
             label: 'Requests need approval'
         }] : [])
     ];
+
     // --- RENDER ---
     
     if (!started) {
@@ -1410,10 +1458,12 @@ const PublicTV = ({ roomCode }) => {
         const isTrivia = room.activeMode.includes('trivia');
         const isWyr = room.activeMode.includes('wyr');
         const isBingo = room.activeMode === 'bingo';
+        const isBracket = room.activeMode === 'karaoke_bracket';
 
         let gamePayload = room.gameData; 
         if (isTrivia) gamePayload = room.triviaQuestion;
         if (isWyr) gamePayload = room.wyrData;
+        if (isBracket) gamePayload = room.karaokeBracket || room.gameData;
         if (isBingo) gamePayload = {
             tiles: room.bingoData,
             size: room.bingoSize,
@@ -1603,10 +1653,28 @@ const PublicTV = ({ roomCode }) => {
     );
 
     return (
-        <div className={`public-tv h-screen w-screen relative overflow-hidden font-saira text-white transition-colors duration-1000 ${bgClass}`}>
+        <div className={`public-tv h-screen w-screen relative overflow-hidden font-saira text-white transition-colors duration-1000 ${bgClass} ${motionSafeFx ? 'motion-safe-fx' : ''}`}>
+            <audio
+                ref={bgVisualizerAudioRef}
+                className="hidden"
+                preload="auto"
+                playsInline
+                aria-hidden="true"
+                crossOrigin="anonymous"
+            />
             {!showVisualizerTv && (
                 <div className={`absolute inset-0 z-0 mix-blend-screen pointer-events-none ${waveformOpacity} ${room?.hideWaveform ? 'hidden' : ''}`}>
-                    <AudioVisualizer isActive={started} externalCtx={audioCtx} onVolume={handleVolume} />
+                    <AudioVisualizer
+                        isActive={started && visualizerEnabled}
+                        externalCtx={audioCtx}
+                        onVolume={handleVolume}
+                        inputMode={visualizerInputMode}
+                        mediaElement={visualizerSourceElement}
+                        simulatedLevel={bgVisualizerSimulatedLevel}
+                        preset={visualizerResolvedPreset}
+                        sensitivity={visualizerSensitivity}
+                        smoothing={visualizerSmoothing}
+                    />
                 </div>
             )}
 
@@ -1688,13 +1756,16 @@ const PublicTV = ({ roomCode }) => {
             
             {room?.lightMode === 'strobe' && (
                 <div className="absolute inset-0 z-[160] pointer-events-none">
-                    <div className="absolute inset-0 vibe-strobe opacity-55 mix-blend-screen bg-white"></div>
-                    <div className="absolute inset-0 bg-gradient-to-b from-pink-500/25 via-transparent to-cyan-400/20"></div>
-                    <div className="absolute top-8 left-1/2 -translate-x-1/2 text-center">
+                    <div className={`absolute inset-0 ${motionSafeFx ? '' : 'vibe-strobe'} ${motionSafeFx ? 'opacity-30' : 'opacity-45'} mix-blend-screen bg-white`}></div>
+                    <div className={`absolute inset-0 ${motionSafeFx ? 'bg-gradient-to-b from-pink-500/10 via-transparent to-cyan-400/5' : 'bg-gradient-to-b from-pink-500/15 via-transparent to-cyan-400/10'}`}></div>
+                    <div className="absolute top-8 right-8 px-3 py-1 rounded-full bg-black/65 border border-yellow-300/40 text-[10px] uppercase tracking-[0.25em] text-yellow-200">
+                        Sensitivity Warning
+                    </div>
+                    <div className="absolute top-8 left-1/2 -translate-x-1/2 text-center max-w-[80vw]">
                         <div className="text-sm uppercase tracking-[0.45em] text-white/80">Beat Drop</div>
                         {strobePhase === 'countdown' && (
                             <>
-                                <div className="text-[10rem] font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.6)]">{strobeCountdown || 0}</div>
+                                <div className={`${motionSafeFx ? 'text-8xl' : 'text-[9rem]'} font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.6)]`}>{strobeCountdown || 0}</div>
                                 <div className="text-xl font-bold text-white/90">Get ready to tap</div>
                             </>
                         )}
@@ -1738,7 +1809,7 @@ const PublicTV = ({ roomCode }) => {
                 <>
                     <div className="absolute inset-0 z-[140] pointer-events-none vibe-banger mix-blend-overlay bg-red-500/20"></div>
                     <div className="fire-overlay">
-                        {[...Array(15)].map((_, i) => (
+                        {[...Array(bangerParticleCount)].map((_, i) => (
                             <div key={i} className="fire-particle" style={{ left: `${Math.random() * 100}%`, animationDelay: `${Math.random() * 2}s` }}>
                                 {[EMOJI.fire, emoji(0x1F692), emoji(0x1F9D1, 0x200D, 0x1F692), emoji(0x1F9EF), emoji(0x1F9E8)][Math.floor(Math.random() * 5)]}
                             </div>
@@ -1753,7 +1824,7 @@ const PublicTV = ({ roomCode }) => {
                     <div className="absolute inset-x-0 bottom-0 h-[40%] ballad-glow opacity-60"></div>
                     <div className="absolute inset-0 fire-overlay opacity-40"></div>
                     <div className="absolute inset-0 pointer-events-none">
-                        {[...Array(6)].map((_, i) => (
+                        {[...Array(balladParticleCount)].map((_, i) => (
                             <div
                                 key={`ballad-fire-${i}`}
                                 className="fire-particle"
@@ -1795,7 +1866,7 @@ const PublicTV = ({ roomCode }) => {
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(255,140,0,0.1),transparent_60%)]"></div>
                     </div>
                 <div className="absolute inset-0 z-[85] pointer-events-none flex flex-col items-center justify-between py-8">
-                        <div className="text-8xl font-bebas text-transparent bg-clip-text bg-gradient-to-t from-yellow-400 via-orange-500 to-red-600 drop-shadow-[0_0_30px_rgba(255,100,0,0.8)] animate-pulse">GUITAR SOLO!</div>
+                        <div className={`${motionSafeFx ? 'text-6xl' : 'text-8xl'} font-bebas text-transparent bg-clip-text bg-gradient-to-t from-yellow-400 via-orange-500 to-red-600 drop-shadow-[0_0_30px_rgba(255,100,0,0.8)] ${motionSafeFx ? '' : 'animate-pulse'}`}>GUITAR SOLO!</div>
                         <div className="flex justify-center pointer-events-none">
                             <div className="bg-black/60 border border-white/10 rounded-3xl px-8 py-6 backdrop-blur-md min-w-[60%] max-w-[80vw]">
                                 <div className="text-sm text-zinc-300 mb-4 text-center tracking-[0.3em] uppercase">Top Strummers</div>
@@ -1872,11 +1943,17 @@ const PublicTV = ({ roomCode }) => {
                                 {showVisualizerTv && (
                                     <div className="absolute inset-0 z-30 bg-black">
                                         <AudioVisualizer
-                                            isActive={started}
+                                            isActive={started && visualizerEnabled}
                                             externalCtx={audioCtx}
                                             onVolume={handleVolume}
                                             mode={visualizerMode}
                                             className="w-full h-full opacity-95"
+                                            inputMode={visualizerInputMode}
+                                            mediaElement={visualizerSourceElement}
+                                            simulatedLevel={bgVisualizerSimulatedLevel}
+                                            preset={visualizerResolvedPreset}
+                                            sensitivity={visualizerSensitivity}
+                                            smoothing={visualizerSmoothing}
                                         />
                                     </div>
                                 )}
@@ -1904,14 +1981,28 @@ const PublicTV = ({ roomCode }) => {
                             {isMinimal && <div className="mt-4"><MiniVideoPane room={room} current={current} /></div>}
                          </div>
 
-                         {spotlightUser && (
+                         {(spotlightUser || room?.spotlightUser?.id) && (
                             <div className="p-5 rounded-3xl bg-black/70 border border-yellow-400/30 shadow-[0_0_25px_rgba(234,179,8,0.2)] text-center">
                                 <div className="text-[10px] uppercase tracking-[0.4em] text-yellow-300">Spotlight</div>
-                                <div className="text-5xl mt-2">{spotlightUser.avatar || EMOJI.star}</div>
-                                <div className="text-2xl font-bold text-white mt-2 truncate">{spotlightUser.name || 'Guest'}</div>
+                                <div className="text-5xl mt-2">{room?.spotlightUser?.avatar || spotlightUser?.avatar || EMOJI.star}</div>
+                                <div className="text-2xl font-bold text-white mt-2 truncate">{room?.spotlightUser?.name || spotlightUser?.name || 'Guest'}</div>
                                 {room?.spotlightUser?.msg && (
                                     <div className="text-xs text-yellow-200 mt-1">{room.spotlightUser.msg}</div>
                                 )}
+                                <div className="mt-3 text-left bg-yellow-500/10 border border-yellow-400/20 rounded-xl px-3 py-2">
+                                    <div className="text-[10px] uppercase tracking-[0.3em] text-yellow-200 mb-2">Top Tight 15</div>
+                                    {spotlightTopTight15.length ? (
+                                        <div className="space-y-1">
+                                            {spotlightTopTight15.map((entry, idx) => (
+                                                <div key={`${entry.songTitle}_${entry.artist}_${idx}`} className="text-xs text-yellow-50 truncate">
+                                                    {idx + 1}. {entry.songTitle}{entry.artist ? ` - ${entry.artist}` : ''}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-[11px] text-yellow-100/70">No Tight 15 songs set yet.</div>
+                                    )}
+                                </div>
                             </div>
                          )}
                          
@@ -2066,7 +2157,7 @@ const PublicTV = ({ roomCode }) => {
                             <div className="col-span-3 flex items-center justify-center text-zinc-400 text-xl">Waiting for selfies...</div>
                         )}
                     </div>
-                    {room?.selfieChallenge?.status === 'ended' && room?.selfieChallenge?.winner && (!room?.selfieChallenge?.winnerExpiresAt || Date.now() < room.selfieChallenge.winnerExpiresAt) && (
+                    {room?.selfieChallenge?.status === 'ended' && room?.selfieChallenge?.winner && (!room?.selfieChallenge?.winnerExpiresAt || nowMs() < room.selfieChallenge.winnerExpiresAt) && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/70">
                             <div className="bg-zinc-900 border border-[#00C4D9]/40 rounded-3xl p-8 text-center shadow-2xl">
                                 <div className="text-xs uppercase tracking-[0.4em] text-zinc-500">Winner</div>
@@ -2166,7 +2257,7 @@ const PublicTV = ({ roomCode }) => {
                             <div className={`relative ${getReactionClass(r.type)} ${r.isVip ? 'vip-reaction-emoji' : ''}`}>
                                 {getEmojiChar(r.type)}
                                 {r.isVip && (
-                                    <span className="absolute -top-4 -right-4 text-3xl animate-vip-spin">✨</span>
+                                    <span className="absolute -top-4 -right-4 text-3xl animate-vip-spin">{'\u2728'}</span>
                                 )}
                             </div>
                             <div className="mt-3 flex flex-col items-center gap-1 reaction-label">
@@ -2274,3 +2365,5 @@ const PublicTV = ({ roomCode }) => {
 };
 
 export default PublicTV;
+
+

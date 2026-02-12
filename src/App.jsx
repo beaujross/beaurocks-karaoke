@@ -1,14 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { ToastProvider } from './context/ToastContext';
 import { auth, onAuthStateChanged, initAuth } from './lib/firebase';
 import { ASSETS } from './lib/assets';
 
 // App Views
-import PublicTV from './apps/TV/PublicTV';
-import SingerApp from './apps/Mobile/SingerApp';
-import RecapView from './apps/Recap/RecapView';
-// Note: Host app will be imported here in the next batch
-import HostApp from './apps/Host/HostApp'; 
+const PublicTV = lazy(() => import('./apps/TV/PublicTV'));
+const SingerApp = lazy(() => import('./apps/Mobile/SingerApp'));
+const RecapView = lazy(() => import('./apps/Recap/RecapView'));
+const HostApp = lazy(() => import('./apps/Host/HostApp'));
+
+const ViewLoader = () => (
+    <div className="h-screen w-screen bg-black flex items-center justify-center text-white">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+    </div>
+);
+
+const getInitialRouteState = () => {
+    if (typeof window === 'undefined') {
+        return { view: 'landing', roomCode: '' };
+    }
+    const params = new URLSearchParams(window.location.search);
+    const r = params.get('room');
+    const m = params.get('mode');
+    if (m === 'host') {
+        return { view: 'host', roomCode: r ? r.toUpperCase() : '' };
+    }
+    if (m === 'recap') {
+        return { view: 'recap', roomCode: r ? r.toUpperCase() : '' };
+    }
+    if (r) {
+        return { view: m === 'tv' ? 'tv' : 'mobile', roomCode: r.toUpperCase() };
+    }
+    return { view: 'landing', roomCode: '' };
+};
 
 const Landing = ({ onJoin }) => {
     const [code, setCode] = useState('');
@@ -118,10 +142,10 @@ const KaraokeTerms = () => (
             <div className="space-y-4 text-base text-zinc-200 leading-relaxed">
                 <p>We want this room loud, joyful, and safe. By joining, you agree to play nice and keep the vibe respectful.</p>
                 <ul className="space-y-3">
-                    <li className="flex gap-2"><span className="text-cyan-300">•</span>No harassment, hate speech, threats, or illegal content. Keep it fun.</li>
-                    <li className="flex gap-2"><span className="text-cyan-300">•</span>Only share content you own or have permission to use.</li>
-                    <li className="flex gap-2"><span className="text-cyan-300">•</span>BROSS can remove content or users to keep the room safe and on-beat.</li>
-                    <li className="flex gap-2"><span className="text-cyan-300">•</span>You’re responsible for your content and conduct.</li>
+                    <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>No harassment, hate speech, threats, or illegal content. Keep it fun.</li>
+                    <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>Only share content you own or have permission to use.</li>
+                    <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>BROSS can remove content or users to keep the room safe and on-beat.</li>
+                    <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>You're responsible for your content and conduct.</li>
                 </ul>
                 <p className="text-sm text-zinc-400">Questions? Reach out to support for the full legal terms and policies.</p>
             </div>
@@ -136,8 +160,9 @@ const KaraokeTerms = () => (
 );
 
 const App = () => {
-    const [view, setView] = useState('landing');
-    const [roomCode, setRoomCode] = useState('');
+    const initialRoute = getInitialRouteState();
+    const [view, setView] = useState(() => initialRoute.view);
+    const [roomCode, setRoomCode] = useState(() => initialRoute.roomCode);
     const [uid, setUid] = useState(null);
     const [authError, setAuthError] = useState(null);
     const isKaraokeTerms = typeof window !== 'undefined'
@@ -158,30 +183,13 @@ const App = () => {
         });
         return () => unsub();
     }, []);
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        const params = new URLSearchParams(window.location.search);
-        const r = params.get('room');
-        const m = params.get('mode');
-        if (m === 'host') {
-            setView('host');
-            setRoomCode(r ? r.toUpperCase() : '');
-            return;
-        }
-        if (m === 'recap') {
-            setView('recap');
-            setRoomCode(r ? r.toUpperCase() : '');
-            return;
-        }
-        if (r) {
-            setView(m === 'tv' ? 'tv' : 'mobile');
-            setRoomCode(r.toUpperCase());
-        }
-    }, []);
-
     if (isKaraokeTerms) return <KaraokeTerms />;
     if (view === 'landing') return <Landing onJoin={(c) => { setRoomCode(c); setView('mobile'); }} />;
-    if (view === 'tv') return <PublicTV roomCode={roomCode} />;
+    if (view === 'tv') return (
+        <Suspense fallback={<ViewLoader />}>
+            <PublicTV roomCode={roomCode} />
+        </Suspense>
+    );
     const retryAuth = async () => {
         setAuthError(null);
         const res = await initAuth();
@@ -191,20 +199,29 @@ const App = () => {
     };
 
     if (view === 'host') return (
-        <ToastProvider>
-            <HostApp roomCode={roomCode} uid={uid} authError={authError} retryAuth={retryAuth} />
-        </ToastProvider>
-    ); 
-    if (view === 'recap') return <RecapView roomCode={roomCode} />;
+        <Suspense fallback={<ViewLoader />}>
+            <ToastProvider>
+                <HostApp roomCode={roomCode} uid={uid} authError={authError} retryAuth={retryAuth} />
+            </ToastProvider>
+        </Suspense>
+    );
+    if (view === 'recap') return (
+        <Suspense fallback={<ViewLoader />}>
+            <RecapView roomCode={roomCode} />
+        </Suspense>
+    );
     
     // Mobile View needs Toast Provider
     if (view === 'mobile') return uid ? (
-        <ToastProvider>
-            <SingerApp roomCode={roomCode} uid={uid} />
-        </ToastProvider>
-    ) : <div className="h-screen w-screen bg-black flex items-center justify-center text-white"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div></div>;
+        <Suspense fallback={<ViewLoader />}>
+            <ToastProvider>
+                <SingerApp roomCode={roomCode} uid={uid} />
+            </ToastProvider>
+        </Suspense>
+    ) : <ViewLoader />;
 
     return null;
 };
 
 export default App;
+

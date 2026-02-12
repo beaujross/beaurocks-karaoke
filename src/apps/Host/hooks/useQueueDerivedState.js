@@ -16,8 +16,8 @@ const formatWaitTime = (seconds) => {
 };
 
 const useQueueDerivedState = ({ songs, room, users, appleMusicPlaying }) => {
-    const safeSongs = Array.isArray(songs) ? songs : [];
-    const safeUsers = Array.isArray(users) ? users : [];
+    const safeSongs = useMemo(() => (Array.isArray(songs) ? songs : []), [songs]);
+    const safeUsers = useMemo(() => (Array.isArray(users) ? users : []), [users]);
 
     const current = useMemo(
         () => safeSongs.find(s => s.status === 'performing'),

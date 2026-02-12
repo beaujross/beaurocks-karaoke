@@ -59,13 +59,16 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
     }, [chatMessages]);
 
     useEffect(() => {
-        if (room?.chatEnabled !== undefined) setChatEnabled(!!room.chatEnabled);
-        if (room?.chatShowOnTv !== undefined) setChatShowOnTv(!!room.chatShowOnTv);
-        if (room?.chatTvMode) setChatTvMode(room.chatTvMode);
-        if (room?.chatSlowModeSec !== undefined && room?.chatSlowModeSec !== null) {
-            setChatSlowModeSec(room.chatSlowModeSec);
-        }
-        if (room?.chatAudienceMode) setChatAudienceMode(room.chatAudienceMode);
+        const syncTimer = setTimeout(() => {
+            if (room?.chatEnabled !== undefined) setChatEnabled(!!room.chatEnabled);
+            if (room?.chatShowOnTv !== undefined) setChatShowOnTv(!!room.chatShowOnTv);
+            if (room?.chatTvMode) setChatTvMode(room.chatTvMode);
+            if (room?.chatSlowModeSec !== undefined && room?.chatSlowModeSec !== null) {
+                setChatSlowModeSec(room.chatSlowModeSec);
+            }
+            if (room?.chatAudienceMode) setChatAudienceMode(room.chatAudienceMode);
+        }, 0);
+        return () => clearTimeout(syncTimer);
     }, [room?.chatEnabled, room?.chatShowOnTv, room?.chatTvMode, room?.chatSlowModeSec, room?.chatAudienceMode]);
 
     useEffect(() => {

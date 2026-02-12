@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { usePitch } from '../../hooks/usePitch';
 import { db, doc, updateDoc, collection, query, where, getDocs, writeBatch, increment } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
@@ -89,7 +89,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, view = 't
     const endRef = useRef(false);
     const advanceRef = useRef(false);
 
-    const gameData = playerData || gameState || {};
+    const gameData = useMemo(() => (playerData || gameState || {}), [playerData, gameState]);
     const maxStrikes = Number(gameData.maxStrikes || 3);
     const rewardPerRound = Number(gameData.rewardPerRound || 50);
     const difficulty = gameData.difficulty || 'standard';
@@ -98,19 +98,19 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, view = 't
     const isTurnsMode = gameData.mode === 'turns';
     const summaryDurationMs = 2500;
 
-    const syncState = (next) => {
+    const syncState = useCallback((next) => {
         stateRef.current = next;
         setLocalState(next);
-    };
+    }, []);
 
-    const writeState = async (payload) => {
+    const writeState = useCallback(async (payload) => {
         await updateDoc(
             doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode),
             { gameData: payload }
         );
-    };
+    }, [roomCode]);
 
-    const ensureInit = () => {
+    const ensureInit = useCallback(() => {
         if (!isPlayer) return;
         if (stateRef.current) return;
         const round = 1;
@@ -134,19 +134,19 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, view = 't
         };
         syncState(init);
         writeState(init);
-    };
+    }, [isPlayer, difficulty, gameData, syncState, writeState]);
 
     useEffect(() => {
         const t = setTimeout(() => ensureInit(), 0);
         return () => clearTimeout(t);
-    }, [isPlayer]);
+    }, [ensureInit]);
 
     useEffect(() => {
         if (isPlayer) return;
         if (!gameData?.phase) return;
         const t = setTimeout(() => syncState(gameData), 0);
         return () => clearTimeout(t);
-    }, [gameData?.phase, gameData?.round, gameData?.playbackIndex, gameData?.inputIndex, gameData?.strikes, gameData?.sequence, gameData?.detectedNote]);
+    }, [isPlayer, gameData, syncState]);
 
     useEffect(() => {
         if (!isPlayer) return;
@@ -229,7 +229,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, view = 't
         }, 200);
 
         return () => clearInterval(loop);
-    }, [isPlayer, stableNote, note, confidence, isSinging, maxStrikes]);
+    }, [isPlayer, stableNote, note, confidence, isSinging, maxStrikes, difficulty, holdMs, writeState, syncState]);
 
     useEffect(() => {
         if (!localState || !guideTone) return;
@@ -261,7 +261,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, view = 't
         osc.start();
         osc.stop(ctx.currentTime + 0.2);
         oscRef.current = osc;
-    }, [localState, view]);
+    }, [localState, guideTone, view, isPlayer]);
 
     useEffect(() => {
         if (!isPlayer || rewarded || !localState || localState.phase !== 'over') return;

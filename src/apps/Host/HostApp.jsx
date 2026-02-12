@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import UnifiedGameLauncher from '../../components/UnifiedGameLauncher';
 import { GAMES_META } from '../../lib/gameRegistry';
 import StageNowPlayingPanel from './components/StageNowPlayingPanel';
@@ -49,6 +49,16 @@ import { BG_TRACKS, SOUNDS } from '../../lib/gameDataConstants';
 import { HOST_APP_CONFIG } from '../../lib/uiConstants';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabilities';
 import { buildSongKey, ensureSong, ensureTrack } from '../../lib/songCatalog';
+import { createLogger } from '../../lib/logger';
+import {
+    DEFAULT_LOGO_PRESETS,
+    DEFAULT_MARQUEE_ITEMS,
+    DEFAULT_TIP_CRATES,
+    HOST_ONBOARDING_PLAN_OPTIONS,
+    HOST_ONBOARDING_STEPS,
+    SAMPLE_ART,
+    TOP100_SEED
+} from './hostAppData';
 import {
     normalizeBackingChoice,
     resolveStageMediaUrl,
@@ -61,6 +71,8 @@ const STORM_SEQUENCE = HOST_APP_CONFIG.STORM_SEQUENCE;
 const STROBE_COUNTDOWN_MS = HOST_APP_CONFIG.STROBE_COUNTDOWN_MS;
 const STROBE_ACTIVE_MS = HOST_APP_CONFIG.STROBE_ACTIVE_MS;
 let itunesBackoffUntil = 0;
+const nowMs = () => Date.now();
+const hostLogger = createLogger('HostApp');
 
 // Background tracks and sounds imported from gameDataConstants.js
 // (BG_TRACKS, SOUNDS)
@@ -116,7 +128,7 @@ const generateAIContent = async (type, context) => {
         const data = await callFunction('geminiGenerate', { type, context });
         return data?.result || null;
     } catch (e) {
-        console.error("AI Error", e);
+        hostLogger.error('AI Error', e);
         const code = String(e?.code || e?.message || '').toLowerCase();
         if (code.includes('permission-denied')) {
             alert("AI tools require an active Host subscription.");
@@ -170,45 +182,166 @@ const STYLES = {
     header: "text-xs font-bold text-[#00C4D9] mb-2 tracking-widest uppercase border-b border-white/5 pb-1 flex justify-between items-center"
 };
 
-const DEFAULT_MARQUEE_ITEMS = [
-    "Welcome to BROSS Karaoke — scan the QR to join!",
-    "Send reactions to hype the singer and light up the stage.",
-    "Request a song anytime — the host will pull you up next.",
-    "Tip the host to unlock bonus points and VIP perks.",
-    "Ready Check incoming — tap READY to earn points.",
-    "Share the room code with friends and fill the queue."
-];
-
-const DEFAULT_TIP_CRATES = [
-    { id: 'crate_small', label: 'Quick Boost', amount: 5, points: 1000, rewardScope: 'buyer', awardBadge: false },
-    { id: 'crate_mid', label: 'Crowd Energy', amount: 10, points: 2500, rewardScope: 'room', awardBadge: false },
-    { id: 'crate_big', label: 'Room Rager', amount: 20, points: 6000, rewardScope: 'room', awardBadge: true }
-];
-
-const DEFAULT_LOGO_PRESETS = [
-    { id: 'default-bross', label: 'BROSS Default', url: ASSETS.logo },
-    { id: 'bross-entertainment', label: 'Bross Entertainment', url: '/images/logo-library/bross-entertainment.png' },
-    { id: 'bross-entertainment-chrome', label: 'Bross Chrome', url: '/images/logo-library/bross-entertainment-chrome.png' },
-    { id: 'beaurocks-karaoke-logo-2', label: 'Beaurocks Logo 2', url: '/images/logo-library/beaurocks-karaoke-logo-2.png' },
-    { id: 'icon-reversed-gradient', label: 'Icon Reversed Gradient', url: '/images/logo-library/icon-reversed-gradient.png' },
-    { id: 'bross-ent-favicon-1', label: 'Bross Favicon 1', url: '/images/logo-library/bross-ent-favicon-1.png' },
-    { id: 'chatgpt-2026-02-08-032254pm', label: 'ChatGPT Concept 03:22 PM', url: '/images/logo-library/chatgpt-2026-02-08-032254pm.png' },
-    { id: 'chatgpt-2026-02-08-103037pm', label: 'ChatGPT Concept 10:30 PM', url: '/images/logo-library/chatgpt-2026-02-08-103037pm.png' },
-    { id: 'chatgpt-2026-02-08-115558pm', label: 'ChatGPT Concept 11:55 PM', url: '/images/logo-library/chatgpt-2026-02-08-115558pm.png' }
-];
-
-const HOST_ONBOARDING_STEPS = [
-    { key: 'identity', label: 'Identity' },
-    { key: 'plan', label: 'Plan' },
-    { key: 'branding', label: 'Branding' },
-    { key: 'launch', label: 'Launch' }
-];
-
-const HOST_ONBOARDING_PLAN_OPTIONS = [
-    { id: 'free', label: 'Free', price: '$0', note: 'Test the workspace before upgrading.' },
-    { id: 'host_monthly', label: 'Host Monthly', price: '$19/mo', note: 'Recurring monthly host subscription.' },
-    { id: 'host_annual', label: 'Host Annual', price: '$190/yr', note: 'Lower yearly effective rate for active hosts.' }
-];
+const HOST_NIGHT_PRESETS = {
+    casual: {
+        id: 'casual',
+        label: 'Casual Night',
+        description: 'Apple playlist vibe with visualizer-forward TV.',
+        searchSources: { local: true, youtube: true, itunes: true },
+        settings: {
+            autoDj: true,
+            autoBgMusic: true,
+            autoPlayMedia: true,
+            showVisualizerTv: true,
+            showLyricsTv: false,
+            showScoring: false,
+            showFameLevel: false,
+            allowSingerTrackSelect: true,
+            marqueeEnabled: true,
+            marqueeShowMode: 'idle',
+            chatShowOnTv: false,
+            chatTvMode: 'auto',
+            bouncerMode: false,
+            bingoShowTv: true,
+            bingoVotingMode: 'host+votes',
+            bingoAutoApprovePct: 45,
+            bingoAudienceReopenEnabled: true,
+            autoLyricsOnQueue: false,
+            queueSettings: {
+                limitMode: 'none',
+                limitCount: 0,
+                rotation: 'round_robin',
+                firstTimeBoost: true
+            },
+            gameDefaults: {
+                triviaRoundSec: 20,
+                triviaAutoReveal: true,
+                bingoVotingMode: 'host+votes',
+                bingoAutoApprovePct: 45
+            }
+        },
+        autoStartApplePlaylist: true
+    },
+    competition: {
+        id: 'competition',
+        label: 'Competition Night',
+        description: 'Structured scoring, tighter queue, and AI lyric assist.',
+        searchSources: { local: false, youtube: false, itunes: true },
+        settings: {
+            autoDj: false,
+            autoBgMusic: false,
+            autoPlayMedia: true,
+            showVisualizerTv: false,
+            showLyricsTv: true,
+            showScoring: true,
+            showFameLevel: true,
+            allowSingerTrackSelect: false,
+            marqueeEnabled: false,
+            marqueeShowMode: 'idle',
+            chatShowOnTv: false,
+            chatTvMode: 'auto',
+            bouncerMode: true,
+            bingoShowTv: true,
+            bingoVotingMode: 'host',
+            bingoAutoApprovePct: 60,
+            bingoAudienceReopenEnabled: true,
+            autoLyricsOnQueue: true,
+            queueSettings: {
+                limitMode: 'per_night',
+                limitCount: 2,
+                rotation: 'round_robin',
+                firstTimeBoost: false
+            },
+            gameDefaults: {
+                triviaRoundSec: 15,
+                triviaAutoReveal: true,
+                bingoVotingMode: 'host',
+                bingoAutoApprovePct: 60
+            }
+        },
+        autoStartApplePlaylist: false
+    },
+    bingo: {
+        id: 'bingo',
+        label: 'Bingo Night',
+        description: 'Crowd-observation flow with board-first interactions.',
+        searchSources: { local: true, youtube: true, itunes: false },
+        settings: {
+            autoDj: false,
+            autoBgMusic: true,
+            autoPlayMedia: true,
+            showVisualizerTv: false,
+            showLyricsTv: false,
+            showScoring: false,
+            showFameLevel: false,
+            allowSingerTrackSelect: true,
+            marqueeEnabled: true,
+            marqueeShowMode: 'always',
+            chatShowOnTv: true,
+            chatTvMode: 'activity',
+            bouncerMode: false,
+            bingoShowTv: true,
+            bingoVotingMode: 'host+votes',
+            bingoAutoApprovePct: 35,
+            bingoAudienceReopenEnabled: true,
+            autoLyricsOnQueue: false,
+            gamePreviewId: 'bingo',
+            queueSettings: {
+                limitMode: 'none',
+                limitCount: 0,
+                rotation: 'round_robin',
+                firstTimeBoost: true
+            },
+            gameDefaults: {
+                triviaRoundSec: 20,
+                triviaAutoReveal: true,
+                bingoVotingMode: 'host+votes',
+                bingoAutoApprovePct: 35
+            }
+        },
+        autoStartApplePlaylist: false
+    },
+    trivia: {
+        id: 'trivia',
+        label: 'Trivia Night',
+        description: 'Question-first pacing with timed reveal defaults.',
+        searchSources: { local: false, youtube: false, itunes: false },
+        settings: {
+            autoDj: false,
+            autoBgMusic: true,
+            autoPlayMedia: false,
+            showVisualizerTv: false,
+            showLyricsTv: false,
+            showScoring: true,
+            showFameLevel: false,
+            allowSingerTrackSelect: false,
+            marqueeEnabled: false,
+            marqueeShowMode: 'idle',
+            chatShowOnTv: false,
+            chatTvMode: 'auto',
+            bouncerMode: false,
+            bingoShowTv: true,
+            bingoVotingMode: 'host+votes',
+            bingoAutoApprovePct: 50,
+            bingoAudienceReopenEnabled: true,
+            autoLyricsOnQueue: false,
+            gamePreviewId: 'trivia_pop',
+            queueSettings: {
+                limitMode: 'per_night',
+                limitCount: 1,
+                rotation: 'round_robin',
+                firstTimeBoost: true
+            },
+            gameDefaults: {
+                triviaRoundSec: 18,
+                triviaAutoReveal: true,
+                bingoVotingMode: 'host+votes',
+                bingoAutoApprovePct: 50
+            }
+        },
+        autoStartApplePlaylist: false
+    }
+};
 
 const loadMusicKitScript = () => new Promise((resolve, reject) => {
     if (typeof window === 'undefined') return resolve(null);
@@ -292,8 +425,135 @@ const getTimestampMs = (value) => {
     return 0;
 };
 
+const isPermissionDeniedError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('permission-denied')
+        || code.includes('forbidden')
+        || message.includes('permission-denied')
+        || message.includes('403')
+        || message.includes('requires an active subscription')
+    );
+};
+
 const ROOM_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ123456789";
 const DEFAULT_QA_YT_PLAYLIST_URL = 'https://www.youtube.com/playlist?list=PL_3exKsBlHnEbbmolJlfODkelxx_1UMAP';
+const TIGHT15_MAX = 15;
+
+const normalizeTight15Text = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+const normalizeTight15Entry = (entry = {}) => {
+    const songTitle = String(entry.songTitle || entry.song || '').trim();
+    const artist = String(entry.artist || entry.singerName || '').trim();
+    if (!songTitle || !artist) return null;
+    return {
+        id: entry.id || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        songTitle,
+        artist,
+        albumArtUrl: String(entry.albumArtUrl || entry.artworkUrl || '').trim(),
+        addedAt: Number(entry.addedAt || Date.now())
+    };
+};
+
+const getTight15Key = (entry = {}) => `${normalizeTight15Text(entry.songTitle)}__${normalizeTight15Text(entry.artist)}`;
+
+const sanitizeTight15List = (list = []) => {
+    const seen = new Set();
+    const cleaned = [];
+    list.forEach((entry) => {
+        const normalized = normalizeTight15Entry(entry);
+        if (!normalized) return;
+        const key = getTight15Key(normalized);
+        if (seen.has(key)) return;
+        seen.add(key);
+        cleaned.push(normalized);
+    });
+    return cleaned.slice(0, TIGHT15_MAX);
+};
+
+const shuffleList = (list = []) => {
+    const next = [...list];
+    for (let i = next.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [next[i], next[j]] = [next[j], next[i]];
+    }
+    return next;
+};
+
+const getBracketRoundName = (size = 2) => {
+    if (size >= 16) return 'Round of 16';
+    if (size === 8) return 'Quarterfinals';
+    if (size === 4) return 'Semifinals';
+    return 'Final';
+};
+
+const pickRandomTight15Song = (contestant = {}) => {
+    const list = Array.isArray(contestant?.tight15) ? contestant.tight15 : [];
+    if (!list.length) return null;
+    const pick = list[Math.floor(Math.random() * list.length)];
+    return normalizeTight15Entry(pick);
+};
+
+const buildBracketRound = ({ contestantUids = [], contestantsByUid = {}, roundIndex = 0 }) => {
+    const safeUids = contestantUids.filter(Boolean);
+    const matches = [];
+    for (let i = 0; i < safeUids.length; i += 2) {
+        const aUid = safeUids[i] || null;
+        const bUid = safeUids[i + 1] || null;
+        matches.push({
+            id: `m_${roundIndex + 1}_${Math.floor(i / 2) + 1}`,
+            slot: Math.floor(i / 2) + 1,
+            aUid,
+            bUid,
+            aSong: aUid ? pickRandomTight15Song(contestantsByUid[aUid]) : null,
+            bSong: bUid ? pickRandomTight15Song(contestantsByUid[bUid]) : null,
+            winnerUid: bUid ? null : aUid,
+            queuedAt: null,
+            completedAt: bUid ? null : nowMs()
+        });
+    }
+    return {
+        id: `round_${roundIndex + 1}`,
+        index: roundIndex,
+        name: getBracketRoundName(safeUids.length),
+        matches
+    };
+};
+
+const advanceBracketState = (bracket = {}) => {
+    const rounds = Array.isArray(bracket?.rounds) ? bracket.rounds : [];
+    const activeRoundIndex = Math.max(0, Number(bracket?.activeRoundIndex || 0));
+    const currentRound = rounds[activeRoundIndex];
+    if (!currentRound) return bracket;
+    const matches = Array.isArray(currentRound.matches) ? currentRound.matches : [];
+    if (!matches.length || !matches.every((match) => !!match?.winnerUid)) return bracket;
+    const winners = matches.map((match) => match.winnerUid).filter(Boolean);
+    if (winners.length <= 1) {
+        const championUid = winners[0] || null;
+        const champion = championUid ? bracket?.contestantsByUid?.[championUid] : null;
+        return {
+            ...bracket,
+            status: 'complete',
+            championUid,
+            championName: champion?.name || '',
+            activeMatchId: null
+        };
+    }
+    const nextRound = buildBracketRound({
+        contestantUids: winners,
+        contestantsByUid: bracket?.contestantsByUid || {},
+        roundIndex: rounds.length
+    });
+    return {
+        ...bracket,
+        status: 'in_progress',
+        activeRoundIndex: rounds.length,
+        activeMatchId: null,
+        rounds: [...rounds, nextRound]
+    };
+};
+
 const generateRoomCode = (length = 4) => {
     let code = "";
     for (let i = 0; i < length; i += 1) {
@@ -360,7 +620,7 @@ const SmallWaveform = ({ level = 0, className = "h-6 w-28", color = 'rgba(0,196,
 
         render();
         return () => { if (raf) cancelAnimationFrame(raf); };
-    }, []);
+    }, [color, gradient]);
 
     return (
         <div className={className}>
@@ -484,14 +744,14 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
                 approved: !submission.approved
             });
         } catch (e) {
-            console.error('Selfie moderation failed', e);
+            hostLogger.error('Selfie moderation failed', e);
             toast('Failed to update approval');
         }
     };
     const startChallenge = async () => {
         if (!promptText.trim()) return toast('Add a prompt');
         if (!selectedParticipants.length) return toast('Select at least one participant');
-        const promptId = `${Date.now()}`;
+        const promptId = `${nowMs()}`;
         await updateRoom({
             activeMode: 'selfie_challenge',
             selfieChallenge: {
@@ -501,7 +761,7 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
                 status: 'collecting',
                 requireApproval,
                 autoStartVoting,
-                createdAt: Date.now()
+                createdAt: nowMs()
             }
         });
         toast('Selfie Challenge started');
@@ -525,7 +785,7 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
             url: sorted[0].url,
             votes: voteCounts[sorted[0].uid] || 0
         } : null;
-        await updateRoom({ selfieChallenge: { ...challenge, status: 'ended', winner, winnerExpiresAt: Date.now() + 12000 } });
+        await updateRoom({ selfieChallenge: { ...challenge, status: 'ended', winner, winnerExpiresAt: nowMs() + 12000 } });
         if (winner) {
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
                 roomCode,
@@ -729,7 +989,7 @@ const GalleryTab = ({ roomCode, room, updateRoom }) => {
         try {
             await callFunction('deleteRoomReaction', { roomCode, reactionId: id });
         } catch (e) {
-            console.error('Delete photo failed', e);
+            hostLogger.error('Delete photo failed', e);
             toast('Delete failed');
         }
     };
@@ -794,6 +1054,125 @@ const GalleryTab = ({ roomCode, room, updateRoom }) => {
                         </div>
                     )}
                 </div>
+            </div>
+        </div>
+    );
+};
+
+const AudienceMiniPreview = ({
+    room,
+    roomCode,
+    appBase,
+    currentSong,
+    queueCount,
+    collapsed = false,
+    onToggleCollapsed,
+    onHide
+}) => {
+    const modeLabelMap = {
+        karaoke: 'Karaoke',
+        bingo: `Bingo${room?.bingoMode === 'mystery' ? ' (Mystery)' : ''}`,
+        trivia_pop: 'Trivia',
+        trivia_reveal: 'Trivia Reveal',
+        wyr: 'Would You Rather',
+        wyr_reveal: 'Would You Rather',
+        doodle_oke: 'Doodle-oke',
+        selfie_challenge: 'Selfie Challenge',
+        selfie_cam: 'Selfie Cam',
+        flappy_bird: 'Flappy Bird',
+        vocal_challenge: 'Vocal Challenge',
+        riding_scales: 'Riding Scales',
+        karaoke_bracket: 'Sweet 16 Bracket',
+        applause: 'Applause Meter',
+        applause_countdown: 'Applause Countdown',
+        applause_result: 'Applause Result'
+    };
+    const modeLabel = modeLabelMap[room?.activeMode] || (room?.activeMode || 'Karaoke');
+    const layoutLabel = room?.layoutMode || 'standard';
+    const viewHref = `${appBase}?room=${roomCode}&mode=tv`;
+    return (
+        <div className="fixed right-3 bottom-3 z-[35] w-[320px] max-w-[calc(100vw-24px)]">
+            <div className="bg-zinc-950/95 border border-white/15 rounded-2xl shadow-[0_20px_45px_rgba(0,0,0,0.55)] overflow-hidden backdrop-blur-sm">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-black/40">
+                    <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Audience View</div>
+                        <div className="text-xs text-cyan-200 truncate">{modeLabel}</div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={onToggleCollapsed}
+                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-[10px]`}
+                            title={collapsed ? 'Expand preview' : 'Collapse preview'}
+                        >
+                            <i className={`fa-solid ${collapsed ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
+                        </button>
+                        <a
+                            href={viewHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`${STYLES.btnStd} ${STYLES.btnInfo} px-2 py-1 text-[10px]`}
+                            title="Open full TV output"
+                        >
+                            <i className="fa-solid fa-up-right-from-square"></i>
+                        </a>
+                        <button
+                            onClick={onHide}
+                            className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-[10px]`}
+                            title="Hide preview"
+                        >
+                            <i className="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                </div>
+                {!collapsed && (
+                    <div className="p-2">
+                        <div className="relative rounded-xl border border-white/10 overflow-hidden aspect-video bg-gradient-to-br from-zinc-900 via-[#141d2b] to-[#0b1020]">
+                            {room?.activeMode && room.activeMode !== 'karaoke' ? (
+                                <div className="absolute inset-0 p-3 flex flex-col justify-between">
+                                    <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Live Experience</div>
+                                    <div className="text-lg font-bebas text-cyan-300 leading-none">{modeLabel}</div>
+                                    <div className="text-[11px] text-zinc-200">
+                                        {room?.activeMode === 'trivia_pop' && room?.triviaQuestion?.q ? room.triviaQuestion.q : null}
+                                        {room?.activeMode === 'wyr' && room?.wyrData?.question ? room.wyrData.question : null}
+                                        {room?.activeMode === 'bingo'
+                                            ? `Board: ${room?.bingoSize || 5}x${room?.bingoSize || 5} • TV ${room?.bingoShowTv === false ? 'off' : 'on'}`
+                                            : null}
+                                    </div>
+                                    <div className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">Layout {layoutLabel}</div>
+                                </div>
+                            ) : currentSong ? (
+                                <div className="absolute inset-0 p-3 flex flex-col justify-between">
+                                    <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Now Performing</div>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        {currentSong.albumArtUrl ? (
+                                            <img src={currentSong.albumArtUrl} alt="Now playing art" className="w-10 h-10 rounded-lg object-cover border border-white/10" />
+                                        ) : (
+                                            <div className="w-10 h-10 rounded-lg bg-black/40 border border-white/10 flex items-center justify-center text-lg">{currentSong.emoji || EMOJI.mic}</div>
+                                        )}
+                                        <div className="min-w-0">
+                                            <div className="text-sm font-bold text-white truncate">{currentSong.songTitle || 'Song'}</div>
+                                            <div className="text-[11px] text-zinc-300 truncate">{currentSong.singerName || 'Singer'}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+                                        <span className={`px-2 py-1 rounded-full border ${room?.showLyricsTv ? 'border-emerald-400/40 text-emerald-200 bg-emerald-500/10' : 'border-zinc-600 text-zinc-500'}`}>Lyrics</span>
+                                        <span className={`px-2 py-1 rounded-full border ${room?.showVisualizerTv ? 'border-cyan-400/40 text-cyan-200 bg-cyan-500/10' : 'border-zinc-600 text-zinc-500'}`}>Visualizer</span>
+                                        <span className="px-2 py-1 rounded-full border border-white/15 text-zinc-300">Queue {queueCount}</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="absolute inset-0 p-3 flex flex-col items-center justify-center text-center">
+                                    <div className="text-2xl">{EMOJI.mic}</div>
+                                    <div className="text-sm text-zinc-200 mt-2 font-bold">Stage Open</div>
+                                    <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mt-1">{roomCode}</div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="mt-2 text-[10px] uppercase tracking-[0.24em] text-zinc-500 px-1">
+                            State-synced thumbnail • Queue {queueCount} • Chat {room?.chatShowOnTv ? 'TV on' : 'TV off'}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -917,7 +1296,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         if (typeof document === 'undefined') return;
         const missing = HOST_UI_FEATURE_CHECKLIST.filter((item) => !document.querySelector(item.selector));
         if (missing.length) {
-            console.warn('[Host UI Feature Check] Missing controls:', missing);
+            hostLogger.debug('[Host UI Feature Check] Missing controls:', missing);
             toast(`UI feature check: ${missing.length} missing control(s).`);
             return;
         }
@@ -934,7 +1313,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         if (!quickAddNotice) return;
         const timeout = setTimeout(() => setQuickAddNotice(null), 8000);
         return () => clearTimeout(timeout);
-    }, [quickAddNotice]);
+    }, [quickAddNotice, setQuickAddNotice]);
     useEffect(() => {
         if (!current) {
             mediaOverrideStopRef.current = '';
@@ -962,11 +1341,11 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     await updateRoom({ appleMusicPlayback: null });
                 }
             } catch (err) {
-                console.warn('Failed to stop Apple Music during media override', err);
+                hostLogger.debug('Failed to stop Apple Music during media override', err);
             }
         })();
         return () => { cancelled = true; };
-    }, [current?.id, current?.mediaUrl, current?.appleMusicId, room?.mediaUrl, room?.appleMusicPlayback?.status, appleMusicPlaying, stopAppleMusic, updateRoom]);
+    }, [current?.id, current?.mediaUrl, current?.appleMusicId, room?.mediaUrl, room?.appleMusicPlayback?.status, appleMusicPlaying, stopAppleMusic, updateRoom, current, room]);
     useEffect(() => () => {
         if (hallOfFameTimerRef.current) clearTimeout(hallOfFameTimerRef.current);
     }, []);
@@ -998,7 +1377,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             setCommandOpen(false);
             setCommandQuery('');
         } catch (error) {
-            console.error('Command failed', error);
+            hostLogger.error('Command failed', error);
             toast('Command failed');
         }
     };
@@ -1054,7 +1433,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         queue,
         toast,
         onPersist: async (list) => {
-            const base = Date.now();
+            const base = nowMs();
             await Promise.all(list.map((item, idx) =>
                 updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', item.id), { priorityScore: base + idx })
             ));
@@ -1146,7 +1525,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             clearTimeout(t);
             if (controller) controller.abort();
         }; 
-    }, [searchQ, localLibrary, ytIndex, searchSources]);
+    }, [searchQ, localLibrary, ytIndex, searchSources, setResults]);
 
     const getResultRowKey = (r, idx = 0) => {
         return `${r?.source || 'song'}_${r?.trackId || r?.videoId || r?.url || r?.trackName || idx}`;
@@ -1304,7 +1683,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             albumArtUrl: art || song.art || '',
             status: 'requested',
             timestamp: serverTimestamp(),
-            priorityScore: Date.now(),
+            priorityScore: nowMs(),
             emoji: EMOJI.mic,
             backingAudioOnly: false,
             audioOnly: false
@@ -1324,9 +1703,9 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                 songId,
                 singerName,
                 songTitle,
-                timestamp: Date.now()
+                timestamp: nowMs()
             },
-            selfieMomentExpiresAt: Date.now() + 12000
+            selfieMomentExpiresAt: nowMs() + 12000
         });
         hallOfFameTimerRef.current = setTimeout(() => {
             updateRoom({ activeMode: 'karaoke', selfieMoment: null });
@@ -1386,7 +1765,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                             bestScore: totalScore,
                             applauseScore: Number(res?.applauseScore ?? applauseScore)
                         },
-                        timestamp: Date.now()
+                        timestamp: nowMs()
                     }
                 });
                 await triggerHallOfFameMoment({
@@ -1396,7 +1775,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                 });
             }
         } catch (err) {
-            console.error('Failed to log performance', err);
+            hostLogger.error('Failed to log performance', err);
         }
     };
 
@@ -1439,7 +1818,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     mediaUrl: songMediaUrl,
                     singAlongMode: false,
                     videoPlaying: autoStartMedia && !!songMediaUrl,
-                    videoStartTimestamp: autoStartMedia ? Date.now() : null,
+                    videoStartTimestamp: autoStartMedia ? nowMs() : null,
                     videoVolume: 100,
                     showLyricsTv: false,
                     showVisualizerTv: false,
@@ -1499,7 +1878,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                 })();
                 await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), { applauseScore: room?.applausePeak||0 }); 
                 await stopAppleMusic?.();
-                await updateRoom({ lastPerformance: { ...s, applauseScore: room?.applausePeak||0, timestamp: Date.now(), albumArtUrl: s.albumArtUrl || '', topFan, vibeStats }, activeMode: 'karaoke', mediaUrl: '', singAlongMode: false, videoPlaying: false, showLyricsTv: false, showVisualizerTv: false, showLyricsSinger: false, appleMusicPlayback: null }); 
+                await updateRoom({ lastPerformance: { ...s, applauseScore: room?.applausePeak||0, timestamp: nowMs(), albumArtUrl: s.albumArtUrl || '', topFan, vibeStats }, activeMode: 'karaoke', mediaUrl: '', singAlongMode: false, videoPlaying: false, showLyricsTv: false, showVisualizerTv: false, showLyricsSinger: false, appleMusicPlayback: null }); 
                 await logPerformance({ ...s, applauseScore: room?.applausePeak || 0 });
                 logActivity(roomCode, s.singerName, `crushed ${s.songTitle}!`, EMOJI.star);
                 toast("Performance Finished"); 
@@ -1529,7 +1908,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             return;
         }
         await stopAppleMusic?.();
-        const now = Date.now();
+        const now = nowMs();
         if (room?.videoPlaying) {
             await updateRoom({ videoPlaying: false, pausedAt: now, appleMusicPlayback: null });
         } else {
@@ -1639,6 +2018,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             }
         ];
     const commandQueryNormalized = (commandQuery || '').trim().toLowerCase();
+    /* eslint-disable react-hooks/refs */
     const filteredCommands = !commandQueryNormalized
         ? commandPaletteItems
         : commandPaletteItems.filter((item) => {
@@ -1728,6 +2108,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     </div>
                 </div>
             )}
+            /* eslint-enable react-hooks/refs */
 
             <div className={`${STYLES.panel} px-3 py-2 border border-white/10 bg-black/25`}>
                 <div className="flex flex-wrap items-center gap-2">
@@ -2107,6 +2488,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const normalizedInitialCode = (initialCode || '').trim().toUpperCase();
     const [roomCode, setRoomCode] = useState('');
     const [roomCodeInput, setRoomCodeInput] = useState(normalizedInitialCode);
+    const updateRoom = useCallback(
+        async (d) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), d),
+        [roomCode]
+    );
     const appBase = typeof window !== 'undefined' ? `${window.location.origin}${import.meta.env.BASE_URL || '/'}` : '';
     const isChatPopout = typeof window !== 'undefined'
         && new URLSearchParams(window.location.search).get('chat') === '1';
@@ -2121,7 +2506,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     useEffect(() => {
         const tick = () => {
-            const remaining = Math.max(0, Math.ceil((itunesBackoffUntil - Date.now()) / 1000));
+            const remaining = Math.max(0, Math.ceil((itunesBackoffUntil - nowMs()) / 1000));
             setItunesBackoffRemaining(remaining);
         };
         tick();
@@ -2129,7 +2514,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return () => clearInterval(timer);
     }, []);
 
-    const ensureAppleMusic = async () => {
+    const ensureAppleMusic = useCallback(async () => {
         if (appleMusicRef.current) return appleMusicRef.current;
         setAppleMusicStatus('Loading Apple Music...');
         const MusicKit = await loadMusicKitScript();
@@ -2149,7 +2534,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         setAppleMusicStatus('');
         return instance;
-    };
+    }, [roomCode]);
 
     const connectAppleMusic = async () => {
         try {
@@ -2158,7 +2543,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setAppleMusicAuthorized(true);
             setAppleMusicStatus('Connected');
         } catch (e) {
-            console.error(e);
+            hostLogger.error(e);
             setAppleMusicStatus('Apple Music login failed.');
         }
     };
@@ -2168,14 +2553,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const instance = appleMusicRef.current;
             if (instance?.unauthorize) await instance.unauthorize();
         } catch (e) {
-            console.warn('Apple Music sign-out failed', e);
+            hostLogger.warn('Apple Music sign-out failed', e);
         }
         setAppleMusicAuthorized(false);
         setAppleMusicPlaying(false);
         setAppleMusicStatus('Disconnected');
     };
 
-    const playAppleMusicTrack = async (trackId, meta = {}) => {
+    const playAppleMusicTrack = useCallback(async (trackId, meta = {}) => {
         if (!trackId) return;
         const instance = await ensureAppleMusic();
         if (!instance.isAuthorized) {
@@ -2192,12 +2577,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     id: String(trackId),
                     title: meta.title || '',
                     artist: meta.artist || '',
-                    startedAt: Date.now(),
+                    startedAt: nowMs(),
                     status: 'playing'
                 }
             });
         }
-    };
+    }, [ensureAppleMusic, roomCode, updateRoom]);
 
     const pauseAppleMusic = async () => {
         const instance = appleMusicRef.current;
@@ -2209,7 +2594,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 appleMusicPlayback: {
                     ...(room?.appleMusicPlayback || {}),
                     status: 'paused',
-                    pausedAt: Date.now()
+                    pausedAt: nowMs()
                 }
             });
         }
@@ -2225,12 +2610,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 appleMusicPlayback: {
                     ...(room?.appleMusicPlayback || {}),
                     status: 'playing',
-                    resumedAt: Date.now()
+                    resumedAt: nowMs()
                 }
             });
         }
     };
-    const stopAppleMusic = async () => {
+    const stopAppleMusic = useCallback(async () => {
         const instance = appleMusicRef.current;
         if (!instance) return;
         try {
@@ -2240,12 +2625,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 await instance.pause();
             }
         } catch (e) {
-            console.warn('Apple Music stop failed', e);
+            hostLogger.warn('Apple Music stop failed', e);
         }
         setAppleMusicPlaying(false);
-    };
+    }, []);
 
-    const playAppleMusicPlaylist = async (playlistId, meta = {}) => {
+    const playAppleMusicPlaylist = useCallback(async (playlistId, meta = {}) => {
         if (!playlistId) return;
         const instance = await ensureAppleMusic();
         if (!instance.isAuthorized) {
@@ -2259,7 +2644,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const name = res?.data?.data?.[0]?.attributes?.name;
             if (name) resolvedTitle = name;
         } catch (e) {
-            console.warn('Apple Music playlist lookup failed', e);
+            hostLogger.warn('Apple Music playlist lookup failed', e);
         }
         await instance.setQueue({ playlist: String(playlistId) });
         await instance.play();
@@ -2270,12 +2655,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     type: 'playlist',
                     id: String(playlistId),
                     title: resolvedTitle || meta.title || '',
-                    startedAt: Date.now(),
+                    startedAt: nowMs(),
                     status: 'playing'
                 }
             });
         }
-    };
+    }, [ensureAppleMusic, roomCode, updateRoom]);
 
     const fetchAppleMusicPlaylistTitle = async (playlistId) => {
         if (!playlistId) return '';
@@ -2285,7 +2670,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const res = await instance.api.music(`v1/catalog/${storefront}/playlists/${playlistId}`);
             return res?.data?.data?.[0]?.attributes?.name || '';
         } catch (e) {
-            console.warn('Apple Music playlist title lookup failed', e);
+            hostLogger.warn('Apple Music playlist title lookup failed', e);
             return '';
         }
     };
@@ -2329,12 +2714,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const lobbyVipCount = users.filter(u => u.isVip || (u.vipLevel || 0) > 0).length;
     const lobbyActiveCount = users.filter(u => {
         const ts = u.lastSeen?.seconds ? u.lastSeen.seconds * 1000 : (u.lastSeen || 0);
-        return ts >= Date.now() - 5 * 60 * 1000;
+        return ts >= nowMs() - 5 * 60 * 1000;
     }).length;
     const lobbyTotalPoints = users.reduce((sum, u) => sum + (u.points || 0), 0);
     const lobbyTotalEmojis = users.reduce((sum, u) => sum + (u.totalEmojis || 0), 0);
     const queuedCount = useMemo(() => songs.filter(s => s.status === 'requested').length, [songs]);
     const performingCount = useMemo(() => songs.filter(s => s.status === 'performing').length, [songs]);
+    const activeBracket = room?.karaokeBracket || null;
     const [tipSettings, setTipSettings] = useState({ link: '', qr: '' });
     const [tipCrates, setTipCrates] = useState(DEFAULT_TIP_CRATES);
     const [catalogueName, setCatalogueName] = useState('');
@@ -2410,10 +2796,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [showScoring, setShowScoring] = useState(true);
     const [showFameLevel, setShowFameLevel] = useState(true);
     const [allowSingerTrackSelect, setAllowSingerTrackSelect] = useState(false);
+    const [hostNightPreset, setHostNightPreset] = useState('custom');
+    const [audienceBingoReopenEnabled, setAudienceBingoReopenEnabled] = useState(true);
+    const [autoLyricsOnQueue, setAutoLyricsOnQueue] = useState(false);
+    const [audiencePreviewVisible, setAudiencePreviewVisible] = useState(() => {
+        try {
+            if (typeof window === 'undefined') return true;
+            const saved = localStorage.getItem('bross_host_audience_preview_visible');
+            return saved === null ? true : saved === '1';
+        } catch {
+            return true;
+        }
+    });
+    const [audiencePreviewCollapsed, setAudiencePreviewCollapsed] = useState(() => {
+        try {
+            if (typeof window === 'undefined') return false;
+            return localStorage.getItem('bross_host_audience_preview_collapsed') === '1';
+        } catch {
+            return false;
+        }
+    });
     const [autoBgFadeOutMs, setAutoBgFadeOutMs] = useState(900);
     const [autoBgFadeInMs, setAutoBgFadeInMs] = useState(900);
     const [autoBgMixDuringSong, setAutoBgMixDuringSong] = useState(0);
     const [lobbyTab, setLobbyTab] = useState('users');
+    const [bracketBusy, setBracketBusy] = useState(false);
+    const [tight15QueueBusyUid, setTight15QueueBusyUid] = useState('');
     const [readyCheckDurationSec, setReadyCheckDurationSec] = useState(10);
     const [readyCheckRewardPoints, setReadyCheckRewardPoints] = useState(100);
     // Announce state
@@ -2498,6 +2906,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const canUseYouTubeData = !!capabilities[CAPABILITY_KEYS.API_YOUTUBE_DATA];
     const canUseAppleMusicApi = !!capabilities[CAPABILITY_KEYS.API_APPLE_MUSIC];
     const canUseWorkspaceOnboarding = !!capabilities[CAPABILITY_KEYS.WORKSPACE_ONBOARDING];
+    const canUseInvoiceDrafts = !!capabilities[CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS];
     const sourceCapabilityMap = useMemo(() => ({
         youtube: CAPABILITY_KEYS.API_YOUTUBE_DATA,
         itunes: CAPABILITY_KEYS.API_APPLE_MUSIC
@@ -2579,7 +2988,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 await ensureOrganization('');
                 const entitlements = await getMyEntitlements();
                 const usage = await getMyUsageSummary(selectedUsagePeriod);
-                const historyPayload = await listMyUsageInvoices({ limit: 40 });
+                const entitlementCapabilities = entitlements?.capabilities || {};
+                const invoiceCapabilityEnabled = !!entitlementCapabilities[CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS];
+                let invoiceItems = [];
+                if (invoiceCapabilityEnabled) {
+                    try {
+                        const historyPayload = await listMyUsageInvoices({ limit: 40 });
+                        invoiceItems = Array.isArray(historyPayload?.invoices) ? historyPayload.invoices : [];
+                    } catch (historyError) {
+                        if (!isPermissionDeniedError(historyError)) {
+                            hostLogger.error('Invoice history sync failed', historyError);
+                        }
+                    }
+                }
                 if (cancelled) return;
                 setOrgContext({
                     orgId: entitlements?.orgId || '',
@@ -2601,9 +3022,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     loading: false,
                     error: ''
                 });
-                setInvoiceHistory(Array.isArray(historyPayload?.invoices) ? historyPayload.invoices : []);
+                setInvoiceHistory(invoiceItems);
             } catch (e) {
-                console.error('Failed to sync org entitlements', e);
+                hostLogger.error('Failed to sync org entitlements', e);
                 if (cancelled) return;
                 setOrgContext(prev => ({ ...prev, loading: false, error: 'Could not load subscription entitlements.' }));
                 setUsageSummary(prev => ({ ...prev, loading: false, error: 'Could not load usage summary.' }));
@@ -2742,7 +3163,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const currentSong = songs.find(s => s.status === 'performing');
     const queuedSongs = songs.filter(s => s.status === 'requested' || s.status === 'pending');
-    const recentActivities = (activities || []).filter(a => toMs(a.timestamp) > Date.now() - 5 * 60 * 1000);
+    const recentActivities = (activities || []).filter(a => toMs(a.timestamp) > nowMs() - 5 * 60 * 1000);
     const lastActivity = activities?.[0];
     const copySnapshot = async () => {
         const payload = {
@@ -2896,7 +3317,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             };
             tick();
         } catch (e) {
-            console.error('BG analyser init failed', e);
+            hostLogger.error('BG analyser init failed', e);
         }
         return () => {
             if (bgMeterRafRef.current) cancelAnimationFrame(bgMeterRafRef.current);
@@ -2944,7 +3365,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             };
             tick();
         } catch (e) {
-            console.warn('Stage mic analyser init failed', e);
+            hostLogger.debug('Stage mic analyser init failed', e);
             setStageMicReady(false);
             setStageMicError('Mic blocked');
         }
@@ -2968,7 +3389,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.activeMode !== 'doodle_oke') return;
         const doodle = room?.doodleOke;
         if (!doodle?.status) return;
-        const now = Date.now();
+        const now = nowMs();
         if (doodle.status === 'drawing' && doodle.endsAt) {
             const waitMs = Math.max(0, doodle.endsAt - now);
             doodleTimerRef.current = setTimeout(async () => {
@@ -2990,7 +3411,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 doodleTimerRef.current = null;
             }
         };
-    }, [room?.activeMode, room?.doodleOke?.status, room?.doodleOke?.endsAt, room?.doodleOke?.guessEndsAt]);
+    }, [room?.activeMode, room?.doodleOke?.status, room?.doodleOke?.endsAt, room?.doodleOke?.guessEndsAt, room?.doodleOke, updateRoom]);
     useEffect(() => {
         songsRef.current = songs;
     }, [songs]);
@@ -3118,7 +3539,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.allowSingerTrackSelect !== undefined && room?.allowSingerTrackSelect !== null) {
             setAllowSingerTrackSelect(!!room.allowSingerTrackSelect);
         }
-    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.autoDj, room?.autoPlayMedia, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect]);
+        setHostNightPreset(room?.hostNightPreset || 'custom');
+        if (room?.bingoAudienceReopenEnabled !== undefined && room?.bingoAudienceReopenEnabled !== null) {
+            setAudienceBingoReopenEnabled(room.bingoAudienceReopenEnabled !== false);
+        }
+        if (room?.autoLyricsOnQueue !== undefined && room?.autoLyricsOnQueue !== null) {
+            setAutoLyricsOnQueue(!!room.autoLyricsOnQueue);
+        }
+    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.autoDj, room?.autoPlayMedia, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.autoLyricsOnQueue, room]);
     useEffect(() => {
         if (!room) return;
         setMarqueeEnabled(!!room?.marqueeEnabled);
@@ -3126,7 +3554,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.marqueeIntervalMs) setMarqueeIntervalSec(Math.round(room.marqueeIntervalMs / 1000));
         if (room?.marqueeItems) setMarqueeItems(room.marqueeItems);
         if (room?.marqueeShowMode) setMarqueeShowMode(room.marqueeShowMode);
-    }, [room?.marqueeEnabled, room?.marqueeDurationMs, room?.marqueeIntervalMs, room?.marqueeItems, room?.marqueeShowMode]);
+    }, [room?.marqueeEnabled, room?.marqueeDurationMs, room?.marqueeIntervalMs, room?.marqueeItems, room?.marqueeShowMode, room]);
+    useEffect(() => {
+        try {
+            localStorage.setItem('bross_host_audience_preview_visible', audiencePreviewVisible ? '1' : '0');
+            localStorage.setItem('bross_host_audience_preview_collapsed', audiencePreviewCollapsed ? '1' : '0');
+        } catch {
+            // Ignore storage failures.
+        }
+    }, [audiencePreviewVisible, audiencePreviewCollapsed]);
     useEffect(() => {
         if (!room || layoutDefaultedRef.current) return;
         if (!room.layoutMode) {
@@ -3135,17 +3571,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return;
         }
         layoutDefaultedRef.current = true;
-    }, [room?.layoutMode, roomCode]);
+    }, [room?.layoutMode, roomCode, room, updateRoom]);
     useEffect(() => {
         if (!room || !roomCode || seededMarqueeRef.current) return;
         if (!room?.marqueeItems || room.marqueeItems.length === 0) {
             seededMarqueeRef.current = true;
             setMarqueeItems(DEFAULT_MARQUEE_ITEMS);
             updateRoom({ marqueeItems: DEFAULT_MARQUEE_ITEMS }).catch((e) => {
-                console.warn('Failed to seed marquee items', e);
+                hostLogger.debug('Failed to seed marquee items', e);
             });
         }
-    }, [room?.marqueeItems, roomCode]);
+    }, [room?.marqueeItems, roomCode, room, updateRoom]);
     useEffect(() => {
         if (!showSettings || settingsTab !== 'marquee') return;
         const items = marqueeItems && marqueeItems.length ? marqueeItems : DEFAULT_MARQUEE_ITEMS;
@@ -3161,19 +3597,66 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (needsHostUid) updates.hostUid = uid;
         if (needsAdd) updates.hostUids = arrayUnion(uid);
         updateRoom(updates).catch((e) => {
-            console.warn('Failed to sync host ownership', e);
+            hostLogger.warn('Failed to sync host ownership', e);
         });
-    }, [room?.hostUid, room?.hostUids, roomCode, uid]);
+    }, [room?.hostUid, room?.hostUids, roomCode, uid, room, updateRoom]);
     useEffect(() => {
-        if (room?.lightMode === 'storm' && room?.stormEndsAt && Date.now() > room.stormEndsAt) {
+        if (room?.lightMode === 'storm' && room?.stormEndsAt && nowMs() > room.stormEndsAt) {
             updateRoom({ lightMode: 'off', stormPhase: 'off' });
         }
-    }, [room?.lightMode, room?.stormEndsAt]);
+    }, [room?.lightMode, room?.stormEndsAt, updateRoom]);
     useEffect(() => {
-        if (room?.lightMode === 'strobe' && room?.strobeEndsAt && Date.now() > room.strobeEndsAt) {
+        if (room?.lightMode === 'strobe' && room?.strobeEndsAt && nowMs() > room.strobeEndsAt) {
             updateRoom({ lightMode: 'off' });
         }
-    }, [room?.lightMode, room?.strobeEndsAt]);
+    }, [room?.lightMode, room?.strobeEndsAt, updateRoom]);
+    const startNextFromQueue = useCallback(async () => {
+        const activeRoom = roomRef.current;
+        if (!activeRoom?.autoDj) return;
+        const list = songsRef.current || [];
+        const performing = list.find(s => s.status === 'performing');
+        if (performing) return;
+        const queued = list.filter(s => s.status === 'requested')
+            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0));
+        const next = queued[0];
+        if (!next) return;
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', next.id), { status: 'performing' });
+        const queuePlayback = resolveQueuePlayback(next, activeRoom?.autoPlayMedia !== false);
+        const nextMediaUrl = queuePlayback.mediaUrl;
+        const useAppleBacking = queuePlayback.usesAppleBacking;
+        const autoStartMedia = queuePlayback.autoStartMedia;
+        if (useAppleBacking && autoStartMedia) {
+            await playAppleMusicTrack(next.appleMusicId, { title: next.songTitle, artist: next.artist });
+            await updateRoom({
+                activeMode: 'karaoke',
+                'announcement.active': false,
+                mediaUrl: '',
+                singAlongMode: false,
+                videoPlaying: false,
+                videoStartTimestamp: null,
+                videoVolume: 100,
+                showLyricsTv: false,
+                showVisualizerTv: false,
+                showLyricsSinger: false
+            });
+        } else {
+            await stopAppleMusic();
+            await updateRoom({
+                activeMode: 'karaoke',
+                'announcement.active': false,
+                mediaUrl: nextMediaUrl,
+                singAlongMode: false,
+                videoPlaying: autoStartMedia && !!nextMediaUrl,
+                videoStartTimestamp: autoStartMedia ? nowMs() : null,
+                videoVolume: 100,
+                showLyricsTv: false,
+                showVisualizerTv: false,
+                showLyricsSinger: false,
+                appleMusicPlayback: null
+            });
+        }
+        logActivity(roomCode, next.singerName, `took the stage!`, EMOJI.mic);
+    }, [playAppleMusicTrack, roomCode, stopAppleMusic, updateRoom]);
     useEffect(() => {
         if (autoDjTimerRef.current) {
             clearTimeout(autoDjTimerRef.current);
@@ -3183,17 +3666,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const lastTs = getTimestampMs(room.lastPerformance.timestamp);
         if (lastAutoDjTsRef.current === lastTs) return;
         lastAutoDjTsRef.current = lastTs;
-        const elapsed = Date.now() - lastTs;
+        const elapsed = nowMs() - lastTs;
         const delay = Math.max(0, 10500 - elapsed);
         setAutoDjCountdown(Math.ceil(delay / 1000));
         const tick = setInterval(() => {
-            const remaining = Math.max(0, Math.ceil((lastTs + 10500 - Date.now()) / 1000));
+            const remaining = Math.max(0, Math.ceil((lastTs + 10500 - nowMs()) / 1000));
             setAutoDjCountdown(remaining);
             if (remaining <= 0) clearInterval(tick);
         }, 500);
         autoDjTimerRef.current = setTimeout(() => {
             startNextFromQueue().catch((e) => {
-                console.warn('Auto DJ failed to start next song', e);
+                hostLogger.warn('Auto DJ failed to start next song', e);
             });
         }, delay);
         return () => {
@@ -3203,7 +3686,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
             clearInterval(tick);
         };
-    }, [room?.autoDj, room?.lastPerformance?.timestamp]);
+    }, [room?.autoDj, room?.lastPerformance?.timestamp, startNextFromQueue]);
     useEffect(() => {
         if (room?.bingoMode !== 'mystery') return;
         const pickerUid = room?.bingoPickerUid || (Array.isArray(room?.bingoTurnOrder) ? room.bingoTurnOrder[room?.bingoTurnIndex || 0] : null);
@@ -3211,25 +3694,36 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (pickerUid && pickerUser && room?.bingoPickerName !== pickerUser.name) {
             updateRoom({ bingoPickerName: pickerUser.name });
         }
-    }, [room?.bingoMode, room?.bingoPickerUid, room?.bingoTurnIndex, room?.bingoTurnOrder, room?.bingoPickerName, users]);
+    }, [room?.bingoMode, room?.bingoPickerUid, room?.bingoTurnIndex, room?.bingoTurnOrder, room?.bingoPickerName, users, updateRoom]);
     useEffect(() => {
         if (room?.bingoMode !== 'mystery') return;
         if (!room?.lastPerformance?.timestamp || !room?.bingoPickerUid) return;
         const order = Array.isArray(room?.bingoTurnOrder) ? room.bingoTurnOrder : [];
         if (!order.length) return;
+        const currentIndex = Math.max(0, Number(room?.bingoTurnIndex || 0));
+        const turnPick = room?.bingoTurnPick || null;
+        const isTurnLockedByPicker = !!turnPick
+            && turnPick?.pickerUid === room?.bingoPickerUid
+            && Number(turnPick?.turnIndex ?? -1) === currentIndex;
+        if (!isTurnLockedByPicker) return;
         const lastTs = getTimestampMs(room.lastPerformance.timestamp);
         const advanceKey = `${lastTs}-${room?.lastPerformance?.singerUid || room?.lastPerformance?.singerName || ''}`;
         if (bingoTurnAdvanceRef.current === advanceKey) return;
         const singerUid = room?.lastPerformance?.singerUid;
-        if (!singerUid || singerUid !== room.bingoPickerUid) return;
-        const currentIndex = Math.max(0, Number(room?.bingoTurnIndex || 0));
+        const singerName = (room?.lastPerformance?.singerName || '').trim();
+        const pickerName = (room?.bingoPickerName || '').trim();
+        const singerMatchesPicker = singerUid
+            ? singerUid === room.bingoPickerUid
+            : (!!singerName && !!pickerName && singerName === pickerName);
+        if (!singerMatchesPicker) return;
         const nextIndex = (currentIndex + 1) % order.length;
         bingoTurnAdvanceRef.current = advanceKey;
         updateRoom({
             bingoTurnIndex: nextIndex,
-            bingoPickerUid: order[nextIndex] || null
+            bingoPickerUid: order[nextIndex] || null,
+            bingoTurnPick: null
         });
-    }, [room?.bingoMode, room?.lastPerformance?.timestamp, room?.lastPerformance?.singerUid, room?.lastPerformance?.singerName, room?.bingoTurnOrder, room?.bingoTurnIndex, room?.bingoPickerUid]);
+    }, [room?.bingoMode, room?.lastPerformance?.timestamp, room?.lastPerformance?.singerUid, room?.lastPerformance?.singerName, room?.bingoTurnOrder, room?.bingoTurnIndex, room?.bingoPickerUid, room?.bingoPickerName, room?.bingoTurnPick, updateRoom]);
     useEffect(() => {
         if (!room?.autoDj) return;
         if (queuedCount > 0 || performingCount > 0) return;
@@ -3238,7 +3732,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const playback = room?.appleMusicPlayback || {};
         if (playback.type === 'playlist' && playback.id === playlistId && playback.status === 'playing') return;
         playAppleMusicPlaylist(playlistId, { title: room?.appleMusicAutoPlaylistTitle || '' });
-    }, [room?.autoDj, queuedCount, performingCount, room?.appleMusicAutoPlaylistId, room?.appleMusicAutoPlaylistTitle, room?.appleMusicPlayback?.status]);
+    }, [room?.autoDj, queuedCount, performingCount, room?.appleMusicAutoPlaylistId, room?.appleMusicAutoPlaylistTitle, room?.appleMusicPlayback?.status, room?.appleMusicPlayback, playAppleMusicPlaylist]);
     useEffect(() => {
         return () => {
             if (readyCheckTimerRef.current) clearTimeout(readyCheckTimerRef.current);
@@ -3293,7 +3787,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
             setLocalLibrary(prev => [...prev, ...hydrated]);
         }).catch((e) => {
-            console.warn('Failed to load local media library', e);
+            hostLogger.debug('Failed to load local media library', e);
         });
         return () => { isMounted = false; };
     }, []);
@@ -3386,7 +3880,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             localStorage.setItem('bross_host_name', trimmedHost);
             setOnboardingStep(1);
         } catch (e) {
-            console.error('Onboarding workspace provision failed', e);
+            hostLogger.error('Onboarding workspace provision failed', e);
             setOnboardingError('Could not initialize workspace. Please retry.');
         } finally {
             setOnboardingBusy(false);
@@ -3492,7 +3986,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     activeOrgId = entitlements?.orgId || '';
                     syncOrgContextFromEntitlements(entitlements);
                 } catch (orgErr) {
-                    console.warn('Organization bootstrap failed during room create', orgErr);
+                    hostLogger.debug('Organization bootstrap failed during room create', orgErr);
                 }
             }
 
@@ -3527,13 +4021,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 showLyricsTv: false,
                 showVisualizerTv: false,
                 visualizerMode: 'ribbon',
+                visualizerSource: 'auto',
+                visualizerPreset: 'neon',
+                visualizerSensitivity: 1,
+                visualizerSmoothing: 0.35,
+                visualizerSyncLightMode: false,
+                reduceMotionFx: false,
                 showLyricsSinger: false,
                 hideCornerOverlay: false,
-                howToPlay: { active: false, id: Date.now() },
+                howToPlay: { active: false, id: nowMs() },
                 gameRulesId: 0,
                 showScoring: true,
                 showFameLevel: true,
                 allowSingerTrackSelect: false,
+                hostNightPreset: 'custom',
+                bingoAudienceReopenEnabled: true,
+                autoLyricsOnQueue: false,
+                gameDefaults: {
+                    triviaRoundSec: 20,
+                    triviaAutoReveal: true,
+                    bingoVotingMode: 'host+votes',
+                    bingoAutoApprovePct: 50
+                },
                 queueSettings: {
                     limitMode: 'none',
                     limitCount: 0,
@@ -3557,10 +4066,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 { ytIndex: [], logoLibrary: [], updatedAt: serverTimestamp() },
                 { merge: true }
             ).catch((seedErr) => {
-                console.warn('Room created but host library seed failed', seedErr);
+                hostLogger.warn('Room created but host library seed failed', seedErr);
             });
         } catch (e) {
-            console.error('Failed to create room', {
+            hostLogger.error('Failed to create room', {
                 error: e,
                 propUid: uid || null,
                 authUid: auth.currentUser?.uid || null
@@ -3586,10 +4095,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [normalizedInitialCode]);
 
-    const updateRoom = async (d) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), d);
     const toggleHowToPlay = async () => {
         const active = !room?.howToPlay?.active;
-        await updateRoom({ howToPlay: { active, id: Date.now() } });
+        await updateRoom({ howToPlay: { active, id: nowMs() } });
     };
     const saveLogoUrl = async (nextLogoUrl = logoUrl) => {
         const trimmed = (nextLogoUrl || '').trim();
@@ -3607,7 +4115,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
     const startStormSequence = async () => {
         clearStormTimers();
-        const seqId = Date.now();
+        const seqId = nowMs();
         const totalMs = STORM_SEQUENCE.approachMs + STORM_SEQUENCE.peakMs + STORM_SEQUENCE.passMs + STORM_SEQUENCE.clearMs;
         await updateRoom({
             lightMode: 'storm',
@@ -3628,7 +4136,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await updateRoom({ lightMode: 'off', stormPhase: 'off' });
     };
     const startBeatDrop = async () => {
-        const now = Date.now();
+        const now = nowMs();
         await updateRoom({
             lightMode: 'strobe',
             strobeSessionId: now,
@@ -3639,7 +4147,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             strobeVictory: null
         });
     };
-    const setBgMusicState = (next) => {
+    const setBgMusicState = useCallback((next) => {
         setPlayingBg(next);
         if (next) {
             if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
@@ -3650,7 +4158,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             bgAudio.current.pause();
         }
         updateRoom({ bgMusicPlaying: next, bgMusicUrl: BG_TRACKS[currentTrackIdx].url });
-    };
+    }, [currentTrackIdx, updateRoom]);
     const toggleBgMusic = async () => {
         if (playingBg && autoBgMusic) {
             setAutoBgMusic(false);
@@ -3664,9 +4172,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!currentSong && !playingBg) {
             setBgMusicState(true);
         }
-    }, [autoBgMusic, currentSong, playingBg]);
+    }, [autoBgMusic, currentSong, playingBg, setBgMusicState]);
 
-    const fadeMixFader = (targetPercent, durationMs = 800) => {
+    const fadeMixFader = useCallback((targetPercent, durationMs = 800) => {
         if (mixFadeRef.current) {
             clearInterval(mixFadeRef.current);
         }
@@ -3691,7 +4199,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 mixFadeRef.current = null;
             }
         }, 120);
-    };
+    }, [mixFader, updateRoom]);
 
     useEffect(() => () => {
         if (mixFadeRef.current) clearInterval(mixFadeRef.current);
@@ -3712,7 +4220,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const restore = Math.max(0, Math.min(100, mixBeforeSongRef.current ?? mixFadeTargetRef.current ?? 50));
             fadeMixFader(restore, fadeInMs);
         }
-    }, [autoBgMusic, currentSong, autoBgFadeOutMs, autoBgFadeInMs, autoBgMixDuringSong]);
+    }, [autoBgMusic, currentSong, autoBgFadeOutMs, autoBgFadeInMs, autoBgMixDuringSong, fadeMixFader, mixFader]);
     const handleMixFaderChange = (val) => {
         let clamped = Math.max(0, Math.min(100, val));
         if (Math.abs(clamped - 50) <= 3) {
@@ -3753,7 +4261,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
     const dropBonus = async (points) => {
         if (!roomCode) return;
-        await updateRoom({ bonusDrop: { id: Date.now(), points, by: hostName || 'Host' } });
+        await updateRoom({ bonusDrop: { id: nowMs(), points, by: hostName || 'Host' } });
         logActivity(roomCode, hostName || 'Host', `dropped +${points} pts to the room`, EMOJI.sparkle);
         toast(`Bonus drop: +${points} PTS`);
     };
@@ -3766,14 +4274,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await logActivity(roomCode, target?.name || 'Guest', `received ${amount} pts from ${hostName || 'Host'}`, EMOJI.sparkle);
             toast(`Gifted ${amount} pts`);
         } catch (e) {
-            console.error(e);
+            hostLogger.error(e);
             toast('Gift failed');
         }
     };
     const startReadyCheck = async () => {
         const durationSec = Math.max(3, Number(readyCheckDurationSec || 10));
         const rewardPoints = Math.max(0, Number(readyCheckRewardPoints || 0));
-        await updateRoom({ readyCheck: { active: true, startTime: Date.now(), durationSec, rewardPoints } });
+        await updateRoom({ readyCheck: { active: true, startTime: nowMs(), durationSec, rewardPoints } });
         if (readyCheckTimerRef.current) clearTimeout(readyCheckTimerRef.current);
         readyCheckTimerRef.current = setTimeout(() => {
             updateRoom({ 'readyCheck.active': false });
@@ -3790,8 +4298,107 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast(`Awarded ${points} pts`);
             setTipAmount('');
         } catch (e) {
-            console.error(e);
+            hostLogger.error(e);
             toast('Tip award failed');
+        }
+    };
+    const applyHostPreset = async (presetId) => {
+        const preset = HOST_NIGHT_PRESETS[presetId];
+        if (!preset || !roomCode) return;
+        const presetSettings = preset.settings || {};
+        const queueSettings = presetSettings.queueSettings || {};
+        const gameDefaults = presetSettings.gameDefaults || {};
+        const canUseAi = !!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT];
+        const autoLyricsEnabled = !!presetSettings.autoLyricsOnQueue && canUseAi;
+        const payload = {
+            hostNightPreset: preset.id,
+            autoDj: !!presetSettings.autoDj,
+            autoBgMusic: !!presetSettings.autoBgMusic,
+            autoPlayMedia: !!presetSettings.autoPlayMedia,
+            showVisualizerTv: !!presetSettings.showVisualizerTv,
+            showLyricsTv: !!presetSettings.showLyricsTv,
+            showScoring: !!presetSettings.showScoring,
+            showFameLevel: !!presetSettings.showFameLevel,
+            allowSingerTrackSelect: !!presetSettings.allowSingerTrackSelect,
+            marqueeEnabled: !!presetSettings.marqueeEnabled,
+            marqueeShowMode: presetSettings.marqueeShowMode || 'always',
+            chatShowOnTv: !!presetSettings.chatShowOnTv,
+            chatTvMode: presetSettings.chatTvMode || 'auto',
+            bouncerMode: !!presetSettings.bouncerMode,
+            bingoShowTv: presetSettings.bingoShowTv !== false,
+            bingoVotingMode: presetSettings.bingoVotingMode || 'host+votes',
+            bingoAutoApprovePct: Math.max(10, Math.min(100, Number(presetSettings.bingoAutoApprovePct ?? 50))),
+            bingoAudienceReopenEnabled: presetSettings.bingoAudienceReopenEnabled !== false,
+            autoLyricsOnQueue: autoLyricsEnabled,
+            gamePreviewId: presetSettings.gamePreviewId || null,
+            gameDefaults: {
+                triviaRoundSec: Math.max(5, Number(gameDefaults.triviaRoundSec || 20)),
+                triviaAutoReveal: gameDefaults.triviaAutoReveal !== false,
+                bingoVotingMode: gameDefaults.bingoVotingMode || 'host+votes',
+                bingoAutoApprovePct: Math.max(10, Math.min(100, Number(gameDefaults.bingoAutoApprovePct ?? 50)))
+            },
+            queueSettings: {
+                limitMode: queueSettings.limitMode || 'none',
+                limitCount: Math.max(0, Number(queueSettings.limitCount || 0)),
+                rotation: queueSettings.rotation || 'round_robin',
+                firstTimeBoost: queueSettings.firstTimeBoost !== false
+            }
+        };
+        try {
+            await updateRoom(payload);
+            setHostNightPreset(preset.id);
+            setAutoDj(!!payload.autoDj);
+            setAutoBgMusic(!!payload.autoBgMusic);
+            setAutoPlayMedia(!!payload.autoPlayMedia);
+            setQueueLimitMode(payload.queueSettings.limitMode);
+            setQueueLimitCount(payload.queueSettings.limitCount);
+            setQueueRotation(payload.queueSettings.rotation);
+            setQueueFirstTimeBoost(!!payload.queueSettings.firstTimeBoost);
+            setShowScoring(!!payload.showScoring);
+            setShowFameLevel(!!payload.showFameLevel);
+            setAllowSingerTrackSelect(!!payload.allowSingerTrackSelect);
+            setMarqueeEnabled(!!payload.marqueeEnabled);
+            setMarqueeShowMode(payload.marqueeShowMode || 'always');
+            setAudienceBingoReopenEnabled(payload.bingoAudienceReopenEnabled !== false);
+            setAutoLyricsOnQueue(!!payload.autoLyricsOnQueue);
+            setSearchSources(preset.searchSources || { local: true, youtube: true, itunes: true });
+
+            if (payload.autoBgMusic && !playingBg) {
+                setBgMusicState(true);
+            }
+            if (!payload.autoBgMusic && playingBg) {
+                setBgMusicState(false);
+            }
+
+            if (preset.autoStartApplePlaylist) {
+                const playlistId = parseAppleMusicPlaylistId(appleMusicAutoPlaylistId || room?.appleMusicAutoPlaylistId || '');
+                if (playlistId) {
+                    try {
+                        await playAppleMusicPlaylist(playlistId, { title: appleMusicAutoPlaylistTitle || room?.appleMusicAutoPlaylistTitle || '' });
+                    } catch (playlistError) {
+                        hostLogger.debug('Preset applied but auto playlist start failed', playlistError);
+                    }
+                } else {
+                    toast('Preset applied. Add an Apple playlist ID to auto-start background music.');
+                }
+            }
+
+            if (preset.id === 'bingo') {
+                setAutoOpenGameId('bingo');
+                setTab('games');
+            } else if (preset.id === 'trivia') {
+                setAutoOpenGameId('trivia_pop');
+                setTab('games');
+            }
+
+            if (!!presetSettings.autoLyricsOnQueue && !canUseAi) {
+                toast(`${preset.label} applied. AI lyric auto-generation needs a Host subscription.`);
+                return;
+            }
+            toast(`${preset.label} applied.`);
+        } catch (error) {
+            hostLogger.error('Apply host preset failed', error);
+            toast('Could not apply host preset.');
         }
     };
     const saveApiKeys = async () => { 
@@ -3821,6 +4428,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 showScoring: !!showScoring,
                 showFameLevel: !!showFameLevel,
                 allowSingerTrackSelect: !!allowSingerTrackSelect,
+                hostNightPreset: hostNightPreset || 'custom',
+                bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
+                autoLyricsOnQueue: !!autoLyricsOnQueue && !!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT],
                 queueSettings: {
                     limitMode: queueLimitMode || 'none',
                     limitCount: Math.max(0, Number(queueLimitCount || 0)),
@@ -3878,7 +4488,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 .replace(/[^a-z0-9_-]+/g, '-')
                 .replace(/-+/g, '-')
                 .slice(0, 60);
-            const storagePath = `room_branding/${roomCode}/${Date.now()}-${stem}.${ext}`;
+            const storagePath = `room_branding/${roomCode}/${nowMs()}-${stem}.${ext}`;
             const fileRef = storageRef(storage, storagePath);
             const task = uploadBytesResumable(fileRef, file, {
                 contentType: file.type,
@@ -3898,7 +4508,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await updateRoom({ logoUrl: url });
             toast('Logo uploaded and applied');
         } catch (e) {
-            console.error('Logo upload failed', e);
+            hostLogger.error('Logo upload failed', e);
             toast('Logo upload failed');
         } finally {
             setLogoUploading(false);
@@ -3998,12 +4608,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 highlightedTile: null,
                 applausePeak: null,
                 currentApplauseLevel: 0,
-                howToPlay: { active: false, id: Date.now() },
-                gameRulesId: Date.now()
+                howToPlay: { active: false, id: nowMs() },
+                gameRulesId: nowMs()
             });
             toast('Room cleared.');
         } catch (e) {
-            console.error(e);
+            hostLogger.error(e);
             toast('Clear room failed.');
         } finally {
             setClearingRoom(false);
@@ -4056,7 +4666,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await persistYtIndex(updated);
             setYtPlaylistStatus(`Indexed ${items.length} videos from playlist`);
         } catch (e) {
-            console.error('Playlist load error', e);
+            hostLogger.error('Playlist load error', e);
             setYtPlaylistStatus('Failed to load playlist. Check server keys or playlist privacy.');
             toast('Playlist load failed.');
         } finally {
@@ -4118,7 +4728,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setYtAddArtist('');
             setYtAddUrl('');
         } catch (e) {
-            console.error(e);
+            hostLogger.error(e);
             setYtAddStatus(e.message || 'Failed to add track');
         } finally {
             setYtAddLoading(false);
@@ -4158,7 +4768,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setUploadingLocal(true);
             setUploadProgress(0);
             const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const storagePath = `room_uploads/${roomCode}/${Date.now()}_${safeName}`;
+            const storagePath = `room_uploads/${roomCode}/${nowMs()}_${safeName}`;
             const fileRef = storageRef(storage, storagePath);
             const uploadTask = uploadBytesResumable(fileRef, file, file.type ? { contentType: file.type } : undefined);
 
@@ -4195,7 +4805,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (addToQueue) await addLocalItemToQueue(newItem);
             return newItem;
         } catch (e) {
-            console.error(e);
+            hostLogger.error(e);
             toast('Upload failed. Check network or file size.');
             return null;
         } finally {
@@ -4236,14 +4846,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 lyrics: '',
                 status: 'requested',
                 timestamp: serverTimestamp(),
-                priorityScore: Date.now(),
+                priorityScore: nowMs(),
                 emoji: EMOJI.mic,
                 backingAudioOnly: item.mediaType === 'audio' || isAudioUrl(item.url),
                 audioOnly: item.mediaType === 'audio' || isAudioUrl(item.url)
             });
             toast('Added local upload to queue');
         } catch (e) {
-            console.error(e);
+            hostLogger.error(e);
             toast('Failed to add local upload to queue');
         }
     };
@@ -4256,7 +4866,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads', item.id));
             toast('Removed upload');
         } catch (e) {
-            console.error(e);
+            hostLogger.error(e);
             toast('Failed to delete upload');
         }
     };
@@ -4318,7 +4928,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             downloadJson(`bross-room-${roomCode}-export.json`, payload);
             toast('Room data exported');
         } catch (e) {
-            console.error(e);
+            hostLogger.error(e);
             toast('Export failed');
         } finally {
             setExportingRoom(false);
@@ -4350,7 +4960,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const photos = photoSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
             const recap = {
                 roomCode,
-                generatedAt: Date.now(),
+                generatedAt: nowMs(),
                 totalSongs: performed.length,
                 totalUsers: users.length,
                 topPerformers,
@@ -4359,12 +4969,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 photos: photos.slice(0, 24),
                 highlights: (activities || []).slice(0, 20)
             };
-            await updateRoom({ closedAt: Date.now(), recap });
+            await updateRoom({ closedAt: nowMs(), recap });
             const recapUrl = `${window.location.origin}/?room=${roomCode}&mode=recap`;
             await navigator.clipboard.writeText(recapUrl);
             toast('Room closed. Recap link copied.');
         } catch (e) {
-            console.error(e);
+            hostLogger.error(e);
             toast('Recap failed');
         } finally {
             setClosingRoom(false);
@@ -4425,64 +5035,49 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             albumArtUrl: baseSong.albumArtUrl || '',
             topFan,
             vibeStats,
-            timestamp: Date.now(),
+            timestamp: nowMs(),
             preview: true
         };
         await updateRoom({ recapPreview });
         toast('Recap preview sent to TV');
     };
-    const startNextFromQueue = async () => {
-        const activeRoom = roomRef.current;
-        if (!activeRoom?.autoDj) return;
-        const list = songsRef.current || [];
-        const performing = list.find(s => s.status === 'performing');
-        if (performing) return;
-        const queued = list.filter(s => s.status === 'requested')
-            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0));
-        const next = queued[0];
-        if (!next) return;
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', next.id), { status: 'performing' });
-        const queuePlayback = resolveQueuePlayback(next, activeRoom?.autoPlayMedia !== false);
-        const nextMediaUrl = queuePlayback.mediaUrl;
-        const useAppleBacking = queuePlayback.usesAppleBacking;
-        const autoStartMedia = queuePlayback.autoStartMedia;
-        if (useAppleBacking && autoStartMedia) {
-            await playAppleMusicTrack(next.appleMusicId, { title: next.songTitle, artist: next.artist });
-            await updateRoom({
-                activeMode: 'karaoke',
-                'announcement.active': false,
-                mediaUrl: '',
-                singAlongMode: false,
-                videoPlaying: false,
-                videoStartTimestamp: null,
-                videoVolume: 100,
-                showLyricsTv: false,
-                showVisualizerTv: false,
-                showLyricsSinger: false
-            });
-        } else {
-            await stopAppleMusic();
-            await updateRoom({
-                activeMode: 'karaoke',
-                'announcement.active': false,
-                mediaUrl: nextMediaUrl,
-                singAlongMode: false,
-                videoPlaying: autoStartMedia && !!nextMediaUrl,
-                videoStartTimestamp: autoStartMedia ? Date.now() : null,
-                videoVolume: 100,
-                showLyricsTv: false,
-                showVisualizerTv: false,
-                showLyricsSinger: false,
-                appleMusicPlayback: null
-            });
-        }
-        logActivity(roomCode, next.singerName, `took the stage!`, EMOJI.mic);
-    };
     // Fix: Simple reload for silence
     const silenceAll = () => stopAllSfx();
     
     // Helpers for other tabs
-    const sendUserMessage = async (uid, msg) => { await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { spotlightUser: msg ? {id: uid, msg: msg} : null }); toast(msg ? "Spotlight ON" : "Spotlight OFF"); };
+    const sendUserMessage = async (uid, msg) => {
+        if (!msg) {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { spotlightUser: null });
+            toast("Spotlight OFF");
+            return;
+        }
+        const roomUser = users.find((u) => {
+            const userUid = u.uid || u.id?.split('_')[1];
+            return userUid === uid;
+        });
+        let spotlightTight15 = [];
+        if (roomUser) {
+            try {
+                const fullList = await getRoomUserTight15(roomUser);
+                spotlightTight15 = fullList
+                    .slice(0, 3)
+                    .map((entry) => normalizeTight15Entry(entry))
+                    .filter(Boolean);
+            } catch (error) {
+                hostLogger.debug('Could not load spotlight Tight 15', error);
+            }
+        }
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
+            spotlightUser: {
+                id: uid,
+                msg,
+                name: roomUser?.name || '',
+                avatar: roomUser?.avatar || '',
+                tight15: spotlightTight15
+            }
+        });
+        toast("Spotlight ON");
+    };
     const kickUser = async (uid) => { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`)); toast("User Kicked"); };
     
     // Score modification
@@ -4495,7 +5090,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
                 roomCode, user, text, icon, timestamp: serverTimestamp()
             });
-        } catch(e) { console.error("Log error", e); }
+        } catch(e) { hostLogger.error("Log error", e); }
     };
     const openChatSettings = () => {
         setShowSettings(true);
@@ -4508,11 +5103,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const entitlements = await getMyEntitlements();
             syncOrgContextFromEntitlements(entitlements);
             await refreshUsageSummary(false);
-            await refreshInvoiceHistory(false);
+            if (entitlements?.capabilities?.[CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS]) {
+                await refreshInvoiceHistory(false);
+            } else {
+                setInvoiceHistory([]);
+                setInvoiceDraft(null);
+            }
             if (showToast) toast('Billing status refreshed');
             return entitlements;
         } catch (e) {
-            console.error('Billing entitlement refresh failed', e);
+            hostLogger.error('Billing entitlement refresh failed', e);
             setOrgContext(prev => ({ ...prev, loading: false, error: 'Could not refresh billing status.' }));
             if (showToast) toast('Could not refresh billing status');
             return null;
@@ -4534,13 +5134,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (showToast) toast('Usage summary refreshed');
             return usage;
         } catch (e) {
-            console.error('Usage summary refresh failed', e);
+            hostLogger.error('Usage summary refresh failed', e);
             setUsageSummary(prev => ({ ...prev, loading: false, error: 'Could not refresh usage summary.' }));
             if (showToast) toast('Could not refresh usage summary');
             return null;
         }
     };
     const generateUsageInvoiceDraft = async (showToast = false) => {
+        if (!canUseInvoiceDrafts) {
+            if (showToast) toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS)} is not available on this plan.`);
+            return null;
+        }
         setInvoiceDraftLoading(true);
         try {
             const targetPeriod = String(selectedUsagePeriod || usageSummary?.period || '').trim();
@@ -4555,7 +5159,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (showToast) toast('Invoice draft generated');
             return draft;
         } catch (e) {
-            console.error('Invoice draft generation failed', e);
+            hostLogger.error('Invoice draft generation failed', e);
             toast('Could not generate invoice draft');
             return null;
         } finally {
@@ -4563,6 +5167,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
     const refreshInvoiceHistory = async (showToast = false) => {
+        if (!canUseInvoiceDrafts) {
+            setInvoiceHistory([]);
+            return [];
+        }
         setInvoiceHistoryLoading(true);
         try {
             const payload = await listMyUsageInvoices({ limit: 40 });
@@ -4571,14 +5179,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (showToast) toast('Invoice history refreshed');
             return items;
         } catch (e) {
-            console.error('Invoice history refresh failed', e);
-            if (showToast) toast('Could not load invoice history');
+            if (!isPermissionDeniedError(e)) {
+                hostLogger.error('Invoice history refresh failed', e);
+                if (showToast) toast('Could not load invoice history');
+            } else if (showToast) {
+                toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS)} is not available on this plan.`);
+            }
             return [];
         } finally {
             setInvoiceHistoryLoading(false);
         }
     };
     const saveInvoiceDraftSnapshot = async () => {
+        if (!canUseInvoiceDrafts) {
+            toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS)} is not available on this plan.`);
+            return null;
+        }
         if (invoiceSaveLoading) return;
         setInvoiceSaveLoading(true);
         try {
@@ -4599,7 +5215,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast(`Invoice snapshot saved (${payload?.recordId || 'ok'})`);
             return payload;
         } catch (e) {
-            console.error('Save invoice snapshot failed', e);
+            hostLogger.error('Save invoice snapshot failed', e);
             toast('Could not save invoice snapshot');
             return null;
         } finally {
@@ -4643,7 +5259,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
             toast('Subscription checkout is unavailable right now.');
         } catch (e) {
-            console.error('Subscription checkout failed', e);
+            hostLogger.error('Subscription checkout failed', e);
             toast('Could not open subscription checkout');
         } finally {
             setSubscriptionActionLoading('');
@@ -4662,7 +5278,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
             toast('Billing portal is unavailable right now.');
         } catch (e) {
-            console.error('Billing portal launch failed', e);
+            hostLogger.error('Billing portal launch failed', e);
             const code = String(e?.code || '').toLowerCase();
             if (code.includes('failed-precondition')) {
                 toast('No billing profile yet. Start a subscription first.');
@@ -4692,8 +5308,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Returned from billing portal. Refreshing billing status...');
         }
 
+        let latestEntitlements = null;
         getMyEntitlements()
             .then((entitlements) => {
+                latestEntitlements = entitlements;
                 syncOrgContextFromEntitlements(entitlements);
                 return getMyUsageSummary(selectedUsagePeriod);
             })
@@ -4707,6 +5325,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     loading: false,
                     error: ''
                 });
+                const invoiceCapabilityEnabled = !!latestEntitlements?.capabilities?.[CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS];
+                if (!invoiceCapabilityEnabled) return null;
                 return listMyUsageInvoices({ limit: 40 });
             })
             .then((historyPayload) => {
@@ -4714,7 +5334,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 setInvoiceHistory(Array.isArray(historyPayload?.invoices) ? historyPayload.invoices : []);
             })
             .catch((e) => {
-                console.warn('Post-billing refresh failed', e);
+                if (!isPermissionDeniedError(e)) {
+                    hostLogger.debug('Post-billing refresh failed', e);
+                }
             });
 
         params.delete('subscription');
@@ -4764,118 +5386,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         return stats;
     }, [users, songs]);
-    const sampleArt = {
-        neon: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=200&q=80',
-        crowd: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=200&q=80',
-        mic: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=200&q=80',
-        stage: 'https://images.unsplash.com/photo-1507874457470-272b3c8d8ee2?auto=format&fit=crop&w=200&q=80',
-        guitar: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=200&q=80',
-        disco: 'https://images.unsplash.com/photo-1504805572947-34fad45aed93?auto=format&fit=crop&w=200&q=80',
-        vinyl: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=200&q=80',
-        lights: 'https://images.unsplash.com/photo-1485579149621-3123dd979885?auto=format&fit=crop&w=200&q=80'
-    };
-    const top100Seed = [
-        { title: "Don't Stop Believin'", artist: 'Journey' },
-        { title: 'Bohemian Rhapsody', artist: 'Queen' },
-        { title: 'Sweet Caroline', artist: 'Neil Diamond' },
-        { title: 'I Will Survive', artist: 'Gloria Gaynor' },
-        { title: "Livin' on a Prayer", artist: 'Bon Jovi' },
-        { title: 'Billie Jean', artist: 'Michael Jackson' },
-        { title: 'Sweet Home Alabama', artist: 'Lynyrd Skynyrd' },
-        { title: 'Friends in Low Places', artist: 'Garth Brooks' },
-        { title: 'Uptown Funk', artist: 'Bruno Mars' },
-        { title: 'Wonderwall', artist: 'Oasis' },
-        { title: 'Hey Jude', artist: 'The Beatles' },
-        { title: 'My Girl', artist: 'The Temptations' },
-        { title: 'Dancing Queen', artist: 'ABBA' },
-        { title: 'Girls Just Want to Have Fun', artist: 'Cyndi Lauper' },
-        { title: 'I Wanna Dance with Somebody', artist: 'Whitney Houston' },
-        { title: 'Respect', artist: 'Aretha Franklin' },
-        { title: 'Rolling in the Deep', artist: 'Adele' },
-        { title: 'Firework', artist: 'Katy Perry' },
-        { title: 'Shake It Off', artist: 'Taylor Swift' },
-        { title: "Don't Stop Me Now", artist: 'Queen' },
-        { title: 'Summer of 69', artist: 'Bryan Adams' },
-        { title: 'Like a Virgin', artist: 'Madonna' },
-        { title: 'Total Eclipse of the Heart', artist: 'Bonnie Tyler' },
-        { title: "Sweet Child O' Mine", artist: "Guns N Roses" },
-        { title: 'Eye of the Tiger', artist: 'Survivor' },
-        { title: 'September', artist: 'Earth Wind and Fire' },
-        { title: 'Celebration', artist: 'Kool and The Gang' },
-        { title: 'Brown Eyed Girl', artist: 'Van Morrison' },
-        { title: 'Take On Me', artist: 'A-ha' },
-        { title: 'Another One Bites the Dust', artist: 'Queen' },
-        { title: 'With or Without You', artist: 'U2' },
-        { title: 'I Love Rock n Roll', artist: 'Joan Jett' },
-        { title: 'You Shook Me All Night Long', artist: 'AC/DC' },
-        { title: 'Hotel California', artist: 'Eagles' },
-        { title: 'Sweet Dreams (Are Made of This)', artist: 'Eurythmics' },
-        { title: 'Stand By Me', artist: 'Ben E King' },
-        { title: 'Lean on Me', artist: 'Bill Withers' },
-        { title: 'Take Me Home, Country Roads', artist: 'John Denver' },
-        { title: 'Shallow', artist: 'Lady Gaga' },
-        { title: 'Halo', artist: 'Beyonce' },
-        { title: 'Crazy in Love', artist: 'Beyonce' },
-        { title: 'Since U Been Gone', artist: 'Kelly Clarkson' },
-        { title: 'You Belong with Me', artist: 'Taylor Swift' },
-        { title: "Stayin' Alive", artist: 'Bee Gees' },
-        { title: 'Let It Be', artist: 'The Beatles' },
-        { title: 'I Will Always Love You', artist: 'Whitney Houston' },
-        { title: 'Torn', artist: 'Natalie Imbruglia' },
-        { title: 'Hit Me with Your Best Shot', artist: 'Pat Benatar' },
-        { title: "(I've Had) The Time of My Life", artist: 'Bill Medley and Jennifer Warnes' },
-        { title: 'Come Together', artist: 'The Beatles' },
-        { title: 'Landslide', artist: 'Fleetwood Mac' },
-        { title: 'Go Your Own Way', artist: 'Fleetwood Mac' },
-        { title: 'Dreams', artist: 'Fleetwood Mac' },
-        { title: 'Crazy', artist: 'Gnarls Barkley' },
-        { title: 'Mr. Brightside', artist: 'The Killers' },
-        { title: 'Valerie', artist: 'Amy Winehouse' },
-        { title: 'Rehab', artist: 'Amy Winehouse' },
-        { title: 'All Star', artist: 'Smash Mouth' },
-        { title: 'Livin La Vida Loca', artist: 'Ricky Martin' },
-        { title: 'Bye Bye Bye', artist: 'NSYNC' },
-        { title: 'Wannabe', artist: 'Spice Girls' },
-        { title: 'No Scrubs', artist: 'TLC' },
-        { title: 'Waterfalls', artist: 'TLC' },
-        { title: 'Killing Me Softly', artist: 'Fugees' },
-        { title: 'My Heart Will Go On', artist: 'Celine Dion' },
-        { title: 'Genie in a Bottle', artist: 'Christina Aguilera' },
-        { title: 'Believe', artist: 'Cher' },
-        { title: "I'm Yours", artist: 'Jason Mraz' },
-        { title: 'Say My Name', artist: "Destiny's Child" },
-        { title: 'Single Ladies', artist: 'Beyonce' },
-        { title: 'Poker Face', artist: 'Lady Gaga' },
-        { title: 'Bad Romance', artist: 'Lady Gaga' },
-        { title: 'Somebody to Love', artist: 'Queen' },
-        { title: 'Beat It', artist: 'Michael Jackson' },
-        { title: 'Man in the Mirror', artist: 'Michael Jackson' },
-        { title: 'Smooth', artist: 'Santana' },
-        { title: 'Faith', artist: 'George Michael' },
-        { title: 'Under the Bridge', artist: 'Red Hot Chili Peppers' },
-        { title: 'Losing My Religion', artist: 'REM' },
-        { title: 'Creep', artist: 'Radiohead' },
-        { title: 'The Middle', artist: 'Jimmy Eat World' },
-        { title: 'Sk8er Boi', artist: 'Avril Lavigne' },
-        { title: 'Complicated', artist: 'Avril Lavigne' },
-        { title: 'Ironic', artist: 'Alanis Morissette' },
-        { title: 'Hand in My Pocket', artist: 'Alanis Morissette' },
-        { title: 'The Scientist', artist: 'Coldplay' },
-        { title: 'Yellow', artist: 'Coldplay' },
-        { title: 'Viva La Vida', artist: 'Coldplay' },
-        { title: 'Drops of Jupiter', artist: 'Train' },
-        { title: 'Hey Ya!', artist: 'OutKast' },
-        { title: 'Ms. Jackson', artist: 'OutKast' },
-        { title: 'I Gotta Feeling', artist: 'Black Eyed Peas' },
-        { title: 'No Diggity', artist: 'Blackstreet' },
-        { title: 'Yeah!', artist: 'Usher' },
-        { title: 'Enter Sandman', artist: 'Metallica' },
-        { title: 'Nothing Else Matters', artist: 'Metallica' },
-        { title: 'Purple Rain', artist: 'Prince' },
-        { title: 'Tennessee Whiskey', artist: 'Chris Stapleton' },
-        { title: 'Before He Cheats', artist: 'Carrie Underwood' },
-        { title: 'Take My Breath Away', artist: 'Berlin' }
-    ];
+    const sampleArt = SAMPLE_ART;
+    const top100Seed = TOP100_SEED;
 
     const top100Songs = useMemo(() => {
         const arts = Object.values(sampleArt);
@@ -4883,11 +5395,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const artKey = `${s.title}__${s.artist}`;
             return { ...s, artKey, art: top100Art[artKey] || arts[idx % arts.length] };
         });
-    }, [top100Art]);
+    }, [top100Art, sampleArt, top100Seed]);
     const fetchTop100Art = async (song) => {
         const artKey = song.artKey || `${song.title}__${song.artist}`;
         if (top100Art[artKey] || top100ArtLoading[artKey]) return top100Art[artKey];
-        if (Date.now() < itunesBackoffUntil) return null;
+        if (nowMs() < itunesBackoffUntil) return null;
         setTop100ArtLoading(prev => ({ ...prev, [artKey]: true }));
         try {
             const term = encodeURIComponent(`${song.title} ${song.artist}`);
@@ -4899,10 +5411,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 return hiRes;
             }
         } catch (e) {
-            console.error(e);
+            hostLogger.error(e);
             const msg = `${e?.message || ''}`.toLowerCase();
             if (msg.includes('rate limit') || msg.includes('resource-exhausted') || msg.includes('429')) {
-                itunesBackoffUntil = Date.now() + 15000;
+                itunesBackoffUntil = nowMs() + 15000;
             }
         } finally {
             setTop100ArtLoading(prev => ({ ...prev, [artKey]: false }));
@@ -4944,13 +5456,304 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             albumArtUrl: art || song.art || '',
             status: 'requested',
             timestamp: serverTimestamp(),
-            priorityScore: Date.now(),
+            priorityScore: nowMs(),
             emoji: EMOJI.mic,
             backingAudioOnly: false,
             audioOnly: false
         });
         toast('Added to queue');
     };
+
+    const resolveRoomUserUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
+
+    const getRoomUserTight15 = async (roomUser = {}) => {
+        const fallback = sanitizeTight15List(roomUser?.tight15 || roomUser?.tight15Temp || []);
+        const uid = resolveRoomUserUid(roomUser);
+        if (!uid) return fallback;
+        try {
+            const snap = await getDoc(doc(db, 'users', uid));
+            if (!snap.exists()) return fallback;
+            const profileList = sanitizeTight15List(snap.data()?.tight15 || []);
+            return profileList.length ? profileList : fallback;
+        } catch (error) {
+            hostLogger.debug('Failed to load singer Tight 15', error);
+            return fallback;
+        }
+    };
+
+    const queueTight15EntryForSinger = async ({ roomUser, entry, sourceLabel = 'Tight 15' }) => {
+        const normalized = normalizeTight15Entry(entry);
+        if (!normalized) return null;
+        const singerUid = resolveRoomUserUid(roomUser);
+        const singerName = roomUser?.name || 'Singer';
+        const singerAvatar = roomUser?.avatar || EMOJI.mic;
+        const songRecord = await ensureSong({
+            title: normalized.songTitle,
+            artist: normalized.artist,
+            artworkUrl: normalized.albumArtUrl || '',
+            verifyMeta: normalized.albumArtUrl ? {} : false,
+            verifiedBy: hostName || 'host'
+        });
+        const songId = songRecord?.songId || buildSongKey(normalized.songTitle, normalized.artist);
+        await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
+            roomCode,
+            songId,
+            songTitle: normalized.songTitle,
+            artist: normalized.artist,
+            singerName,
+            singerUid: singerUid || null,
+            emoji: singerAvatar,
+            mediaUrl: '',
+            albumArtUrl: normalized.albumArtUrl || '',
+            status: 'requested',
+            timestamp: serverTimestamp(),
+            priorityScore: nowMs(),
+            source: sourceLabel
+        });
+        return normalized;
+    };
+
+    const queueRandomTight15ForUser = async (roomUser = {}) => {
+        const singerUid = resolveRoomUserUid(roomUser) || roomUser?.id || '';
+        if (!singerUid) return;
+        if (tight15QueueBusyUid === singerUid) return;
+        setTight15QueueBusyUid(singerUid);
+        try {
+            const tight15 = await getRoomUserTight15(roomUser);
+            if (!tight15.length) {
+                toast(`${roomUser?.name || 'Singer'} has no Tight 15 songs yet.`);
+                return;
+            }
+            const pick = tight15[Math.floor(Math.random() * tight15.length)];
+            await queueTight15EntryForSinger({ roomUser, entry: pick, sourceLabel: 'tight15_random' });
+            toast(`Queued random Tight 15 song for ${roomUser?.name || 'Singer'}.`);
+        } catch (error) {
+            hostLogger.error('Queue random Tight 15 failed', error);
+            toast('Could not queue Tight 15 song.');
+        } finally {
+            setTight15QueueBusyUid('');
+        }
+    };
+
+    const createSweet16Bracket = async () => {
+        if (bracketBusy) return;
+        setBracketBusy(true);
+        try {
+            const candidateUsers = users.filter((u) => {
+                const uid = resolveRoomUserUid(u);
+                if (!uid) return false;
+                if (room?.hostUid && uid === room.hostUid) return false;
+                if (room?.hostName && String(u?.name || '').trim() === String(room.hostName).trim()) return false;
+                return true;
+            });
+            const hydrated = await Promise.all(candidateUsers.map(async (u) => ({
+                roomUser: u,
+                uid: resolveRoomUserUid(u),
+                tight15: await getRoomUserTight15(u)
+            })));
+            const eligible = hydrated.filter((entry) => entry.uid && entry.tight15.length > 0);
+            if (eligible.length < 2) {
+                toast('Need at least 2 singers with Tight 15 songs for a bracket.');
+                return;
+            }
+            const maxSupported = Math.min(16, eligible.length);
+            const bracketSize = Math.pow(2, Math.floor(Math.log2(maxSupported)));
+            if (bracketSize < 2) {
+                toast('Not enough bracket-ready singers.');
+                return;
+            }
+            const seeded = shuffleList(eligible).slice(0, bracketSize);
+            const contestantsByUid = {};
+            const contestantOrder = [];
+            seeded.forEach((entry) => {
+                contestantsByUid[entry.uid] = {
+                    uid: entry.uid,
+                    name: entry.roomUser?.name || 'Singer',
+                    avatar: entry.roomUser?.avatar || EMOJI.mic,
+                    tight15: sanitizeTight15List(entry.tight15)
+                };
+                contestantOrder.push(entry.uid);
+            });
+            const firstRound = buildBracketRound({
+                contestantUids: contestantOrder,
+                contestantsByUid,
+                roundIndex: 0
+            });
+            const bracketPayload = {
+                id: `sweet16_${nowMs()}`,
+                style: 'sweet16',
+                format: 'single_elimination',
+                size: bracketSize,
+                status: 'setup',
+                createdAt: nowMs(),
+                contestantOrder,
+                contestantsByUid,
+                rounds: [firstRound],
+                activeRoundIndex: 0,
+                activeMatchId: null,
+                championUid: null,
+                championName: ''
+            };
+            await updateRoom({
+                activeMode: 'karaoke_bracket',
+                karaokeBracket: bracketPayload,
+                gameData: bracketPayload,
+                gameParticipantMode: 'all',
+                gameParticipants: null
+            });
+            await logActivity(roomCode, hostName || 'Host', `created a Sweet ${bracketSize} bracket.`, EMOJI.star);
+            toast(`Sweet ${bracketSize} bracket ready.`);
+        } catch (error) {
+            hostLogger.error('Create Sweet 16 bracket failed', error);
+            toast('Could not create bracket.');
+        } finally {
+            setBracketBusy(false);
+        }
+    };
+
+    const queueNextBracketMatch = async () => {
+        const bracket = room?.karaokeBracket;
+        if (!bracket?.rounds?.length) {
+            toast('Create a bracket first.');
+            return;
+        }
+        if (bracketBusy) return;
+        setBracketBusy(true);
+        try {
+            const roundIndex = Math.max(0, Number(bracket.activeRoundIndex || 0));
+            const rounds = Array.isArray(bracket.rounds) ? [...bracket.rounds] : [];
+            const round = rounds[roundIndex];
+            if (!round) {
+                toast('No active bracket round.');
+                return;
+            }
+            const matchIndex = round.matches.findIndex((match) => !match?.queuedAt && !match?.winnerUid);
+            if (matchIndex < 0) {
+                toast('All matches in this round are already queued.');
+                return;
+            }
+            const matches = [...round.matches];
+            const target = { ...matches[matchIndex], queuedAt: nowMs() };
+            const aContestant = target.aUid ? bracket?.contestantsByUid?.[target.aUid] : null;
+            const bContestant = target.bUid ? bracket?.contestantsByUid?.[target.bUid] : null;
+            if (aContestant && target.aSong) {
+                await queueTight15EntryForSinger({
+                    roomUser: { uid: aContestant.uid, name: aContestant.name, avatar: aContestant.avatar },
+                    entry: target.aSong,
+                    sourceLabel: 'sweet16_match'
+                });
+            }
+            if (bContestant && target.bSong) {
+                await queueTight15EntryForSinger({
+                    roomUser: { uid: bContestant.uid, name: bContestant.name, avatar: bContestant.avatar },
+                    entry: target.bSong,
+                    sourceLabel: 'sweet16_match'
+                });
+            }
+            matches[matchIndex] = target;
+            rounds[roundIndex] = { ...round, matches };
+            const nextBracketState = {
+                ...bracket,
+                status: 'in_progress',
+                rounds,
+                activeRoundIndex: roundIndex,
+                activeMatchId: target.id
+            };
+            await updateRoom({
+                activeMode: 'karaoke_bracket',
+                karaokeBracket: nextBracketState,
+                gameData: nextBracketState
+            });
+            toast(`Queued ${aContestant?.name || 'Singer'} vs ${bContestant?.name || 'Singer'}.`);
+        } catch (error) {
+            hostLogger.error('Queue next bracket match failed', error);
+            toast('Could not queue next match.');
+        } finally {
+            setBracketBusy(false);
+        }
+    };
+
+    const setBracketMatchWinner = async (matchId, winnerUid) => {
+        const bracket = room?.karaokeBracket;
+        if (!bracket?.rounds?.length || !matchId || !winnerUid) return;
+        if (bracketBusy) return;
+        setBracketBusy(true);
+        try {
+            const rounds = Array.isArray(bracket.rounds) ? [...bracket.rounds] : [];
+            let foundRoundIndex = -1;
+            let foundMatchIndex = -1;
+            rounds.some((round, rIdx) => {
+                const idx = (round.matches || []).findIndex((match) => match.id === matchId);
+                if (idx >= 0) {
+                    foundRoundIndex = rIdx;
+                    foundMatchIndex = idx;
+                    return true;
+                }
+                return false;
+            });
+            if (foundRoundIndex < 0 || foundMatchIndex < 0) {
+                toast('Match not found.');
+                return;
+            }
+            const round = rounds[foundRoundIndex];
+            const match = round.matches[foundMatchIndex];
+            if (![match.aUid, match.bUid].includes(winnerUid)) {
+                toast('Winner must be one of the two singers in this match.');
+                return;
+            }
+            const matches = [...round.matches];
+            matches[foundMatchIndex] = {
+                ...match,
+                winnerUid,
+                completedAt: nowMs()
+            };
+            rounds[foundRoundIndex] = { ...round, matches };
+            const nextBracket = advanceBracketState({
+                ...bracket,
+                rounds,
+                activeRoundIndex: foundRoundIndex
+            });
+            await updateRoom({
+                activeMode: 'karaoke_bracket',
+                karaokeBracket: nextBracket,
+                gameData: nextBracket
+            });
+            const winnerName = nextBracket?.contestantsByUid?.[winnerUid]?.name || 'Winner';
+            await logActivity(roomCode, hostName || 'Host', `advanced ${winnerName} in the bracket.`, EMOJI.sparkle);
+            if (nextBracket?.status === 'complete') {
+                toast(`${nextBracket?.championName || 'Champion'} wins the tournament.`);
+            } else {
+                toast(`${winnerName} advances.`);
+            }
+        } catch (error) {
+            hostLogger.error('Set bracket winner failed', error);
+            toast('Could not record bracket winner.');
+        } finally {
+            setBracketBusy(false);
+        }
+    };
+
+    const clearSweet16Bracket = async () => {
+        if (bracketBusy) return;
+        setBracketBusy(true);
+        try {
+            const payload = {
+                karaokeBracket: null,
+                gameData: null
+            };
+            if (room?.activeMode === 'karaoke_bracket') {
+                payload.activeMode = 'karaoke';
+            }
+            await updateRoom(payload);
+            toast('Bracket cleared.');
+        } catch (error) {
+            hostLogger.error('Clear bracket failed', error);
+            toast('Could not clear bracket.');
+        } finally {
+            setBracketBusy(false);
+        }
+    };
+
     const buildBrowseList = (list, listIdx) => {
         const songs = list.songs.map((song, idx) => ({
             ...song,
@@ -4963,14 +5766,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             songs
         };
     };
-    const browseCategories = useMemo(
-        () => BROWSE_CATEGORIES.map((list, idx) => buildBrowseList(list, idx)),
-        [top100Art]
-    );
-    const topicHits = useMemo(
-        () => TOPIC_HITS.map((list, idx) => buildBrowseList(list, idx + BROWSE_CATEGORIES.length)),
-        [top100Art]
-    );
+    const browseCategories = BROWSE_CATEGORIES.map((list, idx) => buildBrowseList(list, idx));
+    const topicHits = TOPIC_HITS.map((list, idx) => buildBrowseList(list, idx + BROWSE_CATEGORIES.length));
     const exportToCSV = (data, filename) => { const csvContent = "data:text/csv;charset=utf-8," + [Object.keys(data[0]||{}).join(",")].concat(data.map(r => Object.values(r).join(","))).join("\n"); const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", filename); document.body.appendChild(link); link.click(); document.body.removeChild(link); };
 
 
@@ -5005,7 +5802,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             albumArtUrl: item.artworkUrl100 || '',
             status: 'requested',
             timestamp: serverTimestamp(),
-            priorityScore: Date.now(),
+            priorityScore: nowMs(),
             emoji: EMOJI.mic,
             backingAudioOnly: false,
             audioOnly: false
@@ -5817,6 +6614,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             planId: orgContext.planId,
                             status: orgContext.status
                         }}
+                        bracketBusy={bracketBusy}
+                        onCreateSweet16Bracket={createSweet16Bracket}
+                        onQueueNextBracketMatch={queueNextBracketMatch}
+                        onClearSweet16Bracket={clearSweet16Bracket}
+                        onSetBracketMatchWinner={setBracketMatchWinner}
                     />
                 )}
                 {/* Lobby Tab */}
@@ -5857,6 +6659,98 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <div className="text-sm text-zinc-500 mt-1">Session total</div>
                                     </div>
                                 </div>
+                                <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4 space-y-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <div className="text-sm uppercase tracking-widest text-zinc-500">Tournament</div>
+                                            <div className="text-xl font-bold text-rose-300">Sweet 16 Bracket</div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={createSweet16Bracket}
+                                                disabled={bracketBusy}
+                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs ${bracketBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                {bracketBusy ? 'Working...' : 'Create / Reseed'}
+                                            </button>
+                                            <button
+                                                onClick={queueNextBracketMatch}
+                                                disabled={bracketBusy || !activeBracket?.rounds?.length || activeBracket?.status === 'complete'}
+                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${(bracketBusy || !activeBracket?.rounds?.length || activeBracket?.status === 'complete') ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                Queue Next Match
+                                            </button>
+                                            <button
+                                                onClick={clearSweet16Bracket}
+                                                disabled={bracketBusy || !activeBracket}
+                                                className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs ${(bracketBusy || !activeBracket) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                Clear
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {!activeBracket?.rounds?.length ? (
+                                        <div className="text-sm text-zinc-400">
+                                            Creates single-elimination 1v1 matches. Each match auto-picks random songs from each singer's Tight 15.
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <div className="text-sm text-zinc-400">
+                                                Round: <span className="text-zinc-200 font-bold">{activeBracket?.rounds?.[activeBracket?.activeRoundIndex || 0]?.name || 'Round'}</span>
+                                                {' '}| Bracket size: <span className="text-zinc-200 font-bold">{activeBracket?.size || 0}</span>
+                                                {' '}| Status: <span className="text-zinc-200 font-bold">{activeBracket?.status || 'setup'}</span>
+                                            </div>
+                                            {activeBracket?.status === 'complete' && (
+                                                <div className="text-sm text-emerald-200 bg-emerald-500/10 border border-emerald-400/30 rounded-xl px-3 py-2">
+                                                    Champion: {activeBracket?.championName || 'Winner'}
+                                                </div>
+                                            )}
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                                {(activeBracket?.rounds?.[activeBracket?.activeRoundIndex || 0]?.matches || []).map((match) => {
+                                                    const a = activeBracket?.contestantsByUid?.[match.aUid] || null;
+                                                    const b = activeBracket?.contestantsByUid?.[match.bUid] || null;
+                                                    const winnerUid = match?.winnerUid || '';
+                                                    return (
+                                                        <div key={match.id} className={`rounded-xl border p-3 ${activeBracket?.activeMatchId === match.id ? 'border-cyan-400/50 bg-cyan-500/10' : 'border-zinc-700 bg-zinc-950/50'}`}>
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <div className="text-xs uppercase tracking-widest text-zinc-500">Match {match.slot}</div>
+                                                                {match.queuedAt && <div className="text-[10px] uppercase tracking-widest text-cyan-200">Queued</div>}
+                                                            </div>
+                                                            <div className="space-y-2 text-sm">
+                                                                <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === a?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
+                                                                    <div className="font-bold text-white">{a?.name || 'TBD'}</div>
+                                                                    <div className="text-zinc-400 truncate">{match?.aSong?.songTitle || '-'} {match?.aSong?.artist ? `- ${match.aSong.artist}` : ''}</div>
+                                                                    {a?.uid && (
+                                                                        <button
+                                                                            onClick={() => setBracketMatchWinner(match.id, a.uid)}
+                                                                            disabled={bracketBusy}
+                                                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} mt-2 px-2 py-1 text-[10px] ${bracketBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                                        >
+                                                                            Mark Winner
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                                <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === b?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
+                                                                    <div className="font-bold text-white">{b?.name || 'TBD'}</div>
+                                                                    <div className="text-zinc-400 truncate">{match?.bSong?.songTitle || '-'} {match?.bSong?.artist ? `- ${match.bSong.artist}` : ''}</div>
+                                                                    {b?.uid && (
+                                                                        <button
+                                                                            onClick={() => setBracketMatchWinner(match.id, b.uid)}
+                                                                            disabled={bracketBusy}
+                                                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} mt-2 px-2 py-1 text-[10px] ${bracketBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                                        >
+                                                                            Mark Winner
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                                     {users.map(u => {
                                         const isSpotlight = room?.spotlightUser?.id === u.id.split('_')[1];
@@ -5883,6 +6777,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button onClick={()=>sendUserMessage(u.id.split('_')[1], isSpotlight ? null : 'SPOTLIGHT')} className={`${STYLES.btnStd} ${isSpotlight ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-1 text-xs`}>
                                                         {isSpotlight ? 'UNSPOTLIGHT' : 'SPOTLIGHT'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => queueRandomTight15ForUser(u)}
+                                                        disabled={tight15QueueBusyUid === (u.uid || u.id.split('_')[1] || u.id)}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs ${tight15QueueBusyUid === (u.uid || u.id.split('_')[1] || u.id) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {tight15QueueBusyUid === (u.uid || u.id.split('_')[1] || u.id) ? 'QUEUE...' : 'RANDOM TIGHT15'}
                                                     </button>
                                                     <button onClick={()=>kickUser(u.id.split('_')[1])} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs`}>Kick</button>
                                                 </div>
@@ -5989,6 +6890,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 )}
             </div>
+            {roomCode && (
+                audiencePreviewVisible ? (
+                    <AudienceMiniPreview
+                        room={room}
+                        roomCode={roomCode}
+                        appBase={appBase}
+                        currentSong={currentSong}
+                        queueCount={queuedSongs.length}
+                        collapsed={audiencePreviewCollapsed}
+                        onToggleCollapsed={() => setAudiencePreviewCollapsed(prev => !prev)}
+                        onHide={() => setAudiencePreviewVisible(false)}
+                    />
+                ) : (
+                    <button
+                        onClick={() => setAudiencePreviewVisible(true)}
+                        className={`${STYLES.btnStd} ${STYLES.btnInfo} fixed right-3 bottom-3 z-[35] px-3 py-2`}
+                    >
+                        <i className="fa-solid fa-tv"></i>
+                        Audience View
+                    </button>
+                )
+            )}
             {modifyingScoreId && (
                 <div className="fixed inset-0 z-[85] bg-black/70 flex items-center justify-center p-4">
                     <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
@@ -6080,6 +7003,45 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                         </div>
                         <div className="mt-6 space-y-2">
+                            <div className="text-sm uppercase tracking-widest text-zinc-400">Host presets</div>
+                            <div className="host-form-helper">One-click tone control for how the night runs. Applies queue rules, overlays, and game defaults.</div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                {Object.values(HOST_NIGHT_PRESETS).map((preset) => {
+                                    const active = hostNightPreset === preset.id;
+                                    return (
+                                        <button
+                                            key={preset.id}
+                                            onClick={() => applyHostPreset(preset.id)}
+                                            className={`text-left rounded-xl border px-3 py-3 transition-all ${active ? 'border-cyan-400/50 bg-cyan-500/10' : 'border-zinc-700 bg-zinc-900/60 hover:border-cyan-400/30'}`}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="text-sm font-bold text-white">{preset.label}</div>
+                                                {active && <span className="text-[10px] uppercase tracking-widest text-cyan-200">Active</span>}
+                                            </div>
+                                            <div className="text-xs text-zinc-400 mt-1">{preset.description}</div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                                <button
+                                    onClick={() => setAudiencePreviewVisible(prev => !prev)}
+                                    className={`${STYLES.btnStd} ${audiencePreviewVisible ? STYLES.btnInfo : STYLES.btnNeutral}`}
+                                >
+                                    <i className="fa-solid fa-tv"></i>
+                                    {audiencePreviewVisible ? 'Audience preview on' : 'Audience preview off'}
+                                </button>
+                                <button
+                                    onClick={() => setAudiencePreviewCollapsed(prev => !prev)}
+                                    disabled={!audiencePreviewVisible}
+                                    className={`${STYLES.btnStd} ${audiencePreviewCollapsed ? STYLES.btnInfo : STYLES.btnNeutral} ${!audiencePreviewVisible ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    <i className={`fa-solid ${audiencePreviewCollapsed ? 'fa-expand' : 'fa-compress'}`}></i>
+                                    {audiencePreviewCollapsed ? 'Expand preview' : 'Compact preview'}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="mt-6 space-y-2">
                             <div className="text-sm uppercase tracking-widest text-zinc-400">Queue settings</div>
                             <div className="grid grid-cols-2 gap-2">
                                 <select
@@ -6158,6 +7120,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                   Show Fame level on user cards
                               </label>
                               <div className="host-form-helper">Adds a level badge to lobby + leaderboard cards.</div>
+                              <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
+                                  <input
+                                      type="checkbox"
+                                      checked={audienceBingoReopenEnabled}
+                                      onChange={e => setAudienceBingoReopenEnabled(e.target.checked)}
+                                      className="accent-[#00C4D9]"
+                                  />
+                                  Let audience reopen Bingo board after closing it
+                              </label>
+                              <div className="host-form-helper">Adds a persistent "Bingo Live" button on singer phones while Bingo is active.</div>
+                              <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
+                                  <input
+                                      type="checkbox"
+                                      checked={autoLyricsOnQueue}
+                                      disabled={!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT]}
+                                      onChange={e => setAutoLyricsOnQueue(e.target.checked)}
+                                      className="accent-[#00C4D9]"
+                                  />
+                                  Auto-generate lyrics on queue (AI)
+                              </label>
+                              <div className="host-form-helper">
+                                  {capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT]
+                                      ? 'When no lyrics are available, generate fallback lyrics for queued songs.'
+                                      : 'AI lyric generation requires an active Host subscription.'}
+                              </div>
                           </div>
                           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
@@ -6687,7 +7674,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 ))}
                             </div>
                             <button
-                                onClick={() => setTipCrates(prev => [...prev, { id: `crate_${Date.now()}`, label: '', amount: '', points: '', url: '' }])}
+                                onClick={() => setTipCrates(prev => [...prev, { id: `crate_${nowMs()}`, label: '', amount: '', points: '', url: '' }])}
                                 className={`${STYLES.btnStd} ${STYLES.btnSecondary} w-full`}
                             >
                                 Add tip crate
@@ -7216,7 +8203,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 <div key={`${res.label}-${idx}`} className="text-sm text-zinc-300 bg-zinc-900/60 border border-white/5 rounded-lg px-2 py-1 flex items-center justify-between gap-2">
                                                     <div className="truncate">
                                                         <span className="text-white">{res.label}</span>
-                                                        {res.detail && <span className="text-zinc-500"> — {res.detail}</span>}
+                                                        {res.detail && <span className="text-zinc-500"> - {res.detail}</span>}
                                                     </div>
                                                     <span className={`text-sm uppercase tracking-widest ${
                                                         res.status === 'ok'
@@ -7257,5 +8244,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 };
 
 export default HostApp;
+
+
+
+
+
 
 

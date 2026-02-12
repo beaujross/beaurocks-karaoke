@@ -204,16 +204,19 @@ const useQueueTabState = ({ hostName, roomCode }) => {
             hydratedLayoutRef.current = true;
             return;
         }
-        const persisted = parsePersistedState(window.localStorage.getItem(storageKey));
-        const nextLayout = persisted?.layout || PANEL_LAYOUT_DEFAULTS;
-        const workspace = persisted?.workspace;
-        applyPanelLayout(nextLayout);
-        if (workspace && (workspace === 'custom' || PANEL_LAYOUT_PRESETS[workspace])) {
-            setActiveWorkspace(workspace);
-        } else {
-            setActiveWorkspace('default');
-        }
-        hydratedLayoutRef.current = true;
+        const hydrateTimer = setTimeout(() => {
+            const persisted = parsePersistedState(window.localStorage.getItem(storageKey));
+            const nextLayout = persisted?.layout || PANEL_LAYOUT_DEFAULTS;
+            const workspace = persisted?.workspace;
+            applyPanelLayout(nextLayout);
+            if (workspace && (workspace === 'custom' || PANEL_LAYOUT_PRESETS[workspace])) {
+                setActiveWorkspace(workspace);
+            } else {
+                setActiveWorkspace('default');
+            }
+            hydratedLayoutRef.current = true;
+        }, 0);
+        return () => clearTimeout(hydrateTimer);
     }, [storageKey]);
 
     useEffect(() => {
@@ -233,7 +236,10 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         if (!hydratedLayoutRef.current || activeWorkspace === 'custom') return;
         const preset = PANEL_LAYOUT_PRESETS[activeWorkspace] || PANEL_LAYOUT_PRESETS.default;
         const matchesPreset = PANEL_LAYOUT_KEYS.every((key) => Boolean(panelLayout[key]) === Boolean(preset[key]));
-        if (!matchesPreset) setActiveWorkspace('custom');
+        if (!matchesPreset) {
+            const workspaceTimer = setTimeout(() => setActiveWorkspace('custom'), 0);
+            return () => clearTimeout(workspaceTimer);
+        }
     }, [activeWorkspace, panelLayout]);
 
     return {

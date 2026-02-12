@@ -3,12 +3,14 @@ import BingoGame from '../games/Bingo/Game';
 import QAGame from '../games/QA/Game'; // The new file
 import VocalChallengeGame from '../games/VocalChallenge/Game';
 import RidingScalesGame from '../games/RidingScales/Game';
+import KaraokeBracketGame from '../games/KaraokeBracket/Game';
 
 export const GAME_REGISTRY = {
     'flappy_bird': FlappyGame, 
     'vocal_challenge': VocalChallengeGame,
     'riding_scales': RidingScalesGame,
     'bingo': BingoGame,
+    'karaoke_bracket': KaraokeBracketGame,
     // Map multiple modes to the same "Cartridge"
     'trivia_pop': QAGame,
     'trivia_reveal': QAGame,
@@ -113,6 +115,20 @@ export const GAMES_META = [
         category: 'brain',
         badge: 'Marks',
         color: 'emerald',
+        hasConfig: true,
+        needsVoice: false,
+    },
+    {
+        id: 'karaoke_bracket',
+        name: 'Sweet 16 Bracket',
+        description: 'Single-elimination karaoke tournament with random Tight 15 match songs',
+        goal: 'Advance through 1v1 rounds and crown a champion.',
+        howToPlay: 'Host seeds contestants, queues each match, and marks winners.',
+        playModes: ['Auto-seeded bracket', '1v1 matchups'],
+        icon: 'BRACKET',
+        category: 'social',
+        badge: 'Tournament',
+        color: 'rose',
         hasConfig: true,
         needsVoice: false,
     },

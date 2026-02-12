@@ -107,20 +107,25 @@ const StageNowPlayingPanel = ({
                             <i className="fa-solid fa-video mr-2"></i>Video
                         </button>
                         <button
-                            onClick={() => hasLyrics && updateRoom({ showLyricsTv: true, showVisualizerTv: false, lyricsMode: room?.lyricsMode || 'auto' })}
+                            onClick={() => hasLyrics && updateRoom({
+                                showLyricsTv: !room?.showLyricsTv,
+                                lyricsMode: room?.lyricsMode || 'auto'
+                            })}
                             disabled={!hasLyrics}
                             className={`${styles.btnStd} ${room?.showLyricsTv ? styles.btnHighlight : styles.btnNeutral} ${!hasLyrics ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            title={hasLyrics ? 'Show lyrics on TV' : 'No lyrics available for this song'}
+                            title={hasLyrics ? 'Toggle lyrics on TV' : 'No lyrics available for this song'}
                         >
                             <i className="fa-solid fa-closed-captioning mr-2"></i>Lyrics
                         </button>
                         <button
-                            onClick={() => updateRoom({ showLyricsTv: false, showVisualizerTv: true })}
+                            onClick={() => updateRoom({ showVisualizerTv: !room?.showVisualizerTv })}
                             className={`${styles.btnStd} ${room?.showVisualizerTv ? styles.btnHighlight : styles.btnNeutral}`}
+                            title="Toggle visualizer on TV"
                         >
                             <i className="fa-solid fa-wave-square mr-2"></i>Visualizer
                         </button>
                     </div>
+                    <div className="text-[10px] text-zinc-500 mt-2 uppercase tracking-[0.2em]">Tip: Lyrics and visualizer can be enabled together.</div>
                     {!hasLyrics && (
                         <div className="text-[10px] text-zinc-500 mt-2 uppercase tracking-[0.2em]">Lyrics unavailable for this track</div>
                     )}

@@ -34,6 +34,14 @@ const GAME_RULES = {
             'First to line up wins.'
         ]
     },
+    karaoke_bracket: {
+        title: 'Sweet 16 Bracket',
+        lines: [
+            'Head-to-head karaoke matches decide each round.',
+            'Match songs are pulled randomly from each singer Tight 15.',
+            'Host advances winners until one champion remains.'
+        ]
+    },
     trivia_pop: {
         title: 'Trivia',
         lines: [
@@ -81,9 +89,10 @@ const GameContainer = ({ activeMode, rulesToken, view, ...props }) => {
         if (!rulesToken) return;
         if (lastRulesRef.current === rulesToken) return;
         lastRulesRef.current = rulesToken;
-        setShowRules(true);
+        const showTimer = setTimeout(() => setShowRules(true), 0);
         const hideTimer = setTimeout(() => setShowRules(false), 6000);
         return () => {
+            clearTimeout(showTimer);
             clearTimeout(hideTimer);
         };
     }, [rulesToken]);
@@ -98,6 +107,30 @@ const GameContainer = ({ activeMode, rulesToken, view, ...props }) => {
             return props.playerData?.playerName ? `${props.playerData.playerName} phone mic` : 'Phone mic';
         }
         return null;
+    })();
+    const normalizedMode = normalizeMode(activeMode);
+    const bingoMode = props?.gameState?.bingoMode || props?.playerData?.bingoMode || 'karaoke';
+    const rulesConfig = (() => {
+        if (!normalizedMode) return null;
+        if (normalizedMode !== 'bingo') return GAME_RULES[normalizedMode] || null;
+        if (bingoMode === 'mystery') {
+            return {
+                title: 'Mystery Bingo',
+                lines: [
+                    'One picker at a time locks one tile for this turn.',
+                    'Locked pick reveals the song clue and queues the track.',
+                    'Perform to pass the turn to the next picker.'
+                ]
+            };
+        }
+        return {
+            title: 'Karaoke Bingo',
+            lines: [
+                'Spot moments on stage and suggest matching tiles.',
+                'Host can approve suggestions or enable auto-approve votes.',
+                'Complete line, corners, or blackout to trigger a win.'
+            ]
+        };
     })();
 
     if (!GameComponent) return null;
@@ -119,7 +152,7 @@ const GameContainer = ({ activeMode, rulesToken, view, ...props }) => {
                     Input: {inputLabel}
                 </div>
             )}
-            {showRules && GAME_RULES[normalizeMode(activeMode)] && (
+            {showRules && rulesConfig && (
                 <div
                     className="absolute inset-0 z-[300] bg-black/80 flex items-center justify-center p-6"
                     onClick={() => setShowRules(false)}
@@ -129,9 +162,9 @@ const GameContainer = ({ activeMode, rulesToken, view, ...props }) => {
                 >
                     <div className={`max-w-4xl w-full bg-zinc-900/90 border border-white/10 rounded-[2.5rem] p-10 text-center ${view === 'tv' ? 'shadow-[0_0_80px_rgba(34,211,238,0.3)]' : ''}`}>
                         <div className={`uppercase tracking-[0.4em] text-zinc-400 mb-3 ${view === 'tv' ? 'text-base' : 'text-sm'}`}>Game Rules</div>
-                        <div className={`${view === 'tv' ? 'text-7xl' : 'text-4xl'} font-bebas text-cyan-300 mb-6`}>{GAME_RULES[normalizeMode(activeMode)].title}</div>
+                        <div className={`${view === 'tv' ? 'text-7xl' : 'text-4xl'} font-bebas text-cyan-300 mb-6`}>{rulesConfig.title}</div>
                         <div className={`space-y-4 text-zinc-100 ${view === 'tv' ? 'text-4xl' : 'text-lg'}`}>
-                            {GAME_RULES[normalizeMode(activeMode)].lines.map((line, idx) => (
+                            {rulesConfig.lines.map((line, idx) => (
                                 <div key={idx}>{line}</div>
                             ))}
                         </div>

@@ -97,10 +97,13 @@ const BingoGame = ({ gameState, onSuggest, view, onClose }) => {
 
     useEffect(() => {
         if (focus?.index === undefined || focus?.index === null) return;
-        setShowFocus(focus);
+        const showTimer = setTimeout(() => setShowFocus(focus), 0);
         const hideTimer = setTimeout(() => setShowFocus(null), 7000);
-        return () => clearTimeout(hideTimer);
-    }, [focus?.index, focus?.at]);
+        return () => {
+            clearTimeout(showTimer);
+            clearTimeout(hideTimer);
+        };
+    }, [focus]);
 
     return ( 
         <div className={`h-screen w-screen bg-zinc-900 flex flex-col items-center justify-center relative overflow-hidden z-[100] ${isMobile ? 'p-4' : 'p-8'}`}> 
