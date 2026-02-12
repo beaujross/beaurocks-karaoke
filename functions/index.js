@@ -1,5 +1,5 @@
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
-const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
@@ -2069,118 +2069,6 @@ exports.autoAppleLyrics = onDocumentCreated(
     } catch (err) {
       console.error("autoAppleLyrics failed", err?.message || err);
     }
-  }
-);
-
-exports.processRoomAwardSignals = onDocumentUpdated(
-  `artifacts/${APP_ID}/public/data/rooms/{roomCode}`,
-  async (event) => {
-    const roomCode = normalizeRoomCode(event.params?.roomCode || "");
-    if (!roomCode) return;
-
-    const before = event.data?.before?.data() || {};
-    const after = event.data?.after?.data() || {};
-    const jobs = [];
-
-    const beforeDoodle = before?.doodleOke || {};
-    const afterDoodle = after?.doodleOke || {};
-    const doodlePromptId = normalizeAwardKeyToken(afterDoodle.promptId || "");
-    const doodleWinnerUid = typeof afterDoodle?.winner?.uid === "string"
-      ? afterDoodle.winner.uid
-      : "";
-    const beforeDoodleAwardedAt = Number(beforeDoodle.winnerAwardedAt || 0);
-    const afterDoodleAwardedAt = Number(afterDoodle.winnerAwardedAt || 0);
-    if (
-      doodlePromptId &&
-      doodleWinnerUid &&
-      afterDoodleAwardedAt &&
-      afterDoodleAwardedAt !== beforeDoodleAwardedAt
-    ) {
-      const points = clampNumber(afterDoodle?.winner?.points || 150, 0, 5000, 150);
-      if (points > 0) {
-        jobs.push(
-          applyRoomAwardsOnce({
-            roomCode,
-            awardKey: `doodle_${roomCode}_${doodlePromptId}`,
-            awards: [{ uid: doodleWinnerUid, points }],
-            source: "doodle_oke",
-          })
-        );
-      }
-    }
-
-    const beforeGuitarWinner = before?.guitarWinner || {};
-    const afterGuitarWinner = after?.guitarWinner || {};
-    const beforeGuitarVictory = before?.guitarVictory || {};
-    const afterGuitarVictory = after?.guitarVictory || {};
-    const beforeGuitarSession = normalizeAwardKeyToken(
-      beforeGuitarWinner.sessionId || beforeGuitarVictory.sessionId || ""
-    );
-    const afterGuitarSession = normalizeAwardKeyToken(
-      afterGuitarWinner.sessionId || afterGuitarVictory.sessionId || ""
-    );
-    const beforeGuitarUid = typeof beforeGuitarWinner.uid === "string"
-      ? beforeGuitarWinner.uid
-      : (typeof beforeGuitarVictory.uid === "string" ? beforeGuitarVictory.uid : "");
-    const afterGuitarUid = typeof afterGuitarWinner.uid === "string"
-      ? afterGuitarWinner.uid
-      : (typeof afterGuitarVictory.uid === "string" ? afterGuitarVictory.uid : "");
-    if (
-      afterGuitarSession &&
-      afterGuitarUid &&
-      (afterGuitarSession !== beforeGuitarSession || afterGuitarUid !== beforeGuitarUid)
-    ) {
-      const points = clampNumber(
-        afterGuitarWinner.rewardPoints || afterGuitarVictory.rewardPoints || 200,
-        0,
-        5000,
-        200
-      );
-      if (points > 0) {
-        jobs.push(
-          applyRoomAwardsOnce({
-            roomCode,
-            awardKey: `guitar_${roomCode}_${afterGuitarSession}`,
-            awards: [{ uid: afterGuitarUid, points }],
-            source: "guitar_mode",
-          })
-        );
-      }
-    }
-
-    const beforeStrobe = before?.strobeResults || {};
-    const afterStrobe = after?.strobeResults || {};
-    const beforeStrobeSession = normalizeAwardKeyToken(beforeStrobe.sessionId || "");
-    const afterStrobeSession = normalizeAwardKeyToken(afterStrobe.sessionId || "");
-    const beforeStrobeWinners = Array.isArray(beforeStrobe.winners) ? beforeStrobe.winners : [];
-    const afterStrobeWinners = Array.isArray(afterStrobe.winners) ? afterStrobe.winners : [];
-    if (
-      afterStrobeSession &&
-      afterStrobeWinners.length &&
-      (afterStrobeSession !== beforeStrobeSession || !beforeStrobeWinners.length)
-    ) {
-      const rewards = Array.isArray(afterStrobe.rewards) ? afterStrobe.rewards : [];
-      const strobeAwards = afterStrobeWinners.map((winner, idx) => ({
-        uid: typeof winner?.uid === "string" ? winner.uid : "",
-        points: clampNumber(rewards[idx] ?? winner?.points ?? 0, 0, 5000, 0),
-      }));
-      jobs.push(
-        applyRoomAwardsOnce({
-          roomCode,
-          awardKey: `strobe_${roomCode}_${afterStrobeSession}`,
-          awards: strobeAwards,
-          source: "strobe_mode",
-        })
-      );
-    }
-
-    if (!jobs.length) return;
-    const settled = await Promise.allSettled(jobs);
-    settled.forEach((res) => {
-      if (res.status === "rejected") {
-        console.error("processRoomAwardSignals failed", res.reason?.message || res.reason || res);
-      }
-    });
   }
 );
 

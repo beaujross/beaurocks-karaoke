@@ -816,21 +816,6 @@ const SingerApp = ({ roomCode, uid }) => {
         };
     }, [room?.activeMode, room?.doodleOke?.promptId, roomCode, uid]);
 
-    useEffect(() => {
-        if (room?.lightMode !== 'storm') return;
-        if (stormJoined) return;
-        if (!stormAudioRef.current) {
-            stormAudioRef.current = new Audio(getStormAmbientUrl());
-            stormAudioRef.current.loop = true;
-        }
-        stormAudioRef.current.play()
-            .then(() => {
-                setStormJoined(true);
-                setupStormAnalyser().catch(() => {});
-            })
-            .catch(() => {});
-    }, [room?.lightMode, stormJoined, stormPhase]);
-
     const getStormAmbientUrl = useCallback(() => {
         if (stormPhase === 'approach') return STORM_SFX.lightRain;
         if (stormPhase === 'peak') return STORM_SFX.stormLoop;
@@ -881,6 +866,21 @@ const SingerApp = ({ roomCode, uid }) => {
         }
         if (ctx.state === 'suspended') await ctx.resume();
     };
+
+    useEffect(() => {
+        if (room?.lightMode !== 'storm') return;
+        if (stormJoined) return;
+        if (!stormAudioRef.current) {
+            stormAudioRef.current = new Audio(getStormAmbientUrl());
+            stormAudioRef.current.loop = true;
+        }
+        stormAudioRef.current.play()
+            .then(() => {
+                setStormJoined(true);
+                setupStormAnalyser().catch(() => {});
+            })
+            .catch(() => {});
+    }, [room?.lightMode, stormJoined, getStormAmbientUrl]);
 
     useEffect(() => {
         if (room?.lightMode !== 'storm') return;
