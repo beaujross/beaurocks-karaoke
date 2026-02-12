@@ -6998,6 +6998,59 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
                         {settingsTab === 'general' && (
                         <>
+                        <div className="mb-5 bg-zinc-950/60 border border-cyan-500/30 rounded-xl p-4">
+                            <div className="flex items-center justify-between gap-3 flex-wrap">
+                                <div>
+                                    <div className="text-sm uppercase tracking-widest text-cyan-300">Quick Start</div>
+                                    <div className="text-xs text-zinc-400 mt-1">Recommended order for a clean host flow.</div>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-zinc-400">
+                                    <span className="px-2 py-1 rounded-full border border-white/15">Mode: {room?.activeMode || 'karaoke'}</span>
+                                    <span className="px-2 py-1 rounded-full border border-white/15">Queue: {queuedSongs.length}</span>
+                                    <span className="px-2 py-1 rounded-full border border-white/15">Preview: {audiencePreviewVisible ? 'On' : 'Off'}</span>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+                                <button
+                                    onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} justify-start`}
+                                >
+                                    1. Launch TV Display
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        const audienceUrl = `${appBase}?room=${roomCode}`;
+                                        try {
+                                            await navigator.clipboard.writeText(audienceUrl);
+                                            toast('Audience join link copied.');
+                                        } catch {
+                                            toast(audienceUrl);
+                                        }
+                                    }}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                                >
+                                    2. Copy Audience Join Link
+                                </button>
+                                <button
+                                    onClick={() => { setTab('stage'); setShowSettings(false); }}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                                >
+                                    3. Open Stage Controls
+                                </button>
+                                <button
+                                    onClick={() => { setTab('games'); setShowSettings(false); }}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                                >
+                                    4. Prep Games and Modes
+                                </button>
+                                <button
+                                    onClick={() => { setTab('lobby'); setShowSettings(false); }}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                                >
+                                    5. Check Lobby and VIPs
+                                </button>
+                            </div>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <div className="text-sm uppercase tracking-widest text-zinc-400">Host identity</div>

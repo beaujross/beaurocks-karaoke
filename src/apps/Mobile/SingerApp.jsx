@@ -4328,7 +4328,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     });
                     return { autoApprove };
                 });
-                setTimeout(() => updateDoc(roomRef, { highlightedTile: null }), 1000);
+                setTimeout(() => updateDoc(roomRef, { highlightedTile: null }).catch(() => {}), 1000);
                 toast(result?.autoApprove ? 'Auto-approved!' : 'Suggested!');
             } catch (e) {
                 console.error(e);

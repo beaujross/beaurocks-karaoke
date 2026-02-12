@@ -420,6 +420,7 @@ const PublicTV = ({ roomCode }) => {
     const chatRotateRef = useRef(null);
     const messageTimeoutsRef = useRef([]);
     const bgVisualizerAudioRef = useRef(null);
+    const multiplierRef = useRef(1);
     const selfieVoteCounts = useMemo(() => {
         return selfieVotes.reduce((acc, v) => {
             acc[v.targetUid] = (acc[v.targetUid] || 0) + 1;
@@ -452,6 +453,10 @@ const PublicTV = ({ roomCode }) => {
         heart: 'animate-heart-beat text-8xl drop-shadow-[0_0_15px_red]',
         clap: 'animate-clap-shake text-8xl'
     }[t] || 'animate-float text-6xl');
+
+    useEffect(() => {
+        multiplierRef.current = Math.max(1, room?.multiplier || 1);
+    }, [room?.multiplier]);
 
     const awardRoomPointsOnce = useCallback(async ({ awardKey, awards = [], source = 'tv_mode' }) => {
         if (!roomCode || !awardKey || !Array.isArray(awards) || !awards.length) return;
@@ -700,7 +705,7 @@ const PublicTV = ({ roomCode }) => {
                               const totalCount = d.count || 1;
                               const val = REACTION_COSTS[d.type] || 5;
                               const totalVal = val * totalCount;
-                              const multiplier = Math.max(1, room?.multiplier || 1);
+                              const multiplier = multiplierRef.current;
                               const basePoints = val;
                               const points = basePoints * multiplier;
                               const isVip = !!d.isVip || (d.vipLevel || 0) > 0;
@@ -750,6 +755,23 @@ const PublicTV = ({ roomCode }) => {
             });
         });
 
+        return () => {
+            unsubRoom();
+            unsubSongs();
+            unsubReact();
+            unsubMsg();
+            unsubActivity();
+            unsubVibe();
+            messageTimeoutsRef.current.forEach(t => clearTimeout(t));
+            messageTimeoutsRef.current = [];
+        };
+    }, [roomCode]);
+
+    useEffect(() => {
+        if (!roomCode || !room?.chatShowOnTv) {
+            setChatMessages([]);
+            return () => {};
+        }
         const unsubChat = onSnapshot(query(
             collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'),
             where('roomCode', '==', roomCode),
@@ -761,19 +783,8 @@ const PublicTV = ({ roomCode }) => {
                 .filter(isTvVisibleChatMessage);
             setChatMessages(visibleMessages);
         });
-
-        return () => {
-            unsubRoom();
-            unsubSongs();
-            unsubReact();
-            unsubMsg();
-            unsubActivity();
-            unsubVibe();
-            unsubChat();
-            messageTimeoutsRef.current.forEach(t => clearTimeout(t));
-            messageTimeoutsRef.current = [];
-        };
-    }, [roomCode, room?.multiplier]);
+        return () => unsubChat();
+    }, [roomCode, room?.chatShowOnTv]);
 
     useEffect(() => {
         const tvMode = room?.chatTvMode || 'auto';
