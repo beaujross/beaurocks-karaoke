@@ -41,19 +41,19 @@ const HostTopChrome = ({
 }) => {
     const SmallWaveform = smallWaveform;
     return (
-    <div className="bg-zinc-900 px-5 py-3 flex flex-col gap-2 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
+    <div className="bg-zinc-900 px-4 py-2 flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full">
-            <div className="flex items-center gap-3 md:gap-4">
+            <div className="flex items-center gap-2 md:gap-3">
                 <img
                     src={room?.logoUrl || logoFallback}
-                    className="h-16 md:h-28 object-contain rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.45)] ring-1 ring-white/10 bg-black/40 p-1"
+                    className="h-11 md:h-14 object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5"
                     alt="Beaurocks Karaoke"
                 />
-                <div className="text-[16px] md:text-[22px] font-mono font-bold text-[#00C4D9] bg-black/40 px-2.5 py-1 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
+                <div className="text-[14px] md:text-[18px] font-mono font-bold text-[#00C4D9] bg-black/40 px-2 py-0.5 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
                 <div className="relative">
                     <button
                         onClick={() => setShowLaunchMenu(prev => !prev)}
-                        className={`${styles.btnStd} ${styles.btnSecondary} px-3 text-sm`}
+                        className={`${styles.btnStd} ${styles.btnSecondary} px-2.5 text-xs`}
                     >
                         <i className="fa-solid fa-rocket"></i>
                     </button>
@@ -106,9 +106,9 @@ const HostTopChrome = ({
                     )}
                 </div>
             </div>
-            <div className="flex items-center gap-3 md:gap-4 justify-between md:justify-end">
+            <div className="flex items-center gap-2 md:gap-3 justify-between md:justify-end">
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
-                    <div className="bg-red-600 px-3 py-1 rounded text-xs md:text-sm font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
+                    <div className="bg-red-600 px-2.5 py-0.5 rounded text-[10px] md:text-xs font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
                 )}
                 <div className="hidden md:flex items-center gap-2">
                     {[
@@ -119,13 +119,13 @@ const HostTopChrome = ({
                         <button
                             key={t.key}
                             onClick={() => setTab(t.key)}
-                            className={`px-5 py-2 text-lg font-black uppercase tracking-[0.3em] rounded-2xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
+                            className={`px-3 py-1.5 text-sm font-black uppercase tracking-[0.22em] rounded-xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
                         >
                             {t.label}
                         </button>
                     ))}
                 </div>
-                <button onClick={() => { setShowSettings(true); setSettingsTab('general'); }} className="text-zinc-500 hover:text-white"><i className="fa-solid fa-gear text-lg md:text-xl"></i></button>
+                <button onClick={() => { setShowSettings(true); setSettingsTab('general'); }} className="text-zinc-500 hover:text-white"><i className="fa-solid fa-gear text-base md:text-lg"></i></button>
                 <div className="relative">
                     <button
                         onClick={() => setShowNavMenu(prev => !prev)}

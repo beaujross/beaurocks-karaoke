@@ -21,9 +21,15 @@ const ChatSettingsPanel = ({
     setChatDraft,
     sendHostChat
 }) => {
+    const isDirectChatMessage = (message = {}) => (
+        !!message?.toHost
+        || !!message?.toUid
+        || message?.channel === 'host'
+        || message?.channel === 'dm'
+    );
     const visibleMessages = chatViewMode === 'room'
-        ? chatMessages.filter(m => !m.toHost)
-        : chatMessages.filter(m => m.toHost);
+        ? chatMessages.filter(m => !isDirectChatMessage(m))
+        : chatMessages.filter(m => isDirectChatMessage(m));
 
     return (
         <div className="bg-zinc-950/50 border border-zinc-800 rounded-xl p-4 space-y-4">

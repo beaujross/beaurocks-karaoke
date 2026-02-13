@@ -20,7 +20,12 @@ const AutomationControls = ({
             onClick={async () => {
                 const next = !autoDj;
                 setAutoDj(next);
-                await updateRoom({ autoDj: next });
+                try {
+                    await updateRoom({ autoDj: next });
+                } catch (error) {
+                    console.error('Failed to toggle Auto DJ', error);
+                    setAutoDj(!next);
+                }
             }}
             className={`${styles.btnStd} ${autoDj ? styles.btnPrimary : styles.btnNeutral} flex-1`}
             title="Auto-advance the queue after each performance"
@@ -31,7 +36,11 @@ const AutomationControls = ({
         <button
             onClick={async () => {
                 const next = !(room?.autoPlayMedia !== false);
-                await updateRoom({ autoPlayMedia: !next });
+                try {
+                    await updateRoom({ autoPlayMedia: !next });
+                } catch (error) {
+                    console.error('Failed to toggle auto-play media', error);
+                }
             }}
             className={`${styles.btnStd} ${(room?.autoPlayMedia !== false) ? styles.btnPrimary : styles.btnNeutral}`}
             title="Auto-play media when a singer starts"
@@ -42,7 +51,13 @@ const AutomationControls = ({
             onClick={async () => {
                 const next = !autoBgMusic;
                 setAutoBgMusic(next);
-                await updateRoom({ autoBgMusic: next });
+                try {
+                    await updateRoom({ autoBgMusic: next });
+                } catch (error) {
+                    console.error('Failed to toggle auto BG music', error);
+                    setAutoBgMusic(!next);
+                    return;
+                }
                 if (next && !playingBg) setBgMusicState(true);
             }}
             className={`${styles.btnStd} ${autoBgMusic ? styles.btnPrimary : styles.btnNeutral}`}

@@ -219,7 +219,46 @@ const trackEvent = (name, params = {}) => {
   }
 };
 
+const isAppCheckRequiredError = (error) => {
+  const code = String(error?.code || "").toLowerCase();
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    code.includes("failed-precondition")
+    && (
+      message.includes("app check token required")
+      || message.includes("appcheck")
+    )
+  );
+};
+
+const ensureAppCheckToken = async (forceRefresh = false) => {
+  if (!appCheck) return false;
+  try {
+    const tokenResult = await getAppCheckToken(appCheck, !!forceRefresh);
+    return !!tokenResult?.token;
+  } catch (error) {
+    firebaseLogger.debug("app-check token fetch failed", { forceRefresh, error });
+    return false;
+  }
+};
+
+const requireAppCheckToken = async (scope = "callable") => {
+  const warmToken = await ensureAppCheckToken(false);
+  if (warmToken) return true;
+  const refreshedToken = await ensureAppCheckToken(true);
+  if (refreshedToken) return true;
+  const err = new Error(`App Check token required for ${scope}.`);
+  err.code = "failed-precondition";
+  throw err;
+};
+
 const callFunction = async (name, data = {}) => {
+  const fn = httpsCallable(functions, name);
+  const invoke = async () => {
+    const res = await fn(data);
+    return res.data;
+  };
+
   if (appCheck) {
     try {
       await getAppCheckToken(appCheck, false);
@@ -227,9 +266,21 @@ const callFunction = async (name, data = {}) => {
       firebaseLogger.debug("app-check token fetch failed before callable", { name, err });
     }
   }
-  const fn = httpsCallable(functions, name);
-  const res = await fn(data);
-  return res.data;
+
+  try {
+    return await invoke();
+  } catch (error) {
+    if (appCheck && isAppCheckRequiredError(error)) {
+      try {
+        // App Check issuance can race on first load; force-refresh and retry once.
+        await getAppCheckToken(appCheck, true);
+        return await invoke();
+      } catch (retryError) {
+        firebaseLogger.warn("callable retry failed after app-check refresh", { name, retryError });
+      }
+    }
+    throw error;
+  }
 };
 
 const getGoogleMapsApiKey = async () => {
@@ -243,37 +294,44 @@ const submitMarketingWaitlist = async (payload = {}) => {
 };
 
 const ensureOrganization = async (orgName = "") => {
+  await requireAppCheckToken("ensureOrganization");
   const data = await callFunction("ensureOrganization", { orgName });
   return data || null;
 };
 
 const bootstrapOnboardingWorkspace = async (opts = {}) => {
+  await requireAppCheckToken("bootstrapOnboardingWorkspace");
   const data = await callFunction("bootstrapOnboardingWorkspace", opts || {});
   return data || null;
 };
 
 const getMyEntitlements = async () => {
+  await requireAppCheckToken("getMyEntitlements");
   const data = await callFunction("getMyEntitlements");
   return data || null;
 };
 
 const getMyUsageSummary = async (period = "") => {
+  await requireAppCheckToken("getMyUsageSummary");
   const payload = period ? { period } : {};
   const data = await callFunction("getMyUsageSummary", payload);
   return data || null;
 };
 
 const getMyUsageInvoiceDraft = async (opts = {}) => {
+  await requireAppCheckToken("getMyUsageInvoiceDraft");
   const data = await callFunction("getMyUsageInvoiceDraft", opts || {});
   return data || null;
 };
 
 const saveMyUsageInvoiceDraft = async (opts = {}) => {
+  await requireAppCheckToken("saveMyUsageInvoiceDraft");
   const data = await callFunction("saveMyUsageInvoiceDraft", opts || {});
   return data || null;
 };
 
 const listMyUsageInvoices = async (opts = {}) => {
+  await requireAppCheckToken("listMyUsageInvoices");
   const data = await callFunction("listMyUsageInvoices", opts || {});
   return data || null;
 };
@@ -470,6 +528,7 @@ const ensureUserProfile = async (uid, opts = {}) => {
 export { 
   app, 
   appCheck,
+  ensureAppCheckToken,
   analytics,
   trackEvent,
   functions,

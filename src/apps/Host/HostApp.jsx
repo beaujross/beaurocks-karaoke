@@ -32,6 +32,7 @@ import {
     initAuth,
     trackEvent,
     callFunction,
+    ensureAppCheckToken,
     ensureOrganization,
     bootstrapOnboardingWorkspace,
     getMyEntitlements,
@@ -343,6 +344,110 @@ const HOST_NIGHT_PRESETS = {
     }
 };
 
+const HOST_SETTINGS_SECTIONS = [
+    {
+        id: 'operations',
+        label: 'Control Room',
+        items: [
+            {
+                key: 'general',
+                label: 'Control Room',
+                icon: 'fa-sliders',
+                description: 'Core room setup, queue policy, host identity, and quick-start actions.',
+                keywords: 'queue room tips presets identity'
+            },
+            {
+                key: 'gamepad',
+                label: 'Game Director',
+                icon: 'fa-gamepad',
+                description: 'Launch pads and mode-time host actions for karaoke + game flow.',
+                keywords: 'games mode gamepad launchpad doodle trivia bingo bracket'
+            },
+            {
+                key: 'automations',
+                label: 'Presets & Automations',
+                icon: 'fa-bolt',
+                description: 'Auto-DJ, background behavior, and one-click night profile controls.',
+                keywords: 'auto dj automation presets profile'
+            }
+        ]
+    },
+    {
+        id: 'experience',
+        label: 'Show Experience',
+        items: [
+            {
+                key: 'media',
+                label: 'Visual Director',
+                icon: 'fa-tv',
+                description: 'Media pipelines, uploads, and playback source controls.',
+                keywords: 'media visuals playback upload youtube apple music'
+            },
+            {
+                key: 'marquee',
+                label: 'Show Design',
+                icon: 'fa-panorama',
+                description: 'Marquee timing, rotation content, and idle messaging behavior.',
+                keywords: 'marquee design overlay idle message'
+            }
+        ]
+    },
+    {
+        id: 'community',
+        label: 'Audience + Social',
+        items: [
+            {
+                key: 'chat',
+                label: 'Audience Social',
+                icon: 'fa-comments',
+                description: 'Chat access policy, TV visibility, DM behavior, and moderation controls.',
+                keywords: 'chat dm social audience'
+            },
+            {
+                key: 'moderation',
+                label: 'Moderation',
+                icon: 'fa-shield-halved',
+                description: 'Doodle review policy, audience visibility rules, and moderation shortcuts.',
+                keywords: 'moderation doodle review approve'
+            },
+            {
+                key: 'monetization',
+                label: 'Monetization',
+                icon: 'fa-sack-dollar',
+                description: 'Tip crates and in-room boost economics.',
+                keywords: 'tips crates monetization'
+            }
+        ]
+    },
+    {
+        id: 'admin',
+        label: 'Admin',
+        items: [
+            {
+                key: 'billing',
+                label: 'Billing',
+                icon: 'fa-credit-card',
+                description: 'Plan, usage, invoices, and subscription controls.',
+                keywords: 'billing usage plan invoice'
+            },
+            {
+                key: 'qa',
+                label: 'Ops Tools',
+                icon: 'fa-screwdriver-wrench',
+                description: 'Room diagnostics, smoke tests, and debug snapshots.',
+                keywords: 'qa debug tools diagnostics'
+            }
+        ]
+    }
+];
+
+const HOST_SETTINGS_META = HOST_SETTINGS_SECTIONS.reduce((acc, section) => {
+    section.items.forEach((item) => {
+        acc[item.key] = { ...item, sectionLabel: section.label };
+    });
+    return acc;
+}, {});
+
 const loadMusicKitScript = () => new Promise((resolve, reject) => {
     if (typeof window === 'undefined') return resolve(null);
     if (window.MusicKit) return resolve(window.MusicKit);
@@ -435,6 +540,47 @@ const isPermissionDeniedError = (error) => {
         || message.includes('403')
         || message.includes('requires an active subscription')
     );
+};
+
+const isDirectChatMessage = (message = {}) => (
+    !!message?.toHost
+    || !!message?.toUid
+    || message?.channel === 'host'
+    || message?.channel === 'dm'
+);
+
+const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
+
+const isAppCheckError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('failed-precondition')
+        && (
+            message.includes('app check')
+            || message.includes('appcheck')
+        )
+    );
+};
+
+const sleep = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const deriveBracketUiState = (room) => {
+    const bracket = room && room.karaokeBracket ? room.karaokeBracket : null;
+    const crowdVotingEnabled = !bracket || bracket.crowdVotingEnabled !== false;
+    const roundTransition = bracket && bracket.roundTransition ? bracket.roundTransition : null;
+    const showAdvancePrompt = !!(
+        roundTransition
+        && bracket
+        && bracket.status !== 'complete'
+        && !bracket.activeMatchId
+    );
+    return {
+        activeBracket: bracket,
+        bracketCrowdVotingEnabled: crowdVotingEnabled,
+        bracketRoundTransition: roundTransition,
+        bracketShowAdvancePrompt: showAdvancePrompt
+    };
 };
 
 const ROOM_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ123456789";
@@ -1098,6 +1244,841 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
     );
 };
 
+const DoodleOkeModerationPanel = ({ roomCode, room, updateRoom }) => {
+    const toast = useToast() || console.log;
+    const [submissions, setSubmissions] = useState([]);
+    const [votes, setVotes] = useState([]);
+    const [busy, setBusy] = useState(false);
+    const doodle = room?.doodleOke || null;
+    const promptId = doodle?.promptId || '';
+    const requireReview = !!doodle?.requireReview;
+    const approvedUids = useMemo(() => {
+        const ids = Array.isArray(doodle?.approvedUids) ? doodle.approvedUids : [];
+        return ids.filter(Boolean);
+    }, [doodle?.approvedUids]);
+    const approvedUidSet = useMemo(() => new Set(approvedUids), [approvedUids]);
+
+    useEffect(() => {
+        if (!roomCode || !promptId) {
+            setSubmissions([]);
+            setVotes([]);
+            return;
+        }
+        const submissionsQuery = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_submissions'),
+            where('roomCode', '==', roomCode),
+            where('promptId', '==', promptId)
+        );
+        const votesQuery = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_votes'),
+            where('roomCode', '==', roomCode),
+            where('promptId', '==', promptId)
+        );
+        const unsubSubs = onSnapshot(submissionsQuery, snap => {
+            setSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+        const unsubVotes = onSnapshot(votesQuery, snap => {
+            setVotes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+        return () => {
+            unsubSubs();
+            unsubVotes();
+        };
+    }, [roomCode, promptId]);
+
+    const voteCounts = useMemo(() => {
+        return votes.reduce((acc, vote) => {
+            acc[vote.targetUid] = (acc[vote.targetUid] || 0) + 1;
+            return acc;
+        }, {});
+    }, [votes]);
+    const sortedSubmissions = useMemo(() => {
+        return [...submissions].sort((a, b) => toMs(b.timestamp) - toMs(a.timestamp));
+    }, [submissions]);
+    const visibleCount = requireReview
+        ? sortedSubmissions.filter(submission => approvedUidSet.has(submission.uid)).length
+        : sortedSubmissions.length;
+    const pendingCount = requireReview
+        ? sortedSubmissions.filter(submission => !approvedUidSet.has(submission.uid)).length
+        : 0;
+
+    const persistDoodleSettings = async (patch = {}, successMessage = '') => {
+        if (!doodle) return;
+        setBusy(true);
+        try {
+            await updateRoom({
+                doodleOke: {
+                    ...doodle,
+                    ...patch,
+                    updatedAt: nowMs()
+                }
+            });
+            if (successMessage) toast(successMessage);
+        } catch (e) {
+            hostLogger.error('Doodle moderation update failed', e);
+            toast('Could not update Doodle settings');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const toggleRequireReview = async () => {
+        const next = !requireReview;
+        const patch = { requireReview: next };
+        if (!next) patch.approvedUids = [];
+        await persistDoodleSettings(patch, next ? 'Doodle host review enabled' : 'Doodle auto-show enabled');
+    };
+
+    const approveUid = async (uid) => {
+        if (!uid) return;
+        const next = Array.from(new Set([...approvedUids, uid]));
+        await persistDoodleSettings({ approvedUids: next }, 'Sketch approved');
+    };
+
+    const hideUid = async (uid) => {
+        if (!uid) return;
+        const next = approvedUids.filter(existingUid => existingUid !== uid);
+        await persistDoodleSettings({ approvedUids: next }, 'Sketch hidden');
+    };
+
+    const approveAll = async () => {
+        const next = Array.from(new Set(sortedSubmissions.map(submission => submission.uid).filter(Boolean)));
+        await persistDoodleSettings({ approvedUids: next }, 'All sketches approved');
+    };
+
+    const clearApprovals = async () => {
+        await persistDoodleSettings({ approvedUids: [] }, 'Approvals cleared');
+    };
+
+    return (
+        <div className={`${STYLES.panel} p-4 border border-cyan-500/20`}>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div>
+                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Doodle-oke Moderation</div>
+                    <div className="text-xl font-bold text-white">Review sketches before TV display</div>
+                </div>
+                <div className="text-xs text-zinc-400">
+                    Phase: <span className="text-zinc-200 font-bold">{doodle?.status || 'drawing'}</span>
+                </div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-zinc-950/50 px-3 py-2 text-sm text-zinc-300 mb-3">
+                Prompt: <span className="text-white">{doodle?.prompt || 'No prompt'}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+                <label className="flex items-center gap-2 text-sm text-zinc-300">
+                    <input
+                        type="checkbox"
+                        checked={requireReview}
+                        onChange={toggleRequireReview}
+                        disabled={busy}
+                    />
+                    Require host review before showing on TV
+                </label>
+                <button
+                    onClick={approveAll}
+                    disabled={busy || !sortedSubmissions.length}
+                    className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs px-3 py-1 ${(busy || !sortedSubmissions.length) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                    Approve all
+                </button>
+                <button
+                    onClick={clearApprovals}
+                    disabled={busy || !approvedUids.length}
+                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs px-3 py-1 ${(busy || !approvedUids.length) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                    Clear approvals
+                </button>
+            </div>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="rounded-xl border border-white/10 bg-zinc-900/70 p-3">
+                    <div className="text-xs uppercase tracking-widest text-zinc-500">Submitted</div>
+                    <div className="text-2xl font-bold text-white mt-1">{sortedSubmissions.length}</div>
+                </div>
+                <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-3">
+                    <div className="text-xs uppercase tracking-widest text-zinc-500">Visible on TV</div>
+                    <div className="text-2xl font-bold text-cyan-300 mt-1">{visibleCount}</div>
+                </div>
+                <div className="rounded-xl border border-amber-400/20 bg-amber-500/5 p-3">
+                    <div className="text-xs uppercase tracking-widest text-zinc-500">Pending review</div>
+                    <div className="text-2xl font-bold text-amber-300 mt-1">{pendingCount}</div>
+                </div>
+            </div>
+            {!requireReview && (
+                <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200 mb-3">
+                    Auto-show is ON. Sketches are immediately visible on TV and in voting.
+                </div>
+            )}
+            <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 max-h-64 overflow-y-auto custom-scrollbar pr-1">
+                {sortedSubmissions.map((submission) => {
+                    const isApproved = approvedUidSet.has(submission.uid);
+                    return (
+                        <div key={submission.id} className="rounded-xl border border-zinc-700 bg-zinc-900/70 overflow-hidden">
+                            <img src={submission.image} alt={submission.name || 'Sketch'} className="w-full h-28 object-contain bg-zinc-950" />
+                            <div className="p-2 text-xs text-zinc-300 space-y-1">
+                                <div className="font-bold truncate">{submission.avatar ? `${submission.avatar} ` : ''}{submission.name || 'Guest'}</div>
+                                <div className="text-zinc-500">Votes: {voteCounts[submission.uid] || 0}</div>
+                                {requireReview ? (
+                                    <button
+                                        onClick={() => (isApproved ? hideUid(submission.uid) : approveUid(submission.uid))}
+                                        disabled={busy}
+                                        className={`${STYLES.btnStd} ${isApproved ? STYLES.btnHighlight : STYLES.btnNeutral} w-full text-[10px] py-1 ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    >
+                                        {isApproved ? 'Visible' : 'Approve'}
+                                    </button>
+                                ) : (
+                                    <div className="text-[10px] text-emerald-300">Auto visible</div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+                {!sortedSubmissions.length && (
+                    <div className="col-span-full text-center text-zinc-500 text-sm py-8">
+                        No sketches submitted yet.
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, appBase }) => {
+    const toast = useToast() || console.log;
+    const [doodleSubmissions, setDoodleSubmissions] = useState([]);
+    const [selfieSubmissions, setSelfieSubmissions] = useState([]);
+    const [busy, setBusy] = useState(false);
+    const interactionTimerRef = useRef(null);
+    const activeMode = room?.activeMode || 'karaoke';
+    const doodle = room?.doodleOke || null;
+    const selfie = room?.selfieChallenge || null;
+    const doodlePromptId = doodle?.promptId || '';
+    const selfiePromptId = selfie?.promptId || '';
+    const doodleRequireReview = !!doodle?.requireReview;
+    const doodleApprovedUids = useMemo(() => {
+        const ids = Array.isArray(doodle?.approvedUids) ? doodle.approvedUids : [];
+        return ids.filter(Boolean);
+    }, [doodle?.approvedUids]);
+    const doodleApprovedSet = useMemo(() => new Set(doodleApprovedUids), [doodleApprovedUids]);
+    const modeLabel = {
+        doodle_oke: 'Doodle-oke',
+        selfie_challenge: 'Selfie Challenge',
+        karaoke_bracket: 'Karaoke Bracket',
+        bingo: 'Bingo',
+        trivia_pop: 'Trivia Pop',
+        wyr: 'Would You Rather',
+        riding_scales: 'Riding Scales',
+        flappy_bird: 'Flappy Bird',
+        vocal_challenge: 'Vocal Challenge',
+        applause: 'Applause Meter',
+        applause_countdown: 'Applause Countdown',
+        applause_result: 'Applause Result'
+    }[activeMode] || activeMode;
+
+    useEffect(() => () => {
+        if (interactionTimerRef.current) {
+            clearTimeout(interactionTimerRef.current);
+            interactionTimerRef.current = null;
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeMode !== 'doodle_oke' || !roomCode || !doodlePromptId) {
+            setDoodleSubmissions([]);
+            return;
+        }
+        const q = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_submissions'),
+            where('roomCode', '==', roomCode),
+            where('promptId', '==', doodlePromptId)
+        );
+        return onSnapshot(q, (snap) => {
+            const docs = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+            docs.sort((a, b) => toMs(b.timestamp) - toMs(a.timestamp));
+            setDoodleSubmissions(docs);
+        });
+    }, [activeMode, roomCode, doodlePromptId]);
+
+    useEffect(() => {
+        if (activeMode !== 'selfie_challenge' || !roomCode || !selfiePromptId) {
+            setSelfieSubmissions([]);
+            return;
+        }
+        const q = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'),
+            where('roomCode', '==', roomCode),
+            where('promptId', '==', selfiePromptId)
+        );
+        return onSnapshot(q, (snap) => {
+            const docs = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+            docs.sort((a, b) => toMs(b.timestamp) - toMs(a.timestamp));
+            setSelfieSubmissions(docs);
+        });
+    }, [activeMode, roomCode, selfiePromptId]);
+
+    const doodleVisibleCount = doodleRequireReview
+        ? doodleSubmissions.filter((submission) => doodleApprovedSet.has(submission.uid)).length
+        : doodleSubmissions.length;
+    const doodlePendingCount = doodleRequireReview
+        ? doodleSubmissions.filter((submission) => !doodleApprovedSet.has(submission.uid)).length
+        : 0;
+    const selfieApprovedCount = selfie?.requireApproval
+        ? selfieSubmissions.filter((submission) => submission.approved).length
+        : selfieSubmissions.length;
+    const selfiePendingCount = selfie?.requireApproval
+        ? Math.max(0, selfieSubmissions.length - selfieApprovedCount)
+        : 0;
+
+    const patchDoodle = async (patch = {}, message = '') => {
+        if (!doodle) return;
+        setBusy(true);
+        try {
+            await updateRoom({
+                doodleOke: {
+                    ...doodle,
+                    ...patch,
+                    updatedAt: nowMs()
+                }
+            });
+            if (message) toast(message);
+        } catch (err) {
+            hostLogger.error('Host controlpad doodle patch failed', err);
+            toast('Could not update Doodle settings');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const patchSelfie = async (patch = {}, message = '') => {
+        if (!selfie) return;
+        setBusy(true);
+        try {
+            await updateRoom({
+                selfieChallenge: {
+                    ...selfie,
+                    ...patch
+                }
+            });
+            if (message) toast(message);
+        } catch (err) {
+            hostLogger.error('Host controlpad selfie patch failed', err);
+            toast('Could not update Selfie settings');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const toggleDoodleReview = async () => {
+        const next = !doodleRequireReview;
+        const patch = { requireReview: next };
+        if (!next) patch.approvedUids = [];
+        await patchDoodle(patch, next ? 'Host review enabled' : 'Auto-show enabled');
+    };
+
+    const approveDoodleUid = async (uid) => {
+        if (!uid) return;
+        const next = Array.from(new Set([...doodleApprovedUids, uid]));
+        await patchDoodle({ approvedUids: next }, 'Sketch approved for TV');
+    };
+
+    const hideDoodleUid = async (uid) => {
+        if (!uid) return;
+        const next = doodleApprovedUids.filter((existingUid) => existingUid !== uid);
+        await patchDoodle({ approvedUids: next }, 'Sketch hidden from TV');
+    };
+
+    const approveAllDoodles = async () => {
+        const next = Array.from(new Set(doodleSubmissions.map((submission) => submission.uid).filter(Boolean)));
+        await patchDoodle({ approvedUids: next }, 'All sketches approved');
+    };
+
+    const clearDoodleApprovals = async () => {
+        await patchDoodle({ approvedUids: [] }, 'Approvals cleared');
+    };
+
+    const openTv = () => {
+        if (!roomCode) return;
+        window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer');
+    };
+
+    const closeGameMode = async () => {
+        try {
+            await updateRoom({ activeMode: 'karaoke' });
+            toast('Returned to karaoke mode');
+        } catch (err) {
+            hostLogger.error('Host controlpad close mode failed', err);
+            toast('Could not close game mode');
+        }
+    };
+
+    const logHostInteraction = async (text) => {
+        if (!roomCode || !text) return;
+        try {
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
+                roomCode,
+                user: 'HOST',
+                text,
+                icon: 'GAME',
+                timestamp: serverTimestamp()
+            });
+        } catch (err) {
+            hostLogger.debug('Host controlpad activity log failed', err);
+        }
+    };
+
+    const triggerTemporaryLightMode = async (mode, durationMs = 9000) => {
+        const safeDuration = Math.max(3000, Number(durationMs || 9000));
+        if (interactionTimerRef.current) {
+            clearTimeout(interactionTimerRef.current);
+            interactionTimerRef.current = null;
+        }
+        await updateRoom({ lightMode: mode });
+        interactionTimerRef.current = setTimeout(() => {
+            updateRoom({ lightMode: 'off' }).catch((err) => hostLogger.debug('Light mode reset failed', err));
+            interactionTimerRef.current = null;
+        }, safeDuration);
+    };
+
+    const modeInteractionConfig = {
+        doodle_oke: {
+            icon: 'fa-pencil',
+            label: doodle?.status === 'drawing'
+                ? 'Drop The Pencil'
+                : doodle?.status === 'voting'
+                    ? 'Reveal Prompt'
+                    : 'Encore Doodle',
+            description: doodle?.status === 'drawing'
+                ? 'Force all sketches into voting now.'
+                : doodle?.status === 'voting'
+                    ? 'Reveal the lyric prompt immediately.'
+                    : 'Start a fresh encore doodle round.'
+        },
+        selfie_challenge: {
+            icon: 'fa-camera-retro',
+            label: 'Photo Bomb TV',
+            description: 'Throw a random selfie submission onto TV.'
+        },
+        bingo: {
+            icon: 'fa-crosshairs',
+            label: 'Mystery Spotlight',
+            description: 'Highlight a random bingo tile on TV.'
+        },
+        trivia_pop: {
+            icon: 'fa-lightbulb',
+            label: 'Reveal Answer',
+            description: 'Flip trivia into reveal mode.'
+        },
+        trivia_reveal: {
+            icon: 'fa-rotate-left',
+            label: 'Back To Voting',
+            description: 'Return trivia to voting mode.'
+        },
+        wyr: {
+            icon: 'fa-chart-pie',
+            label: 'Reveal Crowd Split',
+            description: 'Flip WYR into reveal mode.'
+        },
+        wyr_reveal: {
+            icon: 'fa-rotate-left',
+            label: 'Back To Voting',
+            description: 'Return WYR to voting mode.'
+        },
+        karaoke_bracket: {
+            icon: 'fa-bolt',
+            label: 'Bracket Hype Drop',
+            description: 'Trigger a bracket bonus drop + crowd vote pulse.'
+        },
+        flappy_bird: {
+            icon: 'fa-feather-pointed',
+            label: 'Bird Blitz FX',
+            description: 'Hit the room with a strobe burst.'
+        },
+        vocal_challenge: {
+            icon: 'fa-wave-square',
+            label: 'Power Note Aura',
+            description: 'Trigger a temporary ballad glow.'
+        },
+        riding_scales: {
+            icon: 'fa-cloud-bolt',
+            label: 'Scale Storm',
+            description: 'Trigger storm lighting during the round.'
+        },
+        applause: {
+            icon: 'fa-hands-clapping',
+            label: 'Crowd Surge',
+            description: 'Drop a crowd bonus and hype pulse.'
+        },
+        applause_countdown: {
+            icon: 'fa-hands-clapping',
+            label: 'Crowd Surge',
+            description: 'Drop a crowd bonus and hype pulse.'
+        },
+        applause_result: {
+            icon: 'fa-hands-clapping',
+            label: 'Crowd Surge',
+            description: 'Drop a crowd bonus and hype pulse.'
+        }
+    }[activeMode] || {
+        icon: 'fa-wand-magic-sparkles',
+        label: 'Host Boost',
+        description: 'Trigger a quick hype burst.'
+    };
+
+    const runModeInteraction = async () => {
+        if (busy) return;
+        setBusy(true);
+        try {
+            if (activeMode === 'doodle_oke' && doodle) {
+                const phase = doodle?.status || 'drawing';
+                if (phase === 'drawing') {
+                    await updateRoom({ doodleOke: { ...doodle, status: 'voting', endsAt: nowMs() - 1, updatedAt: nowMs() } });
+                    toast('Drawing locked. Voting is now live.');
+                } else if (phase === 'voting') {
+                    await updateRoom({ doodleOke: { ...doodle, status: 'reveal', guessEndsAt: nowMs() - 1, updatedAt: nowMs() } });
+                    toast('Prompt revealed.');
+                } else {
+                    const cfg = room?.doodleOkeConfig || {};
+                    const prompts = Array.isArray(cfg.prompts) ? cfg.prompts.filter(Boolean) : [];
+                    const durationMs = Math.max(10000, Number(cfg.durationMs || doodle?.durationMs || 45000));
+                    const guessMs = Math.max(5000, Number(cfg.guessMs || doodle?.guessMs || 12000));
+                    const now = nowMs();
+                    const prompt = prompts.length
+                        ? prompts[Math.floor(Math.random() * prompts.length)]
+                        : (doodle?.prompt || 'Encore doodle');
+                    const promptId = `${now}_${Math.random().toString(36).slice(2, 7)}`;
+                    await updateRoom({
+                        doodleOke: {
+                            ...doodle,
+                            status: 'drawing',
+                            prompt,
+                            promptId,
+                            startedAt: now,
+                            endsAt: now + durationMs,
+                            guessEndsAt: now + durationMs + guessMs,
+                            winner: null,
+                            winnerAwardedAt: null,
+                            approvedUids: [],
+                            updatedAt: now
+                        }
+                    });
+                    toast('Encore doodle round started.');
+                }
+                await logHostInteraction('triggered a Doodle-oke host move.');
+                return;
+            }
+
+            if (activeMode === 'selfie_challenge' && selfie) {
+                const pool = selfie?.requireApproval
+                    ? selfieSubmissions.filter((submission) => submission.approved)
+                    : selfieSubmissions;
+                if (!pool.length) {
+                    toast('No selfie submissions available yet.');
+                    return;
+                }
+                const pick = pool[Math.floor(Math.random() * pool.length)];
+                await updateRoom({
+                    photoOverlay: {
+                        url: pick.url,
+                        userName: pick.userName || pick.name || 'Guest',
+                        mode: 'selfie_challenge',
+                        copy: 'Host spotlight pick',
+                        timestamp: nowMs()
+                    }
+                });
+                toast('Photo bomb sent to TV.');
+                await logHostInteraction('launched a selfie photo bomb.');
+                return;
+            }
+
+            if (activeMode === 'bingo') {
+                const tiles = Array.isArray(room?.bingoData) ? room.bingoData : [];
+                const revealed = room?.bingoRevealed || {};
+                const candidates = tiles
+                    .map((tile, idx) => ({ tile, idx }))
+                    .filter(({ tile, idx }) => !revealed?.[idx] && !tile?.free);
+                if (!candidates.length) {
+                    toast('No eligible bingo tiles to spotlight.');
+                    return;
+                }
+                const mysteryCandidates = room?.bingoMode === 'mystery'
+                    ? candidates.filter(({ tile }) => tile?.type === 'mystery' || tile?.content)
+                    : [];
+                const source = mysteryCandidates.length ? mysteryCandidates : candidates;
+                const selected = source[Math.floor(Math.random() * source.length)];
+                await updateRoom({
+                    highlightedTile: selected.idx,
+                    bingoFocus: {
+                        index: selected.idx,
+                        pickerUid: 'host_controlpad',
+                        pickerName: 'Host Spotlight',
+                        at: serverTimestamp()
+                    }
+                });
+                toast(`Spotlighted tile #${selected.idx + 1}.`);
+                await logHostInteraction('spotlighted a bingo tile.');
+                return;
+            }
+
+            if (activeMode === 'trivia_pop' || activeMode === 'trivia_reveal') {
+                const toReveal = activeMode === 'trivia_pop';
+                await updateRoom({
+                    activeMode: toReveal ? 'trivia_reveal' : 'trivia_pop',
+                    triviaQuestion: {
+                        ...(room?.triviaQuestion || {}),
+                        status: toReveal ? 'reveal' : 'live',
+                        revealedAt: toReveal ? nowMs() : null
+                    }
+                });
+                toast(toReveal ? 'Trivia answer revealed.' : 'Trivia voting resumed.');
+                await logHostInteraction(toReveal ? 'revealed the trivia answer.' : 'reopened trivia voting.');
+                return;
+            }
+
+            if (activeMode === 'wyr' || activeMode === 'wyr_reveal') {
+                const toReveal = activeMode === 'wyr';
+                await updateRoom({
+                    activeMode: toReveal ? 'wyr_reveal' : 'wyr',
+                    wyrData: {
+                        ...(room?.wyrData || {}),
+                        status: toReveal ? 'reveal' : 'live',
+                        revealedAt: toReveal ? nowMs() : null
+                    }
+                });
+                toast(toReveal ? 'WYR results revealed.' : 'WYR voting resumed.');
+                await logHostInteraction(toReveal ? 'revealed the WYR split.' : 'reopened WYR voting.');
+                return;
+            }
+
+            if (activeMode === 'karaoke_bracket') {
+                await updateRoom({
+                    bonusDrop: { id: nowMs(), points: 75, by: 'Bracket Hype' },
+                    karaokeBracket: {
+                        ...(room?.karaokeBracket || {}),
+                        crowdVotingEnabled: true
+                    }
+                });
+                toast('Bracket hype drop sent (+75).');
+                await logHostInteraction('triggered a bracket hype drop.');
+                return;
+            }
+
+            if (activeMode === 'flappy_bird') {
+                const now = nowMs();
+                await updateRoom({
+                    lightMode: 'strobe',
+                    strobeSessionId: `host_fx_${now}`,
+                    strobeCountdownUntil: now,
+                    strobeEndsAt: now + 7000,
+                    strobeResults: null
+                });
+                toast('Bird Blitz FX triggered.');
+                await logHostInteraction('triggered Bird Blitz FX.');
+                return;
+            }
+
+            if (activeMode === 'vocal_challenge') {
+                await triggerTemporaryLightMode('ballad', 9000);
+                toast('Power Note Aura triggered.');
+                await logHostInteraction('triggered Power Note Aura.');
+                return;
+            }
+
+            if (activeMode === 'riding_scales') {
+                const now = nowMs();
+                const totalMs = STORM_SEQUENCE.approachMs + STORM_SEQUENCE.peakMs + STORM_SEQUENCE.passMs + STORM_SEQUENCE.clearMs;
+                await updateRoom({
+                    lightMode: 'storm',
+                    stormStartedAt: now,
+                    stormPhase: 'approach',
+                    stormConfig: STORM_SEQUENCE,
+                    stormEndsAt: now + totalMs
+                });
+                toast('Scale Storm triggered.');
+                await logHostInteraction('triggered Scale Storm FX.');
+                return;
+            }
+
+            if (['applause', 'applause_countdown', 'applause_result'].includes(activeMode)) {
+                await updateRoom({ bonusDrop: { id: nowMs(), points: 50, by: 'Crowd Surge' } });
+                toast('Crowd Surge drop sent.');
+                await logHostInteraction('triggered a crowd surge drop.');
+                return;
+            }
+
+            await updateRoom({ bonusDrop: { id: nowMs(), points: 35, by: 'Host Boost' } });
+            toast('Host boost sent.');
+            await logHostInteraction('triggered a host boost.');
+        } catch (err) {
+            hostLogger.error('Host controlpad mode interaction failed', err);
+            toast('Could not trigger host interaction');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    if (!activeMode || activeMode === 'karaoke') return null;
+
+    const isDoodle = activeMode === 'doodle_oke';
+    const isSelfie = activeMode === 'selfie_challenge';
+    const controlpadHint = isDoodle
+        ? (doodleRequireReview
+            ? (doodlePendingCount > 0
+                ? `Next action: approve sketches to show them on TV (${doodlePendingCount} pending).`
+                : 'No pending sketches. Approved sketches are live on TV.')
+            : 'Auto-show is ON. New sketches appear on TV immediately.')
+        : isSelfie
+            ? (selfie?.requireApproval
+                ? `Next action: approve submissions so they appear in voting (${selfiePendingCount} pending).`
+                : 'Auto-show is ON. Submissions go straight into voting.')
+            : modeInteractionConfig.description;
+
+    return (
+        <div className={`${STYLES.panel} mb-4 border border-[#00C4D9]/35 bg-gradient-to-r from-zinc-950/95 via-[#0f1828]/95 to-[#211025]/95`}>
+            <div className="p-4 flex flex-col gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Host Controlpad</div>
+                        <div className="text-2xl font-bebas text-cyan-300 mt-1">{modeLabel} Live</div>
+                        <div className="text-sm text-zinc-200 mt-1">{controlpadHint}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            onClick={runModeInteraction}
+                            disabled={busy}
+                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            title={modeInteractionConfig.description}
+                        >
+                            <i className={`fa-solid ${modeInteractionConfig.icon} mr-1`}></i> {modeInteractionConfig.label}
+                        </button>
+                        <button onClick={() => setTab('games')} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs`}>
+                            <i className="fa-solid fa-gamepad mr-1"></i> Games
+                        </button>
+                        <button onClick={() => setTab('stage')} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs`}>
+                            <i className="fa-solid fa-sliders mr-1"></i> Crowd FX
+                        </button>
+                        <button onClick={openTv} className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-1 text-xs`}>
+                            <i className="fa-solid fa-tv mr-1"></i> Open TV
+                        </button>
+                        <button onClick={closeGameMode} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs`}>
+                            <i className="fa-solid fa-xmark mr-1"></i> End Mode
+                        </button>
+                    </div>
+                </div>
+
+                {isDoodle && (
+                    <>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-zinc-500">Phase</div>
+                                <div className="text-sm font-bold text-white mt-1">{doodle?.status || 'drawing'}</div>
+                            </div>
+                            <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-zinc-500">Submitted</div>
+                                <div className="text-sm font-bold text-white mt-1">{doodleSubmissions.length}</div>
+                            </div>
+                            <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-zinc-500">Visible on TV</div>
+                                <div className="text-sm font-bold text-cyan-200 mt-1">{doodleVisibleCount}</div>
+                            </div>
+                            <div className="rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-zinc-500">Pending Review</div>
+                                <div className="text-sm font-bold text-amber-200 mt-1">{doodlePendingCount}</div>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                onClick={toggleDoodleReview}
+                                disabled={busy}
+                                className={`${STYLES.btnStd} ${doodleRequireReview ? STYLES.btnSecondary : STYLES.btnHighlight} px-3 py-1 text-xs ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                {doodleRequireReview ? 'Switch to Auto-show' : 'Require Host Review'}
+                            </button>
+                            <button
+                                onClick={approveAllDoodles}
+                                disabled={busy || !doodleSubmissions.length}
+                                className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-1 text-xs ${(busy || !doodleSubmissions.length) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                Approve All
+                            </button>
+                            <button
+                                onClick={clearDoodleApprovals}
+                                disabled={busy || !doodleApprovedUids.length}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs ${(busy || !doodleApprovedUids.length) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                Hide Approved
+                            </button>
+                        </div>
+                        {doodleSubmissions.length > 0 && (
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                {doodleSubmissions.slice(0, 4).map((submission) => {
+                                    const isApproved = doodleApprovedSet.has(submission.uid);
+                                    return (
+                                        <div key={submission.id} className="rounded-xl border border-zinc-700 bg-zinc-900/70 overflow-hidden">
+                                            <img src={submission.image} alt={submission.name || 'Sketch'} className="w-full h-20 object-contain bg-zinc-950" />
+                                            <div className="px-2 py-1.5 text-[11px] text-zinc-300">
+                                                <div className="truncate font-bold">{submission.name || 'Guest'}</div>
+                                                {doodleRequireReview ? (
+                                                    <button
+                                                        onClick={() => (isApproved ? hideDoodleUid(submission.uid) : approveDoodleUid(submission.uid))}
+                                                        disabled={busy}
+                                                        className={`${STYLES.btnStd} ${isApproved ? STYLES.btnHighlight : STYLES.btnNeutral} mt-1 w-full text-[10px] py-1 ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {isApproved ? 'Visible' : 'Approve'}
+                                                    </button>
+                                                ) : (
+                                                    <div className="text-emerald-300 mt-1">Auto visible</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {isSelfie && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Status</div>
+                            <div className="text-sm font-bold text-white mt-1">{selfie?.status || 'collecting'}</div>
+                        </div>
+                        <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Submitted</div>
+                            <div className="text-sm font-bold text-white mt-1">{selfieSubmissions.length}</div>
+                        </div>
+                        <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-3 py-2">
+                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Visible</div>
+                            <div className="text-sm font-bold text-cyan-200 mt-1">{selfieApprovedCount}</div>
+                        </div>
+                        <div className="rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-2">
+                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Pending</div>
+                            <div className="text-sm font-bold text-amber-200 mt-1">{selfiePendingCount}</div>
+                        </div>
+                        <div className="md:col-span-4 flex flex-wrap gap-2 mt-1">
+                            <button
+                                onClick={() => patchSelfie({ requireApproval: !selfie?.requireApproval }, selfie?.requireApproval ? 'Auto-show enabled' : 'Host approval enabled')}
+                                disabled={busy || !selfie}
+                                className={`${STYLES.btnStd} ${selfie?.requireApproval ? STYLES.btnSecondary : STYLES.btnHighlight} px-3 py-1 text-xs ${(busy || !selfie) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                {selfie?.requireApproval ? 'Switch to Auto-show' : 'Require Host Approval'}
+                            </button>
+                            {selfie?.status === 'collecting' && (
+                                <button
+                                    onClick={() => patchSelfie({ status: 'voting' }, 'Voting started')}
+                                    disabled={busy || !selfie}
+                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-1 text-xs ${(busy || !selfie) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    Start Voting
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 // --- GALLERY TAB ---
 const GalleryTab = ({ roomCode, room, updateRoom }) => {
     const [photos, setPhotos] = useState([]);
@@ -1406,8 +2387,8 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
     const commandInputRef = useRef(null);
     const [commandOpen, setCommandOpen] = useState(false);
     const [commandQuery, setCommandQuery] = useState('');
-    const roomChatMessages = chatMessages.filter(msg => !msg.toHost);
-    const hostDmMessages = chatMessages.filter(msg => msg.toHost || msg.toUid);
+    const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
+    const hostDmMessages = chatMessages.filter((msg) => isDirectChatMessage(msg));
     const {
         current,
         hasLyrics,
@@ -2243,8 +3224,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     </div>
                 </div>
             )}
-            /* eslint-enable react-hooks/refs */
-
             <div className={`${STYLES.panel} px-3 py-2 border border-white/10 bg-black/25`}>
                 <div className="flex flex-wrap items-center gap-2">
                     <div className="text-[11px] uppercase tracking-[0.25em] text-zinc-400 mr-2">Quick Actions</div>
@@ -2855,13 +3834,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const lobbyTotalEmojis = users.reduce((sum, u) => sum + (u.totalEmojis || 0), 0);
     const queuedCount = useMemo(() => songs.filter(s => s.status === 'requested').length, [songs]);
     const performingCount = useMemo(() => songs.filter(s => s.status === 'performing').length, [songs]);
-    const activeBracket = room?.karaokeBracket || null;
-    const bracketCrowdVotingEnabled = activeBracket?.crowdVotingEnabled !== false;
-    const bracketRoundTransition = activeBracket?.roundTransition || null;
-    const bracketShowAdvancePrompt = !!bracketRoundTransition && activeBracket?.status !== 'complete' && !activeBracket?.activeMatchId;
-    const bracketNoShowCountdownSec = bracketNoShow?.deadlineMs
-        ? Math.max(0, Math.ceil((bracketNoShow.deadlineMs - bracketNoShowNow) / 1000))
-        : 0;
+    const {
+        activeBracket,
+        bracketCrowdVotingEnabled,
+        bracketShowAdvancePrompt
+    } = useMemo(() => deriveBracketUiState(room), [room]);
     const [tipSettings, setTipSettings] = useState({ link: '', qr: '' });
     const [tipCrates, setTipCrates] = useState(DEFAULT_TIP_CRATES);
     const [catalogueName, setCatalogueName] = useState('');
@@ -2906,6 +3883,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const localUploadsRef = useRef([]);
     const [showSettings, setShowSettings] = useState(false);
     const [settingsTab, setSettingsTab] = useState('general');
+    const [settingsNavQuery, setSettingsNavQuery] = useState('');
+    const [settingsNavOpen, setSettingsNavOpen] = useState(false);
+    useEffect(() => {
+        if (!showSettings) setSettingsNavOpen(false);
+    }, [showSettings]);
     const hallOfFameTimerRef = useRef(null);
     const [smokeRunning, setSmokeRunning] = useState(false);
     const [smokeResults, setSmokeResults] = useState([]);
@@ -2923,7 +3905,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [logoUploading, setLogoUploading] = useState(false);
     const [logoUploadProgress, setLogoUploadProgress] = useState(0);
     const logoInputRef = useRef(null);
-    const autoJoinAttemptedRef = useRef(false);
+    const autoJoinAttemptKeyRef = useRef('');
     const [marqueeEnabled, setMarqueeEnabled] = useState(false);
     const [marqueeDurationSec, setMarqueeDurationSec] = useState(12);
     const [marqueeIntervalSec, setMarqueeIntervalSec] = useState(20);
@@ -2964,6 +3946,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [bracketBusy, setBracketBusy] = useState(false);
     const [bracketNoShow, setBracketNoShow] = useState(null);
     const [bracketNoShowNow, setBracketNoShowNow] = useState(nowMs());
+    const bracketNoShowCountdownSec = bracketNoShow?.deadlineMs
+        ? Math.max(0, Math.ceil((bracketNoShow.deadlineMs - bracketNoShowNow) / 1000))
+        : 0;
     const bracketNoShowTimeoutRef = useRef(null);
     const bracketNoShowTickRef = useRef(null);
     const forfeitBracketContestantRef = useRef(null);
@@ -2987,6 +3972,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [tipAmount, setTipAmount] = useState('');
     const [creatingRoom, setCreatingRoom] = useState(false);
     const [joiningRoom, setJoiningRoom] = useState(false);
+    const [entryError, setEntryError] = useState('');
     const [orgContext, setOrgContext] = useState({
         orgId: '',
         role: 'owner',
@@ -3133,6 +4119,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setOrgContext(prev => ({ ...prev, loading: true, error: '' }));
             setUsageSummary(prev => ({ ...prev, loading: true, error: '' }));
             try {
+                const appCheckReady = await ensureAppCheckToken(false);
+                if (!appCheckReady) {
+                    if (cancelled) return;
+                    setOrgContext(prev => ({ ...prev, loading: false, error: 'Billing temporarily unavailable. Reload in a moment.' }));
+                    setUsageSummary(prev => ({ ...prev, loading: false, error: '' }));
+                    setInvoiceHistory([]);
+                    return;
+                }
                 await ensureOrganization('');
                 const entitlements = await getMyEntitlements();
                 const usage = await getMyUsageSummary(selectedUsagePeriod);
@@ -3172,10 +4166,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 });
                 setInvoiceHistory(invoiceItems);
             } catch (e) {
-                hostLogger.error('Failed to sync org entitlements', e);
                 if (cancelled) return;
-                setOrgContext(prev => ({ ...prev, loading: false, error: 'Could not load subscription entitlements.' }));
-                setUsageSummary(prev => ({ ...prev, loading: false, error: 'Could not load usage summary.' }));
+                if (isAppCheckError(e)) {
+                    hostLogger.debug('Org entitlements waiting on App Check', e);
+                    setOrgContext(prev => ({ ...prev, loading: false, error: 'Billing temporarily unavailable. Reload in a moment.' }));
+                    setUsageSummary(prev => ({ ...prev, loading: false, error: '' }));
+                    setInvoiceHistory([]);
+                } else {
+                    hostLogger.error('Failed to sync org entitlements', e);
+                    setOrgContext(prev => ({ ...prev, loading: false, error: 'Could not load subscription entitlements.' }));
+                    setUsageSummary(prev => ({ ...prev, loading: false, error: 'Could not load usage summary.' }));
+                }
             }
         })();
         return () => { cancelled = true; };
@@ -3306,8 +4307,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         hostName,
         toast
     });
-    const roomChatMessages = chatMessages.filter(msg => !msg.toHost);
-    const hostDmMessages = chatMessages.filter(msg => msg.toHost || msg.toUid);
+    const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
+    const hostDmMessages = chatMessages.filter((msg) => isDirectChatMessage(msg));
 
     const currentSong = songs.find(s => s.status === 'performing');
     const queuedSongs = songs.filter(s => s.status === 'requested' || s.status === 'pending');
@@ -3879,7 +4880,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!playlistId) return;
         const playback = room?.appleMusicPlayback || {};
         if (playback.type === 'playlist' && playback.id === playlistId && playback.status === 'playing') return;
-        playAppleMusicPlaylist(playlistId, { title: room?.appleMusicAutoPlaylistTitle || '' });
+        playAppleMusicPlaylist(playlistId, { title: room?.appleMusicAutoPlaylistTitle || '' })
+            .catch((error) => {
+                hostLogger.warn('Auto DJ failed to start Apple Music playlist', error);
+            });
     }, [room?.autoDj, queuedCount, performingCount, room?.appleMusicAutoPlaylistId, room?.appleMusicAutoPlaylistTitle, room?.appleMusicPlayback?.status, room?.appleMusicPlayback, playAppleMusicPlaylist]);
     useEffect(() => {
         return () => {
@@ -3942,18 +4946,36 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const ensureActiveUid = async () => {
         let activeUid = auth.currentUser?.uid || uid || null;
+
+        if (activeUid) return activeUid;
+
+        let lastError = null;
+
         if (!activeUid && typeof retryAuth === 'function') {
-            await retryAuth();
-            activeUid = auth.currentUser?.uid || null;
-        }
-        if (!activeUid) {
-            const authResult = await initAuth();
-            if (!authResult?.ok) {
-                throw authResult?.error || new Error('Auth initialization failed');
+            try {
+                await retryAuth();
+                activeUid = auth.currentUser?.uid || null;
+            } catch (error) {
+                lastError = error;
             }
-            activeUid = auth.currentUser?.uid || null;
         }
-        return activeUid;
+
+        if (activeUid) return activeUid;
+
+        // Retry auth bootstrap a couple times to survive transient network/startup races.
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            const authResult = await initAuth();
+            if (authResult?.ok) {
+                activeUid = auth.currentUser?.uid || null;
+                if (activeUid) return activeUid;
+            } else {
+                lastError = authResult?.error || lastError;
+            }
+            if (attempt < 1) await sleep(300);
+        }
+
+        if (lastError) throw lastError;
+        return null;
     };
 
     const syncOrgContextFromEntitlements = (entitlements = {}) => {
@@ -4057,20 +5079,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const code = (candidateCode || roomCodeInput || '').trim().toUpperCase();
         if (!code) {
             toast('Enter a room code first');
+            setEntryError('Enter a room code first.');
             return;
         }
 
         setJoiningRoom(true);
+        setEntryError('');
         try {
             const activeUid = await ensureActiveUid();
             if (!activeUid) {
                 toast('Could not establish auth. Please retry.');
+                setEntryError('Could not establish auth. Retry and join again.');
                 return;
             }
             const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', code);
             const roomSnap = await getDoc(roomRef);
             if (!roomSnap.exists()) {
                 toast(`Room ${code} not found`);
+                setEntryError(`Room ${code} not found.`);
                 return;
             }
 
@@ -4081,10 +5107,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const code = e?.code || '';
             if (code.includes('permission-denied')) {
                 toast('Permission denied while opening room. Re-authenticate and try again.');
+                setEntryError('Permission denied while opening room. Re-authenticate and try again.');
             } else if (code.includes('unauthenticated')) {
                 toast('You are signed out. Please retry auth, then open room again.');
+                setEntryError('You are signed out. Retry auth, then open room again.');
+            } else if (code.includes('unavailable') || code.includes('network')) {
+                toast('Network issue while opening room. Please retry.');
+                setEntryError('Network issue while opening room. Please retry.');
             } else {
                 toast(`Failed to open room${code ? ` (${code})` : ''}`);
+                setEntryError(`Failed to open room${code ? ` (${code})` : ''}.`);
             }
         } finally {
             setJoiningRoom(false);
@@ -4100,10 +5132,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const nextOrgName = orgNameOverride || `${nextHostName} Workspace`;
         const nextLogoUrl = logoUrlOverride || (logoUrl || '').trim() || ASSETS.logo;
         setCreatingRoom(true);
+        setEntryError('');
         try {
             const activeUid = await ensureActiveUid();
             if (!activeUid) {
                 toast('Could not establish auth. Please retry.');
+                setEntryError('Could not establish auth. Retry and create room again.');
                 return;
             }
             setHostName(nextHostName);
@@ -4123,6 +5157,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
             if (!c) {
                 toast('Room code collision. Please try again.');
+                setEntryError('Room code collision. Please try again.');
                 return;
             }
 
@@ -4225,10 +5260,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const code = e?.code || '';
             if (code.includes('permission-denied')) {
                 toast('Permission denied while creating room. Re-authenticate and try again.');
+                setEntryError('Permission denied while creating room. Re-authenticate and try again.');
             } else if (code.includes('unauthenticated')) {
                 toast('You are signed out. Please retry auth, then create room again.');
+                setEntryError('You are signed out. Retry auth, then create room again.');
+            } else if (code.includes('unavailable') || code.includes('network')) {
+                toast('Network issue while creating room. Please retry.');
+                setEntryError('Network issue while creating room. Please retry.');
             } else {
                 toast(`Failed to create room${code ? ` (${code})` : ''}`);
+                setEntryError(`Failed to create room${code ? ` (${code})` : ''}.`);
             }
         } finally {
             setCreatingRoom(false);
@@ -4236,12 +5277,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     useEffect(() => {
-        if (!normalizedInitialCode || autoJoinAttemptedRef.current) return;
-        autoJoinAttemptedRef.current = true;
+        if (!normalizedInitialCode) return;
+        if (!uid && !authError) return;
+        const authMarker = uid || authError?.code || authError?.message || 'unknown';
+        const attemptKey = `${normalizedInitialCode}:${authMarker}`;
+        if (autoJoinAttemptKeyRef.current === attemptKey) return;
+        autoJoinAttemptKeyRef.current = attemptKey;
         setRoomCodeInput(normalizedInitialCode);
         joinRoom(normalizedInitialCode);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [normalizedInitialCode]);
+    }, [normalizedInitialCode, uid, authError]);
 
     const toggleHowToPlay = async () => {
         const active = !room?.howToPlay?.active;
@@ -5287,9 +6332,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         } catch(e) { hostLogger.error("Log error", e); }
     };
+    const selectSettingsTab = useCallback((nextTab) => {
+        setSettingsTab(nextTab);
+        if (nextTab === 'chat') markChatTabSeen();
+    }, [markChatTabSeen]);
+    const handleSettingsNavSelect = useCallback((nextTab) => {
+        selectSettingsTab(nextTab);
+        setSettingsNavOpen(false);
+    }, [selectSettingsTab]);
     const openChatSettings = () => {
         setShowSettings(true);
-        setSettingsTab('chat');
+        handleSettingsNavSelect('chat');
     };
     const refreshBillingEntitlements = async (showToast = false) => {
         setOrgContext(prev => ({ ...prev, loading: true, error: '' }));
@@ -6656,6 +7709,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     Workspace: <span className="font-mono text-zinc-300">{orgContext?.orgId || 'not-initialized'}</span>
                     {' '}| Plan: <span className="text-zinc-300">{planLabel}</span>
                 </div>
+                {entryError && (
+                    <div className="mt-3 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2">
+                        {entryError}
+                    </div>
+                )}
                 <div className="mt-6 text-xs text-zinc-500 font-mono tracking-widest">{VERSION}</div> 
             </div>
             {showOnboardingWizard && (
@@ -7002,6 +8060,95 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         </div>
     );
 
+    const doodleModerationState = (() => {
+        const doodle = room?.doodleOke || {};
+        const approved = new Set(Array.isArray(doodle.approvedUids) ? doodle.approvedUids : []);
+        const submissionsRaw = doodle.submissions;
+        const submissions = Array.isArray(submissionsRaw)
+            ? submissionsRaw
+            : (submissionsRaw && typeof submissionsRaw === 'object' ? Object.values(submissionsRaw) : []);
+        const pending = submissions.filter((submission) => {
+            const submissionUid = submission?.uid || submission?.userId || submission?.singerUid || '';
+            return submissionUid && !approved.has(submissionUid);
+        }).length;
+        return {
+            requireReview: !!doodle.requireReview,
+            approvedCount: approved.size,
+            pendingCount: pending,
+            status: doodle.status || 'idle'
+        };
+    })();
+
+    const settingsNavigationSections = (() => {
+        const q = settingsNavQuery.trim().toLowerCase();
+        return HOST_SETTINGS_SECTIONS
+            .map((section) => ({
+                ...section,
+                items: section.items.filter((item) => {
+                    if (!q) return true;
+                    const haystack = `${item.label} ${item.description || ''} ${item.keywords || ''}`.toLowerCase();
+                    return haystack.includes(q);
+                })
+            }))
+            .filter((section) => section.items.length > 0);
+    })();
+    const settingsResultCount = settingsNavigationSections.reduce((sum, section) => sum + section.items.length, 0);
+    const totalSocialUnread = (chatUnread ? 1 : 0) + (dmUnread ? 1 : 0);
+
+    const activeSettingsMeta = HOST_SETTINGS_META[settingsTab] || HOST_SETTINGS_META.general;
+    const settingsNavigationContent = (
+        <div className="space-y-4">
+            {settingsNavigationSections.map((section) => (
+                <div key={section.id}>
+                    <div className="flex items-center justify-between gap-2 px-2 mb-2">
+                        <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">{section.label}</div>
+                        <div className="text-[10px] text-zinc-500">{section.items.length}</div>
+                    </div>
+                    <div className="space-y-1">
+                        {section.items.map((item) => {
+                            const isActive = settingsTab === item.key;
+                            const showUnread = item.key === 'chat' && (chatUnread || dmUnread);
+                            return (
+                                <button
+                                    key={item.key}
+                                    onClick={() => handleSettingsNavSelect(item.key)}
+                                    className={`w-full text-left rounded-xl border px-3 py-2.5 transition-all relative overflow-hidden ${
+                                        isActive
+                                            ? 'border-cyan-400/40 bg-gradient-to-r from-cyan-500/16 to-fuchsia-500/6 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.12)]'
+                                            : 'border-zinc-800 bg-zinc-900/50 text-zinc-300 hover:border-cyan-500/30 hover:text-white hover:bg-zinc-900/75'
+                                    }`}
+                                >
+                                    {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-300"></div>}
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <i className={`fa-solid ${item.icon} text-xs ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
+                                            <span className="text-sm font-semibold truncate">{item.label}</span>
+                                        </div>
+                                        {showUnread && <span className="inline-flex w-2 h-2 rounded-full bg-pink-400"></span>}
+                                    </div>
+                                    <div className="text-[11px] text-zinc-500 mt-1 leading-relaxed">{item.description}</div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            ))}
+            {settingsResultCount === 0 && (
+                <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+                    No settings match "{settingsNavQuery}". Try a broader keyword.
+                </div>
+            )}
+            <div className="rounded-xl border border-cyan-500/20 bg-gradient-to-b from-cyan-500/10 to-zinc-900/70 p-3">
+                <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Live Snapshot</div>
+                <div className="mt-2 text-sm text-zinc-300 space-y-1">
+                    <div className="flex items-center justify-between"><span>Queue</span><span className="text-white font-bold">{queuedSongs.length}</span></div>
+                    <div className="flex items-center justify-between"><span>Lobby</span><span className="text-white font-bold">{users.length}</span></div>
+                    <div className="flex items-center justify-between"><span>Mode</span><span className="text-white font-bold uppercase text-xs tracking-widest">{room?.activeMode || 'karaoke'}</span></div>
+                </div>
+            </div>
+        </div>
+    );
+
     const queueTabProps = {
         songs,
         room,
@@ -7162,39 +8309,59 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 />
 
             <div className="flex-1 min-h-0 p-6 overflow-y-auto md:overflow-hidden">
+                {room?.activeMode && room.activeMode !== 'karaoke' && (
+                    <HostGameControlPad
+                        roomCode={roomCode}
+                        room={room}
+                        updateRoom={updateRoom}
+                        setTab={setTab}
+                        appBase={appBase}
+                    />
+                )}
                 {tab === 'stage' && (
                     <QueueTab {...queueTabProps} />
                 )}
                 {tab === 'browse' && browsePanel}
                 {tab === 'games' && (
-                    <UnifiedGameLauncher
-                        room={room}
-                        roomCode={roomCode}
-                        updateRoom={updateRoom}
-                        users={users}
-                        logActivity={logActivity}
-                        songs={songs}
-                        activities={activities}
-                        generateAIContent={generateAIContent}
-                        callFunction={callFunction}
-                        useToast={useToast}
-                        autoOpenGameId={autoOpenGameId}
-                        capabilities={orgContext?.capabilities || {}}
-                        entitlementStatus={{
-                            loading: orgContext.loading,
-                            error: orgContext.error,
-                            planId: orgContext.planId,
-                            status: orgContext.status
-                        }}
-                        bracketBusy={bracketBusy}
-                        onCreateSweet16Bracket={createSweet16Bracket}
-                        onQueueNextBracketMatch={queueNextBracketMatch}
-                        onClearSweet16Bracket={clearSweet16Bracket}
-                        onSetBracketMatchWinner={setBracketMatchWinner}
-                        onSetBracketWinnerFromCrowdVotes={setBracketWinnerFromCrowdVotes}
-                        onToggleBracketCrowdVoting={toggleBracketCrowdVoting}
-                        onForfeitBracketContestant={forfeitBracketContestant}
-                    />
+                    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
+                        <div className="flex-1 min-h-0">
+                            <UnifiedGameLauncher
+                                room={room}
+                                roomCode={roomCode}
+                                updateRoom={updateRoom}
+                                users={users}
+                                logActivity={logActivity}
+                                songs={songs}
+                                activities={activities}
+                                generateAIContent={generateAIContent}
+                                callFunction={callFunction}
+                                useToast={useToast}
+                                autoOpenGameId={autoOpenGameId}
+                                capabilities={orgContext?.capabilities || {}}
+                                entitlementStatus={{
+                                    loading: orgContext.loading,
+                                    error: orgContext.error,
+                                    planId: orgContext.planId,
+                                    status: orgContext.status
+                                }}
+                                bracketBusy={bracketBusy}
+                                onCreateSweet16Bracket={createSweet16Bracket}
+                                onQueueNextBracketMatch={queueNextBracketMatch}
+                                onClearSweet16Bracket={clearSweet16Bracket}
+                                onSetBracketMatchWinner={setBracketMatchWinner}
+                                onSetBracketWinnerFromCrowdVotes={setBracketWinnerFromCrowdVotes}
+                                onToggleBracketCrowdVoting={toggleBracketCrowdVoting}
+                                onForfeitBracketContestant={forfeitBracketContestant}
+                            />
+                        </div>
+                        {room?.activeMode === 'doodle_oke' && room?.doodleOke?.promptId && (
+                            <DoodleOkeModerationPanel
+                                roomCode={roomCode}
+                                room={room}
+                                updateRoom={updateRoom}
+                            />
+                        )}
+                    </div>
                 )}
                 {/* Lobby Tab */}
                 {tab === 'lobby' && (
@@ -7651,41 +8818,89 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
             )}
             {showSettings && (
-                <div className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-4">
-                    <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-3xl p-6 shadow-2xl h-[85vh] flex flex-col">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="text-lg font-bold text-white">Host Settings</div>
-                            <button onClick={() => setShowSettings(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
+                <div className="fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4">
+                    <div className="bg-zinc-950/95 border border-zinc-700/80 rounded-none sm:rounded-2xl w-full max-w-[1400px] shadow-[0_22px_80px_rgba(0,0,0,0.55)] h-[100dvh] sm:h-[90vh] overflow-hidden flex flex-col">
+                        <div className="border-b border-white/10 px-4 py-3 md:px-5 md:py-4 bg-gradient-to-r from-zinc-950 via-zinc-900/90 to-zinc-950">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <div className="text-xs uppercase tracking-[0.32em] text-zinc-500">Host Mission Control</div>
+                                    <div className="text-xl md:text-2xl font-bold text-white">Settings Admin</div>
+                                    <div className="text-xs text-zinc-400 mt-1">Design behavior, tune game flow, and run room policy from one shell.</div>
+                                </div>
+                                <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-zinc-500 flex-wrap">
+                                    <span className="px-2 py-1 rounded-full border border-cyan-400/20 text-cyan-200/90 bg-cyan-500/10">
+                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-300 mr-1.5 animate-pulse"></span>
+                                        Live
+                                    </span>
+                                    <span className="px-2 py-1 rounded-full border border-white/10">Room {roomCode || '--'}</span>
+                                    <span className="px-2 py-1 rounded-full border border-white/10">Mode {room?.activeMode || 'karaoke'}</span>
+                                    {!!totalSocialUnread && (
+                                        <span className="px-2 py-1 rounded-full border border-pink-400/30 text-pink-200 bg-pink-500/10">
+                                            Social alerts {totalSocialUnread}
+                                        </span>
+                                    )}
+                                    <button
+                                        onClick={() => setSettingsNavOpen((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} md:hidden`}
+                                    >
+                                        <i className="fa-solid fa-bars"></i>
+                                        Sections
+                                    </button>
+                                    <button onClick={() => setShowSettings(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
+                                </div>
+                            </div>
+                            <div className="mt-3 max-w-xl md:max-w-2xl">
+                                <label className="relative block">
+                                    <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-xs"></i>
+                                    <input
+                                        value={settingsNavQuery}
+                                        onChange={(e) => setSettingsNavQuery(e.target.value)}
+                                        className={`${STYLES.input} pl-9`}
+                                        placeholder="Search host controls, settings, or tools..."
+                                    />
+                                </label>
+                            </div>
                         </div>
-                        <div className="flex flex-wrap gap-2 mb-6">
-                            {[
-                                { key: 'general', label: 'General' },
-                                { key: 'billing', label: 'Billing' },
-                                { key: 'monetization', label: 'Monetization' },
-                                { key: 'media', label: 'Media' },
-                                { key: 'marquee', label: 'Marquee' },
-                                { key: 'chat', label: 'Chat' },
-                                { key: 'qa', label: 'Dev Tools' }
-                            ].map(t => (
+                        <div className="flex-1 min-h-0 relative md:grid md:grid-cols-[280px_minmax(0,1fr)]">
+                            <aside className="hidden md:block border-r border-white/10 bg-zinc-950/80 overflow-y-auto custom-scrollbar p-3 md:p-4">
+                                {settingsNavigationContent}
+                            </aside>
                             <button
-                                key={t.key}
-                                onClick={() => {
-                                    setSettingsTab(t.key);
-                                    if (t.key === 'chat') {
-                                        markChatTabSeen();
-                                    }
-                                }}
-                                className={`px-4 py-2 rounded-lg text-sm font-bold uppercase transition-all ${
-                                    settingsTab === t.key ? 'bg-[#00C4D9] text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300 border border-zinc-700'
-                                }`}
-                            >
-                                {t.label}
-                                {t.key === 'chat' && (chatUnread || dmUnread) && <span className="ml-2 inline-flex w-2 h-2 rounded-full bg-pink-400"></span>}
-                            </button>
-                            ))}
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+                                onClick={() => setSettingsNavOpen(false)}
+                                className={`md:hidden absolute inset-0 z-20 bg-black/60 transition-opacity ${settingsNavOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+                                aria-label="Close sections menu"
+                            />
+                            <aside className={`md:hidden absolute inset-y-0 left-0 z-30 w-[88vw] max-w-[340px] bg-zinc-950 border-r border-white/10 p-3 overflow-y-auto custom-scrollbar transition-transform duration-200 ${settingsNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                                <div className="flex items-center justify-between mb-3 px-1">
+                                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Sections</div>
+                                    <button onClick={() => setSettingsNavOpen(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
+                                </div>
+                                {settingsNavigationContent}
+                            </aside>
+                            <div className="min-h-0 flex flex-col">
+                                <div className="border-b border-white/10 px-4 py-3 md:px-5 bg-zinc-950/70">
+                                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">{activeSettingsMeta.sectionLabel || 'Host Settings'}</div>
+                                    <div className="text-xl font-bold text-white mt-1">{activeSettingsMeta.label || 'Host Settings'}</div>
+                                    <div className="text-sm text-zinc-400 mt-1">{activeSettingsMeta.description || 'Configure room behavior and host controls.'}</div>
+                                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] sm:text-[11px] text-zinc-300">
+                                        <button
+                                            onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                                            className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-2.5 py-1 hover:bg-cyan-500/20"
+                                        >
+                                            <i className="fa-solid fa-tv text-[10px]"></i> Open TV
+                                        </button>
+                                        <button
+                                            onClick={() => setAudiencePreviewVisible(prev => !prev)}
+                                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 ${
+                                                audiencePreviewVisible ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-white/15 bg-zinc-900 text-zinc-300'
+                                            }`}
+                                        >
+                                            <i className="fa-solid fa-mobile-screen-button text-[10px]"></i>
+                                            Audience Preview {audiencePreviewVisible ? 'On' : 'Off'}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-5">
                         {settingsTab === 'general' && (
                         <>
                         <div className="mb-5 bg-zinc-950/60 border border-cyan-500/30 rounded-xl p-4">
@@ -8008,6 +9223,246 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="host-form-helper">Allows singers to attach a backing track URL to their request.</div>
                         </div>
                         </>
+                        )}
+
+                        {settingsTab === 'gamepad' && (
+                            <div className="space-y-4">
+                                <div className="bg-gradient-to-r from-cyan-500/10 via-zinc-950/60 to-fuchsia-500/10 border border-cyan-500/25 rounded-xl p-4">
+                                    <div className="text-sm uppercase tracking-[0.25em] text-cyan-300">Live Gamepad</div>
+                                    <div className="text-xl font-bold text-white mt-1 flex items-center gap-2">
+                                        <i className="fa-solid fa-dice-d20 text-cyan-300"></i>
+                                        Host interactions by mode
+                                    </div>
+                                    <div className="text-sm text-zinc-400 mt-1">
+                                        Keep this as your control layer while the game launcher handles setup.
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
+                                        <button onClick={() => { setTab('games'); setShowSettings(false); }} className={`${STYLES.btnStd} ${STYLES.btnHighlight} justify-start`}>
+                                            <i className="fa-solid fa-rocket"></i>
+                                            Open Launchpad
+                                        </button>
+                                        <button onClick={() => { setTab('stage'); setShowSettings(false); }} className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}>
+                                            <i className="fa-solid fa-microphone-lines"></i>
+                                            Stage Controls
+                                        </button>
+                                        <button onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')} className={`${STYLES.btnStd} ${STYLES.btnInfo} justify-start`}>
+                                            <i className="fa-solid fa-tv"></i>
+                                            Open Public TV
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div className="bg-zinc-900/50 border border-cyan-500/15 rounded-xl p-4">
+                                        <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Current Mode</div>
+                                        <div className="text-2xl font-bold text-white mt-2">{room?.activeMode || 'karaoke'}</div>
+                                        <div className="text-sm text-zinc-400 mt-1">Use mode-specific host controls from the main Games tab.</div>
+                                    </div>
+                                    <div className="bg-zinc-900/50 border border-cyan-500/15 rounded-xl p-4">
+                                        <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Queue + Audience</div>
+                                        <div className="text-sm text-zinc-300 mt-2">Queue: <span className="text-white font-bold">{queuedSongs.length}</span></div>
+                                        <div className="text-sm text-zinc-300">Audience in room: <span className="text-white font-bold">{users.length}</span></div>
+                                        <div className="text-sm text-zinc-300">Audience preview: <span className="text-white font-bold">{audiencePreviewVisible ? 'On' : 'Off'}</span></div>
+                                    </div>
+                                </div>
+                                <div className="bg-zinc-900/50 border border-white/10 rounded-xl p-4">
+                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Suggested host flow</div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3 text-sm">
+                                        <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-zinc-300">
+                                            <div className="text-cyan-300 font-bold mb-1">1. Prime the room</div>
+                                            Set visuals and queue policy in Control Room before launching game rounds.
+                                        </div>
+                                        <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-zinc-300">
+                                            <div className="text-cyan-300 font-bold mb-1">2. Run active mode</div>
+                                            Keep gamepad interactions visible so guests see host actions on TV.
+                                        </div>
+                                        <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-zinc-300">
+                                            <div className="text-cyan-300 font-bold mb-1">3. Return to stage</div>
+                                            Use stage controls to re-enter karaoke flow without losing momentum.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {settingsTab === 'automations' && (
+                            <div className="space-y-4">
+                                <div className="bg-gradient-to-r from-violet-500/10 via-zinc-950/60 to-cyan-500/10 border border-cyan-500/25 rounded-xl p-4">
+                                    <div className="text-sm uppercase tracking-[0.25em] text-cyan-300">Night Profiles</div>
+                                    <div className="text-xl font-bold text-white mt-1 flex items-center gap-2">
+                                        <i className="fa-solid fa-wand-magic-sparkles text-cyan-300"></i>
+                                        Preset-driven control
+                                    </div>
+                                    <div className="text-sm text-zinc-400 mt-1">
+                                        Use one-click host presets, then fine tune live automation behavior below.
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 mt-3">
+                                        {Object.values(HOST_NIGHT_PRESETS).map((preset) => {
+                                            const active = hostNightPreset === preset.id;
+                                            return (
+                                                <button
+                                                    key={`automation-preset-${preset.id}`}
+                                                    onClick={() => applyHostPreset(preset.id)}
+                                                    className={`rounded-xl border px-3 py-3 text-left transition-all ${
+                                                        active
+                                                            ? 'border-cyan-400/50 bg-cyan-500/10'
+                                                            : 'border-zinc-700 bg-zinc-900/60 hover:border-cyan-400/30'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <div className="text-sm font-bold text-white">{preset.label}</div>
+                                                        {active && <span className="text-[10px] uppercase tracking-widest text-cyan-200">Active</span>}
+                                                    </div>
+                                                    <div className="text-xs text-zinc-400 mt-1">{preset.description}</div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <button
+                                        onClick={async () => {
+                                            const next = !autoDj;
+                                            setAutoDj(next);
+                                            await updateRoom({ autoDj: next });
+                                            toast(next ? 'Auto-DJ enabled' : 'Auto-DJ disabled');
+                                        }}
+                                        className={`${STYLES.btnStd} ${autoDj ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-robot"></i>
+                                        {autoDj ? 'Auto-DJ is ON' : 'Auto-DJ is OFF'}
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            const next = !autoBgMusic;
+                                            setAutoBgMusic(next);
+                                            await updateRoom({ autoBgMusic: next });
+                                            toast(next ? 'Auto BG music enabled' : 'Auto BG music disabled');
+                                        }}
+                                        className={`${STYLES.btnStd} ${autoBgMusic ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-wave-square"></i>
+                                        {autoBgMusic ? 'Auto background music ON' : 'Auto background music OFF'}
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            const next = !autoPlayMedia;
+                                            setAutoPlayMedia(next);
+                                            await updateRoom({ autoPlayMedia: next });
+                                            toast(next ? 'Auto-play media enabled' : 'Auto-play media disabled');
+                                        }}
+                                        className={`${STYLES.btnStd} ${autoPlayMedia ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-forward-step"></i>
+                                        {autoPlayMedia ? 'Auto stage playback ON' : 'Auto stage playback OFF'}
+                                    </button>
+                                    <button
+                                        onClick={() => startReadyCheck?.()}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-hourglass-half"></i>
+                                        Trigger Ready Check
+                                    </button>
+                                </div>
+                                <div className="bg-zinc-900/50 border border-cyan-500/15 rounded-xl p-4">
+                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Automation tuning</div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
+                                        <label className="text-sm text-zinc-300">
+                                            Ready check duration (sec)
+                                            <input value={readyCheckDurationSec} onChange={e => setReadyCheckDurationSec(e.target.value)} className={`${STYLES.input} mt-1`} />
+                                        </label>
+                                        <label className="text-sm text-zinc-300">
+                                            Fade out (ms)
+                                            <input value={autoBgFadeOutMs} onChange={e => setAutoBgFadeOutMs(e.target.value)} className={`${STYLES.input} mt-1`} />
+                                        </label>
+                                        <label className="text-sm text-zinc-300">
+                                            Fade in (ms)
+                                            <input value={autoBgFadeInMs} onChange={e => setAutoBgFadeInMs(e.target.value)} className={`${STYLES.input} mt-1`} />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {settingsTab === 'moderation' && (
+                            <div className="space-y-4">
+                                <div className="bg-gradient-to-r from-emerald-500/10 via-zinc-950/60 to-cyan-500/10 border border-emerald-500/25 rounded-xl p-4">
+                                    <div className="text-sm uppercase tracking-[0.25em] text-cyan-300">Moderation Center</div>
+                                    <div className="text-xl font-bold text-white mt-1 flex items-center gap-2">
+                                        <i className="fa-solid fa-shield-halved text-emerald-300"></i>
+                                        Audience + doodle policy
+                                    </div>
+                                    <div className="text-sm text-zinc-400 mt-1">
+                                        Keep visibility, chat scope, and sketch review policy explicit for hosts.
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div className="bg-zinc-900/50 border border-emerald-500/15 rounded-xl p-4 space-y-3">
+                                        <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Chat policy</div>
+                                        <button
+                                            onClick={async () => {
+                                                const next = chatAudienceMode === 'vip' ? 'all' : 'vip';
+                                                setChatAudienceMode(next);
+                                                await updateRoom({ chatAudienceMode: next });
+                                            }}
+                                            className={`${STYLES.btnStd} ${chatAudienceMode === 'vip' ? STYLES.btnHighlight : STYLES.btnNeutral} justify-start`}
+                                        >
+                                            <i className="fa-solid fa-crown"></i>
+                                            {chatAudienceMode === 'vip' ? 'VIP-only audience chat' : 'All audience chat enabled'}
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                const next = !chatShowOnTv;
+                                                setChatShowOnTv(next);
+                                                await updateRoom({ chatShowOnTv: next });
+                                            }}
+                                            className={`${STYLES.btnStd} ${chatShowOnTv ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                        >
+                                            <i className="fa-solid fa-tv"></i>
+                                            {chatShowOnTv ? 'Chat shown on TV' : 'Chat hidden from TV'}
+                                        </button>
+                                        <button
+                                            onClick={() => selectSettingsTab('chat')}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
+                                        >
+                                            <i className="fa-solid fa-comments"></i>
+                                            Open full chat controls
+                                        </button>
+                                    </div>
+                                    <div className="bg-zinc-900/50 border border-emerald-500/15 rounded-xl p-4 space-y-3">
+                                        <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Doodle-oke review</div>
+                                        <div className="text-sm text-zinc-300">Status: <span className="text-white font-bold">{doodleModerationState.status}</span></div>
+                                        <div className="text-sm text-zinc-300">Pending sketches: <span className="text-white font-bold">{doodleModerationState.pendingCount}</span></div>
+                                        <div className="text-sm text-zinc-300">Approved sketches: <span className="text-white font-bold">{doodleModerationState.approvedCount}</span></div>
+                                        <button
+                                            onClick={async () => {
+                                                const doodle = room?.doodleOke || {};
+                                                const next = !doodleModerationState.requireReview;
+                                                const patch = {
+                                                    doodleOke: {
+                                                        ...doodle,
+                                                        requireReview: next,
+                                                        approvedUids: next ? (Array.isArray(doodle.approvedUids) ? doodle.approvedUids : []) : [],
+                                                        updatedAt: nowMs()
+                                                    }
+                                                };
+                                                await updateRoom(patch);
+                                                toast(next ? 'Doodle host review enabled' : 'Doodle auto-show enabled');
+                                            }}
+                                            className={`${STYLES.btnStd} ${doodleModerationState.requireReview ? STYLES.btnHighlight : STYLES.btnNeutral} justify-start`}
+                                        >
+                                            <i className="fa-solid fa-palette"></i>
+                                            {doodleModerationState.requireReview ? 'Require host review before TV' : 'Auto-show doodles on TV'}
+                                        </button>
+                                        <button
+                                            onClick={() => { setTab('games'); setShowSettings(false); }}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
+                                        >
+                                            <i className="fa-solid fa-gamepad"></i>
+                                            Open game moderation panel
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         )}
 
                         {settingsTab === 'billing' && (
@@ -9001,6 +10456,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <button onClick={saveApiKeys} className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}>Save Settings</button>
                             </div>
                         )}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

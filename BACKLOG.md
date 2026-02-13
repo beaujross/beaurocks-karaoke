@@ -1,6 +1,6 @@
 # Backlog
 
-Last updated: 2026-02-11
+Last updated: 2026-02-13
 
 ## Overnight Queue (Target: 2026-02-12 Morning)
 - [x] WS1 Fame XP UX: add next-unlock and points-to-next-level clarity across singer profile surfaces.
@@ -12,10 +12,7 @@ Last updated: 2026-02-11
 - Runbook: `docs/OVERNIGHT_EXECUTION_QUEUE_2026-02-11.md`
 
 ## P0 - Blocking (Launch/Safety)
-- Firebase production safety: deploy and verify updated `storage.rules` + App Check enforcement in production; run auth/upload smoke tests.
-- Host create/join reliability: run field playtest to validate new guarded join flow (auth preflight + room existence check) under poor network/re-auth scenarios.
-- VIP SMS auth reliability: reCAPTCHA + phone verification must pass for test and real numbers, with setup documented.
-- Firestore user writes: run production smoke checks for `/users/{uid}` in onboarding/profile-edit flow and verify no regressions.
+- VIP SMS auth live sign-off: execute final manual browser reCAPTCHA + phone verification with both a Firebase test number and a real number, then append evidence to `docs/qa/P0_VERIFICATION_2026-02-12.md`.
 
 ## P1 - High Priority
 - Turnkey customer onboarding + subscriptions: build a self-serve flow to onboard additional organizations/users with monthly subscription signup, provisioning, and entitlement gating to app features.
@@ -31,6 +28,7 @@ Last updated: 2026-02-11
 - Usage metering + overage billing: per-org usage ledger, included quotas, overage invoicing, and reconciliation against cloud billing.
 - Workspace customization pack: theme tokens, reusable templates, and sponsor/branding controls at org scope.
 - Admin billing portal: plan management, invoices, usage dashboard, and payment method updates.
+- Host mobile UX pass (deferred): optimize host controls for phone/tablet with mobile section drawer, sticky live command rail, one-thumb quick actions, queue swipe gestures, and unified moderation inbox.
 - Emoji carousel UX: center selection on load and smooth touch behavior.
 - Local media playback reliability: uploaded mp4/cors/permissions and fallback handling.
 - VIP alerts (Twilio): host-configurable "notify before stage" timing + user opt-in.
@@ -43,6 +41,10 @@ Last updated: 2026-02-11
 - Expanded VIP cosmetics: unlock visuals and badge system polish.
 
 ## Recently Completed
+- P0 verification report (2026-02-12): production deploy + App Check enforcement + auth/upload smoke completed and documented in `docs/qa/P0_VERIFICATION_2026-02-12.md`.
+- Host create/join reliability playtest: guarded join flow validated for create/join/missing-room/re-auth/poor-network scenarios via `scripts/qa/host-join-playtest.mjs`.
+- Firestore `/users/{uid}` production smoke: own create/update/read passed and cross-user write denied via `scripts/qa/users-profile-smoke.mjs`.
+- VIP SMS auth readiness verification: runbook/env/code checks completed via `scripts/qa/vip-sms-readiness.mjs` (manual live SMS handshake remains as explicit P0 sign-off).
 - Overnight WS1 ship: added fame unlock snapshot helper + "Next Unlock" blocks in singer profile and public profile.
 - Overnight WS2 ship: added shared `UserMetaCard` component and migrated lobby/leaderboard/public-profile surfaces to use it.
 - Overnight WS3 ship: introduced normalized room-user projection writes for join/profile/VIP/fame sync paths.

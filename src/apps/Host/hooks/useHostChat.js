@@ -17,8 +17,15 @@ const getTimestampMs = (message) => (
     message?.timestamp?.seconds ? message.timestamp.seconds * 1000 : 0
 );
 
-const getNewestRoomTs = (messages) => getTimestampMs(messages.find(msg => !msg.toHost));
-const getNewestDmTs = (messages) => getTimestampMs(messages.find(msg => msg.toHost || msg.toUid));
+const isDirectChatMessage = (message = {}) => (
+    !!message?.toHost
+    || !!message?.toUid
+    || message?.channel === 'host'
+    || message?.channel === 'dm'
+);
+const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
+const getNewestRoomTs = (messages) => getTimestampMs(messages.find(msg => isLoungeChatMessage(msg)));
+const getNewestDmTs = (messages) => getTimestampMs(messages.find(msg => isDirectChatMessage(msg)));
 
 const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
     const [chatEnabled, setChatEnabled] = useState(true);

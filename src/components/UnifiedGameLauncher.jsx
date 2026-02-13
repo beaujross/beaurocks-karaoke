@@ -433,40 +433,37 @@ const UnifiedGameLauncher = ({
 
     const getGameBadges = (game) => {
         const rewardMap = {
-            trivia_pop: 'Rewards: 100 pts',
-            wyr: 'Rewards: 50 pts',
-            bingo: 'Rewards: Custom',
-            karaoke_bracket: 'Rewards: Bracket champion',
-            riding_scales: `Rewards: ${Math.max(10, Number(scaleRewardPerRound) || 50)} pts/round`,
-            vocal_challenge: 'Rewards: Streak score',
-            flappy_bird: 'Rewards: High score',
-            doodle_oke: 'Rewards: Votes',
-            selfie_challenge: 'Rewards: Votes'
+            trivia_pop: '100 pts',
+            wyr: '50 pts',
+            bingo: 'Custom',
+            karaoke_bracket: 'Champion',
+            riding_scales: `${Math.max(10, Number(scaleRewardPerRound) || 50)} pts`,
+            vocal_challenge: 'Streak',
+            flappy_bird: 'High score',
+            doodle_oke: 'Votes',
+            selfie_challenge: 'Votes'
         };
         const modeMap = {
-            flappy_bird: 'Mode: Solo/Crowd',
-            vocal_challenge: 'Mode: Turns/Crowd',
-            riding_scales: 'Mode: Turns/Crowd',
-            doodle_oke: 'Mode: Round robin',
-            trivia_pop: 'Mode: Group',
-            wyr: 'Mode: Group',
-            bingo: 'Mode: Group',
-            karaoke_bracket: 'Mode: 1v1 elimination',
-            selfie_challenge: 'Mode: Group'
+            flappy_bird: 'Solo / Crowd',
+            vocal_challenge: 'Solo / Crowd',
+            riding_scales: 'Turns / Crowd',
+            doodle_oke: 'Round robin',
+            trivia_pop: 'Group',
+            wyr: 'Group',
+            bingo: 'Group',
+            karaoke_bracket: '1v1 bracket',
+            selfie_challenge: 'Group'
         };
         const config = participantConfigs[game.id];
         const playerLabel = config
-            ? (config.mode === 'selected' && config.count ? `Players: ${config.count}` : 'Players: All')
-            : 'Players: All';
+            ? (config.mode === 'selected' && config.count ? `${config.count} selected` : 'All players')
+            : 'All players';
         const badges = [
-            { label: playerLabel, tone: 'border-white/10 bg-black/40 text-zinc-300' },
-            { label: modeMap[game.id] || `Mode: ${game.category}`, tone: 'border-white/10 bg-black/40 text-zinc-300' }
+            { icon: 'fa-users', label: playerLabel, tone: 'border-white/10 bg-black/40 text-zinc-300' },
+            { icon: 'fa-sliders', label: modeMap[game.id] || game.category, tone: 'border-white/10 bg-black/40 text-zinc-300' }
         ];
         if (rewardMap[game.id]) {
-            badges.push({ label: rewardMap[game.id], tone: 'border-white/10 bg-black/40 text-zinc-300' });
-        }
-        if (game.playModes && game.playModes.length) {
-            badges.push({ label: `Plays: ${game.playModes.join('/')}`, tone: 'border-white/10 bg-black/40 text-zinc-300' });
+            badges.push({ icon: 'fa-coins', label: rewardMap[game.id], tone: 'border-white/10 bg-black/40 text-zinc-300' });
         }
         return badges;
     };
@@ -840,7 +837,21 @@ const UnifiedGameLauncher = ({
         
         await updateRoom({
             activeMode: 'doodle_oke',
-            doodleOke: { status: 'drawing', prompt, promptId, durationMs, guessMs, startedAt: now, endsAt: now + durationMs, guessEndsAt: now + durationMs + guessMs, updatedAt: now },
+            doodleOke: {
+                status: 'drawing',
+                prompt,
+                promptId,
+                durationMs,
+                guessMs,
+                startedAt: now,
+                endsAt: now + durationMs,
+                guessEndsAt: now + durationMs + guessMs,
+                requireReview: false,
+                approvedUids: [],
+                winner: null,
+                winnerAwardedAt: null,
+                updatedAt: now
+            },
             doodleOkeConfig: { prompts, durationMs, guessMs, participants: allParticipants, roundRobin: doodleRoundRobin },
             doodleOkeIndex: doodleRoundRobin ? nextIndex : index,
             ...buildParticipantPayload(allParticipants.length === allUserIds.length ? 'all' : 'selected', allParticipants)
@@ -1327,7 +1338,10 @@ const UnifiedGameLauncher = ({
     ]);
 
     return (
-        <div className="h-full overflow-y-auto custom-scrollbar pr-2 flex flex-col">
+        <div
+            className="h-full min-h-0 flex flex-col overflow-y-auto custom-scrollbar"
+            style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}
+        >
             {/* Header */}
             <div className="px-8 pt-6 pb-0">
                 <div className="flex items-center gap-3 text-sm uppercase tracking-[0.4em] text-zinc-500">
@@ -1372,7 +1386,7 @@ const UnifiedGameLauncher = ({
             </div>
             
             {/* Game Grid */}
-            <div className="px-8 py-6 flex-1 overflow-y-auto">
+            <div className="px-8 py-6 pr-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                     {GAMES_META.map(game => {
                         const config = participantConfigs[game.id];
@@ -1549,6 +1563,55 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
     const playerLabel = participantConfig
         ? (participantConfig.mode === 'selected' && playerCount ? `Players: ${playerCount}` : 'Players: All')
         : 'Players: All';
+    const visualMap = {
+        doodle_oke: [
+            { icon: 'fa-pen', label: 'Sketch' },
+            { icon: 'fa-eye', label: 'Guess' },
+            { icon: 'fa-check-to-slot', label: 'Vote' }
+        ],
+        flappy_bird: [
+            { icon: 'fa-microphone-lines', label: 'Voice' },
+            { icon: 'fa-gamepad', label: 'Arcade' },
+            { icon: 'fa-chart-line', label: 'Score' }
+        ],
+        vocal_challenge: [
+            { icon: 'fa-wave-square', label: 'Pitch' },
+            { icon: 'fa-bullseye', label: 'Target' },
+            { icon: 'fa-fire', label: 'Streak' }
+        ],
+        riding_scales: [
+            { icon: 'fa-music', label: 'Pattern' },
+            { icon: 'fa-repeat', label: 'Repeat' },
+            { icon: 'fa-shield-halved', label: 'Strikes' }
+        ],
+        trivia_pop: [
+            { icon: 'fa-clock', label: 'Timed' },
+            { icon: 'fa-list-ol', label: 'A/B/C/D' },
+            { icon: 'fa-trophy', label: 'Rank' }
+        ],
+        wyr: [
+            { icon: 'fa-scale-balanced', label: 'A vs B' },
+            { icon: 'fa-users', label: 'Crowd' },
+            { icon: 'fa-chart-pie', label: 'Split' }
+        ],
+        bingo: [
+            { icon: 'fa-table-cells', label: 'Board' },
+            { icon: 'fa-check', label: 'Mark' },
+            { icon: 'fa-trophy', label: 'Win' }
+        ],
+        karaoke_bracket: [
+            { icon: 'fa-trophy', label: 'Bracket' },
+            { icon: 'fa-people-group', label: '1v1' },
+            { icon: 'fa-crown', label: 'Champion' }
+        ],
+        selfie_challenge: [
+            { icon: 'fa-camera', label: 'Capture' },
+            { icon: 'fa-images', label: 'Gallery' },
+            { icon: 'fa-check-to-slot', label: 'Vote' }
+        ]
+    };
+    const visualPills = visualMap[game.id] || [];
+    const iconIsFa = typeof game.icon === 'string' && game.icon.includes('fa-');
     const toggleParticipant = (uid) => {
         if (!participantConfig?.setParticipants) return;
         participantConfig.setMode?.('selected');
@@ -1560,10 +1623,12 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
             <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full blur-2xl opacity-10 bg-white"></div>
             <div className="absolute -left-4 bottom-0 w-16 h-16 rounded-full blur-2xl opacity-5 bg-white"></div>
             <div className="flex items-start justify-between relative z-10">
-                <div>
-                    <div className="text-2xl md:text-3xl mb-1">{game.icon}</div>
+                <div className="min-w-0">
+                    <div className="inline-flex w-12 h-12 rounded-xl border border-white/10 bg-black/35 items-center justify-center mb-2 text-cyan-200">
+                        {iconIsFa ? <i className={`${game.icon} text-xl`}></i> : <span className="text-xl">{game.icon}</span>}
+                    </div>
                     <h3 className={`text-lg md:text-xl font-bold ${c.text} mb-1`}>{game.name}</h3>
-                    <p className="text-xs text-zinc-400 max-w-xs">{game.description}</p>
+                    <p className="text-xs text-zinc-400 max-w-xs leading-snug">{game.description}</p>
                 </div>
                 {game.badge && (
                     <span className={`text-[9px] uppercase tracking-widest px-2 py-1 rounded-full border ${c.badge} flex-shrink-0`}>
@@ -1571,23 +1636,18 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                     </span>
                 )}
             </div>
-            <div className="space-y-1 text-xs text-zinc-300 relative z-10">
-                {game.goal && (
-                    <div>
-                        <div className="text-[10px] uppercase tracking-widest text-zinc-500">Goal</div>
-                        <div className="text-xs text-zinc-200">{game.goal}</div>
+            <div className="grid grid-cols-3 gap-2 relative z-10">
+                {visualPills.map((item) => (
+                    <div key={`${game.id}_${item.label}`} className="rounded-xl border border-white/10 bg-black/35 px-2 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-300 flex flex-col items-center gap-1 text-center">
+                        <i className={`fa-solid ${item.icon} text-xs text-zinc-100`}></i>
+                        <span>{item.label}</span>
                     </div>
-                )}
-                {game.howToPlay && (
-                    <div>
-                        <div className="text-[10px] uppercase tracking-widest text-zinc-500">How to play</div>
-                        <div className="text-xs text-zinc-200">{game.howToPlay}</div>
-                    </div>
-                )}
+                ))}
             </div>
             {isActive && (
-                <div className="text-[11px] text-white bg-red-600 px-3 py-2 rounded-lg border border-red-500 font-bold animate-pulse">
-                    🔴 LIVE NOW
+                <div className="text-[11px] text-white bg-red-600 px-3 py-2 rounded-lg border border-red-500 font-bold animate-pulse inline-flex items-center gap-2">
+                    <i className="fa-solid fa-circle text-[9px]"></i>
+                    LIVE NOW
                 </div>
             )}
             <div className="grid grid-cols-2 gap-2 relative z-10">
@@ -1603,7 +1663,8 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
             {Array.isArray(infoBadges) && infoBadges.length > 0 && (
                 <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-widest text-zinc-400 relative z-10">
                     {infoBadges.map((badge) => (
-                        <span key={badge.label} className={`px-2 py-1 rounded-full border ${badge.tone}`}>
+                        <span key={badge.label} className={`px-2 py-1 rounded-full border ${badge.tone} inline-flex items-center gap-1`}>
+                            {badge.icon && <i className={`fa-solid ${badge.icon}`}></i>}
                             {badge.label}
                         </span>
                     ))}

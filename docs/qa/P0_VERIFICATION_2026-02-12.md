@@ -98,3 +98,36 @@ Observed checks:
 - `scripts/qa/host-join-playtest.mjs`
 - `scripts/qa/vip-sms-readiness.mjs`
 - `scripts/qa/users-profile-smoke.mjs`
+
+## 5) Automated rerun evidence (2026-02-12)
+
+```powershell
+npm run qa:p0
+```
+
+Observed result:
+- `qa:p0:firebase-safety`: pass
+  - `npm run test:rules` => `All 18 rules checks passed`
+  - `qa:p0:appcheck` => callable denied without App Check (`FAILED_PRECONDITION`)
+- `qa:p0:host-join`: pass (all guarded join scenarios passed)
+- `qa:p0:vip-readiness`: pass (all readiness checks passed)
+- `qa:p0:users`: pass (own create/update/read pass, cross-user write denied)
+
+Conclusion:
+- All automatable P0 validation checks are green.
+- Remaining blocker is the manual live SMS verification handshake in browser (reCAPTCHA + OTP interaction).
+
+## 6) Final manual sign-off checklist (VIP SMS live)
+
+Run these two manual checks in production web app and append outcome:
+
+1. Test number flow (Firebase test number)
+- reCAPTCHA challenge renders and completes
+- phone verification succeeds
+- `/users/{uid}` contains expected phone/VIP fields
+
+2. Real number flow (non-test number)
+- reCAPTCHA challenge renders and completes
+- SMS OTP received and accepted
+- onboarding/profile flow completes without auth errors
+- `/users/{uid}` write confirmed

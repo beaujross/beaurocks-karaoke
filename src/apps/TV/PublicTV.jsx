@@ -427,6 +427,16 @@ const PublicTV = ({ roomCode }) => {
             return acc;
         }, {});
     }, [selfieVotes]);
+    const doodleRequireReview = !!room?.doodleOke?.requireReview;
+    const doodleApprovedUidSet = useMemo(() => {
+        const approved = Array.isArray(room?.doodleOke?.approvedUids) ? room.doodleOke.approvedUids : [];
+        return new Set(approved.filter(Boolean));
+    }, [room?.doodleOke?.approvedUids]);
+    const doodleVisibleSubmissions = useMemo(() => {
+        if (!doodleRequireReview) return doodleSubmissions;
+        return doodleSubmissions.filter((submission) => doodleApprovedUidSet.has(submission.uid));
+    }, [doodleRequireReview, doodleApprovedUidSet, doodleSubmissions]);
+    const doodlePendingReviewCount = Math.max(0, doodleSubmissions.length - doodleVisibleSubmissions.length);
     const bingoRngResults = useMemo(() => {
         const results = room?.bingoMysteryRng?.results || {};
         const list = Object.values(results).map(r => {
@@ -554,12 +564,12 @@ const PublicTV = ({ roomCode }) => {
         }
         const phase = room?.doodleOke?.status;
         if (phase !== 'reveal') return;
-        if (!doodleSubmissions.length) return;
+        if (!doodleVisibleSubmissions.length) return;
         const voteCounts = doodleVotes.reduce((acc, v) => {
             acc[v.targetUid] = (acc[v.targetUid] || 0) + 1;
             return acc;
         }, {});
-        const sorted = [...doodleSubmissions].sort((a, b) => (voteCounts[b.uid] || 0) - (voteCounts[a.uid] || 0));
+        const sorted = [...doodleVisibleSubmissions].sort((a, b) => (voteCounts[b.uid] || 0) - (voteCounts[a.uid] || 0));
         const winner = sorted[0];
         if (!winner?.uid) return;
         const points = 150;
@@ -579,7 +589,7 @@ const PublicTV = ({ roomCode }) => {
             awards: [{ uid: winner.uid, points }]
         });
         doodleWinnerAwardRef.current = promptId;
-    }, [room?.activeMode, room?.doodleOke, doodleSubmissions, doodleVotes, roomCode, awardRoomPointsOnce]);
+    }, [room?.activeMode, room?.doodleOke, doodleVisibleSubmissions, doodleVotes, roomCode, awardRoomPointsOnce]);
 
     const getStormAmbientUrl = useCallback(() => {
         if (stormPhase === 'approach') return STORM_SFX.lightRain;
@@ -1327,6 +1337,9 @@ const PublicTV = ({ roomCode }) => {
     const appBase = `${window.location.origin}${import.meta.env.BASE_URL || '/'}`;
     const joinUrl = `${appBase}?room=${roomCode}`;
     const joinUrlDisplay = joinUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const joinUrlPieces = joinUrlDisplay.split('?');
+    const joinUrlBaseDisplay = joinUrlPieces[0];
+    const joinUrlQueryDisplay = joinUrlPieces[1] ? `?${joinUrlPieces[1]}` : `?room=${roomCode}`;
     const previewGameId = room?.gamePreviewId || '';
     const previewActive = previewGameId && room?.activeMode === 'karaoke';
     const previewTitleMap = {
@@ -1354,19 +1367,27 @@ const PublicTV = ({ roomCode }) => {
                     ? `Limit: ${queueLimitCount}/hour`
                     : queueLimitMode === 'per_night'
                         ? `Limit: ${queueLimitCount}/night`
-                        : `Soft limit: ${queueLimitCount}/night`
+                        : `Soft limit: ${queueLimitCount}/night`,
+            shortLabel: queueLimitMode === 'none' || queueLimitCount <= 0
+                ? 'No Limits'
+                : queueLimitMode === 'per_hour'
+                    ? `${queueLimitCount}/Hour`
+                    : `${queueLimitCount}/Night`
         },
         {
             icon: queueRotation === 'round_robin' ? 'fa-rotate-right' : 'fa-list',
-            label: queueRotation === 'round_robin' ? 'Round robin' : 'First come'
+            label: queueRotation === 'round_robin' ? 'Round robin' : 'First come',
+            shortLabel: queueRotation === 'round_robin' ? 'Round Robin' : 'First Come'
         },
         {
             icon: queueFirstTimeBoost ? 'fa-star' : 'fa-user',
-            label: queueFirstTimeBoost ? 'First-time boost' : 'No boost'
+            label: queueFirstTimeBoost ? 'First-time boost' : 'No boost',
+            shortLabel: queueFirstTimeBoost ? 'Boost On' : 'Boost Off'
         },
         ...(room?.bouncerMode ? [{
             icon: 'fa-lock',
-            label: 'Requests need approval'
+            label: 'Requests need approval',
+            shortLabel: 'Approval On'
         }] : [])
     ];
 
@@ -1426,7 +1447,7 @@ const PublicTV = ({ roomCode }) => {
             acc[v.targetUid] = (acc[v.targetUid] || 0) + 1;
             return acc;
         }, {});
-        const submissionsSorted = [...doodleSubmissions].sort((a, b) => (voteCounts[b.uid] || 0) - (voteCounts[a.uid] || 0));
+        const submissionsSorted = [...doodleVisibleSubmissions].sort((a, b) => (voteCounts[b.uid] || 0) - (voteCounts[a.uid] || 0));
         const winner = submissionsSorted[0];
         const galleryCols = submissionsSorted.length > 4 ? 'grid-cols-3' : 'grid-cols-2';
 
@@ -1435,11 +1456,16 @@ const PublicTV = ({ roomCode }) => {
                 <div className="w-full max-w-6xl">
                     <div className="flex items-center justify-between mb-6">
                         <div>
-                            <div className="text-xs uppercase tracking-[0.45em] text-zinc-500">Doodle-oke</div>
-                            <div className="text-6xl font-bebas text-cyan-300">Sketch the lyric. Guess the hit.</div>
-                            <div className="text-sm text-zinc-400 mt-2">Live sketches: <span className="text-white font-bold">{submissionsSorted.length}</span></div>
+                            <div className="text-sm uppercase tracking-[0.45em] text-zinc-500">Doodle-oke</div>
+                            <div className="text-7xl font-bebas text-cyan-300">Sketch the lyric. Guess the hit.</div>
+                            <div className="text-lg text-zinc-300 mt-2">
+                                Live sketches: <span className="text-white font-bold">{submissionsSorted.length}</span>
+                                {doodleRequireReview && doodlePendingReviewCount > 0 && (
+                                    <span className="text-amber-300"> ({doodlePendingReviewCount} pending host review)</span>
+                                )}
+                            </div>
                         </div>
-                        <div className="text-right text-sm uppercase tracking-[0.3em] text-zinc-400">
+                        <div className="text-right text-xl font-bold uppercase tracking-[0.2em] text-zinc-200">
                             {phase === 'drawing' && `Drawing ${drawRemaining}s`}
                             {phase === 'voting' && `Voting ${guessRemaining}s`}
                             {phase === 'reveal' && 'Reveal'}
@@ -1451,37 +1477,45 @@ const PublicTV = ({ roomCode }) => {
                                 <div className={`grid ${galleryCols} gap-4 w-full`}>
                                     {submissionsSorted.slice(0, 6).map(s => (
                                         <div key={s.id} className="bg-black/70 border border-white/10 rounded-2xl p-3 relative overflow-hidden">
-                                            <div className="text-xs text-zinc-300 mb-2">{s.avatar ? `${s.avatar} ` : ''}{s.name || 'Guest'}</div>
+                                            <div className="text-base text-zinc-300 mb-2">{s.avatar ? `${s.avatar} ` : ''}{s.name || 'Guest'}</div>
                                             <div className="aspect-square bg-zinc-950 rounded-xl overflow-hidden relative">
                                                 <img src={s.image} alt={s.name} className="w-full h-full object-contain" />
                                                 <img src={room?.logoUrl || ASSETS.logo} className="absolute top-3 right-3 w-16 opacity-70" alt="BROSS" />
                                             </div>
-                                            <div className="mt-2 text-xs text-cyan-200">{voteCounts[s.uid] || 0} votes</div>
+                                            <div className="mt-2 text-base font-semibold text-cyan-200">{voteCounts[s.uid] || 0} votes</div>
                                         </div>
                                     ))}
                                 </div>
                             ) : (
-                                <div className="text-zinc-500 text-2xl text-center py-20">Waiting for sketches...</div>
+                                <div className="text-zinc-400 text-4xl text-center py-20 font-bebas tracking-wide">
+                                    {doodleRequireReview && doodlePendingReviewCount > 0
+                                        ? 'Waiting for host-approved sketches...'
+                                        : 'Waiting for sketches...'}
+                                </div>
                             )}
                         </div>
                         <div className="col-span-4 flex flex-col gap-4">
                             <div className="bg-zinc-900/70 border border-white/10 rounded-3xl p-5">
-                                <div className="text-xs uppercase tracking-[0.35em] text-zinc-500 mb-3">Prompt</div>
-                                <div className="text-4xl font-bold text-white leading-tight">
+                                <div className="text-sm uppercase tracking-[0.35em] text-zinc-500 mb-3">Prompt</div>
+                                <div className="text-5xl font-bold text-white leading-tight">
                                     {promptVisible ? doodle.prompt : 'Prompt hidden - vote with your eyes.'}
                                 </div>
-                                <div className="text-xs text-zinc-400 mt-3">Sing or hum the line while you draw.</div>
+                                <div className="text-sm text-zinc-300 mt-3">Sing or hum the line while you draw.</div>
                             </div>
                             <div className="bg-zinc-900/70 border border-white/10 rounded-3xl p-5 flex-1 overflow-hidden">
-                                <div className="text-xs uppercase tracking-[0.35em] text-zinc-500 mb-3">Votes</div>
+                                <div className="text-sm uppercase tracking-[0.35em] text-zinc-500 mb-3">Votes</div>
                                 <div className="space-y-3 max-h-[46vh] overflow-y-auto pr-2 custom-scrollbar">
                                     {submissionsSorted.length === 0 && (
-                                        <div className="text-zinc-500 text-sm">Waiting for sketches...</div>
+                                        <div className="text-zinc-400 text-lg">
+                                            {doodleRequireReview && doodlePendingReviewCount > 0
+                                                ? `Waiting for host-approved sketches (${doodlePendingReviewCount} pending)...`
+                                                : 'Waiting for sketches...'}
+                                        </div>
                                     )}
                                     {submissionsSorted.map(s => (
                                         <div key={s.id} className="bg-black/40 border border-white/10 rounded-2xl px-4 py-3 flex items-center justify-between">
-                                            <div className="text-sm text-white font-bold truncate">{s.avatar ? `${s.avatar} ` : ''}{s.name || 'Guest'}</div>
-                                            <div className="text-lg text-cyan-200">{voteCounts[s.uid] || 0}</div>
+                                            <div className="text-lg text-white font-bold truncate">{s.avatar ? `${s.avatar} ` : ''}{s.name || 'Guest'}</div>
+                                            <div className="text-2xl text-cyan-200">{voteCounts[s.uid] || 0}</div>
                                         </div>
                                     ))}
                                 </div>
@@ -2014,21 +2048,25 @@ const PublicTV = ({ roomCode }) => {
                 
                 {/* SIDEBAR: Hidden in Cinema Mode */}
                 {!isCinema && (
-                    <div className="col-span-4 flex flex-col gap-4 h-full min-h-0 pb-4">
-                         <div className="p-5 rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20">
-                            <div className="text-4xl font-black text-cyan-200 mb-3 uppercase tracking-[0.3em]">JOIN</div>
-                            <div className="bg-white p-2 rounded-2xl inline-block">
+                    <div className="col-span-4 flex flex-col gap-2 h-full min-h-0 pb-2">
+                         <div className="p-3 rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20">
+                            <div className="text-4xl font-black text-cyan-100 mb-1 uppercase tracking-[0.22em]">JOIN</div>
+                            <div className="bg-white p-3 rounded-3xl inline-block shadow-[0_0_45px_rgba(255,255,255,0.2)]">
                                 <LocalQrImage
                                     value={`${appBase}?room=${roomCode}`}
-                                    size={220}
+                                    size={248}
                                     alt="QR"
-                                    className="w-[220px] h-[220px]"
+                                    className="w-[248px] h-[248px]"
                                 />
                             </div>
-                            <div className="text-5xl font-bebas text-white mt-2 tracking-[0.2em]">{roomCode}</div>
-                            <div className="text-base text-zinc-100 mt-2 font-semibold tracking-widest uppercase">Go to {joinUrlDisplay}</div>
+                            <div className="text-5xl font-bebas text-white mt-2 tracking-[0.16em]">{roomCode}</div>
+                            <div className="mt-1">
+                                <div className="text-base text-zinc-100 font-semibold uppercase tracking-[0.12em] break-all leading-tight">Go to {joinUrlBaseDisplay}</div>
+                                <div className="text-xl font-black text-cyan-100 tracking-[0.06em] break-all leading-tight">{joinUrlQueryDisplay}</div>
+                            </div>
                             {isMinimal && <div className="mt-4"><MiniVideoPane room={room} current={current} /></div>}
                          </div>
+                         <div className="h-[2px] mx-4 rounded-full bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-40"></div>
 
                          {(spotlightUser || room?.spotlightUser?.id) && (
                             <div className="p-5 rounded-3xl bg-black/70 border border-yellow-400/30 shadow-[0_0_25px_rgba(234,179,8,0.2)] text-center">
@@ -2095,9 +2133,9 @@ const PublicTV = ({ roomCode }) => {
                                 </div>
                             </div>
                          ) : (
-                             <div className="flex-1 min-h-0 bg-zinc-800/80 backdrop-blur rounded-3xl p-6 border border-white/10 flex flex-col">
-                                <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
-                                    <h3 className="text-5xl font-bebas text-cyan-400">UP NEXT</h3>
+                             <div className="flex-1 min-h-0 bg-zinc-800/80 backdrop-blur rounded-3xl p-5 border border-white/10 flex flex-col overflow-hidden">
+                                <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
+                                    <h3 className="text-4xl font-bebas text-cyan-400">UP NEXT</h3>
                                     {room?.bouncerMode && (
                                         <div className="px-3 py-1 rounded-full bg-black/70 border border-red-400/40 text-red-300 text-xs font-bold tracking-widest uppercase flex items-center gap-2">
                                             <i className="fa-solid fa-lock"></i>
@@ -2105,20 +2143,25 @@ const PublicTV = ({ roomCode }) => {
                                         </div>
                                     )}
                                 </div>
-                                <div className="flex flex-wrap gap-2 mb-4">
+                                <div className="flex flex-wrap gap-2 mb-3">
                                     {queueRules.map(rule => (
-                                        <div key={rule.label} className="flex items-center gap-2 bg-black/40 border border-white/10 px-3 py-1 rounded-full text-xs uppercase tracking-widest text-zinc-200">
-                                            <i className={`fa-solid ${rule.icon} text-cyan-300`}></i>
-                                            <span>{rule.label}</span>
+                                        <div key={rule.label} className="flex items-center gap-2 bg-black/45 border border-white/10 px-3 py-1.5 rounded-full text-sm font-semibold uppercase tracking-[0.16em] text-zinc-100">
+                                            <i className={`fa-solid ${rule.icon} text-cyan-300 text-base`}></i>
+                                            <span>{rule.shortLabel || rule.label}</span>
                                         </div>
                                     ))}
                                 </div>
-                                <div className="mb-4 text-xs uppercase tracking-[0.3em] text-zinc-400">
+                                <div className="mb-3 text-sm uppercase tracking-[0.24em] text-zinc-300">
                                     Queue: <span className="text-white font-bold">{allQueue.length}</span> songs
                                     {' '}
                                     | Est wait <span className="text-white font-bold">{formatWaitTime(queueWaitSec)}</span>
                                 </div>
-                                <div className="space-y-2 mb-6">
+                                <div className="space-y-2 mb-4 max-h-[28vh] overflow-y-auto custom-scrollbar pr-1">
+                                    {nextUp.length === 0 && (
+                                        <div className="bg-black/35 border border-white/10 rounded-2xl px-4 py-3 text-zinc-100 text-xl font-bebas tracking-wide">
+                                            No singers yet - scan to join
+                                        </div>
+                                    )}
                                     {nextUp.map((s, i) => {
                                         const vip = isVipSong(s);
                                         return (
@@ -2137,10 +2180,10 @@ const PublicTV = ({ roomCode }) => {
                                         );
                                     })}
                                 </div>
-                                <h3 className="text-5xl font-bebas text-green-400 mb-2 border-b border-white/10 pb-2">
+                                <h3 className="text-4xl font-bebas text-green-400 mb-2 border-b border-white/10 pb-2">
                                     {showChatFeed ? 'CHAT' : 'ACTIVITY'}
                                 </h3>
-                                <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
+                                <div className="flex-1 min-h-0 overflow-y-auto space-y-2 custom-scrollbar">
                                     {showChatFeed ? (
                                         <>
                                             {chatMessages.length === 0 && (
@@ -2167,6 +2210,11 @@ const PublicTV = ({ roomCode }) => {
                                         </>
                                     ) : (
                                         <>
+                                            {activities.length === 0 && (
+                                                <div className="text-zinc-200 text-2xl font-bebas tracking-wide">
+                                                    Activity starts when first singer joins.
+                                                </div>
+                                            )}
                                             {activities.map((a, i) => (
                                                 <div key={i} className="flex gap-2 items-center text-zinc-200 text-lg">
                                                     <span>{a.icon}</span>

@@ -5,50 +5,32 @@ import './marketing.css';
 
 const GAMES_PAGE = 'games';
 
-const IA_GROUPS = [
+const NAV_PRIMARY_LINKS = [
+    { id: 'how-it-works', label: 'How It Works' },
+    { id: 'surfaces', label: '3 Surfaces' },
+    { id: 'modes', label: 'Game Modes' },
+    { id: 'plans', label: 'Plans' },
+    { id: 'faq', label: 'FAQ' }
+];
+
+const HOW_IT_WORKS_STEPS = [
     {
-        id: 'product',
-        label: 'Product',
-        targetId: 'surfaces',
-        summary: '3 surfaces, one synchronized system',
-        links: [
-            { id: 'visuals', label: 'Live Visuals' },
-            { id: 'screens', label: 'Screen Deep Dive' },
-            { id: 'surfaces', label: 'Three Surfaces' },
-            { id: 'host-features', label: 'Host Feature Stack' }
-        ]
+        id: 'join',
+        step: 'Step 1',
+        title: 'Guests Join In Seconds',
+        body: 'They scan the TV QR code and land in the audience app. No install required.'
     },
     {
-        id: 'games',
-        label: 'Games',
-        targetId: 'modes',
-        summary: 'Voice modes + social game formats',
-        links: [
-            { id: 'voice-games', label: 'Voice Games' },
-            { id: 'modes', label: 'All Modes' },
-            { page: GAMES_PAGE, label: 'Games Hub' }
-        ]
+        id: 'host',
+        step: 'Step 2',
+        title: 'Host Runs One Control Panel',
+        body: 'Queue, visuals, game prompts, and pacing all live in one host workspace.'
     },
     {
-        id: 'business',
-        label: 'Business',
-        targetId: 'plans',
-        summary: 'Fundraisers, VIP, plans, FAQ',
-        links: [
-            { id: 'fundraisers', label: 'Fundraisers' },
-            { id: 'vip', label: 'VIP' },
-            { id: 'plans', label: 'Host Plans' },
-            { id: 'faq', label: 'FAQ' }
-        ]
-    },
-    {
-        id: 'access',
-        label: 'Access',
-        targetId: 'waitlist',
-        summary: 'Join early access waves',
-        links: [
-            { id: 'waitlist', label: 'Early Access' }
-        ]
+        id: 'play',
+        step: 'Step 3',
+        title: 'Karaoke + Games Keep Energy High',
+        body: 'Switch between singing, trivia, bingo, bracket play, and voice mini-games without losing flow.'
     }
 ];
 
@@ -742,27 +724,20 @@ const MarketingSite = () => {
                         <span className="mk-brand-word">BeauRocks</span>
                     </div>
                     <nav className="mk-nav-links">
-                        {isHomePage && IA_GROUPS.map((group) => (
-                            <div key={group.id} className="mk-nav-group">
-                                <a href={`#${group.targetId}`} className="mk-nav-group-trigger">{group.label}</a>
-                                <div className="mk-nav-group-menu">
-                                    {group.links.map((link) => (
-                                        link.page ? (
-                                            <button
-                                                key={`${group.id}_${link.label}`}
-                                                type="button"
-                                                className="mk-nav-menu-btn"
-                                                onClick={() => navigateMarketingPage(link.page)}
-                                            >
-                                                {link.label}
-                                            </button>
-                                        ) : (
-                                            <a key={`${group.id}_${link.id}`} href={`#${link.id}`}>{link.label}</a>
-                                        )
-                                    ))}
-                                </div>
-                            </div>
+                        {isHomePage && NAV_PRIMARY_LINKS.map((link) => (
+                            <a key={link.id} href={`#${link.id}`} className="mk-nav-link">
+                                {link.label}
+                            </a>
                         ))}
+                        {isHomePage && (
+                            <button
+                                type="button"
+                                className="mk-nav-inline-btn"
+                                onClick={() => navigateMarketingPage(GAMES_PAGE)}
+                            >
+                                Games Hub
+                            </button>
+                        )}
                         {!isHomePage && (
                             <button type="button" className="mk-nav-inline-btn" onClick={() => navigateMarketingPage('home')}>
                                 Home
@@ -781,39 +756,57 @@ const MarketingSite = () => {
                             <div className="mk-layer mk-layer-glow" style={{ transform: `translate3d(0, ${parallax.glowY}px, 0)` }} />
                             <div className="mk-layer mk-layer-orb" style={{ transform: `translate3d(0, ${parallax.orbY}px, 0)` }} />
                             <div className="mk-container mk-hero-content">
-                                <div className="mk-pill">Private Party Platform Powered By Karaoke</div>
-                                <h1>Run A Better Party Night At Home.</h1>
+                                <div className="mk-pill">Private Party Karaoke + Social Game Night</div>
+                                <h1>Run A Karaoke Night People Actually Stay In.</h1>
                                 <p>
-                                    BeauRocks turns private gatherings into structured, high-energy party nights with
-                                    three coordinated surfaces: a public screen, a host panel, and an audience app that
-                                    keeps guests engaged from start to finish.
+                                    BeauRocks keeps hosts in control and guests involved with one synchronized system:
+                                    a host panel, a public TV surface, and a phone audience app that work together in real time.
                                 </p>
                                 <div className="mk-hero-cta">
-                                    <button type="button" onClick={jumpToWaitlist} className="mk-btn mk-btn-primary">Join The Waitlist</button>
-                                    <button type="button" onClick={() => navigateMarketingPage(GAMES_PAGE)} className="mk-btn mk-btn-ghost">Explore Games Hub</button>
-                                    <a href="#surfaces" className="mk-btn mk-btn-ghost">See The 3 Surfaces</a>
-                                    <a href={appBase} className="mk-btn mk-btn-ghost">Open Live App</a>
+                                    <button type="button" onClick={jumpToWaitlist} className="mk-btn mk-btn-primary">Join Early Access</button>
+                                    <a href="#how-it-works" className="mk-btn mk-btn-ghost">See How It Works</a>
                                 </div>
-                                <div className="mk-ia-strip">
-                                    {IA_GROUPS.map((group) => (
-                                        <a key={`ia_${group.id}`} href={`#${group.targetId}`} className="mk-ia-chip">
-                                            <strong>{group.label}</strong>
-                                            <span>{group.summary}</span>
-                                        </a>
-                                    ))}
+                                <div className="mk-hero-links">
+                                    <button
+                                        type="button"
+                                        className="mk-inline-link"
+                                        onClick={() => navigateMarketingPage(GAMES_PAGE)}
+                                    >
+                                        Explore all game modes
+                                    </button>
+                                    <a href={appBase} className="mk-inline-link">Open the live app</a>
                                 </div>
                                 <div className="mk-hero-note">
-                                    Rolling access waves for home hosts, private events, and fundraiser nights.
+                                    Built for home parties, private events, and fundraiser nights.
+                                </div>
+                            </div>
+                        </section>
+
+                        <section id="how-it-works" className="mk-section">
+                            <div className="mk-container">
+                                <div className="mk-kicker">How It Works</div>
+                                <h2>One Simple Flow For The Whole Room</h2>
+                                <p className="mk-lead">
+                                    You do not need to explain the product to every guest. The room follows this same pattern all night.
+                                </p>
+                                <div className="mk-grid mk-grid-3">
+                                    {HOW_IT_WORKS_STEPS.map((step) => (
+                                        <article key={step.id} className="mk-card mk-step-card">
+                                            <div className="mk-step-label">{step.step}</div>
+                                            <h3>{step.title}</h3>
+                                            <p>{step.body}</p>
+                                        </article>
+                                    ))}
                                 </div>
                             </div>
                         </section>
 
                         <section id="visuals" className="mk-section mk-section-dark">
                             <div className="mk-container">
-                                <div className="mk-kicker">Product In Action</div>
-                                <h2>Real Surface Captures, Not Mockups</h2>
+                                <div className="mk-kicker">Real Product</div>
+                                <h2>Actual Captures From Live Rooms</h2>
                                 <p className="mk-lead">
-                                    Live captures from production so hosts can evaluate the actual in-room experience.
+                                    See exactly what hosts and guests see during real nights.
                                 </p>
                                 <div className="mk-grid mk-grid-3 mk-visual-grid">
                                     {PRODUCT_VISUALS.map((visual) => (
@@ -850,9 +843,9 @@ const MarketingSite = () => {
                         <section id="surfaces" className="mk-section">
                             <div className="mk-container">
                                 <div className="mk-kicker">Three Surfaces</div>
-                                <h2>One Night. Three Surfaces. Zero Chaos.</h2>
+                                <h2>Every Role Gets Its Own Screen</h2>
                                 <p className="mk-lead">
-                                    Every party role gets a purpose-built interface, so singing is not the only path to fun.
+                                    Instead of one overloaded UI, each person gets the right interface for their job.
                                 </p>
                                 <div className="mk-grid mk-grid-3">
                                     {SURFACES.map((surface) => (
@@ -888,10 +881,10 @@ const MarketingSite = () => {
 
                         <section id="modes" className="mk-section mk-section-dark">
                             <div className="mk-container">
-                                <div className="mk-kicker">Modes</div>
-                                <h2>Choose The Tone Of Tonight</h2>
+                                <div className="mk-kicker">Game Modes</div>
+                                <h2>Pick The Type Of Night You Want</h2>
                                 <p className="mk-lead">
-                                    Karaoke is the spark. Bingo, Trivia, Tight 15, and Sweet 16 Bracket build the full event arc.
+                                    Start with karaoke, then layer in audience game modes when you want more interaction.
                                 </p>
                                 <div className="mk-hero-cta mk-inline-actions">
                                     <button type="button" onClick={() => navigateMarketingPage(GAMES_PAGE)} className="mk-btn mk-btn-primary">

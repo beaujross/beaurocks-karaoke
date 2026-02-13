@@ -57,6 +57,9 @@ const AnimatedPoints = ({ value, onClick, className = '' }) => {
 
 const DEFAULT_EMOJI = emoji(0x1F600);
 const BRAND_ICON = 'https://beauross.com/wp-content/uploads/beaurocks-karaoke-logo-2.png';
+const MOBILE_THEME_COLOR = '#7a2b76';
+const MOBILE_APP_BG = '#090612';
+const MOBILE_NAV_GRADIENT = 'linear-gradient(90deg, #4b1436 0%, #3a1b5c 52%, #15899a 100%)';
 const TIGHT15_MAX = 15;
 
 const normalizeTight15Text = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -681,6 +684,30 @@ const SingerApp = ({ roomCode, uid }) => {
     const motionSafeFx = !!room?.reduceMotionFx;
 
     useEffect(() => {
+        if (typeof document === 'undefined') return undefined;
+        const rootEl = document.documentElement;
+        const bodyEl = document.body;
+        const themeMeta = document.querySelector('meta[name="theme-color"]');
+        const msTileMeta = document.querySelector('meta[name="msapplication-TileColor"]');
+        const previousThemeColor = themeMeta?.getAttribute('content') ?? '';
+        const previousMsTileColor = msTileMeta?.getAttribute('content') ?? '';
+        const previousRootBg = rootEl.style.backgroundColor;
+        const previousBodyBg = bodyEl?.style.background ?? '';
+
+        if (themeMeta) themeMeta.setAttribute('content', MOBILE_THEME_COLOR);
+        if (msTileMeta) msTileMeta.setAttribute('content', MOBILE_THEME_COLOR);
+        rootEl.style.backgroundColor = MOBILE_APP_BG;
+        if (bodyEl) bodyEl.style.background = MOBILE_APP_BG;
+
+        return () => {
+            if (themeMeta) themeMeta.setAttribute('content', previousThemeColor || '#ec4899');
+            if (msTileMeta) msTileMeta.setAttribute('content', previousMsTileColor || '#ec4899');
+            rootEl.style.backgroundColor = previousRootBg;
+            if (bodyEl) bodyEl.style.background = previousBodyBg;
+        };
+    }, []);
+
+    useEffect(() => {
         if (!room?.showLyricsSinger) {
             setDismissedHostLyrics(false);
             return;
@@ -1172,8 +1199,19 @@ const SingerApp = ({ roomCode, uid }) => {
         const origin = typeof window !== 'undefined' ? window.location.origin : '';
         return createBillingProvider({ platform: billingPlatform, callFunction, origin });
     }, [billingPlatform]);
-    const loungeMessages = useMemo(() => chatMessages.filter(msg => !msg.toHost), [chatMessages]);
-    const dmMessages = useMemo(() => chatMessages.filter(msg => (msg.toHost && msg.uid === uid) || msg.toUid === uid), [chatMessages, uid]);
+    const isDirectChatMessage = useCallback((message = {}) => (
+        !!message?.toHost
+        || !!message?.toUid
+        || message?.channel === 'host'
+        || message?.channel === 'dm'
+    ), []);
+    const isLoungeChatMessage = useCallback((message = {}) => !isDirectChatMessage(message), [isDirectChatMessage]);
+    const isDmForCurrentUser = useCallback((message = {}) => (
+        (!!message?.toHost && message?.uid === uid)
+        || message?.toUid === uid
+    ), [uid]);
+    const loungeMessages = useMemo(() => chatMessages.filter((msg) => isLoungeChatMessage(msg)), [chatMessages, isLoungeChatMessage]);
+    const dmMessages = useMemo(() => chatMessages.filter((msg) => isDmForCurrentUser(msg)), [chatMessages, isDmForCurrentUser]);
     const [hallOfFameMode, setHallOfFameMode] = useState('all_time');
     const [hallOfFameEntries, setHallOfFameEntries] = useState([]);
     const [hallOfFameFilter, setHallOfFameFilter] = useState('');
@@ -1240,13 +1278,14 @@ const SingerApp = ({ roomCode, uid }) => {
             } else if (!next.length) {
                 setChatMessages([]);
             }
-            const newest = next[0]?.timestamp?.seconds ? next[0].timestamp.seconds * 1000 : 0;
+            const newestRelevant = next.find((msg) => isLoungeChatMessage(msg) || isDmForCurrentUser(msg));
+            const newest = newestRelevant?.timestamp?.seconds ? newestRelevant.timestamp.seconds * 1000 : 0;
             if (newest && newest > chatLastSeenRef.current && !viewingChat) {
                 setChatUnread(true);
             }
         });
         return () => unsub();
-    }, [roomCode, room?.chatEnabled, tab, socialTab]);
+    }, [roomCode, room?.chatEnabled, tab, socialTab, isLoungeChatMessage, isDmForCurrentUser]);
 
     useEffect(() => {
         const viewingLeaderboard = tab === 'social' && socialTab === 'leaderboard';
@@ -1574,15 +1613,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 name: user?.name || 'Guest',
                 avatar: user?.avatar || '',
                 image: dataUrl,
+                approved: !room?.doodleOke?.requireReview,
                 timestamp: serverTimestamp()
             });
             setDoodleSubmitted(true);
-            toast('Drawing submitted!');
+            toast(room?.doodleOke?.requireReview ? 'Drawing submitted for host review!' : 'Drawing submitted!');
         } catch (e) {
             console.error(e);
             toast('Submit failed');
         }
-    }, [roomCode, user, room?.doodleOke?.promptId, doodleSubmitted, uid, toast]);
+    }, [roomCode, user, room?.doodleOke?.promptId, room?.doodleOke?.requireReview, doodleSubmitted, uid, toast]);
 
     const submitDoodleVote = async (targetUid) => {
         if (!roomCode || !user || !room?.doodleOke?.promptId) return;
@@ -3812,17 +3852,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const doodle = room.doodleOke;
         const participants = room?.doodleOkeConfig?.participants || [];
         const eligibleToDraw = !participants.length || participants.includes(uid);
+        const requireReview = !!doodle?.requireReview;
+        const approvedUidSet = new Set(Array.isArray(doodle?.approvedUids) ? doodle.approvedUids.filter(Boolean) : []);
         let phase = doodle.status || 'drawing';
         if (phase === 'drawing' && doodle.endsAt && doodleNow >= doodle.endsAt) phase = 'voting';
         if (phase === 'voting' && doodle.guessEndsAt && doodleNow >= doodle.guessEndsAt) phase = 'reveal';
         const drawRemaining = Math.max(0, Math.ceil((doodle.endsAt - doodleNow) / 1000));
         const voteRemaining = Math.max(0, Math.ceil((doodle.guessEndsAt - doodleNow) / 1000));
         const promptVisible = phase === 'drawing' || phase === 'reveal';
+        const visibleSubmissions = requireReview
+            ? doodleSubmissions.filter((submission) => approvedUidSet.has(submission.uid))
+            : doodleSubmissions;
+        const pendingReviewCount = Math.max(0, doodleSubmissions.length - visibleSubmissions.length);
+        const mySubmissionApproved = approvedUidSet.has(uid);
         const voteCounts = doodleVotes.reduce((acc, v) => {
             acc[v.targetUid] = (acc[v.targetUid] || 0) + 1;
             return acc;
         }, {});
-        const submissionsSorted = [...doodleSubmissions].sort((a, b) => (voteCounts[b.uid] || 0) - (voteCounts[a.uid] || 0));
+        const submissionsSorted = [...visibleSubmissions].sort((a, b) => (voteCounts[b.uid] || 0) - (voteCounts[a.uid] || 0));
 
         return (
             <div className="h-screen w-full bg-zinc-950 text-white font-saira flex flex-col items-center justify-center px-5 py-6 overflow-hidden">
@@ -3848,6 +3895,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             {promptVisible ? doodle.prompt : 'Prompt hidden - vote with your eyes.'}
                         </div>
                         <div className="text-xs text-zinc-400 mt-1">Karaoke twist: sing the line while you draw.</div>
+                        {requireReview && (
+                            <div className="text-xs text-amber-300 mt-2">
+                                Host review is on. Sketches appear in gallery after approval.
+                            </div>
+                        )}
                     </div>
 
                     {phase === 'drawing' && (
@@ -3906,6 +3958,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     >
                                         {doodleSubmitted ? 'Submitted' : 'Submit Drawing'}
                                     </button>
+                                    {doodleSubmitted && requireReview && !mySubmissionApproved && (
+                                        <div className="mt-2 text-xs text-amber-300 text-center">Awaiting host approval before your sketch appears.</div>
+                                    )}
                                 </>
                             ) : (
                                 <div className="text-zinc-400 text-sm text-center py-10">You're in the audience for this round. Sit back and get ready to vote.</div>
@@ -3917,7 +3972,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         <div className="bg-zinc-900/70 border border-white/10 rounded-3xl p-4">
                             <div className="text-xs uppercase tracking-[0.35em] text-zinc-500 mb-3">Gallery</div>
                             {submissionsSorted.length === 0 ? (
-                                <div className="text-zinc-500 text-sm">Waiting for drawings...</div>
+                                <div className="text-zinc-500 text-sm">
+                                    {requireReview && pendingReviewCount > 0
+                                        ? `Waiting for host approvals (${pendingReviewCount} pending)...`
+                                        : 'Waiting for drawings...'}
+                                </div>
                             ) : (
                                 <div className="grid grid-cols-2 gap-3">
                                     {submissionsSorted.map(s => (
@@ -4576,107 +4635,130 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     );
 
     if (showProfile) return (
-        <div className="fixed inset-0 bg-gradient-to-br from-[#120b1a] via-[#0f1218] to-[#0a0d12] z-[100] p-6 flex flex-col items-center justify-center font-saira text-white">
+        <div
+            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center text-white font-saira"
+            onClick={() => setShowProfile(false)}
+        >
             <style>{PARTY_LIGHTS_STYLE}</style>
-            <div className="w-full max-w-md mb-6 text-center">
-                <div className="text-xs uppercase tracking-[0.45em] text-zinc-500">Profile</div>
-                <h2 className="text-5xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] mt-2">
-                    CHANGE NAME / EMOJI
-                </h2>
-                <div className="text-lg text-zinc-300 mt-2">Make it bold, make it you.</div>
-            </div>
-            <div className="w-full max-w-md">
-                <div className="relative">
-                    <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-                        <div className="logo-rays join-rays profile-rays" style={{ '--ray-inner': '130px', left: '50%', top: '50%' }}></div>
+            <div
+                className="relative w-full sm:max-w-lg max-h-[92dvh] overflow-hidden rounded-t-[2rem] sm:rounded-3xl border border-fuchsia-300/30 bg-gradient-to-br from-[#1b1130] via-[#0d1423] to-[#0a0d12] shadow-[0_0_60px_rgba(236,72,153,0.28)]"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="absolute -top-24 -left-12 w-56 h-56 rounded-full bg-fuchsia-500/25 blur-3xl pointer-events-none"></div>
+                <div className="absolute -bottom-28 -right-12 w-64 h-64 rounded-full bg-cyan-500/20 blur-3xl pointer-events-none"></div>
+                <div className="sticky top-0 z-20 px-5 pt-4 pb-3 border-b border-white/10 bg-black/45 backdrop-blur">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <div className="text-[10px] uppercase tracking-[0.45em] text-zinc-400">Profile Studio</div>
+                            <h2 className="text-3xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] mt-1">
+                                CHANGE NAME / EMOJI
+                            </h2>
+                            <div className="text-sm text-zinc-300">Neon synthwave mode for your identity.</div>
+                        </div>
+                        <button
+                            onClick={() => setShowProfile(false)}
+                            className="h-9 w-9 rounded-full border border-white/20 bg-black/50 text-zinc-200 text-sm font-black"
+                            aria-label="Close profile editor"
+                        >
+                            X
+                        </button>
                     </div>
-                    <div className="party-lights"></div>
-                    <div className="party-lights alt"></div>
-                    <div className="party-lights third"></div>
-                    <AvatarCoverflow items={AVATAR_CATALOG} value={form.emoji || user.avatar} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} />
                 </div>
-                <div className="mt-4 rounded-3xl p-5 text-center bg-gradient-to-br from-[#1b1b22] via-[#14141a] to-[#101014] border border-white/10 shadow-[0_18px_50px_rgba(0,0,0,0.55)]">
-                    <div className="text-4xl font-black text-[#00C4D9] mt-1 drop-shadow">{selectedAvatar?.label}</div>
-                    {selectedAvatarStatus?.locked ? (
-                        <div className="text-2xl font-bold text-zinc-200 mt-3">Unlock: {selectedAvatarUnlock}</div>
-                    ) : (
-                        <div className="text-2xl font-bold text-zinc-200 mt-3">{selectedAvatar?.flavor}</div>
-                    )}
-                </div>
-            </div>
-            <div className="text-7xl mb-4 drop-shadow-[0_0_18px_rgba(236,72,153,0.45)]">{form.emoji || user.avatar}</div>
-            <div className="text-lg text-zinc-200 mb-2">
-                Points: <span className="text-white font-black">{Math.max(0, getEffectivePoints())}</span>
-            </div>
-            <div className="text-base text-zinc-300 mb-5 text-center">
-                {getNameEmojiChangeCost() === 0 ? 'First change is free.' : `This change costs ${getNameEmojiChangeCost()} PTS.`}
-                <div className="text-zinc-500 mt-2">Next change: {getNextNameEmojiChangeCost()} PTS.</div>
-            </div>
-            <input
-                value={form.name}
-                maxLength={NAME_LIMIT}
-                onChange={e=>setForm({...form, name: clampName(e.target.value)})}
-                className="w-full max-w-md bg-zinc-950/70 p-4 rounded-2xl mb-4 text-center border border-zinc-600 text-xl"
-                placeholder="Your Name"
-            />
-            {isVipAccount && (
-                <div className="w-full max-w-md bg-black/40 border border-white/10 rounded-2xl p-5 mb-4">
-                    <div className="text-xs uppercase tracking-[0.45em] text-zinc-400 mb-3">VIP Profile</div>
+                <div className="overflow-y-auto custom-scrollbar px-5 py-4 space-y-4">
+                    <div className="relative rounded-3xl border border-white/10 bg-black/35 p-3">
+                        <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
+                            <div className="logo-rays join-rays profile-rays" style={{ '--ray-inner': '130px', left: '50%', top: '50%' }}></div>
+                        </div>
+                        <div className="party-lights"></div>
+                        <div className="party-lights alt"></div>
+                        <div className="party-lights third"></div>
+                        <AvatarCoverflow items={AVATAR_CATALOG} value={form.emoji || user.avatar} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} />
+                    </div>
+                    <div className="rounded-3xl p-5 text-center bg-gradient-to-br from-[#1e1c2f] via-[#151827] to-[#101421] border border-fuchsia-300/20 shadow-[0_12px_35px_rgba(0,0,0,0.45)]">
+                        <div className="text-6xl mb-2 drop-shadow-[0_0_18px_rgba(236,72,153,0.5)]">{form.emoji || user.avatar}</div>
+                        <div className="text-3xl font-black text-[#00C4D9] drop-shadow">{selectedAvatar?.label}</div>
+                        {selectedAvatarStatus?.locked ? (
+                            <div className="text-lg font-bold text-zinc-200 mt-2">Unlock: {selectedAvatarUnlock}</div>
+                        ) : (
+                            <div className="text-lg font-bold text-zinc-200 mt-2">{selectedAvatar?.flavor}</div>
+                        )}
+                    </div>
+                    <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-center">
+                        <div className="text-sm text-zinc-200">
+                            Points: <span className="text-white font-black">{Math.max(0, getEffectivePoints())}</span>
+                        </div>
+                        <div className="text-sm text-zinc-300 mt-1">
+                            {getNameEmojiChangeCost() === 0 ? 'First change is free.' : `This change costs ${getNameEmojiChangeCost()} PTS.`}
+                        </div>
+                        <div className="text-xs text-zinc-400 mt-1">Next change: {getNextNameEmojiChangeCost()} PTS.</div>
+                    </div>
                     <input
-                        value={vipForm.location}
-                        onChange={(e) => setVipForm(prev => ({ ...prev, location: e.target.value }))}
-                        className="w-full bg-zinc-900 p-4 rounded-xl mb-3 text-center border border-zinc-700 text-lg"
-                        placeholder="Location (city, vibe, or wherever)"
+                        value={form.name}
+                        maxLength={NAME_LIMIT}
+                        onChange={e=>setForm({...form, name: clampName(e.target.value)})}
+                        className="w-full bg-zinc-950/70 p-4 rounded-2xl text-center border border-zinc-600 text-xl"
+                        placeholder="Your Name"
                     />
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                        <select
-                            value={vipForm.birthMonth}
-                            onChange={(e) => setVipForm(prev => ({ ...prev, birthMonth: e.target.value }))}
-                            className="bg-zinc-900 p-4 rounded-xl border border-zinc-700 text-lg"
-                        >
-                            <option value="">Birth Month</option>
-                            {VIP_BIRTH_MONTHS.map(m => (
-                                <option key={m} value={m}>{m}</option>
-                            ))}
-                        </select>
-                        <select
-                            value={vipForm.birthDay}
-                            onChange={(e) => setVipForm(prev => ({ ...prev, birthDay: e.target.value }))}
-                            className="bg-zinc-900 p-4 rounded-xl border border-zinc-700 text-lg"
-                        >
-                            <option value="">Birth Day</option>
-                            {VIP_BIRTH_DAYS.map(day => (
-                                <option key={day} value={day}>{day}</option>
-                            ))}
-                        </select>
+                    {isVipAccount && (
+                        <div className="bg-black/40 border border-fuchsia-400/25 rounded-2xl p-4">
+                            <div className="text-xs uppercase tracking-[0.45em] text-zinc-400 mb-3">VIP Profile</div>
+                            <input
+                                value={vipForm.location}
+                                onChange={(e) => setVipForm(prev => ({ ...prev, location: e.target.value }))}
+                                className="w-full bg-zinc-900 p-3 rounded-xl mb-3 text-center border border-zinc-700 text-base"
+                                placeholder="Location (city, vibe, or wherever)"
+                            />
+                            <div className="grid grid-cols-2 gap-2 mb-3">
+                                <select
+                                    value={vipForm.birthMonth}
+                                    onChange={(e) => setVipForm(prev => ({ ...prev, birthMonth: e.target.value }))}
+                                    className="bg-zinc-900 p-3 rounded-xl border border-zinc-700 text-base"
+                                >
+                                    <option value="">Birth Month</option>
+                                    {VIP_BIRTH_MONTHS.map(m => (
+                                        <option key={m} value={m}>{m}</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={vipForm.birthDay}
+                                    onChange={(e) => setVipForm(prev => ({ ...prev, birthDay: e.target.value }))}
+                                    className="bg-zinc-900 p-3 rounded-xl border border-zinc-700 text-base"
+                                >
+                                    <option value="">Birth Day</option>
+                                    {VIP_BIRTH_DAYS.map(day => (
+                                        <option key={day} value={day}>{day}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <label className="flex items-center gap-2 text-sm text-zinc-200">
+                                <input
+                                    type="checkbox"
+                                    checked={vipForm.smsOptIn}
+                                    onChange={(e) => setVipForm(prev => ({ ...prev, smsOptIn: e.target.checked }))}
+                                />
+                                Text me when I am up next
+                            </label>
+                            <label className="flex items-center gap-2 text-sm text-zinc-200 mt-2">
+                                <input
+                                    type="checkbox"
+                                    checked={vipForm.tosAccepted || vipTosAccepted}
+                                    disabled={vipTosAccepted}
+                                    onChange={(e) => setVipForm(prev => ({ ...prev, tosAccepted: e.target.checked }))}
+                                />
+                                {vipTosAccepted ? 'VIP House Rules accepted' : 'I agree to the VIP House Rules'}
+                            </label>
+                        </div>
+                    )}
+                    {isVipAccount && (
+                        <button onClick={() => setShowAccount(true)} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] py-3 rounded-xl font-bold">
+                            VIP Account & History
+                        </button>
+                    )}
+                    <div className="flex gap-2">
+                        <button onClick={()=>setShowProfile(false)} className="flex-1 bg-zinc-700 py-3 rounded-xl font-bold">CANCEL</button>
+                        <button onClick={updateProfile} className="flex-1 bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black py-3 rounded-xl font-black">SAVE</button>
                     </div>
-                    <label className="flex items-center gap-2 text-base text-zinc-200">
-                        <input
-                            type="checkbox"
-                            checked={vipForm.smsOptIn}
-                            onChange={(e) => setVipForm(prev => ({ ...prev, smsOptIn: e.target.checked }))}
-                        />
-                        Text me when I'm up next (only if I opt in; host sets timing)
-                    </label>
-                    <label className="flex items-center gap-2 text-base text-zinc-200 mt-2">
-                        <input
-                            type="checkbox"
-                            checked={vipForm.tosAccepted || vipTosAccepted}
-                            disabled={vipTosAccepted}
-                            onChange={(e) => setVipForm(prev => ({ ...prev, tosAccepted: e.target.checked }))}
-                        />
-                        {vipTosAccepted ? 'VIP House Rules accepted' : 'I agree to the VIP House Rules'}
-                    </label>
                 </div>
-            )}
-            {isVipAccount && (
-                <button onClick={() => setShowAccount(true)} className="w-full max-w-md bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] py-3 rounded-xl font-bold mb-3 text-lg">
-                    VIP Account & History
-                </button>
-            )}
-            <div className="flex gap-2 w-full max-w-md">
-                <button onClick={()=>setShowProfile(false)} className="flex-1 bg-zinc-700 py-3 rounded-xl font-bold text-lg">CANCEL</button>
-                <button onClick={updateProfile} className="flex-1 bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black py-3 rounded-xl font-black text-lg">SAVE</button>
             </div>
         </div>
     );
@@ -4769,9 +4851,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             .map(s => ({ ...s, score: (s.hypeScore || 0) + (s.applauseScore || 0) + (s.hostBonus || 0) }))
             .sort((a, b) => b.score - a.score)[0];
         return (
-            <div className="fixed inset-0 bg-black/80 z-[140] flex items-center justify-center p-6 text-white font-saira">
-                <div className="w-full max-w-md bg-gradient-to-br from-[#120b1a] via-[#0f1218] to-[#0a0d12] border border-white/10 rounded-3xl p-6 shadow-2xl">
-                    <div className="flex items-center justify-between mb-5">
+            <div
+                className="fixed inset-0 bg-black/85 backdrop-blur-md z-[140] flex items-end sm:items-center justify-center text-white font-saira"
+                onClick={() => setPublicProfileOpen(false)}
+            >
+                <div
+                    className="relative w-full sm:max-w-lg max-h-[92dvh] overflow-hidden rounded-t-[2rem] sm:rounded-3xl border border-cyan-400/25 bg-gradient-to-br from-[#1a1030] via-[#111827] to-[#0a0d12] shadow-[0_0_55px_rgba(0,196,217,0.22)]"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full bg-fuchsia-500/20 blur-3xl pointer-events-none"></div>
+                    <div className="absolute -bottom-20 -left-16 w-52 h-52 rounded-full bg-cyan-400/20 blur-3xl pointer-events-none"></div>
+                    <div className="sticky top-0 z-20 bg-black/45 backdrop-blur border-b border-white/10 px-4 py-3 flex items-center justify-between gap-2">
                         <UserMetaCard
                             mode="full"
                             avatar={displayAvatar}
@@ -4779,94 +4869,102 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             isVip={isPublicVip}
                             showFame={false}
                         />
-                        <button onClick={() => setPublicProfileOpen(false)} className="bg-zinc-800 px-4 py-1.5 rounded-full text-sm font-bold">Close</button>
+                        <button
+                            onClick={() => setPublicProfileOpen(false)}
+                            className="h-9 w-9 rounded-full border border-white/20 bg-black/50 text-zinc-200 text-sm font-black flex items-center justify-center"
+                            aria-label="Close public profile"
+                        >
+                            X
+                        </button>
                     </div>
-                    {publicProfileLoading ? (
-                        <div className="text-lg text-zinc-300">Loading profile...</div>
-                    ) : (
-                        <>
-                            <div className="bg-black/40 border border-white/10 rounded-2xl p-5 mb-4">
-                                <div className="text-xs uppercase tracking-[0.45em] text-zinc-400 mb-2">Fame Level</div>
-                                <div className="text-lg text-zinc-200 mb-3">Level {fameLevel} - {fame.levelName}</div>
-                                <FameLevelProgressBar level={fameLevel} progressToNext={fameProgress} showLabel={false} />
-                                <div className="mt-2 text-xs text-zinc-400">{fame.total} fame points</div>
-                                {nextUnlock ? (
-                                    <div className="mt-3 bg-black/30 border border-white/10 rounded-xl px-3 py-2">
-                                        <div className="text-[10px] uppercase tracking-widest text-zinc-400">Next Unlock</div>
-                                        <div className="text-sm text-zinc-100 mt-1">Lv {nextUnlock.level}: {nextUnlock.unlockLabel}</div>
-                                        <div className="text-[11px] text-zinc-400 mt-1">
-                                            {nextUnlock.pointsNeeded > 0
-                                                ? `${nextUnlock.pointsNeeded.toLocaleString()} fame points to go`
-                                                : 'Unlocked - refresh in-room stats if this does not show yet.'}
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="mt-3 bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-zinc-300">
-                                        Max fame tier reached. No further unlocks.
-                                    </div>
-                                )}
-                            </div>
-                            <div className="grid grid-cols-2 gap-3 mb-4">
-                                <div className="bg-black/40 border border-white/10 rounded-xl p-4">
-                                    <div className="text-xs text-zinc-400 uppercase tracking-widest mb-1">Location</div>
-                                    <div className="text-white text-lg font-bold">{data.vipProfile?.location || '-'}</div>
-                                </div>
-                                <div className="bg-black/40 border border-white/10 rounded-xl p-4">
-                                    <div className="text-xs text-zinc-400 uppercase tracking-widest mb-1">Birthday</div>
-                                    <div className="text-white text-lg font-bold">{data.vipProfile?.birthMonth && data.vipProfile?.birthDay ? `${data.vipProfile.birthMonth} ${data.vipProfile.birthDay}` : '-'}</div>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3 mb-4">
-                                <div className="bg-black/40 border border-white/10 rounded-xl p-4">
-                                    <div className="text-xs text-zinc-400 uppercase tracking-widest mb-1">Performances</div>
-                                    <div className="text-white font-black text-xl">{publicStats.performances || 0}</div>
-                                </div>
-                                <div className="bg-black/40 border border-white/10 rounded-xl p-4">
-                                    <div className="text-xs text-zinc-400 uppercase tracking-widest mb-1">Total Points</div>
-                                    <div className="text-white font-black text-xl">{publicStats.totalPoints || 0}</div>
-                                </div>
-                                <div className="bg-black/40 border border-white/10 rounded-xl p-4">
-                                    <div className="text-xs text-zinc-400 uppercase tracking-widest mb-1">Loudest dB</div>
-                                    <div className="text-white font-black text-xl">{publicStats.loudest || 0}</div>
-                                </div>
-                                <div className="bg-black/40 border border-white/10 rounded-xl p-4">
-                                    <div className="text-xs text-zinc-400 uppercase tracking-widest mb-1">Emojis</div>
-                                    <div className="text-white font-black text-xl">{publicStats.totalEmojis || 0}</div>
-                                </div>
-                            </div>
-                            <div className="bg-black/40 border border-white/10 rounded-2xl p-5 mb-4">
-                                <div className="text-xs uppercase tracking-[0.45em] text-zinc-400 mb-2">Top 3 From Tight 15</div>
-                                {topTight15.length === 0 ? (
-                                    <div className="text-base text-zinc-300">No Tight 15 yet. Set one up to show your signature songs.</div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {topTight15.map((song, idx) => (
-                                            <div key={`${song.songTitle}-${idx}`} className="flex items-center gap-3">
-                                                {song.albumArtUrl ? (
-                                                    <img src={song.albumArtUrl} className="w-12 h-12 rounded-lg object-cover" />
-                                                ) : (
-                                                    <div className="w-12 h-12 rounded-lg bg-zinc-700 flex items-center justify-center text-xl">{EMOJI.musicNotes}</div>
-                                                )}
-                                                <div className="min-w-0">
-                                                    <div className="text-base font-bold truncate">{song.songTitle}</div>
-                                                    <div className="text-base text-zinc-400 truncate">{song.artist}</div>
-                                                </div>
+                    <div className="overflow-y-auto custom-scrollbar px-4 py-4">
+                        {publicProfileLoading ? (
+                            <div className="text-lg text-zinc-300">Loading profile...</div>
+                        ) : (
+                            <>
+                                <div className="bg-black/40 border border-cyan-300/20 rounded-2xl p-4 mb-4">
+                                    <div className="text-[10px] uppercase tracking-[0.45em] text-zinc-400 mb-2">Fame Level</div>
+                                    <div className="text-xl text-zinc-100 font-bold mb-2">Level {fameLevel} - {fame.levelName}</div>
+                                    <FameLevelProgressBar level={fameLevel} progressToNext={fameProgress} showLabel={false} />
+                                    <div className="mt-2 text-xs text-zinc-300">{fame.total} fame points</div>
+                                    {nextUnlock ? (
+                                        <div className="mt-3 bg-black/30 border border-fuchsia-400/20 rounded-xl px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-widest text-zinc-400">Next Unlock</div>
+                                            <div className="text-sm text-zinc-100 mt-1">Lv {nextUnlock.level}: {nextUnlock.unlockLabel}</div>
+                                            <div className="text-[11px] text-zinc-300 mt-1">
+                                                {nextUnlock.pointsNeeded > 0
+                                                    ? `${nextUnlock.pointsNeeded.toLocaleString()} fame points to go`
+                                                    : 'Unlocked - refresh in-room stats if this does not show yet.'}
                                             </div>
-                                        ))}
+                                        </div>
+                                    ) : (
+                                        <div className="mt-3 bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-zinc-300">
+                                            Max fame tier reached. No further unlocks.
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mb-4">
+                                    <div className="bg-black/35 border border-white/10 rounded-xl p-3">
+                                        <div className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Location</div>
+                                        <div className="text-white text-base font-bold">{data.vipProfile?.location || '-'}</div>
                                     </div>
-                                )}
-                            </div>
-                            <div className="bg-black/40 border border-white/10 rounded-2xl p-5">
-                                <div className="text-xs uppercase tracking-[0.45em] text-zinc-400 mb-2">Performance Stats</div>
-                                <div className="text-base text-zinc-200 mb-2">Total performances: {leaderboardStats.find(s => s.uid === publicProfileUser?.uid)?.performances || 0}</div>
-                                {performanceBest ? (
-                                    <div className="text-base text-zinc-300">Best moment: {performanceBest.songTitle} - {performanceBest.score} pts</div>
-                                ) : (
-                                    <div className="text-base text-zinc-400">No performances yet.</div>
-                                )}
-                            </div>
-                        </>
-                    )}
+                                    <div className="bg-black/35 border border-white/10 rounded-xl p-3">
+                                        <div className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Birthday</div>
+                                        <div className="text-white text-base font-bold">{data.vipProfile?.birthMonth && data.vipProfile?.birthDay ? `${data.vipProfile.birthMonth} ${data.vipProfile.birthDay}` : '-'}</div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mb-4">
+                                    <div className="bg-black/35 border border-white/10 rounded-xl p-3">
+                                        <div className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Performances</div>
+                                        <div className="text-white font-black text-xl">{publicStats.performances || 0}</div>
+                                    </div>
+                                    <div className="bg-black/35 border border-white/10 rounded-xl p-3">
+                                        <div className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Total Points</div>
+                                        <div className="text-white font-black text-xl">{publicStats.totalPoints || 0}</div>
+                                    </div>
+                                    <div className="bg-black/35 border border-white/10 rounded-xl p-3">
+                                        <div className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Loudest dB</div>
+                                        <div className="text-white font-black text-xl">{publicStats.loudest || 0}</div>
+                                    </div>
+                                    <div className="bg-black/35 border border-white/10 rounded-xl p-3">
+                                        <div className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Emojis</div>
+                                        <div className="text-white font-black text-xl">{publicStats.totalEmojis || 0}</div>
+                                    </div>
+                                </div>
+                                <div className="bg-black/35 border border-white/10 rounded-2xl p-4 mb-4">
+                                    <div className="text-[10px] uppercase tracking-[0.45em] text-zinc-400 mb-2">Top 3 From Tight 15</div>
+                                    {topTight15.length === 0 ? (
+                                        <div className="text-sm text-zinc-300">No Tight 15 yet. Set one up to show your signature songs.</div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {topTight15.map((song, idx) => (
+                                                <div key={`${song.songTitle}-${idx}`} className="flex items-center gap-3">
+                                                    {song.albumArtUrl ? (
+                                                        <img src={song.albumArtUrl} className="w-12 h-12 rounded-lg object-cover" />
+                                                    ) : (
+                                                        <div className="w-12 h-12 rounded-lg bg-zinc-700 flex items-center justify-center text-xl">{EMOJI.musicNotes}</div>
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <div className="text-sm font-bold truncate">{song.songTitle}</div>
+                                                        <div className="text-sm text-zinc-400 truncate">{song.artist}</div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="bg-black/35 border border-white/10 rounded-2xl p-4">
+                                    <div className="text-[10px] uppercase tracking-[0.45em] text-zinc-400 mb-2">Performance Stats</div>
+                                    <div className="text-sm text-zinc-200 mb-2">Total performances: {leaderboardStats.find(s => s.uid === publicProfileUser?.uid)?.performances || 0}</div>
+                                    {performanceBest ? (
+                                        <div className="text-sm text-zinc-300">Best moment: {performanceBest.songTitle} - {performanceBest.score} pts</div>
+                                    ) : (
+                                        <div className="text-sm text-zinc-400">No performances yet.</div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
         );
@@ -5181,71 +5279,87 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
 
     if (showFameLevels) return (
-        <div className="fixed inset-0 bg-black/80 z-[120] p-6 text-white font-saira overflow-y-auto">
-            <div className="w-full max-w-md mx-auto bg-zinc-900 border border-cyan-500/30 rounded-3xl p-5 shadow-[0_0_50px_rgba(0,196,217,0.25)]">
-                <div className="flex items-center justify-between mb-4">
+        <div
+            className="fixed inset-0 bg-black/85 backdrop-blur-md z-[120] flex items-end sm:items-center justify-center text-white font-saira"
+            onClick={() => setShowFameLevels(false)}
+        >
+            <div
+                className="relative w-full sm:max-w-xl max-h-[94dvh] overflow-hidden rounded-t-[2rem] sm:rounded-3xl border border-cyan-300/35 bg-gradient-to-br from-[#1a1130] via-[#0f1726] to-[#0a0d12] shadow-[0_0_60px_rgba(34,211,238,0.22)]"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="absolute -top-28 -left-20 w-72 h-72 rounded-full bg-fuchsia-500/20 blur-3xl pointer-events-none"></div>
+                <div className="absolute -bottom-24 -right-16 w-72 h-72 rounded-full bg-cyan-500/20 blur-3xl pointer-events-none"></div>
+                <div className="sticky top-0 z-20 bg-black/45 backdrop-blur border-b border-white/10 px-5 py-4 flex items-start justify-between gap-3">
                     <div>
-                        <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">Fame System</div>
-                        <h2 className="text-2xl font-bebas text-cyan-300">Fame Levels</h2>
-                        <div className="text-sm text-zinc-400">{totalFameLevels} total levels</div>
+                        <div className="text-[10px] uppercase tracking-[0.45em] text-zinc-400">Fame System</div>
+                        <h2 className="text-3xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-fuchsia-300 mt-1">FAME LEVELS</h2>
+                        <div className="text-sm text-zinc-300">{totalFameLevels} total levels</div>
                     </div>
-                    <button onClick={() => setShowFameLevels(false)} className="bg-zinc-800 px-3 py-1 rounded-full text-xs font-bold">Close</button>
+                    <button
+                        onClick={() => setShowFameLevels(false)}
+                        className="h-9 w-9 rounded-full border border-white/20 bg-black/50 text-zinc-200 text-sm font-black"
+                        aria-label="Close fame levels"
+                    >
+                        X
+                    </button>
                 </div>
-                <div className="bg-black/40 border border-white/10 rounded-2xl p-4 mb-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl" style={{ background: '#0f172a', border: '1px solid #22d3ee' }}>
-                            {getFameIcon(currentFameLevel)}
-                        </div>
-                        <div className="min-w-0">
-                            <div className="text-sm uppercase tracking-widest text-zinc-400">Current Level</div>
-                            <div className="text-lg font-bold text-white">Level {currentFameLevel} - {FAME_LEVELS?.[currentFameLevel]?.name || 'Rising Star'}</div>
-                            <div className="text-sm text-zinc-400">{currentFameTotal} Fame Points</div>
-                        </div>
-                    </div>
-                    <div className="mt-3">
-                        <FameLevelProgressBar level={currentFameLevel} progressToNext={getProgressToNextLevel(currentFameTotal, currentFameLevel)} />
-                    </div>
-                </div>
-                <div className="space-y-3">
-                    {fameLevelEntries.map(level => {
-                        const isCurrent = level.level === currentFameLevel;
-                        const isUnlocked = currentFameTotal >= level.minFame;
-                        const nextLabel = level.nextThreshold === Infinity ? 'MAX' : `${level.nextThreshold} FP`;
-                        return (
-                            <div
-                                key={level.level}
-                                className={`rounded-2xl p-4 border ${isCurrent ? 'bg-white/5' : 'bg-zinc-900/70'}`}
-                                style={{ borderColor: `${level.color}55`, boxShadow: isCurrent ? `0 0 18px ${level.color}40` : 'none' }}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl" style={{ background: `${level.color}20`, border: `1px solid ${level.color}70` }}>
-                                        {getFameIcon(level.level)}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center justify-between">
-                                            <div className="text-sm uppercase tracking-widest text-zinc-400">Level {level.level}</div>
-                                            {isCurrent && <div className="text-[10px] uppercase tracking-widest text-cyan-200 bg-cyan-500/15 border border-cyan-400/30 px-2 py-0.5 rounded-full">Current</div>}
-                                        </div>
-                                        <div className="text-base font-bold text-white">{level.name}</div>
-                                        <div className="text-xs text-zinc-400">Unlocks at {level.minFame} FP - Next {nextLabel}</div>
-                                    </div>
-                                </div>
-                                <div className="mt-3 grid gap-2">
-                                    <div className="text-sm text-zinc-200">
-                                        <span className="text-zinc-400">Reward:</span> {level.reward || '-'}
-                                    </div>
-                                    {level.unlock && (
-                                        <div className="text-sm text-zinc-200">
-                                            <span className="text-zinc-400">Unlock:</span> {level.unlock}
-                                        </div>
-                                    )}
-                                    <div className={`text-xs uppercase tracking-widest px-2 py-1 rounded-full w-fit ${isUnlocked ? 'bg-emerald-500/15 text-emerald-200 border border-emerald-400/30' : 'bg-white/5 text-zinc-400 border border-white/10'}`}>
-                                        {isUnlocked ? 'Unlocked' : 'Locked'}
-                                    </div>
-                                </div>
+                <div className="overflow-y-auto custom-scrollbar px-5 py-4 space-y-3">
+                    <div className="bg-black/40 border border-cyan-300/25 rounded-2xl p-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(34,211,238,0.35)]" style={{ background: '#0f172a', border: '1px solid #22d3ee' }}>
+                                {getFameIcon(currentFameLevel)}
                             </div>
-                        );
-                    })}
+                            <div className="min-w-0">
+                                <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">Current Level</div>
+                                <div className="text-xl font-bold text-white">Level {currentFameLevel} - {FAME_LEVELS?.[currentFameLevel]?.name || 'Rising Star'}</div>
+                                <div className="text-sm text-zinc-300">{currentFameTotal} Fame Points</div>
+                            </div>
+                        </div>
+                        <div className="mt-3">
+                            <FameLevelProgressBar level={currentFameLevel} progressToNext={getProgressToNextLevel(currentFameTotal, currentFameLevel)} />
+                        </div>
+                    </div>
+                    <div className="space-y-3 pb-2">
+                        {fameLevelEntries.map(level => {
+                            const isCurrent = level.level === currentFameLevel;
+                            const isUnlocked = currentFameTotal >= level.minFame;
+                            const nextLabel = level.nextThreshold === Infinity ? 'MAX' : `${level.nextThreshold} FP`;
+                            return (
+                                <div
+                                    key={level.level}
+                                    className={`rounded-2xl p-4 border ${isCurrent ? 'bg-white/5' : 'bg-zinc-900/70'}`}
+                                    style={{ borderColor: `${level.color}55`, boxShadow: isCurrent ? `0 0 22px ${level.color}40` : 'none' }}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl" style={{ background: `${level.color}20`, border: `1px solid ${level.color}70` }}>
+                                            {getFameIcon(level.level)}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">Level {level.level}</div>
+                                                {isCurrent && <div className="text-[10px] uppercase tracking-widest text-cyan-200 bg-cyan-500/15 border border-cyan-400/30 px-2 py-0.5 rounded-full">Current</div>}
+                                            </div>
+                                            <div className="text-base font-bold text-white">{level.name}</div>
+                                            <div className="text-xs text-zinc-300">Unlocks at {level.minFame} FP - Next {nextLabel}</div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 grid gap-2">
+                                        <div className="text-sm text-zinc-200">
+                                            <span className="text-zinc-400">Reward:</span> {level.reward || '-'}
+                                        </div>
+                                        {level.unlock && (
+                                            <div className="text-sm text-zinc-200">
+                                                <span className="text-zinc-400">Unlock:</span> {level.unlock}
+                                            </div>
+                                        )}
+                                        <div className={`text-xs uppercase tracking-widest px-2 py-1 rounded-full w-fit ${isUnlocked ? 'bg-emerald-500/15 text-emerald-200 border border-emerald-400/30' : 'bg-white/5 text-zinc-400 border border-white/10'}`}>
+                                            {isUnlocked ? 'Unlocked' : 'Locked'}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
         </div>
@@ -5372,7 +5486,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     return (
-        <div className="h-screen bg-zinc-900 text-white font-saira flex flex-col">
+        <div className="relative h-[100dvh] min-h-[100dvh] bg-[#090612] text-white font-saira flex flex-col overflow-hidden">
             {/* Header: Reorganized Layout */}
               <div className="pt-[calc(env(safe-area-inset-top)+12px)] bg-gradient-to-r from-[#4b1436] via-[#FF67B6] to-[#4b1436] shadow-lg z-20 relative h-24 overflow-visible">
                   <div className="relative h-full">
@@ -6718,20 +6832,29 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 </button>
             )}
 
-            <div className="bg-gradient-to-r from-[#4b1436] via-[#3a1b5c] to-[#15899a] py-1.5 flex border-t border-pink-400/30 flex-none z-20 relative" style={{ paddingLeft: 'max(8px, env(safe-area-inset-left))', paddingRight: 'max(8px, env(safe-area-inset-right))', paddingBottom: 'calc(env(safe-area-inset-bottom) + 6px)' }}>
-                <button onClick={()=>setTab('home')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='home'?'text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]':'text-zinc-300'}`}><i className="fa-solid fa-champagne-glasses text-[28px]"></i><span className="text-base font-semibold">PARTY</span></button>
-                <button onClick={()=>setTab('request')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='request'?'text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]':'text-zinc-300'}`}><i className="fa-solid fa-music text-[28px]"></i><span className="text-base font-semibold">SONGS</span></button>
-                <button onClick={() => {
-                    setTab('social');
-                    setSocialTab('lounge');
-                    const newest = chatMessages[0]?.timestamp?.seconds ? chatMessages[0].timestamp.seconds * 1000 : 0;
-                    if (newest) chatLastSeenRef.current = newest;
-                    setChatUnread(false);
-                }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='social'?'text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]':'text-zinc-300'} relative`}>
-                    <i className="fa-solid fa-comments text-[28px]"></i>
-                    {chatUnread && <span className="absolute top-2 right-8 w-2.5 h-2.5 rounded-full bg-pink-400 ring-2 ring-pink-300/60 shadow-[0_0_10px_rgba(255,103,182,0.8)]"></span>}
-                    <span className="text-base font-semibold">SOCIAL</span>
-                </button>
+            <div
+                className="relative border-t border-pink-400/30 flex-none z-20"
+                style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+            >
+                <div className="absolute inset-0" style={{ background: MOBILE_NAV_GRADIENT }}></div>
+                <div
+                    className="relative py-1.5 flex"
+                    style={{ paddingLeft: 'max(8px, env(safe-area-inset-left))', paddingRight: 'max(8px, env(safe-area-inset-right))' }}
+                >
+                    <button onClick={()=>setTab('home')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='home'?'text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]':'text-zinc-300'}`}><i className="fa-solid fa-champagne-glasses text-[28px]"></i><span className="text-base font-semibold">PARTY</span></button>
+                    <button onClick={()=>setTab('request')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='request'?'text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]':'text-zinc-300'}`}><i className="fa-solid fa-music text-[28px]"></i><span className="text-base font-semibold">SONGS</span></button>
+                    <button onClick={() => {
+                        setTab('social');
+                        setSocialTab('lounge');
+                        const newest = chatMessages[0]?.timestamp?.seconds ? chatMessages[0].timestamp.seconds * 1000 : 0;
+                        if (newest) chatLastSeenRef.current = newest;
+                        setChatUnread(false);
+                    }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='social'?'text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]':'text-zinc-300'} relative`}>
+                        <i className="fa-solid fa-comments text-[28px]"></i>
+                        {chatUnread && <span className="absolute top-2 right-8 w-2.5 h-2.5 rounded-full bg-pink-400 ring-2 ring-pink-300/60 shadow-[0_0_10px_rgba(255,103,182,0.8)]"></span>}
+                        <span className="text-base font-semibold">SOCIAL</span>
+                    </button>
+                </div>
             </div>
 
             {/* Photo Overlay */}

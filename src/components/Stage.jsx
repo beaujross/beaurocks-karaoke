@@ -147,7 +147,7 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center opacity-80">
                 <div className="text-[12rem] mb-4 animate-bounce">{EMOJI.mic}</div>
                 <div className="text-8xl font-bebas text-white drop-shadow-xl">STAGE OPEN</div>
-                <div className="text-4xl font-bold text-pink-500 bg-white px-8 py-2 rounded-full mt-4 animate-pulse">SCAN TO SING</div>
+                <div className="text-4xl font-black text-white bg-fuchsia-700 border-2 border-fuchsia-300/70 px-8 py-2 rounded-full mt-4 shadow-[0_0_24px_rgba(232,121,249,0.45)] animate-pulse">SCAN TO SING</div>
             </div>
         ); 
     }
