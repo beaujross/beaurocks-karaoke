@@ -9,7 +9,11 @@ const PRESET_CONFIG = Object.freeze({
     calm: { colors: ['#67e8f9', '#93c5fd', '#a5b4fc'], speed: 0.75, intensity: 0.75, glow: 8 },
     club: { colors: ['#ec4899', '#f97316', '#22d3ee'], speed: 1.35, intensity: 1.35, glow: 20 },
     neon: { colors: ['#00C4D9', '#ec4899', '#a855f7'], speed: 1.05, intensity: 1.1, glow: 14 },
-    retro: { colors: ['#fbbf24', '#86efac', '#22d3ee'], speed: 0.9, intensity: 0.95, glow: 12 }
+    retro: { colors: ['#fbbf24', '#86efac', '#22d3ee'], speed: 0.9, intensity: 0.95, glow: 12 },
+    acid: { colors: ['#c7f924', '#92ff3e', '#d946ef'], speed: 1.15, intensity: 1.22, glow: 18 },
+    mono: { colors: ['#f5f5f5', '#d4d4d8', '#71717a'], speed: 0.82, intensity: 0.85, glow: 10 },
+    cyan_magenta: { colors: ['#22d3ee', '#e879f9', '#0ea5e9'], speed: 1.1, intensity: 1.08, glow: 16 },
+    solar: { colors: ['#fde047', '#facc15', '#60a5fa'], speed: 1.12, intensity: 1.2, glow: 18 }
 });
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -242,10 +246,256 @@ const AudioVisualizer = ({
                     ctx.shadowBlur = 0;
                 };
 
+                const drawOrbBands = () => {
+                    const phase = phaseRef.current;
+                    const cx = width / 2;
+                    const cy = height / 2;
+                    const radius = Math.min(width, height) * 0.34;
+
+                    const shellGrad = ctx.createRadialGradient(
+                        cx - (radius * 0.2),
+                        cy - (radius * 0.32),
+                        radius * 0.08,
+                        cx,
+                        cy,
+                        radius
+                    );
+                    shellGrad.addColorStop(0, 'rgba(255,255,255,0.18)');
+                    shellGrad.addColorStop(0.5, 'rgba(15,23,42,0.3)');
+                    shellGrad.addColorStop(1, 'rgba(2,6,23,0.72)');
+                    ctx.fillStyle = shellGrad;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    const bands = 16;
+                    for (let i = 0; i < bands; i += 1) {
+                        const t = i / (bands - 1);
+                        const yRatio = (t * 2) - 1;
+                        const ringWidth = Math.sqrt(Math.max(0, 1 - (yRatio * yRatio)));
+                        const y = cy + (yRatio * radius * 0.9) + Math.sin((i * 0.38) + phase) * 2.4;
+                        const halfW = ringWidth * radius;
+                        const sample = dataArray[Math.floor((i / bands) * dataArray.length)] / 255;
+                        const lineW = 4 + (sample * 10);
+                        const mix = 0.2 + (0.8 * (i / Math.max(1, bands - 1)));
+                        const stroke = i % 2 === 0 ? colorA : colorB;
+                        ctx.strokeStyle = stroke;
+                        ctx.globalAlpha = mix;
+                        ctx.lineWidth = lineW;
+                        ctx.shadowBlur = presetConfig.glow + (sample * 16);
+                        ctx.shadowColor = stroke;
+                        ctx.beginPath();
+                        ctx.ellipse(cx, y, halfW, lineW * 0.7, 0, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+                    ctx.globalAlpha = 1;
+                    ctx.shadowBlur = 0;
+                };
+
+                const drawHaloPulse = () => {
+                    const phase = phaseRef.current;
+                    const cx = width / 2;
+                    const cy = height / 2;
+                    const avgNorm = avg / 255;
+                    const radius = Math.min(width, height) * (0.3 + (avgNorm * 0.12));
+                    const thickness = 16 + (avgNorm * 18);
+                    const spin = phase * 0.55;
+
+                    ctx.lineCap = 'round';
+                    ctx.strokeStyle = colorB;
+                    ctx.lineWidth = thickness;
+                    ctx.shadowBlur = presetConfig.glow + 18;
+                    ctx.shadowColor = colorB;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, radius, spin, spin + (Math.PI * 1.7));
+                    ctx.stroke();
+
+                    ctx.strokeStyle = colorA;
+                    ctx.lineWidth = Math.max(6, thickness * 0.45);
+                    ctx.shadowBlur = presetConfig.glow + 8;
+                    ctx.shadowColor = colorA;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, radius * 0.56, -spin * 1.2, (-spin * 1.2) + (Math.PI * 1.4));
+                    ctx.stroke();
+
+                    ctx.shadowBlur = 0;
+                };
+
+                const drawSonarSpikes = () => {
+                    const phase = phaseRef.current;
+                    const cx = width / 2;
+                    const cy = height / 2;
+                    const base = Math.min(width, height) * 0.26;
+                    const spikes = 120;
+
+                    ctx.beginPath();
+                    for (let i = 0; i <= spikes; i += 1) {
+                        const p = i / spikes;
+                        const angle = (p * Math.PI * 2) + (phase * 0.35);
+                        const sample = dataArray[Math.floor(p * (dataArray.length - 1))] / 255;
+                        const spike = base + (sample * 70);
+                        const x = cx + (Math.cos(angle) * spike);
+                        const y = cy + (Math.sin(angle) * spike);
+                        if (i === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+                    ctx.closePath();
+                    ctx.strokeStyle = colorA;
+                    ctx.lineWidth = 3;
+                    ctx.shadowBlur = presetConfig.glow + 10;
+                    ctx.shadowColor = colorA;
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, base * 0.72, 0, Math.PI * 2);
+                    ctx.strokeStyle = colorC;
+                    ctx.globalAlpha = 0.7;
+                    ctx.lineWidth = 2;
+                    ctx.shadowBlur = presetConfig.glow + 4;
+                    ctx.shadowColor = colorC;
+                    ctx.stroke();
+                    ctx.globalAlpha = 1;
+                    ctx.shadowBlur = 0;
+                };
+
+                const drawKaleidoBurst = () => {
+                    const phase = phaseRef.current;
+                    const cx = width / 2;
+                    const cy = height / 2;
+                    const wedges = 18;
+                    const base = Math.min(width, height) * 0.16;
+
+                    ctx.save();
+                    ctx.translate(cx, cy);
+                    ctx.rotate(phase * 0.12);
+
+                    for (let i = 0; i < wedges; i += 1) {
+                        const p = i / wedges;
+                        const sample = dataArray[Math.floor(p * (dataArray.length - 1))] / 255;
+                        const len = base + (sample * Math.min(width, height) * 0.32);
+                        const spread = (Math.PI * 2 / wedges) * 0.38;
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.lineTo(Math.cos(-spread) * len, Math.sin(-spread) * len);
+                        ctx.lineTo(Math.cos(spread) * len, Math.sin(spread) * len);
+                        ctx.closePath();
+                        ctx.fillStyle = i % 2 === 0 ? colorA : colorC;
+                        ctx.globalAlpha = 0.28 + (sample * 0.65);
+                        ctx.shadowBlur = presetConfig.glow + 6;
+                        ctx.shadowColor = i % 2 === 0 ? colorA : colorC;
+                        ctx.fill();
+                        ctx.rotate((Math.PI * 2) / wedges);
+                    }
+
+                    ctx.restore();
+                    ctx.globalAlpha = 1;
+                    ctx.shadowBlur = 0;
+                };
+
+                const drawHexTunnel = () => {
+                    const phase = phaseRef.current;
+                    const cx = width / 2;
+                    const cy = height / 2;
+                    const maxR = Math.min(width, height) * 0.52;
+                    const rings = 8;
+                    const drawHex = (radius) => {
+                        ctx.beginPath();
+                        for (let i = 0; i < 6; i += 1) {
+                            const a = -Math.PI / 2 + (i * Math.PI / 3);
+                            const x = cx + (Math.cos(a) * radius);
+                            const y = cy + (Math.sin(a) * radius);
+                            if (i === 0) ctx.moveTo(x, y);
+                            else ctx.lineTo(x, y);
+                        }
+                        ctx.closePath();
+                    };
+
+                    for (let i = 0; i < rings; i += 1) {
+                        const loop = (((i * 0.18) + (phase * 0.08)) % 1);
+                        const sample = dataArray[Math.floor((i / rings) * (dataArray.length - 1))] / 255;
+                        const radius = maxR * Math.max(0.12, 1 - loop);
+                        drawHex(radius + (sample * 14));
+                        ctx.strokeStyle = i % 2 === 0 ? colorA : colorB;
+                        ctx.globalAlpha = 0.14 + ((1 - loop) * 0.75);
+                        ctx.lineWidth = 2 + (sample * 4);
+                        ctx.shadowBlur = presetConfig.glow + 4;
+                        ctx.shadowColor = i % 2 === 0 ? colorA : colorB;
+                        ctx.stroke();
+                    }
+
+                    ctx.globalAlpha = 1;
+                    ctx.shadowBlur = 0;
+                };
+
+                const drawOrbitArcs = () => {
+                    const phase = phaseRef.current;
+                    const cx = width / 2;
+                    const cy = height / 2;
+                    const outer = Math.min(width, height) * 0.35;
+                    const inner = outer * 0.52;
+                    const avgNorm = avg / 255;
+
+                    ctx.lineCap = 'round';
+                    ctx.strokeStyle = colorA;
+                    ctx.lineWidth = 16 + (avgNorm * 10);
+                    ctx.shadowBlur = presetConfig.glow + 8;
+                    ctx.shadowColor = colorA;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, outer, phase * 0.4, phase * 0.4 + Math.PI * 1.55);
+                    ctx.stroke();
+
+                    ctx.strokeStyle = colorB;
+                    ctx.lineWidth = 12 + (avgNorm * 9);
+                    ctx.shadowBlur = presetConfig.glow + 8;
+                    ctx.shadowColor = colorB;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, inner, -phase * 0.8, -phase * 0.8 + Math.PI * 1.45);
+                    ctx.stroke();
+
+                    ctx.shadowBlur = 0;
+                };
+
+                const drawCometSweep = () => {
+                    const phase = phaseRef.current;
+                    const avgNorm = avg / 255;
+                    const y = (height * 0.2) + (Math.sin(phase * 0.45) * height * 0.2);
+                    const startX = width * 0.55;
+                    const tail = width * (0.45 + (avgNorm * 0.25));
+
+                    const beam = ctx.createLinearGradient(startX, y, Math.min(width, startX + tail), y);
+                    beam.addColorStop(0, colorA);
+                    beam.addColorStop(0.6, colorB);
+                    beam.addColorStop(1, 'rgba(255,255,255,0)');
+
+                    ctx.strokeStyle = beam;
+                    ctx.lineWidth = 8 + (avgNorm * 14);
+                    ctx.shadowBlur = presetConfig.glow + 18;
+                    ctx.shadowColor = colorA;
+                    ctx.beginPath();
+                    ctx.moveTo(startX, y);
+                    ctx.lineTo(Math.min(width, startX + tail), y - (height * 0.1 * avgNorm));
+                    ctx.stroke();
+
+                    ctx.lineWidth = 3;
+                    ctx.shadowBlur = presetConfig.glow + 6;
+                    ctx.beginPath();
+                    ctx.moveTo(startX, y + 6);
+                    ctx.lineTo(Math.min(width, startX + tail * 0.75), y + (height * 0.06 * avgNorm));
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                };
+
                 const activeMode = modeRef.current || 'waveform';
                 if (activeMode === 'ribbon') drawRibbon();
                 else if (activeMode === 'rings') drawRings();
                 else if (activeMode === 'spark') drawSparkline();
+                else if (activeMode === 'orb') drawOrbBands();
+                else if (activeMode === 'halo') drawHaloPulse();
+                else if (activeMode === 'sonar') drawSonarSpikes();
+                else if (activeMode === 'kaleido') drawKaleidoBurst();
+                else if (activeMode === 'hex') drawHexTunnel();
+                else if (activeMode === 'orbit') drawOrbitArcs();
+                else if (activeMode === 'comet') drawCometSweep();
                 else drawWaveform();
             }
 
@@ -339,4 +589,3 @@ const AudioVisualizer = ({
 };
 
 export default AudioVisualizer;
-

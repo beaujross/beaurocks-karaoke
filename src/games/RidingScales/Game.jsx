@@ -72,8 +72,8 @@ const buildSequence = (length, difficulty) => {
 const buildStepMsList = (length, round, difficulty) =>
     Array.from({ length }, () => pickStepMs(round, difficulty));
 
-const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, view = 'tv', user }) => {
-    const isLocalInput = isPlayer && view !== 'tv';
+const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSource, view = 'tv', user }) => {
+    const isLocalInput = isPlayer && inputSource !== 'remote';
     const { stableNote, note, confidence, isSinging } = usePitch(isLocalInput);
 
     const [localState, setLocalState] = useState(null);
@@ -143,6 +143,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, view = 't
 
     useEffect(() => {
         if (isPlayer) return;
+        stateRef.current = null;
         if (!gameData?.phase) return;
         const t = setTimeout(() => syncState(gameData), 0);
         return () => clearTimeout(t);

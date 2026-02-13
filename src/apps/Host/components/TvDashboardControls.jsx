@@ -119,6 +119,13 @@ const TvDashboardControls = ({
                         <option value="ribbon">Liquid ribbon</option>
                         <option value="rings">Neon rings</option>
                         <option value="spark">Pulse sparkline</option>
+                        <option value="orb">Striped orb</option>
+                        <option value="halo">Halo pulse</option>
+                        <option value="sonar">Sonar spikes</option>
+                        <option value="kaleido">Kaleido burst</option>
+                        <option value="hex">Hex tunnel</option>
+                        <option value="orbit">Orbit arcs</option>
+                        <option value="comet">Comet sweep</option>
                         <option value="waveform">Waveform</option>
                     </select>
                 </label>
@@ -133,6 +140,10 @@ const TvDashboardControls = ({
                         <option value="club">Club</option>
                         <option value="neon">Neon</option>
                         <option value="retro">Retro</option>
+                        <option value="acid">Acid</option>
+                        <option value="mono">Mono</option>
+                        <option value="cyan_magenta">Cyan/Magenta</option>
+                        <option value="solar">Solar</option>
                     </select>
                 </label>
                 <button

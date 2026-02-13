@@ -149,6 +149,13 @@ const StageNowPlayingPanel = ({
                         <option value="ribbon">Liquid ribbon</option>
                         <option value="rings">Neon rings</option>
                         <option value="spark">Pulse sparkline</option>
+                        <option value="orb">Striped orb</option>
+                        <option value="halo">Halo pulse</option>
+                        <option value="sonar">Sonar spikes</option>
+                        <option value="kaleido">Kaleido burst</option>
+                        <option value="hex">Hex tunnel</option>
+                        <option value="orbit">Orbit arcs</option>
+                        <option value="comet">Comet sweep</option>
                         <option value="waveform">Waveform</option>
                     </select>
                 </div>

@@ -1,4 +1,5 @@
 import React from 'react';
+import groupChatMessages from '../../../lib/chatGrouping';
 
 const ChatSettingsPanel = ({
     styles,
@@ -30,6 +31,7 @@ const ChatSettingsPanel = ({
     const visibleMessages = chatViewMode === 'room'
         ? chatMessages.filter(m => !isDirectChatMessage(m))
         : chatMessages.filter(m => isDirectChatMessage(m));
+    const groupedVisibleMessages = groupChatMessages(visibleMessages.slice(0, 24), { mergeWindowMs: 12 * 60 * 1000 });
 
     return (
         <div className="bg-zinc-950/50 border border-zinc-800 rounded-xl p-4 space-y-4">
@@ -156,14 +158,22 @@ const ChatSettingsPanel = ({
             </div>
             <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Recent chat</div>
             <div className="max-h-56 overflow-y-auto custom-scrollbar pr-1 space-y-2">
-                {visibleMessages.length === 0 && (
+                {groupedVisibleMessages.length === 0 && (
                     <div className="text-zinc-500 text-xs italic">No chat yet.</div>
                 )}
-                {visibleMessages.map(m => (
-                    <div key={m.id} className="flex items-center gap-2 bg-zinc-900/60 border border-white/5 rounded-lg px-3 py-2 text-xs text-zinc-200">
-                        <span className="text-lg">{m.avatar || emoji.sparkle}</span>
-                        <span className="font-bold text-white">{m.user || 'Guest'}</span>
-                        <span className="text-zinc-400 truncate">{m.text}</span>
+                {groupedVisibleMessages.map((group) => (
+                    <div key={group.id} className="bg-zinc-900/60 border border-white/5 rounded-lg px-3 py-2 text-xs text-zinc-200">
+                        <div className="flex items-center gap-2">
+                            <span className="text-lg">{group.avatar || emoji.sparkle}</span>
+                            <span className="font-bold text-white">{group.user || 'Guest'}</span>
+                            {group.isVip && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-400 text-black font-black tracking-widest">VIP</span>}
+                            {group.isHost && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-500 text-black font-black tracking-widest">HOST</span>}
+                        </div>
+                        <div className="mt-1.5 pl-7 space-y-1">
+                            {group.messages.map((message, idx) => (
+                                <div key={message.id || `${group.id}-${idx}`} className="text-zinc-300 break-words">{message.text}</div>
+                            ))}
+                        </div>
                     </div>
                 ))}
             </div>

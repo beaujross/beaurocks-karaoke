@@ -1339,8 +1339,7 @@ const UnifiedGameLauncher = ({
 
     return (
         <div
-            className="h-full min-h-0 flex flex-col overflow-y-auto custom-scrollbar"
-            style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}
+            className="min-h-full flex flex-col"
         >
             {/* Header */}
             <div className="px-8 pt-6 pb-0">

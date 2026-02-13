@@ -28,6 +28,7 @@ Last updated: 2026-02-13
 - Usage metering + overage billing: per-org usage ledger, included quotas, overage invoicing, and reconciliation against cloud billing.
 - Workspace customization pack: theme tokens, reusable templates, and sponsor/branding controls at org scope.
 - Admin billing portal: plan management, invoices, usage dashboard, and payment method updates.
+- Host auth hardening (deferred): add robust account/role-based host login and host session management without breaking today's fast "jump in and host" flow (keep low-friction quick-start as primary path).
 - Host mobile UX pass (deferred): optimize host controls for phone/tablet with mobile section drawer, sticky live command rail, one-thumb quick actions, queue swipe gestures, and unified moderation inbox.
 - Emoji carousel UX: center selection on load and smooth touch behavior.
 - Local media playback reliability: uploaded mp4/cors/permissions and fallback handling.

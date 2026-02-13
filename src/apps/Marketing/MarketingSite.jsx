@@ -3,453 +3,139 @@ import { ASSETS } from '../../lib/assets';
 import { submitMarketingWaitlist, trackEvent } from '../../lib/firebase';
 import './marketing.css';
 
-const GAMES_PAGE = 'games';
-
-const NAV_PRIMARY_LINKS = [
-    { id: 'how-it-works', label: 'How It Works' },
-    { id: 'surfaces', label: '3 Surfaces' },
-    { id: 'modes', label: 'Game Modes' },
-    { id: 'plans', label: 'Plans' },
-    { id: 'faq', label: 'FAQ' }
+const NAV_SECTIONS = [
+    { id: 'experience', label: 'Signal' },
+    { id: 'surfaces', label: 'System' },
+    { id: 'games', label: 'Ritual' },
+    { id: 'signup', label: 'Access' }
 ];
 
-const HOW_IT_WORKS_STEPS = [
+const SHOW_DNA = [
     {
-        id: 'join',
-        step: 'Step 1',
-        title: 'Guests Join In Seconds',
-        body: 'They scan the TV QR code and land in the audience app. No install required.'
+        title: 'One Brain',
+        body: 'Host decisions propagate everywhere instantly.',
+        accent: 'cyan'
     },
     {
-        id: 'host',
-        step: 'Step 2',
-        title: 'Host Runs One Control Panel',
-        body: 'Queue, visuals, game prompts, and pacing all live in one host workspace.'
+        title: 'Infinite Roles',
+        body: 'Singer, lurker, hype unit, strategist. Everyone plays.',
+        accent: 'pink'
     },
     {
-        id: 'play',
-        step: 'Step 3',
-        title: 'Karaoke + Games Keep Energy High',
-        body: 'Switch between singing, trivia, bingo, bracket play, and voice mini-games without losing flow.'
+        title: 'Living Display',
+        body: 'The TV behaves like a stage organism, not a slideshow.',
+        accent: 'gold'
     }
+];
+
+const SIGNAL_METRICS = [
+    { label: 'Join Friction', value: 'Near-zero' },
+    { label: 'Host Actions', value: 'Single Surface' },
+    { label: 'Room State', value: 'Always Shared' }
 ];
 
 const SURFACES = [
     {
-        title: 'Public Screen',
-        subtitle: 'The room narrative in real time',
-        body: 'Songs, overlays, prompts, and tournament states stay unified on one visual canvas the whole crowd can follow.',
-        stat: 'Shared context for every guest'
-    },
-    {
-        title: 'Host Panel',
-        subtitle: 'The operator cockpit',
-        body: 'Run queue, presets, overlays, games, and pacing from one place without tab-hopping or second-guessing state.',
-        stat: 'One control surface, full command'
-    },
-    {
-        title: 'Audience App',
-        subtitle: 'Participation on every phone',
-        body: 'Guests can vote, play, react, and track the night even when they are not performing.',
-        stat: 'Every guest has a role'
-    }
-];
-
-const PRODUCT_VISUALS = [
-    {
         id: 'host',
-        title: 'Host Panel: Live Capture',
+        title: 'Host Panel',
+        subtitle: 'Control signal source',
         image: '/images/marketing/BeauRocks-HostPanel.png',
-        caption: 'Queue, overlays, presets, and game flow managed from one command surface.',
-        href: '?mode=host'
+        bullets: [
+            'Queue and pacing without context switching',
+            'Mode launch + moderation queue in one frame',
+            'Audience policy controls with immediate effect'
+        ]
     },
     {
         id: 'tv',
-        title: 'Public Screen: Live Capture',
+        title: 'Public TV',
+        subtitle: 'Shared perception layer',
         image: '/images/marketing/tv-surface-live.png',
-        caption: 'Audience-facing display for lyrics, visualizers, and live game overlays.',
-        href: '?mode=tv&room=DEMO'
+        bullets: [
+            'Distance-readable by design',
+            'Host actions appear as instant room feedback',
+            'Idle states still push participation'
+        ]
     },
     {
         id: 'audience',
-        title: 'Audience App: Live Capture',
-        image: '/images/marketing/BeauRocks-Audienceapp.png',
-        caption: 'Fast phone join flow where guests react, vote, and play.',
-        href: '?room=DEMO',
-        kind: 'phone'
-    }
-];
-
-const SCREEN_DEEP_DIVES = [
-    {
-        id: 'screen-host',
-        title: 'Host Panel',
-        image: '/images/marketing/BeauRocks-HostPanel.png',
-        detail: 'Mission control for queue, overlays, game orchestration, and room policy without workflow clutter.',
-        points: [
-            'Queue manager with rotation controls and first-time singer boost rules',
-            'Night presets for Casual, Competition, Bingo, and Trivia formats',
-            'Live TV preview tile so hosts always see audience-facing state',
-            'One-click game launch and preview from the Games tab'
-        ]
-    },
-    {
-        id: 'screen-tv',
-        title: 'Public Screen',
-        image: '/images/marketing/tv-surface-live.png',
-        detail: 'Shared room canvas for lyrics, visualizer states, game overlays, and crowd momentum.',
-        points: [
-            'Visualizer and lyric overlays can run together',
-            'Game overlays for Trivia, Bingo, and bracket transitions',
-            'Spotlight moments and recap previews controlled by host',
-            'Audience-facing state stays synchronized to host actions'
-        ]
-    },
-    {
-        id: 'screen-audience',
         title: 'Audience App',
+        subtitle: 'Pocket control for guests',
         image: '/images/marketing/BeauRocks-Audienceapp.png',
-        detail: 'Low-friction mobile participation for singers, supporters, and game-first guests.',
-        points: [
-            'Quick room entry with simple profile identity',
-            'Vote, react, and join game rounds from your phone',
-            'Tight 15 and bracket interactions for recurring guests',
-            'Participation model built for family and friend events, not just stage performers'
+        bullets: [
+            'Fast join without install drag',
+            'Chat, reactions, games, and social loops',
+            'Identity memory for recurring crowds'
         ]
     }
 ];
 
-const VOICE_GAME_MODES = [
+const GAME_VIBE = [
     {
-        id: 'voice-doodle',
-        name: 'Doodle-oke',
-        tagline: 'Draw the clue. Hum the answer.',
-        details: 'Draw clue cards and let the room decode lyric hints in a fast, voice-first party format.'
+        title: 'Karaoke Core',
+        note: 'The spine. Everything else plugs in.'
     },
     {
-        id: 'voice-flappy',
-        name: 'Flappy Bird (Voice)',
-        tagline: 'Pitch controls flight.',
-        details: 'Crowd mic or solo singer mode turns vocal control into live arcade input.'
+        title: 'Doodle-oke',
+        note: 'Sketch signal, crowd decode, host reveal.'
     },
     {
-        id: 'voice-vocal',
-        name: 'Vocal Challenge',
-        tagline: 'Hit target ranges and keep streak.',
-        details: 'Timed vocal rounds with host-controlled difficulty, guide tones, and streak pressure.'
+        title: 'Trivia + WYR',
+        note: 'Timed choices. Hard reveals.'
     },
     {
-        id: 'voice-scales',
-        name: 'Riding Scales',
-        tagline: 'Repeat and survive the pattern.',
-        details: 'Scale memory and pitch precision mode with strike pressure, spotlight turns, and clutch finishes.'
+        title: 'Bingo + Bracket',
+        note: 'Long-form room arcs with crowd investment.'
+    },
+    {
+        title: 'Voice Arcade',
+        note: 'Pitch and volume become control input.'
     }
 ];
 
-const HOST_FEATURE_STACK = [
-    'One-click host presets that apply queue policy, overlays, and game defaults.',
-    'Queue policy controls for limits, rotation strategy, and first-time singer boosts.',
-    'Audience preview panel in host view to reduce state confusion.',
-    'TV dashboard controls for visualizer source/mode/preset, lyrics, and sensitivity.',
-    'Auto-lyrics generation on queue for missing tracks plus manual edit fallback.',
-    'Tight 15 spotlight tools and Sweet 16 bracket seeding with no-show handling.',
-    'Post-show recap generation for highlights and time-capsule moments.',
-    'Workspace billing controls with plan, usage, and overage visibility.'
-];
-
-const GAMES_PAGE_GUIDES = [
+const ACCESS_TIERS = [
     {
-        id: 'games-karaoke',
-        mode: 'Karaoke Flow',
-        modePage: 'mode-karaoke',
-        tone: 'Casual + Competition presets',
-        surfaces: ['Host Panel', 'Public Screen', 'Audience App'],
-        hostSteps: [
-            'Open preset to lock pacing, queue limits, and overlay defaults.',
-            'Advance singer flow with next-up context shown on TV.',
-            'Use recap markers during standout moments.'
-        ],
-        audienceSteps: [
-            'Join from phone and react without interrupting stage flow.',
-            'Track current/next singer on the public surface.',
-            'Stay engaged between songs with visible room state.'
-        ]
+        title: 'Private Hosts',
+        detail: 'High-energy rooms without operational mess.'
     },
     {
-        id: 'games-bingo',
-        mode: 'Karaoke Bingo',
-        modePage: 'mode-bingo',
-        tone: 'Crowd-observation mode',
-        surfaces: ['Audience App', 'Host Panel', 'Public Screen'],
-        hostSteps: [
-            'Select board pack and keep bingo reopenable all night.',
-            'Trigger board events from host panel without pausing queue.',
-            'Resolve winners with clear TV confirmation moments.'
-        ],
-        audienceSteps: [
-            'Check off observed moments from any table in-room.',
-            'Compete without needing to sing or approach stage.',
-            'Reopen board anytime while karaoke continues.'
-        ]
+        title: 'Community Nights',
+        detail: 'Fundraisers and local events that need participation density.'
     },
     {
-        id: 'games-trivia',
-        mode: 'Trivia Rounds',
-        modePage: 'mode-trivia',
-        tone: 'Structured timed reveals',
-        surfaces: ['Host Panel', 'Audience App', 'Public Screen'],
-        hostSteps: [
-            'Queue a timed round and set auto-reveal behavior.',
-            'Move between question, lock, reveal, and summary states.',
-            'Return to karaoke flow without losing audience context.'
-        ],
-        audienceSteps: [
-            'Answer from phone in synced windows.',
-            'Watch reveal and score movement on public screen.',
-            'Re-enter the next round immediately.'
-        ]
-    },
-    {
-        id: 'games-tight15',
-        mode: 'Tight 15',
-        modePage: 'mode-tight15',
-        tone: 'Identity + recurring guests',
-        surfaces: ['Audience App', 'Host Panel', 'Public Screen'],
-        hostSteps: [
-            'Use Tight 15 picks for spotlight and matchup selection.',
-            'Keep singer identity visible while rotating queue.',
-            'Bridge regulars across multiple events and rooms.'
-        ],
-        audienceSteps: [
-            'Learn singer style and recurring favorites quickly.',
-            'Vote/react around familiar songs and rivalry arcs.',
-            'Track progression across recap moments.'
-        ]
-    },
-    {
-        id: 'games-bracket',
-        mode: 'Sweet 16 Bracket',
-        modePage: 'mode-bracket',
-        tone: 'Tournament event arc',
-        surfaces: ['Public Screen', 'Host Panel', 'Audience App'],
-        hostSteps: [
-            'Seed participants manually or from eligible singer pool.',
-            'Handle no-shows with forfeit and replacement controls.',
-            'Finalize winners with full timeline + recap export.'
-        ],
-        audienceSteps: [
-            'Follow bracket status from the public display.',
-            'React and vote during head-to-head matchups.',
-            'Stay oriented through round transitions.'
-        ]
-    },
-    {
-        id: 'games-voice',
-        mode: 'Voice Arcade Modes',
-        tone: 'Doodle-oke + Flappy Voice + Vocal Challenge + Riding Scales',
-        surfaces: ['Audience App', 'Public Screen', 'Host Panel'],
-        hostSteps: [
-            'Choose a voice mode and set difficulty or timer profile.',
-            'Control turn order and challenge escalation from host panel.',
-            'Inject quick rounds between songs to keep momentum high.'
-        ],
-        audienceSteps: [
-            'Participate live from phone or shared mic moments.',
-            'Stay active even when not on stage.',
-            'Build room energy with low-friction mini-competitions.'
-        ]
+        title: 'Recurring Operators',
+        detail: 'Hosts building repeat behavior and recognizable show identity.'
     }
-];
-
-const MODE_DETAILS = [
-    {
-        key: 'karaoke',
-        page: 'mode-karaoke',
-        title: 'Karaoke',
-        blurb: 'Fast queue, smooth handoffs, cleaner performer flow.',
-        headline: 'Private-Party Karaoke Without The Chaos',
-        summary: 'Move beyond awkward open-mic rhythm. Hosts keep the night moving while performers and crowd stay energized.',
-        surfaces: ['Host Panel', 'Public Screen', 'Audience App'],
-        hostFlow: [
-            'Build and reorder queue from one panel.',
-            'Run overlays and stage visuals from the same place.',
-            'Use host presets for casual or competition pacing.'
-        ],
-        audienceFlow: [
-            'React and engage from phone without taking over the room.',
-            'Stay informed with public-screen context and transitions.',
-            'Join singing when ready instead of waiting in confusion.'
-        ],
-        fundraiserFlow: [
-            'Sponsor a song slot for premium donors.',
-            'Use recap highlights to extend post-event momentum.'
-        ]
-    },
-    {
-        key: 'bingo',
-        page: 'mode-bingo',
-        title: 'Karaoke Bingo',
-        blurb: 'Crowd-observed checkoffs that keep every table engaged.',
-        headline: 'Bingo Built For The Crowd, Not Just The Stage',
-        summary: 'Audience members track what they observe, turning passive watching into active social play.',
-        surfaces: ['Audience App', 'Host Panel', 'Public Screen'],
-        hostFlow: [
-            'Launch themed bingo boards from host controls.',
-            'Set board style based on the room vibe.',
-            'Keep bingo available so audience can reopen during night flow.'
-        ],
-        audienceFlow: [
-            'Check off moments in real time from mobile.',
-            'Compete at table-level without interrupting singers.',
-            'Participate even if never stepping on stage.'
-        ],
-        fundraiserFlow: [
-            'Sell bingo cards with bonus card upsells.',
-            'Add sponsored squares for local partners.'
-        ]
-    },
-    {
-        key: 'trivia',
-        page: 'mode-trivia',
-        title: 'Trivia',
-        blurb: 'Host-led rounds with reveal moments and score drama.',
-        headline: 'Trivia Rounds That Match Party Rhythm',
-        summary: 'Layer timed rounds into karaoke nights without losing momentum or overloading the host.',
-        surfaces: ['Host Panel', 'Audience App', 'Public Screen'],
-        hostFlow: [
-            'Queue questions and rounds with structured reveal moments.',
-            'Use host controls for pacing and answer transitions.',
-            'Switch between trivia and karaoke without context loss.'
-        ],
-        audienceFlow: [
-            'Answer from phones and stay synced to public reveal.',
-            'Track who is rising in score without confusion.',
-            'Join instantly without needing separate apps.'
-        ],
-        fundraiserFlow: [
-            'Charge team entry for trivia rounds.',
-            'Run sponsored bonus rounds to push donation goals.'
-        ]
-    },
-    {
-        key: 'bracket',
-        page: 'mode-bracket',
-        title: 'Sweet 16 Bracket',
-        blurb: 'Head-to-head matchups with finals-night energy.',
-        headline: 'Sweet 16 Tournament Night, End To End',
-        summary: 'Bracket mode turns the room into a full event arc with seeding, rounds, and a clear final crown moment.',
-        surfaces: ['Public Screen', 'Host Panel', 'Audience App'],
-        hostFlow: [
-            'Seed participants manually or auto-seed from eligible singers.',
-            'Handle no-shows with host and auto-forfeit controls.',
-            'Capture match history and audit timeline automatically.'
-        ],
-        audienceFlow: [
-            'Follow bracket state from public screen.',
-            'Vote and react to matchup energy in real time.',
-            'Stay engaged between performances with clear round context.'
-        ],
-        fundraiserFlow: [
-            'Use donation voting to influence matchup moments.',
-            'Run finals with prize/sponsor overlays and recap packaging.'
-        ]
-    },
-    {
-        key: 'tight15',
-        page: 'mode-tight15',
-        title: 'Tight 15',
-        blurb: 'Singer identity and setlist memory across nights.',
-        headline: 'Tight 15 Builds Identity Across Nights',
-        summary: 'Give regulars a portable setlist identity so each new room feels connected to the last.',
-        surfaces: ['Audience App', 'Host Panel', 'Public Screen'],
-        hostFlow: [
-            'Use Tight 15 data for spotlight choices and bracket picks.',
-            'Keep recurring singers recognizable night-to-night.',
-            'Blend discovery and familiarity in queue design.'
-        ],
-        audienceFlow: [
-            'Learn each singer\'s style through recurring picks.',
-            'Get stronger storylines in brackets and challenges.',
-            'See identity show up in room recap moments.'
-        ],
-        fundraiserFlow: [
-            'Sponsor singer spotlights tied to Tight 15 entries.',
-            'Use familiar sets to drive repeat donor engagement.'
-        ]
-    }
-];
-
-const MODE_MAP = Object.fromEntries(MODE_DETAILS.map((mode) => [mode.page, mode]));
-
-const FUNDRAISER_MECHANICS = [
-    'Bingo card sales with sponsored squares',
-    'Trivia team entries with sponsored bonus rounds',
-    'Sweet 16 donation voting during matchups',
-    'Live donor-goal overlays and stretch milestone callouts',
-    'Shareable room recap artifact after the event closes'
 ];
 
 const FAQ_ITEMS = [
     {
-        q: 'Is this only for bars?',
-        a: 'No. BeauRocks is built for private parties, home events, and community gatherings where hosts want a cleaner and more inclusive night format.'
+        q: 'Is this invite-only right now?',
+        a: 'Yes. Controlled wave releases. Fast onboarding. No bloated rollout.'
     },
     {
-        q: 'Does everyone have to sing?',
-        a: 'No. Audience participation is a core feature. Guests can vote, react, and play game modes from their phones.'
+        q: 'Do guests need to install anything?',
+        a: 'No install wall. Join is web-first and immediate.'
     },
     {
-        q: 'How does licensing work?',
-        a: 'BeauRocks is designed for private gatherings. Hosts remain responsible for music rights and local compliance based on event context.'
+        q: 'Can non-singers still participate?',
+        a: 'Yes. Non-singers are core to the design, not an afterthought.'
     },
     {
-        q: 'What devices are supported?',
-        a: 'Guests join from iPhone and Android browsers, while hosts run a dedicated control surface and cast to a shared TV/public display.'
-    },
-    {
-        q: 'Can this work for non-singing guests?',
-        a: 'Yes. Games, reactions, voting, and live participation flows are built for guests who never step on stage.'
+        q: 'What happens after I sign up?',
+        a: 'You receive wave status + exact next steps. No generic drip spam.'
     }
 ];
+
+const emailLooksValid = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
 const getAppBase = () => {
     if (typeof window === 'undefined') return '/';
     return `${window.location.origin}${import.meta.env.BASE_URL || '/'}`;
 };
 
-const emailLooksValid = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-
-const getInitialPage = () => {
-    if (typeof window === 'undefined') return 'home';
-    const path = window.location.pathname.replace(/\/+$/, '');
-    if (/\/marketing\/games$/.test(path)) return GAMES_PAGE;
-    const params = new URLSearchParams(window.location.search);
-    const page = params.get('page') || 'home';
-    return page;
-};
-
-const updatePageParam = (page) => {
-    if (typeof window === 'undefined') return;
-    const url = new URL(window.location.href);
-    const path = url.pathname.replace(/\/+$/, '');
-    const toMarketingPath = (suffix = '') => {
-        if (/\/marketing(\/.*)?$/.test(path)) {
-            return path.replace(/\/marketing(\/.*)?$/, `/marketing${suffix}`);
-        }
-        return `${path || ''}/marketing${suffix}`.replace(/\/{2,}/g, '/');
-    };
-    if (page === GAMES_PAGE) {
-        url.pathname = toMarketingPath('/games');
-        url.searchParams.delete('page');
-    } else {
-        url.pathname = toMarketingPath('');
-        if (!page || page === 'home') url.searchParams.delete('page');
-        else url.searchParams.set('page', page);
-    }
-    window.history.pushState({}, '', url.toString());
-};
-
-const saveWaitlistFallbackLocally = ({ name, email, useCase, source }) => {
+const saveWaitlistFallbackLocally = ({ name, email, useCase }) => {
+    if (typeof window === 'undefined') return 1;
     const raw = window.localStorage.getItem('beaurocks_waitlist');
     const existing = raw ? JSON.parse(raw) : [];
     const entry = {
@@ -457,7 +143,6 @@ const saveWaitlistFallbackLocally = ({ name, email, useCase, source }) => {
         name: name.trim(),
         email: email.trim().toLowerCase(),
         useCase,
-        source,
         submittedAt: Date.now()
     };
     const next = [...existing.filter((item) => item.email !== entry.email), entry];
@@ -465,151 +150,30 @@ const saveWaitlistFallbackLocally = ({ name, email, useCase, source }) => {
     return next.length;
 };
 
-const SurfacePills = ({ items = [] }) => (
-    <div className="mk-surface-pill-row">
-        {items.map((item) => (
-            <span key={item} className="mk-surface-pill">{item}</span>
-        ))}
-    </div>
-);
-
-const ScreenPreviewCard = ({ screen }) => (
-    <article className="mk-screen-card">
-        <div className="mk-screen-art">
-            <img src={screen.image} alt={screen.title} className="mk-screen-image" loading="lazy" />
-        </div>
-        <div className="mk-screen-copy">
-            <h3>{screen.title}</h3>
-            <p>{screen.detail}</p>
-            <ul className="mk-list">
-                {screen.points.map((point) => <li key={point}>{point}</li>)}
-            </ul>
-        </div>
-    </article>
-);
-
-const GamesCatalogPage = ({ onBack, onJoin, onOpenMode }) => (
-    <section className="mk-mode-page">
-        <div className="mk-container">
-            <button type="button" onClick={onBack} className="mk-btn mk-btn-ghost">Back To Marketing Home</button>
-            <div className="mk-mode-hero">
-                <div className="mk-kicker">Games Hub</div>
-                <h1>Game Modes, Clearly Explained</h1>
-                <p>
-                    This is the host playbook view. Each mode maps host controls, audience participation,
-                    and where momentum builds during the night.
-                </p>
-                <div className="mk-hero-cta">
-                    <button type="button" onClick={onJoin} className="mk-btn mk-btn-primary">Join Early Access</button>
-                    <a href="?mode=host" className="mk-btn mk-btn-ghost">Open Host App</a>
-                </div>
-            </div>
-            <div className="mk-games-guide-grid">
-                {GAMES_PAGE_GUIDES.map((guide) => (
-                    <article key={guide.id} className="mk-games-guide-card">
-                        <div className="mk-games-guide-content">
-                            <div className="mk-games-guide-head">
-                                <div className="mk-card-subtitle">{guide.tone}</div>
-                                <SurfacePills items={guide.surfaces || []} />
-                            </div>
-                            <h3>{guide.mode}</h3>
-                            <div className="mk-games-guide-columns">
-                                <div>
-                                    <div className="mk-games-guide-title">Host Flow</div>
-                                    <ul className="mk-list">
-                                        {guide.hostSteps.map((step) => <li key={step}>{step}</li>)}
-                                    </ul>
-                                </div>
-                                <div>
-                                    <div className="mk-games-guide-title">Audience Flow</div>
-                                    <ul className="mk-list">
-                                        {guide.audienceSteps.map((step) => <li key={step}>{step}</li>)}
-                                    </ul>
-                                </div>
-                            </div>
-                            <div className="mk-games-guide-actions">
-                                {guide.modePage ? (
-                                    <button
-                                        type="button"
-                                        className="mk-mode-link"
-                                        onClick={() => onOpenMode(guide.modePage)}
-                                    >
-                                        Open Mode Detail
-                                    </button>
-                                ) : (
-                                    <button type="button" className="mk-mode-link" onClick={onJoin}>Request Beta Access</button>
-                                )}
-                            </div>
-                        </div>
-                    </article>
-                ))}
-            </div>
-        </div>
-    </section>
-);
-
-const ModeDetailPage = ({ mode, onBack, onJoin, onOpenGames }) => (
-    <section className="mk-mode-page">
-        <div className="mk-container">
-            <button type="button" onClick={onBack} className="mk-btn mk-btn-ghost">Back To Marketing Home</button>
-            <div className="mk-mode-hero">
-                <div className="mk-kicker">Mode Deep Dive</div>
-                <h1>{mode.headline}</h1>
-                <p>{mode.summary}</p>
-                <div className="mk-hero-cta">
-                    <button type="button" onClick={onJoin} className="mk-btn mk-btn-primary">Join Early Access</button>
-                    <button type="button" onClick={onOpenGames} className="mk-btn mk-btn-ghost">All Game Modes</button>
-                    <a href="?mode=host" className="mk-btn mk-btn-ghost">Open Host App</a>
-                </div>
-            </div>
-            <div className="mk-grid mk-grid-3 mk-mode-grid">
-                <article className="mk-card">
-                    <h3>Host Workflow</h3>
-                    <ul className="mk-list">
-                        {mode.hostFlow.map((item) => <li key={item}>{item}</li>)}
-                    </ul>
-                </article>
-                <article className="mk-card">
-                    <h3>Audience Experience</h3>
-                    <ul className="mk-list">
-                        {mode.audienceFlow.map((item) => <li key={item}>{item}</li>)}
-                    </ul>
-                </article>
-                <article className="mk-card">
-                    <h3>Fundraiser Angles</h3>
-                    <ul className="mk-list">
-                        {mode.fundraiserFlow.map((item) => <li key={item}>{item}</li>)}
-                    </ul>
-                </article>
-            </div>
-            <div className="mk-mode-surface-map">
-                <div className="mk-games-guide-title">Primary Surfaces In This Mode</div>
-                <SurfacePills items={mode.surfaces || []} />
-            </div>
-        </div>
-    </section>
-);
-
 const MarketingSite = () => {
     const scrollerRef = useRef(null);
     const [scrollTop, setScrollTop] = useState(0);
-    const [activePage, setActivePage] = useState(getInitialPage);
     const [reducedMotion, setReducedMotion] = useState(false);
-    const [submittingWaitlist, setSubmittingWaitlist] = useState(false);
-    const [waitlist, setWaitlist] = useState({ name: '', email: '', useCase: 'Home Party Host' });
-    const [waitlistState, setWaitlistState] = useState({ error: '', success: '' });
+    const [submitting, setSubmitting] = useState(false);
+    const [waitlist, setWaitlist] = useState({
+        name: '',
+        email: '',
+        useCase: 'Private Host'
+    });
+    const [formState, setFormState] = useState({ error: '', success: '' });
+    const appBase = useMemo(() => getAppBase(), []);
 
     useEffect(() => {
         if (typeof window === 'undefined' || !window.matchMedia) return undefined;
-        const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-        const onChange = () => setReducedMotion(!!mq.matches);
+        const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const onChange = () => setReducedMotion(!!media.matches);
         onChange();
-        if (mq.addEventListener) {
-            mq.addEventListener('change', onChange);
-            return () => mq.removeEventListener('change', onChange);
+        if (media.addEventListener) {
+            media.addEventListener('change', onChange);
+            return () => media.removeEventListener('change', onChange);
         }
-        mq.addListener(onChange);
-        return () => mq.removeListener(onChange);
+        media.addListener(onChange);
+        return () => media.removeListener(onChange);
     }, []);
 
     useEffect(() => {
@@ -621,437 +185,261 @@ const MarketingSite = () => {
         return () => el.removeEventListener('scroll', onScroll);
     }, []);
 
-    useEffect(() => {
-        if (typeof window === 'undefined') return undefined;
-        const onPop = () => setActivePage(getInitialPage());
-        window.addEventListener('popstate', onPop);
-        return () => window.removeEventListener('popstate', onPop);
-    }, []);
+    const parallaxY = useMemo(() => {
+        if (reducedMotion) return 0;
+        return Math.min(260, scrollTop * 0.28);
+    }, [reducedMotion, scrollTop]);
 
-    const appBase = useMemo(() => getAppBase(), []);
-    const isGamesPage = activePage === GAMES_PAGE;
-    const activeMode = isGamesPage ? null : (MODE_MAP[activePage] || null);
-    const isHomePage = !activeMode && !isGamesPage;
-    const parallax = useMemo(() => {
-        if (reducedMotion || !isHomePage) return { gridY: 0, glowY: 0, orbY: 0 };
-        return {
-            gridY: Math.min(220, scrollTop * 0.18),
-            glowY: Math.min(300, scrollTop * 0.3),
-            orbY: Math.min(180, scrollTop * 0.12)
-        };
-    }, [scrollTop, reducedMotion, isHomePage]);
-
-    const navigateMarketingPage = (page) => {
-        updatePageParam(page);
-        setActivePage(page);
-        const el = scrollerRef.current;
-        if (!el) return;
-        const behavior = reducedMotion ? 'auto' : 'smooth';
-        el.scrollTo({ top: 0, behavior });
-    };
-
-    const jumpToWaitlist = () => {
-        if (!isHomePage) {
-            navigateMarketingPage('home');
-            setTimeout(() => {
-                const target = document.getElementById('waitlist');
-                target?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
-            }, 60);
-            return;
-        }
-        const target = document.getElementById('waitlist');
+    const jumpTo = (id) => {
+        const target = document.getElementById(id);
         target?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
     };
 
-    const onWaitlistSubmit = async (event) => {
+    const openHostLogin = () => {
+        trackEvent('marketing_host_login_click', { source: 'marketing_mysterious_efficient' });
+        window.location.href = `${appBase}?mode=host`;
+    };
+
+    const onSubmit = async (event) => {
         event.preventDefault();
-        if (submittingWaitlist) return;
-        if (!waitlist.name.trim()) {
-            setWaitlistState({ error: 'Add your name so we can personalize your invite.', success: '' });
-            return;
-        }
+        if (submitting) return;
         if (!emailLooksValid(waitlist.email)) {
-            setWaitlistState({ error: 'Enter a valid email address.', success: '' });
+            setFormState({ error: 'Enter a valid email address.', success: '' });
             return;
         }
-        setSubmittingWaitlist(true);
-        setWaitlistState({ error: '', success: '' });
-        const source = activeMode ? `mode_detail_${activeMode.key}` : 'marketing_home';
+        const fallbackName = waitlist.email.split('@')[0] || 'host';
+        const normalizedName = waitlist.name.trim() || fallbackName;
+
+        setSubmitting(true);
+        setFormState({ error: '', success: '' });
+
         try {
             const response = await submitMarketingWaitlist({
-                name: waitlist.name.trim(),
+                name: normalizedName,
                 email: waitlist.email.trim().toLowerCase(),
                 useCase: waitlist.useCase,
-                source
+                source: 'marketing_mysterious_efficient'
             });
-            setWaitlistState({
+
+            setFormState({
                 error: '',
-                success: response?.message || 'You are in line for early access.'
+                success: response?.message || 'You are in the access wave queue.'
             });
             setWaitlist((prev) => ({ ...prev, email: '' }));
+
             trackEvent('marketing_waitlist_submit', {
-                source,
+                source: 'marketing_mysterious_efficient',
                 use_case: waitlist.useCase.replace(/[^a-zA-Z0-9]+/g, '_').toLowerCase()
             });
         } catch (error) {
-            console.error('waitlist backend submit failed', error);
+            console.error('waitlist submit failed', error);
             try {
-                const linePosition = saveWaitlistFallbackLocally({
-                    name: waitlist.name,
-                    email: waitlist.email,
-                    useCase: waitlist.useCase,
-                    source
-                });
-                setWaitlistState({
+                const linePosition = saveWaitlistFallbackLocally(waitlist);
+                setFormState({
                     error: '',
-                    success: `Saved locally at position #${linePosition}. Backend sync is temporarily unavailable.`
+                    success: `Saved in local queue at position #${linePosition}. We will sync your request shortly.`
                 });
             } catch (fallbackError) {
-                console.error('waitlist local fallback failed', fallbackError);
-                setWaitlistState({ error: 'Could not submit your request. Try again shortly.', success: '' });
+                console.error('waitlist fallback failed', fallbackError);
+                setFormState({ error: 'Could not submit right now. Try again in a minute.', success: '' });
             }
         } finally {
-            setSubmittingWaitlist(false);
+            setSubmitting(false);
         }
     };
 
     return (
-        <div ref={scrollerRef} className="marketing-site h-full w-full overflow-y-auto">
-            <header className="mk-nav">
-                <div className="mk-container mk-nav-inner">
-                    <div className="mk-brand">
-                        <img src={ASSETS.logo} alt="BeauRocks Karaoke" className="mk-brand-logo" />
-                        <span className="mk-brand-word">BeauRocks</span>
-                    </div>
-                    <nav className="mk-nav-links">
-                        {isHomePage && NAV_PRIMARY_LINKS.map((link) => (
-                            <a key={link.id} href={`#${link.id}`} className="mk-nav-link">
-                                {link.label}
-                            </a>
+        <div ref={scrollerRef} className="mk2-site h-full w-full overflow-y-auto">
+            <header className="mk2-nav">
+                <div className="mk2-shell mk2-nav-inner">
+                    <button className="mk2-brand" type="button" onClick={() => jumpTo('top')}>
+                        <img src={ASSETS.logo} alt="BeauRocks" className="mk2-brand-logo" />
+                        <span className="mk2-brand-word">BeauRocks</span>
+                    </button>
+                    <nav className="mk2-links">
+                        {NAV_SECTIONS.map((section) => (
+                            <button key={section.id} type="button" className="mk2-link" onClick={() => jumpTo(section.id)}>
+                                {section.label}
+                            </button>
                         ))}
-                        {isHomePage && (
-                            <button
-                                type="button"
-                                className="mk-nav-inline-btn"
-                                onClick={() => navigateMarketingPage(GAMES_PAGE)}
-                            >
-                                Games Hub
-                            </button>
-                        )}
-                        {!isHomePage && (
-                            <button type="button" className="mk-nav-inline-btn" onClick={() => navigateMarketingPage('home')}>
-                                Home
-                            </button>
-                        )}
                     </nav>
-                    <button type="button" onClick={jumpToWaitlist} className="mk-btn mk-btn-primary">Join Early Access</button>
+                    <div className="mk2-nav-actions">
+                        <button type="button" className="mk2-btn mk2-btn-ghost" onClick={openHostLogin}>
+                            Host Login
+                        </button>
+                        <button type="button" className="mk2-btn mk2-btn-primary" onClick={() => jumpTo('signup')}>
+                            Get Access
+                        </button>
+                    </div>
                 </div>
             </header>
 
             <main>
-                {isHomePage && (
-                    <>
-                        <section className="mk-hero" id="home">
-                            <div className="mk-layer mk-layer-grid" style={{ transform: `translate3d(0, ${parallax.gridY}px, 0)` }} />
-                            <div className="mk-layer mk-layer-glow" style={{ transform: `translate3d(0, ${parallax.glowY}px, 0)` }} />
-                            <div className="mk-layer mk-layer-orb" style={{ transform: `translate3d(0, ${parallax.orbY}px, 0)` }} />
-                            <div className="mk-container mk-hero-content">
-                                <div className="mk-pill">Private Party Karaoke + Social Game Night</div>
-                                <h1>Run A Karaoke Night People Actually Stay In.</h1>
-                                <p>
-                                    BeauRocks keeps hosts in control and guests involved with one synchronized system:
-                                    a host panel, a public TV surface, and a phone audience app that work together in real time.
-                                </p>
-                                <div className="mk-hero-cta">
-                                    <button type="button" onClick={jumpToWaitlist} className="mk-btn mk-btn-primary">Join Early Access</button>
-                                    <a href="#how-it-works" className="mk-btn mk-btn-ghost">See How It Works</a>
-                                </div>
-                                <div className="mk-hero-links">
-                                    <button
-                                        type="button"
-                                        className="mk-inline-link"
-                                        onClick={() => navigateMarketingPage(GAMES_PAGE)}
-                                    >
-                                        Explore all game modes
-                                    </button>
-                                    <a href={appBase} className="mk-inline-link">Open the live app</a>
-                                </div>
-                                <div className="mk-hero-note">
-                                    Built for home parties, private events, and fundraiser nights.
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="how-it-works" className="mk-section">
-                            <div className="mk-container">
-                                <div className="mk-kicker">How It Works</div>
-                                <h2>One Simple Flow For The Whole Room</h2>
-                                <p className="mk-lead">
-                                    You do not need to explain the product to every guest. The room follows this same pattern all night.
-                                </p>
-                                <div className="mk-grid mk-grid-3">
-                                    {HOW_IT_WORKS_STEPS.map((step) => (
-                                        <article key={step.id} className="mk-card mk-step-card">
-                                            <div className="mk-step-label">{step.step}</div>
-                                            <h3>{step.title}</h3>
-                                            <p>{step.body}</p>
-                                        </article>
-                                    ))}
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="visuals" className="mk-section mk-section-dark">
-                            <div className="mk-container">
-                                <div className="mk-kicker">Real Product</div>
-                                <h2>Actual Captures From Live Rooms</h2>
-                                <p className="mk-lead">
-                                    See exactly what hosts and guests see during real nights.
-                                </p>
-                                <div className="mk-grid mk-grid-3 mk-visual-grid">
-                                    {PRODUCT_VISUALS.map((visual) => (
-                                        <article key={visual.id} className="mk-visual-card">
-                                            <div className={`mk-visual-image-wrap ${visual.kind === 'phone' ? 'mk-visual-image-wrap-phone' : ''}`}>
-                                                <img src={visual.image} alt={visual.title} className="mk-visual-image" loading="lazy" />
-                                            </div>
-                                            <div className="mk-visual-meta">
-                                                <h3>{visual.title}</h3>
-                                                <p>{visual.caption}</p>
-                                                <a href={visual.href} className="mk-mode-link">Open Surface</a>
-                                            </div>
-                                        </article>
-                                    ))}
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="screens" className="mk-section">
-                            <div className="mk-container">
-                                <div className="mk-kicker">Screen Deep Dive</div>
-                                <h2>Each Screen Has A Different Job</h2>
-                                <p className="mk-lead">
-                                    BeauRocks works best when host, TV, and audience surfaces are treated as one coordinated system.
-                                </p>
-                                <div className="mk-screen-stack">
-                                    {SCREEN_DEEP_DIVES.map((screen) => (
-                                        <ScreenPreviewCard key={screen.id} screen={screen} />
-                                    ))}
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="surfaces" className="mk-section">
-                            <div className="mk-container">
-                                <div className="mk-kicker">Three Surfaces</div>
-                                <h2>Every Role Gets Its Own Screen</h2>
-                                <p className="mk-lead">
-                                    Instead of one overloaded UI, each person gets the right interface for their job.
-                                </p>
-                                <div className="mk-grid mk-grid-3">
-                                    {SURFACES.map((surface) => (
-                                        <article key={surface.title} className="mk-card">
-                                            <h3>{surface.title}</h3>
-                                            <div className="mk-card-subtitle">{surface.subtitle}</div>
-                                            <p>{surface.body}</p>
-                                            <div className="mk-card-stat">{surface.stat}</div>
-                                        </article>
-                                    ))}
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="voice-games" className="mk-section mk-section-dark">
-                            <div className="mk-container">
-                                <div className="mk-kicker">Voice Game Modes</div>
-                                <h2>Signature Voice Games Worth Highlighting</h2>
-                                <p className="mk-lead">
-                                    These are not side features. They are core reasons hosts can run richer nights than standard karaoke.
-                                </p>
-                                <div className="mk-grid mk-grid-2">
-                                    {VOICE_GAME_MODES.map((game) => (
-                                        <article key={game.id} className="mk-card mk-voice-card">
-                                            <h3>{game.name}</h3>
-                                            <div className="mk-card-subtitle">{game.tagline}</div>
-                                            <p>{game.details}</p>
-                                        </article>
-                                    ))}
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="modes" className="mk-section mk-section-dark">
-                            <div className="mk-container">
-                                <div className="mk-kicker">Game Modes</div>
-                                <h2>Pick The Type Of Night You Want</h2>
-                                <p className="mk-lead">
-                                    Start with karaoke, then layer in audience game modes when you want more interaction.
-                                </p>
-                                <div className="mk-hero-cta mk-inline-actions">
-                                    <button type="button" onClick={() => navigateMarketingPage(GAMES_PAGE)} className="mk-btn mk-btn-primary">
-                                        Open Games Hub
-                                    </button>
-                                </div>
-                                <div className="mk-grid mk-grid-5">
-                                    {MODE_DETAILS.map((mode) => (
-                                        <article key={mode.key} className="mk-mode-card">
-                                            <h3>{mode.title}</h3>
-                                            <p>{mode.blurb}</p>
-                                            <button type="button" className="mk-mode-link" onClick={() => navigateMarketingPage(mode.page)}>
-                                                Open Mode Page
-                                            </button>
-                                        </article>
-                                    ))}
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="fundraisers" className="mk-section">
-                            <div className="mk-container mk-two-col">
-                                <div>
-                                    <div className="mk-kicker">Fundraisers</div>
-                                    <h2>Built For Donation Energy, Not Just Song Requests</h2>
-                                    <p className="mk-lead">
-                                        BeauRocks supports full fundraiser nights where participation moments map directly
-                                        to sponsor visibility, donations, and crowd momentum.
-                                    </p>
-                                    <ul className="mk-list">
-                                        {FUNDRAISER_MECHANICS.map((item) => <li key={item}>{item}</li>)}
-                                    </ul>
-                                </div>
-                                <div className="mk-callout">
-                                    <h3>Fundraiser Night Formats</h3>
-                                    <p>Community challenge nights, school booster events, and neighborhood cause nights all map to the same host workflow.</p>
-                                    <p>Use host presets to switch between social pacing and donation-driven competition pacing.</p>
-                                    <button type="button" onClick={jumpToWaitlist} className="mk-btn mk-btn-primary">Get Fundraiser Access</button>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="vip" className="mk-section mk-section-dark">
-                            <div className="mk-container mk-two-col">
-                                <div>
-                                    <div className="mk-kicker">VIP</div>
-                                    <h2>Give Regulars An Identity That Travels Room To Room</h2>
-                                    <p className="mk-lead">
-                                        VIP unlocks continuity for frequent participants so each night builds on the last.
-                                    </p>
-                                    <ul className="mk-list">
-                                        <li>Saved Tight 15 across rooms</li>
-                                        <li>Tournament recognition and recap visibility</li>
-                                        <li>Priority onboarding to new game mechanics</li>
-                                        <li>More personalized audience and performer experiences</li>
-                                    </ul>
-                                </div>
-                                <div className="mk-callout">
-                                    <h3>Host Subscription System</h3>
-                                    <p>Hosts set the strategy and controls. VIP gives regular guests continuity and identity.</p>
-                                    <p>Together, they turn one-off parties into recurring event communities.</p>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="host-features" className="mk-section">
-                            <div className="mk-container">
-                                <div className="mk-kicker">Host Feature Stack</div>
-                                <h2>Host Controls Go Way Beyond Song Queue</h2>
-                                <p className="mk-lead">
-                                    New hosts need clear visibility into everything they can run from one panel. This is the operational core.
-                                </p>
-                                <div className="mk-host-stack">
-                                    {HOST_FEATURE_STACK.map((feature) => (
-                                        <div key={feature} className="mk-host-feature">
-                                            {feature}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="plans" className="mk-section">
-                            <div className="mk-container">
-                                <div className="mk-kicker">Plans + Usage</div>
-                                <h2>Simple Host Pricing With Clear Usage</h2>
-                                <p className="mk-lead">
-                                    Keep it transparent: base plans, included usage, and overage rates with practical nightly examples.
-                                </p>
-                                <div className="mk-grid mk-grid-3">
-                                    <article className="mk-plan-card">
-                                        <h3>Casual Host</h3>
-                                        <div className="mk-plan-price">$19/mo</div>
-                                        <p>Great for occasional private party nights and family events.</p>
-                                    </article>
-                                    <article className="mk-plan-card mk-plan-card-featured">
-                                        <h3>Event Host</h3>
-                                        <div className="mk-plan-price">$49/mo</div>
-                                        <p>Balanced for recurring nights with Bingo, Trivia, and bracket activity.</p>
-                                    </article>
-                                    <article className="mk-plan-card">
-                                        <h3>Community Host</h3>
-                                        <div className="mk-plan-price">$99/mo</div>
-                                        <p>High-volume hosts and fundraiser operators with heavier usage profiles.</p>
-                                    </article>
-                                </div>
-                                <div className="mk-legal-note">
-                                    Pricing is placeholder copy for planning. Final tiers and usage units will be set before launch.
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="faq" className="mk-section mk-section-dark">
-                            <div className="mk-container">
-                                <div className="mk-kicker">FAQ</div>
-                                <h2>Common Questions</h2>
-                                <div className="mk-grid mk-grid-2">
-                                    {FAQ_ITEMS.map((item) => (
-                                        <article key={item.q} className="mk-card">
-                                            <h3>{item.q}</h3>
-                                            <p>{item.a}</p>
-                                        </article>
-                                    ))}
-                                </div>
-                            </div>
-                        </section>
-                    </>
-                )}
-
-                {isGamesPage && (
-                    <GamesCatalogPage
-                        onBack={() => navigateMarketingPage('home')}
-                        onJoin={jumpToWaitlist}
-                        onOpenMode={navigateMarketingPage}
-                    />
-                )}
-
-                {!isHomePage && (
-                    activeMode && (
-                        <ModeDetailPage
-                            mode={activeMode}
-                            onBack={() => navigateMarketingPage('home')}
-                            onJoin={jumpToWaitlist}
-                            onOpenGames={() => navigateMarketingPage(GAMES_PAGE)}
-                        />
-                    )
-                )}
-
-                <section id="waitlist" className="mk-section mk-section-waitlist">
-                    <div className="mk-container mk-two-col">
+                <section className="mk2-hero" id="top">
+                    <div className="mk2-bg-grid" style={{ transform: `translate3d(0, ${parallaxY}px, 0)` }}></div>
+                    <div className="mk2-bg-glow"></div>
+                    <div className="mk2-bg-orb mk2-bg-orb-a"></div>
+                    <div className="mk2-bg-orb mk2-bg-orb-b"></div>
+                    <div className="mk2-shell mk2-hero-layout">
                         <div>
-                            <div className="mk-kicker">Early Access</div>
-                            <h2>Join The Early Access Line</h2>
-                            <p className="mk-lead">
-                                We onboard hosts in waves. Share your event type and we will prioritize the right onboarding path.
+                            <div className="mk2-kicker">Neon Social Karaoke System</div>
+                            <h1>
+                                Build A Room That Feels <span>Illegal To Leave.</span>
+                            </h1>
+                            <p>
+                                BeauRocks turns host intent into immediate room behavior. Fast joins, live social loops,
+                                and game-state transitions that keep the crowd metabolically engaged.
+                            </p>
+                            <div className="mk2-hero-cta">
+                                <button type="button" className="mk2-btn mk2-btn-primary" onClick={() => jumpTo('signup')}>
+                                    Enter Access Queue
+                                </button>
+                                <button type="button" className="mk2-btn mk2-btn-ghost" onClick={() => jumpTo('experience')}>
+                                    Decode The System
+                                </button>
+                            </div>
+                            <div className="mk2-metric-strip">
+                                {SIGNAL_METRICS.map((metric) => (
+                                    <div key={metric.label} className="mk2-metric-chip">
+                                        <span>{metric.label}</span>
+                                        <strong>{metric.value}</strong>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mk2-chip-row">
+                                {GAME_VIBE.map((mode, index) => (
+                                    <div key={mode.title} className="mk2-mode-chip" style={{ animationDelay: `${index * 120}ms` }}>
+                                        <strong>{mode.title}</strong>
+                                        <span>{mode.note}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <aside className="mk2-hero-panel">
+                            <div className="mk2-panel-badge">Access Wave</div>
+                            <h3>Next Intake Is Limited</h3>
+                            <p>We accept a constrained number of hosts per wave to keep onboarding sharp.</p>
+                            <ul>
+                                <li>Short setup ritual</li>
+                                <li>Priority by use-case fit</li>
+                                <li>Fast signal to first show</li>
+                            </ul>
+                            <button type="button" className="mk2-btn mk2-btn-secondary mk2-btn-block" onClick={() => jumpTo('signup')}>
+                                Reserve Slot
+                            </button>
+                            <button type="button" className="mk2-login-link" onClick={openHostLogin}>
+                                Already onboarded? Host login
+                            </button>
+                        </aside>
+                    </div>
+                </section>
+
+                <section className="mk2-section" id="experience">
+                    <div className="mk2-shell">
+                        <div className="mk2-kicker">Experience DNA</div>
+                        <h2>Strange Energy, Precise Control</h2>
+                        <p className="mk2-lead">
+                            The room feels wild. The system stays exact.
+                        </p>
+                        <div className="mk2-dna-grid">
+                            {SHOW_DNA.map((item, index) => (
+                                <article
+                                    key={item.title}
+                                    className={`mk2-dna-card mk2-dna-${item.accent}`}
+                                    style={{ animationDelay: `${index * 100}ms` }}
+                                >
+                                    <h3>{item.title}</h3>
+                                    <p>{item.body}</p>
+                                </article>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+
+                <section className="mk2-section mk2-section-dark" id="surfaces">
+                    <div className="mk2-shell">
+                        <div className="mk2-kicker">Three Surfaces</div>
+                        <h2>Three Surfaces, One Nervous System</h2>
+                        <div className="mk2-surface-grid">
+                            {SURFACES.map((surface, index) => (
+                                <article key={surface.id} className="mk2-surface-card" style={{ '--delay': `${index * 120}ms` }}>
+                                    <div className="mk2-surface-image-wrap">
+                                        <img src={surface.image} alt={surface.title} className="mk2-surface-image" loading="lazy" />
+                                    </div>
+                                    <div className="mk2-surface-copy">
+                                        <h3>{surface.title}</h3>
+                                        <div className="mk2-surface-subtitle">{surface.subtitle}</div>
+                                        <ul>
+                                            {surface.bullets.map((bullet) => (
+                                                <li key={bullet}>{bullet}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+
+                <section className="mk2-section" id="games">
+                    <div className="mk2-shell mk2-two-col">
+                        <div>
+                            <div className="mk2-kicker">Game Energy</div>
+                            <h2>Participation Density Stays High</h2>
+                            <p className="mk2-lead">
+                                Voice input, social voting, and host interventions create a constant next action.
+                            </p>
+                            <div className="mk2-reel-grid">
+                                {GAME_VIBE.map((mode) => (
+                                    <div key={mode.title} className="mk2-reel-card">
+                                        <strong>{mode.title}</strong>
+                                        <span>{mode.note}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <aside className="mk2-callout">
+                            <div className="mk2-callout-title">Who We Are Prioritizing</div>
+                            <div className="mk2-callout-list">
+                                {ACCESS_TIERS.map((tier) => (
+                                    <div key={tier.title} className="mk2-callout-item">
+                                        <strong>{tier.title}</strong>
+                                        <span>{tier.detail}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <button type="button" className="mk2-btn mk2-btn-primary mk2-btn-block" onClick={() => jumpTo('signup')}>
+                                Request Priority
+                            </button>
+                        </aside>
+                    </div>
+                </section>
+
+                <section className="mk2-section mk2-section-dark" id="faq">
+                    <div className="mk2-shell">
+                        <div className="mk2-kicker">Access Protocol</div>
+                        <h2>Low Friction, Clear Answers</h2>
+                        <div className="mk2-faq-grid">
+                            {FAQ_ITEMS.map((item) => (
+                                <article key={item.q} className="mk2-faq-card">
+                                    <h3>{item.q}</h3>
+                                    <p>{item.a}</p>
+                                </article>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+
+                <section className="mk2-section mk2-signup" id="signup">
+                    <div className="mk2-shell mk2-signup-layout">
+                        <div>
+                            <div className="mk2-kicker">Early Access Signup</div>
+                            <h2>Enter The Queue</h2>
+                            <p className="mk2-lead">
+                                Two inputs. One decision. We do the rest.
                             </p>
                         </div>
-                        <form className="mk-waitlist-form" onSubmit={onWaitlistSubmit}>
-                            <label>
-                                Name
-                                <input
-                                    type="text"
-                                    value={waitlist.name}
-                                    onChange={(e) => setWaitlist((prev) => ({ ...prev, name: e.target.value }))}
-                                    placeholder="Your name"
-                                />
-                            </label>
+                        <form className="mk2-form" onSubmit={onSubmit}>
                             <label>
                                 Email
                                 <input
@@ -1062,31 +450,40 @@ const MarketingSite = () => {
                                 />
                             </label>
                             <label>
-                                Primary use case
+                                Use case
                                 <select
                                     value={waitlist.useCase}
                                     onChange={(e) => setWaitlist((prev) => ({ ...prev, useCase: e.target.value }))}
                                 >
-                                    <option>Home Party Host</option>
-                                    <option>Fundraiser Organizer</option>
-                                    <option>Community Event Host</option>
-                                    <option>Venue / KJ Operator</option>
+                                    <option>Private Host</option>
+                                    <option>Community Event Organizer</option>
+                                    <option>Fundraiser Producer</option>
+                                    <option>Recurring Show Operator</option>
                                 </select>
                             </label>
-                            <button type="submit" disabled={submittingWaitlist} className={`mk-btn mk-btn-primary mk-btn-block ${submittingWaitlist ? 'mk-btn-disabled' : ''}`}>
-                                {submittingWaitlist ? 'Submitting...' : 'Request Early Access'}
+                            <label>
+                                Codename (optional)
+                                <input
+                                    type="text"
+                                    value={waitlist.name}
+                                    onChange={(e) => setWaitlist((prev) => ({ ...prev, name: e.target.value }))}
+                                    placeholder="NeonMayor"
+                                />
+                            </label>
+                            <button type="submit" disabled={submitting} className={`mk2-btn mk2-btn-primary mk2-btn-block ${submitting ? 'mk2-btn-disabled' : ''}`}>
+                                {submitting ? 'Transmitting...' : 'Transmit Request'}
                             </button>
-                            {waitlistState.error && <div className="mk-form-error">{waitlistState.error}</div>}
-                            {waitlistState.success && <div className="mk-form-success">{waitlistState.success}</div>}
+                            {formState.error && <div className="mk2-form-error">{formState.error}</div>}
+                            {formState.success && <div className="mk2-form-success">{formState.success}</div>}
                         </form>
                     </div>
                 </section>
             </main>
 
-            <footer className="mk-footer">
-                <div className="mk-container mk-footer-inner">
-                    <div>BeauRocks Party Platform</div>
-                    <div>Built for private gatherings. Hosts remain responsible for music-rights compliance based on local rules.</div>
+            <footer className="mk2-footer">
+                <div className="mk2-shell mk2-footer-inner">
+                    <div>BeauRocks Marketing Experience</div>
+                    <div>Private event platform in staged early access rollout.</div>
                 </div>
             </footer>
         </div>
@@ -1094,4 +491,3 @@ const MarketingSite = () => {
 };
 
 export default MarketingSite;
-

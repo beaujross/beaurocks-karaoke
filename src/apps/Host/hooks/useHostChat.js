@@ -26,6 +26,13 @@ const isDirectChatMessage = (message = {}) => (
 const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
 const getNewestRoomTs = (messages) => getTimestampMs(messages.find(msg => isLoungeChatMessage(msg)));
 const getNewestDmTs = (messages) => getTimestampMs(messages.find(msg => isDirectChatMessage(msg)));
+const getDmTargetUidFromMessage = (message = {}) => (
+    String(message?.uid || message?.fromUid || message?.userId || message?.toUid || '').trim()
+);
+const getNewestDmTargetUid = (messages = []) => {
+    const newestDm = messages.find((msg) => isDirectChatMessage(msg));
+    return newestDm ? getDmTargetUidFromMessage(newestDm) : '';
+};
 
 const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
     const [chatEnabled, setChatEnabled] = useState(true);
@@ -55,9 +62,13 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
         if (nextMode === 'host') {
             const newestTs = getNewestDmTs(chatMessages);
             if (newestTs) dmLastSeenRef.current = newestTs;
+            const newestTargetUid = getNewestDmTargetUid(chatMessages);
+            if (newestTargetUid && !dmTargetUid) {
+                setDmTargetUid(newestTargetUid);
+            }
             setDmUnread(false);
         }
-    }, [chatMessages]);
+    }, [chatMessages, dmTargetUid]);
 
     const markChatTabSeen = useCallback(() => {
         const newestTs = getTimestampMs(chatMessages[0]);
@@ -89,6 +100,10 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
         const unsub = onSnapshot(q, snap => {
             const next = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             setChatMessages(next);
+            const newestTargetUid = getNewestDmTargetUid(next);
+            if (newestTargetUid) {
+                setDmTargetUid((prev) => prev || newestTargetUid);
+            }
             const roomTs = getNewestRoomTs(next);
             const dmTs = getNewestDmTs(next);
 

@@ -12,6 +12,7 @@ const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
 const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, gameState }) => {
     const isLocalInput = isPlayer && inputSource !== 'remote';
     const { pitch, note, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging } = usePitch(isLocalInput, { smoothingFactor: 0.5 }); 
+    const startsPlaying = playerData?.inputSource === 'ambient' || inputSource === 'local';
     
     // Create profiler instance
     const profilerRef = useRef(createProfiler('FlappyBird'));
@@ -21,7 +22,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
     const [score, setScore] = useState(0); 
     const [obstacles, setObstacles] = useState([]); 
     const [coins, setCoins] = useState([]); 
-    const [gameStateLocal, setGameStateLocal] = useState('ready'); 
+    const [gameStateLocal, setGameStateLocal] = useState(() => (startsPlaying ? 'playing' : 'ready')); 
     const [lives, setLives] = useState(3); 
     const [invincible, setInvincible] = useState(false); 
     const [screechActive, setScreechActive] = useState(false); 
@@ -37,7 +38,13 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
     const velocityRef = useRef(0);
     const lastFlapRef = useRef(0);
     const prevVolRef = useRef(0);
-    
+
+    useEffect(() => {
+        if (!isPlayer || gameStateLocal !== 'ready' || !startsPlaying) return;
+        const t = setTimeout(() => setGameStateLocal('playing'), 0);
+        return () => clearTimeout(t);
+    }, [isPlayer, gameStateLocal, startsPlaying]);
+
     // 1. SYNC: Player sends state to Firebase
     useEffect(() => { 
         if(!isPlayer) return; 

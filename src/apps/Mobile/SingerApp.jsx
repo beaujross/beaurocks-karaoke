@@ -26,6 +26,7 @@ import { FameLevelProgressBar } from '../../components/FameLevelBadge';
 import UserMetaCard from '../../components/UserMetaCard';
 import { FAME_LEVELS, getLevelFromFame, getProgressToNextLevel } from '../../lib/fameConstants';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
+import groupChatMessages from '../../lib/chatGrouping';
 
 // Helper Component for Animated Points
 const AnimatedPoints = ({ value, onClick, className = '' }) => {
@@ -5461,6 +5462,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }
     const showChatPanel = ['lounge', 'host'].includes(socialTab);
     const activeMessages = chatTab === 'host' ? dmMessages : loungeMessages;
+    const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
     const chatTitle = socialTab === 'host' ? 'DM Host' : 'VIP Lounge';
     const chatStatusLabel = !room?.chatEnabled
         ? 'Chat paused'
@@ -5931,8 +5933,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </div>
                                     ) : null}
                                     {!chatLocked && (
-                                        <div className={`space-y-2 ${activeMessages.length > 0 ? 'max-h-[45vh] overflow-y-auto custom-scrollbar pr-2' : 'py-6'}`}>
-                                            {activeMessages.length === 0 ? (
+                                        <div className={`space-y-2 ${groupedActiveMessages.length > 0 ? 'max-h-[45vh] overflow-y-auto custom-scrollbar pr-2' : 'py-6'}`}>
+                                            {groupedActiveMessages.length === 0 ? (
                                             <div className="text-center">
                                                 <div className="text-base text-zinc-100 font-semibold">No messages yet</div>
                                                 <div className="text-sm text-zinc-300 mt-1">Kick things off with a quick hello.</div>
@@ -5950,14 +5952,28 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 </div>
                                             </div>
                                             ) : (
-                                                activeMessages.map(msg => (
-                                                    <div key={msg.id} className="bg-black/40 border border-white/5 rounded-xl px-3 py-2.5 flex gap-2">
+                                                groupedActiveMessages.map((group) => (
+                                                    <div key={group.id} className="bg-black/40 border border-white/5 rounded-xl px-3 py-2.5 flex gap-2">
                                                         <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-lg">
-                                                            {msg.avatar || DEFAULT_EMOJI}
+                                                            {group.avatar || DEFAULT_EMOJI}
                                                         </div>
-                                                        <div className="min-w-0">
-                                                            <div className="text-xs text-pink-100">{msg.user || msg.name || 'Guest'}</div>
-                                                            <div className="text-zinc-100 mt-1 text-base break-words">{msg.text}</div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="text-xs text-pink-100">{group.user || 'Guest'}</div>
+                                                                {group.isVip && (
+                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-400 text-black font-black tracking-widest">VIP</span>
+                                                                )}
+                                                                {group.isHost && (
+                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-500 text-black font-black tracking-widest">HOST</span>
+                                                                )}
+                                                            </div>
+                                                            <div className="mt-1 space-y-1">
+                                                                {group.messages.map((message, idx) => (
+                                                                    <div key={message.id || `${group.id}-${idx}`} className="text-zinc-100 text-base break-words leading-snug">
+                                                                        {message.text}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 ))

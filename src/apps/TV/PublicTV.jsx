@@ -12,6 +12,7 @@ import { HOW_TO_PLAY } from '../../lib/howToPlay';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
 import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
 import { createLogger } from '../../lib/logger';
+import groupChatMessages from '../../lib/chatGrouping';
 import useTvVisualizerSettings from './hooks/useTvVisualizerSettings';
 
 const isTvVisibleChatMessage = (message) => {
@@ -427,6 +428,10 @@ const PublicTV = ({ roomCode }) => {
             return acc;
         }, {});
     }, [selfieVotes]);
+    const groupedChatMessages = useMemo(
+        () => groupChatMessages([...chatMessages].reverse(), { mergeWindowMs: 12 * 60 * 1000 }),
+        [chatMessages]
+    );
     const doodleRequireReview = !!room?.doodleOke?.requireReview;
     const doodleApprovedUidSet = useMemo(() => {
         const approved = Array.isArray(room?.doodleOke?.approvedUids) ? room.doodleOke.approvedUids : [];
@@ -2048,21 +2053,21 @@ const PublicTV = ({ roomCode }) => {
                 
                 {/* SIDEBAR: Hidden in Cinema Mode */}
                 {!isCinema && (
-                    <div className="col-span-4 flex flex-col gap-2 h-full min-h-0 pb-2">
+                    <div className="col-span-4 flex flex-col gap-2 h-full min-h-0 pb-2 overflow-hidden">
                          <div className="p-3 rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20">
-                            <div className="text-4xl font-black text-cyan-100 mb-1 uppercase tracking-[0.22em]">JOIN</div>
+                            <div className="text-3xl font-black text-cyan-100 mb-1 uppercase tracking-[0.18em]">JOIN</div>
                             <div className="bg-white p-3 rounded-3xl inline-block shadow-[0_0_45px_rgba(255,255,255,0.2)]">
                                 <LocalQrImage
                                     value={`${appBase}?room=${roomCode}`}
-                                    size={248}
+                                    size={220}
                                     alt="QR"
-                                    className="w-[248px] h-[248px]"
+                                    className="w-[220px] h-[220px]"
                                 />
                             </div>
-                            <div className="text-5xl font-bebas text-white mt-2 tracking-[0.16em]">{roomCode}</div>
+                            <div className="text-4xl font-bebas text-white mt-2 tracking-[0.14em]">{roomCode}</div>
                             <div className="mt-1">
-                                <div className="text-base text-zinc-100 font-semibold uppercase tracking-[0.12em] break-all leading-tight">Go to {joinUrlBaseDisplay}</div>
-                                <div className="text-xl font-black text-cyan-100 tracking-[0.06em] break-all leading-tight">{joinUrlQueryDisplay}</div>
+                                <div className="text-sm text-zinc-100 font-semibold uppercase tracking-[0.1em] break-all leading-tight">Go to {joinUrlBaseDisplay}</div>
+                                <div className="text-lg font-black text-cyan-100 tracking-[0.04em] break-all leading-tight">{joinUrlQueryDisplay}</div>
                             </div>
                             {isMinimal && <div className="mt-4"><MiniVideoPane room={room} current={current} /></div>}
                          </div>
@@ -2134,8 +2139,8 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                          ) : (
                              <div className="flex-1 min-h-0 bg-zinc-800/80 backdrop-blur rounded-3xl p-5 border border-white/10 flex flex-col overflow-hidden">
-                                <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
-                                    <h3 className="text-4xl font-bebas text-cyan-400">UP NEXT</h3>
+                                <div className="flex items-center justify-between mb-2 border-b border-white/10 pb-2">
+                                    <h3 className="text-3xl font-bebas text-cyan-400">UP NEXT</h3>
                                     {room?.bouncerMode && (
                                         <div className="px-3 py-1 rounded-full bg-black/70 border border-red-400/40 text-red-300 text-xs font-bold tracking-widest uppercase flex items-center gap-2">
                                             <i className="fa-solid fa-lock"></i>
@@ -2143,20 +2148,20 @@ const PublicTV = ({ roomCode }) => {
                                         </div>
                                     )}
                                 </div>
-                                <div className="flex flex-wrap gap-2 mb-3">
+                                <div className="flex flex-wrap gap-2 mb-2">
                                     {queueRules.map(rule => (
-                                        <div key={rule.label} className="flex items-center gap-2 bg-black/45 border border-white/10 px-3 py-1.5 rounded-full text-sm font-semibold uppercase tracking-[0.16em] text-zinc-100">
-                                            <i className={`fa-solid ${rule.icon} text-cyan-300 text-base`}></i>
+                                        <div key={rule.label} className="flex items-center gap-2 bg-black/45 border border-white/10 px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-[0.14em] text-zinc-100">
+                                            <i className={`fa-solid ${rule.icon} text-cyan-300`}></i>
                                             <span>{rule.shortLabel || rule.label}</span>
                                         </div>
                                     ))}
                                 </div>
-                                <div className="mb-3 text-sm uppercase tracking-[0.24em] text-zinc-300">
+                                <div className="mb-2 text-xs uppercase tracking-[0.2em] text-zinc-300">
                                     Queue: <span className="text-white font-bold">{allQueue.length}</span> songs
                                     {' '}
                                     | Est wait <span className="text-white font-bold">{formatWaitTime(queueWaitSec)}</span>
                                 </div>
-                                <div className="space-y-2 mb-4 max-h-[28vh] overflow-y-auto custom-scrollbar pr-1">
+                                <div className="space-y-2 mb-3 max-h-[18vh] overflow-y-auto custom-scrollbar pr-1">
                                     {nextUp.length === 0 && (
                                         <div className="bg-black/35 border border-white/10 rounded-2xl px-4 py-3 text-zinc-100 text-xl font-bebas tracking-wide">
                                             No singers yet - scan to join
@@ -2180,10 +2185,10 @@ const PublicTV = ({ roomCode }) => {
                                         );
                                     })}
                                 </div>
-                                <h3 className="text-4xl font-bebas text-green-400 mb-2 border-b border-white/10 pb-2">
+                                <h3 className="text-3xl font-bebas text-green-400 mb-2 border-b border-white/10 pb-2">
                                     {showChatFeed ? 'CHAT' : 'ACTIVITY'}
                                 </h3>
-                                <div className="flex-1 min-h-0 overflow-y-auto space-y-2 custom-scrollbar">
+                                <div className="flex-1 min-h-[120px] overflow-y-auto space-y-2 custom-scrollbar">
                                     {showChatFeed ? (
                                         <>
                                             {chatMessages.length === 0 && (
@@ -2195,16 +2200,25 @@ const PublicTV = ({ roomCode }) => {
                                                             : 'No chat yet.'}
                                                 </div>
                                             )}
-                                            {[...chatMessages].reverse().map(m => (
-                                                <div key={m.id} className="flex gap-2 items-center text-zinc-200 text-lg">
-                                                    <span>{m.avatar || EMOJI.sparkle}</span>
-                                                    <span className="truncate">
-                                                        <span className="font-bold text-white">{m.user || 'Guest'}</span>
-                                                        {m.isVip && (
-                                                            <span className="ml-2 px-2 py-0.5 rounded-full text-[9px] font-black tracking-widest bg-yellow-400 text-black">VIP</span>
-                                                        )}{' '}
-                                                        {m.text}
-                                                    </span>
+                                            {groupedChatMessages.map((group) => (
+                                                <div key={group.id} className="flex gap-2 items-start text-zinc-200 text-lg">
+                                                    <span>{group.avatar || EMOJI.sparkle}</span>
+                                                    <div className="min-w-0">
+                                                        <div className="truncate">
+                                                            <span className="font-bold text-white">{group.user || 'Guest'}</span>
+                                                            {group.isVip && (
+                                                                <span className="ml-2 px-2 py-0.5 rounded-full text-[9px] font-black tracking-widest bg-yellow-400 text-black">VIP</span>
+                                                            )}
+                                                            {group.isHost && (
+                                                                <span className="ml-2 px-2 py-0.5 rounded-full text-[9px] font-black tracking-widest bg-cyan-500 text-black">HOST</span>
+                                                            )}
+                                                        </div>
+                                                        <div className="space-y-0.5">
+                                                            {group.messages.map((message, idx) => (
+                                                                <div key={message.id || `${group.id}-${idx}`} className="break-words">{message.text}</div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </>

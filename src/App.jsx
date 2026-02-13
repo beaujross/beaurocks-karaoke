@@ -24,14 +24,14 @@ const getInitialRouteState = () => {
     const pathname = window.location.pathname.replace(/\/+$/, '');
     const r = params.get('room');
     const m = params.get('mode');
-    if (m === 'marketing' || /\/marketing(\/.*)?$/.test(pathname)) {
-        return { view: 'marketing', roomCode: '' };
-    }
     if (m === 'host') {
         return { view: 'host', roomCode: r ? r.toUpperCase() : '' };
     }
     if (m === 'recap') {
         return { view: 'recap', roomCode: r ? r.toUpperCase() : '' };
+    }
+    if (m === 'marketing' || /\/marketing(\/.*)?$/.test(pathname)) {
+        return { view: 'marketing', roomCode: '' };
     }
     if (r) {
         return { view: m === 'tv' ? 'tv' : 'mobile', roomCode: r.toUpperCase() };

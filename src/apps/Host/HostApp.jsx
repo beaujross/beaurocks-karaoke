@@ -554,14 +554,23 @@ const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
 const isAppCheckError = (error) => {
     const code = String(error?.code || '').toLowerCase();
     const message = String(error?.message || '').toLowerCase();
+    const mentionsAppCheck = (
+        message.includes('app check')
+        || message.includes('appcheck')
+        || message.includes('app check token')
+        || message.includes('token required')
+    );
     return (
-        code.includes('failed-precondition')
-        && (
-            message.includes('app check')
-            || message.includes('appcheck')
+        (
+            code.includes('failed-precondition')
+            || code.includes('invalid-argument')
+            || code.includes('unauthenticated')
         )
+        && mentionsAppCheck
     );
 };
+
+const BILLING_WARMUP_MESSAGE = 'Billing tools are warming up. You can keep hosting and retry in a moment.';
 
 const sleep = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -1244,14 +1253,17 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
     );
 };
 
-const DoodleOkeModerationPanel = ({ roomCode, room, updateRoom }) => {
+const IncomingModerationQueuePanel = ({ roomCode, room, updateRoom, callFunction }) => {
     const toast = useToast() || console.log;
-    const [submissions, setSubmissions] = useState([]);
-    const [votes, setVotes] = useState([]);
-    const [busy, setBusy] = useState(false);
+    const [doodleSubmissions, setDoodleSubmissions] = useState([]);
+    const [selfieSubmissions, setSelfieSubmissions] = useState([]);
+    const [busyAction, setBusyAction] = useState('');
     const doodle = room?.doodleOke || null;
-    const promptId = doodle?.promptId || '';
-    const requireReview = !!doodle?.requireReview;
+    const selfie = room?.selfieChallenge || null;
+    const doodlePromptId = doodle?.promptId || '';
+    const selfiePromptId = selfie?.promptId || '';
+    const doodleRequireReview = !!doodle?.requireReview;
+    const selfieRequireApproval = !!selfie?.requireApproval;
     const approvedUids = useMemo(() => {
         const ids = Array.isArray(doodle?.approvedUids) ? doodle.approvedUids : [];
         return ids.filter(Boolean);
@@ -1259,52 +1271,102 @@ const DoodleOkeModerationPanel = ({ roomCode, room, updateRoom }) => {
     const approvedUidSet = useMemo(() => new Set(approvedUids), [approvedUids]);
 
     useEffect(() => {
-        if (!roomCode || !promptId) {
-            setSubmissions([]);
-            setVotes([]);
+        if (!roomCode || !doodlePromptId) {
+            setDoodleSubmissions([]);
             return;
         }
         const submissionsQuery = query(
             collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_submissions'),
             where('roomCode', '==', roomCode),
-            where('promptId', '==', promptId)
-        );
-        const votesQuery = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_votes'),
-            where('roomCode', '==', roomCode),
-            where('promptId', '==', promptId)
+            where('promptId', '==', doodlePromptId)
         );
         const unsubSubs = onSnapshot(submissionsQuery, snap => {
-            setSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            docs.sort((a, b) => toMs(b.timestamp) - toMs(a.timestamp));
+            setDoodleSubmissions(docs);
         });
-        const unsubVotes = onSnapshot(votesQuery, snap => {
-            setVotes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        return () => unsubSubs();
+    }, [roomCode, doodlePromptId]);
+
+    useEffect(() => {
+        if (!roomCode || !selfiePromptId) {
+            setSelfieSubmissions([]);
+            return;
+        }
+        const submissionsQuery = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'),
+            where('roomCode', '==', roomCode),
+            where('promptId', '==', selfiePromptId)
+        );
+        const unsubSubs = onSnapshot(submissionsQuery, snap => {
+            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            docs.sort((a, b) => toMs(b.timestamp) - toMs(a.timestamp));
+            setSelfieSubmissions(docs);
         });
-        return () => {
-            unsubSubs();
-            unsubVotes();
-        };
-    }, [roomCode, promptId]);
+        return () => unsubSubs();
+    }, [roomCode, selfiePromptId]);
 
-    const voteCounts = useMemo(() => {
-        return votes.reduce((acc, vote) => {
-            acc[vote.targetUid] = (acc[vote.targetUid] || 0) + 1;
-            return acc;
-        }, {});
-    }, [votes]);
-    const sortedSubmissions = useMemo(() => {
-        return [...submissions].sort((a, b) => toMs(b.timestamp) - toMs(a.timestamp));
-    }, [submissions]);
-    const visibleCount = requireReview
-        ? sortedSubmissions.filter(submission => approvedUidSet.has(submission.uid)).length
-        : sortedSubmissions.length;
-    const pendingCount = requireReview
-        ? sortedSubmissions.filter(submission => !approvedUidSet.has(submission.uid)).length
-        : 0;
+    const pendingDoodles = useMemo(() => (
+        doodleRequireReview
+            ? doodleSubmissions.filter((submission) => submission?.uid && !approvedUidSet.has(submission.uid))
+            : []
+    ), [doodleRequireReview, doodleSubmissions, approvedUidSet]);
 
-    const persistDoodleSettings = async (patch = {}, successMessage = '') => {
+    const pendingSelfies = useMemo(() => (
+        selfieRequireApproval
+            ? selfieSubmissions.filter((submission) => !submission?.approved)
+            : []
+    ), [selfieRequireApproval, selfieSubmissions]);
+
+    const pendingBingoSuggestions = useMemo(() => {
+        const suggestions = room?.bingoSuggestions || {};
+        const revealed = room?.bingoRevealed || {};
+        return Object.entries(suggestions)
+            .map(([idx, data]) => ({
+                idx: Number(idx),
+                count: Number(data?.count || 0),
+                note: data?.lastNote || '',
+                lastAtMs: toMs(data?.lastAt)
+            }))
+            .filter((entry) => Number.isFinite(entry.idx) && entry.count > 0 && !revealed?.[entry.idx])
+            .sort((a, b) => (b.lastAtMs || 0) - (a.lastAtMs || 0));
+    }, [room?.bingoSuggestions, room?.bingoRevealed]);
+
+    const queueItems = useMemo(() => {
+        const doodleItems = pendingDoodles.map((submission) => ({
+            key: `doodle-${submission.id}`,
+            type: 'doodle',
+            timestamp: toMs(submission.timestamp),
+            title: submission?.name || 'Guest sketch',
+            subtitle: 'Doodle-oke submission awaiting review',
+            image: submission?.image || null,
+            submission
+        }));
+        const selfieItems = pendingSelfies.map((submission) => ({
+            key: `selfie-${submission.id}`,
+            type: 'selfie',
+            timestamp: toMs(submission.timestamp),
+            title: submission?.userName || submission?.name || 'Guest selfie',
+            subtitle: 'Selfie Challenge submission awaiting approval',
+            image: submission?.url || null,
+            submission
+        }));
+        const bingoItems = pendingBingoSuggestions.map((suggestion) => ({
+            key: `bingo-${suggestion.idx}`,
+            type: 'bingo',
+            timestamp: suggestion.lastAtMs || 0,
+            title: `Bingo Tile #${suggestion.idx + 1}`,
+            subtitle: `${suggestion.count} vote${suggestion.count === 1 ? '' : 's'} from audience`,
+            suggestion
+        }));
+        return [...doodleItems, ...selfieItems, ...bingoItems]
+            .sort((a, b) => b.timestamp - a.timestamp)
+            .slice(0, 24);
+    }, [pendingDoodles, pendingSelfies, pendingBingoSuggestions]);
+
+    const updateDoodleReview = async (patch, successMessage) => {
         if (!doodle) return;
-        setBusy(true);
+        setBusyAction('doodle-update');
         try {
             await updateRoom({
                 doodleOke: {
@@ -1315,129 +1377,176 @@ const DoodleOkeModerationPanel = ({ roomCode, room, updateRoom }) => {
             });
             if (successMessage) toast(successMessage);
         } catch (e) {
-            hostLogger.error('Doodle moderation update failed', e);
-            toast('Could not update Doodle settings');
+            hostLogger.error('Incoming queue doodle update failed', e);
+            toast('Could not update Doodle moderation');
         } finally {
-            setBusy(false);
+            setBusyAction('');
         }
     };
 
-    const toggleRequireReview = async () => {
-        const next = !requireReview;
-        const patch = { requireReview: next };
-        if (!next) patch.approvedUids = [];
-        await persistDoodleSettings(patch, next ? 'Doodle host review enabled' : 'Doodle auto-show enabled');
-    };
-
-    const approveUid = async (uid) => {
+    const approveDoodleUid = async (uid) => {
         if (!uid) return;
         const next = Array.from(new Set([...approvedUids, uid]));
-        await persistDoodleSettings({ approvedUids: next }, 'Sketch approved');
+        await updateDoodleReview({ approvedUids: next }, 'Sketch approved for TV');
     };
 
-    const hideUid = async (uid) => {
-        if (!uid) return;
-        const next = approvedUids.filter(existingUid => existingUid !== uid);
-        await persistDoodleSettings({ approvedUids: next }, 'Sketch hidden');
+    const approveSelfieSubmission = async (submission) => {
+        if (!roomCode || !submission?.id || typeof callFunction !== 'function') return;
+        setBusyAction(`selfie-${submission.id}`);
+        try {
+            await callFunction('setSelfieSubmissionApproval', {
+                roomCode,
+                submissionId: submission.id,
+                approved: true
+            });
+            toast('Selfie approved');
+        } catch (e) {
+            hostLogger.error('Incoming queue selfie approval failed', e);
+            toast('Could not approve selfie');
+        } finally {
+            setBusyAction('');
+        }
     };
 
-    const approveAll = async () => {
-        const next = Array.from(new Set(sortedSubmissions.map(submission => submission.uid).filter(Boolean)));
-        await persistDoodleSettings({ approvedUids: next }, 'All sketches approved');
+    const approveBingoSuggestion = async (idx) => {
+        setBusyAction(`bingo-approve-${idx}`);
+        try {
+            await updateRoom({
+                [`bingoRevealed.${idx}`]: true,
+                [`bingoSuggestions.${idx}.approvedAt`]: serverTimestamp()
+            });
+            toast(`Bingo tile #${idx + 1} approved`);
+        } catch (e) {
+            hostLogger.error('Incoming queue bingo approval failed', e);
+            toast('Could not approve bingo suggestion');
+        } finally {
+            setBusyAction('');
+        }
     };
 
-    const clearApprovals = async () => {
-        await persistDoodleSettings({ approvedUids: [] }, 'Approvals cleared');
+    const clearBingoSuggestion = async (idx) => {
+        setBusyAction(`bingo-clear-${idx}`);
+        try {
+            await updateRoom({
+                [`bingoSuggestions.${idx}.count`]: 0,
+                [`bingoSuggestions.${idx}.lastNote`]: '',
+                [`bingoSuggestions.${idx}.lastAt`]: null
+            });
+            toast(`Bingo tile #${idx + 1} cleared`);
+        } catch (e) {
+            hostLogger.error('Incoming queue bingo clear failed', e);
+            toast('Could not clear bingo suggestion');
+        } finally {
+            setBusyAction('');
+        }
     };
 
     return (
         <div className={`${STYLES.panel} p-4 border border-cyan-500/20`}>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <div>
-                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Doodle-oke Moderation</div>
-                    <div className="text-xl font-bold text-white">Review sketches before TV display</div>
+                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Incoming Moderation Queue</div>
+                    <div className="text-xl font-bold text-white">Review crowd submissions in one feed</div>
                 </div>
-                <div className="text-xs text-zinc-400">
-                    Phase: <span className="text-zinc-200 font-bold">{doodle?.status || 'drawing'}</span>
+                <div className="text-xs text-zinc-400 text-right">
+                    Queue items: <span className="text-zinc-200 font-bold">{queueItems.length}</span>
                 </div>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-zinc-950/50 px-3 py-2 text-sm text-zinc-300 mb-3">
-                Prompt: <span className="text-white">{doodle?.prompt || 'No prompt'}</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 mb-3">
-                <label className="flex items-center gap-2 text-sm text-zinc-300">
-                    <input
-                        type="checkbox"
-                        checked={requireReview}
-                        onChange={toggleRequireReview}
-                        disabled={busy}
-                    />
-                    Require host review before showing on TV
-                </label>
-                <button
-                    onClick={approveAll}
-                    disabled={busy || !sortedSubmissions.length}
-                    className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs px-3 py-1 ${(busy || !sortedSubmissions.length) ? 'opacity-60 cursor-not-allowed' : ''}`}
-                >
-                    Approve all
-                </button>
-                <button
-                    onClick={clearApprovals}
-                    disabled={busy || !approvedUids.length}
-                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs px-3 py-1 ${(busy || !approvedUids.length) ? 'opacity-60 cursor-not-allowed' : ''}`}
-                >
-                    Clear approvals
-                </button>
             </div>
             <div className="grid grid-cols-3 gap-3 mb-4">
                 <div className="rounded-xl border border-white/10 bg-zinc-900/70 p-3">
-                    <div className="text-xs uppercase tracking-widest text-zinc-500">Submitted</div>
-                    <div className="text-2xl font-bold text-white mt-1">{sortedSubmissions.length}</div>
+                    <div className="text-xs uppercase tracking-widest text-zinc-500">Doodle Pending</div>
+                    <div className="text-2xl font-bold text-white mt-1">{pendingDoodles.length}</div>
                 </div>
                 <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-3">
-                    <div className="text-xs uppercase tracking-widest text-zinc-500">Visible on TV</div>
-                    <div className="text-2xl font-bold text-cyan-300 mt-1">{visibleCount}</div>
+                    <div className="text-xs uppercase tracking-widest text-zinc-500">Selfie Pending</div>
+                    <div className="text-2xl font-bold text-cyan-300 mt-1">{pendingSelfies.length}</div>
                 </div>
                 <div className="rounded-xl border border-amber-400/20 bg-amber-500/5 p-3">
-                    <div className="text-xs uppercase tracking-widest text-zinc-500">Pending review</div>
-                    <div className="text-2xl font-bold text-amber-300 mt-1">{pendingCount}</div>
+                    <div className="text-xs uppercase tracking-widest text-zinc-500">Bingo Suggestions</div>
+                    <div className="text-2xl font-bold text-amber-300 mt-1">{pendingBingoSuggestions.length}</div>
                 </div>
             </div>
-            {!requireReview && (
-                <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200 mb-3">
-                    Auto-show is ON. Sketches are immediately visible on TV and in voting.
-                </div>
-            )}
-            <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 max-h-64 overflow-y-auto custom-scrollbar pr-1">
-                {sortedSubmissions.map((submission) => {
-                    const isApproved = approvedUidSet.has(submission.uid);
-                    return (
-                        <div key={submission.id} className="rounded-xl border border-zinc-700 bg-zinc-900/70 overflow-hidden">
-                            <img src={submission.image} alt={submission.name || 'Sketch'} className="w-full h-28 object-contain bg-zinc-950" />
-                            <div className="p-2 text-xs text-zinc-300 space-y-1">
-                                <div className="font-bold truncate">{submission.avatar ? `${submission.avatar} ` : ''}{submission.name || 'Guest'}</div>
-                                <div className="text-zinc-500">Votes: {voteCounts[submission.uid] || 0}</div>
-                                {requireReview ? (
-                                    <button
-                                        onClick={() => (isApproved ? hideUid(submission.uid) : approveUid(submission.uid))}
-                                        disabled={busy}
-                                        className={`${STYLES.btnStd} ${isApproved ? STYLES.btnHighlight : STYLES.btnNeutral} w-full text-[10px] py-1 ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                    >
-                                        {isApproved ? 'Visible' : 'Approve'}
-                                    </button>
-                                ) : (
-                                    <div className="text-[10px] text-emerald-300">Auto visible</div>
+            {queueItems.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-72 overflow-y-auto custom-scrollbar pr-1">
+                    {queueItems.map((item) => (
+                        <div key={item.key} className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-3 flex items-start gap-3">
+                            {item.image ? (
+                                <img
+                                    src={item.image}
+                                    alt={item.title}
+                                    className="w-20 h-20 rounded-lg object-cover bg-zinc-950 border border-white/10"
+                                />
+                            ) : (
+                                <div className="w-20 h-20 rounded-lg bg-zinc-950 border border-white/10 flex items-center justify-center text-zinc-500">
+                                    <i className={`fa-solid ${item.type === 'bingo' ? 'fa-table-cells-large' : 'fa-image'}`}></i>
+                                </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                                <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">
+                                    {item.type === 'doodle' ? 'Doodle-oke' : item.type === 'selfie' ? 'Selfie Challenge' : 'Bingo'}
+                                </div>
+                                <div className="text-sm font-bold text-white truncate mt-0.5">{item.title}</div>
+                                <div className="text-xs text-zinc-400 mt-0.5">{item.subtitle}</div>
+                                {item.type === 'doodle' && (
+                                    <div className="text-[11px] text-zinc-500 mt-1">
+                                        Review mode: {doodleRequireReview ? 'Host approval required' : 'Auto-show'}
+                                    </div>
                                 )}
+                                {item.type === 'bingo' && item.suggestion?.note && (
+                                    <div className="text-[11px] text-zinc-500 mt-1 truncate">
+                                        Last note: {item.suggestion.note}
+                                    </div>
+                                )}
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                    {item.type === 'doodle' && (
+                                        <button
+                                            onClick={() => approveDoodleUid(item.submission?.uid)}
+                                            disabled={!!busyAction || !item.submission?.uid}
+                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[10px] px-2 py-1 ${(!!busyAction || !item.submission?.uid) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        >
+                                            Approve
+                                        </button>
+                                    )}
+                                    {item.type === 'selfie' && (
+                                        <button
+                                            onClick={() => approveSelfieSubmission(item.submission)}
+                                            disabled={busyAction || !item.submission?.id}
+                                            className={`${STYLES.btnStd} ${STYLES.btnInfo} text-[10px] px-2 py-1 ${(busyAction || !item.submission?.id) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        >
+                                            Approve
+                                        </button>
+                                    )}
+                                    {item.type === 'bingo' && (
+                                        <>
+                                            <button
+                                                onClick={() => approveBingoSuggestion(item.suggestion.idx)}
+                                                disabled={busyAction}
+                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[10px] px-2 py-1 ${busyAction ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                Reveal Tile
+                                            </button>
+                                            <button
+                                                onClick={() => clearBingoSuggestion(item.suggestion.idx)}
+                                                disabled={busyAction}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[10px] px-2 py-1 ${busyAction ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                Clear
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    );
-                })}
-                {!sortedSubmissions.length && (
-                    <div className="col-span-full text-center text-zinc-500 text-sm py-8">
-                        No sketches submitted yet.
+                    ))}
+                </div>
+            ) : (
+                <div className="text-center text-zinc-500 text-sm py-10 border border-white/10 rounded-xl bg-zinc-950/50">
+                    No pending crowd submissions right now.
+                    <div className="text-xs mt-1 text-zinc-600">
+                        New doodles, selfies, and bingo suggestions will appear here.
                     </div>
-                )}
-            </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -4119,10 +4228,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setOrgContext(prev => ({ ...prev, loading: true, error: '' }));
             setUsageSummary(prev => ({ ...prev, loading: true, error: '' }));
             try {
-                const appCheckReady = await ensureAppCheckToken(false);
+                const appCheckReady = await ensureAppCheckToken(false) || await ensureAppCheckToken(true);
                 if (!appCheckReady) {
                     if (cancelled) return;
-                    setOrgContext(prev => ({ ...prev, loading: false, error: 'Billing temporarily unavailable. Reload in a moment.' }));
+                    setOrgContext(prev => ({ ...prev, loading: false, error: BILLING_WARMUP_MESSAGE }));
                     setUsageSummary(prev => ({ ...prev, loading: false, error: '' }));
                     setInvoiceHistory([]);
                     return;
@@ -4169,7 +4278,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 if (cancelled) return;
                 if (isAppCheckError(e)) {
                     hostLogger.debug('Org entitlements waiting on App Check', e);
-                    setOrgContext(prev => ({ ...prev, loading: false, error: 'Billing temporarily unavailable. Reload in a moment.' }));
+                    setOrgContext(prev => ({ ...prev, loading: false, error: BILLING_WARMUP_MESSAGE }));
                     setUsageSummary(prev => ({ ...prev, loading: false, error: '' }));
                     setInvoiceHistory([]);
                 } else {
@@ -6360,6 +6469,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (showToast) toast('Billing status refreshed');
             return entitlements;
         } catch (e) {
+            if (isAppCheckError(e)) {
+                hostLogger.debug('Billing entitlement refresh waiting on App Check', e);
+                setOrgContext(prev => ({ ...prev, loading: false, error: BILLING_WARMUP_MESSAGE }));
+                if (showToast) toast('Billing tools are still warming up');
+                return null;
+            }
             hostLogger.error('Billing entitlement refresh failed', e);
             setOrgContext(prev => ({ ...prev, loading: false, error: 'Could not refresh billing status.' }));
             if (showToast) toast('Could not refresh billing status');
@@ -6382,6 +6497,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (showToast) toast('Usage summary refreshed');
             return usage;
         } catch (e) {
+            if (isAppCheckError(e)) {
+                hostLogger.debug('Usage summary waiting on App Check', e);
+                setUsageSummary(prev => ({ ...prev, loading: false, error: BILLING_WARMUP_MESSAGE }));
+                if (showToast) toast('Billing tools are still warming up');
+                return null;
+            }
             hostLogger.error('Usage summary refresh failed', e);
             setUsageSummary(prev => ({ ...prev, loading: false, error: 'Could not refresh usage summary.' }));
             if (showToast) toast('Could not refresh usage summary');
@@ -8060,22 +8181,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         </div>
     );
 
-    const doodleModerationState = (() => {
+    const moderationQueueState = (() => {
         const doodle = room?.doodleOke || {};
         const approved = new Set(Array.isArray(doodle.approvedUids) ? doodle.approvedUids : []);
         const submissionsRaw = doodle.submissions;
         const submissions = Array.isArray(submissionsRaw)
             ? submissionsRaw
             : (submissionsRaw && typeof submissionsRaw === 'object' ? Object.values(submissionsRaw) : []);
-        const pending = submissions.filter((submission) => {
+        const doodlePending = submissions.filter((submission) => {
             const submissionUid = submission?.uid || submission?.userId || submission?.singerUid || '';
             return submissionUid && !approved.has(submissionUid);
         }).length;
+        const selfie = room?.selfieChallenge || {};
+        const selfieSubmissionsRaw = selfie?.submissions;
+        const selfieSubmissions = Array.isArray(selfieSubmissionsRaw)
+            ? selfieSubmissionsRaw
+            : (selfieSubmissionsRaw && typeof selfieSubmissionsRaw === 'object' ? Object.values(selfieSubmissionsRaw) : []);
+        const selfiePending = selfie?.requireApproval
+            ? selfieSubmissions.filter((submission) => !submission?.approved).length
+            : 0;
+        const bingoPending = Object.values(room?.bingoSuggestions || {}).filter((entry) => Number(entry?.count || 0) > 0).length;
         return {
-            requireReview: !!doodle.requireReview,
-            approvedCount: approved.size,
-            pendingCount: pending,
-            status: doodle.status || 'idle'
+            totalPending: doodlePending + selfiePending + bingoPending,
+            doodlePending,
+            selfiePending,
+            bingoPending
         };
     })();
 
@@ -8094,28 +8224,85 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     })();
     const settingsResultCount = settingsNavigationSections.reduce((sum, section) => sum + section.items.length, 0);
     const totalSocialUnread = (chatUnread ? 1 : 0) + (dmUnread ? 1 : 0);
+    const settingsSectionIcons = {
+        operations: 'fa-sliders',
+        experience: 'fa-tv',
+        community: 'fa-users',
+        admin: 'fa-shield-halved'
+    };
+    const settingsNavBadges = {
+        gamepad: room?.activeMode && room.activeMode !== 'karaoke' ? 'LIVE' : '',
+        chat: totalSocialUnread > 0 ? String(totalSocialUnread) : '',
+        moderation: moderationQueueState.totalPending > 0 ? String(moderationQueueState.totalPending) : '',
+        general: queuedSongs.length > 0 ? `${queuedSongs.length}Q` : ''
+    };
+    const quickSettingsNavItems = [
+        { key: 'general', icon: 'fa-sliders', label: 'Control Room' },
+        { key: 'gamepad', icon: 'fa-gamepad', label: 'Game Director' },
+        { key: 'chat', icon: 'fa-comments', label: 'Audience Social' },
+        { key: 'moderation', icon: 'fa-shield-halved', label: 'Moderation Queue' }
+    ];
 
     const activeSettingsMeta = HOST_SETTINGS_META[settingsTab] || HOST_SETTINGS_META.general;
     const settingsNavigationContent = (
         <div className="space-y-4">
+            <div className="sticky top-0 z-10 rounded-2xl border border-cyan-400/25 bg-gradient-to-b from-zinc-900/95 via-zinc-950/95 to-zinc-950/95 p-3 backdrop-blur-md shadow-[0_10px_26px_rgba(0,0,0,0.35)]">
+                <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Quick Jump</div>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                    {quickSettingsNavItems.map((item) => {
+                        const isActive = settingsTab === item.key;
+                        const badge = settingsNavBadges[item.key];
+                        return (
+                            <button
+                                key={`quick-${item.key}`}
+                                onClick={() => handleSettingsNavSelect(item.key)}
+                                className={`rounded-lg border px-2.5 py-2 text-left transition-all ${
+                                    isActive
+                                        ? 'border-cyan-300/40 bg-cyan-500/15 text-cyan-100'
+                                        : 'border-zinc-800 bg-zinc-900/70 text-zinc-300 hover:border-cyan-500/30'
+                                }`}
+                            >
+                                <div className="flex items-center justify-between gap-1">
+                                    <i className={`fa-solid ${item.icon} text-[11px] ${isActive ? 'text-cyan-200' : 'text-zinc-500'}`}></i>
+                                    {badge && (
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${
+                                            badge === 'LIVE'
+                                                ? 'border-rose-300/40 bg-rose-500/20 text-rose-100'
+                                                : 'border-cyan-300/30 bg-cyan-500/10 text-cyan-100'
+                                        }`}>
+                                            {badge}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="text-[11px] font-semibold mt-1 truncate">{item.label}</div>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
             {settingsNavigationSections.map((section) => (
-                <div key={section.id}>
-                    <div className="flex items-center justify-between gap-2 px-2 mb-2">
-                        <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">{section.label}</div>
+                <div key={section.id} className="rounded-2xl border border-white/10 bg-zinc-950/55 p-2">
+                    <div className="flex items-center justify-between gap-2 px-2 py-1.5 mb-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <span className="inline-flex w-6 h-6 rounded-lg border border-white/10 bg-zinc-900 items-center justify-center">
+                                <i className={`fa-solid ${settingsSectionIcons[section.id] || 'fa-folder-tree'} text-[10px] text-zinc-400`}></i>
+                            </span>
+                            <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500 truncate">{section.label}</div>
+                        </div>
                         <div className="text-[10px] text-zinc-500">{section.items.length}</div>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                         {section.items.map((item) => {
                             const isActive = settingsTab === item.key;
-                            const showUnread = item.key === 'chat' && (chatUnread || dmUnread);
+                            const badge = settingsNavBadges[item.key];
                             return (
                                 <button
                                     key={item.key}
                                     onClick={() => handleSettingsNavSelect(item.key)}
-                                    className={`w-full text-left rounded-xl border px-3 py-2.5 transition-all relative overflow-hidden ${
+                                    className={`w-full text-left rounded-xl border px-3 py-3 transition-all relative overflow-hidden ${
                                         isActive
-                                            ? 'border-cyan-400/40 bg-gradient-to-r from-cyan-500/16 to-fuchsia-500/6 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.12)]'
-                                            : 'border-zinc-800 bg-zinc-900/50 text-zinc-300 hover:border-cyan-500/30 hover:text-white hover:bg-zinc-900/75'
+                                            ? 'border-cyan-400/50 bg-gradient-to-r from-cyan-500/16 to-fuchsia-500/8 text-cyan-100 shadow-[0_0_20px_rgba(34,211,238,0.14)]'
+                                            : 'border-zinc-800 bg-zinc-900/45 text-zinc-300 hover:border-cyan-500/35 hover:text-white hover:bg-zinc-900/80'
                                     }`}
                                 >
                                     {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-300"></div>}
@@ -8124,7 +8311,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <i className={`fa-solid ${item.icon} text-xs ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
                                             <span className="text-sm font-semibold truncate">{item.label}</span>
                                         </div>
-                                        {showUnread && <span className="inline-flex w-2 h-2 rounded-full bg-pink-400"></span>}
+                                        {badge && (
+                                            <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-semibold border ${
+                                                badge === 'LIVE'
+                                                    ? 'border-rose-300/40 text-rose-100 bg-rose-500/20'
+                                                    : 'border-cyan-300/30 text-cyan-100 bg-cyan-500/10'
+                                            }`}>
+                                                {badge}
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="text-[11px] text-zinc-500 mt-1 leading-relaxed">{item.description}</div>
                                 </button>
@@ -8144,6 +8339,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <div className="flex items-center justify-between"><span>Queue</span><span className="text-white font-bold">{queuedSongs.length}</span></div>
                     <div className="flex items-center justify-between"><span>Lobby</span><span className="text-white font-bold">{users.length}</span></div>
                     <div className="flex items-center justify-between"><span>Mode</span><span className="text-white font-bold uppercase text-xs tracking-widest">{room?.activeMode || 'karaoke'}</span></div>
+                    <div className="flex items-center justify-between"><span>Pending Review</span><span className="text-white font-bold">{moderationQueueState.totalPending}</span></div>
                 </div>
             </div>
         </div>
@@ -8324,7 +8520,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 {tab === 'browse' && browsePanel}
                 {tab === 'games' && (
                     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-                        <div className="flex-1 min-h-0">
+                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
                             <UnifiedGameLauncher
                                 room={room}
                                 roomCode={roomCode}
@@ -8354,13 +8550,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 onForfeitBracketContestant={forfeitBracketContestant}
                             />
                         </div>
-                        {room?.activeMode === 'doodle_oke' && room?.doodleOke?.promptId && (
-                            <DoodleOkeModerationPanel
+                        <div className="shrink-0">
+                            <IncomingModerationQueuePanel
                                 roomCode={roomCode}
                                 room={room}
                                 updateRoom={updateRoom}
+                                callFunction={callFunction}
                             />
-                        )}
+                        </div>
                     </div>
                 )}
                 {/* Lobby Tab */}
@@ -8861,8 +9058,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </label>
                             </div>
                         </div>
-                        <div className="flex-1 min-h-0 relative md:grid md:grid-cols-[280px_minmax(0,1fr)]">
-                            <aside className="hidden md:block border-r border-white/10 bg-zinc-950/80 overflow-y-auto custom-scrollbar p-3 md:p-4">
+                        <div className="flex-1 min-h-0 relative md:grid md:grid-cols-[320px_minmax(0,1fr)]">
+                            <aside className="hidden md:block border-r border-white/10 bg-gradient-to-b from-zinc-950/95 to-zinc-950/70 overflow-y-auto custom-scrollbar p-3 md:p-4">
                                 {settingsNavigationContent}
                             </aside>
                             <button
@@ -8870,7 +9067,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 className={`md:hidden absolute inset-0 z-20 bg-black/60 transition-opacity ${settingsNavOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                                 aria-label="Close sections menu"
                             />
-                            <aside className={`md:hidden absolute inset-y-0 left-0 z-30 w-[88vw] max-w-[340px] bg-zinc-950 border-r border-white/10 p-3 overflow-y-auto custom-scrollbar transition-transform duration-200 ${settingsNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                            <aside className={`md:hidden absolute inset-y-0 left-0 z-30 w-[88vw] max-w-[360px] bg-gradient-to-b from-zinc-950 to-zinc-900 border-r border-white/10 p-3 overflow-y-auto custom-scrollbar transition-transform duration-200 ${settingsNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                                 <div className="flex items-center justify-between mb-3 px-1">
                                     <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Sections</div>
                                     <button onClick={() => setSettingsNavOpen(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
@@ -9389,10 +9586,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="text-sm uppercase tracking-[0.25em] text-cyan-300">Moderation Center</div>
                                     <div className="text-xl font-bold text-white mt-1 flex items-center gap-2">
                                         <i className="fa-solid fa-shield-halved text-emerald-300"></i>
-                                        Audience + doodle policy
+                                        Audience + submission policy
                                     </div>
                                     <div className="text-sm text-zinc-400 mt-1">
-                                        Keep visibility, chat scope, and sketch review policy explicit for hosts.
+                                        Keep visibility and chat scope here. Handle game moderation in the Games queue.
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -9429,36 +9626,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </button>
                                     </div>
                                     <div className="bg-zinc-900/50 border border-emerald-500/15 rounded-xl p-4 space-y-3">
-                                        <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Doodle-oke review</div>
-                                        <div className="text-sm text-zinc-300">Status: <span className="text-white font-bold">{doodleModerationState.status}</span></div>
-                                        <div className="text-sm text-zinc-300">Pending sketches: <span className="text-white font-bold">{doodleModerationState.pendingCount}</span></div>
-                                        <div className="text-sm text-zinc-300">Approved sketches: <span className="text-white font-bold">{doodleModerationState.approvedCount}</span></div>
-                                        <button
-                                            onClick={async () => {
-                                                const doodle = room?.doodleOke || {};
-                                                const next = !doodleModerationState.requireReview;
-                                                const patch = {
-                                                    doodleOke: {
-                                                        ...doodle,
-                                                        requireReview: next,
-                                                        approvedUids: next ? (Array.isArray(doodle.approvedUids) ? doodle.approvedUids : []) : [],
-                                                        updatedAt: nowMs()
-                                                    }
-                                                };
-                                                await updateRoom(patch);
-                                                toast(next ? 'Doodle host review enabled' : 'Doodle auto-show enabled');
-                                            }}
-                                            className={`${STYLES.btnStd} ${doodleModerationState.requireReview ? STYLES.btnHighlight : STYLES.btnNeutral} justify-start`}
-                                        >
-                                            <i className="fa-solid fa-palette"></i>
-                                            {doodleModerationState.requireReview ? 'Require host review before TV' : 'Auto-show doodles on TV'}
-                                        </button>
+                                        <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Incoming Queue Snapshot</div>
+                                        <div className="text-sm text-zinc-300">Pending total: <span className="text-white font-bold">{moderationQueueState.totalPending}</span></div>
+                                        <div className="text-sm text-zinc-300">Doodle pending: <span className="text-white font-bold">{moderationQueueState.doodlePending}</span></div>
+                                        <div className="text-sm text-zinc-300">Selfie pending: <span className="text-white font-bold">{moderationQueueState.selfiePending}</span></div>
+                                        <div className="text-sm text-zinc-300">Bingo suggestions: <span className="text-white font-bold">{moderationQueueState.bingoPending}</span></div>
+                                        <div className="text-xs text-zinc-500 pt-1">
+                                            Game-specific moderation now lives in the Games queue so controls stay inside each mode workflow.
+                                        </div>
                                         <button
                                             onClick={() => { setTab('games'); setShowSettings(false); }}
                                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
                                         >
                                             <i className="fa-solid fa-gamepad"></i>
-                                            Open game moderation panel
+                                            Open incoming moderation queue
                                         </button>
                                     </div>
                                 </div>

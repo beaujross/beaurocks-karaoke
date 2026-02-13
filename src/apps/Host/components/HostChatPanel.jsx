@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useMemo, useRef } from 'react';
+import groupChatMessages from '../../../lib/chatGrouping';
 
 const HostChatPanel = ({
     chatOpen,
@@ -33,7 +34,22 @@ const HostChatPanel = ({
     sendHostChat,
     showSettingsButton = true,
     showPopoutButton = true
-}) => (
+}) => {
+    const displayedMessages = chatViewMode === 'room' ? roomChatMessages : hostDmMessages;
+    const groupedMessages = groupChatMessages(displayedMessages.slice(0, 6), { mergeWindowMs: 12 * 60 * 1000 });
+    const dmInputRef = useRef(null);
+    const userNameByUid = useMemo(() => {
+        const next = {};
+        users.forEach((entry) => {
+            const uid = String(entry?.uid || entry?.id?.split('_')[1] || '').trim();
+            if (!uid) return;
+            next[uid] = entry?.name || 'Guest';
+        });
+        return next;
+    }, [users]);
+    const dmSendDisabled = !dmTargetUid || !dmDraft.trim();
+
+    return (
     <div className={chatOpen ? 'block' : 'hidden'}>
         <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -119,6 +135,9 @@ const HostChatPanel = ({
                 {chatViewMode === 'host' && (
                     <div className="space-y-2">
                         <div className={styles.header}>Direct Message</div>
+                        <div className="text-xs text-zinc-400">
+                            Reply target: <span className="text-white font-semibold">{userNameByUid[dmTargetUid] || (dmTargetUid ? 'Selected guest' : 'Pick a guest from DMs')}</span>
+                        </div>
                         <div className="flex flex-wrap gap-2">
                             <select
                                 value={dmTargetUid}
@@ -136,6 +155,7 @@ const HostChatPanel = ({
                                 })}
                             </select>
                             <input
+                                ref={dmInputRef}
                                 value={dmDraft}
                                 onChange={(e) => setDmDraft(e.target.value)}
                                 onKeyDown={(e) => {
@@ -157,7 +177,8 @@ const HostChatPanel = ({
                                     sendHostDmMessage(dmTargetUid, message);
                                     setDmDraft('');
                                 }}
-                                className={`${styles.btnStd} ${styles.btnSecondary} px-4`}
+                                disabled={dmSendDisabled}
+                                className={`${styles.btnStd} ${styles.btnSecondary} px-4 ${dmSendDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
                                 Send
                             </button>
@@ -165,33 +186,59 @@ const HostChatPanel = ({
                     </div>
                 )}
                 <div className="bg-zinc-950/60 border border-white/10 rounded-xl p-3 h-40 overflow-y-auto custom-scrollbar space-y-2">
-                    {(chatViewMode === 'room' ? roomChatMessages : hostDmMessages).length === 0 && (
+                    {groupedMessages.length === 0 && (
                         <div className="text-sm text-zinc-500 h-full flex items-center justify-center">No messages yet.</div>
                     )}
-                    {(chatViewMode === 'room' ? roomChatMessages : hostDmMessages).slice(0, 6).map((msg, idx) => {
-                        const isPinned = pinnedChatIds.includes(msg.id);
-                        const isLatest = idx === 0;
+                    {groupedMessages.map((group, groupIdx) => {
+                        const groupPinned = group.messages.some((message) => pinnedChatIds.includes(message.id));
                         return (
-                            <div key={msg.id} className={`text-sm rounded-lg px-2 py-2 border ${isPinned ? 'bg-yellow-500/10 border-yellow-400/40' : msg.isHost ? 'bg-cyan-500/10 border-cyan-400/30' : 'bg-zinc-900/60 border-white/5'} ${isLatest ? 'ring-1 ring-pink-400/40' : ''}`}>
+                            <div key={group.id} className={`text-sm rounded-lg px-2 py-2 border ${groupPinned ? 'bg-yellow-500/10 border-yellow-400/40' : group.isHost ? 'bg-cyan-500/10 border-cyan-400/30' : 'bg-zinc-900/60 border-white/5'}`}>
                                 <div className="flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2 min-w-0">
-                                        <span>{msg.avatar || emoji.sparkle}</span>
-                                        <span className={`font-bold truncate ${msg.isHost ? 'text-cyan-300' : 'text-white'}`}>{msg.user || 'Guest'}</span>
-                                        {msg.isVip && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-400 text-black font-black tracking-widest">VIP</span>}
-                                        {msg.isHost && <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500 text-black font-black tracking-widest">HOST</span>}
-                                        {isPinned && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500 text-black font-black tracking-widest">PIN</span>}
+                                        <span>{group.avatar || emoji.sparkle}</span>
+                                        <span className={`font-bold truncate ${group.isHost ? 'text-cyan-300' : 'text-white'}`}>{group.user || 'Guest'}</span>
+                                        {group.isVip && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-400 text-black font-black tracking-widest">VIP</span>}
+                                        {group.isHost && <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500 text-black font-black tracking-widest">HOST</span>}
+                                        {groupPinned && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500 text-black font-black tracking-widest">PIN</span>}
+                                        {group.messages.length > 1 && (
+                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-black/35 text-zinc-300 border border-white/10">
+                                                {group.messages.length} msgs
+                                            </span>
+                                        )}
+                                        {chatViewMode === 'host' && group.senderUid && (
+                                            <button
+                                                onClick={() => {
+                                                    setDmTargetUid(group.senderUid);
+                                                    dmInputRef.current?.focus();
+                                                }}
+                                                className={`${styles.btnStd} ${styles.btnInfo} px-2 py-1 text-[10px]`}
+                                                title="Reply to this thread"
+                                            >
+                                                Reply
+                                            </button>
+                                        )}
                                     </div>
-                                    <button
-                                        onClick={() => {
-                                            setPinnedChatIds(prev => isPinned ? prev.filter(id => id !== msg.id) : [msg.id, ...prev].slice(0, 3));
-                                        }}
-                                        className={`${styles.btnStd} ${isPinned ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs`}
-                                        title={isPinned ? 'Unpin message' : 'Pin message'}
-                                    >
-                                        <i className="fa-solid fa-thumbtack"></i>
-                                    </button>
                                 </div>
-                                <div className="text-zinc-200 mt-1 text-sm break-words">{msg.text}</div>
+                                <div className="mt-1.5 space-y-1.5">
+                                    {group.messages.map((msg, msgIdx) => {
+                                        const isPinned = pinnedChatIds.includes(msg.id);
+                                        const isLatest = groupIdx === 0 && msgIdx === 0;
+                                        return (
+                                            <div key={msg.id || `${group.id}-${msgIdx}`} className={`flex items-start justify-between gap-2 rounded-md px-1.5 py-1 ${isLatest ? 'ring-1 ring-pink-400/40 bg-pink-500/5' : ''}`}>
+                                                <div className="text-zinc-200 text-sm break-words leading-snug">{msg.text}</div>
+                                                <button
+                                                    onClick={() => {
+                                                        setPinnedChatIds(prev => isPinned ? prev.filter(id => id !== msg.id) : [msg.id, ...prev].slice(0, 3));
+                                                    }}
+                                                    className={`${styles.btnStd} ${isPinned ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-[10px] shrink-0`}
+                                                    title={isPinned ? 'Unpin message' : 'Pin message'}
+                                                >
+                                                    <i className="fa-solid fa-thumbtack"></i>
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         );
                     })}
@@ -219,6 +266,7 @@ const HostChatPanel = ({
             </div>
         )}
     </div>
-);
+    );
+};
 
 export default HostChatPanel;
