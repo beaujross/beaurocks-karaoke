@@ -1,4 +1,5 @@
 import { ASSETS } from '../../lib/assets';
+import { HOST_SUBSCRIPTION_PLANS } from '../../billing/hostPlans';
 
 export const DEFAULT_MARQUEE_ITEMS = Object.freeze([
     'Welcome to BROSS Karaoke - scan the QR to join!',
@@ -35,9 +36,12 @@ export const HOST_ONBOARDING_STEPS = Object.freeze([
 ]);
 
 export const HOST_ONBOARDING_PLAN_OPTIONS = Object.freeze([
-    { id: 'free', label: 'Free', price: '$0', note: 'Test the workspace before upgrading.' },
-    { id: 'host_monthly', label: 'Host Monthly', price: '$19/mo', note: 'Recurring monthly host subscription.' },
-    { id: 'host_annual', label: 'Host Annual', price: '$190/yr', note: 'Lower yearly effective rate for active hosts.' }
+    ...HOST_SUBSCRIPTION_PLANS.map((plan) => ({
+        id: plan.id,
+        label: plan.label,
+        price: plan.priceLabel,
+        note: plan.note
+    }))
 ]);
 
 export const SAMPLE_ART = Object.freeze({
@@ -153,4 +157,3 @@ export const TOP100_SEED = Object.freeze([
     { title: 'Before He Cheats', artist: 'Carrie Underwood' },
     { title: 'Take My Breath Away', artist: 'Berlin' }
 ]);
-

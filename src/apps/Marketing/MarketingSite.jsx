@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ASSETS } from '../../lib/assets';
+import { HOST_SUBSCRIPTION_PLANS, HOST_USAGE_METER_OVERVIEW, formatHostUsageCount, formatUsdFromCents } from '../../billing/hostPlans';
 import { submitMarketingWaitlist, trackEvent } from '../../lib/firebase';
 import './marketing.css';
 
@@ -7,6 +8,7 @@ const NAV_SECTIONS = [
     { id: 'experience', label: 'Why It Works' },
     { id: 'surfaces', label: 'How It Works' },
     { id: 'games', label: 'Games' },
+    { id: 'pricing', label: 'Pricing' },
     { id: 'signup', label: 'Join' }
 ];
 
@@ -166,6 +168,10 @@ const MarketingSite = () => {
     });
     const [formState, setFormState] = useState({ error: '', success: '' });
     const appBase = useMemo(() => getAppBase(), []);
+    const hostPricingPlans = useMemo(
+        () => HOST_SUBSCRIPTION_PLANS.filter((plan) => plan.id !== 'free'),
+        []
+    );
 
     useEffect(() => {
         if (typeof window === 'undefined' || !window.matchMedia) return undefined;
@@ -202,6 +208,15 @@ const MarketingSite = () => {
     const openHostLogin = () => {
         trackEvent('marketing_host_login_click', { source: 'marketing_mysterious_efficient' });
         window.location.href = `${appBase}?mode=host`;
+    };
+
+    const openHostOnboarding = (planId = 'host_monthly') => {
+        const validPlanId = HOST_SUBSCRIPTION_PLANS.some((plan) => plan.id === planId) ? planId : 'host_monthly';
+        trackEvent('marketing_start_hosting_click', {
+            source: 'marketing_mysterious_efficient',
+            plan_id: validPlanId
+        });
+        window.location.href = `${appBase}?mode=host&onboarding=1&plan=${encodeURIComponent(validPlanId)}&source=marketing`;
     };
 
     const onSubmit = async (event) => {
@@ -271,8 +286,8 @@ const MarketingSite = () => {
                         <button type="button" className="mk2-btn mk2-btn-ghost" onClick={openHostLogin}>
                             Host Login
                         </button>
-                        <button type="button" className="mk2-btn mk2-btn-primary" onClick={() => jumpTo('signup')}>
-                            Get Access
+                        <button type="button" className="mk2-btn mk2-btn-primary" onClick={() => openHostOnboarding('host_monthly')}>
+                            Start Hosting
                         </button>
                     </div>
                 </div>
@@ -295,11 +310,11 @@ const MarketingSite = () => {
                                 and more fun for singers and non-singers.
                             </p>
                             <div className="mk2-hero-cta">
-                                <button type="button" className="mk2-btn mk2-btn-primary" onClick={() => jumpTo('signup')}>
-                                    Join Early Access
+                                <button type="button" className="mk2-btn mk2-btn-primary" onClick={() => openHostOnboarding('host_monthly')}>
+                                    Start Hosting Now
                                 </button>
-                                <button type="button" className="mk2-btn mk2-btn-ghost" onClick={() => jumpTo('experience')}>
-                                    See How It Works
+                                <button type="button" className="mk2-btn mk2-btn-ghost" onClick={() => jumpTo('pricing')}>
+                                    View Plans
                                 </button>
                             </div>
                             <div className="mk2-metric-strip">
@@ -321,15 +336,15 @@ const MarketingSite = () => {
                         </div>
                         <aside className="mk2-hero-panel">
                             <div className="mk2-panel-badge">Access Wave</div>
-                            <h3>Limited Intake, Better Onboarding</h3>
-                            <p>We onboard in small waves so your first night is smooth.</p>
+                            <h3>Self-Serve Is Live</h3>
+                            <p>Start now, then use waitlist only if you want white-glove onboarding.</p>
                             <ul>
-                                <li>Fast setup flow</li>
-                                <li>Helpful first-show guidance</li>
-                                <li>Priority by host fit</li>
+                                <li>Checkout + setup in one flow</li>
+                                <li>Host panel and TV controls included</li>
+                                <li>Billing portal for invoices and cancellations</li>
                             </ul>
-                            <button type="button" className="mk2-btn mk2-btn-secondary mk2-btn-block" onClick={() => jumpTo('signup')}>
-                                Join A Wave
+                            <button type="button" className="mk2-btn mk2-btn-secondary mk2-btn-block" onClick={() => openHostOnboarding('host_monthly')}>
+                                Start Self-Serve
                             </button>
                             <button type="button" className="mk2-login-link" onClick={openHostLogin}>
                                 Already hosting? Log in
@@ -413,9 +428,65 @@ const MarketingSite = () => {
                                 ))}
                             </div>
                             <button type="button" className="mk2-btn mk2-btn-primary mk2-btn-block" onClick={() => jumpTo('signup')}>
-                                Request Access
+                                Start Hosting
                             </button>
                         </aside>
+                    </div>
+                </section>
+
+                <section className="mk2-section mk2-section-dark" id="pricing">
+                    <div className="mk2-shell">
+                        <div className="mk2-kicker">Pricing</div>
+                        <h2>Subscription Matches In-App Billing</h2>
+                        <p className="mk2-lead">
+                            Canonical host pricing is synchronized with the billing checkout used in the app.
+                        </p>
+                        <div className="mk2-pricing-grid">
+                            {hostPricingPlans.map((plan) => (
+                                <article key={plan.id} className="mk2-pricing-card">
+                                    <h3>{plan.label}</h3>
+                                    <div className="mk2-pricing-price">{plan.priceLabel}</div>
+                                    <p>{plan.note}</p>
+                                    <button
+                                        type="button"
+                                        className="mk2-btn mk2-btn-primary mk2-btn-block"
+                                        onClick={() => openHostOnboarding(plan.id)}
+                                    >
+                                        Choose {plan.label}
+                                    </button>
+                                </article>
+                            ))}
+                        </div>
+                        <div className="mk2-pricing-usage">
+                            <h3>Included API usage and overage rates</h3>
+                            <div className="mk2-pricing-table-wrap">
+                                <table className="mk2-pricing-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Meter</th>
+                                            <th>Host Monthly</th>
+                                            <th>Host Annual</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {HOST_USAGE_METER_OVERVIEW.map((meter) => (
+                                            <tr key={meter.id}>
+                                                <td>{meter.label}</td>
+                                                <td>
+                                                    {formatHostUsageCount(meter.monthlyIncluded)} included, then {formatUsdFromCents(meter.monthlyOverageCents)}/request
+                                                </td>
+                                                <td>
+                                                    {formatHostUsageCount(meter.annualIncluded)} included, then {formatUsdFromCents(meter.annualOverageCents)}/request
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div className="mk2-pricing-footnote">
+                                Overage is only billed after included usage is exceeded in the active period.
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -437,11 +508,14 @@ const MarketingSite = () => {
                 <section className="mk2-section mk2-signup" id="signup">
                     <div className="mk2-shell mk2-signup-layout">
                         <div>
-                            <div className="mk2-kicker">Early Access</div>
-                            <h2>Want In?</h2>
+                            <div className="mk2-kicker">Need Help Onboarding?</div>
+                            <h2>Join The Waitlist</h2>
                             <p className="mk2-lead">
-                                Share your email and use case. We will follow up with next steps.
+                                Self-serve is available now. Use this form if you want hands-on onboarding support.
                             </p>
+                            <button type="button" className="mk2-btn mk2-btn-ghost" onClick={() => openHostOnboarding('host_monthly')}>
+                                Start Self-Serve Checkout
+                            </button>
                         </div>
                         <form className="mk2-form" onSubmit={onSubmit}>
                             <label>

@@ -27,19 +27,20 @@ import {
     db, doc, collection, query, where, onSnapshot, updateDoc, 
     addDoc, deleteDoc, serverTimestamp, limit, getDocs, getDoc, setDoc, writeBatch,
     storage, storageRef, uploadBytesResumable, getDownloadURL, deleteObject,
-    arrayUnion,
     auth,
     initAuth,
     trackEvent,
     callFunction,
     ensureAppCheckToken,
+    assertRoomHostAccess,
     ensureOrganization,
     bootstrapOnboardingWorkspace,
     getMyEntitlements,
     getMyUsageSummary,
     getMyUsageInvoiceDraft,
     saveMyUsageInvoiceDraft,
-    listMyUsageInvoices
+    listMyUsageInvoices,
+    updateRoomAsHost
 } from '../../lib/firebase';
 import { ASSETS, AVATARS, APP_ID } from '../../lib/assets';
 import { playSfx, setSfxMasterVolume, stopAllSfx } from '../../lib/utils';
@@ -49,6 +50,7 @@ import { useToast } from '../../context/ToastContext';
 import { BG_TRACKS, SOUNDS } from '../../lib/gameDataConstants';
 import { HOST_APP_CONFIG } from '../../lib/uiConstants';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabilities';
+import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
 import { buildSongKey, ensureSong, ensureTrack } from '../../lib/songCatalog';
 import { createLogger } from '../../lib/logger';
 import { DEFAULT_POP_TRIVIA_MAX_QUESTIONS, normalizePopTriviaQuestions } from '../../lib/popTrivia';
@@ -85,6 +87,64 @@ const STROBE_ACTIVE_MS = HOST_APP_CONFIG.STROBE_ACTIVE_MS;
 let itunesBackoffUntil = 0;
 const nowMs = () => Date.now();
 const hostLogger = createLogger('HostApp');
+const HOST_UPDATE_DEPLOYMENT_WARNING = "Host control updates are unavailable because the backend callable `updateRoomAsHost` is not deployed. Deploy functions and reload Host.";
+const HOST_UPDATE_OP_FIELD = '__hostOp';
+const HOST_UPDATE_SERVER_TIMESTAMP = 'serverTimestamp';
+
+const isPlainObject = (value) =>
+    !!value && Object.prototype.toString.call(value) === '[object Object]';
+
+const isServerTimestampSentinel = (value) => {
+    if (!value || typeof value !== 'object') return false;
+    const methodName = value?._methodName || value?._delegate?._methodName;
+    return methodName === 'serverTimestamp';
+};
+
+const encodeHostRoomUpdateValue = (value) => {
+    if (value === undefined) return undefined;
+    if (isServerTimestampSentinel(value)) {
+        return { [HOST_UPDATE_OP_FIELD]: HOST_UPDATE_SERVER_TIMESTAMP };
+    }
+    if (Array.isArray(value)) {
+        return value.map((entry) => encodeHostRoomUpdateValue(entry));
+    }
+    if (!isPlainObject(value)) return value;
+    const next = {};
+    Object.entries(value).forEach(([key, child]) => {
+        const encodedChild = encodeHostRoomUpdateValue(child);
+        if (encodedChild !== undefined) {
+            next[key] = encodedChild;
+        }
+    });
+    return next;
+};
+
+const encodeHostRoomUpdates = (updates = {}) => {
+    if (!isPlainObject(updates)) return {};
+    const encoded = {};
+    Object.entries(updates).forEach(([key, value]) => {
+        const encodedValue = encodeHostRoomUpdateValue(value);
+        if (encodedValue !== undefined) {
+            encoded[key] = encodedValue;
+        }
+    });
+    return encoded;
+};
+
+const isHostUpdateCallableUnavailableError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    if (code.includes('not-found') || code.includes('unimplemented')) return true;
+    return (
+        message.includes('updateroomashost')
+        && (
+            message.includes('does not exist')
+            || message.includes('not found')
+            || message.includes('not deployed')
+            || message.includes('no function')
+        )
+    );
+};
 
 // Background tracks and sounds imported from gameDataConstants.js
 // (BG_TRACKS, SOUNDS)
@@ -354,6 +414,131 @@ const HOST_NIGHT_PRESETS = {
         autoStartApplePlaylist: false
     }
 };
+
+const NIGHT_SETUP_PRIMARY_MODES = [
+    {
+        id: 'karaoke',
+        label: 'Karaoke Flow',
+        description: 'Classic queue-first night with optional side features.',
+        icon: 'fa-microphone-lines',
+        accent: 'from-cyan-500/25 via-cyan-500/10 to-transparent'
+    },
+    {
+        id: 'bingo',
+        label: 'Bingo Spotlight',
+        description: 'Queue plus crowd bingo participation throughout the night.',
+        icon: 'fa-table-cells-large',
+        accent: 'from-emerald-500/25 via-emerald-500/10 to-transparent'
+    },
+    {
+        id: 'trivia_pop',
+        label: 'Trivia Bursts',
+        description: 'Interleave quick trivia rounds between performances.',
+        icon: 'fa-circle-question',
+        accent: 'from-amber-500/25 via-amber-500/10 to-transparent'
+    },
+    {
+        id: 'wyr',
+        label: 'Would You Rather',
+        description: 'Run rapid crowd-vote moments between songs.',
+        icon: 'fa-scale-balanced',
+        accent: 'from-orange-500/25 via-orange-500/10 to-transparent'
+    },
+    {
+        id: 'doodle_oke',
+        label: 'Doodle-oke',
+        description: 'Drawing + guessing moments to break up the set.',
+        icon: 'fa-pen',
+        accent: 'from-fuchsia-500/25 via-fuchsia-500/10 to-transparent'
+    },
+    {
+        id: 'selfie_challenge',
+        label: 'Selfie Challenge',
+        description: 'Photo prompt rounds with live voting and reveal.',
+        icon: 'fa-camera-retro',
+        accent: 'from-rose-500/25 via-rose-500/10 to-transparent'
+    },
+    {
+        id: 'karaoke_bracket',
+        label: 'Sweet 16 Bracket',
+        description: 'Head-to-head tournament progression across singers.',
+        icon: 'fa-trophy',
+        accent: 'from-red-500/25 via-red-500/10 to-transparent'
+    },
+    {
+        id: 'vocal_challenge',
+        label: 'Vocal Challenge',
+        description: 'Pitch-target game for focused voice rounds.',
+        icon: 'fa-wave-square',
+        accent: 'from-sky-500/25 via-sky-500/10 to-transparent'
+    },
+    {
+        id: 'riding_scales',
+        label: 'Riding Scales',
+        description: 'Scale memory challenge for experienced singers.',
+        icon: 'fa-music',
+        accent: 'from-indigo-500/25 via-indigo-500/10 to-transparent'
+    },
+    {
+        id: 'flappy_bird',
+        label: 'Flappy Bird',
+        description: 'Voice-volume obstacle gameplay for quick energy spikes.',
+        icon: 'fa-feather-pointed',
+        accent: 'from-lime-500/25 via-lime-500/10 to-transparent'
+    }
+];
+
+const NIGHT_SETUP_STEPS = [
+    {
+        id: 0,
+        label: 'Warmup',
+        subtitle: 'Pick your night type',
+        sections: ['Section 1: Night Type', 'Section 2: Preset Feature Bundle']
+    },
+    {
+        id: 1,
+        label: 'Rules',
+        subtitle: 'Set queue behavior',
+        sections: ['Section 1: Request Limits', 'Section 2: Rotation + Fairness']
+    },
+    {
+        id: 2,
+        label: 'Main Event',
+        subtitle: 'Choose spotlight mode',
+        sections: ['Section 1: Spotlight Mode', 'Section 2: Live Toggles']
+    }
+];
+
+const NIGHT_SETUP_PRESET_META = {
+    casual: {
+        icon: 'fa-glass-cheers',
+        accent: 'from-cyan-500/30 via-sky-500/10 to-transparent'
+    },
+    competition: {
+        icon: 'fa-trophy',
+        accent: 'from-amber-500/30 via-yellow-500/10 to-transparent'
+    },
+    bingo: {
+        icon: 'fa-table-cells-large',
+        accent: 'from-emerald-500/30 via-lime-500/10 to-transparent'
+    },
+    trivia: {
+        icon: 'fa-bolt',
+        accent: 'from-fuchsia-500/30 via-violet-500/10 to-transparent'
+    }
+};
+
+const NIGHT_SETUP_QUEUE_LIMIT_OPTIONS = [
+    { id: 'none', label: 'No Limits', description: 'Let guests request freely all night.', icon: 'fa-infinity' },
+    { id: 'per_night', label: 'Per Night', description: 'Each singer gets a set number of requests.', icon: 'fa-moon' },
+    { id: 'per_hour', label: 'Per Hour', description: 'Cap requests each hour to keep turns fair.', icon: 'fa-clock' },
+    { id: 'soft', label: 'Soft Limit', description: 'Gentle cap with host discretion.', icon: 'fa-feather-pointed' }
+];
+
+const NIGHT_SETUP_QUEUE_ROTATION_OPTIONS = [
+    { id: 'round_robin', label: 'Round Robin', description: 'Rotate singers in cycles.', icon: 'fa-rotate' },
+    { id: 'first_come', label: 'First Come', description: 'Run strict request order.', icon: 'fa-list-ol' }
+];
 
 const HOST_SETTINGS_SECTIONS = [
     {
@@ -1289,7 +1474,7 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
                         {selfieSubmissions.length === 0 && (
                             <div className="col-span-5 text-center text-zinc-500 text-sm">No submissions yet.</div>
                         )}
-                    </div>
+                        </div>
                 </div>
             )}
       </div> 
@@ -3833,10 +4018,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const normalizedInitialCode = (initialCode || '').trim().toUpperCase();
     const [roomCode, setRoomCode] = useState('');
     const [roomCodeInput, setRoomCodeInput] = useState(normalizedInitialCode);
-    const updateRoom = useCallback(
-        async (d) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), d),
-        [roomCode]
-    );
+    const updateRoom = useCallback(async (updates = {}) => {
+        if (!roomCode) throw new Error('Room code is required to update room state.');
+        const encodedUpdates = encodeHostRoomUpdates(updates || {});
+        if (!Object.keys(encodedUpdates).length) return;
+        try {
+            await updateRoomAsHost(roomCode, encodedUpdates);
+            setHostUpdateDeploymentWarning('');
+            hostUpdateWarningToastedRef.current = false;
+        } catch (error) {
+            if (isHostUpdateCallableUnavailableError(error)) {
+                setHostUpdateDeploymentWarning(HOST_UPDATE_DEPLOYMENT_WARNING);
+            }
+            throw error;
+        }
+    }, [roomCode]);
     const appBase = typeof window !== 'undefined' ? `${window.location.origin}${import.meta.env.BASE_URL || '/'}` : '';
     const isChatPopout = typeof window !== 'undefined'
         && new URLSearchParams(window.location.search).get('chat') === '1';
@@ -4264,6 +4460,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [creatingRoom, setCreatingRoom] = useState(false);
     const [joiningRoom, setJoiningRoom] = useState(false);
     const [entryError, setEntryError] = useState('');
+    const [hostUpdateDeploymentWarning, setHostUpdateDeploymentWarning] = useState('');
+    const hostUpdateWarningToastedRef = useRef(false);
     const [orgContext, setOrgContext] = useState({
         orgId: '',
         role: 'owner',
@@ -4305,14 +4503,41 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [onboardingWorkspaceName, setOnboardingWorkspaceName] = useState('');
     const [onboardingPlanId, setOnboardingPlanId] = useState('host_monthly');
     const [onboardingLogoUrl, setOnboardingLogoUrl] = useState(ASSETS.logo);
+    const [showNightSetupWizard, setShowNightSetupWizard] = useState(false);
+    const [nightSetupStep, setNightSetupStep] = useState(0);
+    const [nightSetupApplying, setNightSetupApplying] = useState(false);
+    const [nightSetupPresetId, setNightSetupPresetId] = useState('casual');
+    const [nightSetupQueueLimitMode, setNightSetupQueueLimitMode] = useState('none');
+    const [nightSetupQueueLimitCount, setNightSetupQueueLimitCount] = useState(0);
+    const [nightSetupQueueRotation, setNightSetupQueueRotation] = useState('round_robin');
+    const [nightSetupQueueFirstTimeBoost, setNightSetupQueueFirstTimeBoost] = useState(true);
+    const [nightSetupPrimaryMode, setNightSetupPrimaryMode] = useState('karaoke');
+    const [nightSetupShowScoring, setNightSetupShowScoring] = useState(true);
+    const [nightSetupAutoPlayMedia, setNightSetupAutoPlayMedia] = useState(true);
+    const [nightSetupChatOnTv, setNightSetupChatOnTv] = useState(false);
+    const [nightSetupMarqueeEnabled, setNightSetupMarqueeEnabled] = useState(true);
+    const [nightSetupRecommendation, setNightSetupRecommendation] = useState({ presetId: 'casual', reason: '' });
+    const hostUpdateDeploymentBanner = hostUpdateDeploymentWarning ? (
+        <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100 flex items-start justify-between gap-3">
+            <div>
+                <span className="font-bold uppercase tracking-[0.15em] text-amber-200 text-[11px] mr-2">Host Update Path</span>
+                <span>{hostUpdateDeploymentWarning}</span>
+            </div>
+            <button
+                type="button"
+                onClick={() => {
+                    setHostUpdateDeploymentWarning('');
+                    hostUpdateWarningToastedRef.current = false;
+                }}
+                className="text-amber-200/90 hover:text-white text-xs uppercase tracking-widest"
+                title="Dismiss warning"
+            >
+                Dismiss
+            </button>
+        </div>
+    ) : null;
     const planLabel = useMemo(() => {
-        const labels = {
-            free: 'Free',
-            vip_monthly: 'VIP Monthly',
-            host_monthly: 'Host Monthly',
-            host_annual: 'Host Annual'
-        };
-        return labels[orgContext?.planId] || (orgContext?.planId || 'free');
+        return getSubscriptionPlanLabel(orgContext?.planId || 'free');
     }, [orgContext?.planId]);
     const renewalLabel = useMemo(() => {
         const ms = Number(orgContext?.renewalAtMs || 0);
@@ -4327,6 +4552,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const status = String(orgContext?.status || '').toLowerCase();
         return ['active', 'trialing', 'past_due'].includes(status);
     }, [orgContext?.status]);
+    const hostMonthlyPlan = useMemo(() => getHostSubscriptionPlan('host_monthly'), []);
+    const hostAnnualPlan = useMemo(() => getHostSubscriptionPlan('host_annual'), []);
     const capabilities = useMemo(() => orgContext?.capabilities || {}, [orgContext?.capabilities]);
     const canUseWorkspaceOnboarding = !!capabilities[CAPABILITY_KEYS.WORKSPACE_ONBOARDING];
     const canUseInvoiceDrafts = !!capabilities[CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS];
@@ -4548,6 +4775,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const sfxPulseRef = useRef(null);
     const seededMarqueeRef = useRef(false);
     const toast = useToast();
+    useEffect(() => {
+        if (!hostUpdateDeploymentWarning || !toast || hostUpdateWarningToastedRef.current) return;
+        toast(hostUpdateDeploymentWarning);
+        hostUpdateWarningToastedRef.current = true;
+    }, [hostUpdateDeploymentWarning, toast]);
     const {
         chatEnabled,
         setChatEnabled,
@@ -4956,9 +5188,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const t = params.get('tab');
         const c = params.get('catalogue');
         const chat = params.get('chat');
+        const onboarding = String(params.get('onboarding') || '').toLowerCase();
+        const plan = String(params.get('plan') || '').trim();
         const view = (params.get('view') || '').trim().toLowerCase();
         const section = (params.get('section') || '').trim().toLowerCase();
         const g = normalizeGameParam(params.get('game'));
+        let consumedMarketingOnboardingParams = false;
         if (view) {
             const chosenSection = section || getViewDefaultSection(view);
             setActiveWorkspaceView(view);
@@ -5001,6 +5236,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         if (c === '1') setCatalogueOnly(true);
         if (chat === '1') setTab('stage');
+        if (onboarding === '1' || onboarding === 'true') {
+            const allowedPlanIds = new Set(HOST_ONBOARDING_PLAN_OPTIONS.map((option) => option.id));
+            const chosenPlan = allowedPlanIds.has(plan) ? plan : 'host_monthly';
+            setOnboardingPlanId(chosenPlan);
+            setOnboardingStep(0);
+            setShowOnboardingWizard(true);
+            consumedMarketingOnboardingParams = true;
+        }
+        if (consumedMarketingOnboardingParams) {
+            params.delete('onboarding');
+            params.delete('plan');
+            params.delete('source');
+            const nextQuery = params.toString();
+            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
+            window.history.replaceState({}, '', nextUrl);
+        }
     }, []);
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -5131,17 +5382,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [showSettings, settingsTab, marqueeItems]);
     useEffect(() => {
         if (!room || !roomCode || !uid) return;
-        const hostUids = room.hostUids || [];
-        const needsHostUid = !room.hostUid;
-        const needsAdd = !hostUids.includes(uid);
-        if (!needsHostUid && !needsAdd) return;
-        const updates = {};
-        if (needsHostUid) updates.hostUid = uid;
-        if (needsAdd) updates.hostUids = arrayUnion(uid);
-        updateRoom(updates).catch((e) => {
-            hostLogger.warn('Failed to sync host ownership', e);
-        });
-    }, [room?.hostUid, room?.hostUids, roomCode, uid, room, updateRoom]);
+        const hostUids = Array.isArray(room.hostUids) ? room.hostUids : [];
+        if (room.hostUid || hostUids.includes(uid)) return;
+        hostLogger.warn('Room ownership metadata is missing host linkage; host updates are now callable-only.');
+    }, [room?.hostUid, room?.hostUids, roomCode, uid, room]);
     useEffect(() => {
         if (room?.lightMode === 'storm' && room?.stormEndsAt && nowMs() > room.stormEndsAt) {
             updateRoom({ lightMode: 'off', stormPhase: 'off' });
@@ -5392,10 +5636,272 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }));
     };
 
+    const resolveNightSetupRecommendation = useCallback(() => {
+        const knownPresetIds = new Set(Object.keys(HOST_NIGHT_PRESETS));
+        const lastPreset = (() => {
+            try {
+                return String(localStorage.getItem('bross_last_night_setup_preset') || '').trim();
+            } catch {
+                return '';
+            }
+        })();
+        if (knownPresetIds.has(lastPreset)) {
+            return {
+                presetId: lastPreset,
+                reason: 'Based on your most recent host setup.'
+            };
+        }
+
+        const guestCount = Array.isArray(users) ? users.length : 0;
+        const activeQueueCount = Number(queuedCount || 0);
+        if (guestCount >= 18 || activeQueueCount >= 16) {
+            return {
+                presetId: 'competition',
+                reason: 'High turnout detected. Competition keeps queue pressure under control.'
+            };
+        }
+        if (activeQueueCount >= 8 && guestCount >= 10) {
+            return {
+                presetId: 'bingo',
+                reason: 'Balanced crowd + queue size suggests Bingo Spotlight engagement.'
+            };
+        }
+
+        const dayOfWeek = new Date().getDay();
+        if (dayOfWeek === 5 || dayOfWeek === 6) {
+            return {
+                presetId: 'casual',
+                reason: 'Weekend default: high-energy casual flow.'
+            };
+        }
+        return {
+            presetId: 'trivia',
+            reason: 'Weeknight default: trivia bursts keep non-singers active.'
+        };
+    }, [users, queuedCount]);
+
+    const seedNightSetupFromPreset = useCallback((presetId = 'casual', options = {}) => {
+        const preset = HOST_NIGHT_PRESETS[presetId] || HOST_NIGHT_PRESETS.casual;
+        const presetSettings = preset?.settings || {};
+        const queueSettings = presetSettings.queueSettings || {};
+        const keepQueueDraft = !!options.keepQueueDraft;
+        setNightSetupPresetId(preset.id);
+        if (!keepQueueDraft) {
+            setNightSetupQueueLimitMode(queueSettings.limitMode || 'none');
+            setNightSetupQueueLimitCount(Math.max(0, Number(queueSettings.limitCount || 0)));
+            setNightSetupQueueRotation(queueSettings.rotation || 'round_robin');
+            setNightSetupQueueFirstTimeBoost(queueSettings.firstTimeBoost !== false);
+        }
+        setNightSetupShowScoring(presetSettings.showScoring !== false);
+        setNightSetupAutoPlayMedia(presetSettings.autoPlayMedia !== false);
+        setNightSetupChatOnTv(!!presetSettings.chatShowOnTv);
+        setNightSetupMarqueeEnabled(!!presetSettings.marqueeEnabled);
+        setNightSetupPrimaryMode(presetSettings.gamePreviewId || (preset.id === 'bingo' ? 'bingo' : preset.id === 'trivia' ? 'trivia_pop' : 'karaoke'));
+        return preset;
+    }, []);
+
+    const openNightSetupWizard = useCallback((presetId = '') => {
+        const recommendation = resolveNightSetupRecommendation();
+        const resolvedPresetId = (presetId && HOST_NIGHT_PRESETS[presetId]) ? presetId : recommendation.presetId;
+        setNightSetupRecommendation(recommendation);
+        seedNightSetupFromPreset(resolvedPresetId, { keepQueueDraft: false });
+        setNightSetupStep(0);
+        setShowNightSetupWizard(true);
+    }, [seedNightSetupFromPreset, resolveNightSetupRecommendation]);
+
+    const closeNightSetupWizard = useCallback(() => {
+        if (nightSetupApplying) return;
+        setShowNightSetupWizard(false);
+        setNightSetupStep(0);
+    }, [nightSetupApplying]);
+
+    useEffect(() => {
+        if (!showNightSetupWizard) return;
+        trackEvent('host_night_setup_step_view', {
+            step_index: nightSetupStep,
+            preset_id: nightSetupPresetId,
+            primary_mode: nightSetupPrimaryMode
+        });
+    }, [showNightSetupWizard, nightSetupStep, nightSetupPresetId, nightSetupPrimaryMode]);
+
+    const setBgMusicState = useCallback((next) => {
+        setPlayingBg(next);
+        if (next) {
+            if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
+                bgCtxRef.current.resume().catch(() => {});
+            }
+            bgAudio.current.play().catch(() => {});
+        } else {
+            bgAudio.current.pause();
+        }
+        updateRoom({ bgMusicPlaying: next, bgMusicUrl: BG_TRACKS[currentTrackIdx].url });
+    }, [currentTrackIdx, updateRoom]);
+
+    const applyNightSetupWizard = useCallback(async () => {
+        if (!roomCode) {
+            toast('Open a room first.');
+            return false;
+        }
+        const preset = HOST_NIGHT_PRESETS[nightSetupPresetId] || HOST_NIGHT_PRESETS.casual;
+        const presetSettings = preset.settings || {};
+        const gameDefaults = presetSettings.gameDefaults || {};
+        const canUseAi = !!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT];
+        const autoLyricsEnabled = !!presetSettings.autoLyricsOnQueue && canUseAi;
+        const queueLimitModeValue = nightSetupQueueLimitMode || 'none';
+        const queueLimitCountValue = queueLimitModeValue === 'none'
+            ? 0
+            : Math.max(0, Number(nightSetupQueueLimitCount || 0));
+        const payload = {
+            hostNightPreset: preset.id,
+            autoDj: !!presetSettings.autoDj,
+            autoBgMusic: !!presetSettings.autoBgMusic,
+            autoPlayMedia: !!nightSetupAutoPlayMedia,
+            showVisualizerTv: !!presetSettings.showVisualizerTv,
+            showLyricsTv: !!presetSettings.showLyricsTv,
+            showScoring: !!nightSetupShowScoring,
+            showFameLevel: !!presetSettings.showFameLevel,
+            allowSingerTrackSelect: !!presetSettings.allowSingerTrackSelect,
+            marqueeEnabled: !!nightSetupMarqueeEnabled,
+            marqueeShowMode: presetSettings.marqueeShowMode || 'always',
+            chatShowOnTv: !!nightSetupChatOnTv,
+            chatTvMode: presetSettings.chatTvMode || 'auto',
+            bouncerMode: !!presetSettings.bouncerMode,
+            bingoShowTv: presetSettings.bingoShowTv !== false,
+            bingoVotingMode: presetSettings.bingoVotingMode || 'host+votes',
+            bingoAutoApprovePct: Math.max(10, Math.min(100, Number(presetSettings.bingoAutoApprovePct ?? 50))),
+            bingoAudienceReopenEnabled: presetSettings.bingoAudienceReopenEnabled !== false,
+            autoLyricsOnQueue: autoLyricsEnabled,
+            popTriviaEnabled: presetSettings.popTriviaEnabled !== false,
+            gamePreviewId: nightSetupPrimaryMode === 'karaoke' ? null : nightSetupPrimaryMode,
+            gameDefaults: {
+                triviaRoundSec: Math.max(5, Number(gameDefaults.triviaRoundSec || 20)),
+                triviaAutoReveal: gameDefaults.triviaAutoReveal !== false,
+                bingoVotingMode: gameDefaults.bingoVotingMode || 'host+votes',
+                bingoAutoApprovePct: Math.max(10, Math.min(100, Number(gameDefaults.bingoAutoApprovePct ?? 50)))
+            },
+            queueSettings: {
+                limitMode: queueLimitModeValue,
+                limitCount: queueLimitCountValue,
+                rotation: nightSetupQueueRotation || 'round_robin',
+                firstTimeBoost: nightSetupQueueFirstTimeBoost !== false
+            }
+        };
+        setNightSetupApplying(true);
+        try {
+            await updateRoom(payload);
+            setHostNightPreset(payload.hostNightPreset);
+            setAutoDj(!!payload.autoDj);
+            setAutoBgMusic(!!payload.autoBgMusic);
+            setAutoPlayMedia(!!payload.autoPlayMedia);
+            setQueueLimitMode(payload.queueSettings.limitMode);
+            setQueueLimitCount(payload.queueSettings.limitCount);
+            setQueueRotation(payload.queueSettings.rotation);
+            setQueueFirstTimeBoost(!!payload.queueSettings.firstTimeBoost);
+            setShowScoring(!!payload.showScoring);
+            setShowFameLevel(!!payload.showFameLevel);
+            setAllowSingerTrackSelect(!!payload.allowSingerTrackSelect);
+            setMarqueeEnabled(!!payload.marqueeEnabled);
+            setMarqueeShowMode(payload.marqueeShowMode || 'always');
+            setChatShowOnTv(!!payload.chatShowOnTv);
+            setAudienceBingoReopenEnabled(payload.bingoAudienceReopenEnabled !== false);
+            setAutoLyricsOnQueue(!!payload.autoLyricsOnQueue);
+            setPopTriviaEnabled(payload.popTriviaEnabled !== false);
+            setSearchSources(preset.searchSources || { local: true, youtube: true, itunes: true });
+            if (payload.autoBgMusic && !playingBg) setBgMusicState(true);
+            if (!payload.autoBgMusic && playingBg) setBgMusicState(false);
+            if (nightSetupPrimaryMode !== 'karaoke') {
+                setAutoOpenGameId(nightSetupPrimaryMode);
+                setTab('games');
+            } else {
+                setTab('stage');
+            }
+            trackEvent('host_night_setup_applied', {
+                preset_id: payload.hostNightPreset,
+                primary_mode: nightSetupPrimaryMode,
+                queue_limit_mode: payload.queueSettings.limitMode
+            });
+            try {
+                localStorage.setItem('bross_last_night_setup_preset', payload.hostNightPreset);
+            } catch (_err) {
+                // ignore local storage errors
+            }
+            if (!!presetSettings.autoLyricsOnQueue && !canUseAi) {
+                toast(`${preset.label} applied. AI lyric auto-generation needs a Host subscription.`);
+            } else {
+                toast('Night setup applied.');
+            }
+            setShowNightSetupWizard(false);
+            setNightSetupStep(0);
+            return true;
+        } catch (error) {
+            hostLogger.error('Apply night setup wizard failed', error);
+            toast('Could not apply night setup.');
+            return false;
+        } finally {
+            setNightSetupApplying(false);
+        }
+    }, [
+        roomCode,
+        nightSetupPresetId,
+        nightSetupAutoPlayMedia,
+        nightSetupShowScoring,
+        nightSetupQueueLimitMode,
+        nightSetupQueueLimitCount,
+        nightSetupQueueRotation,
+        nightSetupQueueFirstTimeBoost,
+        nightSetupPrimaryMode,
+        nightSetupChatOnTv,
+        nightSetupMarqueeEnabled,
+        capabilities,
+        updateRoom,
+        playingBg,
+        setBgMusicState,
+        toast,
+        setSearchSources,
+        setChatShowOnTv,
+        setTab
+    ]);
+
+    const launchNightSetupPackage = useCallback(async () => {
+        if (!roomCode) {
+            toast('Open a room first.');
+            return;
+        }
+        const tvUrl = `${appBase}?room=${encodeURIComponent(roomCode)}&mode=tv`;
+        try {
+            window.open(tvUrl, '_blank', 'noopener,noreferrer');
+        } catch (_err) {
+            // ignore popup-block issues
+        }
+        const applied = await applyNightSetupWizard();
+        if (!applied) return;
+
+        const joinUrl = `${appBase}?room=${encodeURIComponent(roomCode)}`;
+        try {
+            await navigator.clipboard.writeText(joinUrl);
+            toast('Launch package complete: TV opened and join link copied.');
+        } catch (_err) {
+            toast(`Launch package complete. Join link: ${joinUrl}`);
+        }
+
+        trackEvent('host_night_setup_launch_package', {
+            room_code: roomCode,
+            preset_id: nightSetupPresetId,
+            primary_mode: nightSetupPrimaryMode
+        });
+    }, [
+        roomCode,
+        appBase,
+        applyNightSetupWizard,
+        toast,
+        nightSetupPresetId,
+        nightSetupPrimaryMode
+    ]);
+
     const openOnboardingWizard = () => {
         const seededHost = (hostName || '').trim() || 'Host';
         const seededLogo = (logoUrl || ASSETS.logo || '').trim() || ASSETS.logo;
-        const allowedPlanIds = new Set(['free', 'host_monthly', 'host_annual']);
+        const allowedPlanIds = new Set(HOST_ONBOARDING_PLAN_OPTIONS.map((option) => option.id));
         const seededPlan = allowedPlanIds.has(orgContext?.planId) ? orgContext.planId : 'host_monthly';
         setOnboardingHostName(seededHost);
         setOnboardingWorkspaceName((onboardingWorkspaceName || '').trim() || `${seededHost} Workspace`);
@@ -5466,7 +5972,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await createRoom({
             hostName: trimmedHost,
             orgName: trimmedWorkspace,
-            logoUrl: trimmedLogo || ASSETS.logo
+            logoUrl: trimmedLogo || ASSETS.logo,
+            nightPresetId: hostNightPreset && hostNightPreset !== 'custom' ? hostNightPreset : 'casual',
+            openNightSetup: true
         });
     };
 
@@ -5493,15 +6001,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
                 return false;
             }
-            const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', code);
-            const roomSnap = await getDoc(roomRef);
-            if (!roomSnap.exists()) {
-                if (!silent) {
-                    toast(`Room ${code} not found`);
-                    setEntryError(`Room ${code} not found.`);
-                }
-                return false;
-            }
+            await assertRoomHostAccess(code);
 
             setRoomCode(code);
             setRoomCodeInput(code);
@@ -5510,9 +6010,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } catch (e) {
             const code = e?.code || '';
             if (!silent) {
-                if (code.includes('permission-denied')) {
-                    toast('Permission denied while opening room. Re-authenticate and try again.');
-                    setEntryError('Permission denied while opening room. Re-authenticate and try again.');
+                if (code.includes('not-found')) {
+                    toast(`Room ${(candidateCode || roomCodeInput || '').trim().toUpperCase()} not found`);
+                    setEntryError(`Room ${(candidateCode || roomCodeInput || '').trim().toUpperCase()} not found.`);
+                } else if (code.includes('permission-denied')) {
+                    toast('Only room hosts can open host controls for this room.');
+                    setEntryError('Only room hosts can open host controls for this room.');
                 } else if (code.includes('unauthenticated')) {
                     toast('You are signed out. Please retry auth, then open room again.');
                     setEntryError('You are signed out. Retry auth, then open room again.');
@@ -5535,6 +6038,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const hostNameOverride = typeof options?.hostName === 'string' ? options.hostName.trim() : '';
         const orgNameOverride = typeof options?.orgName === 'string' ? options.orgName.trim() : '';
         const logoUrlOverride = typeof options?.logoUrl === 'string' ? options.logoUrl.trim() : '';
+        const initialNightPresetId = typeof options?.nightPresetId === 'string' ? options.nightPresetId.trim() : '';
+        const shouldOpenNightSetup = options?.openNightSetup !== false;
         const nextHostName = hostNameOverride || (hostName || '').trim() || 'Host';
         const nextOrgName = orgNameOverride || `${nextHostName} Workspace`;
         const nextLogoUrl = logoUrlOverride || (logoUrl || '').trim() || ASSETS.logo;
@@ -5651,6 +6156,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setRoomCodeInput(c);
             setView('panel');
             setShowOnboardingWizard(false);
+            if (shouldOpenNightSetup) {
+                openNightSetupWizard(initialNightPresetId || 'casual');
+            }
             toast(`Room ${c} created`);
             setDoc(
                 doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', c),
@@ -5747,18 +6255,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             strobeVictory: null
         });
     };
-    const setBgMusicState = useCallback((next) => {
-        setPlayingBg(next);
-        if (next) {
-            if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
-                bgCtxRef.current.resume().catch(() => {});
-            }
-            bgAudio.current.play().catch(() => {});
-        } else {
-            bgAudio.current.pause();
-        }
-        updateRoom({ bgMusicPlaying: next, bgMusicUrl: BG_TRACKS[currentTrackIdx].url });
-    }, [currentTrackIdx, updateRoom]);
     const toggleBgMusic = async () => {
         if (playingBg && autoBgMusic) {
             setAutoBgMusic(false);
@@ -6845,7 +7341,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const sendUserMessage = async (uid, msg, options = {}) => {
         if (!uid) return;
         if (!msg) {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { spotlightUser: null });
+            await updateRoom({ spotlightUser: null });
             toast("Spotlight OFF");
             return;
         }
@@ -6867,7 +7363,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 hostLogger.debug('Could not load spotlight Tight 15', error);
             }
         }
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
+        await updateRoom({
             spotlightUser: {
                 id: uid,
                 msg,
@@ -8292,6 +8788,440 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
     );
 
+    const renderNightSetupWizard = () => {
+        const selectedPreset = HOST_NIGHT_PRESETS[nightSetupPresetId] || HOST_NIGHT_PRESETS.casual;
+        const selectedMode = NIGHT_SETUP_PRIMARY_MODES.find((mode) => mode.id === nightSetupPrimaryMode) || NIGHT_SETUP_PRIMARY_MODES[0];
+        const limitOption = NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === nightSetupQueueLimitMode) || NIGHT_SETUP_QUEUE_LIMIT_OPTIONS[0];
+        const rotationOption = NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === nightSetupQueueRotation) || NIGHT_SETUP_QUEUE_ROTATION_OPTIONS[0];
+        const activeStep = NIGHT_SETUP_STEPS[nightSetupStep] || NIGHT_SETUP_STEPS[0];
+        const sectionLabels = Array.isArray(activeStep?.sections) ? activeStep.sections : [];
+        const presetFeaturePills = [
+            { label: 'Auto DJ', enabled: !!selectedPreset?.settings?.autoDj },
+            { label: 'Background Music', enabled: !!selectedPreset?.settings?.autoBgMusic },
+            { label: 'Singer Track Select', enabled: !!selectedPreset?.settings?.allowSingerTrackSelect },
+            { label: 'Bouncer Mode', enabled: !!selectedPreset?.settings?.bouncerMode },
+            { label: 'Auto Lyrics', enabled: !!selectedPreset?.settings?.autoLyricsOnQueue },
+            { label: 'Pop Trivia', enabled: selectedPreset?.settings?.popTriviaEnabled !== false }
+        ];
+        const enabledPresetFeatureCount = presetFeaturePills.filter((item) => item.enabled).length;
+        const recommendation = (() => {
+            const recommendedId = nightSetupRecommendation?.presetId;
+            if (recommendedId && HOST_NIGHT_PRESETS[recommendedId]) return nightSetupRecommendation;
+            return resolveNightSetupRecommendation();
+        })();
+        const readinessChecks = [
+            { label: 'Host identity', ok: !!String(hostName || '').trim() },
+            { label: 'Room code assigned', ok: !!String(roomCode || '').trim() },
+            { label: 'Night type selected', ok: !!String(selectedPreset?.id || '').trim() },
+            { label: 'Spotlight mode selected', ok: !!String(selectedMode?.id || '').trim() },
+            { label: 'Queue policy set', ok: !!String(nightSetupQueueLimitMode || '').trim() && !!String(nightSetupQueueRotation || '').trim() },
+            { label: 'Branding logo', ok: !!String(logoUrl || '').trim() },
+            {
+                label: 'At least one live toggle',
+                ok: !!nightSetupAutoPlayMedia || !!nightSetupShowScoring || !!nightSetupQueueFirstTimeBoost || !!nightSetupChatOnTv || !!nightSetupMarqueeEnabled
+            }
+        ];
+        const readinessComplete = readinessChecks.filter((item) => item.ok).length;
+        const readinessScore = Math.round((readinessComplete / readinessChecks.length) * 100);
+        const readinessMissing = readinessChecks.filter((item) => !item.ok).map((item) => item.label).slice(0, 2);
+
+        return (
+            <div
+                className="fixed inset-0 z-[92] p-3 md:p-6 overflow-y-auto"
+                style={{
+                    background:
+                        'radial-gradient(circle at 12% 6%, rgba(0,196,217,0.26), transparent 32%), radial-gradient(circle at 90% 10%, rgba(236,72,153,0.22), transparent 34%), linear-gradient(180deg, #06070d 0%, #090b14 45%, #05060c 100%)',
+                }}
+            >
+                <div className="mx-auto w-full max-w-6xl">
+                    <div className="w-full bg-zinc-950/94 border border-white/15 rounded-3xl shadow-[0_28px_80px_rgba(0,0,0,0.55)] overflow-hidden">
+                        <div className="px-4 py-4 md:px-6 md:py-5 border-b border-white/10">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Pre-Show Setup</div>
+                                    <div className="text-2xl md:text-3xl font-black text-white mt-1">Build Tonight&apos;s Game Plan</div>
+                                    <div className="text-sm text-zinc-400 mt-1">A quick room setup run-through before guests flood in.</div>
+                                </div>
+                                <button
+                                    onClick={closeNightSetupWizard}
+                                    disabled={nightSetupApplying}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    Skip Intro
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="px-4 py-3 md:px-6 border-b border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            {NIGHT_SETUP_STEPS.map((step) => (
+                                <button
+                                    key={`night-setup-step-${step.id}`}
+                                    onClick={() => setNightSetupStep(step.id)}
+                                    className={`rounded-2xl border px-3 py-3 text-left transition-all ${
+                                        nightSetupStep === step.id
+                                            ? 'border-[#00C4D9]/60 bg-[#00C4D9]/12'
+                                            : nightSetupStep > step.id
+                                                ? 'border-emerald-400/35 bg-emerald-500/8'
+                                                : 'border-zinc-800 bg-zinc-900/70 hover:border-zinc-600'
+                                    }`}
+                                >
+                                    <div className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">Step {step.id + 1} of 3</div>
+                                    <div className={`text-sm font-bold mt-1 ${nightSetupStep === step.id ? 'text-cyan-100' : (nightSetupStep > step.id ? 'text-emerald-200' : 'text-white')}`}>
+                                        {step.label}
+                                    </div>
+                                    <div className="text-xs text-zinc-400 mt-1">{step.subtitle}</div>
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+                            <div className="px-4 py-4 md:px-6 md:py-5 max-h-[64vh] overflow-y-auto custom-scrollbar space-y-4">
+                                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-3">
+                                    <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Current Step</div>
+                                    <div className="text-base font-bold text-white mt-1">Step {activeStep.id + 1}: {activeStep.label}</div>
+                                    <div className="text-xs text-zinc-400 mt-1">{activeStep.subtitle}</div>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {sectionLabels.map((label) => (
+                                            <span key={`night-setup-section-${label}`} className="text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border border-zinc-700 text-zinc-300 bg-zinc-950/60">
+                                                {label}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="rounded-2xl border border-[#00C4D9]/30 bg-[#00C4D9]/8 px-3 py-3">
+                                    <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">Recommended</div>
+                                    <div className="flex flex-wrap items-center justify-between gap-2 mt-1">
+                                        <div>
+                                            <div className="text-sm font-bold text-white">{HOST_NIGHT_PRESETS[recommendation.presetId]?.label || 'Casual Night'}</div>
+                                            <div className="text-xs text-zinc-300 mt-1">{recommendation.reason || 'Suggested based on recent setup patterns.'}</div>
+                                        </div>
+                                        {recommendation.presetId && recommendation.presetId !== nightSetupPresetId && (
+                                            <button
+                                                onClick={() => seedNightSetupFromPreset(recommendation.presetId, { keepQueueDraft: false })}
+                                                className={`${STYLES.btnStd} ${STYLES.btnInfo}`}
+                                            >
+                                                Use Recommended
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                {nightSetupStep === 0 && (
+                                    <div className="space-y-3">
+                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 1: Night Type</div>
+                                            <div className="text-xl font-bold text-white mt-1">Choose your night type</div>
+                                            <div className="text-sm text-zinc-400 mt-1">This sets your default controls, mode focus, and automation stack.</div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {Object.values(HOST_NIGHT_PRESETS).map((preset) => {
+                                                const active = nightSetupPresetId === preset.id;
+                                                const meta = NIGHT_SETUP_PRESET_META[preset.id] || NIGHT_SETUP_PRESET_META.casual;
+                                                return (
+                                                    <button
+                                                        key={`night-setup-preset-${preset.id}`}
+                                                        onClick={() => seedNightSetupFromPreset(preset.id, { keepQueueDraft: false })}
+                                                        className={`relative overflow-hidden text-left rounded-2xl border transition-all ${active ? 'border-[#00C4D9]/65 shadow-[0_0_0_1px_rgba(0,196,217,0.45)]' : 'border-zinc-700 hover:border-zinc-500'}`}
+                                                    >
+                                                        <div className={`absolute inset-0 bg-gradient-to-br ${meta.accent}`}></div>
+                                                        <div className="relative px-4 py-4">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <div className="text-lg text-cyan-100"><i className={`fa-solid ${meta.icon}`}></i></div>
+                                                                {active && <span className="text-[10px] uppercase tracking-[0.25em] px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/20 text-cyan-100">Locked In</span>}
+                                                            </div>
+                                                            <div className="text-lg font-bold text-white mt-2">{preset.label}</div>
+                                                            <div className="text-sm text-zinc-300 mt-1">{preset.description}</div>
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 2: Preset Feature Bundle</div>
+                                            <div className="text-sm text-zinc-400 mt-1">These features are coming from the selected night type. You can fine-tune everything later in Admin.</div>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                {presetFeaturePills.map((item) => (
+                                                    <span
+                                                        key={`night-preset-feature-${item.label}`}
+                                                        className={`text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border ${item.enabled ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-100' : 'border-zinc-700 text-zinc-500'}`}
+                                                    >
+                                                        {item.label}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            <div className="text-xs text-zinc-400 mt-3">
+                                                {enabledPresetFeatureCount} of {presetFeaturePills.length} preset features enabled.
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {nightSetupStep === 1 && (
+                                    <div className="space-y-4">
+                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 1: Request Limits</div>
+                                            <div className="text-xl font-bold text-white mt-1">Set queue behavior</div>
+                                            <div className="text-sm text-zinc-400 mt-1">Make queue expectations clear before singers start requesting songs.</div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.map((option) => (
+                                                <button
+                                                    key={`queue-limit-${option.id}`}
+                                                    onClick={() => setNightSetupQueueLimitMode(option.id)}
+                                                    className={`text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupQueueLimitMode === option.id ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <i className={`fa-solid ${option.icon} text-cyan-200`}></i>
+                                                        <span className="font-bold text-white">{option.label}</span>
+                                                    </div>
+                                                    <div className="text-xs text-zinc-400 mt-2">{option.description}</div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 2: Rotation + Fairness</div>
+                                            <div className="text-sm text-zinc-400 mt-1">Choose how turns rotate and whether new singers get a priority lift.</div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.map((option) => (
+                                                <button
+                                                    key={`queue-rotation-${option.id}`}
+                                                    onClick={() => setNightSetupQueueRotation(option.id)}
+                                                    className={`text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupQueueRotation === option.id ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <i className={`fa-solid ${option.icon} text-cyan-200`}></i>
+                                                        <span className="font-bold text-white">{option.label}</span>
+                                                    </div>
+                                                    <div className="text-xs text-zinc-400 mt-2">{option.description}</div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {nightSetupQueueLimitMode !== 'none' && (
+                                            <div className="rounded-2xl border border-zinc-700 bg-zinc-900/60 p-3">
+                                                <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">Limit Count</div>
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <button
+                                                        onClick={() => setNightSetupQueueLimitCount((prev) => Math.max(0, Number(prev || 0) - 1))}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3`}
+                                                    >
+                                                        <i className="fa-solid fa-minus"></i>
+                                                    </button>
+                                                    <input
+                                                        value={nightSetupQueueLimitCount}
+                                                        onChange={(event) => setNightSetupQueueLimitCount(event.target.value)}
+                                                        className={`${STYLES.input} text-center`}
+                                                        placeholder="0"
+                                                    />
+                                                    <button
+                                                        onClick={() => setNightSetupQueueLimitCount((prev) => Math.max(0, Number(prev || 0) + 1))}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3`}
+                                                    >
+                                                        <i className="fa-solid fa-plus"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                        <button
+                                            onClick={() => setNightSetupQueueFirstTimeBoost((prev) => !prev)}
+                                            className={`w-full text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupQueueFirstTimeBoost ? 'border-amber-400/60 bg-amber-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                        >
+                                            <div className="flex items-center gap-2 text-white font-bold">
+                                                <i className="fa-solid fa-star text-amber-200"></i>
+                                                First-Time Singer Boost
+                                            </div>
+                                            <div className="text-xs text-zinc-400 mt-2">
+                                                {nightSetupQueueFirstTimeBoost ? 'ON: New singers get priority uplift.' : 'OFF: Queue order runs without boost.'}
+                                            </div>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {nightSetupStep === 2 && (
+                                    <div className="space-y-4">
+                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 1: Spotlight Mode</div>
+                                            <div className="text-xl font-bold text-white mt-1">Pick the spotlight mode</div>
+                                            <div className="text-sm text-zinc-400 mt-1">Choose what this room leads with when you go live. Additional mode controls live in the Games tab.</div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                            {NIGHT_SETUP_PRIMARY_MODES.map((mode) => (
+                                                <button
+                                                    key={`night-setup-mode-${mode.id}`}
+                                                    onClick={() => setNightSetupPrimaryMode(mode.id)}
+                                                    className={`relative overflow-hidden text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupPrimaryMode === mode.id ? 'border-fuchsia-400/60' : 'border-zinc-700 hover:border-zinc-500'}`}
+                                                >
+                                                    <div className={`absolute inset-0 bg-gradient-to-br ${mode.accent}`}></div>
+                                                    <div className="relative flex items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <i className={`fa-solid ${mode.icon} text-fuchsia-200`}></i>
+                                                            <div className="text-sm font-bold text-white">{mode.label}</div>
+                                                        </div>
+                                                        {nightSetupPrimaryMode === mode.id && <span className="text-[10px] uppercase tracking-[0.25em] text-fuchsia-100">Primary</span>}
+                                                    </div>
+                                                    <div className="relative text-xs text-zinc-300 mt-2">{mode.description}</div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 2: Live Toggles</div>
+                                            <div className="text-sm text-zinc-400 mt-1">Enable the runtime overlays and audience layers you want active by default.</div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <button
+                                                onClick={() => setNightSetupAutoPlayMedia((prev) => !prev)}
+                                                className={`text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupAutoPlayMedia ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                            >
+                                                <div className="flex items-center gap-2 text-white font-bold">
+                                                    <i className="fa-solid fa-forward-step text-cyan-200"></i>
+                                                    Auto Stage Playback
+                                                </div>
+                                                <div className="text-xs text-zinc-400 mt-2">Start stage media cues automatically when performers begin.</div>
+                                            </button>
+                                            <button
+                                                onClick={() => setNightSetupShowScoring((prev) => !prev)}
+                                                className={`text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupShowScoring ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                            >
+                                                <div className="flex items-center gap-2 text-white font-bold">
+                                                    <i className="fa-solid fa-ranking-star text-cyan-200"></i>
+                                                    Live Scoring
+                                                </div>
+                                                <div className="text-xs text-zinc-400 mt-2">Display score and performance momentum in real time.</div>
+                                            </button>
+                                            <button
+                                                onClick={() => setNightSetupChatOnTv((prev) => !prev)}
+                                                className={`text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupChatOnTv ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                            >
+                                                <div className="flex items-center gap-2 text-white font-bold">
+                                                    <i className="fa-solid fa-comments text-cyan-200"></i>
+                                                    Audience Chat on TV
+                                                </div>
+                                                <div className="text-xs text-zinc-400 mt-2">Show room chat in the public display feed.</div>
+                                            </button>
+                                            <button
+                                                onClick={() => setNightSetupMarqueeEnabled((prev) => !prev)}
+                                                className={`text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupMarqueeEnabled ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                            >
+                                                <div className="flex items-center gap-2 text-white font-bold">
+                                                    <i className="fa-solid fa-panorama text-cyan-200"></i>
+                                                    Marquee Messages
+                                                </div>
+                                                <div className="text-xs text-zinc-400 mt-2">Run scheduled banners for promos, reminders, and calls to action.</div>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <aside className="border-t lg:border-t-0 lg:border-l border-white/10 bg-zinc-950/75 px-4 py-4 md:px-5 md:py-5">
+                                <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Tonight&apos;s Setup</div>
+                                <div className="mt-2 rounded-2xl border border-cyan-500/30 bg-zinc-900/80 p-3">
+                                    <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">TV Preview</div>
+                                    <div className="mt-2 rounded-xl border border-zinc-700 bg-black/40 overflow-hidden">
+                                        <div className="px-2 py-1 border-b border-zinc-700/80 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                                            <span>Room {roomCode || '----'}</span>
+                                            <span>{selectedMode.label}</span>
+                                        </div>
+                                        <div className="p-2 space-y-2">
+                                            <div className="text-[11px] text-zinc-300">Now Performing: <span className="text-white font-semibold">Singer Queue</span></div>
+                                            <div className="flex flex-wrap gap-1">
+                                                <span className={`text-[10px] px-2 py-1 rounded-full border ${nightSetupShowScoring ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-100' : 'border-zinc-700 text-zinc-500'}`}>Scoring</span>
+                                                <span className={`text-[10px] px-2 py-1 rounded-full border ${nightSetupAutoPlayMedia ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-100' : 'border-zinc-700 text-zinc-500'}`}>Auto-Play</span>
+                                                <span className={`text-[10px] px-2 py-1 rounded-full border ${nightSetupQueueFirstTimeBoost ? 'border-amber-400/40 bg-amber-500/15 text-amber-100' : 'border-zinc-700 text-zinc-500'}`}>First-Time</span>
+                                                <span className={`text-[10px] px-2 py-1 rounded-full border ${nightSetupChatOnTv ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-100' : 'border-zinc-700 text-zinc-500'}`}>Chat</span>
+                                                <span className={`text-[10px] px-2 py-1 rounded-full border ${nightSetupMarqueeEnabled ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-100' : 'border-zinc-700 text-zinc-500'}`}>Marquee</span>
+                                            </div>
+                                            <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-cyan-400 to-fuchsia-400 transition-all"
+                                                    style={{ width: `${Math.max(20, readinessScore)}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
+                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Night Type</div>
+                                    <div className="text-white font-bold mt-1">{selectedPreset.label}</div>
+                                    <div className="text-xs text-zinc-400 mt-1">{selectedPreset.description}</div>
+                                </div>
+                                <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
+                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Queue Rules</div>
+                                    <div className="text-sm text-zinc-200 mt-1">
+                                        {limitOption.label}
+                                        {nightSetupQueueLimitMode !== 'none' ? ` (${Math.max(0, Number(nightSetupQueueLimitCount || 0))})` : ''}
+                                        {' '}· {rotationOption.label}
+                                        {nightSetupQueueFirstTimeBoost ? ' · First-time Boost' : ''}
+                                    </div>
+                                </div>
+                                <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
+                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Spotlight Mode</div>
+                                    <div className="flex items-center gap-2 text-sm text-zinc-100 mt-1">
+                                        <i className={`fa-solid ${selectedMode.icon}`}></i>
+                                        {selectedMode.label}
+                                    </div>
+                                </div>
+                                <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
+                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Show Readiness</div>
+                                    <div className="text-white font-bold mt-1">{readinessScore}%</div>
+                                    <div className="h-2 rounded-full bg-zinc-800 overflow-hidden mt-2">
+                                        <div className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all" style={{ width: `${readinessScore}%` }}></div>
+                                    </div>
+                                    {readinessMissing.length > 0 && (
+                                        <div className="text-[11px] text-zinc-400 mt-2">
+                                            Missing: {readinessMissing.join(', ')}
+                                        </div>
+                                    )}
+                                </div>
+                            </aside>
+                        </div>
+
+                        <div className="px-4 py-3 md:px-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+                            <button
+                                onClick={() => {
+                                    setShowNightSetupWizard(false);
+                                    setShowSettings(true);
+                                    setSettingsTab('general');
+                                }}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
+                            >
+                                Open Full Admin
+                            </button>
+                            <div className="flex items-center gap-2">
+                                {nightSetupStep > 0 && (
+                                    <button onClick={() => setNightSetupStep((prev) => Math.max(0, prev - 1))} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>
+                                        Back
+                                    </button>
+                                )}
+                                {nightSetupStep < 2 ? (
+                                    <button onClick={() => setNightSetupStep((prev) => Math.min(2, prev + 1))} className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}>
+                                        Continue
+                                    </button>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={applyNightSetupWizard}
+                                            disabled={nightSetupApplying}
+                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        >
+                                            {nightSetupApplying ? 'Applying...' : 'Apply Setup'}
+                                        </button>
+                                        <button
+                                            onClick={launchNightSetupPackage}
+                                            disabled={nightSetupApplying}
+                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        >
+                                            {nightSetupApplying ? 'Launching...' : 'Go Live Package'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     if(view === 'landing') return ( 
         <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center relative z-10"> 
                 <div className="bg-zinc-900/80 p-8 rounded-3xl border border-zinc-700 backdrop-blur-md max-w-lg w-full shadow-2xl relative z-20"> 
@@ -8351,6 +9281,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 {entryError && (
                     <div className="mt-3 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2">
                         {entryError}
+                    </div>
+                )}
+                {hostUpdateDeploymentBanner && (
+                    <div className="mt-3">
+                        {hostUpdateDeploymentBanner}
                     </div>
                 )}
                 <div className="mt-6 text-xs text-zinc-500 font-mono tracking-widest">{VERSION}</div> 
@@ -8563,7 +9498,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <span className="text-white font-semibold">{orgContext?.status || 'inactive'}</span>
                                         </div>
                                     </div>
-                                    <div className="text-sm text-zinc-400">Launch creates your first room with these defaults and opens the Host control panel.</div>
+                                    <div className="text-sm text-zinc-400">Launch creates your first room, then opens a Night Setup wizard for queue policy and mode planning.</div>
                                     <div className="flex justify-between gap-2">
                                         <button
                                             onClick={() => setOnboardingStep(2)}
@@ -9047,6 +9982,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     if (isChatPopout) {
         return (
             <div className="min-h-screen bg-zinc-950 text-white font-saira p-4 md:p-6">
+                {hostUpdateDeploymentBanner && (
+                    <div className="max-w-5xl mx-auto mb-3">
+                        {hostUpdateDeploymentBanner}
+                    </div>
+                )}
                 <div className={`${STYLES.panel} p-4 md:p-6 max-w-5xl mx-auto`}>
                     <HostChatPanel
                         chatOpen={true}
@@ -9130,6 +10070,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     mixFader={mixFader}
                     handleMixFaderChange={handleMixFaderChange}
                 />
+
+            {hostUpdateDeploymentBanner && (
+                <div className="px-3 sm:px-4 md:px-5 lg:px-6 pt-3">
+                    {hostUpdateDeploymentBanner}
+                </div>
+            )}
 
             <div className="flex-1 min-h-0 p-3 sm:p-4 md:p-5 lg:p-6 overflow-y-auto md:overflow-hidden">
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
@@ -10680,14 +11626,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         disabled={!!subscriptionActionLoading}
                                         className={`${STYLES.btnStd} ${STYLES.btnPrimary} ${subscriptionActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
                                     >
-                                        {subscriptionActionLoading === 'host_monthly' ? 'Opening checkout...' : 'Host Monthly'}
+                                        {subscriptionActionLoading === 'host_monthly'
+                                            ? 'Opening checkout...'
+                                            : `${hostMonthlyPlan?.label || 'Host Monthly'} (${hostMonthlyPlan?.priceLabel || '$15/mo'})`}
                                     </button>
                                     <button
                                         onClick={() => openSubscriptionCheckout('host_annual')}
                                         disabled={!!subscriptionActionLoading}
                                         className={`${STYLES.btnStd} ${STYLES.btnSecondary} ${subscriptionActionLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
                                     >
-                                        {subscriptionActionLoading === 'host_annual' ? 'Opening checkout...' : 'Host Annual'}
+                                        {subscriptionActionLoading === 'host_annual'
+                                            ? 'Opening checkout...'
+                                            : `${hostAnnualPlan?.label || 'Host Annual'} (${hostAnnualPlan?.priceLabel || '$150/yr'})`}
                                     </button>
                                     <button
                                         onClick={openBillingPortal}
@@ -11434,6 +12384,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 </div>
             )}
+            {showNightSetupWizard && renderNightSetupWizard()}
             {showAiSetupGuide && (
                 <div className="fixed inset-0 z-[90] bg-black/80 flex items-center justify-center p-4">
                     <div className="w-full max-w-2xl bg-zinc-950 border border-zinc-700 rounded-2xl p-5 shadow-2xl">
@@ -11541,6 +12492,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 };
 
 export default HostApp;
+
 
 
 

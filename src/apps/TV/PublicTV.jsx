@@ -57,6 +57,10 @@ const extractTopTight15 = ({ spotlightPayload = null, roomUser = null } = {}) =>
 };
 const nowMs = () => Date.now();
 const tvLogger = createLogger('PublicTV');
+const seededUnit = (seed) => {
+    const x = Math.sin(seed * 12.9898) * 43758.5453;
+    return x - Math.floor(x);
+};
 
 // --- SUB-COMPONENTS ---
 const LocalQrImage = ({ value, size = 220, className = '', alt = 'QR' }) => {
@@ -446,10 +450,8 @@ const PublicTV = ({ roomCode }) => {
         [chatMessages]
     );
     const doodleRequireReview = !!room?.doodleOke?.requireReview;
-    const doodleApprovedUidSet = useMemo(() => {
-        const approved = Array.isArray(room?.doodleOke?.approvedUids) ? room.doodleOke.approvedUids : [];
-        return new Set(approved.filter(Boolean));
-    }, [room?.doodleOke?.approvedUids]);
+    const approvedDoodleUids = Array.isArray(room?.doodleOke?.approvedUids) ? room.doodleOke.approvedUids : [];
+    const doodleApprovedUidSet = new Set(approvedDoodleUids.filter(Boolean));
     const doodleVisibleSubmissions = useMemo(() => {
         if (!doodleRequireReview) return doodleSubmissions;
         return doodleSubmissions.filter((submission) => doodleApprovedUidSet.has(submission.uid));
@@ -522,7 +524,7 @@ const PublicTV = ({ roomCode }) => {
         } catch(e) { tvLogger.error("Audio Context Failed", e); }
     };
 
-    const getStormPhase = useCallback(() => {
+    const getStormPhase = () => {
         if (room?.lightMode !== 'storm') return 'off';
         if (!room?.stormStartedAt) return room?.stormPhase || 'approach';
         const cfg = room?.stormConfig || { approachMs: 15000, peakMs: 20000, passMs: 12000, clearMs: 6000 };
@@ -532,7 +534,7 @@ const PublicTV = ({ roomCode }) => {
         if (elapsed < cfg.approachMs + cfg.peakMs + cfg.passMs) return 'pass';
         if (elapsed < cfg.approachMs + cfg.peakMs + cfg.passMs + cfg.clearMs) return 'clear';
         return 'clear';
-    }, [room?.lightMode, room?.stormStartedAt, room?.stormPhase, room?.stormConfig]);
+    };
 
     useEffect(() => {
         if (room?.lightMode !== 'storm') {
@@ -543,7 +545,7 @@ const PublicTV = ({ roomCode }) => {
         updatePhase();
         const timer = setInterval(updatePhase, 500);
         return () => clearInterval(timer);
-    }, [room?.lightMode, room?.stormStartedAt, room?.stormConfig, room?.stormPhase, getStormPhase]);
+    }, [room?.lightMode, room?.stormStartedAt, room?.stormConfig, room?.stormPhase]);
 
     useEffect(() => {
         if (room?.activeMode !== 'doodle_oke') return;
@@ -1422,6 +1424,7 @@ const PublicTV = ({ roomCode }) => {
         bgVisualizerAudioRef,
         logger: tvLogger
     });
+    // eslint-disable-next-line react-hooks/refs
     const visualizerSourceElement = shouldUseBgMediaElement ? bgVisualizerAudioRef.current : null;
     const guitarLeaders = room?.guitarSessionId
         ? vibeUsers.filter(u => u.guitarSessionId === room.guitarSessionId)
@@ -1445,6 +1448,32 @@ const PublicTV = ({ roomCode }) => {
     const motionSafeFx = !!room?.reduceMotionFx;
     const bangerParticleCount = motionSafeFx ? 8 : 15;
     const balladParticleCount = motionSafeFx ? 4 : 6;
+    const particleSeedBase = useMemo(
+        () => String(roomCode || '').split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0) || 1,
+        [roomCode]
+    );
+    const bangerParticlePool = useMemo(
+        () => [EMOJI.fire, emoji(0x1F692), emoji(0x1F9D1, 0x200D, 0x1F692), emoji(0x1F9EF), emoji(0x1F9E8)],
+        []
+    );
+    const bangerParticles = useMemo(
+        () => Array.from({ length: bangerParticleCount }, (_, idx) => ({
+            id: `banger-fire-${idx}`,
+            left: `${Math.round(seededUnit(particleSeedBase + idx * 17) * 1000) / 10}%`,
+            animationDelay: `${(seededUnit(particleSeedBase + idx * 29) * 2).toFixed(2)}s`,
+            icon: bangerParticlePool[Math.floor(seededUnit(particleSeedBase + idx * 41) * bangerParticlePool.length)] || EMOJI.fire
+        })),
+        [bangerParticleCount, bangerParticlePool, particleSeedBase]
+    );
+    const balladParticles = useMemo(
+        () => Array.from({ length: balladParticleCount }, (_, idx) => ({
+            id: `ballad-fire-${idx}`,
+            left: `${Math.round(seededUnit(particleSeedBase + idx * 13) * 1000) / 10}%`,
+            animationDelay: `${(seededUnit(particleSeedBase + idx * 23) * 2.5).toFixed(2)}s`,
+            animationDuration: `${(1.8 + seededUnit(particleSeedBase + idx * 31) * 1.6).toFixed(2)}s`
+        })),
+        [balladParticleCount, particleSeedBase]
+    );
     const appBase = `${window.location.origin}${import.meta.env.BASE_URL || '/'}`;
     const joinUrl = `${appBase}?room=${roomCode}`;
     const joinUrlDisplay = joinUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -1501,6 +1530,14 @@ const PublicTV = ({ roomCode }) => {
             shortLabel: 'Approval On'
         }] : [])
     ];
+
+    const recapTs = recap ? getTimestampMs(recap.timestamp) : 0;
+    const recapPulseKey = recap ? `recap-${recapTs || recap.songTitle || 'recap'}` : '';
+
+    useEffect(() => {
+        if (!recapPulseKey) return;
+        triggerTipPulse(recapPulseKey);
+    }, [recapPulseKey, triggerTipPulse]);
     const hasMarqueeContent = (marqueeItems.length > 0) || messages.length > 0;
     const isShortViewport = viewportSize.height <= 820;
     const isVeryShortViewport = viewportSize.height <= 700;
@@ -1811,7 +1848,6 @@ const PublicTV = ({ roomCode }) => {
 
     // 3. Recap Overlay
     if (recap) {
-        triggerTipPulse(`recap-${recap.timestamp || recap.songTitle || 'recap'}`);
         const topFan = recap.topFan;
         const vibeStats = recap.vibeStats;
         return (
@@ -2056,9 +2092,9 @@ const PublicTV = ({ roomCode }) => {
                 <>
                     <div className="absolute inset-0 z-[140] pointer-events-none vibe-banger mix-blend-overlay bg-red-500/20"></div>
                     <div className="fire-overlay">
-                        {[...Array(bangerParticleCount)].map((_, i) => (
-                            <div key={i} className="fire-particle" style={{ left: `${Math.random() * 100}%`, animationDelay: `${Math.random() * 2}s` }}>
-                                {[EMOJI.fire, emoji(0x1F692), emoji(0x1F9D1, 0x200D, 0x1F692), emoji(0x1F9EF), emoji(0x1F9E8)][Math.floor(Math.random() * 5)]}
+                        {bangerParticles.map((particle) => (
+                            <div key={particle.id} className="fire-particle" style={{ left: particle.left, animationDelay: particle.animationDelay }}>
+                                {particle.icon}
                             </div>
                         ))}
                     </div>
@@ -2071,14 +2107,14 @@ const PublicTV = ({ roomCode }) => {
                     <div className="absolute inset-x-0 bottom-0 h-[40%] ballad-glow opacity-60"></div>
                     <div className="absolute inset-0 fire-overlay opacity-40"></div>
                     <div className="absolute inset-0 pointer-events-none">
-                        {[...Array(balladParticleCount)].map((_, i) => (
+                        {balladParticles.map((particle) => (
                             <div
-                                key={`ballad-fire-${i}`}
+                                key={particle.id}
                                 className="fire-particle"
                                 style={{
-                                    left: `${Math.random() * 100}%`,
-                                    animationDelay: `${Math.random() * 2.5}s`,
-                                    animationDuration: `${1.8 + Math.random() * 1.6}s`,
+                                    left: particle.left,
+                                    animationDelay: particle.animationDelay,
+                                    animationDuration: particle.animationDuration,
                                     fontSize: '2rem',
                                     opacity: 0.6
                                 }}
