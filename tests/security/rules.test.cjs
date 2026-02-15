@@ -127,6 +127,11 @@ async function run() {
       await assertSucceeds(db.doc(roomPath()).update({ activeMode: "bingo" }));
     }],
 
+    ["firestore: host cannot directly update room key (callable-only host writes)", async () => {
+      const db = testEnv.authenticatedContext(HOST_UID).firestore();
+      await assertFails(db.doc(roomPath()).update({ activeMode: "karaoke_bracket" }));
+    }],
+
     ["firestore: non-host cannot update non-whitelisted room key", async () => {
       const db = testEnv.authenticatedContext(GUEST_UID).firestore();
       await assertFails(db.doc(roomPath()).update({ tipPointRate: 999 }));

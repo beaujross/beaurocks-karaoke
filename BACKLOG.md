@@ -1,6 +1,6 @@
 # Backlog
 
-Last updated: 2026-02-13
+Last updated: 2026-02-15
 
 ## Overnight Queue (Target: 2026-02-12 Morning)
 - [x] WS1 Fame XP UX: add next-unlock and points-to-next-level clarity across singer profile surfaces.
@@ -23,6 +23,8 @@ Last updated: 2026-02-13
 - Public TV 10-foot UX pass: continue readability polish (sidebar density, chat/activity typography, reduce overlay collision during high-intensity scenes).
 - VIP profile onboarding: enforce ToS consent and required fields; allow profile edits from app.
 - Fame XP UX: clearer "next unlock" and progress feedback in profile surfaces.
+- Native Apple IAP backend completion: implement App Store Server API transaction verification + idempotent grant ledger + App Store Server Notifications ingestion for subscription lifecycle sync.
+- iOS app ship track: stand up iOS shell (Capacitor/native bridge), wire StoreKit purchase/restore flow to backend verification, and complete App Store Connect/TestFlight/review assets for launch readiness.
 
 ## P2 - Medium
 - Usage metering + overage billing: per-org usage ledger, included quotas, overage invoicing, and reconciliation against cloud billing.

@@ -113,18 +113,14 @@ service cloud.firestore {
           && request.resource.data.hostUids is list
           && request.auth.uid in request.resource.data.hostUids;
 
-        // Non-host updates are only allowed for explicitly whitelisted room fields
-        // and cannot mutate ownership.
+        // Direct client writes are limited to non-host participants and only
+        // for explicitly whitelisted room fields. Host mutations are callable-only.
         allow update: if isBrossApp(appId)
           && isAuthed()
-          && (
-            isRoomHost(roomCode)
-            || (
-              request.resource.data.hostUid == resource.data.hostUid
-              && request.resource.data.hostUids == resource.data.hostUids
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(nonHostRoomWritableKeys())
-            )
-          );
+          && !isRoomHost(roomCode)
+          && request.resource.data.hostUid == resource.data.hostUid
+          && request.resource.data.hostUids == resource.data.hostUids
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(nonHostRoomWritableKeys());
 
         allow delete: if isBrossApp(appId) && isRoomHost(roomCode);
       }

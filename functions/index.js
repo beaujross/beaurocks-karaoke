@@ -181,6 +181,487 @@ const getRootRef = () =>
     .doc("data");
 
 const normalizeRoomCode = (value = "") => String(value || "").trim().toUpperCase();
+const HOST_UPDATE_OP_FIELD = "__hostOp";
+const HOST_UPDATE_SERVER_TIMESTAMP = "serverTimestamp";
+const HOST_UPDATE_MAX_DEPTH = 8;
+const HOST_UPDATE_MAX_ARRAY_ITEMS = 250;
+const HOST_UPDATE_MAX_OBJECT_KEYS = 250;
+const HOST_UPDATE_MAX_STRING_LENGTH = 20000;
+const UPDATE_BLOCKED_PATH_TOKENS = new Set([
+  "__proto__",
+  "prototype",
+  "constructor",
+]);
+const ROOM_UPDATE_BLOCKED_ROOT_KEYS = new Set([
+  "hostUid",
+  "hostUids",
+  "orgId",
+  "createdAt",
+  "__proto__",
+  "prototype",
+  "constructor",
+]);
+const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
+  "activeMode",
+  "activeScreen",
+  "allowSingerTrackSelect",
+  "announcement",
+  "applausePeak",
+  "appleMusicAutoPlaylistId",
+  "appleMusicAutoPlaylistTitle",
+  "appleMusicPlayback",
+  "audienceVideoMode",
+  "autoBgFadeInMs",
+  "autoBgFadeOutMs",
+  "autoBgMixDuringSong",
+  "autoBgMusic",
+  "autoDj",
+  "autoLyricsOnQueue",
+  "autoPlayMedia",
+  "bgMusicPlaying",
+  "bgMusicUrl",
+  "bgMusicVolume",
+  "bingoAudienceReopenEnabled",
+  "bingoAutoApprovePct",
+  "bingoBoardId",
+  "bingoData",
+  "bingoFocus",
+  "bingoMode",
+  "bingoPickerName",
+  "bingoPickerUid",
+  "bingoRevealed",
+  "bingoShowTv",
+  "bingoSize",
+  "bingoSuggestions",
+  "bingoTurnIndex",
+  "bingoTurnOrder",
+  "bingoTurnPick",
+  "bingoVotingMode",
+  "bingoWin",
+  "bonusDrop",
+  "bouncerMode",
+  "bracketLastSummary",
+  "chatAudienceMode",
+  "chatEnabled",
+  "chatShowOnTv",
+  "chatTvMode",
+  "closedAt",
+  "currentApplauseLevel",
+  "doodleOke",
+  "doodleOkeConfig",
+  "featuredPhotoId",
+  "gameData",
+  "gameDefaults",
+  "gameParticipantMode",
+  "gameParticipants",
+  "gamePreviewId",
+  "gameRulesId",
+  "guitarSessionId",
+  "guitarVictory",
+  "guitarWinner",
+  "highlightedTile",
+  "hostName",
+  "hostNightPreset",
+  "howToPlay",
+  "karaokeBracket",
+  "lastPerformance",
+  "layoutMode",
+  "lightMode",
+  "logoUrl",
+  "marqueeDurationMs",
+  "marqueeEnabled",
+  "marqueeIntervalMs",
+  "marqueeItems",
+  "marqueeShowMode",
+  "mediaUrl",
+  "mixFader",
+  "pausedAt",
+  "photoOverlay",
+  "popTriviaEnabled",
+  "queueSettings",
+  "readyCheck",
+  "readyCheckDurationSec",
+  "readyCheckRewardPoints",
+  "recap",
+  "recapPreview",
+  "selfieChallenge",
+  "selfieMoment",
+  "selfieMomentExpiresAt",
+  "showFameLevel",
+  "showLyricsSinger",
+  "showLyricsTv",
+  "showScoring",
+  "showVisualizerTv",
+  "singAlongMode",
+  "spotlightUser",
+  "stormConfig",
+  "stormEndsAt",
+  "stormPhase",
+  "stormSequenceId",
+  "stormStartedAt",
+  "strobeCountdownUntil",
+  "strobeEndsAt",
+  "strobeResults",
+  "strobeSessionId",
+  "strobeVictory",
+  "strobeWinner",
+  "tipCrates",
+  "tipPointRate",
+  "tipQrUrl",
+  "tipUrl",
+  "triviaQuestion",
+  "videoPlaying",
+  "videoStartTimestamp",
+  "videoVolume",
+  "wyrData",
+]);
+const HOST_ROOM_BOOLEAN_ROOT_KEYS = new Set([
+  "allowSingerTrackSelect",
+  "autoBgMusic",
+  "autoDj",
+  "autoLyricsOnQueue",
+  "autoPlayMedia",
+  "bgMusicPlaying",
+  "bingoAudienceReopenEnabled",
+  "bingoShowTv",
+  "bouncerMode",
+  "chatEnabled",
+  "chatShowOnTv",
+  "marqueeEnabled",
+  "popTriviaEnabled",
+  "showFameLevel",
+  "showLyricsSinger",
+  "showLyricsTv",
+  "showScoring",
+  "showVisualizerTv",
+  "singAlongMode",
+]);
+const HOST_ROOM_NUMBER_ROOT_KEYS = new Set([
+  "applausePeak",
+  "autoBgFadeInMs",
+  "autoBgFadeOutMs",
+  "autoBgMixDuringSong",
+  "bgMusicVolume",
+  "bingoAutoApprovePct",
+  "bingoBoardId",
+  "bingoSize",
+  "bingoTurnIndex",
+  "closedAt",
+  "currentApplauseLevel",
+  "gameRulesId",
+  "guitarSessionId",
+  "marqueeDurationMs",
+  "marqueeIntervalMs",
+  "mixFader",
+  "pausedAt",
+  "readyCheckDurationSec",
+  "readyCheckRewardPoints",
+  "selfieMomentExpiresAt",
+  "stormEndsAt",
+  "stormSequenceId",
+  "stormStartedAt",
+  "strobeCountdownUntil",
+  "strobeEndsAt",
+  "strobeSessionId",
+  "tipPointRate",
+  "videoStartTimestamp",
+  "videoVolume",
+]);
+const HOST_ROOM_STRING_ROOT_KEYS = new Set([
+  "activeMode",
+  "activeScreen",
+  "appleMusicAutoPlaylistId",
+  "appleMusicAutoPlaylistTitle",
+  "audienceVideoMode",
+  "bgMusicUrl",
+  "bingoMode",
+  "bingoPickerName",
+  "bingoPickerUid",
+  "bingoVotingMode",
+  "chatAudienceMode",
+  "chatTvMode",
+  "gameParticipantMode",
+  "gamePreviewId",
+  "hostName",
+  "hostNightPreset",
+  "layoutMode",
+  "lightMode",
+  "logoUrl",
+  "marqueeShowMode",
+  "mediaUrl",
+  "stormPhase",
+  "tipQrUrl",
+  "tipUrl",
+]);
+const HOST_ROOM_ARRAY_ROOT_KEYS = new Set([
+  "bingoTurnOrder",
+  "gameParticipants",
+  "marqueeItems",
+]);
+const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
+  "announcement",
+  "appleMusicPlayback",
+  "bingoData",
+  "bingoFocus",
+  "bingoRevealed",
+  "bingoSuggestions",
+  "bingoTurnPick",
+  "bingoWin",
+  "bonusDrop",
+  "bracketLastSummary",
+  "doodleOke",
+  "doodleOkeConfig",
+  "gameData",
+  "gameDefaults",
+  "guitarVictory",
+  "guitarWinner",
+  "howToPlay",
+  "karaokeBracket",
+  "lastPerformance",
+  "photoOverlay",
+  "queueSettings",
+  "readyCheck",
+  "recap",
+  "recapPreview",
+  "selfieChallenge",
+  "selfieMoment",
+  "spotlightUser",
+  "stormConfig",
+  "strobeResults",
+  "strobeVictory",
+  "strobeWinner",
+  "triviaQuestion",
+  "wyrData",
+]);
+const HOST_ROOM_DOTTED_KEY_RULES = [
+  {
+    pattern: /^announcement\.active$/,
+    label: "announcement.active",
+    validate: (value) => typeof value === "boolean",
+  },
+  {
+    pattern: /^readyCheck\.active$/,
+    label: "readyCheck.active",
+    validate: (value) => typeof value === "boolean",
+  },
+  {
+    pattern: /^bingoRevealed\.[A-Za-z0-9_-]+$/,
+    label: "bingoRevealed.<slot>",
+    validate: (value) => typeof value === "boolean",
+  },
+  {
+    pattern: /^bingoSuggestions\.[A-Za-z0-9_-]+\.approvedAt$/,
+    label: "bingoSuggestions.<slot>.approvedAt",
+    validate: (value) =>
+      value === null || isHostServerTimestampMarker(value) || isFiniteNumber(value),
+  },
+  {
+    pattern: /^bingoSuggestions\.[A-Za-z0-9_-]+\.count$/,
+    label: "bingoSuggestions.<slot>.count",
+    validate: (value) => isFiniteNumber(value),
+  },
+  {
+    pattern: /^bingoSuggestions\.[A-Za-z0-9_-]+\.lastAt$/,
+    label: "bingoSuggestions.<slot>.lastAt",
+    validate: (value) => value === null || isFiniteNumber(value) || isHostServerTimestampMarker(value),
+  },
+  {
+    pattern: /^bingoSuggestions\.[A-Za-z0-9_-]+\.lastNote$/,
+    label: "bingoSuggestions.<slot>.lastNote",
+    validate: (value) => typeof value === "string" && value.length <= HOST_UPDATE_MAX_STRING_LENGTH,
+  },
+];
+
+const isPlainObject = (value) =>
+  !!value && Object.prototype.toString.call(value) === "[object Object]";
+const isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
+const isBlockedKeyToken = (value = "") =>
+  UPDATE_BLOCKED_PATH_TOKENS.has(value) || value.startsWith("__");
+const isHostServerTimestampMarker = (value) =>
+  isPlainObject(value)
+    && Object.keys(value).length === 1
+    && value[HOST_UPDATE_OP_FIELD] === HOST_UPDATE_SERVER_TIMESTAMP;
+const isValidUpdatePathToken = (value = "") =>
+  /^[A-Za-z0-9_-]{1,80}$/.test(value) && !isBlockedKeyToken(value);
+
+const validateHostRoomUpdateValue = (value, depth = 0) => {
+  if (depth > HOST_UPDATE_MAX_DEPTH) {
+    throw new HttpsError("invalid-argument", "updates payload is nested too deeply.");
+  }
+  if (value === undefined) return;
+  if (value === null) return;
+
+  const valueType = typeof value;
+  if (valueType === "string") {
+    if (value.length > HOST_UPDATE_MAX_STRING_LENGTH) {
+      throw new HttpsError("invalid-argument", "String update value is too large.");
+    }
+    return;
+  }
+  if (valueType === "boolean") return;
+  if (valueType === "number") {
+    if (!Number.isFinite(value)) {
+      throw new HttpsError("invalid-argument", "Numeric update values must be finite.");
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length > HOST_UPDATE_MAX_ARRAY_ITEMS) {
+      throw new HttpsError("invalid-argument", "Array update value has too many items.");
+    }
+    value.forEach((entry) => validateHostRoomUpdateValue(entry, depth + 1));
+    return;
+  }
+
+  if (!isPlainObject(value)) {
+    throw new HttpsError("invalid-argument", "updates payload contains unsupported values.");
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, HOST_UPDATE_OP_FIELD)) {
+    if (!isHostServerTimestampMarker(value)) {
+      throw new HttpsError("invalid-argument", `Unsupported host update operation "${HOST_UPDATE_OP_FIELD}".`);
+    }
+    return;
+  }
+
+  const keys = Object.keys(value);
+  if (keys.length > HOST_UPDATE_MAX_OBJECT_KEYS) {
+    throw new HttpsError("invalid-argument", "Object update value has too many keys.");
+  }
+  keys.forEach((key) => {
+    if (!isValidUpdatePathToken(key)) {
+      throw new HttpsError("invalid-argument", `Invalid nested update key token: ${key}`);
+    }
+    validateHostRoomUpdateValue(value[key], depth + 1);
+  });
+};
+
+const validateHostRoomUpdateType = (key, value) => {
+  if (HOST_ROOM_BOOLEAN_ROOT_KEYS.has(key) && typeof value !== "boolean") {
+    throw new HttpsError("invalid-argument", `Room field "${key}" must be a boolean.`);
+  }
+  if (HOST_ROOM_NUMBER_ROOT_KEYS.has(key) && !isFiniteNumber(value)) {
+    throw new HttpsError("invalid-argument", `Room field "${key}" must be a finite number.`);
+  }
+  if (HOST_ROOM_STRING_ROOT_KEYS.has(key) && !(value === null || typeof value === "string")) {
+    throw new HttpsError("invalid-argument", `Room field "${key}" must be a string or null.`);
+  }
+  if (HOST_ROOM_ARRAY_ROOT_KEYS.has(key) && !Array.isArray(value)) {
+    throw new HttpsError("invalid-argument", `Room field "${key}" must be an array.`);
+  }
+  if (HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS.has(key) && !(value === null || isPlainObject(value))) {
+    throw new HttpsError("invalid-argument", `Room field "${key}" must be an object or null.`);
+  }
+
+  if (key === "featuredPhotoId") {
+    const valid = value === null || typeof value === "string" || isFiniteNumber(value);
+    if (!valid) {
+      throw new HttpsError("invalid-argument", "Room field \"featuredPhotoId\" must be string, number, or null.");
+    }
+  }
+
+  if (key === "highlightedTile") {
+    const valid = value === null
+      || typeof value === "string"
+      || isFiniteNumber(value)
+      || isPlainObject(value);
+    if (!valid) {
+      throw new HttpsError("invalid-argument", "Room field \"highlightedTile\" has an invalid value type.");
+    }
+  }
+};
+
+const matchDottedHostRoomRule = (key = "") =>
+  HOST_ROOM_DOTTED_KEY_RULES.find((rule) => rule.pattern.test(key)) || null;
+
+const decodeHostRoomUpdateValue = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((entry) => decodeHostRoomUpdateValue(entry));
+  }
+  if (!isPlainObject(value)) return value;
+  if (Object.prototype.hasOwnProperty.call(value, HOST_UPDATE_OP_FIELD)) {
+    if (!isHostServerTimestampMarker(value)) {
+      throw new HttpsError("invalid-argument", "Unsupported host update operation payload.");
+    }
+    return admin.firestore.FieldValue.serverTimestamp();
+  }
+  const next = {};
+  Object.entries(value).forEach(([key, child]) => {
+    next[key] = decodeHostRoomUpdateValue(child);
+  });
+  return next;
+};
+
+const normalizeHostRoomUpdates = (rawUpdates = {}) => {
+  if (!isPlainObject(rawUpdates)) {
+    throw new HttpsError("invalid-argument", "updates must be an object.");
+  }
+  const entries = Object.entries(rawUpdates);
+  if (!entries.length) {
+    throw new HttpsError("invalid-argument", "updates must include at least one field.");
+  }
+  if (entries.length > 200) {
+    throw new HttpsError("invalid-argument", "Too many updates in one request.");
+  }
+
+  const normalized = {};
+  let estimatedChars = 0;
+
+  entries.forEach(([rawKey, rawValue]) => {
+    const key = String(rawKey || "").trim();
+    if (!key) {
+      throw new HttpsError("invalid-argument", "Update keys must be non-empty strings.");
+    }
+    if (key.length > 160 || key.startsWith(".") || key.endsWith(".") || key.includes("..")) {
+      throw new HttpsError("invalid-argument", `Invalid update key: ${key}`);
+    }
+
+    const pathTokens = key.split(".");
+    if (!pathTokens.every((token) => isValidUpdatePathToken(token))) {
+      throw new HttpsError("invalid-argument", `Invalid update key: ${key}`);
+    }
+    const rootKey = pathTokens[0];
+    if (ROOM_UPDATE_BLOCKED_ROOT_KEYS.has(rootKey)) {
+      throw new HttpsError("permission-denied", `Room field "${rootKey}" cannot be updated from client payloads.`);
+    }
+    if (!HOST_ROOM_ALLOWED_ROOT_KEYS.has(rootKey)) {
+      throw new HttpsError("invalid-argument", `Room field "${rootKey}" is not writable through host updates.`);
+    }
+
+    validateHostRoomUpdateValue(rawValue);
+    if (pathTokens.length > 1) {
+      const dottedRule = matchDottedHostRoomRule(key);
+      if (!dottedRule) {
+        throw new HttpsError("invalid-argument", `Nested room update path "${key}" is not allowed.`);
+      }
+      if (!dottedRule.validate(rawValue)) {
+        throw new HttpsError("invalid-argument", `Nested room update path "${dottedRule.label}" has an invalid value.`);
+      }
+    } else {
+      validateHostRoomUpdateType(rootKey, rawValue);
+    }
+
+    const value = decodeHostRoomUpdateValue(rawValue);
+    if (value === undefined) return;
+    normalized[key] = value;
+    estimatedChars += key.length;
+    try {
+      estimatedChars += JSON.stringify(rawValue).length;
+    } catch {
+      estimatedChars += 0;
+    }
+  });
+
+  if (!Object.keys(normalized).length) {
+    throw new HttpsError("invalid-argument", "No valid update fields provided.");
+  }
+  if (estimatedChars > 120000) {
+    throw new HttpsError("invalid-argument", "updates payload too large.");
+  }
+
+  return normalized;
+};
 
 const sanitizeOrgToken = (value = "") =>
   String(value || "")
@@ -2470,6 +2951,61 @@ exports.listMyUsageInvoices = onCall({ cors: true }, async (request) => {
     orgId,
     count: invoices.length,
     invoices,
+  };
+});
+
+exports.assertRoomHostAccess = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "assert_room_host_access", { perMinute: 60, perHour: 720 });
+  enforceAppCheckIfEnabled(request, "assert_room_host_access");
+  const callerUid = requireAuth(request);
+  const roomCode = String(request.data?.roomCode || "").trim().toUpperCase();
+  ensureString(roomCode, "roomCode");
+
+  const { roomCode: safeRoomCode, roomData } = await ensureRoomHostAccess({
+    roomCode,
+    callerUid,
+    deniedMessage: "Only room hosts can access host controls.",
+  });
+
+  const hostUid = typeof roomData?.hostUid === "string" ? roomData.hostUid : "";
+  const hostUids = Array.isArray(roomData?.hostUids)
+    ? roomData.hostUids.filter((uid) => typeof uid === "string")
+    : [];
+
+  return {
+    ok: true,
+    roomCode: safeRoomCode,
+    hostUid,
+    hostUids,
+  };
+});
+
+exports.updateRoomAsHost = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "update_room_as_host", { perMinute: 90, perHour: 900 });
+  enforceAppCheckIfEnabled(request, "update_room_as_host");
+  const callerUid = requireAuth(request);
+  const roomCode = String(request.data?.roomCode || "").trim().toUpperCase();
+  ensureString(roomCode, "roomCode");
+  const updates = normalizeHostRoomUpdates(request.data?.updates || {});
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const result = await db.runTransaction(async (tx) => {
+    const { roomRef, roomCode: safeRoomCode } = await ensureRoomHostAccess({
+      tx,
+      rootRef,
+      roomCode,
+      callerUid,
+      deniedMessage: "Only room hosts can update room controls.",
+    });
+    tx.update(roomRef, updates);
+    return { roomCode: safeRoomCode };
+  });
+
+  return {
+    ok: true,
+    roomCode: result.roomCode,
+    updatedKeys: Object.keys(updates),
   };
 });
 

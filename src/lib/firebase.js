@@ -15,6 +15,7 @@ import {
   linkWithCredential,
   updateProfile,
   setPersistence,
+  browserLocalPersistence,
   browserSessionPersistence,
   inMemoryPersistence,
   RecaptchaVerifier,
@@ -159,6 +160,20 @@ const shouldEnableAppCheckClient = () => {
 const shouldRequireLocalAppCheck = () => {
   const envRequired = readEnvBool("VITE_REQUIRE_APP_CHECK", false);
   return envRequired;
+};
+
+const resolveAuthPersistenceMode = () => {
+  const explicitMode = readEnv("VITE_AUTH_PERSISTENCE").toLowerCase();
+  if (explicitMode === "local") return browserLocalPersistence;
+  if (explicitMode === "memory") return inMemoryPersistence;
+  if (explicitMode === "session") return browserSessionPersistence;
+  if (typeof window !== "undefined") {
+    const host = window.location?.hostname || "";
+    if (host === "localhost" || host === "127.0.0.1") {
+      return browserLocalPersistence;
+    }
+  }
+  return browserSessionPersistence;
 };
 
 const getAppCheckSiteKey = () => {
@@ -361,14 +376,30 @@ const listMyUsageInvoices = async (opts = {}) => {
   return data || null;
 };
 
+const assertRoomHostAccess = async (roomCode = "") => {
+  await requireAppCheckToken("assertRoomHostAccess");
+  const data = await callFunction("assertRoomHostAccess", { roomCode });
+  return data || null;
+};
+
+const updateRoomAsHost = async (roomCode = "", updates = {}) => {
+  await requireAppCheckToken("updateRoomAsHost");
+  const data = await callFunction("updateRoomAsHost", {
+    roomCode,
+    updates: updates || {},
+  });
+  return data || null;
+};
+
 // Helper for Auth
 const initAuth = async (customToken) => {
   try {
+    const preferredPersistence = resolveAuthPersistenceMode();
     try {
-      await setPersistence(auth, browserSessionPersistence);
+      await setPersistence(auth, preferredPersistence);
     } catch {
       try {
-      await setPersistence(auth, inMemoryPersistence);
+        await setPersistence(auth, inMemoryPersistence);
       } catch (inner) {
         firebaseLogger.debug("Auth persistence fallback failed", inner);
       }
@@ -567,6 +598,8 @@ export {
   getMyUsageInvoiceDraft,
   saveMyUsageInvoiceDraft,
   listMyUsageInvoices,
+  assertRoomHostAccess,
+  updateRoomAsHost,
   auth, 
   db, 
   rtdb, 
