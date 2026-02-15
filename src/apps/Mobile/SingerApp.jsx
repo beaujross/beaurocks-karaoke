@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallba
 import { 
     db, doc, onSnapshot, setDoc, updateDoc, increment, serverTimestamp, 
     addDoc, collection, query, where, orderBy, limit, deleteDoc, arrayUnion,
-    getDoc, runTransaction,
+    getDoc, getDocs, runTransaction,
     storage, storageRef, uploadBytesResumable, getDownloadURL,
     auth, ensureUserProfile, EmailAuthProvider, linkWithCredential, onAuthStateChanged,
     RecaptchaVerifier, signInWithPhoneNumber, PhoneAuthProvider,
@@ -27,6 +27,12 @@ import UserMetaCard from '../../components/UserMetaCard';
 import { FAME_LEVELS, getLevelFromFame, getProgressToNextLevel } from '../../lib/fameConstants';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
 import groupChatMessages from '../../lib/chatGrouping';
+import {
+    DEFAULT_POP_TRIVIA_ROUND_SEC,
+    POP_TRIVIA_VOTE_TYPE,
+    dedupeQuestionVotes,
+    getActivePopTriviaQuestion
+} from '../../lib/popTrivia';
 
 // Helper Component for Animated Points
 const AnimatedPoints = ({ value, onClick, className = '' }) => {
@@ -563,6 +569,9 @@ const SingerApp = ({ roomCode, uid }) => {
     const [pendingBingoSuggest, setPendingBingoSuggest] = useState(null);
     const [bingoSuggestNote, setBingoSuggestNote] = useState('');
     const [bingoRngNow, setBingoRngNow] = useState(Date.now());
+    const [popTriviaNow, setPopTriviaNow] = useState(Date.now());
+    const [popTriviaVotes, setPopTriviaVotes] = useState([]);
+    const [popTriviaSubmitting, setPopTriviaSubmitting] = useState(false);
 
     // Phone/SMS VIP state
     const [showPhoneModal, setShowPhoneModal] = useState(false);
@@ -1833,6 +1842,64 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         });
         return () => unsub();
     }, [roomCode]);
+    const popTriviaRoundSec = Math.max(8, Number(room?.popTriviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC));
+    const popTriviaState = useMemo(() => {
+        if (room?.activeMode !== 'karaoke') return null;
+        if (room?.popTriviaEnabled === false) return null;
+        if (!currentSinger) return null;
+        return getActivePopTriviaQuestion({
+            song: currentSinger,
+            now: popTriviaNow,
+            roundSec: popTriviaRoundSec
+        });
+    }, [currentSinger, popTriviaNow, popTriviaRoundSec, room?.activeMode, room?.popTriviaEnabled]);
+    const popTriviaQuestion = popTriviaState?.question || null;
+    const popTriviaQuestionId = popTriviaQuestion?.id || '';
+    const popTriviaVoteCounts = useMemo(() => {
+        const count = Array.from({ length: popTriviaQuestion?.options?.length || 0 }, () => 0);
+        popTriviaVotes.forEach((vote) => {
+            const idx = Number(vote?.val);
+            if (!Number.isInteger(idx)) return;
+            if (idx < 0 || idx >= count.length) return;
+            count[idx] += 1;
+        });
+        return count;
+    }, [popTriviaVotes, popTriviaQuestion?.options?.length]);
+    const popTriviaMyVote = useMemo(() => {
+        if (!popTriviaVotes.length) return null;
+        const mine = popTriviaVotes.find((vote) => (vote?.uid && uid ? vote.uid === uid : false));
+        if (!mine) return null;
+        const val = Number(mine.val);
+        return Number.isInteger(val) ? val : null;
+    }, [popTriviaVotes, uid]);
+
+    useEffect(() => {
+        if (!popTriviaQuestionId) {
+            setPopTriviaVotes([]);
+            return () => {};
+        }
+        const voteQuery = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
+            where('roomCode', '==', roomCode),
+            where('questionId', '==', popTriviaQuestionId)
+        );
+        const unsub = onSnapshot(voteQuery, (snap) => {
+            const deduped = dedupeQuestionVotes(
+                snap.docs.map((docSnap) => docSnap.data()),
+                POP_TRIVIA_VOTE_TYPE
+            );
+            setPopTriviaVotes(deduped);
+        });
+        return () => unsub();
+    }, [roomCode, popTriviaQuestionId]);
+    useEffect(() => {
+        if (room?.activeMode !== 'karaoke') return;
+        if (room?.popTriviaEnabled === false) return;
+        if (!currentSinger?.id || !Array.isArray(currentSinger?.popTrivia) || currentSinger.popTrivia.length === 0) return;
+        setPopTriviaNow(Date.now());
+        const timer = setInterval(() => setPopTriviaNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [currentSinger?.id, currentSinger?.popTrivia, room?.activeMode, room?.popTriviaEnabled]);
 
     // Ensure a persistent user doc for account-level data (tight15, vipLevel)
     useEffect(() => {
@@ -2234,6 +2301,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [searchQ]);
 
     useEffect(() => {
+        if (songsTab === 'browse') return;
+        setActiveBrowseList(null);
+        setShowTop100(false);
+        setShowYtIndex(false);
+    }, [songsTab]);
+
+    useEffect(() => {
         if (tight15SearchQ.length < 3) { setTight15Results([]); return; }
         let canceled = false;
         const t = setTimeout(async () => {
@@ -2318,7 +2392,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
     
     const sendChatMessage = async (overrideText = null) => {
-        const message = (overrideText ?? chatMsg).trim();
+        const isEventLike = !!overrideText
+            && typeof overrideText === 'object'
+            && (
+                typeof overrideText.preventDefault === 'function'
+                || 'nativeEvent' in overrideText
+                || 'target' in overrideText
+            );
+        const rawMessage = isEventLike ? chatMsg : (overrideText ?? chatMsg);
+        const message = String(rawMessage ?? '').trim();
         if (!message) return;
         if (!roomCode || !user) return;
         if (room?.chatEnabled === false) {
@@ -2646,6 +2728,50 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 queuePointDelta(-cost);
             }
         } catch (error) { console.error(error); }
+    };
+
+    const submitPopTriviaVote = async (optionIndex) => {
+        if (!user || !roomCode || !popTriviaQuestionId) return;
+        if (popTriviaSubmitting) return;
+        if (popTriviaMyVote !== null) return;
+
+        setPopTriviaSubmitting(true);
+        try {
+            const existingQuery = query(
+                collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
+                where('roomCode', '==', roomCode),
+                where('questionId', '==', popTriviaQuestionId)
+            );
+            const existingSnap = await getDocs(existingQuery);
+            const deduped = dedupeQuestionVotes(
+                existingSnap.docs.map((docSnap) => docSnap.data()),
+                POP_TRIVIA_VOTE_TYPE
+            );
+            const alreadyVoted = deduped.some((vote) => vote?.uid && uid && vote.uid === uid);
+            if (alreadyVoted) {
+                toast('Answer already locked.');
+                return;
+            }
+
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
+                roomCode,
+                type: POP_TRIVIA_VOTE_TYPE,
+                val: optionIndex,
+                questionId: popTriviaQuestionId,
+                songId: currentSinger?.id || '',
+                userName: user.name || 'Player',
+                avatar: user.avatar || DEFAULT_EMOJI,
+                uid: uid || null,
+                isVote: true,
+                timestamp: serverTimestamp()
+            });
+            toast('Answer locked.');
+        } catch (error) {
+            console.error('Failed to submit pop trivia vote', error);
+            toast('Could not submit answer.');
+        } finally {
+            setPopTriviaSubmitting(false);
+        }
     };
     
     const submitSong = async (s, a, art, options = {}) => { 
@@ -5421,6 +5547,21 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             const duration = Number(s.duration);
             return sum + (Number.isFinite(duration) && duration > 0 ? duration : 300);
         }, 0);
+    const browseFilterLower = browseFilter.trim().toLowerCase();
+    const activeBrowseSongsFiltered = activeBrowseList?.songs
+        ? activeBrowseList.songs.filter((song) => (`${song.title} ${song.artist}`).toLowerCase().includes(browseFilterLower))
+        : [];
+    const top100SongsFiltered = top100Songs.filter((song) => (`${song.title} ${song.artist}`).toLowerCase().includes(browseFilterLower));
+    const ytIndexFilterLower = ytIndexFilter.trim().toLowerCase();
+    const ytIndexFiltered = ytIndex.filter((item) => (`${item.trackName} ${item.artistName}`).toLowerCase().includes(ytIndexFilterLower));
+    const openTop100Browse = () => {
+        setBrowseFilter('');
+        setShowTop100(true);
+    };
+    const openYtIndexBrowse = () => {
+        setYtIndexFilter('');
+        setShowYtIndex(true);
+    };
     const formatWaitTime = (seconds) => {
         if (!seconds) return '0m';
         const mins = Math.floor(seconds / 60);
@@ -5773,6 +5914,42 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         ) : null}
                                     </div>
                                 )}
+                                {popTriviaQuestion && (
+                                    <div className="mt-3 rounded-2xl border border-cyan-400/40 bg-black/55 backdrop-blur p-3">
+                                        <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.28em] text-cyan-200">
+                                            <span>Pop-up Trivia</span>
+                                            <span>{popTriviaState?.index + 1}/{popTriviaState?.total} | {popTriviaState?.timeLeftSec}s</span>
+                                        </div>
+                                        <div className="mt-2 text-sm font-bold text-white leading-snug">{popTriviaQuestion.q}</div>
+                                        <div className="mt-3 grid grid-cols-2 gap-2">
+                                            {popTriviaQuestion.options?.map((option, idx) => {
+                                                const isSelected = popTriviaMyVote === idx;
+                                                const optionVotes = popTriviaVoteCounts[idx] || 0;
+                                                return (
+                                                    <button
+                                                        key={`${popTriviaQuestion.id}_${idx}`}
+                                                        onClick={() => submitPopTriviaVote(idx)}
+                                                        disabled={popTriviaMyVote !== null || popTriviaSubmitting}
+                                                        className={`rounded-xl border px-3 py-2 text-left transition-all ${
+                                                            isSelected
+                                                                ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100'
+                                                                : 'border-white/15 bg-black/35 text-white hover:border-cyan-400/60'
+                                                        } ${(popTriviaMyVote !== null || popTriviaSubmitting) ? 'opacity-90' : ''}`}
+                                                    >
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-[10px] font-bold tracking-[0.22em] text-cyan-300">{String.fromCharCode(65 + idx)}</span>
+                                                            <span className="text-[11px] font-mono text-zinc-400">{optionVotes}</span>
+                                                        </div>
+                                                        <div className="mt-1 text-xs font-semibold leading-snug">{option}</div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="mt-2 text-[10px] uppercase tracking-[0.25em] text-zinc-300">
+                                            {popTriviaMyVote !== null ? 'Answer locked' : 'Tap an answer to play'}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ) : (
@@ -5996,7 +6173,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         disabled={chatInputDisabled}
                                     />
                                     <button
-                                        onClick={sendChatMessage}
+                                        onClick={() => sendChatMessage()}
                                         className="bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white px-4 rounded-xl font-bold shadow disabled:opacity-50"
                                         disabled={chatInputDisabled}
                                     >
@@ -6336,7 +6513,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                     <div className="relative z-50">
                                         <input id="song-search" value={searchQ} onChange={e=>setSearchQ(e.target.value)} className="w-full bg-zinc-800 border border-zinc-600 rounded-lg p-2.5 text-base text-white outline-none" placeholder="Search song..." />
-                                        {results.length > 0 && <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 z-50 shadow-xl max-h-60 overflow-y-auto">{results.map(r=><div key={r.trackId} onClick={()=>{submitSong(r.trackName, r.artistName, r.artworkUrl100.replace('100x100','600x600'), { itunesId: r.trackId }); setResults([]); setSearchQ('');}} className="p-3 border-b border-zinc-800 hover:bg-zinc-800 flex gap-3"><img src={r.artworkUrl100} className="w-10 h-10 rounded"/><div><div className="font-bold text-base">{r.trackName}</div><div className="text-base text-zinc-400">{r.artistName}</div></div></div>)}</div>}
+                                        {results.length > 0 && <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 z-50 shadow-xl max-h-60 touch-scroll-y custom-scrollbar">{results.map(r=><div key={r.trackId} onClick={()=>{submitSong(r.trackName, r.artistName, r.artworkUrl100.replace('100x100','600x600'), { itunesId: r.trackId }); setResults([]); setSearchQ('');}} className="p-3 border-b border-zinc-800 hover:bg-zinc-800 flex gap-3"><img src={r.artworkUrl100} className="w-10 h-10 rounded"/><div><div className="font-bold text-base">{r.trackName}</div><div className="text-base text-zinc-400">{r.artistName}</div></div></div>)}</div>}
                                     </div>
                                     {room?.allowSingerTrackSelect && (
                                         <div className="space-y-2">
@@ -6379,7 +6556,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         placeholder="Search songs to request..."
                                     />
                                     {results.length > 0 && (
-                                        <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 z-50 shadow-xl max-h-60 overflow-y-auto">
+                                        <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 z-50 shadow-xl max-h-60 touch-scroll-y custom-scrollbar">
                                             {results.map(r => (
                                                 <div
                                                     key={r.trackId}
@@ -6459,11 +6636,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 <div className="text-sm uppercase tracking-[0.35em] text-zinc-400">YouTube Index</div>
                                                 <div className="text-xl font-bebas text-cyan-400">Host-curated tracks</div>
                                             </div>
-                                            <button onClick={() => setShowYtIndex(true)} className="text-base font-bold bg-[#00C4D9] text-black px-3 py-1 rounded-full">Open List</button>
+                                            <button onClick={openYtIndexBrowse} className="text-base font-bold bg-[#00C4D9] text-black px-3 py-1 rounded-full">Open List</button>
                                         </div>
                                         <div className="grid grid-cols-3 gap-2">
                                             {ytIndex.slice(0, 6).map((item) => (
-                                                <div key={item.videoId || item.trackName} onClick={() => setShowYtIndex(true)} className="relative rounded-xl overflow-hidden border border-zinc-800 cursor-pointer">
+                                                <div key={item.videoId || item.trackName} onClick={openYtIndexBrowse} className="relative rounded-xl overflow-hidden border border-zinc-800 cursor-pointer">
                                                     <img src={item.artworkUrl100} alt={item.trackName} className="w-full aspect-square object-cover" />
                                                     <div className="absolute inset-0 bg-black/45"></div>
                                                     <div className="absolute bottom-1 left-1 right-1 text-sm text-white font-bold leading-tight">
@@ -6476,9 +6653,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                 )}
                                 {activeBrowseList && (
-                                    <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col">
+                                    <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col min-h-0">
                                         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-                                            <button onClick={() => setActiveBrowseList(null)} className="text-zinc-400 text-base">&larr; Back</button>
+                                            <button onClick={() => { setActiveBrowseList(null); setBrowseFilter(''); }} className="text-zinc-400 text-base">&larr; Back</button>
                                             <div className="text-xl font-bold">{activeBrowseList.title}</div>
                                             <div className="text-base text-zinc-500">{activeBrowseList.subtitle || 'Browse list'}</div>
                                         </div>
@@ -6493,11 +6670,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 />
                                             </div>
                                         </div>
-                                        <div className="flex-1 overflow-y-auto px-5 pb-6 custom-scrollbar">
+                                        <div className="flex-1 min-h-0 px-5 pb-6 custom-scrollbar touch-scroll-y">
                                             <div className="grid grid-cols-1 gap-3">
-                                                {activeBrowseList.songs
-                                                    .filter(s => (`${s.title} ${s.artist}`).toLowerCase().includes(browseFilter.toLowerCase()))
-                                                    .map((song, idx) => (
+                                                {activeBrowseSongsFiltered.map((song, idx) => (
                                                         <div
                                                             key={`${song.title}-${song.artist}`}
                                                             className="flex items-center gap-3 bg-zinc-900/70 border border-zinc-800 rounded-xl p-3 hover:border-[#00C4D9]/40"
@@ -6534,7 +6709,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                             </button>
                                                         </div>
                                                     ))}
-                                                {activeBrowseList.songs.filter(s => (`${s.title} ${s.artist}`).toLowerCase().includes(browseFilter.toLowerCase())).length === 0 && (
+                                                {activeBrowseSongsFiltered.length === 0 && (
                                                     <div className="text-center text-zinc-500 text-base">No matches</div>
                                                 )}
                                             </div>
@@ -6547,11 +6722,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             <div className="text-sm uppercase tracking-[0.35em] text-zinc-400">Top 100</div>
                                             <div className="text-xl font-bebas text-cyan-400">Karaoke Favorites</div>
                                         </div>
-                                        <button onClick={() => setShowTop100(true)} className="text-base font-bold bg-[#00C4D9] text-black px-3 py-1 rounded-full">Open List</button>
+                                        <button onClick={openTop100Browse} className="text-base font-bold bg-[#00C4D9] text-black px-3 py-1 rounded-full">Open List</button>
                                     </div>
                                     <div className="grid grid-cols-3 gap-2">
                                         {top100Songs.slice(0, 6).map((song) => (
-                                            <div key={`${song.title}-${song.artist}`} onClick={() => setShowTop100(true)} className="relative rounded-xl overflow-hidden border border-zinc-800 cursor-pointer">
+                                            <div key={`${song.title}-${song.artist}`} onClick={openTop100Browse} className="relative rounded-xl overflow-hidden border border-zinc-800 cursor-pointer">
                                                 <img src={song.art} alt={song.title} className="w-full aspect-square object-cover" />
                                                 <div className="absolute inset-0 bg-black/45"></div>
                                                 <div className="absolute bottom-1 left-1 right-1 text-sm text-white font-bold leading-tight">
@@ -6563,9 +6738,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <div className="text-base text-zinc-500 mt-3">Tap to open the full Top 100 list.</div>
                                 </div>
                                 {showTop100 && (
-                                    <div className="fixed inset-0 z-[80] bg-[#0b0b10] text-white flex flex-col">
+                                    <div className="fixed inset-0 z-[80] bg-[#0b0b10] text-white flex flex-col min-h-0">
                                         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-                                            <button onClick={() => setShowTop100(false)} className="text-zinc-400 text-base">&larr; Back</button>
+                                            <button onClick={() => { setShowTop100(false); setBrowseFilter(''); }} className="text-zinc-400 text-base">&larr; Back</button>
                                             <div className="text-xl font-bold">Top 100 Karaoke</div>
                                             <div className="text-base text-zinc-500">Full list</div>
                                         </div>
@@ -6580,11 +6755,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 />
                                             </div>
                                         </div>
-                                        <div className="flex-1 overflow-y-auto px-5 pb-6 custom-scrollbar">
+                                        <div className="flex-1 min-h-0 px-5 pb-6 custom-scrollbar touch-scroll-y">
                                             <div className="grid grid-cols-1 gap-3">
-                                                {top100Songs
-                                                    .filter(s => (`${s.title} ${s.artist}`).toLowerCase().includes(browseFilter.toLowerCase()))
-                                                    .map((song, idx) => (
+                                                {top100SongsFiltered.map((song, idx) => (
                                                     <div
                                                         key={`${song.title}-${song.artist}`}
                                                         className="flex items-center gap-3 bg-zinc-900/70 border border-zinc-800 rounded-xl p-3 hover:border-[#00C4D9]/40"
@@ -6621,7 +6794,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                         </button>
                                                     </div>
                                                 ))}
-                                                {top100Songs.filter(s => (`${s.title} ${s.artist}`).toLowerCase().includes(browseFilter.toLowerCase())).length === 0 && (
+                                                {top100SongsFiltered.length === 0 && (
                                                     <div className="text-center text-zinc-500 text-base">No matches</div>
                                                 )}
                                             </div>
@@ -6629,9 +6802,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                 )}
                                 {showYtIndex && (
-                                    <div className="fixed inset-0 z-[80] bg-[#0b0b10] text-white flex flex-col">
+                                    <div className="fixed inset-0 z-[80] bg-[#0b0b10] text-white flex flex-col min-h-0">
                                         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-                                            <button onClick={() => setShowYtIndex(false)} className="text-zinc-400 text-base">&larr; Back</button>
+                                            <button onClick={() => { setShowYtIndex(false); setYtIndexFilter(''); }} className="text-zinc-400 text-base">&larr; Back</button>
                                             <div className="text-xl font-bold">YouTube Index</div>
                                             <div className="text-base text-zinc-500">Host curated</div>
                                         </div>
@@ -6646,11 +6819,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 />
                                             </div>
                                         </div>
-                                        <div className="flex-1 overflow-y-auto px-5 pb-6 custom-scrollbar">
+                                        <div className="flex-1 min-h-0 px-5 pb-6 custom-scrollbar touch-scroll-y">
                                             <div className="grid grid-cols-1 gap-3">
-                                                {ytIndex
-                                                    .filter(item => (`${item.trackName} ${item.artistName}`).toLowerCase().includes(ytIndexFilter.toLowerCase()))
-                                                    .map((item, idx) => (
+                                                {ytIndexFiltered.map((item, idx) => (
                                                         <div
                                                             key={`${item.videoId || item.trackName}-${idx}`}
                                                             className="flex items-center gap-3 bg-zinc-900/70 border border-zinc-800 rounded-xl p-3 hover:border-[#00C4D9]/40"
@@ -6669,7 +6840,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                                 </button>
                                                             </div>
                                                         ))}
-                                                {ytIndex.filter(item => (`${item.trackName} ${item.artistName}`).toLowerCase().includes(ytIndexFilter.toLowerCase())).length === 0 && (
+                                                {ytIndexFiltered.length === 0 && (
                                                     <div className="text-center text-zinc-500 text-base">No matches</div>
                                                 )}
                                             </div>
@@ -6759,7 +6930,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         placeholder="Search songs to add to your Tight 15..."
                                     />
                                     {tight15Results.length > 0 && (
-                                        <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 z-50 shadow-xl max-h-60 overflow-y-auto">
+                                        <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 z-50 shadow-xl max-h-60 touch-scroll-y custom-scrollbar">
                                             {tight15Results.map(r => (
                                                 <div
                                                     key={r.trackId}

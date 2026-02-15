@@ -4,34 +4,34 @@ import { submitMarketingWaitlist, trackEvent } from '../../lib/firebase';
 import './marketing.css';
 
 const NAV_SECTIONS = [
-    { id: 'experience', label: 'Signal' },
-    { id: 'surfaces', label: 'System' },
-    { id: 'games', label: 'Ritual' },
-    { id: 'signup', label: 'Access' }
+    { id: 'experience', label: 'Why It Works' },
+    { id: 'surfaces', label: 'How It Works' },
+    { id: 'games', label: 'Games' },
+    { id: 'signup', label: 'Join' }
 ];
 
 const SHOW_DNA = [
     {
-        title: 'One Brain',
-        body: 'Host decisions propagate everywhere instantly.',
+        title: 'Less Cringe',
+        body: 'No dead air, awkward pauses, or confused handoffs.',
         accent: 'cyan'
     },
     {
-        title: 'Infinite Roles',
-        body: 'Singer, lurker, hype unit, strategist. Everyone plays.',
+        title: 'Everyone Plays',
+        body: 'Sing, cheer, vote, or stir chaos from your phone.',
         accent: 'pink'
     },
     {
-        title: 'Living Display',
-        body: 'The TV behaves like a stage organism, not a slideshow.',
+        title: 'Host Stays In Control',
+        body: 'One panel runs the whole room without tab panic.',
         accent: 'gold'
     }
 ];
 
 const SIGNAL_METRICS = [
-    { label: 'Join Friction', value: 'Near-zero' },
-    { label: 'Host Actions', value: 'Single Surface' },
-    { label: 'Room State', value: 'Always Shared' }
+    { label: 'Join Time', value: 'Under 10s' },
+    { label: 'Host Setup', value: 'About 2 mins' },
+    { label: 'Crowd Energy', value: 'Always On' }
 ];
 
 const SURFACES = [
@@ -41,9 +41,9 @@ const SURFACES = [
         subtitle: 'Control signal source',
         image: '/images/marketing/BeauRocks-HostPanel.png',
         bullets: [
-            'Queue and pacing without context switching',
-            'Mode launch + moderation queue in one frame',
-            'Audience policy controls with immediate effect'
+            'Run queue, pacing, and modes in one place',
+            'Launch moments without breaking flow',
+            'Change room rules instantly'
         ]
     },
     {
@@ -52,9 +52,9 @@ const SURFACES = [
         subtitle: 'Shared perception layer',
         image: '/images/marketing/tv-surface-live.png',
         bullets: [
-            'Distance-readable by design',
-            'Host actions appear as instant room feedback',
-            'Idle states still push participation'
+            'Readable from the back of the room',
+            'Host actions show up right away',
+            'Even idle screens keep people engaged'
         ]
     },
     {
@@ -63,9 +63,9 @@ const SURFACES = [
         subtitle: 'Pocket control for guests',
         image: '/images/marketing/BeauRocks-Audienceapp.png',
         bullets: [
-            'Fast join without install drag',
-            'Chat, reactions, games, and social loops',
-            'Identity memory for recurring crowds'
+            'No-install join flow',
+            'Chat, reactions, and game controls',
+            'Keeps regulars coming back'
         ]
     }
 ];
@@ -73,57 +73,61 @@ const SURFACES = [
 const GAME_VIBE = [
     {
         title: 'Karaoke Core',
-        note: 'The spine. Everything else plugs in.'
+        note: 'The main event, minus the chaos.'
     },
     {
         title: 'Doodle-oke',
-        note: 'Sketch signal, crowd decode, host reveal.'
+        note: 'Draw it, guess it, reveal it.'
     },
     {
         title: 'Trivia + WYR',
-        note: 'Timed choices. Hard reveals.'
+        note: 'Fast rounds, big reactions.'
     },
     {
         title: 'Bingo + Bracket',
-        note: 'Long-form room arcs with crowd investment.'
+        note: 'Room-wide games people follow all night.'
     },
     {
         title: 'Voice Arcade',
-        note: 'Pitch and volume become control input.'
+        note: 'Use your voice as the controller.'
     }
 ];
 
 const ACCESS_TIERS = [
     {
         title: 'Private Hosts',
-        detail: 'High-energy rooms without operational mess.'
+        detail: 'Hosts who want a fun room without extra chaos.'
     },
     {
         title: 'Community Nights',
-        detail: 'Fundraisers and local events that need participation density.'
+        detail: 'Community events that need real participation.'
     },
     {
         title: 'Recurring Operators',
-        detail: 'Hosts building repeat behavior and recognizable show identity.'
+        detail: 'Weekly hosts building loyal crowds.'
     }
 ];
 
 const FAQ_ITEMS = [
     {
         q: 'Is this invite-only right now?',
-        a: 'Yes. Controlled wave releases. Fast onboarding. No bloated rollout.'
+        a: 'Yes. Small waves so onboarding stays fast and useful.'
     },
     {
         q: 'Do guests need to install anything?',
-        a: 'No install wall. Join is web-first and immediate.'
+        a: 'No app install. Guests join from the web in seconds.'
+    },
+    {
+        q: 'Do people even like karaoke?',
+        a: 'Not always. For good reason. Beau Ross built BeauRocks Karaoke to remove the painful parts and keep the fun ones.'
     },
     {
         q: 'Can non-singers still participate?',
-        a: 'Yes. Non-singers are core to the design, not an afterthought.'
+        a: 'Yes. Non-singers are a core part of the room.'
     },
     {
         q: 'What happens after I sign up?',
-        a: 'You receive wave status + exact next steps. No generic drip spam.'
+        a: 'You get wave status and clear next steps.'
     }
 ];
 
@@ -282,20 +286,20 @@ const MarketingSite = () => {
                     <div className="mk2-bg-orb mk2-bg-orb-b"></div>
                     <div className="mk2-shell mk2-hero-layout">
                         <div>
-                            <div className="mk2-kicker">Neon Social Karaoke System</div>
+                            <div className="mk2-kicker">Karaoke, But Self-Aware</div>
                             <h1>
-                                Build A Room That Feels <span>Illegal To Leave.</span>
+                                Most people do not enjoy karaoke. <span>For good reason.</span>
                             </h1>
                             <p>
-                                BeauRocks turns host intent into immediate room behavior. Fast joins, live social loops,
-                                and game-state transitions that keep the crowd metabolically engaged.
+                                That is exactly why Beau Ross created BeauRocks Karaoke: less cringe, less friction,
+                                and more fun for singers and non-singers.
                             </p>
                             <div className="mk2-hero-cta">
                                 <button type="button" className="mk2-btn mk2-btn-primary" onClick={() => jumpTo('signup')}>
-                                    Enter Access Queue
+                                    Join Early Access
                                 </button>
                                 <button type="button" className="mk2-btn mk2-btn-ghost" onClick={() => jumpTo('experience')}>
-                                    Decode The System
+                                    See How It Works
                                 </button>
                             </div>
                             <div className="mk2-metric-strip">
@@ -317,18 +321,18 @@ const MarketingSite = () => {
                         </div>
                         <aside className="mk2-hero-panel">
                             <div className="mk2-panel-badge">Access Wave</div>
-                            <h3>Next Intake Is Limited</h3>
-                            <p>We accept a constrained number of hosts per wave to keep onboarding sharp.</p>
+                            <h3>Limited Intake, Better Onboarding</h3>
+                            <p>We onboard in small waves so your first night is smooth.</p>
                             <ul>
-                                <li>Short setup ritual</li>
-                                <li>Priority by use-case fit</li>
-                                <li>Fast signal to first show</li>
+                                <li>Fast setup flow</li>
+                                <li>Helpful first-show guidance</li>
+                                <li>Priority by host fit</li>
                             </ul>
                             <button type="button" className="mk2-btn mk2-btn-secondary mk2-btn-block" onClick={() => jumpTo('signup')}>
-                                Reserve Slot
+                                Join A Wave
                             </button>
                             <button type="button" className="mk2-login-link" onClick={openHostLogin}>
-                                Already onboarded? Host login
+                                Already hosting? Log in
                             </button>
                         </aside>
                     </div>
@@ -336,10 +340,10 @@ const MarketingSite = () => {
 
                 <section className="mk2-section" id="experience">
                     <div className="mk2-shell">
-                        <div className="mk2-kicker">Experience DNA</div>
-                        <h2>Strange Energy, Precise Control</h2>
+                        <div className="mk2-kicker">Why It Works</div>
+                        <h2>Fun Room. Clear Control.</h2>
                         <p className="mk2-lead">
-                            The room feels wild. The system stays exact.
+                            It feels loose for guests and simple for hosts.
                         </p>
                         <div className="mk2-dna-grid">
                             {SHOW_DNA.map((item, index) => (
@@ -358,8 +362,8 @@ const MarketingSite = () => {
 
                 <section className="mk2-section mk2-section-dark" id="surfaces">
                     <div className="mk2-shell">
-                        <div className="mk2-kicker">Three Surfaces</div>
-                        <h2>Three Surfaces, One Nervous System</h2>
+                        <div className="mk2-kicker">How It Works</div>
+                        <h2>Three Surfaces, One Shared Room State</h2>
                         <div className="mk2-surface-grid">
                             {SURFACES.map((surface, index) => (
                                 <article key={surface.id} className="mk2-surface-card" style={{ '--delay': `${index * 120}ms` }}>
@@ -384,10 +388,10 @@ const MarketingSite = () => {
                 <section className="mk2-section" id="games">
                     <div className="mk2-shell mk2-two-col">
                         <div>
-                            <div className="mk2-kicker">Game Energy</div>
-                            <h2>Participation Density Stays High</h2>
+                            <div className="mk2-kicker">Game Layer</div>
+                            <h2>Keep People In The Room</h2>
                             <p className="mk2-lead">
-                                Voice input, social voting, and host interventions create a constant next action.
+                                Quick game loops keep non-singers engaged between songs.
                             </p>
                             <div className="mk2-reel-grid">
                                 {GAME_VIBE.map((mode) => (
@@ -399,7 +403,7 @@ const MarketingSite = () => {
                             </div>
                         </div>
                         <aside className="mk2-callout">
-                            <div className="mk2-callout-title">Who We Are Prioritizing</div>
+                            <div className="mk2-callout-title">Best Fit Right Now</div>
                             <div className="mk2-callout-list">
                                 {ACCESS_TIERS.map((tier) => (
                                     <div key={tier.title} className="mk2-callout-item">
@@ -409,7 +413,7 @@ const MarketingSite = () => {
                                 ))}
                             </div>
                             <button type="button" className="mk2-btn mk2-btn-primary mk2-btn-block" onClick={() => jumpTo('signup')}>
-                                Request Priority
+                                Request Access
                             </button>
                         </aside>
                     </div>
@@ -417,8 +421,8 @@ const MarketingSite = () => {
 
                 <section className="mk2-section mk2-section-dark" id="faq">
                     <div className="mk2-shell">
-                        <div className="mk2-kicker">Access Protocol</div>
-                        <h2>Low Friction, Clear Answers</h2>
+                        <div className="mk2-kicker">FAQ</div>
+                        <h2>Short Answers</h2>
                         <div className="mk2-faq-grid">
                             {FAQ_ITEMS.map((item) => (
                                 <article key={item.q} className="mk2-faq-card">
@@ -433,10 +437,10 @@ const MarketingSite = () => {
                 <section className="mk2-section mk2-signup" id="signup">
                     <div className="mk2-shell mk2-signup-layout">
                         <div>
-                            <div className="mk2-kicker">Early Access Signup</div>
-                            <h2>Enter The Queue</h2>
+                            <div className="mk2-kicker">Early Access</div>
+                            <h2>Want In?</h2>
                             <p className="mk2-lead">
-                                Two inputs. One decision. We do the rest.
+                                Share your email and use case. We will follow up with next steps.
                             </p>
                         </div>
                         <form className="mk2-form" onSubmit={onSubmit}>
@@ -471,7 +475,7 @@ const MarketingSite = () => {
                                 />
                             </label>
                             <button type="submit" disabled={submitting} className={`mk2-btn mk2-btn-primary mk2-btn-block ${submitting ? 'mk2-btn-disabled' : ''}`}>
-                                {submitting ? 'Transmitting...' : 'Transmit Request'}
+                                {submitting ? 'Sending...' : 'Join Waitlist'}
                             </button>
                             {formState.error && <div className="mk2-form-error">{formState.error}</div>}
                             {formState.success && <div className="mk2-form-success">{formState.success}</div>}
@@ -482,8 +486,8 @@ const MarketingSite = () => {
 
             <footer className="mk2-footer">
                 <div className="mk2-shell mk2-footer-inner">
-                    <div>BeauRocks Marketing Experience</div>
-                    <div>Private event platform in staged early access rollout.</div>
+                    <div>BeauRocks Karaoke</div>
+                    <div>Built by Beau Ross for people who thought they hated karaoke.</div>
                 </div>
             </footer>
         </div>

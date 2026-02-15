@@ -13,6 +13,7 @@ const HostTopChrome = ({
     setShowNavMenu,
     setShowSettings,
     setSettingsTab,
+    openAdminWorkspace,
     styles,
     logoFallback,
     audioPanelOpen,
@@ -112,20 +113,40 @@ const HostTopChrome = ({
                 )}
                 <div className="hidden md:flex items-center gap-2">
                     {[
-                        { key: 'stage', label: 'Stage' },
+                        { key: 'stage', label: 'Queue' },
                         { key: 'games', label: 'Games' },
-                        { key: 'lobby', label: 'Lobby' }
+                        { key: 'lobby', label: 'Audience' },
+                        { key: 'admin', label: 'Admin' }
                     ].map(t => (
                         <button
                             key={t.key}
-                            onClick={() => setTab(t.key)}
+                            onClick={() => {
+                                if (t.key === 'admin' && typeof openAdminWorkspace === 'function') {
+                                    openAdminWorkspace('ops.room_setup');
+                                    return;
+                                }
+                                setTab(t.key);
+                            }}
                             className={`px-3 py-1.5 text-sm font-black uppercase tracking-[0.22em] rounded-xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
                         >
                             {t.label}
                         </button>
                     ))}
                 </div>
-                <button onClick={() => { setShowSettings(true); setSettingsTab('general'); }} className="text-zinc-500 hover:text-white"><i className="fa-solid fa-gear text-base md:text-lg"></i></button>
+                <button
+                    onClick={() => {
+                        if (typeof openAdminWorkspace === 'function') {
+                            openAdminWorkspace('ops.room_setup');
+                            return;
+                        }
+                        setShowSettings(true);
+                        setSettingsTab('general');
+                    }}
+                    className="text-zinc-500 hover:text-white"
+                    title="Open Admin"
+                >
+                    <i className="fa-solid fa-gear text-base md:text-lg"></i>
+                </button>
                 <div className="relative">
                     <button
                         onClick={() => setShowNavMenu(prev => !prev)}
@@ -136,14 +157,23 @@ const HostTopChrome = ({
                     {showNavMenu && (
                         <div className="absolute right-0 top-full mt-2 w-44 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-50">
                             {[
-                                { key: 'stage', label: 'Stage' },
+                                { key: 'stage', label: 'Queue' },
                                 { key: 'games', label: 'Games' },
-                                { key: 'lobby', label: 'Lobby' }
+                                { key: 'lobby', label: 'Audience' },
+                                { key: 'admin', label: 'Admin' }
                             ].map(t => (
                                 <button
                                     key={t.key}
-                                    onClick={() => { setTab(t.key); setShowNavMenu(false); }}
-                                    className={`w-full text-left px-4 py-2 text-sm font-bold uppercase tracking-widest ${tab === t.key ? 'text-[#00C4D9]' : 'text-zinc-300'} hover:bg-zinc-900 ${t.key === 'stage' ? 'rounded-t-xl' : ''} ${t.key === 'lobby' ? 'rounded-b-xl' : ''}`}
+                                    onClick={() => {
+                                        if (t.key === 'admin' && typeof openAdminWorkspace === 'function') {
+                                            openAdminWorkspace('ops.room_setup');
+                                            setShowNavMenu(false);
+                                            return;
+                                        }
+                                        setTab(t.key);
+                                        setShowNavMenu(false);
+                                    }}
+                                    className={`w-full text-left px-4 py-2 text-sm font-bold uppercase tracking-widest ${tab === t.key ? 'text-[#00C4D9]' : 'text-zinc-300'} hover:bg-zinc-900 ${t.key === 'stage' ? 'rounded-t-xl' : ''} ${t.key === 'admin' ? 'rounded-b-xl' : ''}`}
                                 >
                                     {t.label}
                                 </button>

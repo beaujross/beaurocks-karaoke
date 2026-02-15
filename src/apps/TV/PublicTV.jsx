@@ -14,6 +14,12 @@ import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playback
 import { createLogger } from '../../lib/logger';
 import groupChatMessages from '../../lib/chatGrouping';
 import useTvVisualizerSettings from './hooks/useTvVisualizerSettings';
+import {
+    DEFAULT_POP_TRIVIA_ROUND_SEC,
+    POP_TRIVIA_VOTE_TYPE,
+    dedupeQuestionVotes,
+    getActivePopTriviaQuestion
+} from '../../lib/popTrivia';
 
 const isTvVisibleChatMessage = (message) => {
     if (!message) return false;
@@ -107,7 +113,7 @@ const AnimatedPoints = ({ value }) => {
     }, [display, value]);
     
     return (
-        <div className={`relative bg-black/60 backdrop-blur-sm px-5 py-3 rounded-full border border-yellow-500/30 flex items-center gap-3 shadow-lg transition-transform duration-200 ${showPulse ? 'scale-110' : 'scale-100'}`}>
+        <div className={`relative bg-black/60 backdrop-blur-sm px-3 py-2 md:px-5 md:py-3 rounded-full border border-yellow-500/30 flex items-center gap-2 md:gap-3 shadow-lg transition-transform duration-200 ${showPulse ? 'scale-110' : 'scale-100'}`}>
             {showPulse && (
                 <div className="absolute inset-0 pointer-events-none">
                     <span className="points-burst points-burst-a"></span>
@@ -115,8 +121,8 @@ const AnimatedPoints = ({ value }) => {
                     <span className="points-burst points-burst-c"></span>
                 </div>
             )}
-            <span className="text-yellow-300 font-black text-3xl font-mono">{display}</span>
-            <span className="text-sm text-yellow-500 font-bold tracking-widest">PTS</span>
+            <span className="text-yellow-300 font-black text-xl md:text-3xl font-mono">{display}</span>
+            <span className="text-[10px] md:text-sm text-yellow-500 font-bold tracking-widest">PTS</span>
         </div>
     );
 };
@@ -186,27 +192,27 @@ const LeaderboardOverlay = ({ users, songs }) => {
     const activeMode = leaderboardModes[modeIndex];
 
     return (
-        <div className="fixed inset-0 z-[200] bg-zinc-900 flex flex-col items-center justify-center p-12 text-center animate-in zoom-in">
-            <div className="text-center mb-12">
-                <h1 className="text-9xl font-bebas text-yellow-400 tracking-widest drop-shadow-[0_0_50px_rgba(234,179,8,0.5)]">LEADERBOARD</h1>
-                <div className="text-3xl text-zinc-300 uppercase tracking-[0.4em] mt-3">{activeMode.label}</div>
+        <div className="fixed inset-0 z-[200] bg-zinc-900 flex flex-col items-center justify-center p-4 md:p-8 2xl:p-12 text-center animate-in zoom-in">
+            <div className="text-center mb-6 md:mb-10 2xl:mb-12">
+                <h1 className="text-[clamp(2.5rem,10vw,6rem)] 2xl:text-9xl font-bebas text-yellow-400 tracking-[0.12em] md:tracking-widest drop-shadow-[0_0_50px_rgba(234,179,8,0.5)]">LEADERBOARD</h1>
+                <div className="text-sm md:text-2xl 2xl:text-3xl text-zinc-300 uppercase tracking-[0.24em] md:tracking-[0.4em] mt-2 md:mt-3">{activeMode.label}</div>
             </div>
-            <div className="space-y-6 w-full max-w-5xl">
+            <div className="space-y-2 md:space-y-4 2xl:space-y-6 w-full max-w-5xl">
                 {leaderboard.map((u, i) => (
-                    <div key={u.uid || u.name || i} className="flex items-center justify-between bg-zinc-800 p-8 rounded-3xl border-4 border-zinc-700 shadow-2xl relative overflow-hidden">
-                        <div className="flex items-center gap-8 relative z-10">
-                            <div className={`text-7xl font-mono w-32 text-left ${i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-amber-700':'text-zinc-600'}`}>#{i+1}</div>
-                            <div className="text-8xl">{u.avatar}</div>
-                            <div className="text-6xl font-bold text-white truncate max-w-lg flex items-center gap-4">
+                    <div key={u.uid || u.name || i} className="flex items-center justify-between bg-zinc-800 p-3 md:p-5 2xl:p-8 rounded-2xl 2xl:rounded-3xl border-2 2xl:border-4 border-zinc-700 shadow-2xl relative overflow-hidden gap-3">
+                        <div className="flex items-center gap-2 md:gap-4 2xl:gap-8 relative z-10 min-w-0">
+                            <div className={`text-2xl md:text-4xl 2xl:text-7xl font-mono w-10 md:w-16 2xl:w-32 text-left ${i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-amber-700':'text-zinc-600'}`}>#{i+1}</div>
+                            <div className="text-3xl md:text-5xl 2xl:text-8xl">{u.avatar}</div>
+                            <div className="text-lg md:text-3xl 2xl:text-6xl font-bold text-white truncate max-w-[48vw] 2xl:max-w-lg flex items-center gap-2 md:gap-4">
                                 <span className="truncate">{u.name}</span>
                                 {u.isVip && (
-                                    <span className="px-3 py-1 rounded-full text-sm font-black tracking-widest bg-yellow-400 text-black shadow-[0_0_18px_rgba(253,224,71,0.6)]">VIP</span>
+                                    <span className="px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[10px] md:text-sm font-black tracking-widest bg-yellow-400 text-black shadow-[0_0_18px_rgba(253,224,71,0.6)]">VIP</span>
                                 )}
                             </div>
                         </div>
-                        <div className="text-right relative z-10">
-                            <div className="text-7xl font-black text-yellow-400">{activeMode.getValue(u)} <span className="text-3xl text-yellow-600">{activeMode.unit}</span></div>
-                            <div className="text-xl text-zinc-300 mt-2">{u.performances} perf | {u.totalEmojis} emojis | {u.loudest} dB</div>
+                        <div className="text-right relative z-10 flex-shrink-0">
+                            <div className="text-2xl md:text-4xl 2xl:text-7xl font-black text-yellow-400">{activeMode.getValue(u)} <span className="text-sm md:text-xl 2xl:text-3xl text-yellow-600">{activeMode.unit}</span></div>
+                            <div className="text-[10px] md:text-sm 2xl:text-xl text-zinc-300 mt-1 md:mt-2">{u.performances} perf | {u.totalEmojis} emojis | {u.loudest} dB</div>
                         </div>
                         {i === 0 && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-yellow-400/20 to-transparent animate-shimmer"></div>}
                     </div>
@@ -218,13 +224,13 @@ const LeaderboardOverlay = ({ users, songs }) => {
 
 const TipOverlay = ({ room }) => {
     return (
-        <div className="fixed inset-0 z-[200] bg-gradient-to-br from-green-900 to-emerald-950 flex flex-col items-center justify-center p-12 text-center animate-in zoom-in">
+        <div className="fixed inset-0 z-[200] bg-gradient-to-br from-green-900 to-emerald-950 flex flex-col items-center justify-center p-4 md:p-8 2xl:p-12 text-center animate-in zoom-in">
             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/money.png')] opacity-10"></div>
-            <h1 className="text-[10rem] font-bebas text-white mb-8 drop-shadow-lg leading-none">SHOW SOME LOVE!</h1>
-            <div className="bg-white p-8 rounded-3xl shadow-[0_0_100px_rgba(255,255,255,0.2)] mb-8 transform hover:scale-105 transition-transform duration-500">
-                <img src={room.tipQrUrl || ASSETS.venmoQr} className="w-[500px] h-[500px] object-cover rounded-lg" alt="Tip QR" />
+            <h1 className="text-[clamp(2.25rem,10vw,7.5rem)] 2xl:text-[10rem] font-bebas text-white mb-4 md:mb-8 drop-shadow-lg leading-none">SHOW SOME LOVE!</h1>
+            <div className="bg-white p-4 md:p-6 2xl:p-8 rounded-3xl shadow-[0_0_100px_rgba(255,255,255,0.2)] mb-4 md:mb-8 transform hover:scale-105 transition-transform duration-500">
+                <img src={room.tipQrUrl || ASSETS.venmoQr} className="w-[68vw] h-[68vw] max-w-[500px] max-h-[500px] object-cover rounded-lg" alt="Tip QR" />
             </div>
-            <div className="text-5xl text-green-200 font-bold bg-black/40 px-12 py-6 rounded-full border border-green-500/30 backdrop-blur-md">SCAN TO TIP THE HOST {EMOJI.tip}</div>
+            <div className="text-lg md:text-3xl 2xl:text-5xl text-green-200 font-bold bg-black/40 px-5 py-3 md:px-8 md:py-4 2xl:px-12 2xl:py-6 rounded-full border border-green-500/30 backdrop-blur-md">SCAN TO TIP THE HOST {EMOJI.tip}</div>
         </div>
     );
 };
@@ -246,17 +252,17 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
     const qrValue = `${appBase}?room=${roomCode}`;
 
     return (
-        <div className="fixed inset-0 z-[200] bg-zinc-900/95 flex flex-col items-center justify-center text-white font-saira">
-            <div className="w-[92%] max-w-6xl bg-black/55 border border-cyan-500/30 rounded-[2.5rem] p-10 shadow-[0_0_90px_rgba(34,211,238,0.25)]">
+        <div className="fixed inset-0 z-[200] bg-zinc-900/95 flex flex-col items-center justify-center text-white font-saira p-3 md:p-6">
+            <div className="w-[96%] md:w-[92%] max-w-6xl bg-black/55 border border-cyan-500/30 rounded-[2rem] 2xl:rounded-[2.5rem] p-4 md:p-6 2xl:p-10 shadow-[0_0_90px_rgba(34,211,238,0.25)]">
                 <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-10 items-center">
                     <div>
-                        <div className="text-sm uppercase tracking-[0.5em] text-zinc-500">BROSS Entertainment</div>
-                        <div className="text-7xl font-bebas text-cyan-300 tracking-widest mt-2">{HOW_TO_PLAY.title}</div>
-                        <div className="text-2xl text-zinc-400 mb-8">{HOW_TO_PLAY.subtitle}</div>
+                        <div className="text-[10px] md:text-sm uppercase tracking-[0.3em] md:tracking-[0.5em] text-zinc-500">BROSS Entertainment</div>
+                        <div className="text-3xl md:text-5xl 2xl:text-7xl font-bebas text-cyan-300 tracking-[0.12em] md:tracking-widest mt-2">{HOW_TO_PLAY.title}</div>
+                        <div className="text-sm md:text-lg 2xl:text-2xl text-zinc-400 mb-4 md:mb-8">{HOW_TO_PLAY.subtitle}</div>
 
-                        <div className="bg-black/50 border border-white/10 rounded-3xl p-10">
-                            <div className="text-5xl font-bold text-pink-300 uppercase tracking-widest mb-6">{active.title}</div>
-                            <ul className="text-4xl text-zinc-100 space-y-5 leading-snug">
+                        <div className="bg-black/50 border border-white/10 rounded-3xl p-4 md:p-6 2xl:p-10">
+                            <div className="text-2xl md:text-4xl 2xl:text-5xl font-bold text-pink-300 uppercase tracking-[0.08em] md:tracking-widest mb-4 md:mb-6">{active.title}</div>
+                            <ul className="text-lg md:text-2xl 2xl:text-4xl text-zinc-100 space-y-2 md:space-y-3 2xl:space-y-5 leading-snug">
                                 {active.items.map(item => (
                                     <li key={item} className="flex gap-4">
                                         <span className="text-cyan-300">&gt;</span>
@@ -267,9 +273,9 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
                         </div>
                     </div>
                     <div className="flex flex-col items-center gap-4">
-                        <img src={logoUrl || ASSETS.logo} className="h-24 object-contain" alt="BROSS" />
+                        <img src={logoUrl || ASSETS.logo} className="h-16 md:h-20 2xl:h-24 object-contain" alt="BROSS" />
                         <div className="flex items-center gap-4">
-                            <div className="flex flex-col gap-3 text-sm uppercase tracking-widest text-zinc-400">
+                            <div className="flex flex-col gap-2 md:gap-3 text-[10px] md:text-sm uppercase tracking-[0.15em] md:tracking-widest text-zinc-400">
                                 {queueRules.map(rule => (
                                     <div key={rule.label} className="flex items-center gap-2 bg-black/50 border border-white/10 px-3 py-2 rounded-full">
                                         <i className={`fa-solid ${rule.icon} text-cyan-300`}></i>
@@ -277,15 +283,15 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
                                     </div>
                                 ))}
                             </div>
-                            <div className="bg-white p-3 rounded-2xl shadow-xl">
-                                <LocalQrImage value={qrValue} size={224} alt="Join QR" className="w-56 h-56 object-cover" />
+                            <div className="bg-white p-2 md:p-3 rounded-2xl shadow-xl">
+                                <LocalQrImage value={qrValue} size={192} alt="Join QR" className="w-36 h-36 md:w-44 md:h-44 2xl:w-56 2xl:h-56 object-cover" />
                             </div>
                         </div>
-                        <div className="text-sm text-zinc-400 uppercase tracking-[0.4em]">Room {roomCode}</div>
+                        <div className="text-[10px] md:text-sm text-zinc-400 uppercase tracking-[0.2em] md:tracking-[0.4em]">Room {roomCode}</div>
                     </div>
                 </div>
 
-                <div className="mt-8 flex items-center justify-between text-sm text-zinc-500">
+                <div className="mt-5 md:mt-8 flex items-center justify-between text-[10px] md:text-sm text-zinc-500">
                     <div>Slide {index + 1} of {slides.length}</div>
                     <div className="flex gap-2">
                         {slides.map((_, i) => (
@@ -396,6 +402,12 @@ const PublicTV = ({ roomCode }) => {
     const [showChatFeed, setShowChatFeed] = useState(false);
     const [bingoRngNow, setBingoRngNow] = useState(nowMs());
     const [bonusDropBurst, setBonusDropBurst] = useState(null);
+    const [popTriviaVotes, setPopTriviaVotes] = useState([]);
+    const [popTriviaNow, setPopTriviaNow] = useState(nowMs());
+    const [viewportSize, setViewportSize] = useState(() => ({
+        width: typeof window !== 'undefined' ? window.innerWidth : 1920,
+        height: typeof window !== 'undefined' ? window.innerHeight : 1080
+    }));
     
     const stormAudioRef = useRef(null);
     const stormAnalyserRef = useRef(null);
@@ -403,6 +415,7 @@ const PublicTV = ({ roomCode }) => {
     const stormRafRef = useRef(null);
     const stormFlashCooldownRef = useRef(0);
     const stormThunderRefs = useRef([]);
+    const stormAnalyserUnavailableRef = useRef(false);
     const lastPromptAt = useRef(0);
     const lastRealMessageAt = useRef(0);
     const promptIndexRef = useRef(0);
@@ -459,15 +472,28 @@ const PublicTV = ({ roomCode }) => {
     // Helpers
     const getEmojiChar = (t) => (EMOJI[t] || (t.includes('spotlight') ? EMOJI.sparkle : EMOJI.heart));
     const getReactionClass = (t) => ({
-        rocket: 'animate-rocket-fly text-[8rem]', 
-        diamond: 'animate-diamond-shine text-[9rem]', 
-        crown: 'animate-crown-bounce text-[10rem]', 
-        money: 'animate-money-wobble text-[9rem]', 
-        drink: 'animate-drink-sway text-8xl',
-        fire: 'animate-fire-flicker text-8xl drop-shadow-[0_0_15px_orange]',
-        heart: 'animate-heart-beat text-8xl drop-shadow-[0_0_15px_red]',
-        clap: 'animate-clap-shake text-8xl'
-    }[t] || 'animate-float text-6xl');
+        rocket: 'animate-rocket-fly text-[clamp(2.75rem,9vw,8rem)]', 
+        diamond: 'animate-diamond-shine text-[clamp(3rem,9.5vw,9rem)]', 
+        crown: 'animate-crown-bounce text-[clamp(3.25rem,10vw,10rem)]', 
+        money: 'animate-money-wobble text-[clamp(3rem,9.5vw,9rem)]', 
+        drink: 'animate-drink-sway text-[clamp(2.5rem,8vw,6rem)]',
+        fire: 'animate-fire-flicker text-[clamp(2.5rem,8vw,6rem)] drop-shadow-[0_0_15px_orange]',
+        heart: 'animate-heart-beat text-[clamp(2.5rem,8vw,6rem)] drop-shadow-[0_0_15px_red]',
+        clap: 'animate-clap-shake text-[clamp(2.5rem,8vw,6rem)]'
+    }[t] || 'animate-float text-[clamp(2rem,6vw,4rem)]');
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        const updateViewport = () => {
+            setViewportSize({
+                width: window.innerWidth || 1920,
+                height: window.innerHeight || 1080
+            });
+        };
+        updateViewport();
+        window.addEventListener('resize', updateViewport);
+        return () => window.removeEventListener('resize', updateViewport);
+    }, []);
 
     useEffect(() => {
         multiplierRef.current = Math.max(1, room?.multiplier || 1);
@@ -629,7 +655,22 @@ const PublicTV = ({ roomCode }) => {
 
     const startStormAnalyser = useCallback(() => {
         if (!audioCtx || !stormAudioRef.current) return;
+        if (stormAnalyserUnavailableRef.current) return;
         if (stormAnalyserRef.current) return;
+        const sourceUrl = stormAudioRef.current.currentSrc || stormAudioRef.current.src || '';
+        if (typeof window !== 'undefined' && sourceUrl) {
+            try {
+                const mediaUrl = new URL(sourceUrl, window.location.origin);
+                if (mediaUrl.origin !== window.location.origin) {
+                    // Cross-origin media without CORS cannot feed WebAudio analyser safely.
+                    stormAnalyserUnavailableRef.current = true;
+                    tvLogger.debug('Skipping storm analyser for cross-origin media', mediaUrl.href);
+                    return;
+                }
+            } catch {
+                // If URL parsing fails, continue and let browser handle it.
+            }
+        }
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 256;
         const src = audioCtx.createMediaElementSource(stormAudioRef.current);
@@ -660,6 +701,7 @@ const PublicTV = ({ roomCode }) => {
         if (!started) return;
         if (!stormAudioRef.current) {
             stormAudioRef.current = new Audio(getStormAmbientUrl());
+            stormAudioRef.current.crossOrigin = 'anonymous';
             stormAudioRef.current.loop = true;
             stormAudioRef.current.volume = 0.6;
         }
@@ -675,6 +717,7 @@ const PublicTV = ({ roomCode }) => {
             if (storm.src !== nextUrl) {
                 storm.src = nextUrl;
                 storm.load();
+                stormAnalyserUnavailableRef.current = false;
             }
             const phaseVolume = {
                 approach: 0.35,
@@ -691,6 +734,15 @@ const PublicTV = ({ roomCode }) => {
             stopStormAnalyser();
         }
     }, [room?.lightMode, stormPhase, started, getStormAmbientUrl, startStormAnalyser, stopStormAnalyser]);
+
+    useEffect(() => {
+        if (!started || room?.lightMode !== 'storm') return;
+        if (stormAnalyserRef.current) return;
+        const id = setInterval(() => {
+            triggerStormLightning();
+        }, 2500);
+        return () => clearInterval(id);
+    }, [started, room?.lightMode, triggerStormLightning]);
 
     // --- EFFECT: Data Sync ---
     useEffect(() => {
@@ -710,6 +762,9 @@ const PublicTV = ({ roomCode }) => {
                     const d = c.doc.data();
                     // Filter old reactions (prevent flood on reload)
                     if(nowMs() - (d.timestamp?.seconds * 1000 || nowMs()) < 5000) {
+                        if (typeof d.type === 'string' && d.type.startsWith('vote_')) {
+                            return;
+                        }
                         if (d.type === 'photo') {
                             setPhotoOverlay(d); 
                             setTimeout(() => setPhotoOverlay(null), 8000); // Show photo for 8s
@@ -1220,6 +1275,30 @@ const PublicTV = ({ roomCode }) => {
     }, [applauseStep, countdown, measure, applauseMax, roomCode, triggerTipPulse]);
 
     const current = songs.find(s => s.status === 'performing');
+    const popTriviaRoundSec = Math.max(8, Number(room?.popTriviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC));
+    const popTriviaState = useMemo(() => {
+        if (room?.activeMode !== 'karaoke') return null;
+        if (room?.popTriviaEnabled === false) return null;
+        if (!current) return null;
+        return getActivePopTriviaQuestion({
+            song: current,
+            now: popTriviaNow,
+            roundSec: popTriviaRoundSec
+        });
+    }, [current, popTriviaNow, popTriviaRoundSec, room?.activeMode, room?.popTriviaEnabled]);
+    const popTriviaQuestion = popTriviaState?.question || null;
+    const popTriviaQuestionId = popTriviaQuestion?.id || '';
+    const popTriviaVoteCounts = useMemo(() => {
+        const count = Array.from({ length: popTriviaQuestion?.options?.length || 0 }, () => 0);
+        popTriviaVotes.forEach((vote) => {
+            const idx = Number(vote?.val);
+            if (!Number.isInteger(idx)) return;
+            if (idx < 0 || idx >= count.length) return;
+            count[idx] += 1;
+        });
+        return count;
+    }, [popTriviaVotes, popTriviaQuestion?.options?.length]);
+    const popTriviaTotalVotes = popTriviaVoteCounts.reduce((sum, val) => sum + val, 0);
     const marqueeItems = (room?.marqueeItems || []).filter(i => i.enabled !== false);
 
     useEffect(() => {
@@ -1254,6 +1333,33 @@ const PublicTV = ({ roomCode }) => {
             if (hideTimer) clearTimeout(hideTimer);
         };
     }, [room?.marqueeEnabled, room?.marqueeDurationMs, room?.marqueeIntervalMs, room?.marqueeShowMode, room?.activeMode, messages.length, marqueeItems.length, current?.id, current]);
+    useEffect(() => {
+        if (room?.activeMode !== 'karaoke') return;
+        if (room?.popTriviaEnabled === false) return;
+        if (!current?.id || !Array.isArray(current?.popTrivia) || current.popTrivia.length === 0) return;
+        setPopTriviaNow(nowMs());
+        const timer = setInterval(() => setPopTriviaNow(nowMs()), 1000);
+        return () => clearInterval(timer);
+    }, [current?.id, current?.popTrivia, room?.activeMode, room?.popTriviaEnabled]);
+    useEffect(() => {
+        if (!roomCode || !popTriviaQuestionId) {
+            setPopTriviaVotes([]);
+            return () => {};
+        }
+        const voteQuery = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
+            where('roomCode', '==', roomCode),
+            where('questionId', '==', popTriviaQuestionId)
+        );
+        const unsub = onSnapshot(voteQuery, (snap) => {
+            const entries = dedupeQuestionVotes(
+                snap.docs.map((docSnap) => docSnap.data()),
+                POP_TRIVIA_VOTE_TYPE
+            );
+            setPopTriviaVotes(entries);
+        });
+        return () => unsub();
+    }, [roomCode, popTriviaQuestionId]);
 
     const handleVolume = (vol) => {
         const level = Math.min(100, Math.round(vol / 1.5));
@@ -1395,25 +1501,74 @@ const PublicTV = ({ roomCode }) => {
             shortLabel: 'Approval On'
         }] : [])
     ];
+    const hasMarqueeContent = (marqueeItems.length > 0) || messages.length > 0;
+    const isShortViewport = viewportSize.height <= 820;
+    const isVeryShortViewport = viewportSize.height <= 700;
+    const tvOverflowClass = isShortViewport
+        ? 'overflow-x-hidden overflow-y-auto'
+        : 'overflow-x-hidden overflow-y-auto lg:overflow-hidden';
+    const logoSizeClass = isVeryShortViewport
+        ? 'w-24 sm:w-32 md:w-40 lg:w-44 2xl:w-64'
+        : isShortViewport
+            ? 'w-24 sm:w-36 md:w-44 lg:w-52 2xl:w-72'
+            : 'w-28 sm:w-40 md:w-48 lg:w-56 2xl:w-80';
+    const reserveMarqueeSpace = showMarquee && hasMarqueeContent;
+    const gridSpacingClass = isShortViewport
+        ? 'gap-2 md:gap-3 2xl:gap-4 p-2 md:p-3 2xl:p-4'
+        : 'gap-3 md:gap-4 2xl:gap-6 p-3 md:p-4 2xl:p-6';
+    const gridTopPaddingClass = isVeryShortViewport
+        ? 'pt-10'
+        : isShortViewport
+            ? 'pt-12 md:pt-14'
+            : 'pt-14 md:pt-16 2xl:pt-24';
+    const gridBottomPaddingClass = reserveMarqueeSpace
+        ? (isVeryShortViewport ? 'pb-12' : isShortViewport ? 'pb-14 md:pb-16' : 'pb-16 md:pb-20 2xl:pb-24')
+        : (isVeryShortViewport ? 'pb-2' : isShortViewport ? 'pb-3 md:pb-4' : 'pb-4 md:pb-5 2xl:pb-6');
+    const stageMinHeightClass = isVeryShortViewport
+        ? 'min-h-[34vh] md:min-h-[40vh]'
+        : isShortViewport
+            ? 'min-h-[38vh] md:min-h-[44vh]'
+            : 'min-h-[42vh] md:min-h-[50vh]';
+    const sidebarGapClass = isShortViewport ? 'gap-1.5 pb-1' : 'gap-2 pb-2';
+    const joinQrSize = isVeryShortViewport ? 132 : isShortViewport ? 152 : 176;
+    const joinQrClass = isVeryShortViewport
+        ? 'w-[108px] h-[108px] md:w-[124px] md:h-[124px] 2xl:w-[168px] 2xl:h-[168px]'
+        : isShortViewport
+            ? 'w-[120px] h-[120px] md:w-[140px] md:h-[140px] 2xl:w-[196px] 2xl:h-[196px]'
+            : 'w-[132px] h-[132px] md:w-[160px] md:h-[160px] 2xl:w-[220px] 2xl:h-[220px]';
+    const marqueeHeightClass = isVeryShortViewport ? 'h-14 md:h-16' : isShortViewport ? 'h-16 md:h-20' : 'h-20 md:h-28 2xl:h-36';
+    const marqueeTextSize = isVeryShortViewport
+        ? 'clamp(1.5rem, 2.8vw, 2.4rem)'
+        : isShortViewport
+            ? 'clamp(1.8rem, 3.2vw, 3.2rem)'
+            : 'clamp(2.5rem, 4vw, 5rem)';
+    const marqueeUserSize = isVeryShortViewport
+        ? 'clamp(0.95rem, 1.8vw, 1.9rem)'
+        : isShortViewport
+            ? 'clamp(1.05rem, 2vw, 2.3rem)'
+            : 'clamp(1.2rem, 2.4vw, 3rem)';
+    const isDistanceConstrained = viewportSize.width <= 1680 || viewportSize.height <= 900;
+    const showVerboseJoinUrl = viewportSize.width >= 1900 && !isShortViewport;
+    const showExtendedSpotlightMeta = viewportSize.width >= 1760 && !isShortViewport;
 
     // --- RENDER ---
     
     if (!started) {
         return (
-            <div className="h-screen w-screen bg-[#0b0e12] text-white font-saira flex items-center justify-center relative overflow-hidden">
+            <div className="h-screen min-h-screen w-screen bg-[#0b0e12] text-white font-saira flex items-center justify-center relative overflow-hidden" style={{ height: '100dvh' }}>
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#1a1f2b,transparent_55%),radial-gradient(circle_at_bottom,#1b0f22,transparent_45%)] opacity-90"></div>
                 <div className="absolute -top-32 -left-24 w-72 h-72 rounded-full bg-cyan-500/20 blur-3xl"></div>
                 <div className="absolute -bottom-40 -right-24 w-80 h-80 rounded-full bg-pink-500/20 blur-3xl"></div>
-                <div className="relative z-10 flex flex-col items-center gap-6">
-                    <img src={room?.logoUrl || ASSETS.logo} alt="Beaurocks Karaoke" className="h-24 rounded-2xl drop-shadow-[0_0_30px_rgba(0,196,217,0.45)]" />
-                    <div className="text-xs uppercase tracking-[0.45em] text-zinc-500">TV Dashboard</div>
-                    <div className="text-6xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899]">
+                <div className="relative z-10 flex flex-col items-center gap-4 md:gap-6 px-4 text-center">
+                    <img src={room?.logoUrl || ASSETS.logo} alt="Beaurocks Karaoke" className="h-16 md:h-20 2xl:h-24 rounded-2xl drop-shadow-[0_0_30px_rgba(0,196,217,0.45)]" />
+                    <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] md:tracking-[0.45em] text-zinc-500">TV Dashboard</div>
+                    <div className="text-3xl md:text-5xl 2xl:text-6xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899]">
                         Start the Show
                     </div>
-                    <div className="text-lg text-zinc-300">Tap to enable audio + visuals.</div>
+                    <div className="text-sm md:text-lg text-zinc-300">Tap to enable audio + visuals.</div>
                     <button
                         onClick={startAudio}
-                        className="bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black font-bebas text-5xl px-16 py-7 rounded-[28px] shadow-[0_0_45px_rgba(0,196,217,0.35)] border border-white/10 hover:scale-[1.02] transition-transform overflow-hidden bg-clip-padding"
+                        className="bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black font-bebas text-2xl md:text-4xl 2xl:text-5xl px-8 py-4 md:px-12 md:py-6 2xl:px-16 2xl:py-7 rounded-[22px] md:rounded-[28px] shadow-[0_0_45px_rgba(0,196,217,0.35)] border border-white/10 hover:scale-[1.02] transition-transform overflow-hidden bg-clip-padding"
                     >
                         START SHOW
                     </button>
@@ -1430,11 +1585,11 @@ const PublicTV = ({ roomCode }) => {
         const readyCount = roomUsers.filter(u => u.isReady).length;
         const totalCount = roomUsers.length || 0;
         return (
-            <div className="fixed inset-0 z-[200] bg-zinc-900 flex flex-col items-center justify-center p-12 text-center">
-                <div className="text-xs uppercase tracking-[0.4em] text-zinc-500 mb-4">Ready Check</div>
-                <div className="text-[16rem] font-black text-white leading-none">{readyTimer || 0}</div>
-                <div className="text-4xl font-bebas text-cyan-300 mt-6">ARE YOU READY?</div>
-                <div className="text-xl text-zinc-400 mt-4">{readyCount} / {totalCount} ready</div>
+            <div className="fixed inset-0 z-[200] bg-zinc-900 flex flex-col items-center justify-center p-4 md:p-8 2xl:p-12 text-center">
+                <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] md:tracking-[0.4em] text-zinc-500 mb-3 md:mb-4">Ready Check</div>
+                <div className="text-[clamp(4rem,20vw,16rem)] font-black text-white leading-none">{readyTimer || 0}</div>
+                <div className="text-xl md:text-3xl 2xl:text-4xl font-bebas text-cyan-300 mt-3 md:mt-6">ARE YOU READY?</div>
+                <div className="text-sm md:text-xl text-zinc-400 mt-2 md:mt-4">{readyCount} / {totalCount} ready</div>
             </div>
         );
     }
@@ -1457,61 +1612,61 @@ const PublicTV = ({ roomCode }) => {
         const galleryCols = submissionsSorted.length > 4 ? 'grid-cols-3' : 'grid-cols-2';
 
         return (
-            <div className="fixed inset-0 z-[200] bg-zinc-950 flex flex-col items-center justify-center p-10 text-white">
+            <div className="fixed inset-0 z-[200] bg-zinc-950 flex flex-col items-center justify-center p-4 md:p-6 2xl:p-10 text-white">
                 <div className="w-full max-w-6xl">
-                    <div className="flex items-center justify-between mb-6">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4 md:mb-6">
                         <div>
-                            <div className="text-sm uppercase tracking-[0.45em] text-zinc-500">Doodle-oke</div>
-                            <div className="text-7xl font-bebas text-cyan-300">Sketch the lyric. Guess the hit.</div>
-                            <div className="text-lg text-zinc-300 mt-2">
+                            <div className="text-[10px] md:text-sm uppercase tracking-[0.2em] md:tracking-[0.45em] text-zinc-500">Doodle-oke</div>
+                            <div className="text-3xl md:text-5xl 2xl:text-7xl font-bebas text-cyan-300">Sketch the lyric. Guess the hit.</div>
+                            <div className="text-base md:text-xl text-zinc-300 mt-1 md:mt-2">
                                 Live sketches: <span className="text-white font-bold">{submissionsSorted.length}</span>
                                 {doodleRequireReview && doodlePendingReviewCount > 0 && (
                                     <span className="text-amber-300"> ({doodlePendingReviewCount} pending host review)</span>
                                 )}
                             </div>
                         </div>
-                        <div className="text-right text-xl font-bold uppercase tracking-[0.2em] text-zinc-200">
+                        <div className="text-left md:text-right text-base md:text-2xl font-bold uppercase tracking-[0.08em] md:tracking-[0.2em] text-zinc-200">
                             {phase === 'drawing' && `Drawing ${drawRemaining}s`}
                             {phase === 'voting' && `Voting ${guessRemaining}s`}
                             {phase === 'reveal' && 'Reveal'}
                         </div>
                     </div>
-                    <div className="grid grid-cols-12 gap-6">
-                        <div className="col-span-8 bg-black/60 border border-white/10 rounded-3xl p-4">
+                    <div className="grid grid-cols-1 2xl:grid-cols-12 gap-4 md:gap-6">
+                        <div className="2xl:col-span-8 bg-black/60 border border-white/10 rounded-2xl md:rounded-3xl p-3 md:p-4">
                             {submissionsSorted.length ? (
                                 <div className={`grid ${galleryCols} gap-4 w-full`}>
                                     {submissionsSorted.slice(0, 6).map(s => (
                                         <div key={s.id} className="bg-black/70 border border-white/10 rounded-2xl p-3 relative overflow-hidden">
-                                            <div className="text-base text-zinc-300 mb-2">{s.avatar ? `${s.avatar} ` : ''}{s.name || 'Guest'}</div>
+                                            <div className="text-base md:text-lg text-zinc-300 mb-2">{s.avatar ? `${s.avatar} ` : ''}{s.name || 'Guest'}</div>
                                             <div className="aspect-square bg-zinc-950 rounded-xl overflow-hidden relative">
                                                 <img src={s.image} alt={s.name} className="w-full h-full object-contain" />
-                                                <img src={room?.logoUrl || ASSETS.logo} className="absolute top-3 right-3 w-16 opacity-70" alt="BROSS" />
+                                                <img src={room?.logoUrl || ASSETS.logo} className="absolute top-2 right-2 md:top-3 md:right-3 w-10 md:w-16 opacity-70" alt="BROSS" />
                                             </div>
-                                            <div className="mt-2 text-base font-semibold text-cyan-200">{voteCounts[s.uid] || 0} votes</div>
+                                            <div className="mt-2 text-base md:text-lg font-semibold text-cyan-200">{voteCounts[s.uid] || 0} votes</div>
                                         </div>
                                     ))}
                                 </div>
                             ) : (
-                                <div className="text-zinc-400 text-4xl text-center py-20 font-bebas tracking-wide">
+                                <div className="text-zinc-400 text-xl md:text-4xl text-center py-10 md:py-20 font-bebas tracking-wide">
                                     {doodleRequireReview && doodlePendingReviewCount > 0
                                         ? 'Waiting for host-approved sketches...'
                                         : 'Waiting for sketches...'}
                                 </div>
                             )}
                         </div>
-                        <div className="col-span-4 flex flex-col gap-4">
-                            <div className="bg-zinc-900/70 border border-white/10 rounded-3xl p-5">
-                                <div className="text-sm uppercase tracking-[0.35em] text-zinc-500 mb-3">Prompt</div>
-                                <div className="text-5xl font-bold text-white leading-tight">
+                        <div className="2xl:col-span-4 flex flex-col gap-3 md:gap-4">
+                            <div className="bg-zinc-900/70 border border-white/10 rounded-2xl md:rounded-3xl p-4 md:p-5">
+                                <div className="text-base md:text-lg uppercase tracking-[0.3em] text-zinc-500 mb-3">Prompt</div>
+                                <div className="text-3xl md:text-5xl 2xl:text-6xl font-bold text-white leading-tight">
                                     {promptVisible ? doodle.prompt : 'Prompt hidden - vote with your eyes.'}
                                 </div>
-                                <div className="text-sm text-zinc-300 mt-3">Sing or hum the line while you draw.</div>
+                                <div className="text-base md:text-lg text-zinc-300 mt-3">Sing or hum the line while you draw.</div>
                             </div>
-                            <div className="bg-zinc-900/70 border border-white/10 rounded-3xl p-5 flex-1 overflow-hidden">
-                                <div className="text-sm uppercase tracking-[0.35em] text-zinc-500 mb-3">Votes</div>
+                            <div className="bg-zinc-900/70 border border-white/10 rounded-2xl md:rounded-3xl p-4 md:p-5 flex-1 overflow-hidden">
+                                <div className="text-base md:text-lg uppercase tracking-[0.3em] text-zinc-500 mb-3">Votes</div>
                                 <div className="space-y-3 max-h-[46vh] overflow-y-auto pr-2 custom-scrollbar">
                                     {submissionsSorted.length === 0 && (
-                                        <div className="text-zinc-400 text-lg">
+                                        <div className="text-zinc-400 text-base md:text-xl">
                                             {doodleRequireReview && doodlePendingReviewCount > 0
                                                 ? `Waiting for host-approved sketches (${doodlePendingReviewCount} pending)...`
                                                 : 'Waiting for sketches...'}
@@ -1519,17 +1674,17 @@ const PublicTV = ({ roomCode }) => {
                                     )}
                                     {submissionsSorted.map(s => (
                                         <div key={s.id} className="bg-black/40 border border-white/10 rounded-2xl px-4 py-3 flex items-center justify-between">
-                                            <div className="text-lg text-white font-bold truncate">{s.avatar ? `${s.avatar} ` : ''}{s.name || 'Guest'}</div>
-                                            <div className="text-2xl text-cyan-200">{voteCounts[s.uid] || 0}</div>
+                                            <div className="text-lg md:text-2xl text-white font-bold truncate">{s.avatar ? `${s.avatar} ` : ''}{s.name || 'Guest'}</div>
+                                            <div className="text-xl md:text-3xl text-cyan-200">{voteCounts[s.uid] || 0}</div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                             {phase === 'reveal' && winner && (
-                                <div className="bg-black/60 border border-cyan-400/40 rounded-3xl p-5 text-center">
-                                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-500 mb-2">Winner</div>
-                                    <div className="text-3xl font-bebas text-cyan-300">{winner.name || 'Guest'}</div>
-                                    <div className="text-sm text-zinc-400">{voteCounts[winner.uid] || 0} votes</div>
+                                <div className="bg-black/60 border border-cyan-400/40 rounded-2xl md:rounded-3xl p-4 md:p-5 text-center">
+                                    <div className="text-sm md:text-base uppercase tracking-[0.28em] text-zinc-500 mb-2">Winner</div>
+                                    <div className="text-2xl md:text-3xl font-bebas text-cyan-300">{winner.name || 'Guest'}</div>
+                                    <div className="text-base md:text-lg text-zinc-400">{voteCounts[winner.uid] || 0} votes</div>
                                 </div>
                             )}
                         </div>
@@ -1538,6 +1693,8 @@ const PublicTV = ({ roomCode }) => {
             </div>
         );
     }
+
+    const pickerUser = roomUsers.find(u => u.uid === room?.bingoPickerUid) || null;
 
     // 2. Game Cartridges
     if (room?.activeMode && !['karaoke','applause','selfie_cam','selfie_challenge','applause_countdown','applause_result','doodle_oke'].includes(room.activeMode)) {
@@ -1595,15 +1752,15 @@ const PublicTV = ({ roomCode }) => {
             const badge = room.activeMode === 'riding_scales' ? 'Scale Ladder' : room.activeMode === 'vocal_challenge' ? 'Vocal Challenge' : 'Flappy Bird';
 
             return (
-                <div className="absolute inset-0 bg-black flex items-center justify-center p-8">
-                    <div className="w-full max-w-4xl bg-zinc-900/90 border border-white/10 rounded-[2.5rem] p-10 text-center shadow-[0_0_80px_rgba(34,211,238,0.2)]">
+                <div className="absolute inset-0 bg-black flex items-center justify-center p-4 md:p-6 2xl:p-8">
+                    <div className="w-full max-w-4xl bg-zinc-900/90 border border-white/10 rounded-[1.5rem] md:rounded-[2.5rem] p-4 md:p-7 2xl:p-10 text-center shadow-[0_0_80px_rgba(34,211,238,0.2)]">
                         <div className="text-xs uppercase tracking-[0.4em] text-zinc-400 mb-3">{badge}</div>
-                        <div className="text-5xl font-bebas text-cyan-300 mb-4">{playerName}</div>
-                        <div className="text-sm uppercase tracking-[0.3em] text-zinc-500 mb-6">Phone mic in control</div>
-                        <div className="grid grid-cols-2 gap-6">
-                            <div className="bg-black/40 border border-white/10 rounded-2xl p-6">
+                        <div className="text-3xl md:text-5xl font-bebas text-cyan-300 mb-3 md:mb-4">{playerName}</div>
+                        <div className="text-xs md:text-sm uppercase tracking-[0.18em] md:tracking-[0.3em] text-zinc-500 mb-4 md:mb-6">Phone mic in control</div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-6">
+                            <div className="bg-black/40 border border-white/10 rounded-2xl p-4 md:p-6">
                                 <div className="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-2">Score</div>
-                                <div className="text-5xl font-black text-white">{score}</div>
+                                <div className="text-3xl md:text-5xl font-black text-white">{score}</div>
                                 <div className="mt-4 h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
                                     <div
                                         className="h-full bg-gradient-to-r from-cyan-400 to-pink-500"
@@ -1611,27 +1768,27 @@ const PublicTV = ({ roomCode }) => {
                                     ></div>
                                 </div>
                             </div>
-                            <div className="bg-black/40 border border-white/10 rounded-2xl p-6">
+                            <div className="bg-black/40 border border-white/10 rounded-2xl p-4 md:p-6">
                                 <div className="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-2">Detected note</div>
-                                <div className="text-5xl font-black text-white">{voiceNote}</div>
+                                <div className="text-3xl md:text-5xl font-black text-white">{voiceNote}</div>
                             </div>
                             {typeof lives === 'number' && (
-                                <div className="bg-black/40 border border-white/10 rounded-2xl p-6">
+                                <div className="bg-black/40 border border-white/10 rounded-2xl p-4 md:p-6">
                                     <div className="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-2">Lives</div>
-                                    <div className="text-5xl font-black text-white">{lives}</div>
+                                    <div className="text-3xl md:text-5xl font-black text-white">{lives}</div>
                                 </div>
                             )}
                             {typeof strikes === 'number' && (
-                                <div className="bg-black/40 border border-white/10 rounded-2xl p-6">
+                                <div className="bg-black/40 border border-white/10 rounded-2xl p-4 md:p-6">
                                     <div className="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-2">Strikes</div>
-                                    <div className="text-5xl font-black text-white">{strikes}</div>
+                                    <div className="text-3xl md:text-5xl font-black text-white">{strikes}</div>
                                     {typeof round === 'number' && (
                                         <div className="text-sm text-zinc-400 mt-2">Round {round}</div>
                                     )}
                                 </div>
                             )}
                         </div>
-                        <div className="text-xs text-zinc-400 mt-8">Live results update on the phones. TV shows the score feed.</div>
+                        <div className="text-xs text-zinc-400 mt-5 md:mt-8">Live results update on the phones. TV shows the score feed.</div>
                     </div>
                 </div>
             );
@@ -1658,44 +1815,44 @@ const PublicTV = ({ roomCode }) => {
         const topFan = recap.topFan;
         const vibeStats = recap.vibeStats;
         return (
-            <div className="fixed inset-0 z-[200] bg-zinc-900 flex flex-col items-center justify-center p-12 text-center animate-in zoom-in duration-500">
-                <div className="bg-gradient-to-r from-purple-900 to-indigo-900 p-12 rounded-3xl border-4 border-yellow-400 shadow-[0_0_100px_rgba(250,204,21,0.3)] max-w-5xl w-full relative overflow-hidden">
-                    <h2 className="text-4xl font-bebas text-yellow-400 mb-2 tracking-widest relative z-10">PERFORMANCE SUMMARY</h2>
+            <div className="fixed inset-0 z-[200] bg-zinc-900 flex flex-col items-center justify-center p-4 md:p-8 2xl:p-12 text-center animate-in zoom-in duration-500">
+                <div className="bg-gradient-to-r from-purple-900 to-indigo-900 p-4 md:p-8 2xl:p-12 rounded-2xl md:rounded-3xl border-2 md:border-4 border-yellow-400 shadow-[0_0_100px_rgba(250,204,21,0.3)] max-w-5xl w-full relative overflow-hidden">
+                    <h2 className="text-2xl md:text-3xl 2xl:text-4xl font-bebas text-yellow-400 mb-2 tracking-[0.16em] md:tracking-widest relative z-10">PERFORMANCE SUMMARY</h2>
                     {recap.hallOfFame?.newAllTime && (
-                        <div className="inline-flex items-center gap-3 px-6 py-2 rounded-full bg-yellow-400/20 border border-yellow-300 text-yellow-200 uppercase tracking-widest font-bold text-xl mb-6 relative z-10">
+                        <div className="inline-flex items-center gap-2 md:gap-3 px-3 py-1.5 md:px-6 md:py-2 rounded-full bg-yellow-400/20 border border-yellow-300 text-yellow-200 uppercase tracking-[0.12em] md:tracking-widest font-bold text-xs md:text-xl mb-4 md:mb-6 relative z-10">
                             <i className="fa-solid fa-trophy"></i> New Global High Score
                         </div>
                     )}
-                    <div className="flex items-center justify-center gap-6 mb-8 relative z-10">
+                    <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-6 mb-5 md:mb-8 relative z-10">
                         {recap.albumArtUrl && (
-                            <img src={recap.albumArtUrl} alt={recap.songTitle} className="w-36 h-36 rounded-2xl object-cover border-2 border-white/10 shadow-xl" />
+                            <img src={recap.albumArtUrl} alt={recap.songTitle} className="w-24 h-24 md:w-36 md:h-36 rounded-2xl object-cover border-2 border-white/10 shadow-xl" />
                         )}
                         <div>
-                            <div className="text-6xl font-black text-white">{recap.songTitle}</div>
-                            <div className="text-3xl text-zinc-300 font-bold mt-2">{recap.singerName}</div>
+                            <div className="text-2xl md:text-4xl 2xl:text-6xl font-black text-white">{recap.songTitle}</div>
+                            <div className="text-lg md:text-2xl 2xl:text-3xl text-zinc-300 font-bold mt-1 md:mt-2">{recap.singerName}</div>
                         </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-8 mb-12 relative z-10">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-8 mb-6 md:mb-12 relative z-10">
                         <div className="bg-black/30 p-4 rounded-xl border border-pink-500/30">
-                            <div className="text-xl text-pink-400 uppercase font-bold">Vibe</div>
-                            <div className="text-6xl font-mono text-white">{recap.hypeScore || 0}</div>
+                            <div className="text-sm md:text-xl text-pink-400 uppercase font-bold">Vibe</div>
+                            <div className="text-3xl md:text-6xl font-mono text-white">{recap.hypeScore || 0}</div>
                         </div>
                         <div className="bg-black/30 p-4 rounded-xl border border-yellow-500/30">
-                            <div className="text-xl text-yellow-400 uppercase font-bold">Applause</div>
-                            <div className="text-6xl font-mono text-white">{Math.round(recap.applauseScore || 0)}</div>
+                            <div className="text-sm md:text-xl text-yellow-400 uppercase font-bold">Applause</div>
+                            <div className="text-3xl md:text-6xl font-mono text-white">{Math.round(recap.applauseScore || 0)}</div>
                         </div>
                         <div className="bg-black/30 p-4 rounded-xl border border-green-500/30">
-                            <div className="text-xl text-green-400 uppercase font-bold">Bonus</div>
-                            <div className="text-6xl font-mono text-white">{recap.hostBonus || 0}</div>
+                            <div className="text-sm md:text-xl text-green-400 uppercase font-bold">Bonus</div>
+                            <div className="text-3xl md:text-6xl font-mono text-white">{recap.hostBonus || 0}</div>
                         </div>
                     </div>
-                    <div className="text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-white to-yellow-300 relative z-10">{(recap.hypeScore||0)+(Math.round(recap.applauseScore||0))+(recap.hostBonus||0)} PTS</div>
+                    <div className="text-4xl md:text-6xl 2xl:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-white to-yellow-300 relative z-10">{(recap.hypeScore||0)+(Math.round(recap.applauseScore||0))+(recap.hostBonus||0)} PTS</div>
                     {(topFan || vibeStats) && (
-                        <div className="grid grid-cols-2 gap-6 mt-10 relative z-10">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mt-5 md:mt-10 relative z-10">
                             {topFan && (
                                 <div className="bg-black/30 border border-cyan-400/30 rounded-2xl p-4">
                                     <div className="text-xs uppercase tracking-[0.4em] text-cyan-200 mb-2">Top Fan</div>
-                                    <div className="text-4xl font-black text-white flex items-center justify-center gap-3">
+                                    <div className="text-2xl md:text-4xl font-black text-white flex items-center justify-center gap-3">
                                         <span>{topFan.avatar || EMOJI.sparkle}</span>
                                         <span className="truncate max-w-[240px]">{topFan.name}</span>
                                     </div>
@@ -1733,7 +1890,6 @@ const PublicTV = ({ roomCode }) => {
     const isMinimal = room?.layoutMode === 'minimal';
     const showVisualizerTv = !!room?.showVisualizerTv;
     const visualizerMode = room?.visualizerMode || 'ribbon';
-    const pickerUser = roomUsers.find(u => u.uid === room?.bingoPickerUid) || null;
     const bingoRng = room?.bingoMysteryRng;
     const showBingoRngOverlay = room?.bingoMode === 'mystery' && (
         bingoRng?.active ||
@@ -1741,7 +1897,10 @@ const PublicTV = ({ roomCode }) => {
     );
 
     return (
-        <div className={`public-tv h-screen w-screen relative overflow-hidden font-saira text-white transition-colors duration-1000 ${bgClass} ${motionSafeFx ? 'motion-safe-fx' : ''}`}>
+        <div
+            className={`public-tv h-screen min-h-screen w-screen relative ${tvOverflowClass} font-saira text-white transition-colors duration-1000 ${bgClass} ${motionSafeFx ? 'motion-safe-fx' : ''}`}
+            style={{ height: '100dvh' }}
+        >
             <audio
                 ref={bgVisualizerAudioRef}
                 className="hidden"
@@ -1767,11 +1926,11 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             {!room?.hideLogo && (
-                <img src={room?.logoUrl || ASSETS.logo} className="tv-logo absolute top-8 left-8 w-96 z-50 drop-shadow-xl opacity-90" alt="Logo" />
+                <img src={room?.logoUrl || ASSETS.logo} className={`tv-logo absolute top-3 left-3 md:top-5 md:left-5 2xl:top-8 2xl:left-8 ${logoSizeClass} z-50 drop-shadow-xl opacity-90`} alt="Logo" />
             )}
             {isExperienceActive && (
-                <div className="absolute top-8 right-8 z-[240] flex items-center gap-3 bg-red-600/90 border border-red-200/40 px-4 py-2 rounded-full shadow-[0_0_30px_rgba(239,68,68,0.5)]">
-                    <div className="text-sm md:text-base font-black tracking-widest uppercase">
+                <div className="absolute top-3 right-3 md:top-5 md:right-5 2xl:top-8 2xl:right-8 z-[240] flex items-center gap-2 md:gap-3 bg-red-600/90 border border-red-200/40 px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-[0_0_30px_rgba(239,68,68,0.5)]">
+                    <div className="text-[10px] md:text-base font-black tracking-[0.12em] md:tracking-widest uppercase">
                         LIVE: {experienceLabel}
                     </div>
                     <button
@@ -1786,25 +1945,25 @@ const PublicTV = ({ roomCode }) => {
                 </div>
             )}
             {showBingoRngOverlay && (
-                <div className="absolute inset-0 z-[230] bg-black/80 flex items-center justify-center p-10">
-                    <div className="w-full max-w-4xl bg-zinc-900/90 border border-white/10 rounded-[2.5rem] p-8 text-center shadow-2xl">
+                <div className="absolute inset-0 z-[230] bg-black/80 flex items-center justify-center p-4 md:p-8 2xl:p-10">
+                    <div className="w-full max-w-4xl bg-zinc-900/90 border border-white/10 rounded-[1.5rem] md:rounded-[2.5rem] p-4 md:p-6 2xl:p-8 text-center shadow-2xl">
                         <div className="text-xs uppercase tracking-[0.4em] text-zinc-500">Mystery Bingo</div>
-                        <div className="text-6xl font-bebas text-cyan-300 mt-3">Spin Results</div>
-                        <div className="text-sm text-zinc-400 uppercase tracking-widest mt-2">
+                        <div className="text-3xl md:text-5xl 2xl:text-6xl font-bebas text-cyan-300 mt-2 md:mt-3">Spin Results</div>
+                        <div className="text-xs md:text-sm text-zinc-400 uppercase tracking-[0.15em] md:tracking-widest mt-2">
                             {bingoRng?.active ? 'Spinning now' : 'Order locked'}
                         </div>
-                        <div className="mt-6 grid grid-cols-1 gap-3">
+                        <div className="mt-4 md:mt-6 grid grid-cols-1 gap-2 md:gap-3">
                             {bingoRngResults.length === 0 && (
-                                <div className="text-zinc-500 text-lg">Waiting for spins...</div>
+                                <div className="text-zinc-500 text-sm md:text-lg">Waiting for spins...</div>
                             )}
                             {bingoRngResults.slice(0, 8).map((entry, idx) => (
-                                <div key={entry.uid} className="flex items-center justify-between bg-black/50 border border-white/10 rounded-2xl px-6 py-3">
-                                    <div className="flex items-center gap-4">
-                                        <div className="text-3xl">{entry.avatar}</div>
-                                        <div className="text-2xl font-bold text-white">{entry.name}</div>
+                                <div key={entry.uid} className="flex items-center justify-between bg-black/50 border border-white/10 rounded-2xl px-3 py-2 md:px-6 md:py-3">
+                                    <div className="flex items-center gap-2 md:gap-4 min-w-0">
+                                        <div className="text-xl md:text-3xl">{entry.avatar}</div>
+                                        <div className="text-base md:text-2xl font-bold text-white truncate">{entry.name}</div>
                                     </div>
-                                    <div className="text-3xl font-black text-yellow-300">#{idx + 1}</div>
-                                    <div className="text-3xl font-black text-cyan-200 tabular-nums">{entry.value}</div>
+                                    <div className="text-xl md:text-3xl font-black text-yellow-300">#{idx + 1}</div>
+                                    <div className="text-xl md:text-3xl font-black text-cyan-200 tabular-nums">{entry.value}</div>
                                 </div>
                             ))}
                         </div>
@@ -1813,9 +1972,9 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             {tipPulse && (room?.tipUrl || room?.tipQrUrl) && (
-                <div className="absolute bottom-6 right-6 z-[120] bg-emerald-500/90 text-black px-6 py-4 rounded-2xl border-2 border-white shadow-[0_0_30px_rgba(16,185,129,0.6)] animate-pulse backdrop-blur">
-                    <div className="text-xs font-bold uppercase tracking-widest">Show some love</div>
-                    <div className="text-2xl font-black">Tip the host {EMOJI.tip}</div>
+                <div className="absolute bottom-3 right-3 md:bottom-6 md:right-6 z-[120] bg-emerald-500/90 text-black px-3 py-2 md:px-6 md:py-4 rounded-2xl border-2 border-white shadow-[0_0_30px_rgba(16,185,129,0.6)] animate-pulse backdrop-blur">
+                    <div className="text-[10px] md:text-xs font-bold uppercase tracking-[0.12em] md:tracking-widest">Show some love</div>
+                    <div className="text-sm md:text-2xl font-black">Tip the host {EMOJI.tip}</div>
                 </div>
             )}
             {bonusDropBurst && (
@@ -1830,12 +1989,12 @@ const PublicTV = ({ roomCode }) => {
             
 
             {guitarWinner && (
-                <div className="absolute top-28 left-1/2 -translate-x-1/2 z-[140] bg-black/70 border border-yellow-400/60 px-8 py-4 rounded-full shadow-[0_0_30px_rgba(250,204,21,0.4)] backdrop-blur">
-                    <div className="flex items-center gap-4">
-                        <div className="text-4xl">{guitarWinner.avatar}</div>
-                        <div className="text-xl font-bold text-yellow-300">Guitar Solo MVP</div>
-                        <div className="text-white font-black">{guitarWinner.name}</div>
-                        <div className="text-yellow-400 font-mono">{guitarWinner.hits} hits</div>
+                <div className="absolute top-20 md:top-24 2xl:top-28 left-1/2 -translate-x-1/2 z-[140] bg-black/70 border border-yellow-400/60 px-3 py-2 md:px-6 md:py-3 2xl:px-8 2xl:py-4 rounded-full shadow-[0_0_30px_rgba(250,204,21,0.4)] backdrop-blur max-w-[94vw]">
+                    <div className="flex items-center gap-2 md:gap-4 whitespace-nowrap">
+                        <div className="text-xl md:text-3xl 2xl:text-4xl">{guitarWinner.avatar}</div>
+                        <div className="text-xs md:text-base 2xl:text-xl font-bold text-yellow-300">Guitar Solo MVP</div>
+                        <div className="text-white font-black text-xs md:text-base truncate max-w-[30vw]">{guitarWinner.name}</div>
+                        <div className="text-yellow-400 font-mono text-xs md:text-base">{guitarWinner.hits} hits</div>
                     </div>
                 </div>
             )}
@@ -1846,35 +2005,35 @@ const PublicTV = ({ roomCode }) => {
                 <div className="absolute inset-0 z-[160] pointer-events-none">
                     <div className={`absolute inset-0 ${motionSafeFx ? '' : 'vibe-strobe'} ${motionSafeFx ? 'opacity-30' : 'opacity-45'} mix-blend-screen bg-white`}></div>
                     <div className={`absolute inset-0 ${motionSafeFx ? 'bg-gradient-to-b from-pink-500/10 via-transparent to-cyan-400/5' : 'bg-gradient-to-b from-pink-500/15 via-transparent to-cyan-400/10'}`}></div>
-                    <div className="absolute top-8 right-8 px-3 py-1 rounded-full bg-black/65 border border-yellow-300/40 text-[10px] uppercase tracking-[0.25em] text-yellow-200">
+                    <div className="absolute top-3 right-3 md:top-6 md:right-6 2xl:top-8 2xl:right-8 px-2 py-1 md:px-3 rounded-full bg-black/65 border border-yellow-300/40 text-[9px] md:text-[10px] uppercase tracking-[0.16em] md:tracking-[0.25em] text-yellow-200">
                         Sensitivity Warning
                     </div>
-                    <div className="absolute top-8 left-1/2 -translate-x-1/2 text-center max-w-[80vw]">
-                        <div className="text-sm uppercase tracking-[0.45em] text-white/80">Beat Drop</div>
+                    <div className="absolute top-3 md:top-6 2xl:top-8 left-1/2 -translate-x-1/2 text-center max-w-[92vw] md:max-w-[80vw]">
+                        <div className="text-[10px] md:text-sm uppercase tracking-[0.2em] md:tracking-[0.45em] text-white/80">Beat Drop</div>
                         {strobePhase === 'countdown' && (
                             <>
-                                <div className={`${motionSafeFx ? 'text-8xl' : 'text-[9rem]'} font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.6)]`}>{strobeCountdown || 0}</div>
-                                <div className="text-xl font-bold text-white/90">Get ready to tap</div>
+                                <div className={`${motionSafeFx ? 'text-6xl md:text-8xl' : 'text-[clamp(3.5rem,16vw,9rem)]'} font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.6)]`}>{strobeCountdown || 0}</div>
+                                <div className="text-sm md:text-xl font-bold text-white/90">Get ready to tap</div>
                             </>
                         )}
                         {strobePhase === 'active' && (
                             <>
-                                <div className="text-6xl font-bebas text-white drop-shadow-[0_0_20px_rgba(0,0,0,0.5)]">TAP THE BEAT</div>
-                                <div className="text-lg text-white/90">Tap on your phone to keep the meter alive</div>
-                                <div className="mt-3 text-base text-white/80">Time Left: {strobeRemaining}s</div>
-                                <div className="mt-4 h-5 w-[560px] max-w-[75vw] bg-white/20 rounded-full overflow-hidden border border-white/30 mx-auto">
+                                <div className="text-3xl md:text-5xl 2xl:text-6xl font-bebas text-white drop-shadow-[0_0_20px_rgba(0,0,0,0.5)]">TAP THE BEAT</div>
+                                <div className="text-sm md:text-lg text-white/90">Tap on your phone to keep the meter alive</div>
+                                <div className="mt-2 md:mt-3 text-sm md:text-base text-white/80">Time Left: {strobeRemaining}s</div>
+                                <div className="mt-3 md:mt-4 h-4 md:h-5 w-[85vw] max-w-[560px] bg-white/20 rounded-full overflow-hidden border border-white/30 mx-auto">
                                     <div className="h-full bg-white/90" style={{ width: `${strobeMeter}%` }}></div>
                                 </div>
-                                <div className="mt-2 text-xs uppercase tracking-[0.3em] text-white/70">Total taps {strobeTotalTaps}</div>
+                                <div className="mt-2 text-[10px] md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] text-white/70">Total taps {strobeTotalTaps}</div>
                             </>
                         )}
                     </div>
                     {strobePhase === 'active' && (
-                        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-3 max-w-[85vw] overflow-x-auto px-4">
+                        <div className="absolute bottom-3 md:bottom-8 left-1/2 -translate-x-1/2 flex gap-2 md:gap-3 max-w-[92vw] md:max-w-[85vw] overflow-x-auto px-2 md:px-4">
                             {strobeLeaders.map((u, idx) => (
-                                <div key={u.uid || idx} className="bg-black/60 border border-white/20 rounded-full px-4 py-2 text-white text-sm font-bold flex items-center gap-2 whitespace-nowrap flex-shrink-0">
-                                    <span className="text-xl">{u.avatar || EMOJI.sparkle}</span>
-                                    <span className="truncate max-w-[120px]">{u.name || 'Guest'}</span>
+                                <div key={u.uid || idx} className="bg-black/60 border border-white/20 rounded-full px-3 py-1.5 md:px-4 md:py-2 text-white text-xs md:text-sm font-bold flex items-center gap-1.5 md:gap-2 whitespace-nowrap flex-shrink-0">
+                                    <span className="text-base md:text-xl">{u.avatar || EMOJI.sparkle}</span>
+                                    <span className="truncate max-w-[100px] md:max-w-[120px]">{u.name || 'Guest'}</span>
                                     <span className="text-cyan-300 font-mono">{u.strobeTaps || 0}</span>
                                 </div>
                             ))}
@@ -1928,7 +2087,7 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                         ))}
                     </div>
-                    <div className="absolute top-12 left-1/2 -translate-x-1/2 text-sm font-bold tracking-[0.6em] text-white/70 uppercase">Lights Up - Sway</div>
+                    <div className="absolute top-8 md:top-10 2xl:top-12 left-1/2 -translate-x-1/2 text-[10px] md:text-sm font-bold tracking-[0.25em] md:tracking-[0.6em] text-white/70 uppercase">Lights Up - Sway</div>
                     {balladLights.slice(0, 4).map((light, idx) => (
                         <div
                             key={idx}
@@ -1953,12 +2112,12 @@ const PublicTV = ({ roomCode }) => {
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,59,120,0.15),transparent_55%)]"></div>
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(255,140,0,0.1),transparent_60%)]"></div>
                     </div>
-                <div className="absolute inset-0 z-[85] pointer-events-none flex flex-col items-center justify-between py-8">
-                        <div className={`${motionSafeFx ? 'text-6xl' : 'text-8xl'} font-bebas text-transparent bg-clip-text bg-gradient-to-t from-yellow-400 via-orange-500 to-red-600 drop-shadow-[0_0_30px_rgba(255,100,0,0.8)] ${motionSafeFx ? '' : 'animate-pulse'}`}>GUITAR SOLO!</div>
-                        <div className="flex justify-center pointer-events-none">
-                            <div className="bg-black/60 border border-white/10 rounded-3xl px-8 py-6 backdrop-blur-md min-w-[60%] max-w-[80vw]">
+                <div className="absolute inset-0 z-[85] pointer-events-none flex flex-col items-center justify-between py-4 md:py-6 2xl:py-8">
+                        <div className={`${motionSafeFx ? 'text-4xl md:text-6xl' : 'text-[clamp(2.5rem,9vw,6rem)] 2xl:text-8xl'} font-bebas text-transparent bg-clip-text bg-gradient-to-t from-yellow-400 via-orange-500 to-red-600 drop-shadow-[0_0_30px_rgba(255,100,0,0.8)] ${motionSafeFx ? '' : 'animate-pulse'}`}>GUITAR SOLO!</div>
+                        <div className="flex justify-center pointer-events-none w-full px-3 md:px-6">
+                            <div className="bg-black/60 border border-white/10 rounded-2xl md:rounded-3xl px-4 py-3 md:px-6 md:py-5 2xl:px-8 2xl:py-6 backdrop-blur-md min-w-0 w-full max-w-[90vw] 2xl:min-w-[60%] 2xl:max-w-[80vw]">
                                 <div className="text-sm text-zinc-300 mb-4 text-center tracking-[0.3em] uppercase">Top Strummers</div>
-                                <div className="flex flex-wrap items-center justify-center gap-5">
+                                <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 2xl:gap-5">
                                     {guitarLeaders.length === 0 && (
                                         <div className="text-zinc-400 text-sm">Start strumming to appear here.</div>
                                     )}
@@ -1966,10 +2125,10 @@ const PublicTV = ({ roomCode }) => {
                                         const max = Math.max(1, ...guitarLeaders.map(v=>v.guitarHits || 0));
                                         const scale = 1 + Math.min(0.9, (p.guitarHits || 0) / max * 0.9);
                                         return (
-                                            <div key={p.uid} className="flex items-center gap-3 bg-black/70 px-4 py-2 rounded-full border border-white/15 shadow-lg transition-transform duration-200" style={{ transform: `scale(${scale})` }}>
-                                                <div className="text-4xl">{p.avatar}</div>
-                                                <div className="text-white font-bold text-lg">{p.name}</div>
-                                                <div className="text-yellow-400 font-mono text-lg ml-2">{p.guitarHits || 0}</div>
+                                            <div key={p.uid} className="flex items-center gap-2 md:gap-3 bg-black/70 px-3 py-1.5 md:px-4 md:py-2 rounded-full border border-white/15 shadow-lg transition-transform duration-200 max-w-full" style={{ transform: `scale(${scale})` }}>
+                                                <div className="text-2xl md:text-4xl">{p.avatar}</div>
+                                                <div className="text-white font-bold text-sm md:text-lg truncate max-w-[26vw] md:max-w-[32vw]">{p.name}</div>
+                                                <div className="text-yellow-400 font-mono text-sm md:text-lg ml-1 md:ml-2">{p.guitarHits || 0}</div>
                                             </div>
                                         );
                                     })}
@@ -1982,49 +2141,49 @@ const PublicTV = ({ roomCode }) => {
             
             {multiplier >= 4 && <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_20%,#000_120%)] opacity-50 mix-blend-overlay pointer-events-none"></div>}
 
-            <div className={`relative z-10 h-full grid grid-cols-12 gap-6 p-4 md:p-6 ${isCinema ? 'pt-0 pb-0' : 'pt-32 pb-24'}`}>
+            <div className={`relative z-10 h-full grid grid-cols-1 lg:grid-cols-12 ${gridSpacingClass} ${isCinema ? 'pt-0 pb-0' : `${gridTopPaddingClass} ${gridBottomPaddingClass}`}`}>
                 {/* STAGE AREA */}
-                <div className={`${isCinema ? 'col-span-12' : 'col-span-8'} flex flex-col transition-all duration-500`}>
-                    <div className={`flex-1 ${isMinimal || isCinema ? 'bg-black' : 'bg-black/30 backdrop-blur-md border border-white/10'} rounded-3xl relative shadow-2xl overflow-hidden min-h-[50vh]`}>
+                <div className={`${isCinema ? 'col-span-12' : 'col-span-12 lg:col-span-8'} flex flex-col transition-all duration-500`}>
+                    <div className={`flex-1 ${isMinimal || isCinema ? 'bg-black' : 'bg-black/30 backdrop-blur-md border border-white/10'} rounded-2xl md:rounded-3xl relative shadow-2xl overflow-hidden ${stageMinHeightClass}`}>
                         <div className="absolute inset-0 pointer-events-none tv-light-sweep"></div>
                           {current && showScoring && (
-                              <div className="absolute top-12 right-6 z-[80] text-right">
+                              <div className="absolute top-8 right-3 md:top-10 md:right-4 2xl:top-12 2xl:right-6 z-[80] text-right">
                                   <AnimatedPoints value={Math.max(0, currentPerformancePoints)} />
-                                  <div className="flex items-center justify-end gap-2 mt-2">
-                                    <div className="text-[10px] text-zinc-400 tracking-widest">PERFORMANCE TOTAL</div>
+                                  <div className="flex items-center justify-end gap-1 md:gap-2 mt-1 md:mt-2">
+                                    <div className="text-xs md:text-sm text-zinc-300 tracking-[0.1em] md:tracking-[0.15em]">PERFORMANCE TOTAL</div>
                                     {currentSingerIsVip && (
-                                        <div className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-widest bg-yellow-400 text-black shadow-[0_0_10px_rgba(253,224,71,0.6)]">
+                                        <div className="px-2 py-0.5 rounded-full text-xs md:text-sm font-bold tracking-[0.1em] md:tracking-[0.14em] bg-yellow-400 text-black shadow-[0_0_10px_rgba(253,224,71,0.6)]">
                                             VIP
                                         </div>
                                     )}
                                 </div>
                             </div>
                         )}
-                        <div className={`absolute top-0 left-0 w-full h-14 z-[70] bg-black/60 border-b border-white/15 flex items-center shadow-[0_6px_18px_rgba(0,0,0,0.45)] transition-all duration-500 ${showHypeMeter ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-6 pointer-events-none'}`}>
+                        <div className={`absolute top-0 left-0 w-full h-12 md:h-14 z-[70] bg-black/60 border-b border-white/15 flex items-center shadow-[0_6px_18px_rgba(0,0,0,0.45)] transition-all duration-500 ${showHypeMeter ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-6 pointer-events-none'}`}>
                             <div className="absolute inset-0 border-y border-white/10 pointer-events-none"></div>
-                            <div className="absolute left-4 z-10 font-bold text-base uppercase tracking-widest flex gap-2 items-center">
-                                <span className="text-2xl">{EMOJI.fire}</span>
+                            <div className="absolute left-2 md:left-4 z-10 font-bold text-xs md:text-lg uppercase tracking-[0.08em] md:tracking-[0.12em] flex gap-1 md:gap-2 items-center">
+                                <span className="text-base md:text-2xl">{EMOJI.fire}</span>
                                 <span>HYPE METER</span>
-                                {room?.multiplier > 1 && <span className="bg-red-600 text-white px-2 py-0.5 rounded animate-pulse">x{room.multiplier} ACTIVE</span>}
+                                {room?.multiplier > 1 && <span className="bg-red-600 text-white px-1.5 py-0.5 md:px-2 rounded animate-pulse text-xs md:text-base">x{room.multiplier} ACTIVE</span>}
                             </div>
                             <div 
                                 className={`h-full transition-all duration-200 ${combo > 90 ? 'bg-gradient-to-r from-red-500 via-yellow-400 to-red-500 animate-pulse' : combo > 50 ? 'bg-gradient-to-r from-yellow-500 to-orange-500' : 'bg-gradient-to-r from-cyan-600 to-blue-600'}`} 
                                 style={{width: `${Math.min(100, Math.max(5, combo))}%`, boxShadow: `0 0 20px ${combo > 50 ? 'orange' : 'cyan'}`}}
                             ></div>
                             <div className="absolute left-1/2 top-0 h-full w-1 bg-cyan-400/60 -translate-x-1/2"></div>
-                            <div className="absolute left-1/2 top-1.5 -translate-x-1/2 text-base font-bold text-cyan-200 bg-black/70 px-3 py-1 rounded">2x</div>
+                            <div className="absolute left-1/2 top-1.5 -translate-x-1/2 text-xs md:text-base font-bold text-cyan-200 bg-black/70 px-2 md:px-3 py-1 rounded">2x</div>
                             <div className="absolute left-[90%] top-0 h-full w-1 bg-purple-400/60 -translate-x-1/2"></div>
-                            <div className="absolute left-[90%] top-1.5 -translate-x-1/2 text-base font-bold text-purple-200 bg-black/70 px-3 py-1 rounded">4x</div>
+                            <div className="absolute left-[90%] top-1.5 -translate-x-1/2 text-xs md:text-base font-bold text-purple-200 bg-black/70 px-2 md:px-3 py-1 rounded">4x</div>
                         </div>
                         {room?.activeMode === 'selfie_cam' ? (
                             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-50">
-                                <i className="fa-solid fa-camera text-9xl text-white animate-bounce mb-4"></i>
-                                <h1 className="text-6xl font-bebas text-pink-500">SELFIE CAM ACTIVE!</h1>
+                                <i className="fa-solid fa-camera text-5xl md:text-7xl 2xl:text-9xl text-white animate-bounce mb-3 md:mb-4"></i>
+                                <h1 className="text-3xl md:text-5xl 2xl:text-6xl font-bebas text-pink-500 text-center">SELFIE CAM ACTIVE!</h1>
                             </div>
                         ) : (
                             <>
                                 {room?.bingoMode === 'mystery' && room?.activeMode === 'bingo' && pickerUser && (
-                                    <div className="absolute top-6 left-6 z-[90] bg-black/70 border border-cyan-400/40 px-4 py-2 rounded-full text-sm uppercase tracking-widest text-cyan-200">
+                                    <div className="absolute top-4 left-4 md:top-6 md:left-6 z-[90] bg-black/70 border border-cyan-400/40 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-base uppercase tracking-[0.1em] md:tracking-[0.12em] text-cyan-200 max-w-[90%] truncate">
                                         Next Pick: <span className="text-white font-bold">{pickerUser.name}</span>
                                     </div>
                                 )}
@@ -2046,6 +2205,33 @@ const PublicTV = ({ roomCode }) => {
                                     </div>
                                 )}
                                 <Stage room={room} current={current} started={started} combo={combo} minimalUI={isMinimal} showVideo={!isMinimal} />
+                                {popTriviaQuestion && (
+                                    <div className="absolute left-2 right-2 md:left-4 md:right-4 2xl:left-6 2xl:right-6 bottom-2 md:bottom-4 2xl:bottom-5 z-[92] pointer-events-none">
+                                        <div className="bg-black/75 border border-cyan-400/35 rounded-2xl px-3 py-3 md:px-4 md:py-4 2xl:px-5 shadow-[0_0_28px_rgba(34,211,238,0.18)] backdrop-blur">
+                                            <div className="flex items-center justify-between gap-2 md:gap-4 text-xs md:text-sm uppercase tracking-[0.12em] md:tracking-[0.2em] text-cyan-200 mb-2">
+                                                <span>Pop-up Trivia</span>
+                                                <span>
+                                                    {popTriviaState?.index + 1}/{popTriviaState?.total} | {popTriviaState?.timeLeftSec}s
+                                                </span>
+                                            </div>
+                                            <div className="text-base md:text-xl 2xl:text-2xl font-bold text-white leading-tight mb-2 md:mb-3">
+                                                {popTriviaQuestion.q}
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                {popTriviaQuestion.options?.map((option, idx) => (
+                                                    <div key={`${popTriviaQuestion.id}_${idx}`} className="rounded-xl border border-white/15 bg-black/40 px-2.5 py-2 md:px-3 text-white text-base md:text-lg font-semibold flex items-center justify-between gap-2 md:gap-3">
+                                                        <span className="text-cyan-300 font-black text-sm md:text-base tracking-[0.16em] md:tracking-[0.2em]">{String.fromCharCode(65 + idx)}</span>
+                                                        <span className="min-w-0 flex-1 truncate">{option}</span>
+                                                        <span className="text-zinc-300 font-mono text-sm md:text-base">{popTriviaVoteCounts[idx] || 0}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="mt-2 text-xs md:text-sm uppercase tracking-[0.1em] md:tracking-[0.14em] text-zinc-300">
+                                                {popTriviaTotalVotes} answers locked
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </>
                         )}
                     </div>
@@ -2053,64 +2239,74 @@ const PublicTV = ({ roomCode }) => {
                 
                 {/* SIDEBAR: Hidden in Cinema Mode */}
                 {!isCinema && (
-                    <div className="col-span-4 flex flex-col gap-2 h-full min-h-0 pb-2 overflow-hidden">
-                         <div className="p-3 rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20">
-                            <div className="text-3xl font-black text-cyan-100 mb-1 uppercase tracking-[0.18em]">JOIN</div>
-                            <div className="bg-white p-3 rounded-3xl inline-block shadow-[0_0_45px_rgba(255,255,255,0.2)]">
+                    <div className={`col-span-12 lg:col-span-4 flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden`}>
+                         <div className="p-3 md:p-4 rounded-2xl md:rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20">
+                            <div className="text-xl md:text-2xl 2xl:text-3xl font-black text-cyan-100 mb-1 uppercase tracking-[0.14em] md:tracking-[0.18em]">JOIN</div>
+                            <div className="bg-white p-2 md:p-3 rounded-2xl md:rounded-3xl inline-block shadow-[0_0_45px_rgba(255,255,255,0.2)]">
                                 <LocalQrImage
                                     value={`${appBase}?room=${roomCode}`}
-                                    size={220}
+                                    size={joinQrSize}
                                     alt="QR"
-                                    className="w-[220px] h-[220px]"
+                                    className={joinQrClass}
                                 />
                             </div>
-                            <div className="text-4xl font-bebas text-white mt-2 tracking-[0.14em]">{roomCode}</div>
+                            <div className="text-2xl md:text-3xl 2xl:text-4xl font-bebas text-white mt-2 tracking-[0.1em] md:tracking-[0.14em]">{roomCode}</div>
                             <div className="mt-1">
-                                <div className="text-sm text-zinc-100 font-semibold uppercase tracking-[0.1em] break-all leading-tight">Go to {joinUrlBaseDisplay}</div>
-                                <div className="text-lg font-black text-cyan-100 tracking-[0.04em] break-all leading-tight">{joinUrlQueryDisplay}</div>
+                                {showVerboseJoinUrl ? (
+                                    <>
+                                        <div className="text-sm md:text-base text-zinc-100 font-semibold uppercase tracking-[0.08em] md:tracking-[0.1em] break-all leading-tight">Go to {joinUrlBaseDisplay}</div>
+                                        <div className="text-base md:text-xl font-black text-cyan-100 tracking-[0.02em] md:tracking-[0.04em] break-all leading-tight">{joinUrlQueryDisplay}</div>
+                                    </>
+                                ) : (
+                                    <div className="text-sm md:text-base text-zinc-100 font-semibold uppercase tracking-[0.08em] md:tracking-[0.1em] leading-tight">
+                                        Scan QR to join this room
+                                    </div>
+                                )}
                             </div>
                             {isMinimal && <div className="mt-4"><MiniVideoPane room={room} current={current} /></div>}
                          </div>
                          <div className="h-[2px] mx-4 rounded-full bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-40"></div>
 
                          {(spotlightUser || room?.spotlightUser?.id) && (
-                            <div className="p-5 rounded-3xl bg-black/70 border border-yellow-400/30 shadow-[0_0_25px_rgba(234,179,8,0.2)] text-center">
-                                <div className="text-[10px] uppercase tracking-[0.4em] text-yellow-300">Spotlight</div>
-                                <div className="text-5xl mt-2">{room?.spotlightUser?.avatar || spotlightUser?.avatar || EMOJI.star}</div>
-                                <div className="text-2xl font-bold text-white mt-2 truncate">{room?.spotlightUser?.name || spotlightUser?.name || 'Guest'}</div>
+                            <div className="p-3 md:p-5 rounded-2xl md:rounded-3xl bg-black/70 border border-yellow-400/30 shadow-[0_0_25px_rgba(234,179,8,0.2)] text-center">
+                                <div className="text-xs md:text-sm uppercase tracking-[0.24em] md:tracking-[0.3em] text-yellow-300">Spotlight</div>
+                                <div className="text-3xl md:text-5xl mt-2">{room?.spotlightUser?.avatar || spotlightUser?.avatar || EMOJI.star}</div>
+                                <div className="text-xl md:text-3xl font-bold text-white mt-2 truncate">{room?.spotlightUser?.name || spotlightUser?.name || 'Guest'}</div>
                                 {room?.spotlightUser?.msg && (
-                                    <div className="text-xs text-yellow-200 mt-1">{room.spotlightUser.msg}</div>
+                                    <div className="text-sm md:text-base text-yellow-200 mt-1">{room.spotlightUser.msg}</div>
                                 )}
-                                {room?.spotlightUser?.challengeSong?.songTitle && (
+                                {showExtendedSpotlightMeta && room?.spotlightUser?.challengeSong?.songTitle && (
                                     <div className="mt-2 text-left bg-cyan-500/10 border border-cyan-300/30 rounded-xl px-3 py-2">
-                                        <div className="text-[10px] uppercase tracking-[0.3em] text-cyan-200 mb-1">Challenge Pick</div>
-                                        <div className="text-xs text-cyan-50 truncate">
+                                        <div className="text-xs md:text-sm uppercase tracking-[0.24em] text-cyan-200 mb-1">Challenge Pick</div>
+                                        <div className="text-sm md:text-base text-cyan-50 truncate">
                                             {room.spotlightUser.challengeSong.songTitle}
                                             {room?.spotlightUser?.challengeSong?.artist ? ` - ${room.spotlightUser.challengeSong.artist}` : ''}
                                         </div>
                                     </div>
                                 )}
-                                <div className="mt-3 text-left bg-yellow-500/10 border border-yellow-400/20 rounded-xl px-3 py-2">
-                                    <div className="text-[10px] uppercase tracking-[0.3em] text-yellow-200 mb-2">Top Tight 15</div>
-                                    {spotlightTopTight15.length ? (
-                                        <div className="space-y-1">
-                                            {spotlightTopTight15.map((entry, idx) => (
-                                                <div key={`${entry.songTitle}_${entry.artist}_${idx}`} className="text-xs text-yellow-50 truncate">
-                                                    {idx + 1}. {entry.songTitle}{entry.artist ? ` - ${entry.artist}` : ''}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="text-[11px] text-yellow-100/70">No Tight 15 songs set yet.</div>
-                                    )}
-                                </div>
+                                {showExtendedSpotlightMeta && (
+                                    <div className="mt-3 text-left bg-yellow-500/10 border border-yellow-400/20 rounded-xl px-3 py-2">
+                                        <div className="text-xs md:text-sm uppercase tracking-[0.24em] text-yellow-200 mb-2">Top Tight 15</div>
+                                        {spotlightTopTight15.length ? (
+                                            <div className="space-y-1">
+                                                {spotlightTopTight15.map((entry, idx) => (
+                                                    <div key={`${entry.songTitle}_${entry.artist}_${idx}`} className="text-sm md:text-base text-yellow-50 truncate">
+                                                        {idx + 1}. {entry.songTitle}{entry.artist ? ` - ${entry.artist}` : ''}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="text-sm text-yellow-100/70">No Tight 15 songs set yet.</div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                          )}
                          
                          {room?.showFullQueue ? (
-                            <div className="flex-1 min-h-0 bg-black/90 backdrop-blur rounded-3xl p-6 border border-pink-500/50 overflow-hidden flex flex-col animate-in zoom-in">
+                            <div className="flex-1 min-h-0 bg-black/90 backdrop-blur rounded-2xl md:rounded-3xl p-3 md:p-6 border border-pink-500/50 overflow-hidden flex flex-col animate-in zoom-in">
                                 <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
-                                    <h3 className="text-3xl font-bebas text-pink-400">FULL QUEUE ({allQueue.length})</h3>
+                                    <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-pink-400">FULL QUEUE ({allQueue.length})</h3>
                                     {room?.bouncerMode && (
                                         <div className="px-3 py-1 rounded-full bg-black/70 border border-red-400/40 text-red-300 text-xs font-bold tracking-widest uppercase flex items-center gap-2">
                                             <i className="fa-solid fa-lock"></i>
@@ -2123,13 +2319,13 @@ const PublicTV = ({ roomCode }) => {
                                         const vip = isVipSong(s);
                                         return (
                                         <div key={s.id} className="bg-zinc-800/50 p-3 rounded-xl flex items-center gap-3 border border-white/5">
-                                            <div className="font-bebas text-2xl text-zinc-500 w-8 text-center">#{i+1}</div>
+                                            <div className="font-bebas text-xl md:text-2xl text-zinc-500 w-7 md:w-8 text-center">#{i+1}</div>
                                             <div className="min-w-0">
-                                                <div className="font-bold truncate text-white">{s.songTitle}</div>
-                                                <div className="text-xs text-zinc-400 truncate flex items-center gap-2">
+                                                <div className="font-bold truncate text-base md:text-lg text-white">{s.songTitle}</div>
+                                                <div className="text-sm md:text-base text-zinc-400 truncate flex items-center gap-2">
                                                     <span>{s.singerName}</span>
                                                     {vip && (
-                                                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black tracking-widest bg-yellow-400 text-black">VIP</span>
+                                                        <span className="px-2 py-0.5 rounded-full text-xs font-black tracking-[0.08em] bg-yellow-400 text-black">VIP</span>
                                                     )}
                                                 </div>
                                             </div>
@@ -2138,9 +2334,9 @@ const PublicTV = ({ roomCode }) => {
                                 </div>
                             </div>
                          ) : (
-                             <div className="flex-1 min-h-0 bg-zinc-800/80 backdrop-blur rounded-3xl p-5 border border-white/10 flex flex-col overflow-hidden">
+                             <div className="flex-1 min-h-0 bg-zinc-800/80 backdrop-blur rounded-2xl md:rounded-3xl p-3 md:p-5 border border-white/10 flex flex-col overflow-hidden">
                                 <div className="flex items-center justify-between mb-2 border-b border-white/10 pb-2">
-                                    <h3 className="text-3xl font-bebas text-cyan-400">UP NEXT</h3>
+                                    <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-cyan-400">UP NEXT</h3>
                                     {room?.bouncerMode && (
                                         <div className="px-3 py-1 rounded-full bg-black/70 border border-red-400/40 text-red-300 text-xs font-bold tracking-widest uppercase flex items-center gap-2">
                                             <i className="fa-solid fa-lock"></i>
@@ -2148,22 +2344,24 @@ const PublicTV = ({ roomCode }) => {
                                         </div>
                                     )}
                                 </div>
-                                <div className="flex flex-wrap gap-2 mb-2">
-                                    {queueRules.map(rule => (
-                                        <div key={rule.label} className="flex items-center gap-2 bg-black/45 border border-white/10 px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-[0.14em] text-zinc-100">
-                                            <i className={`fa-solid ${rule.icon} text-cyan-300`}></i>
-                                            <span>{rule.shortLabel || rule.label}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="mb-2 text-xs uppercase tracking-[0.2em] text-zinc-300">
+                                {!isDistanceConstrained && (
+                                    <div className="flex flex-wrap gap-2 mb-2">
+                                        {queueRules.map(rule => (
+                                            <div key={rule.label} className="flex items-center gap-2 bg-black/45 border border-white/10 px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-[0.14em] text-zinc-100">
+                                                <i className={`fa-solid ${rule.icon} text-cyan-300`}></i>
+                                                <span>{rule.shortLabel || rule.label}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="mb-2 text-sm md:text-base uppercase tracking-[0.08em] md:tracking-[0.12em] text-zinc-200 font-semibold">
                                     Queue: <span className="text-white font-bold">{allQueue.length}</span> songs
                                     {' '}
                                     | Est wait <span className="text-white font-bold">{formatWaitTime(queueWaitSec)}</span>
                                 </div>
-                                <div className="space-y-2 mb-3 max-h-[18vh] overflow-y-auto custom-scrollbar pr-1">
+                                <div className="space-y-2 mb-3 max-h-[22vh] md:max-h-[18vh] overflow-y-auto custom-scrollbar pr-1">
                                     {nextUp.length === 0 && (
-                                        <div className="bg-black/35 border border-white/10 rounded-2xl px-4 py-3 text-zinc-100 text-xl font-bebas tracking-wide">
+                                        <div className="bg-black/35 border border-white/10 rounded-2xl px-4 py-3 text-zinc-100 text-base md:text-xl font-bebas tracking-wide">
                                             No singers yet - scan to join
                                         </div>
                                     )}
@@ -2171,13 +2369,13 @@ const PublicTV = ({ roomCode }) => {
                                         const vip = isVipSong(s);
                                         return (
                                             <div key={s.id} className="bg-zinc-700/50 p-2 rounded-xl flex items-center gap-3 border-l-4 border-pink-500">
-                                                <div className="font-bebas text-3xl text-zinc-400">#{i+1}</div>
+                                                <div className="font-bebas text-2xl md:text-3xl text-zinc-400">#{i+1}</div>
                                                 <div className="min-w-0">
-                                                    <div className="font-bold truncate text-xl leading-none">{s.songTitle}</div>
-                                                    <div className="text-base text-zinc-400 truncate flex items-center gap-2">
+                                                    <div className="font-bold truncate text-base md:text-xl leading-none">{s.songTitle}</div>
+                                                    <div className="text-base md:text-lg text-zinc-400 truncate flex items-center gap-2">
                                                         <span>{s.singerName}</span>
                                                         {vip && (
-                                                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black tracking-widest bg-yellow-400 text-black">VIP</span>
+                                                            <span className="px-2 py-0.5 rounded-full text-xs font-black tracking-[0.08em] bg-yellow-400 text-black">VIP</span>
                                                         )}
                                                     </div>
                                                 </div>
@@ -2185,14 +2383,14 @@ const PublicTV = ({ roomCode }) => {
                                         );
                                     })}
                                 </div>
-                                <h3 className="text-3xl font-bebas text-green-400 mb-2 border-b border-white/10 pb-2">
+                                <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-green-400 mb-2 border-b border-white/10 pb-2">
                                     {showChatFeed ? 'CHAT' : 'ACTIVITY'}
                                 </h3>
                                 <div className="flex-1 min-h-[120px] overflow-y-auto space-y-2 custom-scrollbar">
                                     {showChatFeed ? (
                                         <>
                                             {chatMessages.length === 0 && (
-                                                <div className="text-zinc-500 text-lg">
+                                                <div className="text-zinc-500 text-base md:text-lg">
                                                     {room?.chatEnabled === false
                                                         ? 'Chat is paused by the host.'
                                                         : room?.chatAudienceMode === 'vip'
@@ -2225,12 +2423,12 @@ const PublicTV = ({ roomCode }) => {
                                     ) : (
                                         <>
                                             {activities.length === 0 && (
-                                                <div className="text-zinc-200 text-2xl font-bebas tracking-wide">
+                                                <div className="text-zinc-200 text-lg md:text-2xl font-bebas tracking-wide">
                                                     Activity starts when first singer joins.
                                                 </div>
                                             )}
                                             {activities.map((a, i) => (
-                                                <div key={i} className="flex gap-2 items-center text-zinc-200 text-lg">
+                                                <div key={i} className="flex gap-2 items-center text-zinc-200 text-base md:text-xl">
                                                     <span>{a.icon}</span>
                                                     <span className="truncate"><span className="font-bold text-white">{a.user}</span> {a.text}</span>
                                                 </div>
@@ -2245,27 +2443,27 @@ const PublicTV = ({ roomCode }) => {
             </div>
 
             {room?.activeMode === 'selfie_challenge' && (
-                <div className="absolute inset-0 z-[120] bg-black/70 backdrop-blur-sm flex flex-col p-10">
-                    <div className="text-center mb-6">
-                        <div className="text-xs uppercase tracking-[0.4em] text-zinc-400">Selfie Challenge</div>
-                        <div className="text-4xl font-bebas text-white">{room?.selfieChallenge?.prompt || 'Get ready'}</div>
+                <div className="absolute inset-0 z-[120] bg-black/70 backdrop-blur-sm flex flex-col p-4 md:p-6 2xl:p-10">
+                    <div className="text-center mb-4 md:mb-6">
+                        <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] md:tracking-[0.4em] text-zinc-400">Selfie Challenge</div>
+                        <div className="text-2xl md:text-4xl font-bebas text-white">{room?.selfieChallenge?.prompt || 'Get ready'}</div>
                         {room?.selfieChallenge?.status && (
-                            <div className="text-sm text-cyan-300 mt-2">Status: {room.selfieChallenge.status}</div>
+                            <div className="text-xs md:text-sm text-cyan-300 mt-2">Status: {room.selfieChallenge.status}</div>
                         )}
                     </div>
-                    <div className="grid grid-cols-3 gap-6 flex-1">
+                    <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3 md:gap-6 flex-1">
                         {(room?.selfieChallenge?.requireApproval ? selfieSubmissions.filter(s => s.approved) : selfieSubmissions).map(s => (
                             <div key={s.id} className="bg-zinc-900/80 border border-zinc-700 rounded-2xl overflow-hidden shadow-xl flex flex-col">
                                 <div className="relative">
-                                    <img src={s.url} alt={s.userName} className="w-full h-52 object-cover" />
-                                    <div className="absolute top-3 right-3 bg-black/70 px-3 py-1 rounded-full text-sm font-bold text-cyan-300">
+                                    <img src={s.url} alt={s.userName} className="w-full h-40 md:h-52 object-cover" />
+                                    <div className="absolute top-2 right-2 md:top-3 md:right-3 bg-black/70 px-2 py-1 md:px-3 rounded-full text-xs md:text-sm font-bold text-cyan-300">
                                         {selfieVoteCounts[s.uid] || 0} votes
                                     </div>
                                 </div>
-                                <div className="p-4 flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-3xl">{s.avatar || 'O'}</span>
-                                        <div className="text-lg font-bold text-white truncate max-w-[220px]">{s.userName}</div>
+                                <div className="p-3 md:p-4 flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                                        <span className="text-2xl md:text-3xl">{s.avatar || 'O'}</span>
+                                        <div className="text-sm md:text-lg font-bold text-white truncate max-w-[220px]">{s.userName}</div>
                                     </div>
                                     <div className="h-2 w-24 bg-white/10 rounded-full overflow-hidden">
                                         <div className="h-full bg-cyan-400" style={{ width: `${Math.min(100, ((selfieVoteCounts[s.uid] || 0) / Math.max(1, ...Object.values(selfieVoteCounts), 1)) * 100)}%` }}></div>
@@ -2274,16 +2472,16 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                         ))}
                         {(room?.selfieChallenge?.requireApproval ? selfieSubmissions.filter(s => s.approved) : selfieSubmissions).length === 0 && (
-                            <div className="col-span-3 flex items-center justify-center text-zinc-400 text-xl">Waiting for selfies...</div>
+                            <div className="2xl:col-span-3 md:col-span-2 col-span-1 flex items-center justify-center text-zinc-400 text-base md:text-xl">Waiting for selfies...</div>
                         )}
                     </div>
                     {room?.selfieChallenge?.status === 'ended' && room?.selfieChallenge?.winner && (!room?.selfieChallenge?.winnerExpiresAt || nowMs() < room.selfieChallenge.winnerExpiresAt) && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/70">
-                            <div className="bg-zinc-900 border border-[#00C4D9]/40 rounded-3xl p-8 text-center shadow-2xl">
+                            <div className="bg-zinc-900 border border-[#00C4D9]/40 rounded-3xl p-4 md:p-8 text-center shadow-2xl">
                                 <div className="text-xs uppercase tracking-[0.4em] text-zinc-500">Winner</div>
-                                <div className="text-5xl font-bebas text-white mb-4">{room.selfieChallenge.winner.name}</div>
-                                <img src={room.selfieChallenge.winner.url} alt={room.selfieChallenge.winner.name} className="w-[360px] h-[360px] object-cover rounded-2xl border border-white/10 mx-auto" />
-                                <div className="text-cyan-300 font-bold mt-4">{room.selfieChallenge.winner.votes || 0} votes</div>
+                                <div className="text-2xl md:text-5xl font-bebas text-white mb-3 md:mb-4">{room.selfieChallenge.winner.name}</div>
+                                <img src={room.selfieChallenge.winner.url} alt={room.selfieChallenge.winner.name} className="w-[74vw] h-[74vw] max-w-[360px] max-h-[360px] object-cover rounded-2xl border border-white/10 mx-auto" />
+                                <div className="text-cyan-300 font-bold mt-3 md:mt-4 text-sm md:text-base">{room.selfieChallenge.winner.votes || 0} votes</div>
                             </div>
                         </div>
                     )}
@@ -2291,17 +2489,17 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             {/* Marquee */}
-            {((marqueeItems.length > 0) || messages.length > 0) && (
-                <div className={`marquee-shell absolute bottom-0 left-0 w-full h-40 bg-pink-600 overflow-hidden flex items-center z-40 border-t-4 border-white shadow-[0_-10px_30px_rgba(219,39,119,0.5)] ${showMarquee ? 'marquee-on' : 'marquee-off'}`}>
+            {hasMarqueeContent && (
+                <div className={`marquee-shell absolute bottom-0 left-0 w-full ${marqueeHeightClass} bg-pink-600 overflow-hidden flex items-center z-40 border-t-4 border-white shadow-[0_-10px_30px_rgba(219,39,119,0.5)] ${showMarquee ? 'marquee-on' : 'marquee-off'}`}>
                     <div className="whitespace-nowrap animate-marquee flex gap-16 px-6">
                         {marqueeText ? (
-                            <span className="font-bebas text-white flex items-center gap-3 leading-none" style={{ fontSize: 'clamp(2.5rem, 4vw, 5rem)' }}>
+                            <span className="font-bebas text-white flex items-center gap-3 leading-none" style={{ fontSize: marqueeTextSize }}>
                                 {marqueeText}
                             </span>
                         ) : (
                             messages.map((m, i) => (
-                                <span key={i} className="font-bebas text-white flex items-center gap-3 leading-none" style={{ fontSize: 'clamp(2.5rem, 4vw, 5rem)' }}>
-                                    <span className="bg-black/20 px-3 rounded" style={{ fontSize: 'clamp(1.2rem, 2.4vw, 3rem)' }}>{m.user}:</span> {m.text}
+                                <span key={i} className="font-bebas text-white flex items-center gap-3 leading-none" style={{ fontSize: marqueeTextSize }}>
+                                    <span className="bg-black/20 px-3 rounded" style={{ fontSize: marqueeUserSize }}>{m.user}:</span> {m.text}
                                 </span>
                             ))
                         )}
@@ -2312,23 +2510,23 @@ const PublicTV = ({ roomCode }) => {
             {/* Selfie Overlay */}
             {photoOverlay && (
                 <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 animate-in zoom-in">
-                    <div className="relative transform rotate-[-5deg] bg-white p-4 pb-16 shadow-2xl">
-                        <img src={photoOverlay.url} className="max-h-[70vh] border-2 border-zinc-200" />
-                        <img src={ASSETS.logo} className="absolute top-4 right-4 w-24 opacity-90" alt="BROSS" />
+                    <div className="relative transform rotate-[-5deg] bg-white p-3 md:p-4 pb-12 md:pb-16 shadow-2xl max-w-[94vw]">
+                        <img src={photoOverlay.url} className="max-h-[68vh] max-w-[90vw] border-2 border-zinc-200" />
+                        <img src={ASSETS.logo} className="absolute top-2 right-2 md:top-4 md:right-4 w-14 md:w-24 opacity-90" alt="BROSS" />
                         {photoOverlay.mode === 'guitar_victory' ? (
                             <div className="absolute bottom-4 left-0 w-full text-center">
-                                <div className="text-xl text-pink-600 font-black uppercase tracking-[0.4em]">Guitar Solo MVP</div>
-                                <div className="text-3xl text-black font-bold font-mono mt-1">{photoOverlay.userName}</div>
-                                <div className="text-sm text-zinc-600 font-semibold mt-1">{photoOverlay.copy || 'Shredded the hardest.'}</div>
+                                <div className="text-sm md:text-xl text-pink-600 font-black uppercase tracking-[0.18em] md:tracking-[0.4em]">Guitar Solo MVP</div>
+                                <div className="text-xl md:text-3xl text-black font-bold font-mono mt-1">{photoOverlay.userName}</div>
+                                <div className="text-xs md:text-sm text-zinc-600 font-semibold mt-1">{photoOverlay.copy || 'Shredded the hardest.'}</div>
                             </div>
                         ) : photoOverlay.mode === 'strobe_victory' ? (
                             <div className="absolute bottom-4 left-0 w-full text-center">
-                                <div className="text-xl text-cyan-600 font-black uppercase tracking-[0.4em]">Beat Drop MVP</div>
-                                <div className="text-3xl text-black font-bold font-mono mt-1">{photoOverlay.userName}</div>
-                                <div className="text-sm text-zinc-600 font-semibold mt-1">{photoOverlay.copy || 'Kept the beat alive.'}</div>
+                                <div className="text-sm md:text-xl text-cyan-600 font-black uppercase tracking-[0.18em] md:tracking-[0.4em]">Beat Drop MVP</div>
+                                <div className="text-xl md:text-3xl text-black font-bold font-mono mt-1">{photoOverlay.userName}</div>
+                                <div className="text-xs md:text-sm text-zinc-600 font-semibold mt-1">{photoOverlay.copy || 'Kept the beat alive.'}</div>
                             </div>
                         ) : (
-                            <div className="absolute bottom-4 left-0 w-full text-center text-3xl text-black font-bold font-mono">{EMOJI.camera} {photoOverlay.userName}</div>
+                            <div className="absolute bottom-4 left-0 w-full text-center text-xl md:text-3xl text-black font-bold font-mono">{EMOJI.camera} {photoOverlay.userName}</div>
                         )}
                     </div>
                 </div>
@@ -2337,8 +2535,8 @@ const PublicTV = ({ roomCode }) => {
             {/* Applause Meter Overlay */}
             {applauseStep !== 'idle' && (
                 <div className="absolute inset-0 z-[150] bg-black/95 flex flex-col items-center justify-center animate-in fade-in">
-                    <h1 className="text-6xl font-bebas text-white mb-8 tracking-widest animate-pulse">NOISE LEVEL</h1>
-                    <div className="relative w-[500px] h-[500px] flex items-center justify-center">
+                    <h1 className="text-3xl md:text-6xl font-bebas text-white mb-4 md:mb-8 tracking-[0.14em] md:tracking-widest animate-pulse">NOISE LEVEL</h1>
+                    <div className="relative w-[76vw] h-[76vw] max-w-[500px] max-h-[500px] flex items-center justify-center">
                         <div className="absolute inset-0 rounded-full border-[20px] border-zinc-800"></div>
                         <svg className="absolute inset-0 w-full h-full -rotate-90 transform drop-shadow-[0_0_30px_rgba(0,196,217,0.5)]" viewBox="0 0 100 100">
                             <defs>
@@ -2350,13 +2548,13 @@ const PublicTV = ({ roomCode }) => {
                             <circle cx="50" cy="50" r="40" stroke="url(#applauseGradient)" strokeWidth="8" fill="none" strokeDasharray="251.2" strokeDashoffset={251.2 * (1 - ((applauseStep === 'result' ? applauseMax : micVolume) / 100))} strokeLinecap="round" className="transition-all duration-75 ease-linear" />
                         </svg>
                         <div className="relative z-10 flex flex-col items-center">
-                            <div className="text-[10rem] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] font-mono leading-none drop-shadow-[0_0_20px_rgba(236,72,153,0.35)]">
+                            <div className="text-[clamp(3.25rem,16vw,10rem)] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] font-mono leading-none drop-shadow-[0_0_20px_rgba(236,72,153,0.35)]">
                                 {Math.round(applauseStep === 'result' ? applauseMax : micVolume)}
                             </div>
-                            <div className="text-2xl text-zinc-500 font-bold">dB</div>
+                            <div className="text-lg md:text-2xl text-zinc-500 font-bold">dB</div>
                         </div>
                     </div>
-                    <div className="mt-8 text-4xl text-cyan-300 font-bebas tracking-widest animate-bounce">
+                    <div className="mt-4 md:mt-8 text-xl md:text-4xl text-cyan-300 font-bebas tracking-[0.1em] md:tracking-widest animate-bounce text-center px-4">
                         {applauseStep === 'countdown'
                             ? `GET READY... ${countdown}`
                             : applauseStep === 'measuring'
@@ -2377,18 +2575,18 @@ const PublicTV = ({ roomCode }) => {
                             <div className={`relative ${getReactionClass(r.type)} ${r.isVip ? 'vip-reaction-emoji' : ''}`}>
                                 {getEmojiChar(r.type)}
                                 {r.isVip && (
-                                    <span className="absolute -top-4 -right-4 text-3xl animate-vip-spin">{'\u2728'}</span>
+                                    <span className="absolute -top-3 -right-3 md:-top-4 md:-right-4 text-xl md:text-3xl animate-vip-spin">{'\u2728'}</span>
                                 )}
                             </div>
                             <div className="mt-3 flex flex-col items-center gap-1 reaction-label">
-                                <div className={`px-4 py-1 rounded-full text-2xl font-black tracking-widest ${r.isVip ? 'text-yellow-300 border-2 border-yellow-300 bg-black/70 shadow-[0_0_18px_rgba(253,224,71,0.6)]' : 'text-yellow-200 border-2 border-yellow-500/40 bg-black/60'}`}>
+                                <div className={`px-3 py-1 md:px-4 rounded-full text-base md:text-2xl font-black tracking-widest ${r.isVip ? 'text-yellow-300 border-2 border-yellow-300 bg-black/70 shadow-[0_0_18px_rgba(253,224,71,0.6)]' : 'text-yellow-200 border-2 border-yellow-500/40 bg-black/60'}`}>
                                     +{r.points || 0}
                                 </div>
-                                <div className={`px-4 py-1 rounded-full text-xl font-bold flex items-center gap-2 ${r.isVip ? 'text-yellow-300 border-2 border-yellow-400 bg-black/70 shadow-[0_0_20px_rgba(253,224,71,0.5)]' : 'text-white border-2 border-white/20 bg-black/60'}`}>
-                                    <span className="truncate max-w-[12rem]">{r.userName || 'Guest'}</span>
+                                <div className={`px-3 py-1 md:px-4 rounded-full text-sm md:text-xl font-bold flex items-center gap-2 ${r.isVip ? 'text-yellow-300 border-2 border-yellow-400 bg-black/70 shadow-[0_0_20px_rgba(253,224,71,0.5)]' : 'text-white border-2 border-white/20 bg-black/60'}`}>
+                                    <span className="truncate max-w-[9rem] md:max-w-[12rem]">{r.userName || 'Guest'}</span>
                                     {r.isVip && <span className="text-xs font-black tracking-widest">VIP</span>}
                                 </div>
-                                <div className="px-3 py-1 rounded-full text-base font-semibold text-cyan-200 border border-cyan-400/40 bg-black/60">
+                                <div className="px-3 py-1 rounded-full text-xs md:text-base font-semibold text-cyan-200 border border-cyan-400/40 bg-black/60">
                                     +{r.basePoints || 0} x{r.multiplier || 1} = {r.points || 0}
                                 </div>
                             </div>
@@ -2485,5 +2683,6 @@ const PublicTV = ({ roomCode }) => {
 };
 
 export default PublicTV;
+
 
 

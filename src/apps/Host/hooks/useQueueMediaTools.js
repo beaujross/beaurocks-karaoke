@@ -147,11 +147,15 @@ const useQueueMediaTools = ({
         } catch (e) {
             console.error('YouTube search error:', e);
             const fallbackResults = searchYouTubeIndex(query);
+            const code = String(e?.code || '').toLowerCase();
+            const message = String(e?.message || '').trim();
             if (fallbackResults.length) {
                 setYtResults(fallbackResults);
                 setYtSearchError('Live YouTube search failed. Showing indexed playlist results.');
+            } else if (code.includes('permission-denied')) {
+                setYtSearchError('Live YouTube search is currently unavailable for this account. Use indexed tracks or paste a direct URL.');
             } else {
-                setYtSearchError(e?.message || 'YouTube search failed. Check server configuration.');
+                setYtSearchError(message || 'YouTube search failed. Check server configuration.');
             }
         } finally {
             setYtLoading(false);

@@ -72,6 +72,14 @@ const readEnv = (name) => {
   return typeof value === "string" ? value.trim() : "";
 };
 
+const readEnvBool = (name, fallback = false) => {
+  const raw = readEnv(name).toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  return fallback;
+};
+
 const REQUIRED_FIREBASE_KEYS = [
   "apiKey",
   "authDomain",
@@ -143,6 +151,16 @@ const firebaseConfig = resolveFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 let appCheck = null;
 
+const shouldEnableAppCheckClient = () => {
+  const envEnabled = readEnvBool("VITE_APP_CHECK_ENABLED", false);
+  return envEnabled;
+};
+
+const shouldRequireLocalAppCheck = () => {
+  const envRequired = readEnvBool("VITE_REQUIRE_APP_CHECK", false);
+  return envRequired;
+};
+
 const getAppCheckSiteKey = () => {
   if (typeof window === "undefined") return "";
   const runtimeKey = typeof window.__app_check_site_key === "string"
@@ -169,8 +187,9 @@ if (typeof window !== "undefined") {
     // Ignore storage access failures and continue without debug token.
   }
 
+  const appCheckEnabled = shouldEnableAppCheckClient();
   const siteKey = getAppCheckSiteKey();
-  if (siteKey) {
+  if (appCheckEnabled && siteKey) {
     try {
       appCheck = initializeAppCheck(app, {
         provider: new ReCaptchaV3Provider(siteKey),
@@ -183,8 +202,10 @@ if (typeof window !== "undefined") {
     } catch (err) {
       firebaseLogger.warn("app-check initialization failed", err);
     }
+  } else if (appCheckEnabled && !siteKey) {
+    firebaseLogger.debug("app-check enabled but missing site key: set VITE_RECAPTCHA_V3_SITE_KEY.");
   } else {
-    firebaseLogger.debug("app-check missing site key: set VITE_RECAPTCHA_V3_SITE_KEY to enable App Check.");
+    firebaseLogger.debug("app-check disabled (set VITE_APP_CHECK_ENABLED=true to enable).");
   }
 }
 
@@ -247,6 +268,10 @@ const requireAppCheckToken = async (scope = "callable") => {
   if (warmToken) return true;
   const refreshedToken = await ensureAppCheckToken(true);
   if (refreshedToken) return true;
+  if (!shouldRequireLocalAppCheck()) {
+    firebaseLogger.debug("app-check token unavailable; continuing without client-side token", { scope });
+    return false;
+  }
   const err = new Error(`App Check token required for ${scope}.`);
   err.code = "failed-precondition";
   throw err;

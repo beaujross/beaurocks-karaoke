@@ -16,10 +16,10 @@ const BingoTile = ({ tile, size, index, highlighted, onSuggest, view, revealed, 
             {/* FRONT (Hidden State) */}
             <div className={`absolute inset-0 rounded-xl flex flex-col items-center justify-center p-2 text-center shadow-lg border-4 ${frontBorder} ${frontBg} transition-all duration-500 ${isRevealed ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}> 
                 <div className={`${isMobile ? 'text-3xl' : 'text-6xl'} mb-2 opacity-50`}>{isMystery ? EMOJI.question : EMOJI.musicNotes}</div> 
-                <div className={`font-bebas uppercase leading-none text-white ${size>4 ? (isMobile ? 'text-sm' : 'text-xl') : (isMobile ? 'text-lg' : 'text-3xl')}`}>{tile.text}</div> 
-                {isMystery && <div className={`${isMobile ? 'text-[9px]' : 'text-xs'} text-yellow-300 mt-2 font-bold uppercase tracking-widest`}>Mystery Song</div>} 
+                <div className={`font-bebas uppercase leading-none text-white ${size>4 ? (isMobile ? 'text-sm' : 'text-[clamp(1.25rem,1.9vw,2.2rem)]') : (isMobile ? 'text-lg' : 'text-3xl')}`}>{tile.text}</div> 
+                {isMystery && <div className={`${isMobile ? 'text-[9px]' : 'text-sm'} text-yellow-300 mt-2 font-bold uppercase tracking-[0.14em]`}>Mystery Song</div>} 
                 {isKaraoke && tile.free && sponsor?.logo && (
-                    <div className="mt-2 flex items-center gap-2 text-[9px] uppercase tracking-widest text-zinc-400">
+                    <div className="mt-2 flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-zinc-400">
                         <span>Sponsored</span>
                         <img src={sponsor.logo} alt="" className="h-4 object-contain" />
                     </div>
@@ -33,8 +33,8 @@ const BingoTile = ({ tile, size, index, highlighted, onSuggest, view, revealed, 
                         {tile.content?.art && <img src={tile.content.art} className="absolute inset-0 w-full h-full object-cover opacity-40 blur-sm" alt="" />}
                         <div className="relative z-10 flex flex-col items-center"> 
                             {tile.content?.art && <img src={tile.content.art} className={`${isMobile ? 'w-10 h-10' : 'w-20 h-20'} rounded-lg shadow-xl mb-2 border-2 border-white`} alt="" />}
-                            <div className={`font-black uppercase leading-none text-white drop-shadow-md ${size>4 ? (isMobile ? 'text-[10px]' : 'text-sm') : (isMobile ? 'text-xs' : 'text-xl')}`}>{tile.content?.title || "Unknown Song"}</div> 
-                            <div className={`${isMobile ? 'text-[9px]' : 'text-xs'} text-yellow-200 font-bold mt-1`}>{tile.content?.artist}</div> 
+                            <div className={`font-black uppercase leading-none text-white drop-shadow-md ${size>4 ? (isMobile ? 'text-[10px]' : 'text-lg') : (isMobile ? 'text-xs' : 'text-xl')}`}>{tile.content?.title || "Unknown Song"}</div> 
+                            <div className={`${isMobile ? 'text-[9px]' : 'text-sm'} text-yellow-200 font-bold mt-1`}>{tile.content?.artist}</div> 
                         </div> 
                     </> 
                 ) : ( 
@@ -47,7 +47,7 @@ const BingoTile = ({ tile, size, index, highlighted, onSuggest, view, revealed, 
             {/* Highlight indicator / Suggest button for players */}
             {highlighted && <div className="absolute inset-0 pointer-events-none border-4 border-rose-500 rounded-xl animate-ping"></div>}
             {!isMobile && suggestCount > 0 && !isRevealed && (
-                <div className="absolute top-2 right-2 bg-rose-500/20 border border-rose-400/40 text-rose-200 text-xs font-bold px-2 py-1 rounded-full">
+                <div className="absolute top-2 right-2 bg-rose-500/20 border border-rose-400/40 text-rose-200 text-sm font-bold px-2 py-1 rounded-full">
                     {suggestCount} votes
                 </div>
             )}
@@ -113,27 +113,27 @@ const BingoGame = ({ gameState, onSuggest, view, onClose }) => {
                 <div className="absolute inset-0 z-[130] bg-black/80 flex items-center justify-center" onClick={() => setShowWin(false)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setShowWin(false); }}
                 >
                     <div className="max-w-3xl w-full bg-zinc-900/95 border border-white/10 rounded-3xl p-10 text-center">
-                        <div className="text-xs uppercase tracking-[0.4em] text-zinc-400 mb-2">Bingo Win</div>
+                        <div className="text-sm uppercase tracking-[0.24em] text-zinc-400 mb-2">Bingo Win</div>
                         <div className="text-6xl font-bebas text-yellow-300 mb-4">BINGO!</div>
                         <div className="text-2xl text-zinc-200 font-bold mb-3">{bingoWin.label}</div>
                         {bingoWin.reward && (
                             <div className="text-lg text-cyan-200">Reward: {bingoWin.reward}</div>
                         )}
-                        <div className="text-xs text-zinc-400 mt-6">Tap to continue</div>
+                        <div className="text-sm text-zinc-400 mt-6">Tap to continue</div>
                     </div>
                 </div>
             )}
             {showFocus && tiles[showFocus.index] && (
                 <div className="absolute inset-0 z-[125] bg-black/85 flex items-center justify-center p-6">
                     <div className="w-full max-w-3xl bg-zinc-900/95 border border-white/10 rounded-3xl p-8 text-center">
-                        <div className="text-xs uppercase tracking-[0.4em] text-zinc-400 mb-2">Mystery Reveal</div>
+                        <div className="text-sm uppercase tracking-[0.24em] text-zinc-400 mb-2">Mystery Reveal</div>
                         <div className="text-4xl font-bebas text-white mb-4">{pickerName ? `${pickerName} picked` : 'New pick'}</div>
                         {tiles[showFocus.index].content?.art && (
                             <img src={tiles[showFocus.index].content.art} alt="" className="w-40 h-40 rounded-2xl mx-auto mb-4 object-cover border border-white/10 shadow-xl" />
                         )}
                         <div className="text-3xl font-bold text-white">{tiles[showFocus.index].content?.title || tiles[showFocus.index].text}</div>
                         <div className="text-lg text-zinc-300 mt-2">{tiles[showFocus.index].content?.artist || ''}</div>
-                        <div className="text-xs text-zinc-500 mt-4">Added to the queue</div>
+                        <div className="text-sm text-zinc-500 mt-4">Added to the queue</div>
                     </div>
                 </div>
             )}
@@ -151,16 +151,16 @@ const BingoGame = ({ gameState, onSuggest, view, onClose }) => {
                 <h1 className={`${isMobile ? 'text-3xl' : 'text-6xl'} font-bebas text-transparent bg-clip-text bg-gradient-to-r ${isMystery ? 'from-purple-400 to-pink-600' : 'from-cyan-300 to-teal-200'} drop-shadow-lg`}>
                     {isMystery ? 'MYSTERY BINGO' : 'KARAOKE BINGO'}
                 </h1>
-                <p className={`${isMobile ? 'text-[11px]' : 'text-xl'} text-zinc-300 font-bold uppercase tracking-widest mt-2`}>
+                <p className={`${isMobile ? 'text-[11px]' : 'text-2xl'} text-zinc-300 font-bold uppercase tracking-widest mt-2`}>
                     {isMystery ? 'Listen and match the clue.' : 'Spot the tropes, tag the board.'}
                 </p>
                 {isMystery && pickerName && (
-                    <div className="mt-3 text-xs uppercase tracking-[0.35em] text-zinc-400">
+                    <div className="mt-3 text-sm uppercase tracking-[0.24em] text-zinc-400">
                         Picker: <span className="text-white font-bold">{pickerName}</span>
                     </div>
                 )}
                 {enabledRules.length > 0 && !isMobile && (
-                    <div className="mt-4 flex items-center justify-center gap-2 text-xs uppercase tracking-widest text-zinc-400">
+                    <div className="mt-4 flex items-center justify-center gap-2 text-sm uppercase tracking-[0.14em] text-zinc-400">
                         {enabledRules.map((rule, idx) => (
                             <span key={`${rule.label}-${idx}`} className="px-3 py-1 rounded-full border border-white/10 bg-black/30">
                                 {rule.label}{rule.reward ? ` | ${rule.reward}` : ''}
@@ -169,7 +169,7 @@ const BingoGame = ({ gameState, onSuggest, view, onClose }) => {
                     </div>
                 )}
             </div>
-            <div className={`${isMobile ? 'w-[92vw] max-w-[420px]' : 'w-full max-w-[1200px]'} ${isMobile ? 'aspect-square' : 'aspect-video'} flex items-center justify-center z-10`}> 
+            <div className={`${isMobile ? 'w-[92vw] max-w-[420px]' : 'w-full max-w-[1400px]'} ${isMobile ? 'aspect-square' : 'aspect-video'} flex items-center justify-center z-10`}> 
                 <div className={`${isMobile ? 'gap-2' : 'gap-4'} grid w-full h-full`} style={{gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`}}>
                     {tiles.map((tile, i) => (
                         <BingoTile

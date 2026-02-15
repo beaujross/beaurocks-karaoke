@@ -286,7 +286,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                     {gameState.q}
                 </h2>
 
-                <div className="z-10 mb-6 flex flex-wrap items-center justify-center gap-3 text-sm uppercase tracking-[0.3em] text-zinc-300">
+                <div className="z-10 mb-6 flex flex-wrap items-center justify-center gap-3 text-base md:text-lg uppercase tracking-[0.18em] text-zinc-300">
                     {!isReveal && timerSecRemaining !== null && (
                         <span className="bg-black/40 border border-white/10 px-3 py-2 rounded-full">
                             {timerSecRemaining}s left
@@ -297,7 +297,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                     </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-8 w-full max-w-5xl z-10">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 xl:gap-8 w-full max-w-6xl z-10">
                     {gameState.options?.map((o, i) => {
                         const isCorrect = i === gameState.correct;
                         const voters = votes.filter(v => v.val === i);
@@ -305,27 +305,27 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                         
                         return (
                             <div key={i} className={`
-                                p-6 rounded-3xl border-4 text-3xl font-bold relative overflow-hidden transition-all duration-500 flex flex-col justify-center min-h-[150px]
+                                p-8 rounded-3xl border-4 text-4xl font-bold relative overflow-hidden transition-all duration-500 flex flex-col justify-center min-h-[190px]
                                 ${isCorrect && isReveal ? 'bg-[#00C4D9] border-white scale-105 shadow-[0_0_55px_rgba(0,196,217,0.7)] text-black' : 'bg-black/50 border-[#EC4899]/30 text-zinc-200'}
                                 ${isDimmed ? 'opacity-30 blur-sm' : 'opacity-100'}
                             `}>
-                                <div className="absolute top-3 left-3 text-xs uppercase tracking-widest bg-black/40 border border-white/10 rounded-full px-2 py-1">
+                                <div className="absolute top-3 left-3 text-sm uppercase tracking-[0.18em] bg-black/40 border border-white/10 rounded-full px-2 py-1">
                                     {TRIVIA_OPTION_LABELS[i]}
                                 </div>
-                                <div className="absolute top-3 right-3 text-xs bg-black/40 border border-white/10 rounded-full px-2 py-1">
+                                <div className="absolute top-3 right-3 text-sm bg-black/40 border border-white/10 rounded-full px-2 py-1">
                                     {voters.length}
                                 </div>
                                 <div className="relative z-10 text-center">{o}</div>
 
                                 {isReveal && voters.length > 0 && (
                                     <div className="mt-4 flex justify-center gap-2 flex-wrap px-4">
-                                        {voters.slice(0, 12).map((v, idx) => (
-                                            <span key={idx} className="text-base animate-pop bg-black/40 border border-white/10 rounded-full px-3 py-1 flex items-center gap-2" style={{animationDelay: `${idx*50}ms`}} title={v.userName}>
+                                        {voters.slice(0, 6).map((v, idx) => (
+                                            <span key={idx} className="text-lg animate-pop bg-black/40 border border-white/10 rounded-full px-3 py-1 flex items-center gap-2" style={{animationDelay: `${idx*50}ms`}} title={v.userName}>
                                                 <span className="text-xl">{v.avatar || DEFAULT_EMOJI}</span>
-                                                <span className="text-xs font-bold">{v.userName || 'Player'}</span>
+                                                <span className="text-sm font-bold">{v.userName || 'Player'}</span>
                                             </span>
                                         ))}
-                                        {voters.length > 12 && <span className="text-xs bg-white/20 rounded-full px-2 py-1">+{voters.length - 12}</span>}
+                                        {voters.length > 6 && <span className="text-sm bg-white/20 rounded-full px-2 py-1">+{voters.length - 6}</span>}
                                     </div>
                                 )}
                             </div>
@@ -335,45 +335,45 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
 
                 {isReveal && (
                     <div className="z-10 mt-8 w-full max-w-5xl bg-black/55 border border-white/15 rounded-3xl p-6">
-                        <div className="text-xs uppercase tracking-[0.3em] text-zinc-400 mb-3">Question Summary</div>
+                        <div className="text-sm uppercase tracking-[0.2em] text-zinc-300 mb-3">Question Summary</div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                             <div className="bg-zinc-900/70 border border-white/10 rounded-xl p-3">
-                                <div className="text-[10px] uppercase tracking-widest text-zinc-400">Responses</div>
-                                <div className="text-2xl font-black text-white">{totalVotes}</div>
+                                <div className="text-xs md:text-sm uppercase tracking-[0.16em] text-zinc-400">Responses</div>
+                                <div className="text-3xl font-black text-white">{totalVotes}</div>
                             </div>
                             <div className="bg-zinc-900/70 border border-white/10 rounded-xl p-3">
-                                <div className="text-[10px] uppercase tracking-widest text-zinc-400">Correct</div>
-                                <div className="text-2xl font-black text-cyan-300">{correctVotes.length}</div>
+                                <div className="text-xs md:text-sm uppercase tracking-[0.16em] text-zinc-400">Correct</div>
+                                <div className="text-3xl font-black text-cyan-300">{correctVotes.length}</div>
                             </div>
                             <div className="bg-zinc-900/70 border border-white/10 rounded-xl p-3">
-                                <div className="text-[10px] uppercase tracking-widest text-zinc-400">Accuracy</div>
-                                <div className="text-2xl font-black text-white">{correctRate}%</div>
+                                <div className="text-xs md:text-sm uppercase tracking-[0.16em] text-zinc-400">Accuracy</div>
+                                <div className="text-3xl font-black text-white">{correctRate}%</div>
                             </div>
                             <div className="bg-zinc-900/70 border border-white/10 rounded-xl p-3">
-                                <div className="text-[10px] uppercase tracking-widest text-zinc-400">Points Total</div>
-                                <div className="text-2xl font-black text-amber-300">{correctVotes.length * pointsPerCorrect}</div>
+                                <div className="text-xs md:text-sm uppercase tracking-[0.16em] text-zinc-400">Points Total</div>
+                                <div className="text-3xl font-black text-amber-300">{correctVotes.length * pointsPerCorrect}</div>
                             </div>
                         </div>
-                        <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-400 mb-2">Top Correct</div>
+                        <div className="text-sm uppercase tracking-[0.18em] text-zinc-300 mb-2">Top Correct</div>
                         {topCorrect.length ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                 {topCorrect.map((entry) => (
                                     <div key={`${entry.uid || entry.userName}_${entry.rank}`} className="bg-zinc-900/70 border border-white/10 rounded-xl px-3 py-2 flex items-center justify-between gap-3">
                                         <div className="flex items-center gap-3 min-w-0">
-                                            <span className="text-xs px-2 py-1 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 font-bold">
+                                            <span className="text-sm px-2 py-1 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 font-bold">
                                                 #{entry.rank}
                                             </span>
                                             <span className="text-xl">{entry.avatar || DEFAULT_EMOJI}</span>
                                             <span className="font-bold text-zinc-100 truncate">{entry.userName || 'Player'}</span>
                                         </div>
-                                        <span className="text-xs uppercase tracking-widest text-zinc-400 shrink-0">
+                                        <span className="text-sm uppercase tracking-[0.14em] text-zinc-400 shrink-0">
                                             {entry.speedMs !== null ? `${(entry.speedMs / 1000).toFixed(2)}s` : 'Correct'}
                                         </span>
                                     </div>
                                 ))}
                             </div>
                         ) : (
-                            <div className="text-sm text-zinc-400">No correct answers this round.</div>
+                            <div className="text-base text-zinc-400">No correct answers this round.</div>
                         )}
                     </div>
                 )}

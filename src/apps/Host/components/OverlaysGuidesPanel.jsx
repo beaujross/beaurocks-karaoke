@@ -16,13 +16,15 @@ const OverlaysGuidesPanel = ({
     startBeatDrop,
     startStormSequence,
     stopStormSequence,
+    showVibeSync = true,
+    vibeSyncOnly = false,
     styles,
     sectionHeader
 }) => {
     const SectionHeader = sectionHeader;
     return (
     <>
-        <div className={overlaysOpen ? 'grid grid-cols-2 gap-2' : 'hidden'}>
+        <div className={overlaysOpen && !vibeSyncOnly ? 'grid grid-cols-2 gap-2' : 'hidden'}>
             <button onClick={() => updateRoom({ activeScreen: room?.activeScreen === 'leaderboard' ? 'stage' : 'leaderboard' })} className={`${styles.btnStd} ${room?.activeScreen === 'leaderboard' ? styles.btnHighlight : styles.btnNeutral} flex-1`}><i className="fa-solid fa-trophy mr-2"></i>Leaderboard</button>
             <button onClick={() => updateRoom({ activeScreen: room?.activeScreen === 'tipping' ? 'stage' : 'tipping' })} className={`${styles.btnStd} ${room?.activeScreen === 'tipping' ? styles.btnHighlight : styles.btnNeutral} flex-1`}><i className="fa-solid fa-money-bill-wave mr-2"></i>Tip CTA</button>
             <button onClick={toggleHowToPlay} className={`${styles.btnStd} ${room?.howToPlay?.active ? styles.btnHighlight : styles.btnNeutral} flex-1`}><i className="fa-solid fa-circle-question mr-2"></i>How to Play</button>
@@ -52,16 +54,18 @@ const OverlaysGuidesPanel = ({
                 )}
             </button>
         </div>
-        <div className="mt-3">
-            <SectionHeader
-                label="Vibe Sync"
-                open={vibeSyncOpen}
-                onToggle={() => setVibeSyncOpen(v => !v)}
-            />
-        </div>
-        <div className={vibeSyncOpen ? 'rounded-2xl border border-pink-500/30 bg-gradient-to-br from-pink-500/10 via-zinc-900/60 to-zinc-900/80 p-3 shadow-[0_0_24px_rgba(236,72,153,0.15)]' : 'hidden'}>
+        {showVibeSync && (
+            <div className="mt-3">
+                <SectionHeader
+                    label="Live Effects"
+                    open={vibeSyncOpen}
+                    onToggle={() => setVibeSyncOpen(v => !v)}
+                />
+            </div>
+        )}
+        <div className={showVibeSync && vibeSyncOpen ? 'rounded-2xl border border-zinc-700 bg-zinc-950/60 p-3' : 'hidden'}>
             <div className="flex items-center gap-2 text-sm uppercase tracking-widest text-pink-200 mb-3">
-                <i className="fa-solid fa-wand-magic-sparkles"></i> Vibe Sync
+                <i className="fa-solid fa-screwdriver-wrench"></i> Live Effects
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
                 <button

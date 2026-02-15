@@ -51,6 +51,7 @@ import { HOST_APP_CONFIG } from '../../lib/uiConstants';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabilities';
 import { buildSongKey, ensureSong, ensureTrack } from '../../lib/songCatalog';
 import { createLogger } from '../../lib/logger';
+import { DEFAULT_POP_TRIVIA_MAX_QUESTIONS, normalizePopTriviaQuestions } from '../../lib/popTrivia';
 import {
     DEFAULT_LOGO_PRESETS,
     DEFAULT_MARQUEE_ITEMS,
@@ -65,6 +66,16 @@ import {
     resolveStageMediaUrl,
     resolveQueuePlayback,
 } from '../../lib/playbackSource';
+import {
+    HOST_WORKSPACE_VIEWS,
+    HOST_WORKSPACE_SECTIONS,
+    LEGACY_TAB_REDIRECTS,
+    SETTINGS_TAB_TO_SECTION,
+    SECTION_TO_SETTINGS_TAB,
+    getSectionMeta,
+    getViewDefaultSection
+} from './workspace/navConfig';
+import HostWorkspaceShell from './workspace/HostWorkspaceShell';
 
 // --- CONSTANTS & CONFIG ---
 const VERSION = HOST_APP_CONFIG.VERSION;
@@ -346,73 +357,46 @@ const HOST_NIGHT_PRESETS = {
 
 const HOST_SETTINGS_SECTIONS = [
     {
-        id: 'operations',
-        label: 'Control Room',
+        id: 'ops',
+        label: 'Operations',
         items: [
             {
                 key: 'general',
-                label: 'Control Room',
+                label: 'Room Setup',
                 icon: 'fa-sliders',
-                description: 'Core room setup, queue policy, host identity, and quick-start actions.',
+                description: 'Host identity, queue policy, room defaults, and operational controls.',
                 keywords: 'queue room tips presets identity'
             },
             {
-                key: 'gamepad',
-                label: 'Game Director',
-                icon: 'fa-gamepad',
-                description: 'Launch pads and mode-time host actions for karaoke + game flow.',
-                keywords: 'games mode gamepad launchpad doodle trivia bingo bracket'
-            },
-            {
                 key: 'automations',
-                label: 'Presets & Automations',
+                label: 'Automation',
                 icon: 'fa-bolt',
-                description: 'Auto-DJ, background behavior, and one-click night profile controls.',
+                description: 'Auto-DJ, background behavior, and one-click night profiles.',
                 keywords: 'auto dj automation presets profile'
             }
         ]
     },
     {
-        id: 'experience',
-        label: 'Show Experience',
-        items: [
-            {
-                key: 'media',
-                label: 'Visual Director',
-                icon: 'fa-tv',
-                description: 'Media pipelines, uploads, and playback source controls.',
-                keywords: 'media visuals playback upload youtube apple music'
-            },
-            {
-                key: 'marquee',
-                label: 'Show Design',
-                icon: 'fa-panorama',
-                description: 'Marquee timing, rotation content, and idle messaging behavior.',
-                keywords: 'marquee design overlay idle message'
-            }
-        ]
-    },
-    {
-        id: 'community',
-        label: 'Audience + Social',
+        id: 'audience',
+        label: 'Audience',
         items: [
             {
                 key: 'chat',
-                label: 'Audience Social',
+                label: 'Chat',
                 icon: 'fa-comments',
-                description: 'Chat access policy, TV visibility, DM behavior, and moderation controls.',
+                description: 'Audience chat policy, DM controls, and TV feed behavior.',
                 keywords: 'chat dm social audience'
             },
             {
                 key: 'moderation',
-                label: 'Moderation',
+                label: 'Approvals',
                 icon: 'fa-shield-halved',
                 description: 'Doodle review policy, audience visibility rules, and moderation shortcuts.',
                 keywords: 'moderation doodle review approve'
             },
             {
                 key: 'monetization',
-                label: 'Monetization',
+                label: 'Tips + Boosts',
                 icon: 'fa-sack-dollar',
                 description: 'Tip crates and in-room boost economics.',
                 keywords: 'tips crates monetization'
@@ -420,8 +404,41 @@ const HOST_SETTINGS_SECTIONS = [
         ]
     },
     {
-        id: 'admin',
-        label: 'Admin',
+        id: 'media',
+        label: 'Media & Displays',
+        items: [
+            {
+                key: 'media',
+                label: 'Playback',
+                icon: 'fa-tv',
+                description: 'Media pipelines, uploads, and playback source controls.',
+                keywords: 'media visuals playback upload youtube apple music'
+            },
+            {
+                key: 'marquee',
+                label: 'Marquee',
+                icon: 'fa-panorama',
+                description: 'Marquee timing, rotation content, and idle messaging behavior.',
+                keywords: 'marquee design overlay idle message'
+            }
+        ]
+    },
+    {
+        id: 'games',
+        label: 'Games',
+        items: [
+            {
+                key: 'gamepad',
+                label: 'Live Controls',
+                icon: 'fa-gamepad',
+                description: 'Mode-specific host actions while games and specials are running.',
+                keywords: 'games mode gamepad launchpad doodle trivia bingo bracket'
+            }
+        ]
+    },
+    {
+        id: 'billing',
+        label: 'Billing & Usage',
         items: [
             {
                 key: 'billing',
@@ -429,10 +446,23 @@ const HOST_SETTINGS_SECTIONS = [
                 icon: 'fa-credit-card',
                 description: 'Plan, usage, invoices, and subscription controls.',
                 keywords: 'billing usage plan invoice'
+            }
+        ]
+    },
+    {
+        id: 'advanced',
+        label: 'Advanced Tools',
+        items: [
+            {
+                key: 'live_effects',
+                label: 'Live Effects',
+                icon: 'fa-wand-magic-sparkles',
+                description: 'Special effects, vibe moments, and crowd-response controls.',
+                keywords: 'effects vibe storm beat drop soundboard'
             },
             {
                 key: 'qa',
-                label: 'Ops Tools',
+                label: 'Diagnostics',
                 icon: 'fa-screwdriver-wrench',
                 description: 'Room diagnostics, smoke tests, and debug snapshots.',
                 keywords: 'qa debug tools diagnostics'
@@ -447,6 +477,7 @@ const HOST_SETTINGS_META = HOST_SETTINGS_SECTIONS.reduce((acc, section) => {
     });
     return acc;
 }, {});
+const HOST_SETTINGS_TAB_KEYS = Object.keys(HOST_SETTINGS_META);
 
 const loadMusicKitScript = () => new Promise((resolve, reject) => {
     if (typeof window === 'undefined') return resolve(null);
@@ -490,6 +521,18 @@ const estimateStorageMonthly = (bytes = 0) => {
 const formatUsdFromCents = (cents = 0) => {
     const amount = Number(cents || 0) / 100;
     return `$${amount.toFixed(2)}`;
+};
+
+const normalizeTipCratesForSave = (tipCrates = []) => {
+    const list = Array.isArray(tipCrates) ? tipCrates : [];
+    return list.map((crate, idx) => ({
+        id: crate?.id || `crate_${idx}`,
+        label: crate?.label || `Crate ${idx + 1}`,
+        amount: Number(crate?.amount || 0),
+        points: Number(crate?.points || 0),
+        rewardScope: crate?.rewardScope || 'room',
+        awardBadge: !!crate?.awardBadge
+    }));
 };
 
 const getCurrentUsagePeriodKey = () => {
@@ -2403,7 +2446,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll }) => {
+const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, openHostSettings, openLiveEffects, showLegacyLiveEffects = true }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -2496,6 +2539,24 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
     const commandInputRef = useRef(null);
     const [commandOpen, setCommandOpen] = useState(false);
     const [commandQuery, setCommandQuery] = useState('');
+    const [essentialsMode, setEssentialsMode] = useState(() => {
+        try {
+            if (typeof window === 'undefined') return true;
+            const saved = window.localStorage.getItem('bross_host_essentials_mode');
+            if (saved === null) return true;
+            return saved !== '0';
+        } catch {
+            return true;
+        }
+    });
+    useEffect(() => {
+        try {
+            if (typeof window === 'undefined') return;
+            window.localStorage.setItem('bross_host_essentials_mode', essentialsMode ? '1' : '0');
+        } catch {
+            // Ignore persistence failures.
+        }
+    }, [essentialsMode]);
     const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
     const hostDmMessages = chatMessages.filter((msg) => isDirectChatMessage(msg));
     const {
@@ -3011,7 +3072,10 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                 toast('Another singer is already on stage');
                 return;
             }
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), { status }); 
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), {
+                status,
+                performingStartedAt: serverTimestamp()
+            });
             const s = songs.find(x=>x.id===id);
             const stageMediaUrl = resolveStageMediaUrl(s, room);
             const effectiveBacking = normalizeBackingChoice({
@@ -3257,8 +3321,88 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' karaoke')}`, '_blank');
     };
 
+    useEffect(() => {
+        if (!compactViewport) return;
+        setShowAddForm(false);
+        setShowQueueList(true);
+    }, [compactViewport, setShowAddForm, setShowQueueList]);
+
+    const addToQueueSection = (
+        <div className="p-4 border-b border-white/10 bg-black/20 relative">
+            <SectionHeader
+                label="Add to Queue"
+                open={showAddForm}
+                onToggle={() => setShowAddForm(v => !v)}
+                toneClass="text-base font-black text-[#00C4D9]"
+                featureId="panel-add-to-queue"
+            />
+            {showAddForm && (
+                <AddToQueueFormBody
+                    searchQ={searchQ}
+                    setSearchQ={setSearchQ}
+                    styles={STYLES}
+                    quickAddOnResultClick={quickAddOnResultClick}
+                    setQuickAddOnResultClick={setQuickAddOnResultClick}
+                    results={results}
+                    getResultRowKey={getResultRowKey}
+                    quickAddLoadingKey={quickAddLoadingKey}
+                    handleResultClick={handleResultClick}
+                    searchSources={searchSources}
+                    itunesBackoffRemaining={itunesBackoffRemaining}
+                    quickAddNotice={quickAddNotice}
+                    onUndoQuickAdd={undoQuickAdd}
+                    onChangeQuickAddBacking={changeQuickAddBacking}
+                    manual={manual}
+                    setManual={setManual}
+                    manualSingerMode={manualSingerMode}
+                    setManualSingerMode={setManualSingerMode}
+                    hostName={hostName}
+                    users={users}
+                    statusPill={statusPill}
+                    lyricsOpen={lyricsOpen}
+                    setLyricsOpen={setLyricsOpen}
+                    onGenerateManualLyrics={generateManualLyrics}
+                    manualBackingChip={manualBackingChip}
+                    openYtSearch={openYtSearch}
+                    addSong={addSong}
+                />
+            )}
+        </div>
+    );
+
+    const queueListSection = (
+        <div className="flex-1 overflow-y-auto p-2 space-y-2">
+            <SectionHeader
+                label="Queue"
+                open={showQueueList}
+                onToggle={() => setShowQueueList(v => !v)}
+                toneClass="text-base font-black text-[#00C4D9] px-1"
+                featureId="panel-queue-list"
+            />
+            <QueueListPanel
+                showQueueList={showQueueList}
+                pending={pending}
+                queue={queue}
+                onApprovePending={(songId) => updateStatus(songId, 'requested')}
+                onDeletePending={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
+                dragQueueId={dragQueueId}
+                dragOverId={dragOverId}
+                setDragQueueId={setDragQueueId}
+                setDragOverId={setDragOverId}
+                reorderQueue={reorderQueue}
+                handleTouchStart={handleTouchStart}
+                handleTouchMove={handleTouchMove}
+                handleTouchEnd={handleTouchEnd}
+                updateStatus={updateStatus}
+                startEdit={startEdit}
+                statusPill={statusPill}
+                styles={STYLES}
+            />
+        </div>
+    );
+
     return (
-        <div className="h-full flex flex-col gap-3 overflow-hidden relative">
+        <div className={`h-full flex flex-col ${compactViewport ? 'gap-2' : 'gap-3'} overflow-hidden relative`}>
             <QueueYouTubeSearchModal
                 open={ytSearchOpen}
                 styles={STYLES}
@@ -3335,7 +3479,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             )}
             <div className={`${STYLES.panel} px-3 py-2 border border-white/10 bg-black/25`}>
                 <div className="flex flex-wrap items-center gap-2">
-                    <div className="text-[11px] uppercase tracking-[0.25em] text-zinc-400 mr-2">Quick Actions</div>
+                    <div className={`text-[11px] uppercase tracking-[0.25em] text-zinc-400 mr-2 ${compactViewport ? 'hidden md:block' : ''}`}>Quick Actions</div>
                     <button
                         onClick={() => setCommandOpen(true)}
                         data-feature-id="quick-command-palette"
@@ -3367,69 +3511,97 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                         Open TV
                     </button>
                     <button
+                        onClick={() => openHostSettings?.()}
+                        data-feature-id="quick-open-control-center"
+                        className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 text-[10px]`}
+                    >
+                        Admin
+                    </button>
+                    <button
+                        onClick={() => openLiveEffects?.()}
+                        data-feature-id="quick-open-live-effects"
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[10px]`}
+                    >
+                        Live Effects
+                    </button>
+                    <button
+                        onClick={() => setEssentialsMode((prev) => !prev)}
+                        data-feature-id="quick-essentials-mode"
+                        className={`${STYLES.btnStd} ${essentialsMode ? STYLES.btnInfo : STYLES.btnNeutral} px-3 text-[10px]`}
+                    >
+                        {essentialsMode ? 'Show Advanced' : 'Essentials Only'}
+                    </button>
+                    <button
                         onClick={openChatSettings}
                         data-feature-id="quick-chat-settings"
-                        className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 text-[10px]`}
+                        className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 text-[10px] ${compactViewport || essentialsMode ? 'hidden' : ''}`}
                     >
                         Chat Settings
                     </button>
                     <button
                         onClick={runUiFeatureCheck}
                         data-feature-id="quick-ui-feature-check"
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[10px]`}
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[10px] ${compactViewport || essentialsMode ? 'hidden' : ''}`}
                     >
                         UI Feature Check
                     </button>
                 </div>
+                {essentialsMode && (
+                    <div className="mt-2 text-xs text-zinc-400">
+                        Essentials mode keeps focus on queue flow, singer handoff, and TV control. Advanced panels are still available via Show Advanced.
+                    </div>
+                )}
             </div>
 
-            <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-6 overflow-hidden">
+            <div className={`flex-1 min-h-0 flex ${compactViewport ? 'flex-col gap-3' : 'flex-col md:flex-row gap-6'} overflow-hidden`}>
             {/* LEFT CONTROLS */}
-            <div className="w-full md:w-96 flex-shrink-0 overflow-y-auto pr-2 custom-scrollbar">
+            <div className={`w-full ${compactViewport ? 'order-2 max-h-[40vh]' : 'md:w-96'} flex-shrink-0 overflow-y-auto pr-2 custom-scrollbar`}>
                 <div className={`${STYLES.panel} overflow-hidden`}>
-                    <section className="px-4 py-4 border-b border-white/10 bg-black/30">
-                        <div className={STYLES.header}>Panel Layout</div>
-                        <div className="space-y-2">
-                            <select
-                                value={activeWorkspace}
-                                onChange={(e) => applyWorkspacePreset(e.target.value)}
-                                data-feature-id="layout-workspace-select"
-                                className={`${STYLES.input} text-xs py-2`}
-                            >
-                                {workspaceOptions.map((opt) => (
-                                    <option key={opt.id} value={opt.id}>
-                                        {opt.label}
-                                    </option>
-                                ))}
-                            </select>
-                            <div className="grid grid-cols-3 gap-2">
-                                <button
-                                    onClick={expandAllPanels}
-                                    data-feature-id="layout-expand-all"
-                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 text-[10px]`}
+                    {!essentialsMode && (
+                        <section className="px-4 py-4 border-b border-white/10 bg-black/30">
+                            <div className={STYLES.header}>Panel Layout</div>
+                            <div className="space-y-2">
+                                <select
+                                    value={activeWorkspace}
+                                    onChange={(e) => applyWorkspacePreset(e.target.value)}
+                                    data-feature-id="layout-workspace-select"
+                                    className={`${STYLES.input} text-xs py-2`}
                                 >
-                                    Expand All
-                                </button>
-                                <button
-                                    onClick={collapseAllPanels}
-                                    data-feature-id="layout-collapse-all"
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 text-[10px]`}
-                                >
-                                    Collapse All
-                                </button>
-                                <button
-                                    onClick={resetPanelLayout}
-                                    data-feature-id="layout-reset"
-                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} px-2 text-[10px]`}
-                                >
-                                    Reset
-                                </button>
+                                    {workspaceOptions.map((opt) => (
+                                        <option key={opt.id} value={opt.id}>
+                                            {opt.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        onClick={expandAllPanels}
+                                        data-feature-id="layout-expand-all"
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 text-[10px]`}
+                                    >
+                                        Expand All
+                                    </button>
+                                    <button
+                                        onClick={collapseAllPanels}
+                                        data-feature-id="layout-collapse-all"
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 text-[10px]`}
+                                    >
+                                        Collapse All
+                                    </button>
+                                    <button
+                                        onClick={resetPanelLayout}
+                                        data-feature-id="layout-reset"
+                                        className={`${STYLES.btnStd} ${STYLES.btnInfo} px-2 text-[10px]`}
+                                    >
+                                        Reset
+                                    </button>
+                                </div>
+                                <div className="text-[11px] text-zinc-500">
+                                    {openPanelCount}/{Object.keys(panelLayout || {}).length} panels open
+                                </div>
                             </div>
-                            <div className="text-[11px] text-zinc-500">
-                                {openPanelCount}/{Object.keys(panelLayout || {}).length} panels open
-                            </div>
-                        </div>
-                    </section>
+                        </section>
+                    )}
 
                     <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
                         Stage Operations
@@ -3492,27 +3664,29 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                         />
                     </section>
 
-                    <section className="px-4 py-4 border-b border-white/10">
-                        <SectionHeader
-                            label="Soundboard"
-                            open={soundboardOpen}
-                            onToggle={() => setSoundboardOpen(v => !v)}
-                            featureId="panel-soundboard"
-                        />
-                        <SoundboardControls
-                            soundboardOpen={soundboardOpen}
-                            sfxMuted={sfxMuted}
-                            setSfxMuted={setSfxMuted}
-                            silenceAll={silenceAll}
-                            styles={STYLES}
-                            sfxLevel={sfxLevel}
-                            sfxVolume={sfxVolume}
-                            setSfxVolume={setSfxVolume}
-                            sounds={SOUNDS}
-                            playSfxSafe={playSfxSafe}
-                            smallWaveform={SmallWaveform}
-                        />
-                    </section>
+                    {!essentialsMode && showLegacyLiveEffects && (
+                        <section className="px-4 py-4 border-b border-white/10">
+                            <SectionHeader
+                                label="Soundboard"
+                                open={soundboardOpen}
+                                onToggle={() => setSoundboardOpen(v => !v)}
+                                featureId="panel-soundboard"
+                            />
+                            <SoundboardControls
+                                soundboardOpen={soundboardOpen}
+                                sfxMuted={sfxMuted}
+                                setSfxMuted={setSfxMuted}
+                                silenceAll={silenceAll}
+                                styles={STYLES}
+                                sfxLevel={sfxLevel}
+                                sfxVolume={sfxVolume}
+                                setSfxVolume={setSfxVolume}
+                                sounds={SOUNDS}
+                                playSfxSafe={playSfxSafe}
+                                smallWaveform={SmallWaveform}
+                            />
+                        </section>
+                    )}
 
                     <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
                         Broadcast Controls
@@ -3532,173 +3706,121 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                             styles={STYLES}
                         />
                     </section>
-                    <section className="px-4 py-4 border-b border-white/10">
-                        <SectionHeader
-                            label="Overlays & Guides"
-                            open={overlaysOpen}
-                            onToggle={() => setOverlaysOpen(v => !v)}
-                            featureId="panel-overlays-guides"
-                        />
-                        <OverlaysGuidesPanel
-                            overlaysOpen={overlaysOpen}
-                            room={room}
-                            updateRoom={updateRoom}
-                            toggleHowToPlay={toggleHowToPlay}
-                            startReadyCheck={startReadyCheck}
-                            marqueeEnabled={marqueeEnabled}
-                            setMarqueeEnabled={setMarqueeEnabled}
-                            chatShowOnTv={chatShowOnTv}
-                            setChatShowOnTv={setChatShowOnTv}
-                            chatUnread={chatUnread}
-                            vibeSyncOpen={vibeSyncOpen}
-                            setVibeSyncOpen={setVibeSyncOpen}
-                            startBeatDrop={startBeatDrop}
-                            startStormSequence={startStormSequence}
-                            stopStormSequence={stopStormSequence}
-                            styles={STYLES}
-                            sectionHeader={SectionHeader}
-                        />
-                    </section>
+                    {!essentialsMode && (
+                        <>
+                            <section className="px-4 py-4 border-b border-white/10">
+                                <SectionHeader
+                                    label="Overlays & Guides"
+                                    open={overlaysOpen}
+                                    onToggle={() => setOverlaysOpen(v => !v)}
+                                    featureId="panel-overlays-guides"
+                                />
+                                <OverlaysGuidesPanel
+                                    overlaysOpen={overlaysOpen}
+                                    room={room}
+                                    updateRoom={updateRoom}
+                                    toggleHowToPlay={toggleHowToPlay}
+                                    startReadyCheck={startReadyCheck}
+                                    marqueeEnabled={marqueeEnabled}
+                                    setMarqueeEnabled={setMarqueeEnabled}
+                                    chatShowOnTv={chatShowOnTv}
+                                    setChatShowOnTv={setChatShowOnTv}
+                                    chatUnread={chatUnread}
+                                    vibeSyncOpen={vibeSyncOpen}
+                                    setVibeSyncOpen={setVibeSyncOpen}
+                                    startBeatDrop={startBeatDrop}
+                                    startStormSequence={startStormSequence}
+                                    stopStormSequence={stopStormSequence}
+                                    showVibeSync={showLegacyLiveEffects}
+                                    styles={STYLES}
+                                    sectionHeader={SectionHeader}
+                                />
+                            </section>
 
-                    <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
-                        Audience Controls
-                    </div>
-                    <section className="px-4 py-4 border-b border-white/10">
-                        <SectionHeader
-                            label="Chat"
-                            open={chatOpen}
-                            onToggle={() => setChatOpen(v => !v)}
-                            featureId="panel-chat"
-                        />
-                        <HostChatPanel
-                            chatOpen={chatOpen}
-                            chatUnread={chatUnread}
-                            openChatSettings={openChatSettings}
-                            styles={STYLES}
-                            appBase={appBase}
-                            roomCode={roomCode}
-                            chatEnabled={chatEnabled}
-                            setChatEnabled={setChatEnabled}
-                            updateRoom={updateRoom}
-                            chatShowOnTv={chatShowOnTv}
-                            setChatShowOnTv={setChatShowOnTv}
-                            chatAudienceMode={chatAudienceMode}
-                            setChatAudienceMode={setChatAudienceMode}
-                            handleChatViewMode={handleChatViewMode}
-                            chatViewMode={chatViewMode}
-                            dmUnread={dmUnread}
-                            dmTargetUid={dmTargetUid}
-                            setDmTargetUid={setDmTargetUid}
-                            users={users}
-                            dmDraft={dmDraft}
-                            setDmDraft={setDmDraft}
-                            sendHostDmMessage={sendHostDmMessage}
-                            roomChatMessages={roomChatMessages}
-                            hostDmMessages={hostDmMessages}
-                            pinnedChatIds={pinnedChatIds}
-                            setPinnedChatIds={setPinnedChatIds}
-                            emoji={EMOJI}
-                            chatDraft={chatDraft}
-                            setChatDraft={setChatDraft}
-                            sendHostChat={sendHostChat}
-                        />
-                    </section>
+                            <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
+                                Audience Controls
+                            </div>
+                            <section className="px-4 py-4 border-b border-white/10">
+                                <SectionHeader
+                                    label="Chat"
+                                    open={chatOpen}
+                                    onToggle={() => setChatOpen(v => !v)}
+                                    featureId="panel-chat"
+                                />
+                                <HostChatPanel
+                                    chatOpen={chatOpen}
+                                    chatUnread={chatUnread}
+                                    openChatSettings={openChatSettings}
+                                    styles={STYLES}
+                                    appBase={appBase}
+                                    roomCode={roomCode}
+                                    chatEnabled={chatEnabled}
+                                    setChatEnabled={setChatEnabled}
+                                    updateRoom={updateRoom}
+                                    chatShowOnTv={chatShowOnTv}
+                                    setChatShowOnTv={setChatShowOnTv}
+                                    chatAudienceMode={chatAudienceMode}
+                                    setChatAudienceMode={setChatAudienceMode}
+                                    handleChatViewMode={handleChatViewMode}
+                                    chatViewMode={chatViewMode}
+                                    dmUnread={dmUnread}
+                                    dmTargetUid={dmTargetUid}
+                                    setDmTargetUid={setDmTargetUid}
+                                    users={users}
+                                    dmDraft={dmDraft}
+                                    setDmDraft={setDmDraft}
+                                    sendHostDmMessage={sendHostDmMessage}
+                                    roomChatMessages={roomChatMessages}
+                                    hostDmMessages={hostDmMessages}
+                                    pinnedChatIds={pinnedChatIds}
+                                    setPinnedChatIds={setPinnedChatIds}
+                                    emoji={EMOJI}
+                                    chatDraft={chatDraft}
+                                    setChatDraft={setChatDraft}
+                                    sendHostChat={sendHostChat}
+                                />
+                            </section>
 
-                    <section className="px-4 py-4 border-b border-white/10">
-                        <SectionHeader
-                            label="Reward Points"
-                            open={crowdPointsOpen}
-                            onToggle={() => setCrowdPointsOpen(v => !v)}
-                            featureId="panel-reward-points"
-                        />
-                        <RewardPointsPanel
-                            crowdPointsOpen={crowdPointsOpen}
-                            tipPointRate={tipPointRate}
-                            setTipPointRate={setTipPointRate}
-                            styles={STYLES}
-                            giftTargetUid={giftTargetUid}
-                            setGiftTargetUid={setGiftTargetUid}
-                            users={users}
-                            giftAmount={giftAmount}
-                            setGiftAmount={setGiftAmount}
-                            giftPointsToUser={giftPointsToUser}
-                            dropBonus={dropBonus}
-                        />
-                    </section>
+                            <section className="px-4 py-4 border-b border-white/10">
+                                <SectionHeader
+                                    label="Reward Points"
+                                    open={crowdPointsOpen}
+                                    onToggle={() => setCrowdPointsOpen(v => !v)}
+                                    featureId="panel-reward-points"
+                                />
+                                <RewardPointsPanel
+                                    crowdPointsOpen={crowdPointsOpen}
+                                    tipPointRate={tipPointRate}
+                                    setTipPointRate={setTipPointRate}
+                                    styles={STYLES}
+                                    giftTargetUid={giftTargetUid}
+                                    setGiftTargetUid={setGiftTargetUid}
+                                    users={users}
+                                    giftAmount={giftAmount}
+                                    setGiftAmount={setGiftAmount}
+                                    giftPointsToUser={giftPointsToUser}
+                                    dropBonus={dropBonus}
+                                />
+                            </section>
+                        </>
+                    )}
 
                 </div>
             </div>
 
             {/* RIGHT QUEUE */}
-            <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0`}>
-                <div className="p-4 border-b border-white/10 bg-black/20 relative">
-                    <SectionHeader
-                        label="Add to Queue"
-                        open={showAddForm}
-                        onToggle={() => setShowAddForm(v => !v)}
-                        toneClass="text-base font-black text-[#00C4D9]"
-                        featureId="panel-add-to-queue"
-                    />
-                    {showAddForm && (
-                        <AddToQueueFormBody
-                            searchQ={searchQ}
-                            setSearchQ={setSearchQ}
-                            styles={STYLES}
-                            quickAddOnResultClick={quickAddOnResultClick}
-                            setQuickAddOnResultClick={setQuickAddOnResultClick}
-                            results={results}
-                            getResultRowKey={getResultRowKey}
-                            quickAddLoadingKey={quickAddLoadingKey}
-                            handleResultClick={handleResultClick}
-                            searchSources={searchSources}
-                            itunesBackoffRemaining={itunesBackoffRemaining}
-                            quickAddNotice={quickAddNotice}
-                            onUndoQuickAdd={undoQuickAdd}
-                            onChangeQuickAddBacking={changeQuickAddBacking}
-                            manual={manual}
-                            setManual={setManual}
-                            manualSingerMode={manualSingerMode}
-                            setManualSingerMode={setManualSingerMode}
-                            hostName={hostName}
-                            users={users}
-                            statusPill={statusPill}
-                            lyricsOpen={lyricsOpen}
-                            setLyricsOpen={setLyricsOpen}
-                            onGenerateManualLyrics={generateManualLyrics}
-                            manualBackingChip={manualBackingChip}
-                            openYtSearch={openYtSearch}
-                            addSong={addSong}
-                        />
-                    )}
-                </div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                    <SectionHeader
-                        label="Queue"
-                        open={showQueueList}
-                        onToggle={() => setShowQueueList(v => !v)}
-                        toneClass="text-base font-black text-[#00C4D9] px-1"
-                        featureId="panel-queue-list"
-                    />
-                    <QueueListPanel
-                        showQueueList={showQueueList}
-                        pending={pending}
-                        queue={queue}
-                        onApprovePending={(songId) => updateStatus(songId, 'requested')}
-                        onDeletePending={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
-                        dragQueueId={dragQueueId}
-                        dragOverId={dragOverId}
-                        setDragQueueId={setDragQueueId}
-                        setDragOverId={setDragOverId}
-                        reorderQueue={reorderQueue}
-                        handleTouchStart={handleTouchStart}
-                        handleTouchMove={handleTouchMove}
-                        handleTouchEnd={handleTouchEnd}
-                        updateStatus={updateStatus}
-                        startEdit={startEdit}
-                        statusPill={statusPill}
-                        styles={STYLES}
-                    />
-                </div>
+            <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0 ${compactViewport ? 'order-1 min-h-[52vh]' : ''}`}>
+                {compactViewport ? (
+                    <>
+                        {queueListSection}
+                        {addToQueueSection}
+                    </>
+                ) : (
+                    <>
+                        {addToQueueSection}
+                        {queueListSection}
+                    </>
+                )}
             </div>
             </div>
         </div>
@@ -3905,7 +4027,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [users, setUsers] = useState([]);
     const [contacts, setContacts] = useState([]);
     const [activities, setActivities] = useState([]);
-    const [tab, setTab] = useState('stage');
+    const [tab, setTab] = useState('admin');
     const [autoBgMusic, setAutoBgMusic] = useState(false);
     const [autoDj, setAutoDj] = useState(false);
     const [autoPlayMedia, setAutoPlayMedia] = useState(true);
@@ -3918,7 +4040,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [stageMeterLevel, setStageMeterLevel] = useState(0);
     const [stageMicReady, setStageMicReady] = useState(false);
     const [stageMicError, setStageMicError] = useState('');
-    const [audioPanelOpen, setAudioPanelOpen] = useState(true);
+    const [viewportHeight, setViewportHeight] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 1080));
+    const compactHostViewport = viewportHeight <= 900;
+    const [audioPanelOpen, setAudioPanelOpen] = useState(() => {
+        if (typeof window === 'undefined') return true;
+        return window.innerHeight > 900;
+    });
     const [showLaunchMenu, setShowLaunchMenu] = useState(false);
     const [showNavMenu, setShowNavMenu] = useState(false);
     const [autoOpenGameId, setAutoOpenGameId] = useState('');
@@ -3990,13 +4117,67 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [localFilter, setLocalFilter] = useState('');
     const [roomUploadBytes, setRoomUploadBytes] = useState(0);
     const localUploadsRef = useRef([]);
-    const [showSettings, setShowSettings] = useState(false);
+    const [showSettings, setShowSettings] = useState(true);
     const [settingsTab, setSettingsTab] = useState('general');
+    const [activeWorkspaceView, setActiveWorkspaceView] = useState('ops');
+    const [activeWorkspaceSection, setActiveWorkspaceSection] = useState('ops.room_setup');
     const [settingsNavQuery, setSettingsNavQuery] = useState('');
     const [settingsNavOpen, setSettingsNavOpen] = useState(false);
+    const [settingsRecentTabs, setSettingsRecentTabs] = useState(() => {
+        try {
+            if (typeof window === 'undefined') return ['general', 'media', 'chat'];
+            const raw = window.localStorage.getItem('bross_host_settings_recent_tabs');
+            if (!raw) return ['general', 'media', 'chat'];
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return ['general', 'media', 'chat'];
+            const cleaned = parsed
+                .map((tab) => String(tab || '').trim())
+                .filter((tab) => HOST_SETTINGS_TAB_KEYS.includes(tab));
+            return cleaned.length ? cleaned.slice(0, 6) : ['general', 'media', 'chat'];
+        } catch {
+            return ['general', 'media', 'chat'];
+        }
+    });
+    const [showAiSetupGuide, setShowAiSetupGuide] = useState(false);
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        const onResize = () => setViewportHeight(window.innerHeight || 0);
+        onResize();
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
+    useEffect(() => {
+        if (!compactHostViewport) return;
+        setAudioPanelOpen(false);
+    }, [compactHostViewport]);
     useEffect(() => {
         if (!showSettings) setSettingsNavOpen(false);
     }, [showSettings]);
+    useEffect(() => {
+        if (!HOST_SETTINGS_TAB_KEYS.includes(settingsTab)) return;
+        setSettingsRecentTabs((prev) => {
+            const deduped = [settingsTab, ...(prev || []).filter((tab) => tab !== settingsTab)];
+            return deduped.slice(0, 6);
+        });
+    }, [settingsTab]);
+    useEffect(() => {
+        const sectionId = SETTINGS_TAB_TO_SECTION[settingsTab];
+        if (!sectionId) return;
+        const sectionMeta = getSectionMeta(sectionId);
+        if (sectionMeta?.view) setActiveWorkspaceView(sectionMeta.view);
+        setActiveWorkspaceSection(sectionId);
+    }, [settingsTab]);
+    useEffect(() => {
+        try {
+            if (typeof window === 'undefined') return;
+            window.localStorage.setItem('bross_host_settings_recent_tabs', JSON.stringify(settingsRecentTabs || []));
+        } catch {
+            // Ignore persistence issues
+        }
+    }, [settingsRecentTabs]);
+    useEffect(() => {
+        setShowSettings(tab === 'admin');
+    }, [tab]);
     const hallOfFameTimerRef = useRef(null);
     const [smokeRunning, setSmokeRunning] = useState(false);
     const [smokeResults, setSmokeResults] = useState([]);
@@ -4031,6 +4212,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [hostNightPreset, setHostNightPreset] = useState('custom');
     const [audienceBingoReopenEnabled, setAudienceBingoReopenEnabled] = useState(true);
     const [autoLyricsOnQueue, setAutoLyricsOnQueue] = useState(false);
+    const [popTriviaEnabled, setPopTriviaEnabled] = useState(true);
     const [audiencePreviewVisible, setAudiencePreviewVisible] = useState(() => {
         try {
             if (typeof window === 'undefined') return true;
@@ -4146,14 +4328,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return ['active', 'trialing', 'past_due'].includes(status);
     }, [orgContext?.status]);
     const capabilities = useMemo(() => orgContext?.capabilities || {}, [orgContext?.capabilities]);
-    const canUseYouTubeData = !!capabilities[CAPABILITY_KEYS.API_YOUTUBE_DATA];
-    const canUseAppleMusicApi = !!capabilities[CAPABILITY_KEYS.API_APPLE_MUSIC];
     const canUseWorkspaceOnboarding = !!capabilities[CAPABILITY_KEYS.WORKSPACE_ONBOARDING];
     const canUseInvoiceDrafts = !!capabilities[CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS];
-    const sourceCapabilityMap = useMemo(() => ({
-        youtube: CAPABILITY_KEYS.API_YOUTUBE_DATA,
-        itunes: CAPABILITY_KEYS.API_APPLE_MUSIC
-    }), []);
+    const canGenerateAiContent = !!capabilities[CAPABILITY_KEYS.AI_GENERATE_CONTENT];
     const usageMeters = useMemo(() => {
         const meters = Object.values(usageSummary?.meters || {});
         return meters.sort((a, b) => String(a?.label || '').localeCompare(String(b?.label || '')));
@@ -4191,14 +4368,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [logoLibrary]);
 
     useEffect(() => {
-        setSearchSources(prev => ({
-            ...prev,
-            youtube: canUseYouTubeData ? prev.youtube : false,
-            itunes: canUseAppleMusicApi ? prev.itunes : false
-        }));
-    }, [canUseYouTubeData, canUseAppleMusicApi]);
-
-    useEffect(() => {
         let cancelled = false;
         if (!uid) {
             setOrgContext(prev => ({
@@ -4230,11 +4399,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             try {
                 const appCheckReady = await ensureAppCheckToken(false) || await ensureAppCheckToken(true);
                 if (!appCheckReady) {
-                    if (cancelled) return;
-                    setOrgContext(prev => ({ ...prev, loading: false, error: BILLING_WARMUP_MESSAGE }));
-                    setUsageSummary(prev => ({ ...prev, loading: false, error: '' }));
-                    setInvoiceHistory([]);
-                    return;
+                    hostLogger.debug('App Check token unavailable during entitlements sync; continuing without pre-warmed token.');
                 }
                 await ensureOrganization('');
                 const entitlements = await getMyEntitlements();
@@ -4378,6 +4543,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const bingoTurnAdvanceRef = useRef(null);
     const roomRef = useRef(room);
     const songsRef = useRef(songs);
+    const popTriviaGeneratingRef = useRef(new Set());
     const stormTimersRef = useRef([]);
     const sfxPulseRef = useRef(null);
     const seededMarqueeRef = useRef(false);
@@ -4674,6 +4840,70 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         songsRef.current = songs;
     }, [songs]);
     useEffect(() => {
+        if (!roomCode) return;
+        if (room?.popTriviaEnabled === false) return;
+        if (!canGenerateAiContent) return;
+
+        const eligibleSongs = songs
+            .filter((song) => ['requested', 'pending', 'performing'].includes(song?.status))
+            .filter((song) => (song?.songTitle || '').trim())
+            .filter((song) => {
+                if (!song?.id) return false;
+                if (Array.isArray(song?.popTrivia) && song.popTrivia.length > 0) return false;
+                const status = String(song?.popTriviaStatus || '').toLowerCase();
+                return !['pending', 'ready', 'failed'].includes(status);
+            })
+            .slice(0, 4);
+
+        eligibleSongs.forEach((song) => {
+            if (!song?.id) return;
+            if (popTriviaGeneratingRef.current.has(song.id)) return;
+            popTriviaGeneratingRef.current.add(song.id);
+
+            const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id);
+            (async () => {
+                try {
+                    await updateDoc(songRef, {
+                        popTriviaStatus: 'pending',
+                        popTriviaError: null
+                    });
+                    const context = [{
+                        songTitle: song.songTitle,
+                        artist: song.artist || '',
+                        singerName: song.singerName || ''
+                    }];
+                    const result = await callFunction('geminiGenerate', { type: 'trivia', context });
+                    const triviaQuestions = normalizePopTriviaQuestions(result?.result || result || [], {
+                        limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+                        idPrefix: `${roomCode}_${song.id}`
+                    });
+                    if (!triviaQuestions.length) {
+                        await updateDoc(songRef, {
+                            popTriviaStatus: 'failed',
+                            popTriviaError: 'AI returned no trivia questions.'
+                        });
+                        return;
+                    }
+                    await updateDoc(songRef, {
+                        popTrivia: triviaQuestions,
+                        popTriviaStatus: 'ready',
+                        popTriviaSource: 'ai',
+                        popTriviaGeneratedAt: serverTimestamp(),
+                        popTriviaError: null
+                    });
+                } catch (error) {
+                    hostLogger.warn('Pop trivia generation failed', { songId: song.id, error });
+                    await updateDoc(songRef, {
+                        popTriviaStatus: 'failed',
+                        popTriviaError: String(error?.message || error?.code || 'Generation failed').slice(0, 180)
+                    }).catch(() => {});
+                } finally {
+                    popTriviaGeneratingRef.current.delete(song.id);
+                }
+            })();
+        });
+    }, [roomCode, room?.popTriviaEnabled, songs, canGenerateAiContent]);
+    useEffect(() => {
         const ctx = bgCtxRef.current;
         if (ctx && ctx.state === 'suspended' && playingBg) {
             ctx.resume().catch(() => {});
@@ -4726,21 +4956,72 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const t = params.get('tab');
         const c = params.get('catalogue');
         const chat = params.get('chat');
+        const view = (params.get('view') || '').trim().toLowerCase();
+        const section = (params.get('section') || '').trim().toLowerCase();
         const g = normalizeGameParam(params.get('game'));
-        if (t === 'photos') {
+        if (view) {
+            const chosenSection = section || getViewDefaultSection(view);
+            setActiveWorkspaceView(view);
+            setActiveWorkspaceSection(chosenSection);
+            if (view === 'queue') {
+                setTab('stage');
+                if (chosenSection === 'queue.catalog') setTab('browse');
+            } else if (view === 'games') {
+                setTab('games');
+            } else if (view === 'audience') {
+                setTab('lobby');
+            } else {
+                setTab('admin');
+                const mappedTab = SECTION_TO_SETTINGS_TAB[chosenSection] || 'general';
+                setSettingsTab(mappedTab);
+            }
+        } else if (t === 'photos') {
             setTab('lobby');
             setLobbyTab('photos');
         } else if (t === 'qa') {
-            setTab('games');
+            setTab('admin');
+            setSettingsTab('qa');
+            setActiveWorkspaceView('advanced');
+            setActiveWorkspaceSection('advanced.diagnostics');
         } else if (g) {
             setTab('games');
             setAutoOpenGameId(g);
-        } else if (t && ['stage', 'games', 'lobby', 'browse'].includes(t)) {
+        } else if (t && ['stage', 'games', 'lobby', 'browse', 'admin'].includes(t)) {
             setTab(t);
+            const redirect = LEGACY_TAB_REDIRECTS[t];
+            if (redirect) {
+                setActiveWorkspaceView(redirect.view);
+                setActiveWorkspaceSection(redirect.section);
+            }
+            if (t === 'admin') {
+                setActiveWorkspaceView('ops');
+                setActiveWorkspaceSection('ops.room_setup');
+                setSettingsTab('general');
+            }
         }
         if (c === '1') setCatalogueOnly(true);
         if (chat === '1') setTab('stage');
     }, []);
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const url = new URL(window.location.href);
+        const params = url.searchParams;
+        params.set('hostUiVersion', 'v2');
+        if (tab === 'admin') {
+            const sectionId = SETTINGS_TAB_TO_SECTION[settingsTab] || activeWorkspaceSection || 'ops.room_setup';
+            const sectionMeta = getSectionMeta(sectionId);
+            const viewId = sectionMeta?.view || activeWorkspaceView || 'ops';
+            params.set('view', viewId);
+            params.set('section', sectionId);
+            params.set('tab', 'admin');
+        } else if (LEGACY_TAB_REDIRECTS[tab]) {
+            const mapped = LEGACY_TAB_REDIRECTS[tab];
+            params.set('view', mapped.view);
+            params.set('section', mapped.section);
+            params.set('tab', tab);
+        }
+        window.history.replaceState({}, '', `${url.pathname}?${params.toString()}`);
+    }, [tab, settingsTab, activeWorkspaceSection, activeWorkspaceView]);
     useEffect(() => () => clearStormTimers(), []);
     useEffect(() => () => {
         if (hallOfFameTimerRef.current) {
@@ -4804,7 +5085,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.autoLyricsOnQueue !== undefined && room?.autoLyricsOnQueue !== null) {
             setAutoLyricsOnQueue(!!room.autoLyricsOnQueue);
         }
-    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.autoDj, room?.autoPlayMedia, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.autoLyricsOnQueue, room]);
+        if (room?.popTriviaEnabled !== undefined && room?.popTriviaEnabled !== null) {
+            setPopTriviaEnabled(room.popTriviaEnabled !== false);
+        }
+    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.autoDj, room?.autoPlayMedia, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.autoLyricsOnQueue, room?.popTriviaEnabled, room]);
     useEffect(() => {
         if (!room) return;
         setMarqueeEnabled(!!room?.marqueeEnabled);
@@ -4878,7 +5162,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0));
         const next = queued[0];
         if (!next) return;
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', next.id), { status: 'performing' });
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', next.id), {
+            status: 'performing',
+            performingStartedAt: serverTimestamp()
+        });
         const queuePlayback = resolveQueuePlayback(next, activeRoom?.autoPlayMedia !== false);
         const nextMediaUrl = queuePlayback.mediaUrl;
         const useAppleBacking = queuePlayback.usesAppleBacking;
@@ -5183,13 +5470,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
     };
 
-    const joinRoom = async (candidateCode) => {
+    const joinRoom = async (candidateCode, options = {}) => {
+        const silent = !!options?.silent;
         if (joiningRoom) return;
         const code = (candidateCode || roomCodeInput || '').trim().toUpperCase();
         if (!code) {
-            toast('Enter a room code first');
-            setEntryError('Enter a room code first.');
-            return;
+            if (!silent) {
+                toast('Enter a room code first');
+                setEntryError('Enter a room code first.');
+            }
+            return false;
         }
 
         setJoiningRoom(true);
@@ -5197,36 +5487,44 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         try {
             const activeUid = await ensureActiveUid();
             if (!activeUid) {
-                toast('Could not establish auth. Please retry.');
-                setEntryError('Could not establish auth. Retry and join again.');
-                return;
+                if (!silent) {
+                    toast('Could not establish auth. Please retry.');
+                    setEntryError('Could not establish auth. Retry and join again.');
+                }
+                return false;
             }
             const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', code);
             const roomSnap = await getDoc(roomRef);
             if (!roomSnap.exists()) {
-                toast(`Room ${code} not found`);
-                setEntryError(`Room ${code} not found.`);
-                return;
+                if (!silent) {
+                    toast(`Room ${code} not found`);
+                    setEntryError(`Room ${code} not found.`);
+                }
+                return false;
             }
 
             setRoomCode(code);
             setRoomCodeInput(code);
             setView('panel');
+            return true;
         } catch (e) {
             const code = e?.code || '';
-            if (code.includes('permission-denied')) {
-                toast('Permission denied while opening room. Re-authenticate and try again.');
-                setEntryError('Permission denied while opening room. Re-authenticate and try again.');
-            } else if (code.includes('unauthenticated')) {
-                toast('You are signed out. Please retry auth, then open room again.');
-                setEntryError('You are signed out. Retry auth, then open room again.');
-            } else if (code.includes('unavailable') || code.includes('network')) {
-                toast('Network issue while opening room. Please retry.');
-                setEntryError('Network issue while opening room. Please retry.');
-            } else {
-                toast(`Failed to open room${code ? ` (${code})` : ''}`);
-                setEntryError(`Failed to open room${code ? ` (${code})` : ''}.`);
+            if (!silent) {
+                if (code.includes('permission-denied')) {
+                    toast('Permission denied while opening room. Re-authenticate and try again.');
+                    setEntryError('Permission denied while opening room. Re-authenticate and try again.');
+                } else if (code.includes('unauthenticated')) {
+                    toast('You are signed out. Please retry auth, then open room again.');
+                    setEntryError('You are signed out. Retry auth, then open room again.');
+                } else if (code.includes('unavailable') || code.includes('network')) {
+                    toast('Network issue while opening room. Please retry.');
+                    setEntryError('Network issue while opening room. Please retry.');
+                } else {
+                    toast(`Failed to open room${code ? ` (${code})` : ''}`);
+                    setEntryError(`Failed to open room${code ? ` (${code})` : ''}.`);
+                }
             }
+            return false;
         } finally {
             setJoiningRoom(false);
         }
@@ -5329,6 +5627,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 hostNightPreset: 'custom',
                 bingoAudienceReopenEnabled: true,
                 autoLyricsOnQueue: false,
+                popTriviaEnabled: true,
                 gameDefaults: {
                     triviaRoundSec: 20,
                     triviaAutoReveal: true,
@@ -5387,13 +5686,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     useEffect(() => {
         if (!normalizedInitialCode) return;
-        if (!uid && !authError) return;
-        const authMarker = uid || authError?.code || authError?.message || 'unknown';
+        const authMarker = uid || authError?.code || authError?.message || 'boot';
         const attemptKey = `${normalizedInitialCode}:${authMarker}`;
         if (autoJoinAttemptKeyRef.current === attemptKey) return;
         autoJoinAttemptKeyRef.current = attemptKey;
         setRoomCodeInput(normalizedInitialCode);
-        joinRoom(normalizedInitialCode);
+        joinRoom(normalizedInitialCode, { silent: !uid && !authError });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [normalizedInitialCode, uid, authError]);
 
@@ -5632,6 +5930,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             bingoAutoApprovePct: Math.max(10, Math.min(100, Number(presetSettings.bingoAutoApprovePct ?? 50))),
             bingoAudienceReopenEnabled: presetSettings.bingoAudienceReopenEnabled !== false,
             autoLyricsOnQueue: autoLyricsEnabled,
+            popTriviaEnabled: presetSettings.popTriviaEnabled !== false,
             gamePreviewId: presetSettings.gamePreviewId || null,
             gameDefaults: {
                 triviaRoundSec: Math.max(5, Number(gameDefaults.triviaRoundSec || 20)),
@@ -5663,6 +5962,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setMarqueeShowMode(payload.marqueeShowMode || 'always');
             setAudienceBingoReopenEnabled(payload.bingoAudienceReopenEnabled !== false);
             setAutoLyricsOnQueue(!!payload.autoLyricsOnQueue);
+            setPopTriviaEnabled(payload.popTriviaEnabled !== false);
             setSearchSources(preset.searchSources || { local: true, youtube: true, itunes: true });
 
             if (payload.autoBgMusic && !playingBg) {
@@ -5703,6 +6003,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Could not apply host preset.');
         }
     };
+    const copyAiSetupCommands = async () => {
+        const commands = [
+            'firebase functions:secrets:set GEMINI_API_KEY',
+            'firebase deploy --only functions:geminiGenerate'
+        ].join('\n');
+        try {
+            await navigator.clipboard.writeText(commands);
+            toast('AI setup commands copied.');
+        } catch {
+            toast(commands);
+        }
+    };
     const saveApiKeys = async () => { 
         localStorage.setItem('bross_host_name', hostName || 'Host');
         if (roomCode) {
@@ -5712,14 +6024,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 hostName: hostName || 'Host',
                 logoUrl: logoUrl?.trim() || null,
                 tipPointRate: tipPointRate || 100,
-                tipCrates: tipCrates.map((crate, idx) => ({
-                    id: crate.id || `crate_${idx}`,
-                    label: crate.label || `Crate ${idx + 1}`,
-                    amount: Number(crate.amount || 0),
-                    points: Number(crate.points || 0),
-                    rewardScope: crate.rewardScope || 'room',
-                    awardBadge: !!crate.awardBadge
-                })),
+                tipCrates: normalizeTipCratesForSave(tipCrates),
                 appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId),
                 appleMusicAutoPlaylistTitle: (appleMusicAutoPlaylistTitle || '').trim(),
                 autoBgFadeOutMs: Math.max(200, Number(autoBgFadeOutMs || 900)),
@@ -5733,6 +6038,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 hostNightPreset: hostNightPreset || 'custom',
                 bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
                 autoLyricsOnQueue: !!autoLyricsOnQueue && !!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT],
+                popTriviaEnabled: popTriviaEnabled !== false,
                 queueSettings: {
                     limitMode: queueLimitMode || 'none',
                     limitCount: Math.max(0, Number(queueLimitCount || 0)),
@@ -5741,7 +6047,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
             });
         }
-        setShowSettings(false); 
+        setSettingsNavOpen(false);
+        setShowSettings(false);
+        setTab('stage');
         toast("Settings Saved"); 
     };
 
@@ -5957,6 +6265,125 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (match) return match[1];
         return input.trim();
     };
+    const normalizeYouTubePlaylistItems = (rawItems = []) => (
+        (rawItems || [])
+            .map(item => ({
+                id: item.id,
+                title: item.title || 'Untitled',
+                channel: item.channelTitle || 'YouTube',
+                thumbnail: item.thumbnails?.medium?.url || item.thumbnails?.default?.url || '',
+                url: item.id ? `https://www.youtube.com/watch?v=${item.id}` : ''
+            }))
+            .filter(item => item.id)
+    );
+
+    const indexYouTubePlaylist = async (playlistId) => {
+        const data = await callFunction('youtubePlaylist', { playlistId, maxTotal: 150 });
+        const items = normalizeYouTubePlaylistItems(data?.items || []);
+        const updated = (() => {
+            const existing = new Map((ytIndex || []).map(item => [item.videoId, item]));
+            items.forEach(item => {
+                existing.set(item.id, {
+                    videoId: item.id,
+                    source: 'youtube',
+                    trackName: item.title,
+                    artistName: item.channel,
+                    artworkUrl100: item.thumbnail,
+                    url: item.url
+                });
+            });
+            return Array.from(existing.values());
+        })();
+        await persistYtIndex(updated);
+        return items;
+    };
+
+    const queueYouTubePlaylistItems = async (items, singerOverride) => {
+        if (!roomCode) return { queuedCount: 0, firstQueuedSong: null };
+        const songsCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs');
+        const queueItems = (items || []).filter(item => item?.id && item?.url);
+        if (!queueItems.length) return { queuedCount: 0, firstQueuedSong: null };
+        const basePriority = nowMs();
+        const singerName = singerOverride || room?.hostName || hostName || 'Host';
+        let queuedCount = 0;
+        let firstQueuedSong = null;
+        for (let start = 0; start < queueItems.length; start += 400) {
+            const chunk = queueItems.slice(start, start + 400);
+            const batch = writeBatch(db);
+            chunk.forEach((item, idx) => {
+                const globalIdx = start + idx;
+                const songRef = doc(songsCol);
+                const payload = {
+                    roomCode,
+                    songId: buildSongKey(item.title, item.channel || 'YouTube'),
+                    trackId: null,
+                    trackSource: 'youtube',
+                    songTitle: item.title,
+                    artist: item.channel || 'YouTube',
+                    singerName,
+                    mediaUrl: item.url,
+                    albumArtUrl: item.thumbnail || '',
+                    status: 'requested',
+                    timestamp: serverTimestamp(),
+                    priorityScore: basePriority + globalIdx,
+                    emoji: EMOJI.mic,
+                    backingAudioOnly: false,
+                    audioOnly: false
+                };
+                if (!firstQueuedSong) {
+                    firstQueuedSong = { id: songRef.id, ...payload };
+                }
+                batch.set(songRef, payload);
+                queuedCount += 1;
+            });
+            await batch.commit();
+        }
+        return { queuedCount, firstQueuedSong };
+    };
+
+    const activateQueueSong = async (song, roomSnapshot = roomRef.current) => {
+        if (!song?.id) return;
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id), {
+            status: 'performing',
+            performingStartedAt: serverTimestamp()
+        });
+        const queuePlayback = resolveQueuePlayback(song, roomSnapshot?.autoPlayMedia !== false);
+        const nextMediaUrl = queuePlayback.mediaUrl;
+        const useAppleBacking = queuePlayback.usesAppleBacking;
+        const autoStartMedia = queuePlayback.autoStartMedia;
+        if (useAppleBacking && autoStartMedia) {
+            await playAppleMusicTrack(song.appleMusicId, { title: song.songTitle, artist: song.artist });
+            await updateRoom({
+                activeMode: 'karaoke',
+                'announcement.active': false,
+                mediaUrl: '',
+                singAlongMode: false,
+                videoPlaying: false,
+                videoStartTimestamp: null,
+                videoVolume: 100,
+                showLyricsTv: false,
+                showVisualizerTv: false,
+                showLyricsSinger: false
+            });
+        } else {
+            await stopAppleMusic();
+            await updateRoom({
+                activeMode: 'karaoke',
+                'announcement.active': false,
+                mediaUrl: nextMediaUrl,
+                singAlongMode: false,
+                videoPlaying: autoStartMedia && !!nextMediaUrl,
+                videoStartTimestamp: autoStartMedia ? nowMs() : null,
+                videoVolume: 100,
+                showLyricsTv: false,
+                showVisualizerTv: false,
+                showLyricsSinger: false,
+                appleMusicPlayback: null
+            });
+        }
+        logActivity(roomCode, song.singerName, 'took the stage!', EMOJI.mic);
+    };
+
     const loadYouTubePlaylist = async () => {
         const playlistId = parsePlaylistId(ytPlaylistUrl);
         if (!playlistId) {
@@ -5966,34 +6393,59 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setYtPlaylistLoading(true);
         setYtPlaylistStatus('Loading playlist...');
         try {
-            const data = await callFunction('youtubePlaylist', { playlistId, maxTotal: 150 });
-            const items = (data?.items || []).map(item => ({
-                id: item.id,
-                title: item.title || 'Untitled',
-                channel: item.channelTitle || 'YouTube',
-                thumbnail: item.thumbnails?.medium?.url || item.thumbnails?.default?.url || '',
-                url: item.id ? `https://www.youtube.com/watch?v=${item.id}` : ''
-            })).filter(item => item.id);
-            const updated = (() => {
-                const existing = new Map(ytIndex.map(item => [item.videoId, item]));
-                items.forEach(item => {
-                    existing.set(item.id, {
-                        videoId: item.id,
-                        source: 'youtube',
-                        trackName: item.title,
-                        artistName: item.channel,
-                        artworkUrl100: item.thumbnail,
-                        url: item.url
-                    });
-                });
-                return Array.from(existing.values());
-            })();
-            await persistYtIndex(updated);
+            const items = await indexYouTubePlaylist(playlistId);
             setYtPlaylistStatus(`Indexed ${items.length} videos from playlist`);
         } catch (e) {
             hostLogger.error('Playlist load error', e);
             setYtPlaylistStatus('Failed to load playlist. Check server keys or playlist privacy.');
             toast('Playlist load failed.');
+        } finally {
+            setYtPlaylistLoading(false);
+        }
+    };
+
+    const loadAndQueueYouTubePlaylist = async () => {
+        const playlistId = parsePlaylistId(ytPlaylistUrl);
+        if (!playlistId) {
+            toast('Paste a valid YouTube playlist URL or ID');
+            return;
+        }
+        if (!roomCode) {
+            toast('Create or open a room first');
+            return;
+        }
+        const hadPerformer = (songsRef.current || []).some(song => song.status === 'performing');
+        const hadQueued = (songsRef.current || []).some(song => song.status === 'requested');
+        setYtPlaylistLoading(true);
+        setYtPlaylistStatus('Loading playlist and queueing...');
+        try {
+            const items = await indexYouTubePlaylist(playlistId);
+            const { queuedCount, firstQueuedSong } = await queueYouTubePlaylistItems(items);
+            if (!roomRef.current?.autoDj) {
+                await updateRoom({ autoDj: true });
+                setAutoDj(true);
+                roomRef.current = { ...(roomRef.current || {}), autoDj: true };
+            }
+            let autoStarted = false;
+            if (!hadPerformer && !hadQueued && firstQueuedSong) {
+                await activateQueueSong(firstQueuedSong, roomRef.current);
+                autoStarted = true;
+            } else if (!hadPerformer) {
+                setTimeout(() => {
+                    startNextFromQueue().catch((error) => {
+                        hostLogger.warn('Playlist queue kickoff failed', error);
+                    });
+                }, 650);
+            }
+            const kickoffMessage = autoStarted
+                ? ' First track started.'
+                : ' Auto-DJ is enabled for back-to-back playback.';
+            setYtPlaylistStatus(`Indexed ${items.length} videos and queued ${queuedCount}.${kickoffMessage}`);
+            toast(`Queued ${queuedCount} songs from playlist`);
+        } catch (e) {
+            hostLogger.error('Playlist queue error', e);
+            setYtPlaylistStatus('Failed to queue playlist. Check server keys, playlist privacy, and room state.');
+            toast('Playlist queue failed.');
         } finally {
             setYtPlaylistLoading(false);
         }
@@ -6444,14 +6896,80 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const selectSettingsTab = useCallback((nextTab) => {
         setSettingsTab(nextTab);
         if (nextTab === 'chat') markChatTabSeen();
+        const sectionId = SETTINGS_TAB_TO_SECTION[nextTab];
+        if (sectionId) {
+            const sectionMeta = getSectionMeta(sectionId);
+            if (sectionMeta?.view) setActiveWorkspaceView(sectionMeta.view);
+            setActiveWorkspaceSection(sectionId);
+        }
     }, [markChatTabSeen]);
     const handleSettingsNavSelect = useCallback((nextTab) => {
         selectSettingsTab(nextTab);
         setSettingsNavOpen(false);
     }, [selectSettingsTab]);
     const openChatSettings = () => {
-        setShowSettings(true);
+        setTab('admin');
+        setActiveWorkspaceView('audience');
+        setActiveWorkspaceSection('audience.chat');
         handleSettingsNavSelect('chat');
+    };
+    const openAdminWorkspace = (sectionId = 'ops.room_setup') => {
+        const targetSection = sectionId || 'ops.room_setup';
+        const sectionMeta = getSectionMeta(targetSection);
+        const viewId = sectionMeta?.view || 'ops';
+        const mappedTab = SECTION_TO_SETTINGS_TAB[targetSection] || 'general';
+        setActiveWorkspaceView(viewId);
+        setActiveWorkspaceSection(targetSection);
+        setSettingsTab(mappedTab);
+        setTab('admin');
+        setShowSettings(true);
+    };
+    const leaveAdminWithTarget = (targetTab = 'stage') => {
+        if (hasPendingRoomSettings) {
+            toast('Save Room Settings before leaving Admin.');
+            return false;
+        }
+        setSettingsNavOpen(false);
+        setShowSettings(false);
+        if (targetTab) setTab(targetTab);
+        return true;
+    };
+    const selectWorkspaceView = (viewId) => {
+        const nextView = String(viewId || 'ops').trim() || 'ops';
+        const sectionId = getViewDefaultSection(nextView);
+        const mappedTab = SECTION_TO_SETTINGS_TAB[sectionId] || 'general';
+        if (nextView === 'queue') {
+            leaveAdminWithTarget('stage');
+            return;
+        }
+        if (nextView === 'games') {
+            leaveAdminWithTarget('games');
+            return;
+        }
+        if (nextView === 'audience' && sectionId === 'audience.roster') {
+            leaveAdminWithTarget('lobby');
+            return;
+        }
+        setActiveWorkspaceView(nextView);
+        setActiveWorkspaceSection(sectionId);
+        setTab('admin');
+        setSettingsTab(mappedTab);
+        setShowSettings(true);
+    };
+    const closeSettingsSurface = () => {
+        if (tab === 'admin') {
+            leaveAdminWithTarget('stage');
+            return;
+        }
+        setShowSettings(false);
+        setSettingsNavOpen(false);
+    };
+    const handleTopChromeTabChange = (nextTab) => {
+        if (tab === 'admin' && nextTab !== 'admin' && hasPendingRoomSettings) {
+            toast('Save Room Settings before leaving Admin.');
+            return;
+        }
+        setTab(nextTab);
     };
     const refreshBillingEntitlements = async (showToast = false) => {
         setOrgContext(prev => ({ ...prev, loading: true, error: '' }));
@@ -7602,7 +8120,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     const browsePanel = (
-                    <div className="flex flex-col h-full gap-6 overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="flex flex-col h-full min-h-0 gap-6 pr-2 custom-scrollbar touch-scroll-y">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                                 <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Browse</div>
@@ -7655,7 +8173,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div>
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="text-xl font-bold text-white">YouTube Index</div>
-                                    <button onClick={() => setShowYtIndex(true)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-sm px-3 py-1`}>Open List</button>
+                                    <button onClick={() => { setYtIndexFilter(''); setShowYtIndex(true); }} className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-sm px-3 py-1`}>Open List</button>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                     {ytIndex.slice(0, 6).map(item => (
@@ -7678,7 +8196,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                         )}
                         {activeBrowseList && (
-                            <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col">
+                            <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col min-h-0">
                                     <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-4 border-b border-zinc-800">
                                         <button onClick={() => setActiveBrowseList(null)} className="text-zinc-400 text-sm">&larr; Back</button>
                                         <div className="text-lg font-bold">{activeBrowseList.title}</div>
@@ -7686,7 +8204,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 <div className="px-6 py-4">
                                 </div>
-                                <div className="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar">
+                                <div className="flex-1 min-h-0 px-6 pb-6 custom-scrollbar touch-scroll-y">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {activeBrowseList.songs.map((song, idx) => (
                                                 <div
@@ -7735,13 +8253,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="text-sm text-zinc-500 mt-3">Open the full Top 100 to queue faster.</div>
                         </div>
                         {showTop100 && (
-                            <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col">
+                            <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col min-h-0">
                                 <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
                                     <button onClick={() => setShowTop100(false)} className="text-zinc-400 text-sm">&larr; Back</button>
                                     <div className="text-lg font-bold">Top 100 Karaoke</div>
                                     <div className="text-sm text-zinc-500">Full list</div>
                                 </div>
-                                <div className="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar">
+                                <div className="flex-1 min-h-0 px-6 pb-6 custom-scrollbar touch-scroll-y">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {top100Songs.map((song, idx) => (
                                                 <div
@@ -8088,7 +8606,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     />
                     {(catalogueResults.length > 0 || catalogueSearchQ.length >= 3) && (
                         <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 z-50 shadow-2xl">
-                            <div className="max-h-72 overflow-y-auto">
+                            <div className="max-h-72 touch-scroll-y custom-scrollbar">
                                 {catalogueResults.length > 0 ? catalogueResults.map((r, idx) => (
                                     <div key={idx} onClick={()=>handleCatalogueResultClick(r)} className="p-3 hover:bg-zinc-800 text-sm cursor-pointer flex gap-3 items-center border-b border-white/5">
                                         <div className="w-10 h-10 flex items-center justify-center bg-zinc-800 rounded">
@@ -8116,7 +8634,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </div>
                     )}
                 </div>
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                <div className="flex-1 min-h-0">
                     {browsePanel}
                 </div>
                 {showCataloguePrompt && (
@@ -8133,7 +8651,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             {users.length > 0 && (
                                 <div className="mt-3">
                                     <div className="text-sm uppercase tracking-[0.3em] text-zinc-500 mb-2">Or pick from lobby</div>
-                                    <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto custom-scrollbar pr-1">
+                                    <div className="grid grid-cols-2 gap-2 max-h-32 custom-scrollbar touch-scroll-y pr-1">
                                         {users.map(u => (
                                             <button
                                                 key={u.id}
@@ -8224,123 +8742,224 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     })();
     const settingsResultCount = settingsNavigationSections.reduce((sum, section) => sum + section.items.length, 0);
     const totalSocialUnread = (chatUnread ? 1 : 0) + (dmUnread ? 1 : 0);
-    const settingsSectionIcons = {
-        operations: 'fa-sliders',
-        experience: 'fa-tv',
-        community: 'fa-users',
-        admin: 'fa-shield-halved'
-    };
     const settingsNavBadges = {
         gamepad: room?.activeMode && room.activeMode !== 'karaoke' ? 'LIVE' : '',
         chat: totalSocialUnread > 0 ? String(totalSocialUnread) : '',
         moderation: moderationQueueState.totalPending > 0 ? String(moderationQueueState.totalPending) : '',
         general: queuedSongs.length > 0 ? `${queuedSongs.length}Q` : ''
     };
-    const quickSettingsNavItems = [
-        { key: 'general', icon: 'fa-sliders', label: 'Control Room' },
-        { key: 'gamepad', icon: 'fa-gamepad', label: 'Game Director' },
-        { key: 'chat', icon: 'fa-comments', label: 'Audience Social' },
-        { key: 'moderation', icon: 'fa-shield-halved', label: 'Moderation Queue' }
-    ];
-
     const activeSettingsMeta = HOST_SETTINGS_META[settingsTab] || HOST_SETTINGS_META.general;
+    const recentSettingsNavItems = settingsRecentTabs
+        .filter((tab) => tab !== settingsTab)
+        .map((tab) => ({ key: tab, ...(HOST_SETTINGS_META[tab] || { label: tab, icon: 'fa-gear' }) }))
+        .slice(0, 4);
+    const canSaveRoomSettings = !['billing', 'qa', 'live_effects'].includes(settingsTab);
+    const draftRoomSettingsPayload = {
+        tipUrl: (tipSettings.link || '').trim() || null,
+        tipQrUrl: (tipSettings.qr || '').trim() || null,
+        hostName: hostName || 'Host',
+        logoUrl: (logoUrl || '').trim() || null,
+        tipPointRate: Number(tipPointRate || 100),
+        tipCrates: normalizeTipCratesForSave(tipCrates),
+        appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId),
+        appleMusicAutoPlaylistTitle: (appleMusicAutoPlaylistTitle || '').trim(),
+        autoBgFadeOutMs: Math.max(200, Number(autoBgFadeOutMs || 900)),
+        autoBgFadeInMs: Math.max(200, Number(autoBgFadeInMs || 900)),
+        autoBgMixDuringSong: Math.max(0, Math.min(100, Number(autoBgMixDuringSong ?? 0))),
+        readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10)),
+        readyCheckRewardPoints: Math.max(0, Number(readyCheckRewardPoints || 0)),
+        showScoring: !!showScoring,
+        showFameLevel: !!showFameLevel,
+        allowSingerTrackSelect: !!allowSingerTrackSelect,
+        hostNightPreset: hostNightPreset || 'custom',
+        bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
+        autoLyricsOnQueue: !!autoLyricsOnQueue && !!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT],
+        popTriviaEnabled: popTriviaEnabled !== false,
+        queueSettings: {
+            limitMode: queueLimitMode || 'none',
+            limitCount: Math.max(0, Number(queueLimitCount || 0)),
+            rotation: queueRotation || 'round_robin',
+            firstTimeBoost: !!queueFirstTimeBoost
+        }
+    };
+    const persistedRoomSettingsPayload = (() => {
+        if (!roomCode || !room) return null;
+        const persistedTipCrates = Array.isArray(room.tipCrates) ? room.tipCrates : DEFAULT_TIP_CRATES;
+        return {
+            tipUrl: (room.tipUrl || '').trim() || null,
+            tipQrUrl: (room.tipQrUrl || '').trim() || null,
+            hostName: room.hostName || 'Host',
+            logoUrl: (room.logoUrl || '').trim() || null,
+            tipPointRate: Number(room.tipPointRate || 100),
+            tipCrates: normalizeTipCratesForSave(persistedTipCrates),
+            appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(room.appleMusicAutoPlaylistId || ''),
+            appleMusicAutoPlaylistTitle: (room.appleMusicAutoPlaylistTitle || '').trim(),
+            autoBgFadeOutMs: Math.max(200, Number(room.autoBgFadeOutMs || 900)),
+            autoBgFadeInMs: Math.max(200, Number(room.autoBgFadeInMs || 900)),
+            autoBgMixDuringSong: Math.max(0, Math.min(100, Number(room.autoBgMixDuringSong ?? 0))),
+            readyCheckDurationSec: Math.max(3, Number(room.readyCheckDurationSec || 10)),
+            readyCheckRewardPoints: Math.max(0, Number(room.readyCheckRewardPoints || 0)),
+            showScoring: room.showScoring !== false,
+            showFameLevel: room.showFameLevel !== false,
+            allowSingerTrackSelect: !!room.allowSingerTrackSelect,
+            hostNightPreset: room.hostNightPreset || 'custom',
+            bingoAudienceReopenEnabled: room.bingoAudienceReopenEnabled !== false,
+            autoLyricsOnQueue: !!room.autoLyricsOnQueue && !!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT],
+            popTriviaEnabled: room.popTriviaEnabled !== false,
+            queueSettings: {
+                limitMode: room.queueSettings?.limitMode || 'none',
+                limitCount: Math.max(0, Number(room.queueSettings?.limitCount || 0)),
+                rotation: room.queueSettings?.rotation || 'round_robin',
+                firstTimeBoost: room.queueSettings?.firstTimeBoost !== false
+            }
+        };
+    })();
+    const hasPendingRoomSettings = !!persistedRoomSettingsPayload
+        && JSON.stringify(draftRoomSettingsPayload) !== JSON.stringify(persistedRoomSettingsPayload);
+    const showSaveAction = canSaveRoomSettings || hasPendingRoomSettings;
+    const viewScopedSettingsItems = HOST_WORKSPACE_SECTIONS
+        .filter((section) => section.view === activeWorkspaceView)
+        .map((section) => {
+            const tabKey = SECTION_TO_SETTINGS_TAB[section.id];
+            const meta = HOST_SETTINGS_META[tabKey];
+            if (!tabKey || !meta) return null;
+            return {
+                key: tabKey,
+                label: meta.label,
+                icon: meta.icon || 'fa-gear',
+                description: meta.description || '',
+                sectionLabel: meta.sectionLabel || ''
+            };
+        })
+        .filter(Boolean);
+    const flatSettingsItems = HOST_SETTINGS_SECTIONS.flatMap((section) =>
+        section.items.map((item) => ({
+            key: item.key,
+            label: item.label,
+            icon: item.icon || 'fa-gear',
+            description: item.description || '',
+            sectionLabel: section.label
+        }))
+    );
+    const navigationItemsForRail = settingsNavQuery.trim()
+        ? flatSettingsItems.filter((item) => {
+            const haystack = `${item.label} ${item.description} ${item.sectionLabel}`.toLowerCase();
+            return haystack.includes(settingsNavQuery.trim().toLowerCase());
+        })
+        : (viewScopedSettingsItems.length ? viewScopedSettingsItems : flatSettingsItems);
     const settingsNavigationContent = (
-        <div className="space-y-4">
-            <div className="sticky top-0 z-10 rounded-2xl border border-cyan-400/25 bg-gradient-to-b from-zinc-900/95 via-zinc-950/95 to-zinc-950/95 p-3 backdrop-blur-md shadow-[0_10px_26px_rgba(0,0,0,0.35)]">
-                <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Quick Jump</div>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                    {quickSettingsNavItems.map((item) => {
+        <div className="space-y-3">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Sections</div>
+                <div className="mt-2 space-y-1.5">
+                    {navigationItemsForRail.map((item) => {
                         const isActive = settingsTab === item.key;
                         const badge = settingsNavBadges[item.key];
                         return (
                             <button
-                                key={`quick-${item.key}`}
+                                key={`settings-item-${item.key}`}
                                 onClick={() => handleSettingsNavSelect(item.key)}
-                                className={`rounded-lg border px-2.5 py-2 text-left transition-all ${
+                                className={`w-full rounded-md border px-2.5 py-2 text-left transition-colors ${
                                     isActive
-                                        ? 'border-cyan-300/40 bg-cyan-500/15 text-cyan-100'
-                                        : 'border-zinc-800 bg-zinc-900/70 text-zinc-300 hover:border-cyan-500/30'
+                                        ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100'
+                                        : 'border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:text-white'
                                 }`}
                             >
-                                <div className="flex items-center justify-between gap-1">
-                                    <i className={`fa-solid ${item.icon} text-[11px] ${isActive ? 'text-cyan-200' : 'text-zinc-500'}`}></i>
-                                    {badge && (
-                                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${
-                                            badge === 'LIVE'
-                                                ? 'border-rose-300/40 bg-rose-500/20 text-rose-100'
-                                                : 'border-cyan-300/30 bg-cyan-500/10 text-cyan-100'
-                                        }`}>
-                                            {badge}
-                                        </span>
-                                    )}
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                        <i className={`fa-solid ${item.icon} text-[11px] ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
+                                        <span className="truncate text-xs font-semibold tracking-wide">{item.label}</span>
+                                    </div>
+                                    {badge ? (
+                                        <span className="rounded border border-zinc-600 px-1.5 py-0.5 text-[9px] text-zinc-200">{badge}</span>
+                                    ) : null}
                                 </div>
-                                <div className="text-[11px] font-semibold mt-1 truncate">{item.label}</div>
+                                <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-zinc-500">{item.sectionLabel}</div>
                             </button>
                         );
                     })}
+                    {navigationItemsForRail.length === 0 && (
+                        <div className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-200">
+                            No section matches "{settingsNavQuery}".
+                        </div>
+                    )}
                 </div>
             </div>
-            {settingsNavigationSections.map((section) => (
-                <div key={section.id} className="rounded-2xl border border-white/10 bg-zinc-950/55 p-2">
-                    <div className="flex items-center justify-between gap-2 px-2 py-1.5 mb-1">
-                        <div className="flex items-center gap-2 min-w-0">
-                            <span className="inline-flex w-6 h-6 rounded-lg border border-white/10 bg-zinc-900 items-center justify-center">
-                                <i className={`fa-solid ${settingsSectionIcons[section.id] || 'fa-folder-tree'} text-[10px] text-zinc-400`}></i>
-                            </span>
-                            <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500 truncate">{section.label}</div>
-                        </div>
-                        <div className="text-[10px] text-zinc-500">{section.items.length}</div>
+            {recentSettingsNavItems.length > 0 && (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                    <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Recent</div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                        {recentSettingsNavItems.map((item) => (
+                            <button
+                                key={`recent-${item.key}`}
+                                onClick={() => handleSettingsNavSelect(item.key)}
+                                className="inline-flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-500 hover:text-white"
+                            >
+                                <i className={`fa-solid ${item.icon || 'fa-gear'} text-[9px]`}></i>
+                                {item.label}
+                            </button>
+                        ))}
                     </div>
-                    <div className="space-y-1.5">
-                        {section.items.map((item) => {
-                            const isActive = settingsTab === item.key;
-                            const badge = settingsNavBadges[item.key];
-                            return (
-                                <button
-                                    key={item.key}
-                                    onClick={() => handleSettingsNavSelect(item.key)}
-                                    className={`w-full text-left rounded-xl border px-3 py-3 transition-all relative overflow-hidden ${
-                                        isActive
-                                            ? 'border-cyan-400/50 bg-gradient-to-r from-cyan-500/16 to-fuchsia-500/8 text-cyan-100 shadow-[0_0_20px_rgba(34,211,238,0.14)]'
-                                            : 'border-zinc-800 bg-zinc-900/45 text-zinc-300 hover:border-cyan-500/35 hover:text-white hover:bg-zinc-900/80'
-                                    }`}
-                                >
-                                    {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-300"></div>}
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <i className={`fa-solid ${item.icon} text-xs ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
-                                            <span className="text-sm font-semibold truncate">{item.label}</span>
-                                        </div>
-                                        {badge && (
-                                            <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-semibold border ${
-                                                badge === 'LIVE'
-                                                    ? 'border-rose-300/40 text-rose-100 bg-rose-500/20'
-                                                    : 'border-cyan-300/30 text-cyan-100 bg-cyan-500/10'
-                                            }`}>
-                                                {badge}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="text-[11px] text-zinc-500 mt-1 leading-relaxed">{item.description}</div>
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-            ))}
-            {settingsResultCount === 0 && (
-                <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-200">
-                    No settings match "{settingsNavQuery}". Try a broader keyword.
                 </div>
             )}
-            <div className="rounded-xl border border-cyan-500/20 bg-gradient-to-b from-cyan-500/10 to-zinc-900/70 p-3">
-                <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Live Snapshot</div>
-                <div className="mt-2 text-sm text-zinc-300 space-y-1">
-                    <div className="flex items-center justify-between"><span>Queue</span><span className="text-white font-bold">{queuedSongs.length}</span></div>
-                    <div className="flex items-center justify-between"><span>Lobby</span><span className="text-white font-bold">{users.length}</span></div>
-                    <div className="flex items-center justify-between"><span>Mode</span><span className="text-white font-bold uppercase text-xs tracking-widest">{room?.activeMode || 'karaoke'}</span></div>
-                    <div className="flex items-center justify-between"><span>Pending Review</span><span className="text-white font-bold">{moderationQueueState.totalPending}</span></div>
+        </div>
+    );
+    const workspaceContextPanel = (
+        <div className="space-y-3">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Room Status</div>
+                <div className="mt-2 space-y-1 text-xs text-zinc-300">
+                    <div className="flex items-center justify-between"><span>Queue</span><span className="font-semibold text-white">{queuedSongs.length}</span></div>
+                    <div className="flex items-center justify-between"><span>Audience</span><span className="font-semibold text-white">{users.length}</span></div>
+                    <div className="flex items-center justify-between"><span>Mode</span><span className="font-semibold text-white uppercase">{room?.activeMode || 'karaoke'}</span></div>
+                    <div className="flex items-center justify-between"><span>Pending Moderation</span><span className="font-semibold text-white">{moderationQueueState.totalPending}</span></div>
                 </div>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Quick Actions</div>
+                <div className="mt-2 grid grid-cols-1 gap-2">
+                    <button
+                        data-feature-id="quick-open-tv"
+                        onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                    >
+                        <i className="fa-solid fa-tv"></i>
+                        Open Public TV
+                    </button>
+                    <button
+                        onClick={async () => {
+                            const audienceUrl = `${appBase}?room=${roomCode}`;
+                            try {
+                                await navigator.clipboard.writeText(audienceUrl);
+                                toast('Audience join link copied.');
+                            } catch {
+                                toast(audienceUrl);
+                            }
+                        }}
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                    >
+                        <i className="fa-solid fa-link"></i>
+                        Copy Join Link
+                    </button>
+                    <button
+                        onClick={() => leaveAdminWithTarget('stage')}
+                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
+                    >
+                        <i className="fa-solid fa-list-check"></i>
+                        Open Queue
+                    </button>
+                    <button
+                        data-feature-id="quick-open-live-effects"
+                        onClick={() => handleSettingsNavSelect('live_effects')}
+                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
+                    >
+                        <i className="fa-solid fa-wand-magic-sparkles"></i>
+                        Live Effects
+                    </button>
+                </div>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-400">
+                Settings matches: <span className="text-white font-semibold">{settingsResultCount}</span>
             </div>
         </div>
     );
@@ -8415,8 +9034,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         dmDraft,
         setDmDraft,
         getAppleMusicUserToken,
-        silenceAll
+        silenceAll,
+        openHostSettings: () => {
+            openAdminWorkspace('ops.room_setup');
+        },
+        openLiveEffects: () => openAdminWorkspace('advanced.live_effects'),
+        showLegacyLiveEffects: false,
+        compactViewport: compactHostViewport
     };
+    const inAdminWorkspace = tab === 'admin';
 
     if (isChatPopout) {
         return (
@@ -8470,13 +9096,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     roomCode={roomCode}
                     gamesMeta={GAMES_META}
                     tab={tab}
-                    setTab={setTab}
+                    setTab={handleTopChromeTabChange}
                     showLaunchMenu={showLaunchMenu}
                     setShowLaunchMenu={setShowLaunchMenu}
                     showNavMenu={showNavMenu}
                     setShowNavMenu={setShowNavMenu}
                     setShowSettings={setShowSettings}
                     setSettingsTab={setSettingsTab}
+                    openAdminWorkspace={openAdminWorkspace}
                     styles={STYLES}
                     logoFallback={ASSETS.logo}
                     audioPanelOpen={audioPanelOpen}
@@ -8504,7 +9131,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     handleMixFaderChange={handleMixFaderChange}
                 />
 
-            <div className="flex-1 min-h-0 p-6 overflow-y-auto md:overflow-hidden">
+            <div className="flex-1 min-h-0 p-3 sm:p-4 md:p-5 lg:p-6 overflow-y-auto md:overflow-hidden">
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <HostGameControlPad
                         roomCode={roomCode}
@@ -9014,20 +9641,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 </div>
             )}
-            {showSettings && (
-                <div className="fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4">
-                    <div className="bg-zinc-950/95 border border-zinc-700/80 rounded-none sm:rounded-2xl w-full max-w-[1400px] shadow-[0_22px_80px_rgba(0,0,0,0.55)] h-[100dvh] sm:h-[90vh] overflow-hidden flex flex-col">
-                        <div className="border-b border-white/10 px-4 py-3 md:px-5 md:py-4 bg-gradient-to-r from-zinc-950 via-zinc-900/90 to-zinc-950">
+            {(showSettings || inAdminWorkspace) && (
+                <div className={inAdminWorkspace ? 'fixed inset-x-0 bottom-0 top-[94px] z-[40] px-3 sm:px-4 md:px-5 lg:px-6 pb-3 sm:pb-4 md:pb-5 lg:pb-6' : 'fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4'}>
+                    <div className={`bg-zinc-950/95 border border-zinc-700/80 w-full overflow-hidden flex flex-col ${inAdminWorkspace ? 'h-full rounded-2xl shadow-none' : 'rounded-none sm:rounded-2xl max-w-[1400px] shadow-[0_22px_80px_rgba(0,0,0,0.55)] h-[100dvh] sm:h-[90vh]'}`}>
+                        <div className="border-b border-white/10 px-4 py-3 md:px-5 md:py-4 bg-zinc-950">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div>
-                                    <div className="text-xs uppercase tracking-[0.32em] text-zinc-500">Host Mission Control</div>
-                                    <div className="text-xl md:text-2xl font-bold text-white">Settings Admin</div>
-                                    <div className="text-xs text-zinc-400 mt-1">Design behavior, tune game flow, and run room policy from one shell.</div>
+                                    <div className="text-xs uppercase tracking-[0.32em] text-zinc-500">Host Admin</div>
+                                    <div className="text-xl md:text-2xl font-bold text-white">Admin Workspace</div>
+                                    <div className="text-xs text-zinc-400 mt-1">Operational settings for queue, audience, media, games, billing, and diagnostics.</div>
                                 </div>
                                 <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-zinc-500 flex-wrap">
-                                    <span className="px-2 py-1 rounded-full border border-cyan-400/20 text-cyan-200/90 bg-cyan-500/10">
-                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-300 mr-1.5 animate-pulse"></span>
-                                        Live
+                                    <span className="px-2 py-1 rounded-full border border-zinc-600 bg-zinc-900 text-zinc-300">
+                                        Status Live
                                     </span>
                                     <span className="px-2 py-1 rounded-full border border-white/10">Room {roomCode || '--'}</span>
                                     <span className="px-2 py-1 rounded-full border border-white/10">Mode {room?.activeMode || 'karaoke'}</span>
@@ -9043,9 +9669,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <i className="fa-solid fa-bars"></i>
                                         Sections
                                     </button>
-                                    <button onClick={() => setShowSettings(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
+                                    <button onClick={closeSettingsSurface} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>{inAdminWorkspace ? 'Exit Admin' : 'Close'}</button>
                                 </div>
                             </div>
+                            {inAdminWorkspace && (
+                                <div className="mt-3 flex flex-wrap gap-1.5">
+                                    {HOST_WORKSPACE_VIEWS.map((view) => (
+                                        <button
+                                            key={`workspace-view-chip-${view.id}`}
+                                            onClick={() => selectWorkspaceView(view.id)}
+                                            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] ${
+                                                activeWorkspaceView === view.id
+                                                    ? 'border-cyan-400/40 bg-cyan-500/12 text-cyan-100'
+                                                    : 'border-zinc-700 bg-zinc-900/80 text-zinc-300 hover:border-cyan-500/35'
+                                            }`}
+                                        >
+                                            <i className={`fa-solid ${view.icon} text-[10px]`}></i>
+                                            {view.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                             <div className="mt-3 max-w-xl md:max-w-2xl">
                                 <label className="relative block">
                                     <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-xs"></i>
@@ -9056,25 +9700,44 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         placeholder="Search host controls, settings, or tools..."
                                     />
                                 </label>
+                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                    {recentSettingsNavItems.slice(0, compactHostViewport ? 3 : 4).map((item) => (
+                                        <button
+                                            key={`header-recent-${item.key}`}
+                                            onClick={() => handleSettingsNavSelect(item.key)}
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-zinc-900/70 px-2.5 py-1 text-[10px] text-zinc-300 hover:border-cyan-400/40 hover:text-white"
+                                        >
+                                            <i className={`fa-solid ${item.icon || 'fa-gear'} text-[9px]`}></i>
+                                            {item.label}
+                                        </button>
+                                    ))}
+                                    {!!settingsNavQuery && (
+                                        <button
+                                            onClick={() => setSettingsNavQuery('')}
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/80 px-2.5 py-1 text-[10px] text-zinc-400 hover:text-white"
+                                        >
+                                            <i className="fa-solid fa-xmark text-[9px]"></i>
+                                            Clear Search
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                        <div className="flex-1 min-h-0 relative md:grid md:grid-cols-[320px_minmax(0,1fr)]">
-                            <aside className="hidden md:block border-r border-white/10 bg-gradient-to-b from-zinc-950/95 to-zinc-950/70 overflow-y-auto custom-scrollbar p-3 md:p-4">
-                                {settingsNavigationContent}
-                            </aside>
-                            <button
-                                onClick={() => setSettingsNavOpen(false)}
-                                className={`md:hidden absolute inset-0 z-20 bg-black/60 transition-opacity ${settingsNavOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-                                aria-label="Close sections menu"
-                            />
-                            <aside className={`md:hidden absolute inset-y-0 left-0 z-30 w-[88vw] max-w-[360px] bg-gradient-to-b from-zinc-950 to-zinc-900 border-r border-white/10 p-3 overflow-y-auto custom-scrollbar transition-transform duration-200 ${settingsNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                                <div className="flex items-center justify-between mb-3 px-1">
-                                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Sections</div>
-                                    <button onClick={() => setSettingsNavOpen(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
-                                </div>
-                                {settingsNavigationContent}
-                            </aside>
-                            <div className="min-h-0 flex flex-col">
+                        <HostWorkspaceShell
+                            views={HOST_WORKSPACE_VIEWS}
+                            activeView={activeWorkspaceView}
+                            onSelectView={selectWorkspaceView}
+                            context={workspaceContextPanel}
+                        >
+                            <div className="h-full min-h-0 grid grid-cols-1 xl:grid-cols-[290px_minmax(0,1fr)]">
+                                <aside className={`${settingsNavOpen ? 'block' : 'hidden md:block'} xl:block border-b xl:border-b-0 xl:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar p-3 md:p-4`}>
+                                    <div className="mb-2 flex items-center justify-between md:hidden">
+                                        <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Sections</div>
+                                        <button onClick={() => setSettingsNavOpen(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
+                                    </div>
+                                    {settingsNavigationContent}
+                                </aside>
+                                <div className="min-h-0 flex flex-col">
                                 <div className="border-b border-white/10 px-4 py-3 md:px-5 bg-zinc-950/70">
                                     <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">{activeSettingsMeta.sectionLabel || 'Host Settings'}</div>
                                     <div className="text-xl font-bold text-white mt-1">{activeSettingsMeta.label || 'Host Settings'}</div>
@@ -9103,21 +9766,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         <div className="mb-5 bg-zinc-950/60 border border-cyan-500/30 rounded-xl p-4">
                             <div className="flex items-center justify-between gap-3 flex-wrap">
                                 <div>
-                                    <div className="text-sm uppercase tracking-widest text-cyan-300">Quick Start</div>
-                                    <div className="text-xs text-zinc-400 mt-1">Recommended order for a clean host flow.</div>
+                                    <div className="text-sm uppercase tracking-widest text-cyan-300">Run Tonight</div>
+                                    <div className="text-xs text-zinc-400 mt-1">Core controls first. Open advanced sections only as needed.</div>
                                 </div>
-                                <div className="flex items-center gap-2 text-xs text-zinc-400">
+                                <div className="flex items-center gap-2 text-xs text-zinc-400 flex-wrap">
                                     <span className="px-2 py-1 rounded-full border border-white/15">Mode: {room?.activeMode || 'karaoke'}</span>
                                     <span className="px-2 py-1 rounded-full border border-white/15">Queue: {queuedSongs.length}</span>
                                     <span className="px-2 py-1 rounded-full border border-white/15">Preview: {audiencePreviewVisible ? 'On' : 'Off'}</span>
+                                    <span className={`px-2 py-1 rounded-full border ${appleMusicAuthorized ? 'border-emerald-400/30 text-emerald-200 bg-emerald-500/10' : 'border-zinc-500/30 text-zinc-300 bg-zinc-900/70'}`}>
+                                        Apple {appleMusicAuthorized ? 'Connected' : 'Not Connected'}
+                                    </span>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 mt-3">
+                                <button
+                                    onClick={() => leaveAdminWithTarget('stage')}
+                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} justify-start`}
+                                >
+                                    1. Go to Stage
+                                </button>
                                 <button
                                     onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
                                     className={`${STYLES.btnStd} ${STYLES.btnInfo} justify-start`}
                                 >
-                                    1. Launch TV Display
+                                    2. Open Public TV
                                 </button>
                                 <button
                                     onClick={async () => {
@@ -9131,25 +9803,51 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     }}
                                     className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
                                 >
-                                    2. Copy Audience Join Link
+                                    3. Copy Join Link
                                 </button>
                                 <button
-                                    onClick={() => { setTab('stage'); setShowSettings(false); }}
+                                    onClick={() => setSettingsTab('gamepad')}
                                     className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
                                 >
-                                    3. Open Stage Controls
+                                    4. Open Live Modes
                                 </button>
                                 <button
-                                    onClick={() => { setTab('games'); setShowSettings(false); }}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                                    onClick={async () => {
+                                        setSettingsTab('media');
+                                        if (appleMusicAuthorized) {
+                                            toast('Apple Music already connected.');
+                                            return;
+                                        }
+                                        await connectAppleMusic();
+                                    }}
+                                    className={`${STYLES.btnStd} ${appleMusicAuthorized ? STYLES.btnSuccess : STYLES.btnSecondary} justify-start`}
                                 >
-                                    4. Prep Games and Modes
+                                    {appleMusicAuthorized ? 'Apple Music Connected' : 'Connect Apple Music'}
                                 </button>
                                 <button
-                                    onClick={() => { setTab('lobby'); setShowSettings(false); }}
+                                    onClick={() => setSettingsTab('chat')}
                                     className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
                                 >
-                                    5. Check Lobby and VIPs
+                                    Chat + DMs
+                                </button>
+                                <button
+                                    onClick={() => setSettingsTab('moderation')}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                                >
+                                    Review Approvals
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (canGenerateAiContent) {
+                                            setShowAiSetupGuide(true);
+                                            return;
+                                        }
+                                        setSettingsTab('billing');
+                                        toast('Enable AI in Billing to unlock AI tools.');
+                                    }}
+                                    className={`${STYLES.btnStd} ${canGenerateAiContent ? STYLES.btnInfo : STYLES.btnSecondary} justify-start`}
+                                >
+                                    {canGenerateAiContent ? 'AI Setup Guide' : 'Unlock AI Tools'}
                                 </button>
                             </div>
                         </div>
@@ -9323,6 +10021,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                       ? 'When no lyrics are available, generate fallback lyrics for queued songs.'
                                       : 'AI lyric generation requires an active Host subscription.'}
                               </div>
+                              <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
+                                  <input
+                                      type="checkbox"
+                                      checked={popTriviaEnabled}
+                                      onChange={e => setPopTriviaEnabled(e.target.checked)}
+                                      className="accent-[#00C4D9]"
+                                  />
+                                  Pop-up trivia side activity (AI)
+                              </label>
+                              <div className="host-form-helper">
+                                  While songs are performing, show AI song trivia on TV and singer phones without leaving karaoke mode.
+                              </div>
                           </div>
                           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
@@ -9382,28 +10092,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="text-sm uppercase tracking-widest text-zinc-400">Search sources</div>
                             <div className="flex flex-wrap gap-2">
                                 {['local', 'youtube', 'itunes'].map(src => {
-                                    const requiredCapability = sourceCapabilityMap[src];
-                                    const blocked = !!requiredCapability && !capabilities?.[requiredCapability];
                                     return (
                                     <button
                                         key={src}
                                         onClick={() => {
-                                            if (blocked) {
-                                                toast(`${getMissingCapabilityLabel(requiredCapability)} is required for ${src === 'youtube' ? 'YouTube' : 'Apple Music'} search.`);
-                                                return;
-                                            }
                                             setSearchSources(prev => ({ ...prev, [src]: !prev[src] }));
                                         }}
-                                        disabled={blocked}
                                         className={`text-sm uppercase tracking-widest px-3 py-1 rounded-full border ${
-                                            blocked
-                                                ? 'bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed'
-                                                : searchSources[src]
+                                            searchSources[src]
                                                 ? 'bg-[#00C4D9]/20 text-[#00C4D9] border-[#00C4D9]/40'
                                                 : 'bg-zinc-800 text-zinc-400 border-zinc-700'
                                         }`}
                                     >
-                                        {src === 'youtube' ? 'YouTube' : src === 'itunes' ? 'Apple Music' : 'Local'}{blocked ? ' (Locked)' : ''}
+                                        {src === 'youtube' ? 'YouTube' : src === 'itunes' ? 'Apple Music' : 'Local'}
                                     </button>
                                     );
                                 })}
@@ -9434,11 +10135,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         Keep this as your control layer while the game launcher handles setup.
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
-                                        <button onClick={() => { setTab('games'); setShowSettings(false); }} className={`${STYLES.btnStd} ${STYLES.btnHighlight} justify-start`}>
+                                        <button onClick={() => leaveAdminWithTarget('games')} className={`${STYLES.btnStd} ${STYLES.btnHighlight} justify-start`}>
                                             <i className="fa-solid fa-rocket"></i>
                                             Open Launchpad
                                         </button>
-                                        <button onClick={() => { setTab('stage'); setShowSettings(false); }} className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}>
+                                        <button onClick={() => leaveAdminWithTarget('stage')} className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}>
                                             <i className="fa-solid fa-microphone-lines"></i>
                                             Stage Controls
                                         </button>
@@ -9466,7 +10167,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3 text-sm">
                                         <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-zinc-300">
                                             <div className="text-cyan-300 font-bold mb-1">1. Prime the room</div>
-                                            Set visuals and queue policy in Control Room before launching game rounds.
+                                            Set visuals and queue policy in Run Tonight before launching game rounds.
                                         </div>
                                         <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-zinc-300">
                                             <div className="text-cyan-300 font-bold mb-1">2. Run active mode</div>
@@ -9635,7 +10336,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             Game-specific moderation now lives in the Games queue so controls stay inside each mode workflow.
                                         </div>
                                         <button
-                                            onClick={() => { setTab('games'); setShowSettings(false); }}
+                                            onClick={() => leaveAdminWithTarget('games')}
                                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
                                         >
                                             <i className="fa-solid fa-gamepad"></i>
@@ -10103,6 +10804,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 >
                                     {ytPlaylistLoading ? EMOJI.refresh : 'INDEX'}
                                 </button>
+                                <button
+                                    onClick={loadAndQueueYouTubePlaylist}
+                                    disabled={ytPlaylistLoading || !roomCode}
+                                    className={`${STYLES.btnStd} ${ytPlaylistLoading || !roomCode ? STYLES.btnNeutral : STYLES.btnPrimary} px-4 flex-shrink-0`}
+                                    title={!roomCode ? 'Create or open a room first' : 'Index playlist and queue every track'}
+                                >
+                                    {ytPlaylistLoading ? EMOJI.refresh : 'INDEX + QUEUE ALL'}
+                                </button>
                             </div>
                             <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">QA Shortcut</div>
@@ -10147,7 +10856,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             </div>
                             {ytPlaylistStatus && <div className="host-form-helper">{ytPlaylistStatus}</div>}
-                            <div className="host-form-helper">Indexes up to 150 videos per playlist load.</div>
+                            <div className="host-form-helper">Indexes up to 150 videos per playlist load. INDEX + QUEUE ALL enables Auto-DJ and queues every indexed track.</div>
                         </div>
 
                         <div className="mt-6 bg-zinc-950/40 border border-white/10 rounded-xl p-4 space-y-2">
@@ -10448,7 +11157,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 </div>
                                 <div className="flex justify-end gap-2">
-                                    <button onClick={() => setShowSettings(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
+                                    <button onClick={closeSettingsSurface} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>{inAdminWorkspace ? 'Exit Admin' : 'Close'}</button>
                                     <button
                                         onClick={async () => {
                                             const cleaned = marqueeDraftItems.map(item => item.trim()).filter(Boolean);
@@ -10485,10 +11194,78 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 sendHostChat={sendHostChat}
                             />
                         )}
+                        {settingsTab === 'live_effects' && (
+                            <div className="space-y-4">
+                                <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Advanced Tools</div>
+                                    <div className="text-xl font-bold text-white mt-1">Live Effects</div>
+                                    <div className="text-sm text-zinc-400 mt-1">
+                                        Special moment controls moved out of the primary queue workflow.
+                                    </div>
+                                </div>
+                                <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500 mb-2">Scene Effects</div>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                        <button
+                                            onClick={() => (room?.lightMode === 'strobe' ? updateRoom({ lightMode: 'off' }) : startBeatDrop())}
+                                            className={`${STYLES.btnStd} ${room?.lightMode === 'strobe' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
+                                        >
+                                            Beat Drop
+                                        </button>
+                                        <button
+                                            onClick={() => updateRoom({ lightMode: room?.lightMode === 'guitar' ? 'off' : 'guitar', guitarSessionId: Date.now(), guitarWinner: null, guitarVictory: null })}
+                                            className={`${STYLES.btnStd} ${room?.lightMode === 'guitar' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
+                                        >
+                                            Guitar
+                                        </button>
+                                        <button
+                                            onClick={() => updateRoom({ lightMode: room?.lightMode === 'banger' ? 'off' : 'banger' })}
+                                            className={`${STYLES.btnStd} ${room?.lightMode === 'banger' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
+                                        >
+                                            Banger
+                                        </button>
+                                        <button
+                                            onClick={() => updateRoom({ lightMode: room?.lightMode === 'ballad' ? 'off' : 'ballad' })}
+                                            className={`${STYLES.btnStd} ${room?.lightMode === 'ballad' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
+                                        >
+                                            Ballad
+                                        </button>
+                                        <button
+                                            onClick={() => (room?.lightMode === 'storm' ? stopStormSequence() : startStormSequence())}
+                                            className={`${STYLES.btnStd} ${room?.lightMode === 'storm' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
+                                        >
+                                            Storm
+                                        </button>
+                                        <button
+                                            onClick={() => updateRoom({ activeMode: room?.activeMode === 'selfie_cam' ? 'karaoke' : 'selfie_cam' })}
+                                            className={`${STYLES.btnStd} ${room?.activeMode === 'selfie_cam' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
+                                        >
+                                            Selfie Cam
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500 mb-2">Soundboard</div>
+                                    <SoundboardControls
+                                        soundboardOpen={true}
+                                        sfxMuted={sfxMuted}
+                                        setSfxMuted={setSfxMuted}
+                                        silenceAll={silenceAll}
+                                        styles={STYLES}
+                                        sfxLevel={sfxLevel}
+                                        sfxVolume={sfxVolume}
+                                        setSfxVolume={setSfxVolume}
+                                        sounds={SOUNDS}
+                                        playSfxSafe={playSfxSafe}
+                                        smallWaveform={SmallWaveform}
+                                    />
+                                </div>
+                            </div>
+                        )}
                         {showYtIndex && (
-                            <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col">
+                            <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col min-h-0">
                                 <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-                                    <button onClick={() => setShowYtIndex(false)} className="text-zinc-400 text-sm">&larr; Back</button>
+                                    <button onClick={() => { setShowYtIndex(false); setYtIndexFilter(''); }} className="text-zinc-400 text-sm">&larr; Back</button>
                                     <div className="text-lg font-bold">YouTube Index</div>
                                     <div className="text-sm text-zinc-500">Playlist imports</div>
                                 </div>
@@ -10503,7 +11280,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         />
                                     </div>
                                 </div>
-                                <div className="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar">
+                                <div className="flex-1 min-h-0 px-6 pb-6 custom-scrollbar touch-scroll-y">
                                     <div className="grid grid-cols-2 gap-3">
                                         {ytIndex
                                             .filter(item => (`${item.trackName} ${item.artistName}`).toLowerCase().includes(ytIndexFilter.toLowerCase()))
@@ -10532,6 +11309,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         {settingsTab === 'qa' && (
                             <div className={`${STYLES.panel} p-4 border-white/10`}>
                                 <div className={STYLES.header}>QA DEBUG</div>
+                                <div className="mb-3 text-xs text-zinc-400">
+                                    Host UI version: <span className="text-cyan-300 font-semibold">v2 workspace</span>
+                                </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-3">
                                         <div className="text-sm uppercase tracking-widest text-zinc-500 mb-2">Room Snapshot</div>
@@ -10624,21 +11404,79 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                         )}
 
-                        {settingsTab === 'media' && (
-                            <div className="flex justify-end gap-2 mt-6">
-                                <button onClick={() => setShowSettings(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Cancel</button>
-                                <button onClick={saveApiKeys} className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}>Save Settings</button>
-                            </div>
-                        )}
-
-                        {settingsTab === 'general' && (
-                            <div className="flex justify-end gap-2 mt-6">
-                                <button onClick={() => setShowSettings(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Cancel</button>
-                                <button onClick={saveApiKeys} className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}>Save Settings</button>
-                            </div>
-                        )}
+                                </div>
+                                <div className="shrink-0 border-t border-white/10 bg-zinc-950/90 px-3 py-2 md:px-5">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="text-[11px] text-zinc-500">
+                                            {hasPendingRoomSettings
+                                                ? 'Unsaved settings detected. Save Room Settings before leaving Admin.'
+                                                : (canSaveRoomSettings
+                                                    ? 'Save persists host identity, queue policy, automation defaults, and room-level controls.'
+                                                    : 'Billing and Diagnostics apply actions immediately; no extra save needed here.')}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => leaveAdminWithTarget('stage')}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                            >
+                                                Go Stage
+                                            </button>
+                                            <button onClick={closeSettingsSurface} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>{inAdminWorkspace ? 'Exit Admin' : 'Close'}</button>
+                                            {showSaveAction && (
+                                                <button onClick={saveApiKeys} className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}>Save Room Settings</button>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
+                        </div>
+                        </HostWorkspaceShell>
+                    </div>
+                </div>
+            )}
+            {showAiSetupGuide && (
+                <div className="fixed inset-0 z-[90] bg-black/80 flex items-center justify-center p-4">
+                    <div className="w-full max-w-2xl bg-zinc-950 border border-zinc-700 rounded-2xl p-5 shadow-2xl">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">AI Setup</div>
+                                <div className="text-xl font-bold text-white mt-1">Gemini API Key + Host AI Access</div>
+                                <div className="text-sm text-zinc-400 mt-1">
+                                    Use this once when onboarding new hosts or a fresh environment.
+                                </div>
+                            </div>
+                            <button onClick={() => setShowAiSetupGuide(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
+                        </div>
+                        <div className="mt-4 space-y-3 text-sm text-zinc-200">
+                            <div className="rounded-xl border border-white/10 bg-zinc-900/60 px-3 py-3">
+                                1. In <span className="text-white font-semibold">Billing</span>, enable AI access for the host workspace.
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-zinc-900/60 px-3 py-3">
+                                2. In Firebase Functions secrets, set <code>GEMINI_API_KEY</code>.
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-zinc-900/60 px-3 py-3">
+                                3. Deploy updated cloud function so AI calls resolve in production.
+                            </div>
+                            <div className="rounded-xl border border-cyan-400/20 bg-black/60 p-3">
+                                <div className="text-xs uppercase tracking-[0.3em] text-cyan-300 mb-2">CLI Commands</div>
+                                <pre className="text-xs text-zinc-200 whitespace-pre-wrap">firebase functions:secrets:set GEMINI_API_KEY{'\n'}firebase deploy --only functions:geminiGenerate</pre>
+                            </div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            <button onClick={copyAiSetupCommands} className={`${STYLES.btnStd} ${STYLES.btnHighlight}`}>
+                                <i className="fa-solid fa-copy"></i>
+                                Copy Commands
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowAiSetupGuide(false);
+                                    setSettingsTab('billing');
+                                }}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
+                            >
+                                <i className="fa-solid fa-wallet"></i>
+                                Open Billing
+                            </button>
                         </div>
                     </div>
                 </div>

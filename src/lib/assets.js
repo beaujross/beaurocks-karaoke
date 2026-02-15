@@ -1,6 +1,8 @@
 import { emoji } from './emoji';
 
 export const APP_ID = 'bross-app';
+const BASE_URL = import.meta.env.BASE_URL || '/';
+const localAsset = (path) => `${BASE_URL}${String(path || '').replace(/^\/+/, '')}`;
 
 export const ASSETS = { 
     logo: "https://beauross.com/wp-content/uploads/Icon-Reversed-gradient-small.png", 
@@ -35,13 +37,13 @@ export const AVATARS = [
     emoji(0x1F981)
 ];
 
-export const STORM_SOUND_URL = "https://beauross.com/wp-content/uploads/heavy-rain-nature-sounds-8186.mp3";
+export const STORM_SOUND_URL = localAsset('audio/storm/rain-and-thunder-ambience.mp3');
 export const STORM_SFX = {
-    lightRain: "https://beauross.com/wp-content/uploads/Rain-and-thunder-sound-effect-realistic-rainy-weather-ambience.mp3",
-    stormLoop: "https://beauross.com/wp-content/uploads/Rain-and-thunder-sound-effect-realistic-rainy-weather-ambience.mp3",
-    thunder: "https://beauross.com/wp-content/uploads/thunderchosic.com_.mp3",
-    rollingThunder: "https://beauross.com/wp-content/uploads/rolling-thunderchosic.com_.mp3",
-    bigDrops: "https://beauross.com/wp-content/uploads/Big-rain-dropschosic.com_.mp3"
+    lightRain: localAsset('audio/storm/rain-and-thunder-ambience.mp3'),
+    stormLoop: localAsset('audio/storm/rain-and-thunder-ambience.mp3'),
+    thunder: localAsset('audio/storm/thunder.mp3'),
+    rollingThunder: localAsset('audio/storm/rolling-thunder.mp3'),
+    bigDrops: localAsset('audio/storm/big-rain-drops.mp3')
 };
 
 export const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];

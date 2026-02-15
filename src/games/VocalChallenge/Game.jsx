@@ -315,34 +315,34 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
 
             <div className="absolute top-6 left-8 right-8 flex items-center justify-between z-20">
                 <div>
-                    <div className="text-[10px] uppercase tracking-[0.4em] text-zinc-400">Vocal Challenge</div>
+                    <div className="text-xs md:text-sm uppercase tracking-[0.24em] md:tracking-[0.3em] text-zinc-400">Vocal Challenge</div>
                     <div className="text-3xl font-bebas text-pink-300">{data.playerId === 'AMBIENT' ? 'THE CROWD' : (data.playerName || 'SINGER')}</div>
-                    <div className="text-sm text-zinc-400">Match the melody notes as they change.</div>
+                    <div className="text-base md:text-lg text-zinc-400">Match the melody notes as they change.</div>
                     {isTurnsMode && (
-                        <div className="mt-2 text-xs uppercase tracking-[0.3em] text-zinc-500">
+                        <div className="mt-2 text-sm uppercase tracking-[0.2em] text-zinc-500">
                             {isPlayer ? "You're up" : `Up now: ${currentTurnMeta?.name || data.playerName || 'Singer'}`}
                         </div>
                     )}
                 </div>
                 <div className="text-right">
-                    <div className="text-xs uppercase tracking-[0.3em] text-zinc-400">Score</div>
+                    <div className="text-sm uppercase tracking-[0.2em] text-zinc-400">Score</div>
                     <div className="text-3xl font-black text-white">{localState.score}</div>
-                    <div className="text-xs text-zinc-500">Streak: {localState.streak || 0}</div>
-                    <div className="mt-2 flex items-center justify-end gap-2 text-[10px] uppercase tracking-[0.3em] text-zinc-400">
+                    <div className="text-sm text-zinc-500">Streak: {localState.streak || 0}</div>
+                    <div className="mt-2 flex items-center justify-end gap-2 text-xs uppercase tracking-[0.2em] text-zinc-400">
                         <span className="px-2 py-1 rounded-full border border-white/10 bg-black/40">{difficulty}</span>
                         <span className={`px-2 py-1 rounded-full border ${guideTone ? 'border-emerald-400/40 text-emerald-200 bg-emerald-500/10' : 'border-zinc-600 text-zinc-400 bg-black/40'}`}>
                             Guide tone {guideTone ? 'on' : 'off'}
                         </span>
                     </div>
                     {isTurnsMode && nextTurnMeta?.name && (
-                        <div className="text-[10px] text-zinc-500 mt-2">Next up: {nextTurnMeta.name}</div>
+                        <div className="text-xs text-zinc-500 mt-2">Next up: {nextTurnMeta.name}</div>
                     )}
                 </div>
             </div>
 
             <div className="absolute inset-x-10 top-28 bottom-24 flex flex-col gap-6">
                 <div className="bg-black/50 border border-white/10 rounded-3xl p-6">
-                    <div className="flex items-center justify-between text-xs uppercase tracking-[0.35em] text-zinc-500 mb-3">
+                    <div className="flex items-center justify-between text-sm uppercase tracking-[0.2em] text-zinc-500 mb-3">
                         <span>Melody</span>
                         <span>Match the note</span>
                     </div>
@@ -352,7 +352,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                         ))}
                         <div className="absolute left-6 right-6 top-0 bottom-0">
                             {SCALE_NOTES.map((n) => (
-                                <div key={n} className="absolute left-0 text-xs text-zinc-500" style={{ top: `${NOTE_Y[n]}%` }}>{n}</div>
+                                <div key={n} className="absolute left-0 text-sm text-zinc-400" style={{ top: `${NOTE_Y[n]}%` }}>{n}</div>
                             ))}
                             {targetNote && (
                                 <div className="absolute left-1/2 w-6 h-6 rounded-full bg-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.7)]" style={{ top: `${NOTE_Y[targetNote]}%`, transform: 'translate(-50%, -50%)' }}></div>
@@ -361,7 +361,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                                 <div className="absolute left-[60%] w-5 h-5 rounded-full bg-pink-400 shadow-[0_0_16px_rgba(236,72,153,0.6)]" style={{ top: `${NOTE_Y[detected] || 50}%`, transform: 'translate(-50%, -50%)' }}></div>
                             )}
                         </div>
-                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-xs text-zinc-400">
+                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-sm md:text-base text-zinc-300">
                             Target: <span className="text-white font-bold">{targetNote || '-'}</span>
                             <span className="mx-2 text-zinc-600">|</span>
                             Detected: <span className="text-white font-bold">{detected}</span>
@@ -370,7 +370,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                 </div>
                 <div className="flex flex-wrap gap-2">
                     {(localState.sequence || []).map((n, idx) => (
-                        <div key={`${n}-${idx}`} className={`px-3 py-1 rounded-full text-xs font-bold border ${idx === localState.targetIndex ? 'border-pink-300 text-pink-200 bg-pink-500/10' : 'border-white/10 text-zinc-500 bg-black/20'}`}>
+                        <div key={`${n}-${idx}`} className={`px-3 py-1 rounded-full text-sm md:text-base font-bold border ${idx === localState.targetIndex ? 'border-pink-300 text-pink-200 bg-pink-500/10' : 'border-white/10 text-zinc-500 bg-black/20'}`}>
                             {n}
                         </div>
                     ))}
@@ -380,11 +380,11 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             {showSummary && (
                 <div className="absolute inset-0 bg-black/75 z-30 flex items-center justify-center text-center">
                     <div className="bg-zinc-900/90 border border-white/10 rounded-3xl px-8 py-6 max-w-lg">
-                        <div className="text-xs uppercase tracking-[0.4em] text-zinc-400">Round Summary</div>
+                        <div className="text-sm uppercase tracking-[0.24em] text-zinc-400">Round Summary</div>
                         <div className="text-4xl font-bebas text-pink-300 mt-2">Score {localState.score}</div>
-                        <div className="text-sm text-zinc-400 mt-1">Best streak {localState.streak || 0}</div>
+                        <div className="text-base md:text-lg text-zinc-400 mt-1">Best streak {localState.streak || 0}</div>
                         {isTurnsMode && nextTurnMeta?.name && (
-                            <div className="text-xs uppercase tracking-[0.3em] text-zinc-500 mt-4">Next up: {nextTurnMeta.name}</div>
+                            <div className="text-sm uppercase tracking-[0.2em] text-zinc-500 mt-4">Next up: {nextTurnMeta.name}</div>
                         )}
                     </div>
                 </div>
@@ -393,7 +393,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             {waitingForTurn && (
                 <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-30 text-center">
                     <div className="bg-zinc-900/80 border border-white/10 rounded-2xl px-6 py-4">
-                        <div className="text-xs uppercase tracking-[0.4em] text-zinc-400">Vocal Challenge</div>
+                        <div className="text-sm uppercase tracking-[0.24em] text-zinc-400">Vocal Challenge</div>
                         <div className="text-2xl font-bebas text-pink-300 mt-2">Waiting for your turn</div>
                     </div>
                 </div>

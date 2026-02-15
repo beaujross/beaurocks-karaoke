@@ -15,21 +15,14 @@ body {
 
 html, body, #root { height: 100%; width: 100%; }
 
-/* Public TV responsiveness for low-res or unusual aspect ratios */
-@media (max-width: 1100px), (max-height: 700px) {
-  .public-tv {
-    zoom: 0.85;
-  }
-  .public-tv .tv-logo {
-    width: 240px;
-  }
+/* Public TV: avoid whole-surface zoom (causes letterboxing), tune element sizes instead */
+.public-tv {
+  isolation: isolate;
 }
-@media (max-width: 800px), (max-height: 520px) {
-  .public-tv {
-    zoom: 0.72;
-  }
+
+@media (max-width: 1366px), (max-height: 820px) {
   .public-tv .tv-logo {
-    width: 190px;
+    width: clamp(120px, 14vw, 220px);
   }
 }
 .font-emoji { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", "EmojiOne Color", sans-serif; }
@@ -207,6 +200,14 @@ html, body, #root { height: 100%; width: 100%; }
 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); }
 .custom-scrollbar::-webkit-scrollbar-thumb { @apply bg-pink-600 rounded; }
+
+/* Touch-friendly vertical scroll containers for nested/fixed panels */
+.touch-scroll-y {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
 
 /* Mix slider thumb */
 .host-app .mix-slider {

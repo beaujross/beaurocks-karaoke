@@ -1514,7 +1514,8 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
 
 exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_search");
-  const { entitlements } = await requireCapability(request, "api.youtube_data");
+  const uid = requireAuth(request);
+  const entitlements = await resolveUserEntitlements(uid);
   enforceAppCheckIfEnabled(request, "youtube_search");
   const query = request.data?.query || "";
   ensureString(query, "query");
@@ -1547,7 +1548,8 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
 
 exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_playlist");
-  const { entitlements } = await requireCapability(request, "api.youtube_data");
+  const uid = requireAuth(request);
+  const entitlements = await resolveUserEntitlements(uid);
   enforceAppCheckIfEnabled(request, "youtube_playlist");
   const playlistId = request.data?.playlistId || "";
   ensureString(playlistId, "playlistId");
@@ -1589,7 +1591,8 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
 
 exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_status");
-  const { entitlements } = await requireCapability(request, "api.youtube_data");
+  const uid = requireAuth(request);
+  const entitlements = await resolveUserEntitlements(uid);
   enforceAppCheckIfEnabled(request, "youtube_status");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   if (!ids.length) return { items: [] };
@@ -1629,7 +1632,8 @@ const parseIsoDuration = (value = "") => {
 
 exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_details");
-  const { entitlements } = await requireCapability(request, "api.youtube_data");
+  const uid = requireAuth(request);
+  const entitlements = await resolveUserEntitlements(uid);
   enforceAppCheckIfEnabled(request, "youtube_details");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   if (!ids.length) return { items: [] };
