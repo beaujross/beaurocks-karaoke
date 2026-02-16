@@ -108,6 +108,32 @@ async function run() {
       assert.ok(approvedAt && typeof approvedAt.toMillis === "function");
     }],
 
+    ["host can update missionControl object payload", async () => {
+      await updateRoomAsHost.run(requestFor(HOST_UID, {
+        missionControl: {
+          version: 1,
+          enabled: true,
+          setupDraft: {
+            archetype: "casual",
+            flowRule: "balanced",
+            spotlightMode: "karaoke",
+            assistLevel: "smart_assist",
+          },
+          advancedOverrides: {},
+          lastAppliedAt: { __hostOp: "serverTimestamp" },
+          lastSuggestedAction: "start_next",
+        },
+      }));
+
+      const snap = await roomRef.get();
+      const mission = snap.get("missionControl");
+      assert.equal(mission.version, 1);
+      assert.equal(mission.enabled, true);
+      assert.equal(mission.setupDraft.archetype, "casual");
+      assert.equal(mission.lastSuggestedAction, "start_next");
+      assert.ok(mission.lastAppliedAt && typeof mission.lastAppliedAt.toMillis === "function");
+    }],
+
     ["guest cannot update room as host", async () => {
       await expectHttpsError(
         () => updateRoomAsHost.run(requestFor(GUEST_UID, { activeMode: "bingo" })),
