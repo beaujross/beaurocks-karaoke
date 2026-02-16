@@ -134,6 +134,37 @@ async function run() {
       assert.ok(mission.lastAppliedAt && typeof mission.lastAppliedAt.toMillis === "function");
     }],
 
+    ["host can update visualizer and tv layout controls", async () => {
+      await updateRoomAsHost.run(requestFor(HOST_UID, {
+        visualizerSource: "stage_mic",
+        visualizerMode: "rings",
+        visualizerPreset: "club",
+        visualizerSensitivity: 1.5,
+        visualizerSmoothing: 0.45,
+        visualizerSyncLightMode: true,
+        lyricsMode: "full",
+        hideWaveform: true,
+        hideOverlay: true,
+        hideLogo: false,
+        hideCornerOverlay: false,
+        reduceMotionFx: true,
+      }));
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("visualizerSource"), "stage_mic");
+      assert.equal(snap.get("visualizerMode"), "rings");
+      assert.equal(snap.get("visualizerPreset"), "club");
+      assert.equal(snap.get("visualizerSensitivity"), 1.5);
+      assert.equal(snap.get("visualizerSmoothing"), 0.45);
+      assert.equal(snap.get("visualizerSyncLightMode"), true);
+      assert.equal(snap.get("lyricsMode"), "full");
+      assert.equal(snap.get("hideWaveform"), true);
+      assert.equal(snap.get("hideOverlay"), true);
+      assert.equal(snap.get("hideLogo"), false);
+      assert.equal(snap.get("hideCornerOverlay"), false);
+      assert.equal(snap.get("reduceMotionFx"), true);
+    }],
+
     ["guest cannot update room as host", async () => {
       await expectHttpsError(
         () => updateRoomAsHost.run(requestFor(GUEST_UID, { activeMode: "bingo" })),

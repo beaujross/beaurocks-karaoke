@@ -7,6 +7,7 @@ const LIGHT_PRESET_BY_MODE = Object.freeze({
     ballad: 'calm',
     guitar: 'retro'
 });
+const APPLAUSE_MODES = new Set(['applause_countdown', 'applause', 'applause_result']);
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -41,9 +42,11 @@ const useTvVisualizerSettings = ({
     }, [room?.lightMode, visualizerPreset, visualizerSyncLightMode]);
 
     const visualizerResolvedSource = useMemo(() => {
+        // Applause meter always samples stage mic regardless of user visualizer source choice.
+        if (APPLAUSE_MODES.has(room?.activeMode)) return 'stage_mic';
         if (visualizerSource !== 'auto') return visualizerSource;
         return isHostBgMusicActive ? 'host_bg' : 'stage_mic';
-    }, [isHostBgMusicActive, visualizerSource]);
+    }, [isHostBgMusicActive, room?.activeMode, visualizerSource]);
 
     const visualizerEnabled = visualizerResolvedSource !== 'off';
     const visualizerInputMode = visualizerResolvedSource === 'host_bg'

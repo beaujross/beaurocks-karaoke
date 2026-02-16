@@ -8202,22 +8202,77 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const queueBrowseSong = async (song, singerOverride) => {
         if (!song?.title) return;
         const art = await fetchTop100Art(song);
+        const singerName = singerOverride || room?.hostName || hostName || 'Host';
+        let fetchedApple = null;
+        try {
+            fetchedApple = await callFunction('appleMusicLyrics', {
+                title: song.title,
+                artist: song.artist || '',
+                storefront: 'us',
+                musicUserToken: getAppleMusicUserToken?.() || ''
+            });
+        } catch (err) {
+            hostLogger.debug('Browse Apple lyrics fetch failed', err);
+        }
+        const hasTimedLyrics = Array.isArray(fetchedApple?.timedLyrics) && fetchedApple.timedLyrics.length > 0;
+        const hasPlainLyrics = !!String(fetchedApple?.lyrics || '').trim();
+        const appleMusicId = fetchedApple?.songId ? String(fetchedApple.songId) : '';
+        let aiLyricsText = '';
+        if (!hasTimedLyrics && !hasPlainLyrics && room?.autoLyricsOnQueue && typeof generateAIContent === 'function') {
+            try {
+                const generated = await generateAIContent('lyrics', {
+                    title: song.title,
+                    artist: song.artist || ''
+                });
+                aiLyricsText = String(generated?.lyrics || '').trim();
+            } catch (err) {
+                hostLogger.debug('Browse AI lyrics fallback failed', err);
+            }
+        }
+        const lyricsSource = hasTimedLyrics || hasPlainLyrics ? 'apple' : (aiLyricsText ? 'ai' : '');
+        const lyricsText = hasPlainLyrics ? fetchedApple.lyrics : aiLyricsText;
+
         const songRecord = await ensureSong({
             title: song.title,
             artist: song.artist || 'Unknown',
             artworkUrl: art || song.art || '',
+            appleMusicId,
             verifyMeta: art || song.art ? {} : false,
             verifiedBy: hostName || 'host'
         });
         const songId = songRecord?.songId || buildSongKey(song.title, song.artist || 'Unknown');
+        let trackRecord = null;
+        if (appleMusicId) {
+            try {
+                trackRecord = await ensureTrack({
+                    songId,
+                    source: 'apple',
+                    mediaUrl: '',
+                    appleMusicId,
+                    duration: null,
+                    audioOnly: true,
+                    backingOnly: true,
+                    addedBy: hostName || 'Host'
+                });
+            } catch (err) {
+                hostLogger.debug('Browse Apple track ensure failed', err);
+            }
+        }
         await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
             roomCode,
             songId,
+            trackId: trackRecord?.trackId || null,
+            trackSource: trackRecord?.trackId ? 'apple' : null,
             songTitle: song.title,
             artist: song.artist,
-            singerName: singerOverride || room?.hostName || hostName || 'Host',
+            singerName,
             mediaUrl: '',
             albumArtUrl: art || song.art || '',
+            lyrics: lyricsText,
+            lyricsTimed: hasTimedLyrics ? fetchedApple.timedLyrics : null,
+            appleMusicId,
+            musicSource: appleMusicId ? 'apple' : '',
+            lyricsSource,
             status: 'requested',
             timestamp: serverTimestamp(),
             priorityScore: nowMs(),
@@ -8225,7 +8280,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             backingAudioOnly: false,
             audioOnly: false
         });
-        toast('Added to queue');
+        if (hasTimedLyrics) {
+            toast('Queued with Apple timed lyrics');
+            return;
+        }
+        if (hasPlainLyrics) {
+            toast('Queued with Apple lyrics');
+            return;
+        }
+        if (aiLyricsText) {
+            toast(appleMusicId ? 'Queued with Apple backing + AI lyrics fallback' : 'Queued with AI lyrics fallback');
+            return;
+        }
+        if (fetchedApple?.needsUserToken) {
+            toast('Queued with Apple backing. Lyrics need Apple Music host authorization (connect Apple Music).');
+            return;
+        }
+        if (fetchedApple && fetchedApple.found === false) {
+            toast(appleMusicId ? 'Queued with Apple backing. Apple lyrics not found for this track.' : 'Queued. Apple lyrics not found for this track.');
+            return;
+        }
+        toast(appleMusicId ? 'Queued with Apple backing (no lyrics found)' : 'Added to queue');
     };
 
     const resolveRoomUserUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';

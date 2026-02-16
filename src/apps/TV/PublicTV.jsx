@@ -1926,6 +1926,7 @@ const PublicTV = ({ roomCode }) => {
     const isMinimal = room?.layoutMode === 'minimal';
     const showVisualizerTv = !!room?.showVisualizerTv;
     const visualizerMode = room?.visualizerMode || 'ribbon';
+    const visualizerActive = (started || applauseStep !== 'idle') && visualizerEnabled;
     const bingoRng = room?.bingoMysteryRng;
     const showBingoRngOverlay = room?.bingoMode === 'mystery' && (
         bingoRng?.active ||
@@ -1948,7 +1949,7 @@ const PublicTV = ({ roomCode }) => {
             {!showVisualizerTv && (
                 <div className={`absolute inset-0 z-0 mix-blend-screen pointer-events-none ${waveformOpacity} ${room?.hideWaveform ? 'hidden' : ''}`}>
                     <AudioVisualizer
-                        isActive={started && visualizerEnabled}
+                        isActive={visualizerActive}
                         externalCtx={audioCtx}
                         onVolume={handleVolume}
                         inputMode={visualizerInputMode}
@@ -2226,7 +2227,7 @@ const PublicTV = ({ roomCode }) => {
                                 {showVisualizerTv && (
                                     <div className="absolute inset-0 z-30 bg-black">
                                         <AudioVisualizer
-                                            isActive={started && visualizerEnabled}
+                                            isActive={visualizerActive}
                                             externalCtx={audioCtx}
                                             onVolume={handleVolume}
                                             mode={visualizerMode}
