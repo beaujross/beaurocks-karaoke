@@ -78,6 +78,13 @@ import {
     getViewDefaultSection
 } from './workspace/navConfig';
 import HostWorkspaceShell from './workspace/HostWorkspaceShell';
+import {
+    MISSION_FLOW_RULES,
+    buildMissionDraftFromRoom,
+    compileMissionDraftToRoomPayload,
+    mergePayloadWithOverrides,
+    getRecommendedHostAction
+} from './missionControl';
 
 // --- CONSTANTS & CONFIG ---
 const VERSION = HOST_APP_CONFIG.VERSION;
@@ -539,6 +546,14 @@ const NIGHT_SETUP_QUEUE_ROTATION_OPTIONS = [
     { id: 'round_robin', label: 'Round Robin', description: 'Rotate singers in cycles.', icon: 'fa-rotate' },
     { id: 'first_come', label: 'First Come', description: 'Run strict request order.', icon: 'fa-list-ol' }
 ];
+
+const MISSION_COHORT_STORAGE_KEY = 'bross_mission_control_cohort_v1';
+const MISSION_DRAFT_STORAGE_KEY = 'bross_mission_control_setup_draft_v1';
+const MISSION_OVERRIDE_STORAGE_KEY = 'bross_mission_control_overrides_v1';
+const MISSION_QUERY_KEY = 'mission';
+const MISSION_CONTROL_VERSION = 1;
+const MISSION_DEFAULT_ASSIST_LEVEL = 'smart_assist';
+const MISSION_FLOW_RULE_OPTIONS = Object.freeze(Object.values(MISSION_FLOW_RULES));
 
 const HOST_SETTINGS_SECTIONS = [
     {
@@ -2631,7 +2646,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, openHostSettings, openLiveEffects, showLegacyLiveEffects = true }) => {
+const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, openHostSettings, openLiveEffects, showLegacyLiveEffects = true, pendingModerationCount = 0, runMissionHypeMoment = null, missionControlEnabled = false, missionControlCohort = 'legacy' }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -2734,6 +2749,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             return true;
         }
     });
+    const [showLegacyQuickActions, setShowLegacyQuickActions] = useState(() => !missionControlEnabled);
     useEffect(() => {
         try {
             if (typeof window === 'undefined') return;
@@ -2742,6 +2758,13 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             // Ignore persistence failures.
         }
     }, [essentialsMode]);
+    useEffect(() => {
+        if (!missionControlEnabled) {
+            setShowLegacyQuickActions(true);
+            return;
+        }
+        setShowLegacyQuickActions(false);
+    }, [missionControlEnabled]);
     const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
     const hostDmMessages = chatMessages.filter((msg) => isDirectChatMessage(msg));
     const {
@@ -2759,6 +2782,38 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         currentSourceLabel,
         currentSourceToneClass
     } = useQueueDerivedState({ songs, room, users, appleMusicPlaying });
+    const missionRecommendation = useMemo(() => getRecommendedHostAction({
+        room,
+        queue,
+        current,
+        pendingModerationCount
+    }), [room, queue, current, pendingModerationCount]);
+    const missionRecommendationShownRef = useRef('');
+    useEffect(() => {
+        if (!missionControlEnabled || !missionRecommendation?.id) return;
+        const key = `${missionRecommendation.id}:${roomCode || ''}:${room?.activeMode || 'karaoke'}`;
+        if (missionRecommendationShownRef.current === key) return;
+        missionRecommendationShownRef.current = key;
+        trackEvent('host_mission_recommendation_shown', {
+            room_code: roomCode || '',
+            recommendation_id: missionRecommendation.id,
+            feature_flag: 'mission_control_v1',
+            cohort: missionControlCohort,
+            timestamp: nowMs()
+        });
+    }, [missionControlEnabled, missionRecommendation, roomCode, room?.activeMode, missionControlCohort]);
+    useEffect(() => {
+        if (!missionControlEnabled || !roomCode || !missionRecommendation?.id) return;
+        if (room?.missionControl?.lastSuggestedAction === missionRecommendation.id) return;
+        updateRoom({
+            missionControl: {
+                ...(room?.missionControl || {}),
+                version: MISSION_CONTROL_VERSION,
+                enabled: true,
+                lastSuggestedAction: missionRecommendation.id
+            }
+        }).catch((error) => hostLogger.debug('Mission recommendation state write skipped', error));
+    }, [missionControlEnabled, roomCode, missionRecommendation?.id, room?.missionControl, updateRoom]);
     const openPanelCount = useMemo(
         () => Object.values(panelLayout || {}).filter(Boolean).length,
         [panelLayout]
@@ -3499,6 +3554,57 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             const haystack = `${item.label} ${item.hint || ''} ${item.keywords || ''}`.toLowerCase();
             return haystack.includes(commandQueryNormalized);
         });
+
+    const runMissionAction = useCallback(async (actionId = '') => {
+        const action = String(actionId || '').trim();
+        if (!action) return;
+        try {
+            if (action === 'start_next') {
+                if (queue[0]) await updateStatus(queue[0].id, 'performing');
+            } else if (action === 'hype_moment') {
+                if (typeof runMissionHypeMoment === 'function') {
+                    await runMissionHypeMoment();
+                }
+            } else if (action === 'crowd_check') {
+                await startReadyCheck();
+            } else if (action === 'more') {
+                setCommandOpen(true);
+            } else if (action === 'review_moderation') {
+                openHostSettings?.();
+            }
+            trackEvent('host_mission_live_action_used', {
+                room_code: roomCode || '',
+                action_id: action,
+                recommendation_id: missionRecommendation?.id || '',
+                feature_flag: missionControlEnabled ? 'mission_control_v1' : 'legacy',
+                cohort: missionControlCohort,
+                timestamp: nowMs()
+            });
+            if (missionRecommendation?.id === action) {
+                trackEvent('host_mission_recommendation_accepted', {
+                    room_code: roomCode || '',
+                    recommendation_id: missionRecommendation.id,
+                    feature_flag: missionControlEnabled ? 'mission_control_v1' : 'legacy',
+                    cohort: missionControlCohort,
+                    timestamp: nowMs()
+                });
+            }
+        } catch (error) {
+            hostLogger.error('Mission action failed', error);
+            toast('Mission action failed.');
+        }
+    }, [
+        queue,
+        updateStatus,
+        runMissionHypeMoment,
+        startReadyCheck,
+        roomCode,
+        missionRecommendation,
+        missionControlEnabled,
+        missionControlCohort,
+        openHostSettings,
+        toast
+    ]);
     
     // Helper to open youtube search
     const _openYT = (query) => {
@@ -3662,9 +3768,70 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     </div>
                 </div>
             )}
+            {missionControlEnabled && (
+            <div className={`${STYLES.panel} px-3 py-2 border border-cyan-400/20 bg-[#041019]/85 sticky top-0 z-20`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">Mission Control</div>
+                        <div className="text-xs text-zinc-300">
+                            Recommended: <span className="text-white font-bold">{missionRecommendation?.label || 'Stand by'}</span>
+                            {missionRecommendation?.reason ? <span className="text-zinc-500"> | {missionRecommendation.reason}</span> : null}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border ${
+                            missionRecommendation?.status === 'needs_attention'
+                                ? 'border-amber-400/35 bg-amber-500/15 text-amber-100'
+                                : missionRecommendation?.status === 'live'
+                                    ? 'border-cyan-400/35 bg-cyan-500/15 text-cyan-100'
+                                    : 'border-emerald-400/35 bg-emerald-500/15 text-emerald-100'
+                        }`}>
+                            {missionRecommendation?.status || 'ready'}
+                        </span>
+                        <button
+                            onClick={() => runMissionAction('start_next')}
+                            disabled={!queue[0]}
+                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 text-[10px] ${!queue[0] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            Start Next
+                        </button>
+                        <button
+                            onClick={() => runMissionAction('hype_moment')}
+                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 text-[10px]`}
+                        >
+                            Hype Moment
+                        </button>
+                        <button
+                            onClick={() => runMissionAction('crowd_check')}
+                            className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 text-[10px]`}
+                        >
+                            Crowd Check
+                        </button>
+                        <button
+                            onClick={() => runMissionAction('more')}
+                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[10px]`}
+                        >
+                            More
+                        </button>
+                    </div>
+                </div>
+                {missionControlEnabled && missionRecommendation?.id && (
+                    <button
+                        onClick={() => runMissionAction(missionRecommendation.id)}
+                        className="mt-2 w-full text-left rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 hover:border-cyan-300/50 transition-colors"
+                    >
+                        <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Smart Assist</div>
+                        <div className="text-sm text-white font-bold mt-1">{missionRecommendation.label}</div>
+                        <div className="text-xs text-zinc-300 mt-1">{missionRecommendation.reason || 'Suggested next action for room flow.'}</div>
+                    </button>
+                )}
+            </div>
+            )}
             <div className={`${STYLES.panel} px-3 py-2 border border-white/10 bg-black/25`}>
                 <div className="flex flex-wrap items-center gap-2">
-                    <div className={`text-[11px] uppercase tracking-[0.25em] text-zinc-400 mr-2 ${compactViewport ? 'hidden md:block' : ''}`}>Quick Actions</div>
+                    <div className={`text-[11px] uppercase tracking-[0.25em] text-zinc-400 mr-2 ${compactViewport ? 'hidden md:block' : ''}`}>
+                        {missionControlEnabled ? 'Legacy Actions' : 'Quick Actions'}
+                    </div>
                     <button
                         onClick={() => setCommandOpen(true)}
                         data-feature-id="quick-command-palette"
@@ -3672,6 +3839,23 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     >
                         Command Palette
                     </button>
+                    {missionControlEnabled && (
+                        <button
+                            onClick={() => setShowLegacyQuickActions((prev) => !prev)}
+                            className={`${STYLES.btnStd} ${showLegacyQuickActions ? STYLES.btnInfo : STYLES.btnNeutral} px-3 text-[10px]`}
+                        >
+                            {showLegacyQuickActions ? 'Hide Legacy Actions' : 'Show Legacy Actions'}
+                        </button>
+                    )}
+                    <button
+                        onClick={() => setEssentialsMode((prev) => !prev)}
+                        data-feature-id="quick-essentials-mode"
+                        className={`${STYLES.btnStd} ${essentialsMode ? STYLES.btnInfo : STYLES.btnNeutral} px-3 text-[10px]`}
+                    >
+                        {essentialsMode ? 'Show Advanced' : 'Essentials Only'}
+                    </button>
+                    {(!missionControlEnabled || showLegacyQuickActions) && (
+                        <>
                     <button
                         onClick={() => queue[0] && updateStatus(queue[0].id, 'performing')}
                         disabled={!queue[0]}
@@ -3710,13 +3894,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                         Live Effects
                     </button>
                     <button
-                        onClick={() => setEssentialsMode((prev) => !prev)}
-                        data-feature-id="quick-essentials-mode"
-                        className={`${STYLES.btnStd} ${essentialsMode ? STYLES.btnInfo : STYLES.btnNeutral} px-3 text-[10px]`}
-                    >
-                        {essentialsMode ? 'Show Advanced' : 'Essentials Only'}
-                    </button>
-                    <button
                         onClick={openChatSettings}
                         data-feature-id="quick-chat-settings"
                         className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 text-[10px] ${compactViewport || essentialsMode ? 'hidden' : ''}`}
@@ -3730,10 +3907,13 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     >
                         UI Feature Check
                     </button>
+                        </>
+                    )}
                 </div>
                 {essentialsMode && (
                     <div className="mt-2 text-xs text-zinc-400">
-                        Essentials mode keeps focus on queue flow, singer handoff, and TV control. Advanced panels are still available via Show Advanced.
+                        Essentials mode keeps focus on queue flow, singer handoff, and TV control.
+                        {missionControlEnabled ? ' Mission strip handles primary actions; legacy actions are optional.' : ' Advanced panels are still available via Show Advanced.'}
                     </div>
                 )}
             </div>
@@ -4517,6 +4697,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [nightSetupChatOnTv, setNightSetupChatOnTv] = useState(false);
     const [nightSetupMarqueeEnabled, setNightSetupMarqueeEnabled] = useState(true);
     const [nightSetupRecommendation, setNightSetupRecommendation] = useState({ presetId: 'casual', reason: '' });
+    const [missionControlCohort, setMissionControlCohort] = useState('legacy');
+    const [missionControlEnabled, setMissionControlEnabled] = useState(false);
+    const [missionDraft, setMissionDraft] = useState({
+        archetype: 'casual',
+        flowRule: 'balanced',
+        spotlightMode: 'karaoke',
+        assistLevel: MISSION_DEFAULT_ASSIST_LEVEL
+    });
+    const [missionAdvancedOverrides, setMissionAdvancedOverrides] = useState({});
+    const [missionAdvancedQueueOpen, setMissionAdvancedQueueOpen] = useState(false);
+    const [missionAdvancedTogglesOpen, setMissionAdvancedTogglesOpen] = useState(false);
+    const [missionShowAllSpotlightModes, setMissionShowAllSpotlightModes] = useState(false);
     const hostUpdateDeploymentBanner = hostUpdateDeploymentWarning ? (
         <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100 flex items-start justify-between gap-3">
             <div>
@@ -4558,6 +4750,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const canUseWorkspaceOnboarding = !!capabilities[CAPABILITY_KEYS.WORKSPACE_ONBOARDING];
     const canUseInvoiceDrafts = !!capabilities[CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS];
     const canGenerateAiContent = !!capabilities[CAPABILITY_KEYS.AI_GENERATE_CONTENT];
+    const missionQueryOverride = useMemo(() => {
+        if (typeof window === 'undefined') return null;
+        const value = String(new URLSearchParams(window.location.search).get(MISSION_QUERY_KEY) || '').trim().toLowerCase();
+        if (!value) return null;
+        if (['on', '1', 'true', 'mission'].includes(value)) return true;
+        if (['off', '0', 'false', 'legacy'].includes(value)) return false;
+        return null;
+    }, []);
+    const missionFlowRuleLabel = useMemo(() => {
+        const found = MISSION_FLOW_RULE_OPTIONS.find((rule) => rule.id === missionDraft.flowRule);
+        return found?.label || 'Balanced Flow';
+    }, [missionDraft.flowRule]);
+    const missionStatusLabel = useMemo(() => {
+        if (nightSetupApplying) return 'Live';
+        if (!String(roomCode || '').trim()) return 'Needs Attention';
+        if (nightSetupQueueLimitMode === 'none' && !nightSetupQueueFirstTimeBoost) return 'Needs Attention';
+        return 'Ready';
+    }, [nightSetupApplying, roomCode, nightSetupQueueLimitMode, nightSetupQueueFirstTimeBoost]);
     const usageMeters = useMemo(() => {
         const meters = Object.values(usageSummary?.meters || {});
         return meters.sort((a, b) => String(a?.label || '').localeCompare(String(b?.label || '')));
@@ -5636,6 +5846,85 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }));
     };
 
+    useEffect(() => {
+        let nextCohort = 'legacy';
+        if (missionQueryOverride === true) {
+            nextCohort = 'mission';
+        } else if (missionQueryOverride === false) {
+            nextCohort = 'legacy';
+        } else {
+            try {
+                const stored = String(localStorage.getItem(MISSION_COHORT_STORAGE_KEY) || '').trim();
+                if (stored === 'mission' || stored === 'legacy') {
+                    nextCohort = stored;
+                } else {
+                    nextCohort = Math.random() < 0.5 ? 'mission' : 'legacy';
+                    localStorage.setItem(MISSION_COHORT_STORAGE_KEY, nextCohort);
+                }
+            } catch (_err) {
+                nextCohort = 'legacy';
+            }
+        }
+        setMissionControlCohort(nextCohort);
+        setMissionControlEnabled(nextCohort === 'mission');
+    }, [missionQueryOverride]);
+
+    const applyMissionDraftToNightSetupState = useCallback((draftInput = missionDraft, overridesInput = missionAdvancedOverrides) => {
+        const compiled = compileMissionDraftToRoomPayload(draftInput, capabilities, {
+            presets: HOST_NIGHT_PRESETS,
+            flowRules: MISSION_FLOW_RULES
+        });
+        const merged = mergePayloadWithOverrides(compiled, overridesInput);
+        setNightSetupPresetId(merged.hostNightPreset || 'casual');
+        setNightSetupQueueLimitMode(merged.queueSettings?.limitMode || 'none');
+        setNightSetupQueueLimitCount(Math.max(0, Number(merged.queueSettings?.limitCount || 0)));
+        setNightSetupQueueRotation(merged.queueSettings?.rotation || 'round_robin');
+        setNightSetupQueueFirstTimeBoost(merged.queueSettings?.firstTimeBoost !== false);
+        setNightSetupPrimaryMode(merged.gamePreviewId || 'karaoke');
+        setNightSetupShowScoring(merged.showScoring !== false);
+        setNightSetupAutoPlayMedia(merged.autoPlayMedia !== false);
+        setNightSetupChatOnTv(!!merged.chatShowOnTv);
+        setNightSetupMarqueeEnabled(!!merged.marqueeEnabled);
+        return merged;
+    }, [capabilities, missionDraft, missionAdvancedOverrides]);
+
+    const setMissionOverrideValue = useCallback((path, value) => {
+        setMissionAdvancedOverrides((prev) => {
+            const next = { ...(prev || {}), [path]: value };
+            trackEvent('host_mission_advanced_toggled', {
+                room_code: roomCode || '',
+                path,
+                feature_flag: missionControlEnabled ? 'mission_control_v1' : 'legacy',
+                cohort: missionControlCohort,
+                timestamp: nowMs()
+            });
+            return next;
+        });
+    }, [roomCode, missionControlEnabled, missionControlCohort]);
+
+    const resetMissionAdvancedOverrides = useCallback(() => {
+        setMissionAdvancedOverrides({});
+        applyMissionDraftToNightSetupState(missionDraft, {});
+    }, [applyMissionDraftToNightSetupState, missionDraft]);
+
+    useEffect(() => {
+        if (!missionControlEnabled) return;
+        try {
+            localStorage.setItem(MISSION_DRAFT_STORAGE_KEY, JSON.stringify(missionDraft || {}));
+        } catch (_err) {
+            // ignore local storage errors
+        }
+    }, [missionControlEnabled, missionDraft]);
+
+    useEffect(() => {
+        if (!missionControlEnabled) return;
+        try {
+            localStorage.setItem(MISSION_OVERRIDE_STORAGE_KEY, JSON.stringify(missionAdvancedOverrides || {}));
+        } catch (_err) {
+            // ignore local storage errors
+        }
+    }, [missionControlEnabled, missionAdvancedOverrides]);
+
     const resolveNightSetupRecommendation = useCallback(() => {
         const knownPresetIds = new Set(Object.keys(HOST_NIGHT_PRESETS));
         const lastPreset = (() => {
@@ -5700,14 +5989,87 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return preset;
     }, []);
 
+    const updateMissionDraftPick = useCallback((patch = {}, reason = 'manual') => {
+        setMissionDraft((prev) => {
+            const next = {
+                ...(prev || {}),
+                ...patch,
+                assistLevel: patch.assistLevel || prev?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL
+            };
+            applyMissionDraftToNightSetupState(next, missionAdvancedOverrides);
+            trackEvent('host_mission_pick_changed', {
+                room_code: roomCode || '',
+                reason,
+                archetype: next.archetype,
+                flow_rule: next.flowRule,
+                spotlight_mode: next.spotlightMode,
+                feature_flag: missionControlEnabled ? 'mission_control_v1' : 'legacy',
+                cohort: missionControlCohort,
+                timestamp: nowMs()
+            });
+            return next;
+        });
+    }, [applyMissionDraftToNightSetupState, missionAdvancedOverrides, roomCode, missionControlEnabled, missionControlCohort]);
+
     const openNightSetupWizard = useCallback((presetId = '') => {
         const recommendation = resolveNightSetupRecommendation();
         const resolvedPresetId = (presetId && HOST_NIGHT_PRESETS[presetId]) ? presetId : recommendation.presetId;
         setNightSetupRecommendation(recommendation);
-        seedNightSetupFromPreset(resolvedPresetId, { keepQueueDraft: false });
+        if (missionControlEnabled) {
+            const roomDraft = buildMissionDraftFromRoom(room || {}, {
+                flowRules: MISSION_FLOW_RULES,
+                primaryModes: NIGHT_SETUP_PRIMARY_MODES
+            });
+            const seedDraft = {
+                ...roomDraft,
+                archetype: resolvedPresetId || roomDraft.archetype || 'casual',
+                assistLevel: roomDraft.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL
+            };
+            let persistedDraft = null;
+            let persistedOverrides = null;
+            try {
+                const savedDraftRaw = localStorage.getItem(MISSION_DRAFT_STORAGE_KEY);
+                const savedOverrideRaw = localStorage.getItem(MISSION_OVERRIDE_STORAGE_KEY);
+                persistedDraft = savedDraftRaw ? JSON.parse(savedDraftRaw) : null;
+                persistedOverrides = savedOverrideRaw ? JSON.parse(savedOverrideRaw) : null;
+            } catch (_err) {
+                persistedDraft = null;
+                persistedOverrides = null;
+            }
+            const nextDraft = (persistedDraft && typeof persistedDraft === 'object' && !Array.isArray(persistedDraft))
+                ? { ...seedDraft, ...persistedDraft }
+                : seedDraft;
+            const nextOverrides = (room?.missionControl?.advancedOverrides && typeof room.missionControl.advancedOverrides === 'object')
+                ? room.missionControl.advancedOverrides
+                : ((persistedOverrides && typeof persistedOverrides === 'object' && !Array.isArray(persistedOverrides)) ? persistedOverrides : {});
+            setMissionDraft(nextDraft);
+            setMissionAdvancedOverrides(nextOverrides);
+            setMissionAdvancedQueueOpen(false);
+            setMissionAdvancedTogglesOpen(false);
+            setMissionShowAllSpotlightModes(false);
+            applyMissionDraftToNightSetupState(nextDraft, nextOverrides);
+            trackEvent('host_mission_setup_opened', {
+                room_code: roomCode || '',
+                archetype: nextDraft.archetype,
+                spotlight_mode: nextDraft.spotlightMode,
+                feature_flag: 'mission_control_v1',
+                cohort: missionControlCohort,
+                timestamp: nowMs()
+            });
+        } else {
+            seedNightSetupFromPreset(resolvedPresetId, { keepQueueDraft: false });
+        }
         setNightSetupStep(0);
         setShowNightSetupWizard(true);
-    }, [seedNightSetupFromPreset, resolveNightSetupRecommendation]);
+    }, [
+        resolveNightSetupRecommendation,
+        missionControlEnabled,
+        room,
+        roomCode,
+        missionControlCohort,
+        applyMissionDraftToNightSetupState,
+        seedNightSetupFromPreset
+    ]);
 
     const closeNightSetupWizard = useCallback(() => {
         if (nightSetupApplying) return;
@@ -5742,53 +6104,78 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Open a room first.');
             return false;
         }
-        const preset = HOST_NIGHT_PRESETS[nightSetupPresetId] || HOST_NIGHT_PRESETS.casual;
-        const presetSettings = preset.settings || {};
-        const gameDefaults = presetSettings.gameDefaults || {};
         const canUseAi = !!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT];
-        const autoLyricsEnabled = !!presetSettings.autoLyricsOnQueue && canUseAi;
-        const queueLimitModeValue = nightSetupQueueLimitMode || 'none';
-        const queueLimitCountValue = queueLimitModeValue === 'none'
+        const legacyPreset = HOST_NIGHT_PRESETS[nightSetupPresetId] || HOST_NIGHT_PRESETS.casual;
+        const legacyPresetSettings = legacyPreset.settings || {};
+        const legacyGameDefaults = legacyPresetSettings.gameDefaults || {};
+        const legacyAutoLyricsEnabled = !!legacyPresetSettings.autoLyricsOnQueue && canUseAi;
+        const legacyQueueLimitModeValue = nightSetupQueueLimitMode || 'none';
+        const legacyQueueLimitCountValue = legacyQueueLimitModeValue === 'none'
             ? 0
             : Math.max(0, Number(nightSetupQueueLimitCount || 0));
-        const payload = {
-            hostNightPreset: preset.id,
-            autoDj: !!presetSettings.autoDj,
-            autoBgMusic: !!presetSettings.autoBgMusic,
+        const legacyPayload = {
+            hostNightPreset: legacyPreset.id,
+            autoDj: !!legacyPresetSettings.autoDj,
+            autoBgMusic: !!legacyPresetSettings.autoBgMusic,
             autoPlayMedia: !!nightSetupAutoPlayMedia,
-            showVisualizerTv: !!presetSettings.showVisualizerTv,
-            showLyricsTv: !!presetSettings.showLyricsTv,
+            showVisualizerTv: !!legacyPresetSettings.showVisualizerTv,
+            showLyricsTv: !!legacyPresetSettings.showLyricsTv,
             showScoring: !!nightSetupShowScoring,
-            showFameLevel: !!presetSettings.showFameLevel,
-            allowSingerTrackSelect: !!presetSettings.allowSingerTrackSelect,
+            showFameLevel: !!legacyPresetSettings.showFameLevel,
+            allowSingerTrackSelect: !!legacyPresetSettings.allowSingerTrackSelect,
             marqueeEnabled: !!nightSetupMarqueeEnabled,
-            marqueeShowMode: presetSettings.marqueeShowMode || 'always',
+            marqueeShowMode: legacyPresetSettings.marqueeShowMode || 'always',
             chatShowOnTv: !!nightSetupChatOnTv,
-            chatTvMode: presetSettings.chatTvMode || 'auto',
-            bouncerMode: !!presetSettings.bouncerMode,
-            bingoShowTv: presetSettings.bingoShowTv !== false,
-            bingoVotingMode: presetSettings.bingoVotingMode || 'host+votes',
-            bingoAutoApprovePct: Math.max(10, Math.min(100, Number(presetSettings.bingoAutoApprovePct ?? 50))),
-            bingoAudienceReopenEnabled: presetSettings.bingoAudienceReopenEnabled !== false,
-            autoLyricsOnQueue: autoLyricsEnabled,
-            popTriviaEnabled: presetSettings.popTriviaEnabled !== false,
+            chatTvMode: legacyPresetSettings.chatTvMode || 'auto',
+            bouncerMode: !!legacyPresetSettings.bouncerMode,
+            bingoShowTv: legacyPresetSettings.bingoShowTv !== false,
+            bingoVotingMode: legacyPresetSettings.bingoVotingMode || 'host+votes',
+            bingoAutoApprovePct: Math.max(10, Math.min(100, Number(legacyPresetSettings.bingoAutoApprovePct ?? 50))),
+            bingoAudienceReopenEnabled: legacyPresetSettings.bingoAudienceReopenEnabled !== false,
+            autoLyricsOnQueue: legacyAutoLyricsEnabled,
+            popTriviaEnabled: legacyPresetSettings.popTriviaEnabled !== false,
             gamePreviewId: nightSetupPrimaryMode === 'karaoke' ? null : nightSetupPrimaryMode,
             gameDefaults: {
-                triviaRoundSec: Math.max(5, Number(gameDefaults.triviaRoundSec || 20)),
-                triviaAutoReveal: gameDefaults.triviaAutoReveal !== false,
-                bingoVotingMode: gameDefaults.bingoVotingMode || 'host+votes',
-                bingoAutoApprovePct: Math.max(10, Math.min(100, Number(gameDefaults.bingoAutoApprovePct ?? 50)))
+                triviaRoundSec: Math.max(5, Number(legacyGameDefaults.triviaRoundSec || 20)),
+                triviaAutoReveal: legacyGameDefaults.triviaAutoReveal !== false,
+                bingoVotingMode: legacyGameDefaults.bingoVotingMode || 'host+votes',
+                bingoAutoApprovePct: Math.max(10, Math.min(100, Number(legacyGameDefaults.bingoAutoApprovePct ?? 50)))
             },
             queueSettings: {
-                limitMode: queueLimitModeValue,
-                limitCount: queueLimitCountValue,
+                limitMode: legacyQueueLimitModeValue,
+                limitCount: legacyQueueLimitCountValue,
                 rotation: nightSetupQueueRotation || 'round_robin',
                 firstTimeBoost: nightSetupQueueFirstTimeBoost !== false
             }
         };
+        const missionPayload = mergePayloadWithOverrides(
+            compileMissionDraftToRoomPayload(missionDraft, capabilities, {
+                presets: HOST_NIGHT_PRESETS,
+                flowRules: MISSION_FLOW_RULES
+            }),
+            missionAdvancedOverrides
+        );
+        const payload = missionControlEnabled ? missionPayload : legacyPayload;
+        const payloadPreset = HOST_NIGHT_PRESETS[payload.hostNightPreset] || HOST_NIGHT_PRESETS.casual;
+        const payloadPresetSettings = payloadPreset?.settings || {};
         setNightSetupApplying(true);
         try {
-            await updateRoom(payload);
+            await updateRoom({
+                ...payload,
+                missionControl: {
+                    version: MISSION_CONTROL_VERSION,
+                    enabled: !!missionControlEnabled,
+                    setupDraft: {
+                        archetype: missionDraft?.archetype || payload.hostNightPreset || 'casual',
+                        flowRule: missionDraft?.flowRule || 'balanced',
+                        spotlightMode: missionDraft?.spotlightMode || (payload.gamePreviewId || 'karaoke'),
+                        assistLevel: missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL
+                    },
+                    advancedOverrides: missionAdvancedOverrides || {},
+                    lastAppliedAt: serverTimestamp(),
+                    lastSuggestedAction: room?.missionControl?.lastSuggestedAction || ''
+                }
+            });
             setHostNightPreset(payload.hostNightPreset);
             setAutoDj(!!payload.autoDj);
             setAutoBgMusic(!!payload.autoBgMusic);
@@ -5806,7 +6193,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setAudienceBingoReopenEnabled(payload.bingoAudienceReopenEnabled !== false);
             setAutoLyricsOnQueue(!!payload.autoLyricsOnQueue);
             setPopTriviaEnabled(payload.popTriviaEnabled !== false);
-            setSearchSources(preset.searchSources || { local: true, youtube: true, itunes: true });
+            setSearchSources(payloadPreset.searchSources || { local: true, youtube: true, itunes: true });
             if (payload.autoBgMusic && !playingBg) setBgMusicState(true);
             if (!payload.autoBgMusic && playingBg) setBgMusicState(false);
             if (nightSetupPrimaryMode !== 'karaoke') {
@@ -5820,15 +6207,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 primary_mode: nightSetupPrimaryMode,
                 queue_limit_mode: payload.queueSettings.limitMode
             });
+            if (missionControlEnabled) {
+                trackEvent('host_mission_applied', {
+                    room_code: roomCode,
+                    archetype: missionDraft?.archetype || payload.hostNightPreset,
+                    flow_rule: missionDraft?.flowRule || 'balanced',
+                    spotlight_mode: missionDraft?.spotlightMode || (payload.gamePreviewId || 'karaoke'),
+                    feature_flag: 'mission_control_v1',
+                    cohort: missionControlCohort,
+                    timestamp: nowMs()
+                });
+            }
             try {
                 localStorage.setItem('bross_last_night_setup_preset', payload.hostNightPreset);
             } catch (_err) {
                 // ignore local storage errors
             }
-            if (!!presetSettings.autoLyricsOnQueue && !canUseAi) {
-                toast(`${preset.label} applied. AI lyric auto-generation needs a Host subscription.`);
+            if (!!payloadPresetSettings.autoLyricsOnQueue && !canUseAi) {
+                toast(`${payloadPreset.label} applied. AI lyric auto-generation needs a Host subscription.`);
             } else {
-                toast('Night setup applied.');
+                toast(missionControlEnabled ? 'Mission control setup applied.' : 'Night setup applied.');
             }
             setShowNightSetupWizard(false);
             setNightSetupStep(0);
@@ -5852,6 +6250,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         nightSetupPrimaryMode,
         nightSetupChatOnTv,
         nightSetupMarqueeEnabled,
+        missionControlEnabled,
+        missionDraft,
+        missionAdvancedOverrides,
+        room?.missionControl?.lastSuggestedAction,
+        missionControlCohort,
         capabilities,
         updateRoom,
         playingBg,
@@ -6149,7 +6552,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 chatShowOnTv: false,
                 chatTvMode: 'auto',
                 chatSlowModeSec: 0,
-                chatAudienceMode: 'all'
+                chatAudienceMode: 'all',
+                missionControl: {
+                    version: MISSION_CONTROL_VERSION,
+                    enabled: false,
+                    setupDraft: {
+                        archetype: 'casual',
+                        flowRule: 'balanced',
+                        spotlightMode: 'karaoke',
+                        assistLevel: MISSION_DEFAULT_ASSIST_LEVEL
+                    },
+                    advancedOverrides: {},
+                    lastAppliedAt: serverTimestamp(),
+                    lastSuggestedAction: ''
+                }
             });
             trackEvent('host_room_created', { room_code: c });
             setRoomCode(c);
@@ -6382,6 +6798,54 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         readyCheckTimerRef.current = setTimeout(() => {
             updateRoom({ 'readyCheck.active': false });
         }, durationSec * 1000);
+    };
+    const runMissionHypeMoment = async () => {
+        if (!roomCode) {
+            toast('Create or open a room first');
+            return;
+        }
+        const activeMode = String(room?.activeMode || 'karaoke').trim() || 'karaoke';
+        if (activeMode === 'trivia_pop') {
+            await updateRoom({
+                activeMode: 'trivia_reveal',
+                triviaQuestion: {
+                    ...(room?.triviaQuestion || {}),
+                    status: 'reveal',
+                    revealedAt: nowMs()
+                },
+                missionControl: {
+                    ...(room?.missionControl || {}),
+                    lastSuggestedAction: 'hype_moment'
+                }
+            });
+            toast('Trivia reveal pushed live.');
+            return;
+        }
+        if (activeMode === 'wyr') {
+            await updateRoom({
+                activeMode: 'wyr_reveal',
+                wyrData: {
+                    ...(room?.wyrData || {}),
+                    status: 'reveal',
+                    revealedAt: nowMs()
+                },
+                missionControl: {
+                    ...(room?.missionControl || {}),
+                    lastSuggestedAction: 'hype_moment'
+                }
+            });
+            toast('Crowd split reveal triggered.');
+            return;
+        }
+        await startBeatDrop();
+        await dropBonus(activeMode === 'karaoke' ? 100 : 150);
+        await updateRoom({
+            missionControl: {
+                ...(room?.missionControl || {}),
+                lastSuggestedAction: 'hype_moment'
+            }
+        });
+        toast('Hype moment triggered.');
     };
     const awardTipPoints = async () => {
         const amount = parseFloat(tipAmount);
@@ -8825,6 +9289,341 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const readinessScore = Math.round((readinessComplete / readinessChecks.length) * 100);
         const readinessMissing = readinessChecks.filter((item) => !item.ok).map((item) => item.label).slice(0, 2);
 
+        if (missionControlEnabled) {
+            const missionPreset = HOST_NIGHT_PRESETS[missionDraft?.archetype] || HOST_NIGHT_PRESETS.casual;
+            const missionMode = NIGHT_SETUP_PRIMARY_MODES.find((mode) => mode.id === missionDraft?.spotlightMode) || NIGHT_SETUP_PRIMARY_MODES[0];
+            const flowRule = MISSION_FLOW_RULE_OPTIONS.find((rule) => rule.id === missionDraft?.flowRule) || MISSION_FLOW_RULE_OPTIONS[0];
+            const statusClass = missionStatusLabel === 'Ready'
+                ? 'text-emerald-200 border-emerald-400/35 bg-emerald-500/15'
+                : missionStatusLabel === 'Live'
+                    ? 'text-cyan-100 border-cyan-400/35 bg-cyan-500/15'
+                    : 'text-amber-100 border-amber-400/35 bg-amber-500/15';
+            const missionPickCount = [missionDraft?.archetype, missionDraft?.flowRule, missionDraft?.spotlightMode].filter(Boolean).length;
+            const featuredSpotlightModeIds = ['karaoke', 'bingo', 'trivia_pop', 'karaoke_bracket'];
+            const missionVisibleSpotlightModes = missionShowAllSpotlightModes
+                ? NIGHT_SETUP_PRIMARY_MODES
+                : NIGHT_SETUP_PRIMARY_MODES.filter((mode) => featuredSpotlightModeIds.includes(mode.id) || mode.id === missionDraft?.spotlightMode);
+            const canToggleSpotlightList = NIGHT_SETUP_PRIMARY_MODES.length > missionVisibleSpotlightModes.length || missionShowAllSpotlightModes;
+
+            return (
+                <div
+                    className="fixed inset-0 z-[92] p-3 md:p-6 overflow-y-auto"
+                    style={{
+                        background:
+                            'radial-gradient(circle at 12% 6%, rgba(0,196,217,0.26), transparent 32%), radial-gradient(circle at 90% 10%, rgba(236,72,153,0.22), transparent 34%), linear-gradient(180deg, #06070d 0%, #090b14 45%, #05060c 100%)',
+                    }}
+                >
+                    <div className="mx-auto w-full max-w-6xl pb-28">
+                        <div className="w-full bg-zinc-950/94 border border-white/15 rounded-3xl shadow-[0_28px_80px_rgba(0,0,0,0.55)] overflow-hidden">
+                            <div className="px-4 py-4 md:px-6 md:py-5 border-b border-white/10">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Mission Control</div>
+                                        <div className="text-2xl md:text-3xl font-black text-white mt-1">Compose Tonight&apos;s Mission</div>
+                                        <div className="text-sm text-zinc-400 mt-1">Three picks to configure the room. Advanced controls are optional.</div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-[10px] uppercase tracking-[0.24em] px-2 py-1 rounded-full border ${statusClass}`}>
+                                            {missionStatusLabel}
+                                        </span>
+                                        <button
+                                            onClick={closeNightSetupWizard}
+                                            disabled={nightSetupApplying}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        >
+                                            Skip Intro
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+                                <div className="px-4 py-4 md:px-6 md:py-5 max-h-[68vh] overflow-y-auto custom-scrollbar space-y-4">
+                                    <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/8 p-4">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div>
+                                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200">Quick Mission Path</div>
+                                                <div className="text-sm text-zinc-200 mt-1">Lock three picks, then launch. Advanced controls stay available.</div>
+                                            </div>
+                                            <span className={`text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border ${missionPickCount === 3 ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100' : 'border-zinc-600 bg-zinc-900/60 text-zinc-300'}`}>
+                                                {missionPickCount}/3 Picks Ready
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                                        <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Pick 1</div>
+                                        <div className="text-xl font-bold text-white mt-1">Night Archetype</div>
+                                        <div className="text-sm text-zinc-400 mt-1">Defines the baseline experience and automation defaults.</div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                                            {Object.values(HOST_NIGHT_PRESETS).map((preset) => {
+                                                const active = missionDraft?.archetype === preset.id;
+                                                const meta = NIGHT_SETUP_PRESET_META[preset.id] || NIGHT_SETUP_PRESET_META.casual;
+                                                return (
+                                                    <button
+                                                        key={`mission-archetype-${preset.id}`}
+                                                        onClick={() => updateMissionDraftPick({ archetype: preset.id }, 'archetype')}
+                                                        className={`relative overflow-hidden text-left rounded-2xl border transition-all ${active ? 'border-[#00C4D9]/70 shadow-[0_0_0_1px_rgba(0,196,217,0.55)]' : 'border-zinc-700 hover:border-zinc-500'}`}
+                                                    >
+                                                        <div className={`absolute inset-0 bg-gradient-to-br ${meta.accent}`}></div>
+                                                        <div className="relative px-4 py-4">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <div className="text-lg text-cyan-100"><i className={`fa-solid ${meta.icon}`}></i></div>
+                                                                {active && <span className="text-[10px] uppercase tracking-[0.25em] px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/20 text-cyan-100">Selected</span>}
+                                                            </div>
+                                                            <div className="text-lg font-bold text-white mt-2">{preset.label}</div>
+                                                            <div className="text-sm text-zinc-300 mt-1">{preset.description}</div>
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                                        <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Pick 2</div>
+                                        <div className="text-xl font-bold text-white mt-1">Flow Rule</div>
+                                        <div className="text-sm text-zinc-400 mt-1">High-level queue policy. Advanced details remain editable below.</div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                                            {MISSION_FLOW_RULE_OPTIONS.map((rule) => {
+                                                const active = missionDraft?.flowRule === rule.id;
+                                                return (
+                                                    <button
+                                                        key={`mission-flow-${rule.id}`}
+                                                        onClick={() => updateMissionDraftPick({ flowRule: rule.id }, 'flow_rule')}
+                                                        className={`text-left rounded-2xl border px-3 py-3 transition-all ${active ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                                    >
+                                                        <div className="font-bold text-white">{rule.label}</div>
+                                                        <div className="text-xs text-zinc-400 mt-2">{rule.description}</div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                                        <div className="flex flex-wrap items-start justify-between gap-2">
+                                            <div>
+                                                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Pick 3</div>
+                                                <div className="text-xl font-bold text-white mt-1">Spotlight Focus</div>
+                                                <div className="text-sm text-zinc-400 mt-1">Choose what your room leads with once live.</div>
+                                            </div>
+                                            {canToggleSpotlightList && (
+                                                <button
+                                                    onClick={() => setMissionShowAllSpotlightModes((prev) => !prev)}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[10px]`}
+                                                >
+                                                    {missionShowAllSpotlightModes ? 'Show Featured' : 'Show All Modes'}
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-3">
+                                            {missionVisibleSpotlightModes.map((mode) => (
+                                                <button
+                                                    key={`mission-mode-${mode.id}`}
+                                                    onClick={() => updateMissionDraftPick({ spotlightMode: mode.id }, 'spotlight_mode')}
+                                                    className={`relative overflow-hidden text-left rounded-2xl border px-3 py-3 transition-all ${missionDraft?.spotlightMode === mode.id ? 'border-fuchsia-400/60' : 'border-zinc-700 hover:border-zinc-500'}`}
+                                                >
+                                                    <div className={`absolute inset-0 bg-gradient-to-br ${mode.accent}`}></div>
+                                                    <div className="relative flex items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <i className={`fa-solid ${mode.icon} text-fuchsia-200`}></i>
+                                                            <div className="text-sm font-bold text-white">{mode.label}</div>
+                                                        </div>
+                                                        {missionDraft?.spotlightMode === mode.id && <span className="text-[10px] uppercase tracking-[0.25em] text-fuchsia-100">Primary</span>}
+                                                    </div>
+                                                    <div className="relative text-xs text-zinc-300 mt-2">{mode.description}</div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div>
+                                                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Advanced</div>
+                                                <div className="text-base font-bold text-white mt-1">Optional Fine Tuning</div>
+                                            </div>
+                                            <button
+                                                onClick={resetMissionAdvancedOverrides}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[10px]`}
+                                            >
+                                                Reset Advanced
+                                            </button>
+                                        </div>
+                                        <div className="mt-3 space-y-3">
+                                            <div className="rounded-xl border border-zinc-700 bg-zinc-950/60">
+                                                <button
+                                                    onClick={() => setMissionAdvancedQueueOpen((prev) => !prev)}
+                                                    className="w-full px-3 py-2 flex items-center justify-between text-left"
+                                                >
+                                                    <span className="text-sm font-bold text-white">Queue Overrides</span>
+                                                    <i className={`fa-solid fa-chevron-${missionAdvancedQueueOpen ? 'up' : 'down'} text-zinc-500`}></i>
+                                                </button>
+                                                {missionAdvancedQueueOpen && (
+                                                    <div className="px-3 pb-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        <div>
+                                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Limit Mode</div>
+                                                            <select
+                                                                value={nightSetupQueueLimitMode}
+                                                                onChange={(event) => {
+                                                                    const nextValue = event.target.value;
+                                                                    setNightSetupQueueLimitMode(nextValue);
+                                                                    setMissionOverrideValue('queueSettings.limitMode', nextValue);
+                                                                    if (nextValue === 'none') {
+                                                                        setNightSetupQueueLimitCount(0);
+                                                                        setMissionOverrideValue('queueSettings.limitCount', 0);
+                                                                    }
+                                                                }}
+                                                                className={`${STYLES.input}`}
+                                                            >
+                                                                {NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.map((option) => (
+                                                                    <option key={`mission-queue-limit-${option.id}`} value={option.id}>{option.label}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Limit Count</div>
+                                                            <input
+                                                                value={nightSetupQueueLimitCount}
+                                                                onChange={(event) => {
+                                                                    const nextValue = Math.max(0, Number(event.target.value || 0));
+                                                                    setNightSetupQueueLimitCount(nextValue);
+                                                                    setMissionOverrideValue('queueSettings.limitCount', nextValue);
+                                                                }}
+                                                                className={STYLES.input}
+                                                                placeholder="0"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Rotation</div>
+                                                            <select
+                                                                value={nightSetupQueueRotation}
+                                                                onChange={(event) => {
+                                                                    const nextValue = event.target.value;
+                                                                    setNightSetupQueueRotation(nextValue);
+                                                                    setMissionOverrideValue('queueSettings.rotation', nextValue);
+                                                                }}
+                                                                className={`${STYLES.input}`}
+                                                            >
+                                                                {NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.map((option) => (
+                                                                    <option key={`mission-queue-rotation-${option.id}`} value={option.id}>{option.label}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">First-Time Boost</div>
+                                                            <button
+                                                                onClick={() => {
+                                                                    const nextValue = !nightSetupQueueFirstTimeBoost;
+                                                                    setNightSetupQueueFirstTimeBoost(nextValue);
+                                                                    setMissionOverrideValue('queueSettings.firstTimeBoost', nextValue);
+                                                                }}
+                                                                className={`${STYLES.btnStd} ${nightSetupQueueFirstTimeBoost ? STYLES.btnInfo : STYLES.btnNeutral} w-full`}
+                                                            >
+                                                                {nightSetupQueueFirstTimeBoost ? 'Enabled' : 'Disabled'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="rounded-xl border border-zinc-700 bg-zinc-950/60">
+                                                <button
+                                                    onClick={() => setMissionAdvancedTogglesOpen((prev) => !prev)}
+                                                    className="w-full px-3 py-2 flex items-center justify-between text-left"
+                                                >
+                                                    <span className="text-sm font-bold text-white">Live Toggle Overrides</span>
+                                                    <i className={`fa-solid fa-chevron-${missionAdvancedTogglesOpen ? 'up' : 'down'} text-zinc-500`}></i>
+                                                </button>
+                                                {missionAdvancedTogglesOpen && (
+                                                    <div className="px-3 pb-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                        {[
+                                                            { key: 'autoPlayMedia', label: 'Auto Stage Playback', value: nightSetupAutoPlayMedia, setter: setNightSetupAutoPlayMedia },
+                                                            { key: 'showScoring', label: 'Live Scoring', value: nightSetupShowScoring, setter: setNightSetupShowScoring },
+                                                            { key: 'chatShowOnTv', label: 'Audience Chat on TV', value: nightSetupChatOnTv, setter: setNightSetupChatOnTv },
+                                                            { key: 'marqueeEnabled', label: 'Marquee Messages', value: nightSetupMarqueeEnabled, setter: setNightSetupMarqueeEnabled }
+                                                        ].map((toggle) => (
+                                                            <button
+                                                                key={`mission-toggle-${toggle.key}`}
+                                                                onClick={() => {
+                                                                    const nextValue = !toggle.value;
+                                                                    toggle.setter(nextValue);
+                                                                    setMissionOverrideValue(toggle.key, nextValue);
+                                                                }}
+                                                                className={`${STYLES.btnStd} ${toggle.value ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                                            >
+                                                                {toggle.label}: {toggle.value ? 'ON' : 'OFF'}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <aside className="border-t lg:border-t-0 lg:border-l border-white/10 bg-zinc-950/75 px-4 py-4 md:px-5 md:py-5">
+                                    <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Tonight&apos;s Plan</div>
+                                    <div className="mt-2 rounded-2xl border border-cyan-500/30 bg-zinc-900/80 p-3">
+                                        <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">Canonical Summary</div>
+                                        <div className="text-sm text-zinc-200 mt-2"><span className="text-zinc-500">Archetype:</span> {missionPreset.label}</div>
+                                        <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Flow:</span> {flowRule.label}</div>
+                                        <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Spotlight:</span> {missionMode.label}</div>
+                                        <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Assist:</span> Smart Assist</div>
+                                        <div className="text-xs text-zinc-400 mt-2">Setup progress: {missionPickCount}/3 picks locked</div>
+                                    </div>
+                                    <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
+                                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Readiness</div>
+                                        <div className="text-white font-bold mt-1">{readinessScore}%</div>
+                                        <div className="h-2 rounded-full bg-zinc-800 overflow-hidden mt-2">
+                                            <div className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all" style={{ width: `${readinessScore}%` }}></div>
+                                        </div>
+                                        {readinessMissing.length > 0 && (
+                                            <div className="text-[11px] text-zinc-400 mt-2">Missing: {readinessMissing.join(', ')}</div>
+                                        )}
+                                    </div>
+                                </aside>
+                            </div>
+
+                            <div className="fixed bottom-0 left-0 right-0 z-[95] border-t border-white/10 bg-zinc-950/95 backdrop-blur-md">
+                                <div className="mx-auto w-full max-w-6xl px-4 py-3 md:px-6 flex flex-wrap items-center justify-between gap-2">
+                                    <button
+                                        onClick={() => {
+                                            setShowNightSetupWizard(false);
+                                            setShowSettings(true);
+                                            setSettingsTab('general');
+                                        }}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
+                                    >
+                                        Open Full Admin
+                                    </button>
+                                    <div className="text-xs text-zinc-400">
+                                        Mission: <span className="text-zinc-100 font-semibold">{missionPreset.label}</span> | <span className="text-zinc-100 font-semibold">{missionFlowRuleLabel}</span> | <span className="text-zinc-100 font-semibold">{missionMode.label}</span> | <span className="text-emerald-200 font-semibold">{missionPickCount}/3 ready</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={applyNightSetupWizard}
+                                            disabled={nightSetupApplying}
+                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        >
+                                            {nightSetupApplying ? 'Applying...' : 'Apply Mission'}
+                                        </button>
+                                        <button
+                                            onClick={launchNightSetupPackage}
+                                            disabled={nightSetupApplying}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        >
+                                            {nightSetupApplying ? 'Launching...' : 'Launch Package'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div
                 className="fixed inset-0 z-[92] p-3 md:p-6 overflow-y-auto"
@@ -9149,8 +9948,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="text-sm text-zinc-200 mt-1">
                                         {limitOption.label}
                                         {nightSetupQueueLimitMode !== 'none' ? ` (${Math.max(0, Number(nightSetupQueueLimitCount || 0))})` : ''}
-                                        {' '}· {rotationOption.label}
-                                        {nightSetupQueueFirstTimeBoost ? ' · First-time Boost' : ''}
+                                        {' '}| {rotationOption.label}
+                                        {nightSetupQueueFirstTimeBoost ? ' | First-time Boost' : ''}
                                     </div>
                                 </div>
                                 <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
@@ -9223,10 +10022,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     if(view === 'landing') return ( 
-        <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center relative z-10"> 
-                <div className="bg-zinc-900/80 p-8 rounded-3xl border border-zinc-700 backdrop-blur-md max-w-lg w-full shadow-2xl relative z-20"> 
-                <img src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png" className="w-3/4 mx-auto mb-4 drop-shadow-xl"/> 
-                <h1 className="text-4xl font-bebas mb-6 text-white tracking-widest">HOST PORTAL</h1> 
+        <div
+            className="relative min-h-screen overflow-hidden flex flex-col items-center justify-center p-4 md:p-8 text-center"
+            style={{
+                background:
+                    'radial-gradient(circle at 14% 12%, rgba(0,196,217,0.22), transparent 34%), radial-gradient(circle at 88% 5%, rgba(236,72,153,0.18), transparent 32%), linear-gradient(160deg, #04060e 0%, #090d19 52%, #04060c 100%)'
+            }}
+        >
+            <div className="pointer-events-none absolute inset-0">
+                <div className="absolute -left-16 top-20 h-56 w-56 rounded-full bg-cyan-500/15 blur-3xl"></div>
+                <div className="absolute -right-10 top-10 h-64 w-64 rounded-full bg-pink-500/12 blur-3xl"></div>
+                <div className="absolute bottom-[-5rem] left-1/3 h-56 w-56 rounded-full bg-emerald-500/10 blur-3xl"></div>
+            </div>
+            <div className="relative z-10 w-full max-w-2xl">
+                <div className="bg-zinc-950/78 p-6 md:p-8 rounded-[2rem] border border-cyan-400/20 backdrop-blur-xl w-full shadow-[0_30px_90px_rgba(0,0,0,0.5)] relative overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100">
+                        <span className="h-2 w-2 rounded-full bg-cyan-300 animate-pulse"></span>
+                        Host Control Surface
+                    </div>
+                    <div className="rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-zinc-300">
+                        {planLabel}
+                    </div>
+                </div>
+                <img src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png" className="w-56 mx-auto mb-5 drop-shadow-[0_0_30px_rgba(0,196,217,0.28)]"/> 
+                <h1 className="text-[2.1rem] md:text-5xl font-black mb-3 text-white leading-tight">Launch Your Next Room Like a Headliner</h1>
+                <div className="text-sm text-zinc-300 mb-6 max-w-xl mx-auto">Use guided setup for workspace onboarding, or quick-start a fresh room in one click.</div>
                 <button
                     onClick={() => {
                         if (!canUseWorkspaceOnboarding) {
@@ -9236,50 +10057,60 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         openOnboardingWizard();
                     }}
                     disabled={!canUseWorkspaceOnboarding}
-                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} w-full py-4 text-lg mb-3 ${!canUseWorkspaceOnboarding ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} w-full py-4 text-sm uppercase tracking-[0.24em] mb-3 ${!canUseWorkspaceOnboarding ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
-                    SET UP WORKSPACE (WIZARD)
+                    Guided Setup Wizard
                 </button>
                 <button
                     onClick={() => createRoom()}
                     disabled={creatingRoom}
-                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-base mb-4 ${creatingRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-5 ${creatingRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
-                    {creatingRoom ? 'CREATING ROOM...' : 'QUICK START NEW ROOM'}
+                    {creatingRoom ? 'Creating Room...' : 'Quick Start New Room'}
                 </button> 
                 {!uid && authError && (
-                    <div className="mb-3 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
+                    <div className="mb-3 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 text-left">
                         Auth failed: {authError.code || authError.message || 'Unknown error'}
                         {retryAuth && (
                             <button onClick={retryAuth} className="ml-2 underline text-red-200">Retry</button>
                         )}
                     </div>
                 )}
-                <div className="text-xs text-zinc-500 uppercase tracking-widest mb-2">Join Existing Room</div>
-                <div className="flex gap-2 justify-center"> 
+                <div className="text-xs text-zinc-500 uppercase tracking-[0.28em] mb-2 text-left">Join Existing Room</div>
+                <div className="flex flex-col sm:flex-row gap-2 justify-center"> 
                     <input
                         value={roomCodeInput}
                         onChange={e => setRoomCodeInput(e.target.value.toUpperCase())}
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') joinRoom();
                         }}
-                        placeholder="CODE"
-                        className={`${STYLES.input} text-center text-lg font-mono w-full`}
+                        placeholder="ROOM CODE"
+                        className={`${STYLES.input} text-center text-xl font-mono w-full tracking-[0.3em]`}
                     /> 
                     <button
                         onClick={() => joinRoom()}
                         disabled={joiningRoom}
-                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 py-3 text-sm uppercase tracking-[0.2em] sm:min-w-[120px] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                         {joiningRoom ? 'Joining...' : 'Join'}
                     </button> 
                 </div>
-                <div className="mt-3 text-xs text-zinc-500">
-                    Workspace: <span className="font-mono text-zinc-300">{orgContext?.orgId || 'not-initialized'}</span>
-                    {' '}| Plan: <span className="text-zinc-300">{planLabel}</span>
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-left">
+                    <div className="rounded-xl border border-zinc-700/70 bg-zinc-900/60 px-3 py-2">
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Workspace</div>
+                        <div className="mt-1 text-xs text-zinc-300 font-mono truncate">{orgContext?.orgId || 'not-initialized'}</div>
+                    </div>
+                    <div className="rounded-xl border border-zinc-700/70 bg-zinc-900/60 px-3 py-2">
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Plan</div>
+                        <div className="mt-1 text-xs text-zinc-300">{planLabel}</div>
+                    </div>
+                    <div className="rounded-xl border border-zinc-700/70 bg-zinc-900/60 px-3 py-2">
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Version</div>
+                        <div className="mt-1 text-xs text-zinc-300 font-mono">{VERSION}</div>
+                    </div>
                 </div>
                 {entryError && (
-                    <div className="mt-3 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2">
+                    <div className="mt-3 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2 text-left">
                         {entryError}
                     </div>
                 )}
@@ -9288,15 +10119,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         {hostUpdateDeploymentBanner}
                     </div>
                 )}
-                <div className="mt-6 text-xs text-zinc-500 font-mono tracking-widest">{VERSION}</div> 
+                <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-left text-xs text-zinc-400">
+                    <div className="font-semibold text-zinc-200 mb-1">Two Launch Paths</div>
+                    <div className="mb-1"><span className="text-cyan-200"><i className="fa-solid fa-wand-magic-sparkles mr-2"></i></span>Wizard: identity, billing, branding, then launch.</div>
+                    <div><span className="text-pink-200"><i className="fa-solid fa-bolt mr-2"></i></span>Quick Start: create room now, fine-tune in Night Setup.</div>
+                </div> 
             </div>
             {showOnboardingWizard && (
-                <div className="fixed inset-0 z-[95] bg-black/80 flex items-center justify-center p-4">
-                    <div className="w-full max-w-3xl bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl overflow-hidden text-left">
-                        <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between gap-3">
+                <div className="fixed inset-0 z-[95] bg-black/85 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
+                    <div className="w-full max-w-5xl mx-auto bg-zinc-950/95 border border-cyan-400/20 rounded-[2rem] shadow-[0_34px_100px_rgba(0,0,0,0.62)] overflow-hidden text-left">
+                        <div className="px-5 py-4 md:px-6 border-b border-zinc-800 flex items-center justify-between gap-3">
                             <div>
-                                <div className="text-sm uppercase tracking-widest text-zinc-500">Turnkey Setup</div>
-                                <div className="text-xl font-bold text-white">Workspace Onboarding</div>
+                                <div className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">Turnkey Setup</div>
+                                <div className="text-2xl font-black text-white mt-1">Workspace Onboarding</div>
+                                <div className="text-sm text-zinc-400 mt-1">Configure identity, billing, branding, then launch your first room.</div>
                             </div>
                             <button
                                 onClick={closeOnboardingWizard}
@@ -9306,7 +10142,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 Close
                             </button>
                         </div>
-                        <div className="px-5 py-4 border-b border-zinc-800 flex flex-wrap gap-2">
+                        <div className="px-5 pt-4 pb-3 border-b border-zinc-800">
+                            <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-cyan-400 via-cyan-300 to-pink-400 transition-all duration-300"
+                                    style={{ width: `${Math.round(((onboardingStep + 1) / Math.max(1, HOST_ONBOARDING_STEPS.length)) * 100)}%` }}
+                                ></div>
+                            </div>
+                            <div className="mt-2 text-[11px] uppercase tracking-[0.24em] text-zinc-500">Step {onboardingStep + 1} of {HOST_ONBOARDING_STEPS.length}</div>
+                            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
                             {HOST_ONBOARDING_STEPS.map((step, idx) => (
                                 <button
                                     key={step.key}
@@ -9316,45 +10160,56 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         setOnboardingStep(idx);
                                         setOnboardingError('');
                                     }}
-                                    className={`px-3 py-1 rounded-full border text-xs uppercase tracking-widest ${
+                                    className={`rounded-xl border px-3 py-2 text-left transition-colors ${
                                         idx === onboardingStep
-                                            ? 'bg-[#00C4D9]/20 text-[#00C4D9] border-[#00C4D9]/40'
+                                            ? 'border-cyan-400/60 bg-cyan-500/12 text-cyan-100'
                                             : idx < onboardingStep
-                                                ? 'bg-emerald-500/10 text-emerald-200 border-emerald-400/30'
-                                                : 'bg-zinc-900 text-zinc-500 border-zinc-700'
+                                                ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-200'
+                                                : 'border-zinc-700 bg-zinc-900/75 text-zinc-400'
                                     }`}
                                 >
-                                    {idx + 1}. {step.label}
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Step {idx + 1}</div>
+                                    <div className="text-sm font-bold mt-1">{step.label}</div>
                                 </button>
                             ))}
+                            </div>
                         </div>
-                        <div className="px-5 py-4 space-y-4 max-h-[65vh] overflow-y-auto custom-scrollbar">
+                        <div className="px-5 py-4 md:px-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
                             {onboardingError && (
                                 <div className="text-sm text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2">
                                     {onboardingError}
                                 </div>
                             )}
                             {onboardingStep === 0 && (
-                                <div className="space-y-3">
-                                    <div>
-                                        <div className="text-xs uppercase tracking-widest text-zinc-500 mb-1">Host Name</div>
-                                        <input
-                                            value={onboardingHostName}
-                                            onChange={e => setOnboardingHostName(e.target.value)}
-                                            className={STYLES.input}
-                                            placeholder="Host name"
-                                        />
+                                <div className="space-y-4">
+                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/65 p-4">
+                                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Identity</div>
+                                        <div className="text-lg font-bold text-white mt-1">Define your host profile</div>
+                                        <div className="text-sm text-zinc-400 mt-1">These values become your default organization and room identity.</div>
                                     </div>
-                                    <div>
-                                        <div className="text-xs uppercase tracking-widest text-zinc-500 mb-1">Workspace Name</div>
-                                        <input
-                                            value={onboardingWorkspaceName}
-                                            onChange={e => setOnboardingWorkspaceName(e.target.value)}
-                                            className={STYLES.input}
-                                            placeholder="Workspace name"
-                                        />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div>
+                                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-500 mb-1">Host Name</div>
+                                            <input
+                                                value={onboardingHostName}
+                                                onChange={e => setOnboardingHostName(e.target.value)}
+                                                className={STYLES.input}
+                                                placeholder="Host name"
+                                            />
+                                        </div>
+                                        <div>
+                                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-500 mb-1">Workspace Name</div>
+                                            <input
+                                                value={onboardingWorkspaceName}
+                                                onChange={e => setOnboardingWorkspaceName(e.target.value)}
+                                                className={STYLES.input}
+                                                placeholder="Workspace name"
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="host-form-helper">This creates/updates your organization record used for billing and entitlements.</div>
+                                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2 text-xs text-zinc-400">
+                                        This creates or updates the organization record used for capabilities, billing, and room ownership.
+                                    </div>
                                     <div className="flex justify-end">
                                         <button
                                             onClick={provisionOnboardingWorkspace}
@@ -9368,6 +10223,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             )}
                             {onboardingStep === 1 && (
                                 <div className="space-y-4">
+                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/65 p-4">
+                                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Billing</div>
+                                        <div className="text-lg font-bold text-white mt-1">Choose your workspace plan</div>
+                                        <div className="text-sm text-zinc-400 mt-1">Pick a tier now and keep momentum; you can change it later.</div>
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                         {HOST_ONBOARDING_PLAN_OPTIONS.map((option) => (
                                             <button
@@ -9375,11 +10235,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 onClick={() => setOnboardingPlanId(option.id)}
                                                 className={`text-left rounded-xl border p-3 transition-colors ${
                                                     onboardingPlanId === option.id
-                                                        ? 'border-[#00C4D9]/60 bg-[#00C4D9]/10'
+                                                        ? 'border-[#00C4D9]/60 bg-[#00C4D9]/12'
                                                         : 'border-zinc-700 bg-zinc-950/70 hover:border-zinc-500'
                                                 }`}
                                             >
-                                                <div className="text-white font-semibold">{option.label}</div>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-white font-semibold">{option.label}</div>
+                                                    {onboardingPlanId === option.id && (
+                                                        <span className="text-[10px] uppercase tracking-[0.2em] rounded-full border border-cyan-300/35 bg-cyan-500/20 text-cyan-100 px-2 py-0.5">Selected</span>
+                                                    )}
+                                                </div>
                                                 <div className="text-zinc-300 text-sm">{option.price}</div>
                                                 <div className="text-zinc-500 text-xs mt-2">{option.note}</div>
                                             </button>
@@ -9425,7 +10290,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </button>
                                     </div>
                                     {!onboardingHasActiveSubscription && onboardingPlanId !== 'free' && (
-                                        <div className="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded-lg px-3 py-2">
+                                        <div className="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/35 rounded-lg px-3 py-2">
                                             Subscription is not active yet. You can continue setup now and activate billing later.
                                         </div>
                                     )}
@@ -9433,8 +10298,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             )}
                             {onboardingStep === 2 && (
                                 <div className="space-y-4">
-                                    <div>
-                                        <div className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Default Logo</div>
+                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/65 p-4">
+                                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Branding</div>
+                                        <div className="text-lg font-bold text-white mt-1">Set your room identity</div>
+                                        <div className="text-sm text-zinc-400 mt-1">Choose a default logo now. You can always override this per room later.</div>
+                                    </div>
+                                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
+                                        <div className="text-xs uppercase tracking-[0.22em] text-zinc-500 mb-2">Default Logo</div>
                                         <div className="flex items-center gap-3 mb-3">
                                             <img src={onboardingLogoUrl || ASSETS.logo} alt="Onboarding logo preview" className="w-20 h-20 object-contain rounded-lg border border-zinc-700 bg-zinc-950 p-2" />
                                             <div className="text-sm text-zinc-400">This logo becomes your initial room branding and can be changed later in settings.</div>
@@ -9451,10 +10321,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <button
                                                 key={`wizard-logo-${choice.id}`}
                                                 onClick={() => setOnboardingLogoUrl(choice.url)}
-                                                className={`rounded-lg border p-2 flex flex-col items-center gap-2 ${
+                                                className={`rounded-xl border p-2 flex flex-col items-center gap-2 transition-colors ${
                                                     onboardingLogoUrl === choice.url
                                                         ? 'border-[#00C4D9]/60 bg-[#00C4D9]/10'
-                                                        : 'border-zinc-700 bg-zinc-950/70'
+                                                        : 'border-zinc-700 bg-zinc-950/70 hover:border-zinc-500'
                                                 }`}
                                             >
                                                 <img src={choice.url} alt={choice.label} className="w-16 h-16 object-contain bg-zinc-950 rounded-md p-1" />
@@ -9480,6 +10350,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             )}
                             {onboardingStep === 3 && (
                                 <div className="space-y-4">
+                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/65 p-4">
+                                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Launch</div>
+                                        <div className="text-lg font-bold text-white mt-1">Review and create your first room</div>
+                                        <div className="text-sm text-zinc-400 mt-1">Launch creates the room and opens Night Setup for queue and mode planning.</div>
+                                    </div>
                                     <div className="bg-zinc-950/70 border border-zinc-800 rounded-xl p-4 space-y-2 text-sm">
                                         <div className="flex justify-between gap-2">
                                             <span className="text-zinc-500">Host</span>
@@ -9498,7 +10373,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <span className="text-white font-semibold">{orgContext?.status || 'inactive'}</span>
                                         </div>
                                     </div>
-                                    <div className="text-sm text-zinc-400">Launch creates your first room, then opens a Night Setup wizard for queue policy and mode planning.</div>
                                     <div className="flex justify-between gap-2">
                                         <button
                                             onClick={() => setOnboardingStep(2)}
@@ -9520,7 +10394,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 </div>
             )}
-        </div> 
+            </div>
+        </div>
     );
     if (catalogueOnly) return (
             <div className="min-h-screen bg-zinc-950 text-white font-saira p-6 flex flex-col">
@@ -9970,6 +10845,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setDmDraft,
         getAppleMusicUserToken,
         silenceAll,
+        pendingModerationCount: moderationQueueState.totalPending,
+        runMissionHypeMoment,
+        missionControlEnabled,
+        missionControlCohort,
         openHostSettings: () => {
             openAdminWorkspace('ops.room_setup');
         },
