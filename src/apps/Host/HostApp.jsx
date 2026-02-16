@@ -6079,6 +6079,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     useEffect(() => {
         if (!showNightSetupWizard) return;
+        setShowLaunchMenu(false);
+        setShowNavMenu(false);
         trackEvent('host_night_setup_step_view', {
             step_index: nightSetupStep,
             preset_id: nightSetupPresetId,
@@ -9606,7 +9608,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             disabled={nightSetupApplying}
                                             className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
-                                            {nightSetupApplying ? 'Applying...' : 'Apply Mission'}
+                                            {nightSetupApplying ? 'Saving...' : 'Save + Close'}
                                         </button>
                                         <button
                                             onClick={launchNightSetupPackage}
