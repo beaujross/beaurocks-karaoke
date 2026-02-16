@@ -9205,6 +9205,80 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const readinessComplete = readinessChecks.filter((item) => item.ok).length;
         const readinessScore = Math.round((readinessComplete / readinessChecks.length) * 100);
         const readinessMissing = readinessChecks.filter((item) => !item.ok).map((item) => item.label).slice(0, 2);
+        const getQueueLimitLabel = (modeId = 'none') =>
+            NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === modeId)?.label || 'No Limits';
+        const getQueueRotationLabel = (rotationId = 'round_robin') =>
+            NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === rotationId)?.label || 'Round Robin';
+        const formatBoolean = (value) => (value ? 'On' : 'Off');
+        const formatQueueSummary = (modeId = 'none', limitCount = 0, rotationId = 'round_robin', firstTimeBoost = false) => {
+            const limitLabel = getQueueLimitLabel(modeId);
+            const rotationLabel = getQueueRotationLabel(rotationId);
+            const countPart = modeId !== 'none' ? ` (${Math.max(0, Number(limitCount || 0))})` : '';
+            const boostPart = firstTimeBoost ? ' + First-Time Boost' : '';
+            return `${limitLabel}${countPart} | ${rotationLabel}${boostPart}`;
+        };
+        const currentSetupSnapshot = {
+            showScoring: !!nightSetupShowScoring,
+            autoPlayMedia: !!nightSetupAutoPlayMedia,
+            chatShowOnTv: !!nightSetupChatOnTv,
+            marqueeEnabled: !!nightSetupMarqueeEnabled,
+            queueLimitMode: String(nightSetupQueueLimitMode || 'none'),
+            queueLimitCount: Math.max(0, Number(nightSetupQueueLimitCount || 0)),
+            queueRotation: String(nightSetupQueueRotation || 'round_robin'),
+            queueFirstTimeBoost: !!nightSetupQueueFirstTimeBoost
+        };
+        const getPresetSnapshot = (presetInput = selectedPreset) => {
+            const presetSettings = presetInput?.settings || {};
+            const queue = presetSettings?.queueSettings || {};
+            const limitMode = String(queue?.limitMode || 'none');
+            const limitCount = Math.max(0, Number(queue?.limitCount || 0));
+            const queueRotation = String(queue?.rotation || 'round_robin');
+            const firstTimeBoost = queue?.firstTimeBoost !== false;
+            return {
+                showScoring: presetSettings.showScoring !== false,
+                autoPlayMedia: presetSettings.autoPlayMedia !== false,
+                chatShowOnTv: !!presetSettings.chatShowOnTv,
+                marqueeEnabled: !!presetSettings.marqueeEnabled,
+                queueLimitMode: limitMode,
+                queueLimitCount: limitCount,
+                queueRotation,
+                queueFirstTimeBoost: firstTimeBoost,
+                queueSummary: formatQueueSummary(limitMode, limitCount, queueRotation, firstTimeBoost)
+            };
+        };
+        const getPresetChangeSummary = (presetInput = selectedPreset) => {
+            const presetSnapshot = getPresetSnapshot(presetInput);
+            const chips = [];
+            const pushChip = (label, value) => chips.push({ label, value });
+            if (presetSnapshot.queueSummary !== formatQueueSummary(
+                currentSetupSnapshot.queueLimitMode,
+                currentSetupSnapshot.queueLimitCount,
+                currentSetupSnapshot.queueRotation,
+                currentSetupSnapshot.queueFirstTimeBoost
+            )) {
+                pushChip('Queue', presetSnapshot.queueSummary);
+            }
+            if (presetSnapshot.showScoring !== currentSetupSnapshot.showScoring) {
+                pushChip('Scoring', formatBoolean(presetSnapshot.showScoring));
+            }
+            if (presetSnapshot.autoPlayMedia !== currentSetupSnapshot.autoPlayMedia) {
+                pushChip('Auto-Play', formatBoolean(presetSnapshot.autoPlayMedia));
+            }
+            if (presetSnapshot.chatShowOnTv !== currentSetupSnapshot.chatShowOnTv) {
+                pushChip('TV Chat', formatBoolean(presetSnapshot.chatShowOnTv));
+            }
+            if (presetSnapshot.marqueeEnabled !== currentSetupSnapshot.marqueeEnabled) {
+                pushChip('Marquee', formatBoolean(presetSnapshot.marqueeEnabled));
+            }
+            return {
+                count: chips.length,
+                chips: chips.slice(0, 3),
+                hiddenCount: Math.max(0, chips.length - 3),
+                queueSummary: presetSnapshot.queueSummary
+            };
+        };
+        const selectedPresetSnapshot = getPresetSnapshot(selectedPreset);
+        const selectedPresetChangeSummary = getPresetChangeSummary(selectedPreset);
 
         if (missionControlEnabled) {
             const missionPreset = HOST_NIGHT_PRESETS[missionDraft?.archetype] || HOST_NIGHT_PRESETS.casual;
@@ -9648,8 +9722,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
                                     <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Pre-Show Setup</div>
-                                    <div className="text-2xl md:text-3xl font-black text-white mt-1">Build Tonight&apos;s Game Plan</div>
-                                    <div className="text-sm text-zinc-400 mt-1">A quick room setup run-through before guests flood in.</div>
+                                    <div className="text-2xl md:text-3xl font-black text-white mt-1">Set The Night Physics</div>
+                                    <div className="text-sm text-zinc-400 mt-1">Pick the vibe, pacing, and spotlight so the room can run smoothly with less host micromanagement.</div>
                                 </div>
                                 <button
                                     onClick={closeNightSetupWizard}
@@ -9661,57 +9735,64 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                         </div>
 
-                        <div className="px-4 py-3 md:px-6 border-b border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            {NIGHT_SETUP_STEPS.map((step) => (
-                                <button
-                                    key={`night-setup-step-${step.id}`}
-                                    onClick={() => setNightSetupStep(step.id)}
-                                    className={`rounded-2xl border px-3 py-3 text-left transition-all ${
-                                        nightSetupStep === step.id
-                                            ? 'border-[#00C4D9]/60 bg-[#00C4D9]/12'
-                                            : nightSetupStep > step.id
-                                                ? 'border-emerald-400/35 bg-emerald-500/8'
-                                                : 'border-zinc-800 bg-zinc-900/70 hover:border-zinc-600'
-                                    }`}
-                                >
-                                    <div className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">Step {step.id + 1} of 3</div>
-                                    <div className={`text-sm font-bold mt-1 ${nightSetupStep === step.id ? 'text-cyan-100' : (nightSetupStep > step.id ? 'text-emerald-200' : 'text-white')}`}>
-                                        {step.label}
-                                    </div>
-                                    <div className="text-xs text-zinc-400 mt-1">{step.subtitle}</div>
-                                </button>
-                            ))}
+                        <div className="px-4 py-3 md:px-6 border-b border-white/10">
+                            <div className="flex flex-wrap items-center gap-2">
+                                {NIGHT_SETUP_STEPS.map((step, idx) => (
+                                    <button
+                                        key={`night-setup-step-${step.id}`}
+                                        onClick={() => setNightSetupStep(step.id)}
+                                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-all ${
+                                            nightSetupStep === step.id
+                                                ? 'border-cyan-400/60 bg-cyan-500/12 text-cyan-100'
+                                                : nightSetupStep > step.id
+                                                    ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100'
+                                                    : 'border-zinc-700 bg-zinc-900/70 text-zinc-300 hover:border-zinc-500'
+                                        }`}
+                                    >
+                                        <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                                            nightSetupStep === step.id
+                                                ? 'bg-cyan-400/20 text-cyan-100'
+                                                : nightSetupStep > step.id
+                                                    ? 'bg-emerald-500/20 text-emerald-100'
+                                                    : 'bg-zinc-800 text-zinc-400'
+                                        }`}>
+                                            {idx + 1}
+                                        </span>
+                                        <span className="font-bold uppercase tracking-[0.2em]">{step.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="text-xs text-zinc-500 mt-2">
+                                {activeStep.subtitle}
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
                             <div className="px-4 py-4 md:px-6 md:py-5 max-h-[64vh] overflow-y-auto custom-scrollbar space-y-4">
-                                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Current Step</div>
-                                    <div className="text-base font-bold text-white mt-1">Step {activeStep.id + 1}: {activeStep.label}</div>
-                                    <div className="text-xs text-zinc-400 mt-1">{activeStep.subtitle}</div>
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                        {sectionLabels.map((label) => (
-                                            <span key={`night-setup-section-${label}`} className="text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border border-zinc-700 text-zinc-300 bg-zinc-950/60">
-                                                {label}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="rounded-2xl border border-[#00C4D9]/30 bg-[#00C4D9]/8 px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">Recommended</div>
-                                    <div className="flex flex-wrap items-center justify-between gap-2 mt-1">
+                                <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/10 px-3 py-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
                                         <div>
-                                            <div className="text-sm font-bold text-white">{HOST_NIGHT_PRESETS[recommendation.presetId]?.label || 'Casual Night'}</div>
-                                            <div className="text-xs text-zinc-300 mt-1">{recommendation.reason || 'Suggested based on recent setup patterns.'}</div>
+                                            <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">Orchestrator Hint</div>
+                                            <div className="text-sm text-zinc-100 mt-1">
+                                                Step {activeStep.id + 1}: <span className="font-bold">{activeStep.label}</span>
+                                            </div>
+                                            <div className="text-xs text-zinc-300 mt-1">{recommendation.reason || activeStep.subtitle}</div>
                                         </div>
                                         {recommendation.presetId && recommendation.presetId !== nightSetupPresetId && (
                                             <button
                                                 onClick={() => seedNightSetupFromPreset(recommendation.presetId, { keepQueueDraft: false })}
                                                 className={`${STYLES.btnStd} ${STYLES.btnInfo}`}
                                             >
-                                                Use Recommended
+                                                Use {HOST_NIGHT_PRESETS[recommendation.presetId]?.label || 'Recommended'}
                                             </button>
                                         )}
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {sectionLabels.map((label) => (
+                                            <span key={`night-setup-section-${label}`} className="text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border border-cyan-300/30 text-cyan-100 bg-black/25">
+                                                {label}
+                                            </span>
+                                        ))}
                                     </div>
                                 </div>
                                 {nightSetupStep === 0 && (
@@ -9725,6 +9806,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             {Object.values(HOST_NIGHT_PRESETS).map((preset) => {
                                                 const active = nightSetupPresetId === preset.id;
                                                 const meta = NIGHT_SETUP_PRESET_META[preset.id] || NIGHT_SETUP_PRESET_META.casual;
+                                                const changeSummary = getPresetChangeSummary(preset);
                                                 return (
                                                     <button
                                                         key={`night-setup-preset-${preset.id}`}
@@ -9739,14 +9821,44 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                             </div>
                                                             <div className="text-lg font-bold text-white mt-2">{preset.label}</div>
                                                             <div className="text-sm text-zinc-300 mt-1">{preset.description}</div>
+                                                            <div className="mt-3">
+                                                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+                                                                    {changeSummary.count > 0 ? `${changeSummary.count} live setting change${changeSummary.count === 1 ? '' : 's'}` : 'No immediate change'}
+                                                                </div>
+                                                                {changeSummary.count > 0 ? (
+                                                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                                                        {changeSummary.chips.map((chip) => (
+                                                                            <span
+                                                                                key={`legacy-preset-change-${preset.id}-${chip.label}`}
+                                                                                className="text-[10px] px-2 py-1 rounded-full border border-cyan-300/30 bg-black/35 text-zinc-100"
+                                                                            >
+                                                                                {chip.label}: {chip.value}
+                                                                            </span>
+                                                                        ))}
+                                                                        {changeSummary.hiddenCount > 0 && (
+                                                                            <span className="text-[10px] px-2 py-1 rounded-full border border-zinc-600 bg-black/30 text-zinc-400">
+                                                                                +{changeSummary.hiddenCount} more
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-xs text-zinc-500 mt-1">
+                                                                        {active ? 'Already active.' : 'Matches current setup values.'}
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </button>
                                                 );
                                             })}
                                         </div>
                                         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 2: Preset Feature Bundle</div>
-                                            <div className="text-sm text-zinc-400 mt-1">These features are coming from the selected night type. You can fine-tune everything later in Admin.</div>
+                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 2: Night Physics Applied</div>
+                                            <div className="text-sm text-zinc-400 mt-1">This is exactly what the selected night type sets right now.</div>
+                                            <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-950/60 p-3">
+                                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Queue Baseline</div>
+                                                <div className="text-sm text-zinc-200 mt-1">{selectedPresetSnapshot.queueSummary}</div>
+                                            </div>
                                             <div className="mt-3 flex flex-wrap gap-2">
                                                 {presetFeaturePills.map((item) => (
                                                     <span
@@ -9758,7 +9870,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 ))}
                                             </div>
                                             <div className="text-xs text-zinc-400 mt-3">
-                                                {enabledPresetFeatureCount} of {presetFeaturePills.length} preset features enabled.
+                                                {enabledPresetFeatureCount} of {presetFeaturePills.length} preset systems active.
+                                                {selectedPresetChangeSummary.count > 0 ? ` ${selectedPresetChangeSummary.count} immediate change${selectedPresetChangeSummary.count === 1 ? '' : 's'} from current setup.` : ' No differences from current setup.'}
                                             </div>
                                         </div>
                                     </div>
@@ -9922,7 +10035,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
 
                             <aside className="border-t lg:border-t-0 lg:border-l border-white/10 bg-zinc-950/75 px-4 py-4 md:px-5 md:py-5">
-                                <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Tonight&apos;s Setup</div>
+                                <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Tonight&apos;s Plan</div>
                                 <div className="mt-2 rounded-2xl border border-cyan-500/30 bg-zinc-900/80 p-3">
                                     <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">TV Preview</div>
                                     <div className="mt-2 rounded-xl border border-zinc-700 bg-black/40 overflow-hidden">
@@ -9954,7 +10067,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="text-xs text-zinc-400 mt-1">{selectedPreset.description}</div>
                                 </div>
                                 <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
-                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Queue Rules</div>
+                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Pacing Rules</div>
                                     <div className="text-sm text-zinc-200 mt-1">
                                         {limitOption.label}
                                         {nightSetupQueueLimitMode !== 'none' ? ` (${Math.max(0, Number(nightSetupQueueLimitCount || 0))})` : ''}
@@ -10006,13 +10119,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         Continue
                                     </button>
                                 ) : (
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap justify-end">
                                         <button
                                             onClick={() => applyNightSetupWizard({ intent: 'save' })}
                                             disabled={nightSetupApplying}
-                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
-                                            {nightSetupApplying ? 'Applying...' : 'Apply Setup'}
+                                            {nightSetupApplying ? 'Saving...' : 'Save + Close'}
                                         </button>
                                         <button
                                             onClick={() => applyNightSetupWizard({ intent: 'start_match' })}
@@ -10026,7 +10139,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             disabled={nightSetupApplying}
                                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
-                                            {nightSetupApplying ? 'Launching...' : 'Go Live Package'}
+                                            {nightSetupApplying ? 'Launching...' : 'Launch Package'}
                                         </button>
                                     </div>
                                 )}
