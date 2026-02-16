@@ -6101,7 +6101,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         updateRoom({ bgMusicPlaying: next, bgMusicUrl: BG_TRACKS[currentTrackIdx].url });
     }, [currentTrackIdx, updateRoom]);
 
-    const applyNightSetupWizard = useCallback(async () => {
+    const nightSetupAutoOpenGameTimerRef = useRef(null);
+    useEffect(() => () => {
+        if (nightSetupAutoOpenGameTimerRef.current) {
+            clearTimeout(nightSetupAutoOpenGameTimerRef.current);
+            nightSetupAutoOpenGameTimerRef.current = null;
+        }
+    }, []);
+
+    const openSpotlightFlowFromSetup = useCallback((modeId = 'karaoke') => {
+        const targetMode = String(modeId || '').trim().toLowerCase();
+        if (!targetMode || targetMode === 'karaoke') {
+            setTab('stage');
+            return;
+        }
+        setTab('games');
+        setAutoOpenGameId('');
+        if (nightSetupAutoOpenGameTimerRef.current) {
+            clearTimeout(nightSetupAutoOpenGameTimerRef.current);
+        }
+        nightSetupAutoOpenGameTimerRef.current = setTimeout(() => {
+            setAutoOpenGameId(targetMode);
+            nightSetupAutoOpenGameTimerRef.current = null;
+        }, 0);
+    }, [setTab]);
+
+    const applyNightSetupWizard = useCallback(async (options = {}) => {
+        const intent = String(options?.intent || 'save').trim().toLowerCase();
         if (!roomCode) {
             toast('Open a room first.');
             return false;
@@ -6160,6 +6186,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const payload = missionControlEnabled ? missionPayload : legacyPayload;
         const payloadPreset = HOST_NIGHT_PRESETS[payload.hostNightPreset] || HOST_NIGHT_PRESETS.casual;
         const payloadPresetSettings = payloadPreset?.settings || {};
+        const resolvedSpotlightMode = String(
+            missionControlEnabled
+                ? (missionDraft?.spotlightMode || payload.gamePreviewId || nightSetupPrimaryMode || 'karaoke')
+                : (nightSetupPrimaryMode || payload.gamePreviewId || 'karaoke')
+        ).trim().toLowerCase();
         setNightSetupApplying(true);
         try {
             await updateRoom({
@@ -6198,15 +6229,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setSearchSources(payloadPreset.searchSources || { local: true, youtube: true, itunes: true });
             if (payload.autoBgMusic && !playingBg) setBgMusicState(true);
             if (!payload.autoBgMusic && playingBg) setBgMusicState(false);
-            if (nightSetupPrimaryMode !== 'karaoke') {
-                setAutoOpenGameId(nightSetupPrimaryMode);
-                setTab('games');
-            } else {
-                setTab('stage');
+            if (intent === 'start_match') {
+                openSpotlightFlowFromSetup(resolvedSpotlightMode);
             }
             trackEvent('host_night_setup_applied', {
                 preset_id: payload.hostNightPreset,
-                primary_mode: nightSetupPrimaryMode,
+                primary_mode: resolvedSpotlightMode,
                 queue_limit_mode: payload.queueSettings.limitMode
             });
             if (missionControlEnabled) {
@@ -6228,7 +6256,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (!!payloadPresetSettings.autoLyricsOnQueue && !canUseAi) {
                 toast(`${payloadPreset.label} applied. AI lyric auto-generation needs a Host subscription.`);
             } else {
-                toast(missionControlEnabled ? 'Mission control setup applied.' : 'Night setup applied.');
+                toast(intent === 'start_match'
+                    ? 'Setup saved. Match flow ready.'
+                    : (missionControlEnabled ? 'Mission control setup applied.' : 'Night setup applied.'));
             }
             setShowNightSetupWizard(false);
             setNightSetupStep(0);
@@ -6261,10 +6291,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         updateRoom,
         playingBg,
         setBgMusicState,
+        openSpotlightFlowFromSetup,
         toast,
         setSearchSources,
-        setChatShowOnTv,
-        setTab
+        setChatShowOnTv
     ]);
 
     const launchNightSetupPackage = useCallback(async () => {
@@ -6278,7 +6308,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } catch (_err) {
             // ignore popup-block issues
         }
-        const applied = await applyNightSetupWizard();
+        const applied = await applyNightSetupWizard({ intent: 'start_match' });
         if (!applied) return;
 
         const joinUrl = `${appBase}?room=${encodeURIComponent(roomCode)}`;
@@ -6948,11 +6978,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
 
             if (preset.id === 'bingo') {
-                setAutoOpenGameId('bingo');
-                setTab('games');
+                openSpotlightFlowFromSetup('bingo');
             } else if (preset.id === 'trivia') {
-                setAutoOpenGameId('trivia_pop');
-                setTab('games');
+                openSpotlightFlowFromSetup('trivia_pop');
             }
 
             if (!!presetSettings.autoLyricsOnQueue && !canUseAi) {
@@ -9604,11 +9632,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button
-                                            onClick={applyNightSetupWizard}
+                                            onClick={() => applyNightSetupWizard({ intent: 'save' })}
+                                            disabled={nightSetupApplying}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        >
+                                            {nightSetupApplying ? 'Saving...' : 'Save + Close'}
+                                        </button>
+                                        <button
+                                            onClick={() => applyNightSetupWizard({ intent: 'start_match' })}
                                             disabled={nightSetupApplying}
                                             className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
-                                            {nightSetupApplying ? 'Saving...' : 'Save + Close'}
+                                            {nightSetupApplying ? 'Starting...' : 'Save + Start Match'}
                                         </button>
                                         <button
                                             onClick={launchNightSetupPackage}
@@ -10000,16 +10035,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 ) : (
                                     <div className="flex items-center gap-2">
                                         <button
-                                            onClick={applyNightSetupWizard}
+                                            onClick={() => applyNightSetupWizard({ intent: 'save' })}
                                             disabled={nightSetupApplying}
                                             className={`${STYLES.btnStd} ${STYLES.btnPrimary} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
                                             {nightSetupApplying ? 'Applying...' : 'Apply Setup'}
                                         </button>
                                         <button
-                                            onClick={launchNightSetupPackage}
+                                            onClick={() => applyNightSetupWizard({ intent: 'start_match' })}
                                             disabled={nightSetupApplying}
                                             className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        >
+                                            {nightSetupApplying ? 'Starting...' : 'Save + Start Match'}
+                                        </button>
+                                        <button
+                                            onClick={launchNightSetupPackage}
+                                            disabled={nightSetupApplying}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
                                             {nightSetupApplying ? 'Launching...' : 'Go Live Package'}
                                         </button>

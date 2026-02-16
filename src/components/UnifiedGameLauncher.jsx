@@ -360,7 +360,6 @@ const UnifiedGameLauncher = ({
     const [triviaAiLoading, setTriviaAiLoading] = useState(false);
     const [wyrAiTopic, setWyrAiTopic] = useState('');
     const [wyrAiLoading, setWyrAiLoading] = useState(false);
-    const autoOpenRef = useRef(false);
     
     // Vocal challenge state
     const [vocalParticipants, setVocalParticipants] = useState([]);
@@ -502,12 +501,12 @@ const UnifiedGameLauncher = ({
     }, [roomCode]);
 
     useEffect(() => {
-        if (!autoOpenGameId || autoOpenRef.current) return;
-        const gameId = autoOpenGameId.toLowerCase();
+        if (!autoOpenGameId) return;
+        const raw = String(autoOpenGameId || '').trim().toLowerCase();
+        const gameId = raw.includes(':') ? raw.split(':')[0] : raw;
         if (!GAMES_META.find(g => g.id === gameId)) return;
         setSelectedGameForConfig(gameId);
         setShowGameConfig(true);
-        autoOpenRef.current = true;
     }, [autoOpenGameId]);
 
     useEffect(() => {
