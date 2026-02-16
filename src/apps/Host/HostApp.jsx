@@ -15,6 +15,7 @@ import QueueEditSongModal from './components/QueueEditSongModal';
 import HostLogoManager from './components/HostLogoManager';
 import ChatSettingsPanel from './components/ChatSettingsPanel';
 import HostTopChrome from './components/HostTopChrome';
+import ModerationInboxDrawer from './components/ModerationInboxDrawer';
 import FeatureGate from '../../components/FeatureGate';
 import useHostChat from './hooks/useHostChat';
 import useQueueDerivedState from './hooks/useQueueDerivedState';
@@ -22,6 +23,7 @@ import useQueueMediaTools from './hooks/useQueueMediaTools';
 import useQueueReorder from './hooks/useQueueReorder';
 import useQueueSongActions from './hooks/useQueueSongActions';
 import useQueueTabState from './hooks/useQueueTabState';
+import useModerationInboxState from './hooks/useModerationInboxState';
 import HOST_UI_FEATURE_CHECKLIST from './hostUiFeatureChecklist';
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
@@ -1513,193 +1515,23 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
     );
 };
 
-const IncomingModerationQueuePanel = ({ roomCode, room, updateRoom, callFunction }) => {
-    const toast = useToast() || console.log;
-    const [doodleSubmissions, setDoodleSubmissions] = useState([]);
-    const [selfieSubmissions, setSelfieSubmissions] = useState([]);
-    const [busyAction, setBusyAction] = useState('');
-    const doodle = room?.doodleOke || null;
-    const selfie = room?.selfieChallenge || null;
-    const doodlePromptId = doodle?.promptId || '';
-    const selfiePromptId = selfie?.promptId || '';
-    const doodleRequireReview = !!doodle?.requireReview;
-    const selfieRequireApproval = !!selfie?.requireApproval;
-    const approvedUids = useMemo(() => {
-        const ids = Array.isArray(doodle?.approvedUids) ? doodle.approvedUids : [];
-        return ids.filter(Boolean);
-    }, [doodle?.approvedUids]);
-    const approvedUidSet = useMemo(() => new Set(approvedUids), [approvedUids]);
-
-    useEffect(() => {
-        if (!roomCode || !doodlePromptId) {
-            setDoodleSubmissions([]);
-            return;
-        }
-        const submissionsQuery = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_submissions'),
-            where('roomCode', '==', roomCode),
-            where('promptId', '==', doodlePromptId)
-        );
-        const unsubSubs = onSnapshot(submissionsQuery, snap => {
-            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            docs.sort((a, b) => toMs(b.timestamp) - toMs(a.timestamp));
-            setDoodleSubmissions(docs);
-        });
-        return () => unsubSubs();
-    }, [roomCode, doodlePromptId]);
-
-    useEffect(() => {
-        if (!roomCode || !selfiePromptId) {
-            setSelfieSubmissions([]);
-            return;
-        }
-        const submissionsQuery = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'),
-            where('roomCode', '==', roomCode),
-            where('promptId', '==', selfiePromptId)
-        );
-        const unsubSubs = onSnapshot(submissionsQuery, snap => {
-            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            docs.sort((a, b) => toMs(b.timestamp) - toMs(a.timestamp));
-            setSelfieSubmissions(docs);
-        });
-        return () => unsubSubs();
-    }, [roomCode, selfiePromptId]);
-
-    const pendingDoodles = useMemo(() => (
-        doodleRequireReview
-            ? doodleSubmissions.filter((submission) => submission?.uid && !approvedUidSet.has(submission.uid))
-            : []
-    ), [doodleRequireReview, doodleSubmissions, approvedUidSet]);
-
-    const pendingSelfies = useMemo(() => (
-        selfieRequireApproval
-            ? selfieSubmissions.filter((submission) => !submission?.approved)
-            : []
-    ), [selfieRequireApproval, selfieSubmissions]);
-
-    const pendingBingoSuggestions = useMemo(() => {
-        const suggestions = room?.bingoSuggestions || {};
-        const revealed = room?.bingoRevealed || {};
-        return Object.entries(suggestions)
-            .map(([idx, data]) => ({
-                idx: Number(idx),
-                count: Number(data?.count || 0),
-                note: data?.lastNote || '',
-                lastAtMs: toMs(data?.lastAt)
-            }))
-            .filter((entry) => Number.isFinite(entry.idx) && entry.count > 0 && !revealed?.[entry.idx])
-            .sort((a, b) => (b.lastAtMs || 0) - (a.lastAtMs || 0));
-    }, [room?.bingoSuggestions, room?.bingoRevealed]);
-
-    const queueItems = useMemo(() => {
-        const doodleItems = pendingDoodles.map((submission) => ({
-            key: `doodle-${submission.id}`,
-            type: 'doodle',
-            timestamp: toMs(submission.timestamp),
-            title: submission?.name || 'Guest sketch',
-            subtitle: 'Doodle-oke submission awaiting review',
-            image: submission?.image || null,
-            submission
-        }));
-        const selfieItems = pendingSelfies.map((submission) => ({
-            key: `selfie-${submission.id}`,
-            type: 'selfie',
-            timestamp: toMs(submission.timestamp),
-            title: submission?.userName || submission?.name || 'Guest selfie',
-            subtitle: 'Selfie Challenge submission awaiting approval',
-            image: submission?.url || null,
-            submission
-        }));
-        const bingoItems = pendingBingoSuggestions.map((suggestion) => ({
-            key: `bingo-${suggestion.idx}`,
-            type: 'bingo',
-            timestamp: suggestion.lastAtMs || 0,
-            title: `Bingo Tile #${suggestion.idx + 1}`,
-            subtitle: `${suggestion.count} vote${suggestion.count === 1 ? '' : 's'} from audience`,
-            suggestion
-        }));
-        return [...doodleItems, ...selfieItems, ...bingoItems]
-            .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(0, 24);
-    }, [pendingDoodles, pendingSelfies, pendingBingoSuggestions]);
-
-    const updateDoodleReview = async (patch, successMessage) => {
-        if (!doodle) return;
-        setBusyAction('doodle-update');
-        try {
-            await updateRoom({
-                doodleOke: {
-                    ...doodle,
-                    ...patch,
-                    updatedAt: nowMs()
-                }
-            });
-            if (successMessage) toast(successMessage);
-        } catch (e) {
-            hostLogger.error('Incoming queue doodle update failed', e);
-            toast('Could not update Doodle moderation');
-        } finally {
-            setBusyAction('');
-        }
-    };
-
-    const approveDoodleUid = async (uid) => {
-        if (!uid) return;
-        const next = Array.from(new Set([...approvedUids, uid]));
-        await updateDoodleReview({ approvedUids: next }, 'Sketch approved for TV');
-    };
-
-    const approveSelfieSubmission = async (submission) => {
-        if (!roomCode || !submission?.id || typeof callFunction !== 'function') return;
-        setBusyAction(`selfie-${submission.id}`);
-        try {
-            await callFunction('setSelfieSubmissionApproval', {
-                roomCode,
-                submissionId: submission.id,
-                approved: true
-            });
-            toast('Selfie approved');
-        } catch (e) {
-            hostLogger.error('Incoming queue selfie approval failed', e);
-            toast('Could not approve selfie');
-        } finally {
-            setBusyAction('');
-        }
-    };
-
-    const approveBingoSuggestion = async (idx) => {
-        setBusyAction(`bingo-approve-${idx}`);
-        try {
-            await updateRoom({
-                [`bingoRevealed.${idx}`]: true,
-                [`bingoSuggestions.${idx}.approvedAt`]: serverTimestamp()
-            });
-            toast(`Bingo tile #${idx + 1} approved`);
-        } catch (e) {
-            hostLogger.error('Incoming queue bingo approval failed', e);
-            toast('Could not approve bingo suggestion');
-        } finally {
-            setBusyAction('');
-        }
-    };
-
-    const clearBingoSuggestion = async (idx) => {
-        setBusyAction(`bingo-clear-${idx}`);
-        try {
-            await updateRoom({
-                [`bingoSuggestions.${idx}.count`]: 0,
-                [`bingoSuggestions.${idx}.lastNote`]: '',
-                [`bingoSuggestions.${idx}.lastAt`]: null
-            });
-            toast(`Bingo tile #${idx + 1} cleared`);
-        } catch (e) {
-            hostLogger.error('Incoming queue bingo clear failed', e);
-            toast('Could not clear bingo suggestion');
-        } finally {
-            setBusyAction('');
-        }
-    };
+const IncomingModerationQueuePanel = ({
+    queueItems = [],
+    counts = {},
+    actions = {},
+    busyAction = '',
+    loading = false,
+    embedded = false
+}) => {
+    const doodlePending = Math.max(0, Number(counts?.doodlePending || 0));
+    const selfiePending = Math.max(0, Number(counts?.selfiePending || 0));
+    const bingoPending = Math.max(0, Number(counts?.bingoPending || 0));
+    const totalPending = Math.max(0, Number(counts?.totalPending || 0));
+    const listMaxHeight = embedded ? 'max-h-72' : 'max-h-[calc(100vh-270px)]';
+    const approveDoodleUid = actions?.approveDoodleUid;
+    const approveSelfieSubmission = actions?.approveSelfieSubmission;
+    const approveBingoSuggestion = actions?.approveBingoSuggestion;
+    const clearBingoSuggestion = actions?.clearBingoSuggestion;
 
     return (
         <div className={`${STYLES.panel} p-4 border border-cyan-500/20`}>
@@ -1709,25 +1541,29 @@ const IncomingModerationQueuePanel = ({ roomCode, room, updateRoom, callFunction
                     <div className="text-xl font-bold text-white">Review crowd submissions in one feed</div>
                 </div>
                 <div className="text-xs text-zinc-400 text-right">
-                    Queue items: <span className="text-zinc-200 font-bold">{queueItems.length}</span>
+                    Queue items: <span className="text-zinc-200 font-bold">{totalPending}</span>
                 </div>
             </div>
             <div className="grid grid-cols-3 gap-3 mb-4">
                 <div className="rounded-xl border border-white/10 bg-zinc-900/70 p-3">
                     <div className="text-xs uppercase tracking-widest text-zinc-500">Doodle Pending</div>
-                    <div className="text-2xl font-bold text-white mt-1">{pendingDoodles.length}</div>
+                    <div className="text-2xl font-bold text-white mt-1">{doodlePending}</div>
                 </div>
                 <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-3">
                     <div className="text-xs uppercase tracking-widest text-zinc-500">Selfie Pending</div>
-                    <div className="text-2xl font-bold text-cyan-300 mt-1">{pendingSelfies.length}</div>
+                    <div className="text-2xl font-bold text-cyan-300 mt-1">{selfiePending}</div>
                 </div>
                 <div className="rounded-xl border border-amber-400/20 bg-amber-500/5 p-3">
                     <div className="text-xs uppercase tracking-widest text-zinc-500">Bingo Suggestions</div>
-                    <div className="text-2xl font-bold text-amber-300 mt-1">{pendingBingoSuggestions.length}</div>
+                    <div className="text-2xl font-bold text-amber-300 mt-1">{bingoPending}</div>
                 </div>
             </div>
-            {queueItems.length > 0 ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-72 overflow-y-auto custom-scrollbar pr-1">
+            {loading && totalPending === 0 ? (
+                <div className="text-center text-zinc-500 text-sm py-8 border border-white/10 rounded-xl bg-zinc-950/50">
+                    Loading moderation feed...
+                </div>
+            ) : queueItems.length > 0 ? (
+                <div className={`grid grid-cols-1 lg:grid-cols-2 gap-3 ${listMaxHeight} overflow-y-auto custom-scrollbar pr-1`}>
                     {queueItems.map((item) => (
                         <div key={item.key} className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-3 flex items-start gap-3">
                             {item.image ? (
@@ -1747,11 +1583,6 @@ const IncomingModerationQueuePanel = ({ roomCode, room, updateRoom, callFunction
                                 </div>
                                 <div className="text-sm font-bold text-white truncate mt-0.5">{item.title}</div>
                                 <div className="text-xs text-zinc-400 mt-0.5">{item.subtitle}</div>
-                                {item.type === 'doodle' && (
-                                    <div className="text-[11px] text-zinc-500 mt-1">
-                                        Review mode: {doodleRequireReview ? 'Host approval required' : 'Auto-show'}
-                                    </div>
-                                )}
                                 {item.type === 'bingo' && item.suggestion?.note && (
                                     <div className="text-[11px] text-zinc-500 mt-1 truncate">
                                         Last note: {item.suggestion.note}
@@ -1760,18 +1591,18 @@ const IncomingModerationQueuePanel = ({ roomCode, room, updateRoom, callFunction
                                 <div className="flex flex-wrap gap-2 mt-2">
                                     {item.type === 'doodle' && (
                                         <button
-                                            onClick={() => approveDoodleUid(item.submission?.uid)}
-                                            disabled={!!busyAction || !item.submission?.uid}
-                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[10px] px-2 py-1 ${(!!busyAction || !item.submission?.uid) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            onClick={() => approveDoodleUid?.(item.submission?.uid)}
+                                            disabled={!!busyAction || !item.submission?.uid || typeof approveDoodleUid !== 'function'}
+                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[10px] px-2 py-1 ${(!!busyAction || !item.submission?.uid || typeof approveDoodleUid !== 'function') ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
                                             Approve
                                         </button>
                                     )}
                                     {item.type === 'selfie' && (
                                         <button
-                                            onClick={() => approveSelfieSubmission(item.submission)}
-                                            disabled={busyAction || !item.submission?.id}
-                                            className={`${STYLES.btnStd} ${STYLES.btnInfo} text-[10px] px-2 py-1 ${(busyAction || !item.submission?.id) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            onClick={() => approveSelfieSubmission?.(item.submission)}
+                                            disabled={busyAction || !item.submission?.id || typeof approveSelfieSubmission !== 'function'}
+                                            className={`${STYLES.btnStd} ${STYLES.btnInfo} text-[10px] px-2 py-1 ${(busyAction || !item.submission?.id || typeof approveSelfieSubmission !== 'function') ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
                                             Approve
                                         </button>
@@ -1779,16 +1610,16 @@ const IncomingModerationQueuePanel = ({ roomCode, room, updateRoom, callFunction
                                     {item.type === 'bingo' && (
                                         <>
                                             <button
-                                                onClick={() => approveBingoSuggestion(item.suggestion.idx)}
-                                                disabled={busyAction}
-                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[10px] px-2 py-1 ${busyAction ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                onClick={() => approveBingoSuggestion?.(item.suggestion.idx)}
+                                                disabled={busyAction || typeof approveBingoSuggestion !== 'function'}
+                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[10px] px-2 py-1 ${(busyAction || typeof approveBingoSuggestion !== 'function') ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             >
                                                 Reveal Tile
                                             </button>
                                             <button
-                                                onClick={() => clearBingoSuggestion(item.suggestion.idx)}
-                                                disabled={busyAction}
-                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[10px] px-2 py-1 ${busyAction ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                onClick={() => clearBingoSuggestion?.(item.suggestion.idx)}
+                                                disabled={busyAction || typeof clearBingoSuggestion !== 'function'}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[10px] px-2 py-1 ${(busyAction || typeof clearBingoSuggestion !== 'function') ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             >
                                                 Clear
                                             </button>
@@ -2663,7 +2494,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, openHostSettings, openLiveEffects, showLegacyLiveEffects = true, pendingModerationCount = 0, runMissionHypeMoment = null, missionControlEnabled = false, missionControlCohort = 'legacy' }) => {
+const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, openHostSettings, openLiveEffects, showLegacyLiveEffects = true, pendingModerationCount = 0, runMissionHypeMoment = null, missionControlEnabled = false, missionControlCohort = 'legacy', openModerationInbox = null }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3587,7 +3418,11 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             } else if (action === 'more') {
                 setCommandOpen(true);
             } else if (action === 'review_moderation') {
-                openHostSettings?.();
+                if (typeof openModerationInbox === 'function') {
+                    openModerationInbox();
+                } else {
+                    openHostSettings?.();
+                }
             }
             trackEvent('host_mission_live_action_used', {
                 room_code: roomCode || '',
@@ -3620,6 +3455,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         missionControlEnabled,
         missionControlCohort,
         openHostSettings,
+        openModerationInbox,
         toast
     ]);
     
@@ -4441,6 +4277,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     });
     const [showLaunchMenu, setShowLaunchMenu] = useState(false);
     const [showNavMenu, setShowNavMenu] = useState(false);
+    const [showModerationInbox, setShowModerationInbox] = useState(false);
     const [autoOpenGameId, setAutoOpenGameId] = useState('');
     const [_appleMusicReady, setAppleMusicReady] = useState(false);
     const [appleMusicAuthorized, setAppleMusicAuthorized] = useState(false);
@@ -5002,11 +4839,44 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const sfxPulseRef = useRef(null);
     const seededMarqueeRef = useRef(false);
     const toast = useToast();
+    const moderationNudgeAtRef = useRef(0);
+    const openModerationInbox = useCallback(() => setShowModerationInbox(true), []);
+    const closeModerationInbox = useCallback(() => setShowModerationInbox(false), []);
+    const moderationInbox = useModerationInboxState({
+        roomCode,
+        room,
+        updateRoom,
+        callFunction,
+        toast
+    });
+    const moderationQueueState = moderationInbox.counts || {
+        totalPending: 0,
+        doodlePending: 0,
+        selfiePending: 0,
+        bingoPending: 0
+    };
     useEffect(() => {
         if (!hostUpdateDeploymentWarning || !toast || hostUpdateWarningToastedRef.current) return;
         toast(hostUpdateDeploymentWarning);
         hostUpdateWarningToastedRef.current = true;
     }, [hostUpdateDeploymentWarning, toast]);
+    useEffect(() => {
+        if (showModerationInbox) return;
+        if (!moderationInbox.meta?.needsAttention) return;
+        const pending = Number(moderationInbox.counts?.totalPending || 0);
+        if (!pending) return;
+        const now = nowMs();
+        if ((now - moderationNudgeAtRef.current) < 45000) return;
+        moderationNudgeAtRef.current = now;
+        if (typeof toast === 'function') {
+            toast(`Moderation inbox: ${pending} pending item${pending === 1 ? '' : 's'}.`);
+        }
+    }, [
+        showModerationInbox,
+        moderationInbox.meta?.needsAttention,
+        moderationInbox.counts?.totalPending,
+        toast
+    ]);
     const {
         chatEnabled,
         setChatEnabled,
@@ -10656,34 +10526,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         </div>
     );
 
-    const moderationQueueState = (() => {
-        const doodle = room?.doodleOke || {};
-        const approved = new Set(Array.isArray(doodle.approvedUids) ? doodle.approvedUids : []);
-        const submissionsRaw = doodle.submissions;
-        const submissions = Array.isArray(submissionsRaw)
-            ? submissionsRaw
-            : (submissionsRaw && typeof submissionsRaw === 'object' ? Object.values(submissionsRaw) : []);
-        const doodlePending = submissions.filter((submission) => {
-            const submissionUid = submission?.uid || submission?.userId || submission?.singerUid || '';
-            return submissionUid && !approved.has(submissionUid);
-        }).length;
-        const selfie = room?.selfieChallenge || {};
-        const selfieSubmissionsRaw = selfie?.submissions;
-        const selfieSubmissions = Array.isArray(selfieSubmissionsRaw)
-            ? selfieSubmissionsRaw
-            : (selfieSubmissionsRaw && typeof selfieSubmissionsRaw === 'object' ? Object.values(selfieSubmissionsRaw) : []);
-        const selfiePending = selfie?.requireApproval
-            ? selfieSubmissions.filter((submission) => !submission?.approved).length
-            : 0;
-        const bingoPending = Object.values(room?.bingoSuggestions || {}).filter((entry) => Number(entry?.count || 0) > 0).length;
-        return {
-            totalPending: doodlePending + selfiePending + bingoPending,
-            doodlePending,
-            selfiePending,
-            bingoPending
-        };
-    })();
-
     const settingsNavigationSections = (() => {
         const q = settingsNavQuery.trim().toLowerCase();
         return HOST_SETTINGS_SECTIONS
@@ -11000,6 +10842,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             openAdminWorkspace('ops.room_setup');
         },
         openLiveEffects: () => openAdminWorkspace('advanced.live_effects'),
+        openModerationInbox,
         showLegacyLiveEffects: false,
         compactViewport: compactHostViewport
     };
@@ -11095,7 +10938,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     currentTrackName={BG_TRACKS[currentTrackIdx]?.name || 'BG Track'}
                     mixFader={mixFader}
                     handleMixFaderChange={handleMixFaderChange}
+                    moderationPendingCount={moderationQueueState.totalPending}
+                    moderationSeverity={moderationInbox.meta?.severity || 'idle'}
+                    moderationNeedsAttention={!!moderationInbox.meta?.needsAttention}
+                    onOpenModerationInbox={openModerationInbox}
                 />
+                <ModerationInboxDrawer
+                    open={showModerationInbox}
+                    onClose={closeModerationInbox}
+                    pendingCount={moderationQueueState.totalPending}
+                    severity={moderationInbox.meta?.severity || 'idle'}
+                    needsAttention={!!moderationInbox.meta?.needsAttention}
+                >
+                    <IncomingModerationQueuePanel
+                        queueItems={moderationInbox.queueItems}
+                        counts={moderationInbox.counts}
+                        actions={moderationInbox.actions}
+                        busyAction={moderationInbox.meta?.busyAction}
+                        loading={moderationInbox.meta?.loading}
+                    />
+                </ModerationInboxDrawer>
 
             {hostUpdateDeploymentBanner && (
                 <div className="px-3 sm:px-4 md:px-5 lg:px-6 pt-3">
@@ -11151,10 +11013,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </div>
                         <div className="shrink-0">
                             <IncomingModerationQueuePanel
-                                roomCode={roomCode}
-                                room={room}
-                                updateRoom={updateRoom}
-                                callFunction={callFunction}
+                                queueItems={moderationInbox.queueItems}
+                                counts={moderationInbox.counts}
+                                actions={moderationInbox.actions}
+                                busyAction={moderationInbox.meta?.busyAction}
+                                loading={moderationInbox.meta?.loading}
+                                embedded
                             />
                         </div>
                     </div>
@@ -12305,14 +12169,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <div className="text-sm text-zinc-300">Selfie pending: <span className="text-white font-bold">{moderationQueueState.selfiePending}</span></div>
                                         <div className="text-sm text-zinc-300">Bingo suggestions: <span className="text-white font-bold">{moderationQueueState.bingoPending}</span></div>
                                         <div className="text-xs text-zinc-500 pt-1">
-                                            Game-specific moderation now lives in the Games queue so controls stay inside each mode workflow.
+                                            Review and resolve queue items from the global inbox without leaving your current screen.
                                         </div>
                                         <button
-                                            onClick={() => leaveAdminWithTarget('games')}
+                                            onClick={openModerationInbox}
                                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
                                         >
-                                            <i className="fa-solid fa-gamepad"></i>
-                                            Open incoming moderation queue
+                                            <i className="fa-solid fa-inbox"></i>
+                                            Open moderation inbox
                                         </button>
                                     </div>
                                 </div>

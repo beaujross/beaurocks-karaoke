@@ -1,4 +1,5 @@
 import React from 'react';
+import ModerationInboxChip from './ModerationInboxChip';
 
 const HostTopChrome = ({
     room,
@@ -38,7 +39,11 @@ const HostTopChrome = ({
     toggleBgMute,
     currentTrackName,
     mixFader,
-    handleMixFaderChange
+    handleMixFaderChange,
+    moderationPendingCount = 0,
+    moderationSeverity = 'idle',
+    moderationNeedsAttention = false,
+    onOpenModerationInbox
 }) => {
     const SmallWaveform = smallWaveform;
     return (
@@ -111,6 +116,12 @@ const HostTopChrome = ({
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <div className="bg-red-600 px-2.5 py-0.5 rounded text-[10px] md:text-xs font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
                 )}
+                <ModerationInboxChip
+                    pendingCount={moderationPendingCount}
+                    severity={moderationSeverity}
+                    needsAttention={moderationNeedsAttention}
+                    onClick={onOpenModerationInbox}
+                />
                 <div className="hidden md:flex items-center gap-2">
                     {[
                         { key: 'stage', label: 'Queue' },
