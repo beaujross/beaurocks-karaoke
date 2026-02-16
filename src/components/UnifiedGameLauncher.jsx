@@ -3155,7 +3155,7 @@ const GameConfigModal = ({
                                             </div>
                                             <div className="space-y-2 text-sm">
                                                 <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === a?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
-                                                    <div className="font-bold text-white">{a?.name || 'TBD'}</div>
+                                                    <div className="font-bold text-white">{a?.name || 'Open Slot'}</div>
                                                     <div className="text-zinc-400 truncate">{match?.aSong?.songTitle || '-'} {match?.aSong?.artist ? `- ${match.aSong.artist}` : ''}</div>
                                                     <div className="text-[11px] text-cyan-200 mt-1">{voteSummary.aVotes || 0} crowd votes</div>
                                                     {a?.uid && (
@@ -3178,7 +3178,7 @@ const GameConfigModal = ({
                                                     )}
                                                 </div>
                                                 <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === b?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
-                                                    <div className="font-bold text-white">{b?.name || 'TBD'}</div>
+                                                    <div className="font-bold text-white">{b?.name || 'Open Slot'}</div>
                                                     <div className="text-zinc-400 truncate">{match?.bSong?.songTitle || '-'} {match?.bSong?.artist ? `- ${match.bSong.artist}` : ''}</div>
                                                     <div className="text-[11px] text-cyan-200 mt-1">{voteSummary.bVotes || 0} crowd votes</div>
                                                     {b?.uid && (

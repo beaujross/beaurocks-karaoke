@@ -8,7 +8,7 @@ const getContestant = (state, uid) => {
 };
 
 const songLabel = (song = null) => {
-    if (!song?.songTitle) return 'Song TBD';
+    if (!song?.songTitle) return 'Song Pending';
     if (!song?.artist) return song.songTitle;
     return `${song.songTitle} - ${song.artist}`;
 };
@@ -245,12 +245,12 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
                                 </div>
                                 <div className="space-y-3">
                                     <div className={`rounded-xl border px-3 py-2 ${winnerUid && winnerUid === a?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-white/10 bg-black/35'}`}>
-                                        <div className={`font-black ${view === 'tv' ? 'text-2xl' : 'text-lg'}`}>{a?.name || 'TBD'}</div>
+                                        <div className={`font-black ${view === 'tv' ? 'text-2xl' : 'text-lg'}`}>{a?.name || 'Open Slot'}</div>
                                         <div className={`${view === 'tv' ? 'text-lg' : 'text-sm'} text-zinc-300`}>{songLabel(match?.aSong)}</div>
                                         {crowdVotingEnabled && <div className={`${view === 'tv' ? 'text-sm' : 'text-[11px]'} text-cyan-200 mt-1`}>{voteSummary.aVotes || 0} crowd votes</div>}
                                     </div>
                                     <div className={`rounded-xl border px-3 py-2 ${winnerUid && winnerUid === b?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-white/10 bg-black/35'}`}>
-                                        <div className={`font-black ${view === 'tv' ? 'text-2xl' : 'text-lg'}`}>{b?.name || 'TBD'}</div>
+                                        <div className={`font-black ${view === 'tv' ? 'text-2xl' : 'text-lg'}`}>{b?.name || 'Open Slot'}</div>
                                         <div className={`${view === 'tv' ? 'text-lg' : 'text-sm'} text-zinc-300`}>{songLabel(match?.bSong)}</div>
                                         {crowdVotingEnabled && <div className={`${view === 'tv' ? 'text-sm' : 'text-[11px]'} text-cyan-200 mt-1`}>{voteSummary.bVotes || 0} crowd votes</div>}
                                     </div>

@@ -2474,7 +2474,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         } catch (e) {
             console.error(e);
             if (billingPlatform === BILLING_PLATFORMS.IOS) {
-                toast('iOS purchases are coming soon. Use the web app for now.');
+                toast('iOS in-app purchases are unavailable in this build. Use web checkout.');
                 return;
             }
             toast('Checkout is unavailable right now.');
@@ -2498,7 +2498,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         } catch (e) {
             console.error(e);
             if (billingPlatform === BILLING_PLATFORMS.IOS) {
-                toast('iOS purchases are coming soon. Use the web app for now.');
+                toast('iOS in-app purchases are unavailable in this build. Use web checkout.');
                 return;
             }
             toast('Checkout is unavailable right now.');
@@ -2519,10 +2519,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         } catch (e) {
             console.error(e);
             if (billingPlatform === BILLING_PLATFORMS.IOS) {
-                toast('Subscriptions on iOS are coming soon.');
+                toast('iOS subscriptions are unavailable in this build. Use web checkout.');
                 return;
             }
-            toast('Subscriptions are not available yet.');
+            toast('Subscriptions are unavailable right now.');
         }
     };
 
@@ -6468,7 +6468,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <div id="recap-container-vip" className="mt-3"></div>
                                 </div>
                                 {smsBypassEnabled && (
-                                    <button onClick={bypassSmsVip} className="w-full bg-zinc-700 text-white py-3 rounded-lg font-bold mb-3">Bypass SMS (Test)</button>
+                                    <button onClick={bypassSmsVip} className="w-full bg-zinc-700 text-white py-3 rounded-lg font-bold mb-3">Bypass SMS (QA)</button>
                                 )}
                                 <p className="text-xs text-zinc-400 mb-3">Fast SMS verification. No password needed.</p>
                                 <button onClick={()=>setTab('home')} className="text-zinc-500 underline block">Maybe Later</button>

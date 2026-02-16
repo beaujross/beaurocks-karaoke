@@ -3675,7 +3675,7 @@ exports.verifyAppleReceipt = onCall(
     // to prevent duplicate grants.
     throw new HttpsError(
       "failed-precondition",
-      "Apple IAP verification is not configured yet."
+      "Apple IAP verification is currently unavailable."
     );
   }
 );

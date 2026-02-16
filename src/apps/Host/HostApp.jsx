@@ -157,10 +157,10 @@ const isHostUpdateCallableUnavailableError = (error) => {
 // (BG_TRACKS, SOUNDS)
 
 const LOCAL_LIBRARY = [ 
-    { title: "Big Buck Bunny (Test)", artist: "Blender", url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" }, 
-    { title: "Sintel (Test)", artist: "Blender", url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4" }, 
-    { title: "Tears of Steel (Test)", artist: "Blender", url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4" }, 
-    { title: "Archive.org Sample", artist: "Internet Archive", url: "https://archive.org/download/Popeye_forPresident/Popeye_forPresident_512kb.mp4" } 
+    { title: "Big Buck Bunny", artist: "Blender", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" }, 
+    { title: "Sintel", artist: "Blender", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4" }, 
+    { title: "Tears of Steel", artist: "Blender", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4" }, 
+    { title: "Popeye for President", artist: "Internet Archive", url: "https://archive.org/download/Popeye_forPresident/Popeye_forPresident_512kb.mp4" } 
 ];
 
 const parseYouTubeVideoId = (input = '') => {
@@ -212,7 +212,7 @@ const generateAIContent = async (type, context) => {
         if (code.includes('permission-denied')) {
             alert("AI tools require an active Host subscription.");
         } else {
-            alert("Gemini is not configured yet. Add server keys and try again.");
+            alert("AI generation is unavailable right now. Check function secrets and deployment.");
         }
         return null;
     }
@@ -554,6 +554,23 @@ const MISSION_QUERY_KEY = 'mission';
 const MISSION_CONTROL_VERSION = 1;
 const MISSION_DEFAULT_ASSIST_LEVEL = 'smart_assist';
 const MISSION_FLOW_RULE_OPTIONS = Object.freeze(Object.values(MISSION_FLOW_RULES));
+const MISSION_CHANGE_FIELD_SPECS = Object.freeze([
+    { key: 'autoDj', label: 'Auto DJ' },
+    { key: 'autoBgMusic', label: 'Background Music' },
+    { key: 'autoPlayMedia', label: 'Auto Stage Playback' },
+    { key: 'showScoring', label: 'Live Scoring' },
+    { key: 'allowSingerTrackSelect', label: 'Singer Track Select' },
+    { key: 'bouncerMode', label: 'Bouncer Mode' },
+    { key: 'chatShowOnTv', label: 'Chat on TV' },
+    { key: 'marqueeEnabled', label: 'Marquee' },
+    { key: 'popTriviaEnabled', label: 'Pop Trivia' },
+    { key: 'autoLyricsOnQueue', label: 'Auto Lyrics' },
+    { key: 'queueSettings.limitMode', label: 'Queue Limit' },
+    { key: 'queueSettings.limitCount', label: 'Queue Count' },
+    { key: 'queueSettings.rotation', label: 'Queue Rotation' },
+    { key: 'queueSettings.firstTimeBoost', label: 'First-Time Boost' },
+    { key: 'gamePreviewId', label: 'Spotlight Mode' }
+]);
 
 const HOST_SETTINGS_SECTIONS = [
     {
@@ -3774,7 +3791,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     <div className="min-w-0">
                         <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">Mission Control</div>
                         <div className="text-xs text-zinc-300">
-                            Recommended: <span className="text-white font-bold">{missionRecommendation?.label || 'Stand by'}</span>
+                            Recommended: <span className="text-white font-bold">{missionRecommendation?.label || 'No recommendation yet'}</span>
                             {missionRecommendation?.reason ? <span className="text-zinc-500"> | {missionRecommendation.reason}</span> : null}
                         </div>
                     </div>
@@ -7814,7 +7831,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return (stats.guitar || stats.strobe) ? stats : null;
         })();
         const recapPreview = {
-            songTitle: baseSong.songTitle || 'Sample Song',
+            songTitle: baseSong.songTitle || 'Featured Performance',
             singerName: baseSong.singerName || room?.hostName || 'Guest',
             hypeScore: baseSong.hypeScore || 120,
             applauseScore: baseSong.applauseScore || 85,
@@ -9329,11 +9346,63 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     ? 'text-cyan-100 border-cyan-400/35 bg-cyan-500/15'
                     : 'text-amber-100 border-amber-400/35 bg-amber-500/15';
             const missionPickCount = [missionDraft?.archetype, missionDraft?.flowRule, missionDraft?.spotlightMode].filter(Boolean).length;
+            const missionOverrideCount = Object.keys(missionAdvancedOverrides || {}).length;
             const featuredSpotlightModeIds = ['karaoke', 'bingo', 'trivia_pop', 'karaoke_bracket'];
             const missionVisibleSpotlightModes = missionShowAllSpotlightModes
                 ? NIGHT_SETUP_PRIMARY_MODES
                 : NIGHT_SETUP_PRIMARY_MODES.filter((mode) => featuredSpotlightModeIds.includes(mode.id) || mode.id === missionDraft?.spotlightMode);
             const canToggleSpotlightList = NIGHT_SETUP_PRIMARY_MODES.length > missionVisibleSpotlightModes.length || missionShowAllSpotlightModes;
+            const readMissionPath = (input, path) => path.split('.').reduce((acc, key) => (acc == null ? undefined : acc[key]), input);
+            const formatMissionDiffValue = (key, value) => {
+                if (typeof value === 'boolean') return value ? 'On' : 'Off';
+                if (key === 'queueSettings.limitMode') {
+                    const found = NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === value);
+                    return found?.label || String(value || 'None');
+                }
+                if (key === 'queueSettings.rotation') {
+                    const found = NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === value);
+                    return found?.label || String(value || 'Round Robin');
+                }
+                if (key === 'gamePreviewId') {
+                    const resolved = value || 'karaoke';
+                    const found = NIGHT_SETUP_PRIMARY_MODES.find((mode) => mode.id === resolved);
+                    return found?.label || 'Karaoke Flow';
+                }
+                if (value == null || value === '') return 'Off';
+                return String(value);
+            };
+            const compileMissionPayload = (draftInput) => mergePayloadWithOverrides(
+                compileMissionDraftToRoomPayload(draftInput, capabilities, {
+                    presets: HOST_NIGHT_PRESETS,
+                    flowRules: MISSION_FLOW_RULES
+                }),
+                missionAdvancedOverrides
+            );
+            const currentMissionPayload = compileMissionPayload(missionDraft || {});
+            const getArchetypeDeltaSummary = (archetypeId) => {
+                const candidatePayload = compileMissionPayload({
+                    ...(missionDraft || {}),
+                    archetype: archetypeId
+                });
+                const changed = MISSION_CHANGE_FIELD_SPECS
+                    .map((spec) => {
+                        const baseValue = readMissionPath(currentMissionPayload, spec.key);
+                        const candidateValue = readMissionPath(candidatePayload, spec.key);
+                        const sameValue = JSON.stringify(baseValue) === JSON.stringify(candidateValue);
+                        if (sameValue) return null;
+                        return {
+                            key: spec.key,
+                            label: spec.label,
+                            value: formatMissionDiffValue(spec.key, candidateValue)
+                        };
+                    })
+                    .filter(Boolean);
+                return {
+                    count: changed.length,
+                    chips: changed.slice(0, 3),
+                    hiddenCount: Math.max(0, changed.length - 3)
+                };
+            };
 
             return (
                 <div
@@ -9384,11 +9453,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
                                         <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Pick 1</div>
                                         <div className="text-xl font-bold text-white mt-1">Night Archetype</div>
-                                        <div className="text-sm text-zinc-400 mt-1">Defines the baseline experience and automation defaults.</div>
+                                        <div className="text-sm text-zinc-400 mt-1">Defines the baseline experience and automation defaults. Each card shows the exact settings delta.</div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                                             {Object.values(HOST_NIGHT_PRESETS).map((preset) => {
                                                 const active = missionDraft?.archetype === preset.id;
                                                 const meta = NIGHT_SETUP_PRESET_META[preset.id] || NIGHT_SETUP_PRESET_META.casual;
+                                                const delta = getArchetypeDeltaSummary(preset.id);
                                                 return (
                                                     <button
                                                         key={`mission-archetype-${preset.id}`}
@@ -9403,6 +9473,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                             </div>
                                                             <div className="text-lg font-bold text-white mt-2">{preset.label}</div>
                                                             <div className="text-sm text-zinc-300 mt-1">{preset.description}</div>
+                                                            <div className="mt-3">
+                                                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+                                                                    {delta.count > 0 ? `${delta.count} setting change${delta.count === 1 ? '' : 's'}` : (active ? 'Current selection' : 'No net change')}
+                                                                </div>
+                                                                {delta.count > 0 ? (
+                                                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                                                        {delta.chips.map((chip) => (
+                                                                            <span
+                                                                                key={`mission-delta-${preset.id}-${chip.key}`}
+                                                                                className="text-[10px] px-2 py-1 rounded-full border border-cyan-300/30 bg-black/35 text-zinc-100"
+                                                                            >
+                                                                                {chip.label}: {chip.value}
+                                                                            </span>
+                                                                        ))}
+                                                                        {delta.hiddenCount > 0 && (
+                                                                            <span className="text-[10px] px-2 py-1 rounded-full border border-zinc-600 bg-black/30 text-zinc-400">
+                                                                                +{delta.hiddenCount} more
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-xs text-zinc-500 mt-1">
+                                                                        {active
+                                                                            ? 'This archetype is currently active.'
+                                                                            : 'Flow, spotlight, and overrides currently neutralize differences.'}
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </button>
                                                 );
@@ -9601,6 +9699,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Spotlight:</span> {missionMode.label}</div>
                                         <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Assist:</span> Smart Assist</div>
                                         <div className="text-xs text-zinc-400 mt-2">Setup progress: {missionPickCount}/3 picks locked</div>
+                                        {missionOverrideCount > 0 && (
+                                            <div className="text-xs text-amber-200 mt-1">
+                                                {missionOverrideCount} advanced override{missionOverrideCount === 1 ? '' : 's'} active (can flatten archetype differences)
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
                                         <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Readiness</div>
@@ -11200,7 +11303,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                             </div>
                                                             <div className="space-y-2 text-sm">
                                                                 <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === a?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
-                                                                    <div className="font-bold text-white">{a?.name || 'TBD'}</div>
+                                                                    <div className="font-bold text-white">{a?.name || 'Open Slot'}</div>
                                                                     <div className="text-zinc-400 truncate">{match?.aSong?.songTitle || '-'} {match?.aSong?.artist ? `- ${match.aSong.artist}` : ''}</div>
                                                                     <div className="text-[11px] text-cyan-200 mt-1">{voteSummary.aVotes || 0} crowd votes</div>
                                                                     {a?.uid && (
@@ -11223,7 +11326,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                     )}
                                                                 </div>
                                                                 <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === b?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
-                                                                    <div className="font-bold text-white">{b?.name || 'TBD'}</div>
+                                                                    <div className="font-bold text-white">{b?.name || 'Open Slot'}</div>
                                                                     <div className="text-zinc-400 truncate">{match?.bSong?.songTitle || '-'} {match?.bSong?.artist ? `- ${match.bSong.artist}` : ''}</div>
                                                                     <div className="text-[11px] text-cyan-200 mt-1">{voteSummary.bVotes || 0} crowd votes</div>
                                                                     {b?.uid && (
