@@ -10844,9 +10844,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         : (viewScopedSettingsItems.length ? viewScopedSettingsItems : flatSettingsItems);
     const settingsNavigationContent = (
         <div className="space-y-3">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-                <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Sections</div>
-                <div className="mt-2 space-y-1.5">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 overflow-hidden">
+                <div className="px-3 py-2 text-[10px] uppercase tracking-[0.26em] text-zinc-500 border-b border-zinc-900">Sections</div>
+                <div className="divide-y divide-zinc-900">
                     {navigationItemsForRail.map((item) => {
                         const isActive = settingsTab === item.key;
                         const badge = settingsNavBadges[item.key];
@@ -10854,27 +10854,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <button
                                 key={`settings-item-${item.key}`}
                                 onClick={() => handleSettingsNavSelect(item.key)}
-                                className={`w-full rounded-md border px-2.5 py-2 text-left transition-colors ${
-                                    isActive
-                                        ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100'
-                                        : 'border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:text-white'
+                                className={`w-full px-3 py-2.5 text-left transition-colors ${
+                                    isActive ? 'bg-cyan-500/10 text-cyan-100' : 'bg-transparent text-zinc-300 hover:bg-zinc-900/80 hover:text-white'
                                 }`}
                             >
-                                <div className="flex items-center justify-between gap-2">
-                                    <div className="flex min-w-0 items-center gap-2">
-                                        <i className={`fa-solid ${item.icon} text-[11px] ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
-                                        <span className="truncate text-xs font-semibold tracking-wide">{item.label}</span>
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0 flex items-start gap-2">
+                                        <span className={`mt-0.5 h-4 w-0.5 rounded-full ${isActive ? 'bg-cyan-300' : 'bg-zinc-700'}`}></span>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <i className={`fa-solid ${item.icon} text-[11px] ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
+                                                <span className="truncate text-xs font-semibold tracking-wide">{item.label}</span>
+                                            </div>
+                                            <div className="mt-0.5 text-[10px] uppercase tracking-[0.22em] text-zinc-500 truncate">{item.sectionLabel}</div>
+                                        </div>
                                     </div>
                                     {badge ? (
                                         <span className="rounded border border-zinc-600 px-1.5 py-0.5 text-[9px] text-zinc-200">{badge}</span>
                                     ) : null}
                                 </div>
-                                <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-zinc-500">{item.sectionLabel}</div>
                             </button>
                         );
                     })}
                     {navigationItemsForRail.length === 0 && (
-                        <div className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-200">
+                        <div className="rounded-md border border-amber-400/30 bg-amber-500/10 m-2 px-2.5 py-2 text-xs text-amber-200">
                             No section matches "{settingsNavQuery}".
                         </div>
                     )}
@@ -10912,14 +10915,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             </div>
             <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
                 <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Quick Actions</div>
-                <div className="mt-2 grid grid-cols-1 gap-2">
+                <div className="mt-2 divide-y divide-zinc-900 rounded-md border border-zinc-800 overflow-hidden">
                     <button
                         data-feature-id="quick-open-tv"
                         onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                        className="w-full bg-zinc-900/70 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-900"
                     >
-                        <i className="fa-solid fa-tv"></i>
-                        Open Public TV
+                        <span className="inline-flex items-center gap-2">
+                            <i className="fa-solid fa-tv text-zinc-500"></i>
+                            Open Public TV
+                        </span>
                     </button>
                     <button
                         onClick={async () => {
@@ -10931,25 +10936,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 toast(audienceUrl);
                             }
                         }}
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                        className="w-full bg-zinc-900/70 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-900"
                     >
-                        <i className="fa-solid fa-link"></i>
-                        Copy Join Link
+                        <span className="inline-flex items-center gap-2">
+                            <i className="fa-solid fa-link text-zinc-500"></i>
+                            Copy Join Link
+                        </span>
                     </button>
                     <button
                         onClick={() => leaveAdminWithTarget('stage')}
-                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
+                        className="w-full bg-zinc-900/70 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-900"
                     >
-                        <i className="fa-solid fa-list-check"></i>
-                        Open Queue
+                        <span className="inline-flex items-center gap-2">
+                            <i className="fa-solid fa-list-check text-zinc-500"></i>
+                            Open Queue
+                        </span>
                     </button>
                     <button
                         data-feature-id="quick-open-live-effects"
                         onClick={() => handleSettingsNavSelect('live_effects')}
-                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
+                        className="w-full bg-zinc-900/70 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-900"
                     >
-                        <i className="fa-solid fa-wand-magic-sparkles"></i>
-                        Live Effects
+                        <span className="inline-flex items-center gap-2">
+                            <i className="fa-solid fa-wand-magic-sparkles text-zinc-500"></i>
+                            Live Effects
+                        </span>
                     </button>
                 </div>
             </div>
@@ -11705,21 +11716,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             </div>
                             {inAdminWorkspace && (
-                                <div className="mt-3 flex flex-wrap gap-1.5">
+                                <div className="mt-3">
+                                    <div className="inline-flex flex-wrap rounded-lg border border-zinc-800 bg-zinc-950/90 p-1 gap-1">
                                     {HOST_WORKSPACE_VIEWS.map((view) => (
                                         <button
                                             key={`workspace-view-chip-${view.id}`}
                                             onClick={() => selectWorkspaceView(view.id)}
-                                            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] ${
+                                            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] ${
                                                 activeWorkspaceView === view.id
-                                                    ? 'border-cyan-400/40 bg-cyan-500/12 text-cyan-100'
-                                                    : 'border-zinc-700 bg-zinc-900/80 text-zinc-300 hover:border-cyan-500/35'
+                                                    ? 'bg-cyan-500/15 text-cyan-100'
+                                                    : 'text-zinc-300 hover:bg-zinc-900'
                                             }`}
                                         >
                                             <i className={`fa-solid ${view.icon} text-[10px]`}></i>
                                             {view.label}
                                         </button>
                                     ))}
+                                    </div>
                                 </div>
                             )}
                             <div className="mt-3 max-w-xl md:max-w-2xl">
