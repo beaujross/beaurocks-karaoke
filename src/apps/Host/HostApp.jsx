@@ -7973,13 +7973,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const saveModifiedScore = async () => { await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', modifyingScoreId), { hypeScore: parseInt(scoreForm.hype), applauseScore: parseInt(scoreForm.applause), hostBonus: parseInt(scoreForm.bonus) }); setModifyingScoreId(null); toast("Score Updated"); };
     
     // Helper to log activities
-    const logActivity = async (roomCode, user, text, icon) => {
+    async function logActivity(roomCode, user, text, icon) {
         try {
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
                 roomCode, user, text, icon, timestamp: serverTimestamp()
             });
         } catch(e) { hostLogger.error("Log error", e); }
-    };
+    }
     const selectSettingsTab = useCallback((nextTab) => {
         setSettingsTab(nextTab);
         if (nextTab === 'chat') markChatTabSeen();
