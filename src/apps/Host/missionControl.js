@@ -1,3 +1,8 @@
+import {
+    PARTY_POLICY_DEFAULTS,
+    normalizeMissionParty
+} from './partyOrchestrator.js';
+
 const DEFAULT_FLOW_RULES = Object.freeze({
     balanced: {
         id: 'balanced',
@@ -92,6 +97,7 @@ const resolveSpotlightMode = (room = {}, primaryModes = []) => {
 };
 
 export const MISSION_FLOW_RULES = DEFAULT_FLOW_RULES;
+export const MISSION_PARTY_DEFAULTS = PARTY_POLICY_DEFAULTS;
 export const MISSION_ASSIST_LEVELS = Object.freeze([
     { id: 'manual_first', label: 'Manual First' },
     { id: 'smart_assist', label: 'Smart Assist' },
@@ -235,3 +241,8 @@ export const getRecommendedHostAction = ({
     };
 };
 
+export const buildMissionPartyFromRoom = (room = {}) =>
+    normalizeMissionParty(room?.missionControl?.party || {});
+
+export const buildMissionPartyPayload = (party = {}) =>
+    normalizeMissionParty(party || {});

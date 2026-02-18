@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {
     buildMissionDraftFromRoom,
+    buildMissionPartyFromRoom,
+    buildMissionPartyPayload,
     compileMissionDraftToRoomPayload,
     mergePayloadWithOverrides,
     getRecommendedHostAction,
@@ -153,8 +155,31 @@ const run = () => {
     });
     assert.equal(recHype.id, 'hype_moment');
 
+    const partyFromRoom = buildMissionPartyFromRoom({
+        missionControl: {
+            party: {
+                karaokeFirst: true,
+                minSingingSharePct: 75,
+                maxBreakDurationSec: 12,
+                maxConsecutiveNonKaraokeModes: 1,
+                state: {
+                    singingMs: 120000,
+                    groupMs: 20000
+                }
+            }
+        }
+    });
+    assert.equal(partyFromRoom.karaokeFirst, true);
+    assert.equal(partyFromRoom.minSingingSharePct, 75);
+    assert.equal(partyFromRoom.maxBreakDurationSec, 12);
+    assert.equal(partyFromRoom.state.singingMs, 120000);
+
+    const defaultParty = buildMissionPartyPayload();
+    assert.equal(defaultParty.karaokeFirst, true);
+    assert.equal(defaultParty.minSingingSharePct, 70);
+    assert.equal(defaultParty.maxConsecutiveNonKaraokeModes, 1);
+
     console.log('missionControl tests passed');
 };
 
 run();
-

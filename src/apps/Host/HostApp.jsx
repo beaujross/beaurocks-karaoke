@@ -89,11 +89,19 @@ import HostWorkspaceShell from './workspace/HostWorkspaceShell';
 import {
     MISSION_ASSIST_LEVELS,
     MISSION_FLOW_RULES,
+    buildMissionPartyFromRoom,
+    buildMissionPartyPayload,
     buildMissionDraftFromRoom,
     compileMissionDraftToRoomPayload,
     mergePayloadWithOverrides,
     getRecommendedHostAction
 } from './missionControl';
+import {
+    normalizeMissionParty,
+    recordCompletedPerformance,
+    recordGroupMoment,
+    shouldAllowGroupMoment
+} from './partyOrchestrator';
 
 // --- CONSTANTS & CONFIG ---
 const VERSION = HOST_APP_CONFIG.VERSION;
@@ -562,7 +570,36 @@ const MISSION_OVERRIDE_STORAGE_KEY = 'bross_mission_control_overrides_v1';
 const MISSION_QUERY_KEY = 'mission';
 const MISSION_CONTROL_VERSION = 1;
 const MISSION_DEFAULT_ASSIST_LEVEL = 'smart_assist';
+const PARTY_AUTOPILOT_READY_CHECK_DURATION_SEC = 6;
 const MISSION_FLOW_RULE_OPTIONS = Object.freeze(Object.values(MISSION_FLOW_RULES));
+
+const PARTY_GUARD_REASON_MESSAGE = {
+    queue_guard: 'Queue is busy, keeping focus on singers.',
+    song_gap_required: 'Need a karaoke song before the next heavy group moment.',
+    consecutive_limit: 'Group moments are capped until another singer performs.',
+    karaoke_share_guard: 'Keeping karaoke as the primary focus right now.',
+    duration_limit: 'That break is too long for karaoke-first pacing.'
+};
+
+const getPartyGuardMessage = (reason = '') =>
+    PARTY_GUARD_REASON_MESSAGE[String(reason || '').trim()] || 'Holding group moment to keep karaoke flow stable.';
+
+const mergeMissionControlParty = (missionControl = {}, partyPatch = {}) => {
+    const previousParty = isPlainObject(missionControl?.party) ? missionControl.party : {};
+    const patchedParty = {
+        ...previousParty,
+        ...(isPlainObject(partyPatch) ? partyPatch : {})
+    };
+    const normalizedParty = normalizeMissionParty(patchedParty);
+    return {
+        ...(isPlainObject(missionControl) ? missionControl : {}),
+        party: {
+            ...patchedParty,
+            ...normalizedParty,
+            state: normalizedParty.state
+        }
+    };
+};
 
 const HOST_SETTINGS_SECTIONS = [
     {
@@ -2643,9 +2680,10 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
     useEffect(() => {
         if (!missionControlEnabled || !roomCode || !missionRecommendation?.id) return;
         if (room?.missionControl?.lastSuggestedAction === missionRecommendation.id) return;
+        const baseMissionControl = mergeMissionControlParty(room?.missionControl, buildMissionPartyFromRoom(room));
         updateRoom({
             missionControl: {
-                ...(room?.missionControl || {}),
+                ...baseMissionControl,
                 version: MISSION_CONTROL_VERSION,
                 enabled: true,
                 lastSuggestedAction: missionRecommendation.id
@@ -4549,9 +4587,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         spotlightMode: 'karaoke',
         assistLevel: MISSION_DEFAULT_ASSIST_LEVEL
     });
+    const [missionPartyDraft, setMissionPartyDraft] = useState(() => buildMissionPartyPayload());
     const [missionAdvancedOverrides, setMissionAdvancedOverrides] = useState({});
     const [missionAdvancedOpen, setMissionAdvancedOpen] = useState(false);
     const [missionAdvancedQueueOpen, setMissionAdvancedQueueOpen] = useState(false);
+    const [missionAdvancedPartyOpen, setMissionAdvancedPartyOpen] = useState(false);
     const [missionAdvancedTogglesOpen, setMissionAdvancedTogglesOpen] = useState(false);
     const [missionShowAllSpotlightModes, setMissionShowAllSpotlightModes] = useState(false);
     const hostUpdateDeploymentBanner = hostUpdateDeploymentWarning ? (
@@ -4825,6 +4865,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const autoDjTimerRef = useRef(null);
     const doodleTimerRef = useRef(null);
     const lastAutoDjTsRef = useRef(null);
+    const lastPartyFlowPerfTsRef = useRef(null);
+    const lastPartyAutoBreakTsRef = useRef(null);
+    const seededPartyPolicyRoomRef = useRef('');
     const readyCheckTimerRef = useRef(null);
     const bingoTurnAdvanceRef = useRef(null);
     const roomRef = useRef(room);
@@ -5479,6 +5522,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         hostLogger.warn('Room ownership metadata is missing host linkage; host updates are now callable-only.');
     }, [room?.hostUid, room?.hostUids, roomCode, uid, room]);
     useEffect(() => {
+        if (!roomCode || !room) return;
+        if (room?.missionControl?.party) return;
+        const seedKey = `${roomCode}:${room?.missionControl?.lastAppliedAt?.seconds || ''}`;
+        if (seededPartyPolicyRoomRef.current === seedKey) return;
+        seededPartyPolicyRoomRef.current = seedKey;
+        const baseMissionControl = isPlainObject(room?.missionControl)
+            ? room.missionControl
+            : {
+                version: MISSION_CONTROL_VERSION,
+                enabled: false,
+                setupDraft: {
+                    archetype: 'casual',
+                    flowRule: 'balanced',
+                    spotlightMode: 'karaoke',
+                    assistLevel: MISSION_DEFAULT_ASSIST_LEVEL
+                },
+                advancedOverrides: {},
+                lastSuggestedAction: ''
+            };
+        updateRoom({
+            missionControl: mergeMissionControlParty(baseMissionControl, buildMissionPartyPayload())
+        }).catch((error) => {
+            hostLogger.debug('Failed to seed missionControl.party defaults', error);
+        });
+    }, [roomCode, room, room?.missionControl?.party, updateRoom]);
+    useEffect(() => {
         if (room?.lightMode === 'storm' && room?.stormEndsAt && nowMs() > room.stormEndsAt) {
             updateRoom({ lightMode: 'off', stormPhase: 'off' });
         }
@@ -5568,6 +5637,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             clearInterval(tick);
         };
     }, [room?.autoDj, room?.lastPerformance?.timestamp, startNextFromQueue]);
+    useEffect(() => {
+        if (!roomCode) return;
+        const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
+        if (!lastPerformanceTs) return;
+        if (lastPartyFlowPerfTsRef.current === lastPerformanceTs) return;
+        lastPartyFlowPerfTsRef.current = lastPerformanceTs;
+
+        const partyConfig = buildMissionPartyFromRoom(room);
+        const durationSec = Math.max(30, Number(room?.lastPerformance?.duration || 180));
+        const nextFlowState = recordCompletedPerformance(partyConfig.state, { durationSec });
+        updateRoom({
+            missionControl: mergeMissionControlParty(room?.missionControl, {
+                state: nextFlowState,
+                lastPerformanceAtMs: lastPerformanceTs
+            })
+        }).catch((error) => {
+            hostLogger.debug('Failed to persist party performance flow metrics', error);
+        });
+    }, [
+        roomCode,
+        room?.lastPerformance?.timestamp,
+        room?.lastPerformance?.duration,
+        room?.missionControl,
+        updateRoom
+    ]);
     useEffect(() => {
         if (room?.bingoMode !== 'mystery') return;
         const pickerUid = room?.bingoPickerUid || (Array.isArray(room?.bingoTurnOrder) ? room.bingoTurnOrder[room?.bingoTurnIndex || 0] : null);
@@ -5813,8 +5907,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const resetMissionAdvancedOverrides = useCallback(() => {
         setMissionAdvancedOverrides({});
+        setMissionPartyDraft(buildMissionPartyFromRoom(room));
         applyMissionDraftToNightSetupState(missionDraft, {});
-    }, [applyMissionDraftToNightSetupState, missionDraft]);
+    }, [applyMissionDraftToNightSetupState, missionDraft, room]);
 
     useEffect(() => {
         if (!missionControlEnabled) return;
@@ -5951,10 +6046,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const nextOverrides = (room?.missionControl?.advancedOverrides && typeof room.missionControl.advancedOverrides === 'object')
                 ? room.missionControl.advancedOverrides
                 : ((persistedOverrides && typeof persistedOverrides === 'object' && !Array.isArray(persistedOverrides)) ? persistedOverrides : {});
+            const nextParty = buildMissionPartyFromRoom(room || {});
             setMissionDraft(nextDraft);
+            setMissionPartyDraft(nextParty);
             setMissionAdvancedOverrides(nextOverrides);
             setMissionAdvancedOpen(false);
             setMissionAdvancedQueueOpen(false);
+            setMissionAdvancedPartyOpen(false);
             setMissionAdvancedTogglesOpen(false);
             setMissionShowAllSpotlightModes(false);
             applyMissionDraftToNightSetupState(nextDraft, nextOverrides);
@@ -5968,6 +6066,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         } else {
             seedNightSetupFromPreset(resolvedPresetId, { keepQueueDraft: false });
+            setMissionPartyDraft(buildMissionPartyPayload());
         }
         setNightSetupStep(0);
         setShowNightSetupWizard(true);
@@ -6109,6 +6208,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         assistLevel: missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL
                     },
                     advancedOverrides: missionAdvancedOverrides || {},
+                    party: buildMissionPartyPayload(missionPartyDraft),
                     lastAppliedAt: serverTimestamp(),
                     lastSuggestedAction: room?.missionControl?.lastSuggestedAction || ''
                 }
@@ -6188,6 +6288,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         nightSetupMarqueeEnabled,
         missionControlEnabled,
         missionDraft,
+        missionPartyDraft,
         missionAdvancedOverrides,
         room?.missionControl?.lastSuggestedAction,
         missionControlCohort,
@@ -6500,6 +6601,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         assistLevel: MISSION_DEFAULT_ASSIST_LEVEL
                     },
                     advancedOverrides: {},
+                    party: buildMissionPartyPayload(),
                     lastAppliedAt: serverTimestamp(),
                     lastSuggestedAction: ''
                 }
@@ -6727,21 +6829,120 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Gift failed');
         }
     };
-    const startReadyCheck = async () => {
-        const durationSec = Math.max(3, Number(readyCheckDurationSec || 10));
-        const rewardPoints = Math.max(0, Number(readyCheckRewardPoints || 0));
+    const startReadyCheck = async (options = {}) => {
+        const requestedDuration = options?.durationSec ?? readyCheckDurationSec ?? 10;
+        const requestedReward = options?.rewardPoints ?? readyCheckRewardPoints ?? 0;
+        const durationSec = Math.max(3, Number(requestedDuration));
+        const rewardPoints = Math.max(0, Number(requestedReward));
         await updateRoom({ readyCheck: { active: true, startTime: nowMs(), durationSec, rewardPoints } });
         if (readyCheckTimerRef.current) clearTimeout(readyCheckTimerRef.current);
         readyCheckTimerRef.current = setTimeout(() => {
             updateRoom({ 'readyCheck.active': false });
         }, durationSec * 1000);
     };
+    useEffect(() => {
+        if (!roomCode || !room?.autoDj) return;
+        const assistLevel = String(room?.missionControl?.setupDraft?.assistLevel || '').trim().toLowerCase();
+        if (assistLevel !== 'autopilot_first') return;
+        const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
+        if (!lastPerformanceTs) return;
+        if (lastPartyAutoBreakTsRef.current === lastPerformanceTs) return;
+        if (queuedCount <= 0) return;
+
+        const partyRaw = room?.missionControl?.party || {};
+        const partyConfig = buildMissionPartyPayload(partyRaw);
+        const durationSec = Math.max(30, Number(room?.lastPerformance?.duration || 180));
+        const hasTrackedPerformance = Number(partyRaw?.lastPerformanceAtMs || 0) === lastPerformanceTs;
+        const flowStateForGuard = hasTrackedPerformance
+            ? partyConfig.state
+            : recordCompletedPerformance(partyConfig.state, { durationSec });
+        const guard = shouldAllowGroupMoment({
+            policy: partyConfig,
+            flowState: flowStateForGuard,
+            queueDepth: queuedCount,
+            requestedMode: 'ready_check',
+            requestedDurationSec: PARTY_AUTOPILOT_READY_CHECK_DURATION_SEC
+        });
+        if (!guard.allowed) return;
+
+        lastPartyAutoBreakTsRef.current = lastPerformanceTs;
+        const timer = setTimeout(() => {
+            startReadyCheck({ durationSec: guard.breakDurationSec }).then(() => {
+                const nextFlowState = recordGroupMoment(flowStateForGuard, {
+                    mode: 'ready_check',
+                    durationSec: guard.breakDurationSec
+                });
+                return updateRoom({
+                    missionControl: mergeMissionControlParty(room?.missionControl, {
+                        state: nextFlowState,
+                        lastGroupMode: 'ready_check',
+                        lastGroupDurationSec: guard.breakDurationSec,
+                        lastGroupTriggeredAt: nowMs(),
+                        lastSuggestedAction: 'hype_moment'
+                    })
+                });
+            }).then(() => {
+                logActivity(roomCode, hostName || 'Host', 'triggered a quick crowd check between singers', EMOJI.sparkle);
+            }).catch((error) => {
+                hostLogger.debug('Autopilot crowd check skipped', error);
+            });
+        }, 400);
+
+        return () => clearTimeout(timer);
+    }, [
+        roomCode,
+        room?.autoDj,
+        room?.lastPerformance?.timestamp,
+        room?.lastPerformance?.duration,
+        room?.missionControl,
+        queuedCount,
+        startReadyCheck,
+        updateRoom,
+        logActivity,
+        hostName
+    ]);
     const runMissionHypeMoment = async () => {
         if (!roomCode) {
             toast('Create or open a room first');
             return;
         }
         const activeMode = String(room?.activeMode || 'karaoke').trim() || 'karaoke';
+        const partyConfig = buildMissionPartyFromRoom(room);
+        const requestedMode = activeMode === 'trivia_pop'
+            ? 'trivia_reveal'
+            : activeMode === 'wyr'
+                ? 'wyr_reveal'
+                : 'strobe';
+        const requestedDurationSec = requestedMode === 'strobe'
+            ? Math.ceil((STROBE_COUNTDOWN_MS + STROBE_ACTIVE_MS) / 1000)
+            : 12;
+        const guard = shouldAllowGroupMoment({
+            policy: partyConfig,
+            flowState: partyConfig.state,
+            queueDepth: queuedCount,
+            requestedMode,
+            requestedDurationSec
+        });
+        if (!guard.allowed) {
+            toast(getPartyGuardMessage(guard.reason));
+            return;
+        }
+
+        const nextPartyState = recordGroupMoment(partyConfig.state, {
+            mode: requestedMode,
+            durationSec: guard.breakDurationSec
+        });
+        const baseMissionControl = mergeMissionControlParty(room?.missionControl, {
+            state: nextPartyState,
+            lastGroupMode: requestedMode,
+            lastGroupDurationSec: guard.breakDurationSec,
+            lastGroupTriggeredAt: nowMs()
+        });
+        const missionControlAfterHype = {
+            ...baseMissionControl,
+            lastSuggestedAction: 'hype_moment'
+        };
+
         if (activeMode === 'trivia_pop') {
             await updateRoom({
                 activeMode: 'trivia_reveal',
@@ -6750,10 +6951,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     status: 'reveal',
                     revealedAt: nowMs()
                 },
-                missionControl: {
-                    ...(room?.missionControl || {}),
-                    lastSuggestedAction: 'hype_moment'
-                }
+                missionControl: missionControlAfterHype
             });
             toast('Trivia reveal pushed live.');
             return;
@@ -6766,10 +6964,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     status: 'reveal',
                     revealedAt: nowMs()
                 },
-                missionControl: {
-                    ...(room?.missionControl || {}),
-                    lastSuggestedAction: 'hype_moment'
-                }
+                missionControl: missionControlAfterHype
             });
             toast('Crowd split reveal triggered.');
             return;
@@ -6777,10 +6972,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await startBeatDrop();
         await dropBonus(activeMode === 'karaoke' ? 100 : 150);
         await updateRoom({
-            missionControl: {
-                ...(room?.missionControl || {}),
-                lastSuggestedAction: 'hype_moment'
-            }
+            missionControl: missionControlAfterHype
         });
         toast('Hype moment triggered.');
     };
@@ -9384,7 +9576,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     ? 'text-cyan-100 border-cyan-400/35 bg-cyan-500/15'
                     : 'text-amber-100 border-amber-400/35 bg-amber-500/15';
             const missionPickCount = [missionDraft?.archetype, missionDraft?.flowRule, missionDraft?.assistLevel].filter(Boolean).length;
-            const missionOverrideCount = Object.keys(missionAdvancedOverrides || {}).length;
+            const missionPartyBaseline = buildMissionPartyFromRoom(room);
+            const missionPartyPreview = buildMissionPartyPayload(missionPartyDraft);
+            const missionPartyOverrideCount = [
+                missionPartyPreview.karaokeFirst !== missionPartyBaseline.karaokeFirst,
+                missionPartyPreview.minSingingSharePct !== missionPartyBaseline.minSingingSharePct,
+                missionPartyPreview.maxBreakDurationSec !== missionPartyBaseline.maxBreakDurationSec,
+                missionPartyPreview.maxConsecutiveNonKaraokeModes !== missionPartyBaseline.maxConsecutiveNonKaraokeModes
+            ].filter(Boolean).length;
+            const missionOverrideCount = Object.keys(missionAdvancedOverrides || {}).length + missionPartyOverrideCount;
             const featuredSpotlightModeIds = ['karaoke', 'bingo', 'trivia_pop', 'karaoke_bracket'];
             const missionVisibleSpotlightModes = missionShowAllSpotlightModes
                 ? NIGHT_SETUP_PRIMARY_MODES
@@ -9404,7 +9604,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 { label: 'Auto-Play', value: missionPayloadPreview?.autoPlayMedia ? 'On' : 'Off' },
                 { label: 'Scoring', value: missionPayloadPreview?.showScoring ? 'On' : 'Off' },
                 { label: 'TV Chat', value: missionPayloadPreview?.chatShowOnTv ? 'On' : 'Off' },
-                { label: 'Marquee', value: missionPayloadPreview?.marqueeEnabled ? 'On' : 'Off' }
+                { label: 'Marquee', value: missionPayloadPreview?.marqueeEnabled ? 'On' : 'Off' },
+                { label: 'Karaoke-First', value: missionPartyPreview?.karaokeFirst ? 'On' : 'Off' },
+                { label: 'Singing Floor', value: `${missionPartyPreview?.minSingingSharePct || 70}%` },
+                { label: 'Max Break', value: `${missionPartyPreview?.maxBreakDurationSec || 20}s` },
+                { label: 'Group Streak', value: `x${missionPartyPreview?.maxConsecutiveNonKaraokeModes || 1}` }
             ];
             const missionSummary = `Archetype: ${missionPreset.label} | Constraint: ${missionFlowRuleLabel} | Host Style: ${missionAssistLabel} | Spotlight: ${missionMode.label}`;
 
@@ -9474,6 +9678,39 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     const nextValue = !nightSetupQueueFirstTimeBoost;
                                     setNightSetupQueueFirstTimeBoost(nextValue);
                                     setMissionOverrideValue('queueSettings.firstTimeBoost', nextValue);
+                                }}
+                                partyOpen={missionAdvancedPartyOpen}
+                                onTogglePartyOpen={() => setMissionAdvancedPartyOpen((prev) => !prev)}
+                                karaokeFirst={missionPartyDraft?.karaokeFirst !== false}
+                                onToggleKaraokeFirst={() => {
+                                    setMissionPartyDraft((prev) => buildMissionPartyPayload({
+                                        ...(prev || {}),
+                                        karaokeFirst: !(prev?.karaokeFirst !== false)
+                                    }));
+                                }}
+                                minSingingSharePct={missionPartyDraft?.minSingingSharePct || 70}
+                                onSetMinSingingSharePct={(nextValue) => {
+                                    const normalized = Math.max(50, Math.min(95, Number(nextValue || 70)));
+                                    setMissionPartyDraft((prev) => buildMissionPartyPayload({
+                                        ...(prev || {}),
+                                        minSingingSharePct: normalized
+                                    }));
+                                }}
+                                maxBreakDurationSec={missionPartyDraft?.maxBreakDurationSec || 20}
+                                onSetMaxBreakDurationSec={(nextValue) => {
+                                    const normalized = Math.max(3, Math.min(120, Number(nextValue || 20)));
+                                    setMissionPartyDraft((prev) => buildMissionPartyPayload({
+                                        ...(prev || {}),
+                                        maxBreakDurationSec: normalized
+                                    }));
+                                }}
+                                maxConsecutiveNonKaraokeModes={missionPartyDraft?.maxConsecutiveNonKaraokeModes || 1}
+                                onSetMaxConsecutiveNonKaraokeModes={(nextValue) => {
+                                    const normalized = Math.max(1, Math.min(4, Number(nextValue || 1)));
+                                    setMissionPartyDraft((prev) => buildMissionPartyPayload({
+                                        ...(prev || {}),
+                                        maxConsecutiveNonKaraokeModes: normalized
+                                    }));
                                 }}
                                 togglesOpen={missionAdvancedTogglesOpen}
                                 onToggleTogglesOpen={() => setMissionAdvancedTogglesOpen((prev) => !prev)}

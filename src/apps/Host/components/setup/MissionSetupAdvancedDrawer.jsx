@@ -24,6 +24,16 @@ const MissionSetupAdvancedDrawer = ({
     onSetQueueRotation = () => {},
     queueFirstTimeBoost = true,
     onToggleQueueFirstTimeBoost = () => {},
+    partyOpen = false,
+    onTogglePartyOpen = () => {},
+    karaokeFirst = true,
+    onToggleKaraokeFirst = () => {},
+    minSingingSharePct = 70,
+    onSetMinSingingSharePct = () => {},
+    maxBreakDurationSec = 20,
+    onSetMaxBreakDurationSec = () => {},
+    maxConsecutiveNonKaraokeModes = 1,
+    onSetMaxConsecutiveNonKaraokeModes = () => {},
     togglesOpen = false,
     onToggleTogglesOpen = () => {},
     liveToggles = []
@@ -129,6 +139,59 @@ const MissionSetupAdvancedDrawer = ({
                                 >
                                     {queueFirstTimeBoost ? 'Enabled' : 'Disabled'}
                                 </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="rounded-xl border border-zinc-700 bg-zinc-950/60">
+                    <button onClick={onTogglePartyOpen} className="w-full px-3 py-2 flex items-center justify-between text-left">
+                        <span className="text-sm font-bold text-white">Karaoke-First Guardrails</span>
+                        <i className={`fa-solid fa-chevron-${partyOpen ? 'up' : 'down'} text-zinc-500`}></i>
+                    </button>
+                    {partyOpen && (
+                        <div className="px-3 pb-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Karaoke Priority</div>
+                                <button
+                                    onClick={onToggleKaraokeFirst}
+                                    className={`${styles.btnStd} ${karaokeFirst ? styles.btnInfo : styles.btnNeutral} w-full`}
+                                >
+                                    {karaokeFirst ? 'Karaoke-First ON' : 'Karaoke-First OFF'}
+                                </button>
+                            </div>
+                            <div>
+                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Minimum Singing Share (%)</div>
+                                <input
+                                    type="number"
+                                    min="50"
+                                    max="95"
+                                    value={minSingingSharePct}
+                                    onChange={(event) => onSetMinSingingSharePct(event.target.value)}
+                                    className={styles.input}
+                                />
+                            </div>
+                            <div>
+                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Max Break Duration (sec)</div>
+                                <input
+                                    type="number"
+                                    min="3"
+                                    max="120"
+                                    value={maxBreakDurationSec}
+                                    onChange={(event) => onSetMaxBreakDurationSec(event.target.value)}
+                                    className={styles.input}
+                                />
+                            </div>
+                            <div>
+                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Max Consecutive Group Modes</div>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="4"
+                                    value={maxConsecutiveNonKaraokeModes}
+                                    onChange={(event) => onSetMaxConsecutiveNonKaraokeModes(event.target.value)}
+                                    className={styles.input}
+                                />
                             </div>
                         </div>
                     )}

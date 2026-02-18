@@ -119,6 +119,16 @@ async function run() {
             spotlightMode: "karaoke",
             assistLevel: "smart_assist",
           },
+          party: {
+            karaokeFirst: true,
+            minSingingSharePct: 70,
+            maxBreakDurationSec: 20,
+            maxConsecutiveNonKaraokeModes: 1,
+            state: {
+              singingMs: 180000,
+              groupMs: 30000,
+            },
+          },
           advancedOverrides: {},
           lastAppliedAt: { __hostOp: "serverTimestamp" },
           lastSuggestedAction: "start_next",
@@ -130,6 +140,9 @@ async function run() {
       assert.equal(mission.version, 1);
       assert.equal(mission.enabled, true);
       assert.equal(mission.setupDraft.archetype, "casual");
+      assert.equal(mission.party.karaokeFirst, true);
+      assert.equal(mission.party.minSingingSharePct, 70);
+      assert.equal(mission.party.maxBreakDurationSec, 20);
       assert.equal(mission.lastSuggestedAction, "start_next");
       assert.ok(mission.lastAppliedAt && typeof mission.lastAppliedAt.toMillis === "function");
     }],
