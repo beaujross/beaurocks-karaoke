@@ -1,12 +1,5 @@
 export const HOST_UI_FEATURE_CHECKLIST = [
-    { id: 'quick-command-palette', label: 'Quick Action: Command Palette', selector: '[data-feature-id="quick-command-palette"]' },
-    { id: 'quick-start-next', label: 'Quick Action: Start Next', selector: '[data-feature-id="quick-start-next"]' },
-    { id: 'quick-toggle-source', label: 'Quick Action: Play/Pause Source', selector: '[data-feature-id="quick-toggle-source"]' },
-    { id: 'quick-open-tv', label: 'Quick Action: Open TV', selector: '[data-feature-id="quick-open-tv"]' },
-    { id: 'quick-open-control-center', label: 'Quick Action: Open Admin', selector: '[data-feature-id="quick-open-control-center"]' },
-    { id: 'quick-open-live-effects', label: 'Quick Action: Open Live Effects', selector: '[data-feature-id="quick-open-live-effects"]' },
-    { id: 'quick-chat-settings', label: 'Quick Action: Chat Settings', selector: '[data-feature-id="quick-chat-settings"]' },
-    { id: 'quick-ui-feature-check', label: 'Quick Action: UI Feature Check', selector: '[data-feature-id="quick-ui-feature-check"]' },
+    { id: 'deck-menu-toggle', label: 'Live Deck: Deck Menu', selector: '[data-feature-id="deck-menu-toggle"]' },
     { id: 'layout-workspace-select', label: 'Panel Layout: Workspace Select', selector: '[data-feature-id="layout-workspace-select"]' },
     { id: 'layout-expand-all', label: 'Panel Layout: Expand All', selector: '[data-feature-id="layout-expand-all"]' },
     { id: 'layout-collapse-all', label: 'Panel Layout: Collapse All', selector: '[data-feature-id="layout-collapse-all"]' },

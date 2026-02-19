@@ -62,6 +62,14 @@ const HostTopChrome = ({
     onToggleLyricsVisualizerMode,
     currentSongHasLyrics = false,
     aiGenerationAvailable = false,
+    onOpenCommandPalette,
+    sfxMuted = false,
+    setSfxMuted,
+    sfxVolume = 0.5,
+    setSfxVolume,
+    playSfxSafe,
+    sounds = [],
+    silenceAll,
     moderationPendingCount = 0,
     moderationSeverity = 'idle',
     moderationNeedsAttention = false,
@@ -77,6 +85,13 @@ const HostTopChrome = ({
     const balladActive = room?.lightMode === 'ballad';
     const selfieCamActive = room?.activeMode === 'selfie_cam';
     const normalizedPermission = String(permissionLevel || 'unknown').toLowerCase();
+    const tvDisplayMode = room?.showLyricsTv && room?.showVisualizerTv
+        ? 'lyrics_viz'
+        : room?.showLyricsTv
+            ? 'lyrics'
+            : room?.showVisualizerTv
+                ? 'visualizer'
+                : 'video';
     const permissionTone = normalizedPermission === 'owner'
         ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100'
         : normalizedPermission === 'admin'
@@ -141,6 +156,17 @@ const HostTopChrome = ({
             }
         }
         setShowLiveEffectsMenu(false);
+    };
+    const applyTvDisplayMode = async (mode) => {
+        if (mode === 'lyrics') {
+            await updateRoom({ showLyricsTv: true, showVisualizerTv: false, lyricsMode: room?.lyricsMode || 'auto' });
+        } else if (mode === 'visualizer') {
+            await updateRoom({ showLyricsTv: false, showVisualizerTv: true });
+        } else if (mode === 'lyrics_viz') {
+            await updateRoom({ showLyricsTv: true, showVisualizerTv: true, lyricsMode: room?.lyricsMode || 'auto' });
+        } else {
+            await updateRoom({ showLyricsTv: false, showVisualizerTv: false });
+        }
     };
 
     return (
@@ -372,17 +398,103 @@ const HostTopChrome = ({
                 </button>
                 <div className="relative" ref={liveEffectsMenuRef}>
                     <button
+                        data-feature-id="deck-menu-toggle"
                         onClick={() => setShowLiveEffectsMenu(prev => !prev)}
                         className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-xs min-w-[150px]`}
-                        title="Open live effects menu"
+                        title="Open live deck menu"
                     >
                         <i className="fa-solid fa-sliders mr-1"></i>
-                        Live Effects
+                        Deck Menu
                         <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showLiveEffectsMenu ? 'rotate-180' : ''}`}></i>
                     </button>
                     {showLiveEffectsMenu && (
-                        <div className="absolute right-0 top-full mt-2 w-[min(420px,92vw)] rounded-2xl border border-white/15 bg-zinc-950/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400 mb-2">Vibe Sync + Moments</div>
+                        <div className="absolute right-0 top-full mt-2 w-[min(460px,94vw)] max-h-[70vh] overflow-y-auto custom-scrollbar rounded-2xl border border-white/15 bg-zinc-950/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
+                            <button
+                                data-feature-id="deck-command-palette"
+                                onClick={() => {
+                                    onOpenCommandPalette?.();
+                                    setShowLiveEffectsMenu(false);
+                                }}
+                                className={`${styles.btnStd} ${styles.btnPrimary} w-full py-2 text-xs`}
+                            >
+                                <i className="fa-solid fa-terminal"></i>
+                                Command Palette
+                            </button>
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400 mt-3 mb-2">TV Display</div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    data-feature-id="deck-tv-video"
+                                    onClick={() => applyTvDisplayMode('video')}
+                                    className={`${styles.btnStd} ${tvDisplayMode === 'video' ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}
+                                >
+                                    <i className="fa-solid fa-video"></i>
+                                    Video
+                                </button>
+                                <button
+                                    data-feature-id="deck-tv-lyrics"
+                                    onClick={() => applyTvDisplayMode('lyrics')}
+                                    className={`${styles.btnStd} ${tvDisplayMode === 'lyrics' ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}
+                                >
+                                    <i className="fa-solid fa-closed-captioning"></i>
+                                    Lyrics
+                                </button>
+                                <button
+                                    data-feature-id="deck-tv-visualizer"
+                                    onClick={() => applyTvDisplayMode('visualizer')}
+                                    className={`${styles.btnStd} ${tvDisplayMode === 'visualizer' ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}
+                                >
+                                    <i className="fa-solid fa-wave-square"></i>
+                                    Visualizer
+                                </button>
+                                <button
+                                    data-feature-id="deck-tv-lyrics-viz"
+                                    onClick={() => applyTvDisplayMode('lyrics_viz')}
+                                    className={`${styles.btnStd} ${tvDisplayMode === 'lyrics_viz' ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}
+                                >
+                                    <i className="fa-solid fa-layer-group"></i>
+                                    Lyrics + Viz
+                                </button>
+                            </div>
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400 mt-3 mb-2">Sound Effects</div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    data-feature-id="deck-sfx-mute"
+                                    onClick={() => setSfxMuted?.((prev) => {
+                                        const next = !prev;
+                                        if (next) silenceAll?.();
+                                        return next;
+                                    })}
+                                    className={`${styles.btnStd} ${sfxMuted ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs min-w-[48px]`}
+                                    title={sfxMuted ? 'Unmute FX' : 'Mute FX'}
+                                >
+                                    <i className={`fa-solid ${sfxMuted ? 'fa-volume-xmark' : 'fa-volume-high'}`}></i>
+                                </button>
+                                <input
+                                    data-feature-id="deck-sfx-volume"
+                                    type="range"
+                                    min="0"
+                                    max="100"
+                                    step="1"
+                                    value={Math.round((sfxVolume || 0) * 100)}
+                                    onChange={(event) => setSfxVolume?.(parseInt(event.target.value, 10) / 100)}
+                                    className="flex-1 h-2.5 bg-zinc-800 accent-[#00C4D9] rounded-lg appearance-none cursor-pointer"
+                                    style={{ background: `linear-gradient(90deg, #00E5FF ${Math.round((sfxVolume || 0) * 100)}%, #27272a ${Math.round((sfxVolume || 0) * 100)}%)` }}
+                                />
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 mt-2">
+                                {(sounds || []).slice(0, 6).map((sound) => (
+                                    <button
+                                        data-feature-id="deck-sfx-button"
+                                        key={`deck-sfx-${sound.name}`}
+                                        onClick={() => playSfxSafe?.(sound.url)}
+                                        className={`${styles.btnStd} ${styles.btnNeutral} py-1.5 text-[10px] truncate`}
+                                    >
+                                        <i className={`fa-solid ${sound.icon} mr-1`}></i>
+                                        {sound.name}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400 mt-3 mb-2">Vibe Sync + Moments</div>
                             <div className="grid grid-cols-2 gap-2">
                                 <button onClick={() => runLiveEffect('beat_drop')} className={`${styles.btnStd} ${strobeActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
                                     <i className="fa-solid fa-bolt"></i>

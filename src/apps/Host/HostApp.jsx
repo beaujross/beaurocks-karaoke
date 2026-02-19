@@ -2521,7 +2521,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, openHostSettings, openLiveEffects, showLegacyLiveEffects = true, pendingModerationCount = 0, runMissionHypeMoment = null, missionControlEnabled = false, missionControlCohort = 'legacy', openModerationInbox = null }) => {
+const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, openHostSettings, showLegacyLiveEffects = true, pendingModerationCount = 0, runMissionHypeMoment = null, missionControlEnabled = false, missionControlCohort = 'legacy', openModerationInbox = null, commandPaletteRequestToken = 0 }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -2614,32 +2614,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
     const commandInputRef = useRef(null);
     const [commandOpen, setCommandOpen] = useState(false);
     const [commandQuery, setCommandQuery] = useState('');
-    const [essentialsMode, setEssentialsMode] = useState(() => {
-        try {
-            if (typeof window === 'undefined') return true;
-            const saved = window.localStorage.getItem('bross_host_essentials_mode');
-            if (saved === null) return true;
-            return saved !== '0';
-        } catch {
-            return true;
-        }
-    });
-    const [showLegacyQuickActions, setShowLegacyQuickActions] = useState(() => !missionControlEnabled);
-    useEffect(() => {
-        try {
-            if (typeof window === 'undefined') return;
-            window.localStorage.setItem('bross_host_essentials_mode', essentialsMode ? '1' : '0');
-        } catch {
-            // Ignore persistence failures.
-        }
-    }, [essentialsMode]);
-    useEffect(() => {
-        if (!missionControlEnabled) {
-            setShowLegacyQuickActions(true);
-            return;
-        }
-        setShowLegacyQuickActions(false);
-    }, [missionControlEnabled]);
+    const essentialsMode = false;
     const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
     const hostDmMessages = chatMessages.filter((msg) => isDirectChatMessage(msg));
     const {
@@ -2771,6 +2746,11 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         const timer = setTimeout(() => commandInputRef.current?.focus(), 0);
         return () => clearTimeout(timer);
     }, [commandOpen]);
+    useEffect(() => {
+        if (!commandPaletteRequestToken) return;
+        setCommandOpen(true);
+        setCommandQuery('');
+    }, [commandPaletteRequestToken]);
 
     const runPaletteCommand = async (command) => {
         if (!command?.enabled || typeof command?.run !== 'function') return;
@@ -3711,100 +3691,9 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                 )}
             </div>
             )}
-            <div className={`${STYLES.panel} px-3 py-2 border border-white/10 bg-black/25`}>
-                <div className="flex flex-wrap items-center gap-2">
-                    <div className={`text-[11px] uppercase tracking-[0.25em] text-zinc-400 mr-2 ${compactViewport ? 'hidden md:block' : ''}`}>
-                        {missionControlEnabled ? 'Legacy Actions' : 'Quick Actions'}
-                    </div>
-                    <button
-                        onClick={() => setCommandOpen(true)}
-                        data-feature-id="quick-command-palette"
-                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 text-[10px]`}
-                    >
-                        Command Palette
-                    </button>
-                    {missionControlEnabled && (
-                        <button
-                            onClick={() => setShowLegacyQuickActions((prev) => !prev)}
-                            className={`${STYLES.btnStd} ${showLegacyQuickActions ? STYLES.btnInfo : STYLES.btnNeutral} px-3 text-[10px]`}
-                        >
-                            {showLegacyQuickActions ? 'Hide Legacy Actions' : 'Show Legacy Actions'}
-                        </button>
-                    )}
-                    <button
-                        onClick={() => setEssentialsMode((prev) => !prev)}
-                        data-feature-id="quick-essentials-mode"
-                        className={`${STYLES.btnStd} ${essentialsMode ? STYLES.btnInfo : STYLES.btnNeutral} px-3 text-[10px]`}
-                    >
-                        {essentialsMode ? 'Show Advanced' : 'Essentials Only'}
-                    </button>
-                    {(!missionControlEnabled || showLegacyQuickActions) && (
-                        <>
-                    <button
-                        onClick={() => queue[0] && updateStatus(queue[0].id, 'performing')}
-                        disabled={!queue[0]}
-                        data-feature-id="quick-start-next"
-                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 text-[10px] ${!queue[0] ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                        Start Next
-                    </button>
-                    <button
-                        onClick={togglePlay}
-                        disabled={!current}
-                        data-feature-id="quick-toggle-source"
-                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 text-[10px] ${!current ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                        {currentSourcePlaying ? 'Pause Source' : 'Play Source'}
-                    </button>
-                    <button
-                        onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
-                        data-feature-id="quick-open-tv"
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[10px]`}
-                    >
-                        Open TV
-                    </button>
-                    <button
-                        onClick={() => openHostSettings?.()}
-                        data-feature-id="quick-open-control-center"
-                        className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 text-[10px]`}
-                    >
-                        Admin
-                    </button>
-                    <button
-                        onClick={() => openLiveEffects?.()}
-                        data-feature-id="quick-open-live-effects"
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[10px]`}
-                    >
-                        Live Effects
-                    </button>
-                    <button
-                        onClick={openChatSettings}
-                        data-feature-id="quick-chat-settings"
-                        className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 text-[10px] ${compactViewport || essentialsMode ? 'hidden' : ''}`}
-                    >
-                        Chat Settings
-                    </button>
-                    <button
-                        onClick={runUiFeatureCheck}
-                        data-feature-id="quick-ui-feature-check"
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[10px] ${compactViewport || essentialsMode ? 'hidden' : ''}`}
-                    >
-                        UI Feature Check
-                    </button>
-                        </>
-                    )}
-                </div>
-                {essentialsMode && (
-                    <div className="mt-2 text-xs text-zinc-400">
-                        Essentials mode keeps focus on queue flow, singer handoff, and TV control.
-                        {missionControlEnabled ? ' Mission strip handles primary actions; legacy actions are optional.' : ' Advanced panels are still available via Show Advanced.'}
-                    </div>
-                )}
-            </div>
-
-            <div className={`flex-1 min-h-0 flex ${compactViewport ? 'flex-col gap-3' : 'flex-col md:flex-row gap-6'} overflow-hidden`}>
+            <div className={`flex-1 min-h-0 ${compactViewport ? 'flex flex-col gap-3' : 'grid grid-cols-3 gap-6'} overflow-hidden`}>
             {/* LEFT CONTROLS */}
-            <div className={`w-full ${compactViewport ? 'order-2 max-h-[40vh]' : 'md:w-96'} flex-shrink-0 overflow-y-auto pr-2 custom-scrollbar`}>
+            <div className={`w-full ${compactViewport ? 'order-2 max-h-[40vh]' : 'min-h-0'} overflow-y-auto ${compactViewport ? 'pr-2' : 'pr-1'} custom-scrollbar`}>
                 <div className={`${STYLES.panel} overflow-hidden`}>
                     {!essentialsMode && (
                         <section className="px-4 py-4 border-b border-white/10 bg-black/30">
@@ -4057,20 +3946,21 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                 </div>
             </div>
 
-            {/* RIGHT QUEUE */}
-            <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0 ${compactViewport ? 'order-1 min-h-[52vh]' : ''}`}>
-                {compactViewport ? (
-                    <>
-                        {queueListSection}
+            {compactViewport ? (
+                <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0 order-1 min-h-[52vh]`}>
+                    {queueListSection}
+                    {addToQueueSection}
+                </div>
+            ) : (
+                <>
+                    <div className={`${STYLES.panel} min-h-0 overflow-y-auto custom-scrollbar`}>
                         {addToQueueSection}
-                    </>
-                ) : (
-                    <>
-                        {addToQueueSection}
+                    </div>
+                    <div className={`${STYLES.panel} min-h-0 flex flex-col overflow-hidden min-w-0`}>
                         {queueListSection}
-                    </>
-                )}
-            </div>
+                    </div>
+                </>
+            )}
             </div>
         </div>
     );
@@ -4309,6 +4199,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [showLaunchMenu, setShowLaunchMenu] = useState(false);
     const [showNavMenu, setShowNavMenu] = useState(false);
     const [showModerationInbox, setShowModerationInbox] = useState(false);
+    const [commandPaletteRequestToken, setCommandPaletteRequestToken] = useState(0);
     const [autoOpenGameId, setAutoOpenGameId] = useState('');
     const [_appleMusicReady, setAppleMusicReady] = useState(false);
     const [appleMusicAuthorized, setAppleMusicAuthorized] = useState(false);
@@ -11116,8 +11007,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         openHostSettings: () => {
             openAdminWorkspace('ops.room_setup');
         },
-        openLiveEffects: () => openAdminWorkspace('advanced.live_effects'),
         openModerationInbox,
+        commandPaletteRequestToken,
         showLegacyLiveEffects: false,
         compactViewport: compactHostViewport
     };
@@ -11227,6 +11118,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     onToggleLyricsVisualizerMode={toggleLyricsVisualizerMode}
                     currentSongHasLyrics={currentSongHasLyrics}
                     aiGenerationAvailable={canGenerateAiContent}
+                    onOpenCommandPalette={() => {
+                        handleTopChromeTabChange('stage');
+                        setCommandPaletteRequestToken((prev) => prev + 1);
+                    }}
+                    sfxMuted={sfxMuted}
+                    setSfxMuted={setSfxMuted}
+                    sfxVolume={sfxVolume}
+                    setSfxVolume={setSfxVolume}
+                    playSfxSafe={playSfxSafe}
+                    sounds={SOUNDS}
+                    silenceAll={silenceAll}
                     moderationPendingCount={moderationQueueState.totalPending}
                     moderationSeverity={moderationInbox.meta?.severity || 'idle'}
                     moderationNeedsAttention={!!moderationInbox.meta?.needsAttention}
