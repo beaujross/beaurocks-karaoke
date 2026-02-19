@@ -4957,6 +4957,67 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const currentSong = songs.find(s => s.status === 'performing');
     const queuedSongs = songs.filter(s => s.status === 'requested' || s.status === 'pending');
+    const currentSongHasLyrics = !!String(currentSong?.lyrics || '').trim()
+        || (Array.isArray(currentSong?.lyricsTimed) && currentSong.lyricsTimed.length > 0);
+    const lyricsVisualizerModeActive = !!room?.showLyricsTv && !!room?.showVisualizerTv;
+    const hostPermissionLevel = useMemo(() => {
+        const normalizedRole = String(orgContext?.role || '').toLowerCase();
+        if (['owner', 'admin', 'member'].includes(normalizedRole)) return normalizedRole;
+        return 'unknown';
+    }, [orgContext?.role]);
+    const hostAuthSessionReady = !!(uid || auth.currentUser?.uid);
+    const toggleLyricsVisualizerMode = useCallback(async () => {
+        const nextEnabled = !(room?.showLyricsTv && room?.showVisualizerTv);
+        if (nextEnabled) {
+            if (!currentSongHasLyrics && currentSong?.id && canGenerateAiContent) {
+                try {
+                    toast('Generating AI lyrics for current song...');
+                    const generated = await generateAIContent('lyrics', {
+                        title: currentSong.songTitle || '',
+                        artist: currentSong.artist || ''
+                    });
+                    const generatedLyrics = String(generated?.lyrics || '').trim();
+                    if (generatedLyrics) {
+                        await updateDoc(
+                            doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', currentSong.id),
+                            {
+                                lyrics: generatedLyrics,
+                                lyricsTimed: null,
+                                lyricsSource: 'ai'
+                            }
+                        );
+                        toast('AI lyrics ready for overlay');
+                    } else {
+                        toast('AI lyrics unavailable for this song');
+                    }
+                } catch (err) {
+                    hostLogger.debug('Live lyrics generation failed', err);
+                    toast('Could not generate lyrics right now');
+                }
+            } else if (!currentSongHasLyrics && currentSong?.id && !canGenerateAiContent) {
+                toast('No lyrics on current song. AI generation is not enabled for this workspace.');
+            }
+            await updateRoom({
+                showVisualizerTv: true,
+                showLyricsTv: true,
+                lyricsMode: room?.lyricsMode || 'auto'
+            });
+            return;
+        }
+        await updateRoom({
+            showVisualizerTv: false,
+            showLyricsTv: false
+        });
+    }, [
+        room?.showLyricsTv,
+        room?.showVisualizerTv,
+        room?.lyricsMode,
+        currentSong,
+        currentSongHasLyrics,
+        canGenerateAiContent,
+        toast,
+        updateRoom
+    ]);
     const recentActivities = (activities || []).filter(a => toMs(a.timestamp) > nowMs() - 5 * 60 * 1000);
     const lastActivity = activities?.[0];
     const copySnapshot = async () => {
@@ -11158,6 +11219,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     startBeatDrop={startBeatDrop}
                     startStormSequence={startStormSequence}
                     stopStormSequence={stopStormSequence}
+                    appleMusicConnected={appleMusicAuthorized}
+                    aiToolsConnected={canGenerateAiContent}
+                    permissionLevel={hostPermissionLevel}
+                    authSessionReady={hostAuthSessionReady}
+                    lyricsVisualizerModeActive={lyricsVisualizerModeActive}
+                    onToggleLyricsVisualizerMode={toggleLyricsVisualizerMode}
+                    currentSongHasLyrics={currentSongHasLyrics}
+                    aiGenerationAvailable={canGenerateAiContent}
                     moderationPendingCount={moderationQueueState.totalPending}
                     moderationSeverity={moderationInbox.meta?.severity || 'idle'}
                     moderationNeedsAttention={!!moderationInbox.meta?.needsAttention}
@@ -11691,7 +11760,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <div className={inAdminWorkspace ? 'fixed inset-x-0 bottom-0 top-[94px] z-[40] px-3 sm:px-4 md:px-5 lg:px-6 pb-3 sm:pb-4 md:pb-5 lg:pb-6' : 'fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4'}>
                     <div
                         data-admin-workspace={inAdminWorkspace ? 'true' : 'modal'}
-                        className={`bg-zinc-950/95 border border-zinc-700/80 w-full overflow-hidden flex flex-col ${inAdminWorkspace ? 'h-full rounded-2xl shadow-none' : 'rounded-none sm:rounded-2xl max-w-[1400px] shadow-[0_22px_80px_rgba(0,0,0,0.55)] h-[100dvh] sm:h-[90vh]'}`}
+                        className={`host-admin-workspace bg-zinc-950/95 border border-zinc-700/80 w-full overflow-hidden flex flex-col ${inAdminWorkspace ? 'h-full rounded-2xl shadow-none' : 'rounded-none sm:rounded-2xl max-w-[1400px] shadow-[0_22px_80px_rgba(0,0,0,0.55)] h-[100dvh] sm:h-[90vh]'}`}
                     >
                         <div className="border-b border-white/10 px-4 py-3 md:px-5 md:py-4 bg-zinc-950">
                             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -11814,7 +11883,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </button>
                                     </div>
                                 </div>
-                                <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-5">
+                                <div className="host-admin-content flex-1 overflow-y-auto custom-scrollbar p-4 md:p-5">
                         {settingsTab === 'general' && (
                         <>
                         <div className="mb-5 bg-zinc-950/60 border border-cyan-500/30 rounded-xl p-4">
@@ -13255,55 +13324,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         {settingsTab === 'live_effects' && (
                             <div className="space-y-4">
                                 <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Advanced Tools</div>
+                                    <div className="text-xs uppercase tracking-[0.24em] text-zinc-400">Advanced Tools</div>
                                     <div className="text-xl font-bold text-white mt-1">Live Effects</div>
-                                    <div className="text-sm text-zinc-400 mt-1">
-                                        Special moment controls moved out of the primary queue workflow.
+                                    <div className="text-base text-zinc-200 mt-2">
+                                        Scene effects are now in the top Live Deck for faster access while hosting.
                                     </div>
-                                </div>
-                                <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500 mb-2">Scene Effects</div>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    <div className="text-sm text-zinc-300 mt-2">
+                                        Open Queue and use <span className="text-cyan-300 font-semibold">Live Deck &gt; Live Effects</span> for Beat Drop, Storm, Guitar, Banger, Ballad, and Selfie Cam.
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 mt-3">
                                         <button
-                                            onClick={() => (room?.lightMode === 'strobe' ? updateRoom({ lightMode: 'off' }) : startBeatDrop())}
-                                            className={`${STYLES.btnStd} ${room?.lightMode === 'strobe' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
+                                            onClick={() => leaveAdminWithTarget('stage')}
+                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight}`}
                                         >
-                                            Beat Drop
+                                            <i className="fa-solid fa-sliders"></i>
+                                            Open Live Deck
                                         </button>
                                         <button
-                                            onClick={() => updateRoom({ lightMode: room?.lightMode === 'guitar' ? 'off' : 'guitar', guitarSessionId: Date.now(), guitarWinner: null, guitarVictory: null })}
-                                            className={`${STYLES.btnStd} ${room?.lightMode === 'guitar' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
+                                            onClick={() => updateRoom({ lightMode: 'off', stormPhase: 'off', activeMode: room?.activeMode === 'selfie_cam' ? 'karaoke' : room?.activeMode })}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
                                         >
-                                            Guitar
-                                        </button>
-                                        <button
-                                            onClick={() => updateRoom({ lightMode: room?.lightMode === 'banger' ? 'off' : 'banger' })}
-                                            className={`${STYLES.btnStd} ${room?.lightMode === 'banger' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                        >
-                                            Banger
-                                        </button>
-                                        <button
-                                            onClick={() => updateRoom({ lightMode: room?.lightMode === 'ballad' ? 'off' : 'ballad' })}
-                                            className={`${STYLES.btnStd} ${room?.lightMode === 'ballad' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                        >
-                                            Ballad
-                                        </button>
-                                        <button
-                                            onClick={() => (room?.lightMode === 'storm' ? stopStormSequence() : startStormSequence())}
-                                            className={`${STYLES.btnStd} ${room?.lightMode === 'storm' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                        >
-                                            Storm
-                                        </button>
-                                        <button
-                                            onClick={() => updateRoom({ activeMode: room?.activeMode === 'selfie_cam' ? 'karaoke' : 'selfie_cam' })}
-                                            className={`${STYLES.btnStd} ${room?.activeMode === 'selfie_cam' ? STYLES.btnHighlight : STYLES.btnNeutral}`}
-                                        >
-                                            Selfie Cam
+                                            <i className="fa-solid fa-power-off"></i>
+                                            Clear active effects
                                         </button>
                                     </div>
                                 </div>
                                 <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500 mb-2">Soundboard</div>
+                                    <div className="text-xs uppercase tracking-[0.24em] text-zinc-400 mb-2">Soundboard</div>
                                     <SoundboardControls
                                         soundboardOpen={true}
                                         sfxMuted={sfxMuted}

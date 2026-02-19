@@ -1,6 +1,14 @@
 import React from 'react';
 import ModerationInboxChip from './ModerationInboxChip';
 
+const StatusPill = ({ label, value, active = false, toneClass = '' }) => (
+    <div className={`inline-flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] ${toneClass}`}>
+        <span className={`inline-flex h-2.5 w-2.5 rounded-full ${active ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.9)]' : 'bg-rose-300 shadow-[0_0_10px_rgba(252,165,165,0.6)]'}`}></span>
+        <span className="text-zinc-400">{label}</span>
+        <span className="font-bold text-zinc-100">{value}</span>
+    </div>
+);
+
 const HostTopChrome = ({
     room,
     appBase,
@@ -46,14 +54,94 @@ const HostTopChrome = ({
     startBeatDrop,
     startStormSequence,
     stopStormSequence,
+    appleMusicConnected = false,
+    aiToolsConnected = false,
+    permissionLevel = 'unknown',
+    authSessionReady = false,
+    lyricsVisualizerModeActive = false,
+    onToggleLyricsVisualizerMode,
+    currentSongHasLyrics = false,
+    aiGenerationAvailable = false,
     moderationPendingCount = 0,
     moderationSeverity = 'idle',
     moderationNeedsAttention = false,
     onOpenModerationInbox
 }) => {
     const SmallWaveform = smallWaveform;
+    const [showLiveEffectsMenu, setShowLiveEffectsMenu] = React.useState(false);
+    const liveEffectsMenuRef = React.useRef(null);
     const stormActive = room?.lightMode === 'storm';
     const strobeActive = room?.lightMode === 'strobe';
+    const guitarActive = room?.lightMode === 'guitar';
+    const bangerActive = room?.lightMode === 'banger';
+    const balladActive = room?.lightMode === 'ballad';
+    const selfieCamActive = room?.activeMode === 'selfie_cam';
+    const normalizedPermission = String(permissionLevel || 'unknown').toLowerCase();
+    const permissionTone = normalizedPermission === 'owner'
+        ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100'
+        : normalizedPermission === 'admin'
+            ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100'
+            : normalizedPermission === 'member'
+                ? 'border-amber-400/35 bg-amber-500/10 text-amber-100'
+                : 'border-zinc-600 bg-zinc-900/70 text-zinc-300';
+
+    React.useEffect(() => {
+        if (!showLiveEffectsMenu) return undefined;
+        const handleWindowClick = (event) => {
+            if (!liveEffectsMenuRef.current?.contains(event.target)) {
+                setShowLiveEffectsMenu(false);
+            }
+        };
+        const handleEscape = (event) => {
+            if (event.key === 'Escape') setShowLiveEffectsMenu(false);
+        };
+        window.addEventListener('mousedown', handleWindowClick);
+        window.addEventListener('keydown', handleEscape);
+        return () => {
+            window.removeEventListener('mousedown', handleWindowClick);
+            window.removeEventListener('keydown', handleEscape);
+        };
+    }, [showLiveEffectsMenu]);
+
+    const runLiveEffect = async (effectId) => {
+        if (effectId === 'beat_drop') {
+            if (strobeActive) {
+                await updateRoom({ lightMode: 'off' });
+            } else {
+                await startBeatDrop?.();
+            }
+        } else if (effectId === 'storm') {
+            if (stormActive) {
+                await stopStormSequence?.();
+            } else {
+                await startStormSequence?.();
+            }
+        } else if (effectId === 'guitar') {
+            await updateRoom({
+                lightMode: guitarActive ? 'off' : 'guitar',
+                guitarSessionId: Date.now(),
+                guitarWinner: null,
+                guitarVictory: null
+            });
+        } else if (effectId === 'banger') {
+            await updateRoom({ lightMode: bangerActive ? 'off' : 'banger' });
+        } else if (effectId === 'ballad') {
+            await updateRoom({ lightMode: balladActive ? 'off' : 'ballad' });
+        } else if (effectId === 'selfie_cam') {
+            await updateRoom({ activeMode: selfieCamActive ? 'karaoke' : 'selfie_cam' });
+        } else if (effectId === 'clear') {
+            if (stormActive) {
+                await stopStormSequence?.();
+            } else {
+                await updateRoom({
+                    lightMode: 'off',
+                    stormPhase: 'off',
+                    activeMode: selfieCamActive ? 'karaoke' : room?.activeMode
+                });
+            }
+        }
+        setShowLiveEffectsMenu(false);
+    };
 
     return (
     <div data-host-top-chrome="true" className="bg-zinc-900 px-4 py-2 flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
@@ -123,7 +211,7 @@ const HostTopChrome = ({
             </div>
             <div className="flex items-center gap-2 md:gap-3 justify-between md:justify-end">
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
-                    <div data-host-live-mode={room.activeMode} className="bg-red-600 px-2.5 py-0.5 rounded text-[10px] md:text-xs font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
+                    <div data-host-live-mode={room.activeMode} className="bg-red-600 px-2.5 py-0.5 rounded text-xs md:text-sm font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
                 )}
                 <ModerationInboxChip
                     pendingCount={moderationPendingCount}
@@ -205,40 +293,32 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
+        <div className="w-full flex flex-wrap items-center gap-2">
+            <StatusPill
+                label="Apple"
+                value={appleMusicConnected ? 'Connected' : 'Not Linked'}
+                active={appleMusicConnected}
+                toneClass={appleMusicConnected ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100' : 'border-rose-400/35 bg-rose-500/10 text-rose-100'}
+            />
+            <StatusPill
+                label="AI"
+                value={aiToolsConnected ? 'Enabled' : 'Locked'}
+                active={aiToolsConnected}
+                toneClass={aiToolsConnected ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100' : 'border-amber-400/35 bg-amber-500/10 text-amber-100'}
+            />
+            <StatusPill
+                label="Access"
+                value={`${String(permissionLevel || 'unknown').toUpperCase()}${authSessionReady ? '' : ' / No Auth'}`}
+                active={authSessionReady}
+                toneClass={permissionTone}
+            />
+        </div>
         <div className="w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">
-                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-400 pr-2">Live Deck</div>
-                <button
-                    onClick={async () => {
-                        if (stormActive) {
-                            await stopStormSequence?.();
-                            return;
-                        }
-                        await startStormSequence?.();
-                    }}
-                    className={`${styles.btnStd} ${stormActive ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-xs min-w-[110px]`}
-                    title="Toggle storm sequence"
-                >
-                    <i className="fa-solid fa-cloud-bolt mr-1"></i>
-                    {stormActive ? 'Storm ON' : 'Storm'}
-                </button>
-                <button
-                    onClick={async () => {
-                        if (strobeActive) {
-                            await updateRoom({ lightMode: 'off' });
-                            return;
-                        }
-                        await startBeatDrop?.();
-                    }}
-                    className={`${styles.btnStd} ${strobeActive ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-xs min-w-[110px]`}
-                    title="Toggle beat drop lights"
-                >
-                    <i className="fa-solid fa-bolt mr-1"></i>
-                    {strobeActive ? 'Beat ON' : 'Beat Drop'}
-                </button>
+                <div className="text-xs uppercase tracking-[0.24em] text-zinc-300 pr-2">Live Deck</div>
                 <button
                     onClick={() => startReadyCheck?.()}
-                    className={`${styles.btnStd} ${styles.btnSecondary} px-3 py-1.5 text-xs min-w-[120px]`}
+                    className={`${styles.btnStd} ${room?.readyCheck?.active ? styles.btnHighlight : styles.btnSecondary} px-3 py-1.5 text-xs min-w-[140px]`}
                     title="Run a short room reset countdown"
                 >
                     <i className="fa-solid fa-hourglass-half mr-1"></i>
@@ -270,13 +350,72 @@ const HostTopChrome = ({
                     {autoPlayMedia ? 'Auto-Play ON' : 'Auto-Play'}
                 </button>
                 <button
-                    onClick={() => onOpenModerationInbox?.()}
-                    className={`${styles.btnStd} ${moderationPendingCount > 0 ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-xs min-w-[140px]`}
-                    title="Open global moderation inbox"
+                    onClick={async () => {
+                        if (typeof onToggleLyricsVisualizerMode === 'function') {
+                            await onToggleLyricsVisualizerMode();
+                            return;
+                        }
+                        const next = !lyricsVisualizerModeActive;
+                        await updateRoom({
+                            showVisualizerTv: next,
+                            showLyricsTv: next,
+                            lyricsMode: room?.lyricsMode || 'auto'
+                        });
+                    }}
+                    className={`${styles.btnStd} ${lyricsVisualizerModeActive ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-xs min-w-[170px]`}
+                    title={!currentSongHasLyrics
+                        ? (aiGenerationAvailable ? 'Will try to generate AI lyrics for the current song, then overlay over visualizer.' : 'Current song has no lyrics yet. Enable auto-lyrics on queue or edit lyrics.')
+                        : 'Overlay lyrics on top of visualizer mode'}
                 >
-                    <i className="fa-solid fa-inbox mr-1"></i>
-                    Moderation ({moderationPendingCount})
+                    <i className="fa-solid fa-closed-captioning mr-1"></i>
+                    {lyricsVisualizerModeActive ? 'Lyrics + Viz ON' : 'Lyrics + Viz'}
                 </button>
+                <div className="relative" ref={liveEffectsMenuRef}>
+                    <button
+                        onClick={() => setShowLiveEffectsMenu(prev => !prev)}
+                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-xs min-w-[150px]`}
+                        title="Open live effects menu"
+                    >
+                        <i className="fa-solid fa-sliders mr-1"></i>
+                        Live Effects
+                        <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showLiveEffectsMenu ? 'rotate-180' : ''}`}></i>
+                    </button>
+                    {showLiveEffectsMenu && (
+                        <div className="absolute right-0 top-full mt-2 w-[min(420px,92vw)] rounded-2xl border border-white/15 bg-zinc-950/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400 mb-2">Vibe Sync + Moments</div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button onClick={() => runLiveEffect('beat_drop')} className={`${styles.btnStd} ${strobeActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
+                                    <i className="fa-solid fa-bolt"></i>
+                                    {strobeActive ? 'Beat ON' : 'Beat Drop'}
+                                </button>
+                                <button onClick={() => runLiveEffect('storm')} className={`${styles.btnStd} ${stormActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
+                                    <i className="fa-solid fa-cloud-bolt"></i>
+                                    {stormActive ? 'Storm ON' : 'Storm'}
+                                </button>
+                                <button onClick={() => runLiveEffect('guitar')} className={`${styles.btnStd} ${guitarActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
+                                    <i className="fa-solid fa-guitar"></i>
+                                    {guitarActive ? 'Guitar ON' : 'Guitar'}
+                                </button>
+                                <button onClick={() => runLiveEffect('banger')} className={`${styles.btnStd} ${bangerActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
+                                    <i className="fa-solid fa-fire"></i>
+                                    {bangerActive ? 'Banger ON' : 'Banger'}
+                                </button>
+                                <button onClick={() => runLiveEffect('ballad')} className={`${styles.btnStd} ${balladActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
+                                    <i className="fa-solid fa-music"></i>
+                                    {balladActive ? 'Ballad ON' : 'Ballad'}
+                                </button>
+                                <button onClick={() => runLiveEffect('selfie_cam')} className={`${styles.btnStd} ${selfieCamActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
+                                    <i className="fa-solid fa-camera"></i>
+                                    {selfieCamActive ? 'Selfie Cam ON' : 'Selfie Cam'}
+                                </button>
+                            </div>
+                            <button onClick={() => runLiveEffect('clear')} className={`${styles.btnStd} ${styles.btnSecondary} w-full mt-2 py-1.5 text-xs`}>
+                                <i className="fa-solid fa-power-off"></i>
+                                Clear Effects
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
         <div className="w-full">

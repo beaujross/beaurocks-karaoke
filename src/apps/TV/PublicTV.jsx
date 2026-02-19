@@ -56,6 +56,8 @@ const extractTopTight15 = ({ spotlightPayload = null, roomUser = null } = {}) =>
         .slice(0, 3);
 };
 const nowMs = () => Date.now();
+const ACTIVE_SCREEN_AUTO_CLOSE_MS = 90000;
+const HOW_TO_PLAY_AUTO_CLOSE_MS = 60000;
 const tvLogger = createLogger('PublicTV');
 const seededUnit = (seed) => {
     const x = Math.sin(seed * 12.9898) * 43758.5453;
@@ -126,7 +128,7 @@ const AnimatedPoints = ({ value }) => {
                 </div>
             )}
             <span className="text-yellow-300 font-black text-xl md:text-3xl font-mono">{display}</span>
-            <span className="text-[10px] md:text-sm text-yellow-500 font-bold tracking-widest">PTS</span>
+            <span className="text-xs md:text-sm text-yellow-500 font-bold tracking-widest">PTS</span>
         </div>
     );
 };
@@ -210,13 +212,13 @@ const LeaderboardOverlay = ({ users, songs }) => {
                             <div className="text-lg md:text-3xl 2xl:text-6xl font-bold text-white truncate max-w-[48vw] 2xl:max-w-lg flex items-center gap-2 md:gap-4">
                                 <span className="truncate">{u.name}</span>
                                 {u.isVip && (
-                                    <span className="px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[10px] md:text-sm font-black tracking-widest bg-yellow-400 text-black shadow-[0_0_18px_rgba(253,224,71,0.6)]">VIP</span>
+                                    <span className="px-2 py-0.5 md:px-3 md:py-1 rounded-full text-xs md:text-sm font-black tracking-widest bg-yellow-400 text-black shadow-[0_0_18px_rgba(253,224,71,0.6)]">VIP</span>
                                 )}
                             </div>
                         </div>
                         <div className="text-right relative z-10 flex-shrink-0">
                             <div className="text-2xl md:text-4xl 2xl:text-7xl font-black text-yellow-400">{activeMode.getValue(u)} <span className="text-sm md:text-xl 2xl:text-3xl text-yellow-600">{activeMode.unit}</span></div>
-                            <div className="text-[10px] md:text-sm 2xl:text-xl text-zinc-300 mt-1 md:mt-2">{u.performances} perf | {u.totalEmojis} emojis | {u.loudest} dB</div>
+                            <div className="text-xs md:text-sm 2xl:text-xl text-zinc-300 mt-1 md:mt-2">{u.performances} perf | {u.totalEmojis} emojis | {u.loudest} dB</div>
                         </div>
                         {i === 0 && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-yellow-400/20 to-transparent animate-shimmer"></div>}
                     </div>
@@ -260,7 +262,7 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
             <div className="w-[96%] md:w-[92%] max-w-6xl bg-black/55 border border-cyan-500/30 rounded-[2rem] 2xl:rounded-[2.5rem] p-4 md:p-6 2xl:p-10 shadow-[0_0_90px_rgba(34,211,238,0.25)]">
                 <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-10 items-center">
                     <div>
-                        <div className="text-[10px] md:text-sm uppercase tracking-[0.3em] md:tracking-[0.5em] text-zinc-500">BROSS Entertainment</div>
+                        <div className="text-xs md:text-sm uppercase tracking-[0.3em] md:tracking-[0.5em] text-zinc-400">BROSS Entertainment</div>
                         <div className="text-3xl md:text-5xl 2xl:text-7xl font-bebas text-cyan-300 tracking-[0.12em] md:tracking-widest mt-2">{HOW_TO_PLAY.title}</div>
                         <div className="text-sm md:text-lg 2xl:text-2xl text-zinc-400 mb-4 md:mb-8">{HOW_TO_PLAY.subtitle}</div>
 
@@ -279,7 +281,7 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
                     <div className="flex flex-col items-center gap-4">
                         <img src={logoUrl || ASSETS.logo} className="h-16 md:h-20 2xl:h-24 object-contain" alt="BROSS" />
                         <div className="flex items-center gap-4">
-                            <div className="flex flex-col gap-2 md:gap-3 text-[10px] md:text-sm uppercase tracking-[0.15em] md:tracking-widest text-zinc-400">
+                            <div className="flex flex-col gap-2 md:gap-3 text-xs md:text-sm uppercase tracking-[0.15em] md:tracking-widest text-zinc-300">
                                 {queueRules.map(rule => (
                                     <div key={rule.label} className="flex items-center gap-2 bg-black/50 border border-white/10 px-3 py-2 rounded-full">
                                         <i className={`fa-solid ${rule.icon} text-cyan-300`}></i>
@@ -291,11 +293,11 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
                                 <LocalQrImage value={qrValue} size={192} alt="Join QR" className="w-36 h-36 md:w-44 md:h-44 2xl:w-56 2xl:h-56 object-cover" />
                             </div>
                         </div>
-                        <div className="text-[10px] md:text-sm text-zinc-400 uppercase tracking-[0.2em] md:tracking-[0.4em]">Room {roomCode}</div>
+                        <div className="text-xs md:text-sm text-zinc-300 uppercase tracking-[0.2em] md:tracking-[0.4em]">Room {roomCode}</div>
                     </div>
                 </div>
 
-                <div className="mt-5 md:mt-8 flex items-center justify-between text-[10px] md:text-sm text-zinc-500">
+                <div className="mt-5 md:mt-8 flex items-center justify-between text-xs md:text-sm text-zinc-400">
                     <div>Slide {index + 1} of {slides.length}</div>
                     <div className="flex gap-2">
                         {slides.map((_, i) => (
@@ -1102,6 +1104,29 @@ const PublicTV = ({ roomCode }) => {
     }, [room?.readyCheck?.active, room?.readyCheck?.startTime, room?.readyCheck?.durationSec]);
 
     useEffect(() => {
+        const activeScreen = room?.activeScreen;
+        if (!activeScreen || activeScreen === 'stage') return undefined;
+        if (!['leaderboard', 'tipping'].includes(activeScreen)) return undefined;
+        const timer = setTimeout(() => {
+            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { activeScreen: 'stage' })
+                .catch((err) => tvLogger.debug('[TV] auto close activeScreen failed', err));
+        }, ACTIVE_SCREEN_AUTO_CLOSE_MS);
+        return () => clearTimeout(timer);
+    }, [room?.activeScreen, roomCode]);
+
+    useEffect(() => {
+        if (!room?.howToPlay?.active) return undefined;
+        const startedAt = Number(room?.howToPlay?.id || nowMs());
+        const remainingMs = Math.max(3000, HOW_TO_PLAY_AUTO_CLOSE_MS - (nowMs() - startedAt));
+        const timer = setTimeout(() => {
+            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
+                howToPlay: { active: false, id: nowMs() }
+            }).catch((err) => tvLogger.debug('[TV] auto close howToPlay failed', err));
+        }, remainingMs);
+        return () => clearTimeout(timer);
+    }, [room?.howToPlay?.active, room?.howToPlay?.id, roomCode]);
+
+    useEffect(() => {
         if (!room?.bingoMysteryRng?.active && !room?.bingoMysteryRng?.finalized) return;
         const timer = setInterval(() => setBingoRngNow(nowMs()), 250);
         return () => clearInterval(timer);
@@ -1598,7 +1623,7 @@ const PublicTV = ({ roomCode }) => {
                 <div className="absolute -bottom-40 -right-24 w-80 h-80 rounded-full bg-pink-500/20 blur-3xl"></div>
                 <div className="relative z-10 flex flex-col items-center gap-4 md:gap-6 px-4 text-center">
                     <img src={room?.logoUrl || ASSETS.logo} alt="Beaurocks Karaoke" className="h-16 md:h-20 2xl:h-24 rounded-2xl drop-shadow-[0_0_30px_rgba(0,196,217,0.45)]" />
-                    <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] md:tracking-[0.45em] text-zinc-500">TV Dashboard</div>
+                    <div className="text-xs md:text-sm uppercase tracking-[0.2em] md:tracking-[0.45em] text-zinc-400">TV Dashboard</div>
                     <div className="text-3xl md:text-5xl 2xl:text-6xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899]">
                         Start the Show
                     </div>
@@ -1621,12 +1646,17 @@ const PublicTV = ({ roomCode }) => {
     if (room?.readyCheck?.active) {
         const readyCount = roomUsers.filter(u => u.isReady).length;
         const totalCount = roomUsers.length || 0;
+        const readyPct = totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
         return (
-            <div className="fixed inset-0 z-[200] bg-zinc-900 flex flex-col items-center justify-center p-4 md:p-8 2xl:p-12 text-center">
-                <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] md:tracking-[0.4em] text-zinc-500 mb-3 md:mb-4">Ready Check</div>
-                <div className="text-[clamp(4rem,20vw,16rem)] font-black text-white leading-none">{readyTimer || 0}</div>
-                <div className="text-xl md:text-3xl 2xl:text-4xl font-bebas text-cyan-300 mt-3 md:mt-6">ARE YOU READY?</div>
-                <div className="text-sm md:text-xl text-zinc-400 mt-2 md:mt-4">{readyCount} / {totalCount} ready</div>
+            <div className="fixed inset-0 z-[200] bg-[radial-gradient(circle_at_top,rgba(6,182,212,0.16),transparent_55%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.18),transparent_48%),#09090b] flex flex-col items-center justify-center p-4 md:p-8 2xl:p-12 text-center">
+                <div className="text-xs md:text-sm uppercase tracking-[0.2em] md:tracking-[0.4em] text-zinc-300 mb-3 md:mb-4">Ready Check</div>
+                <div className="text-[clamp(5rem,24vw,18rem)] font-black text-white leading-none">{readyTimer || 0}</div>
+                <div className="text-2xl md:text-4xl 2xl:text-5xl font-bebas text-cyan-300 mt-3 md:mt-6">ARE YOU READY?</div>
+                <div className="text-base md:text-2xl text-zinc-200 mt-2 md:mt-4">{readyCount} / {totalCount} ready ({readyPct}%)</div>
+                <div className="mt-4 md:mt-6 w-[86vw] max-w-[640px] h-3 md:h-4 rounded-full border border-white/20 bg-black/35 overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-cyan-400 to-pink-400 transition-all duration-500" style={{ width: `${Math.min(100, Math.max(0, readyPct))}%` }}></div>
+                </div>
+                <div className="text-sm md:text-lg text-zinc-300 mt-3">Grab your phone and tap READY before the clock hits zero.</div>
             </div>
         );
     }
@@ -1653,7 +1683,7 @@ const PublicTV = ({ roomCode }) => {
                 <div className="w-full max-w-6xl">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4 md:mb-6">
                         <div>
-                            <div className="text-[10px] md:text-sm uppercase tracking-[0.2em] md:tracking-[0.45em] text-zinc-500">Doodle-oke</div>
+                            <div className="text-xs md:text-sm uppercase tracking-[0.2em] md:tracking-[0.45em] text-zinc-400">Doodle-oke</div>
                             <div className="text-3xl md:text-5xl 2xl:text-7xl font-bebas text-cyan-300">Sketch the lyric. Guess the hit.</div>
                             <div className="text-base md:text-xl text-zinc-300 mt-1 md:mt-2">
                                 Live sketches: <span className="text-white font-bold">{submissionsSorted.length}</span>
@@ -1967,7 +1997,7 @@ const PublicTV = ({ roomCode }) => {
             )}
             {isExperienceActive && (
                 <div data-tv-live-pill={experienceLabel} className="absolute top-3 right-3 md:top-5 md:right-5 2xl:top-8 2xl:right-8 z-[240] flex items-center gap-2 md:gap-3 bg-red-600/90 border border-red-200/40 px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-[0_0_30px_rgba(239,68,68,0.5)]">
-                    <div className="text-[10px] md:text-base font-black tracking-[0.12em] md:tracking-widest uppercase">
+                    <div className="text-xs md:text-base font-black tracking-[0.12em] md:tracking-widest uppercase">
                         LIVE: {experienceLabel}
                     </div>
                     <button
@@ -2010,7 +2040,7 @@ const PublicTV = ({ roomCode }) => {
 
             {tipPulse && (room?.tipUrl || room?.tipQrUrl) && (
                 <div className="absolute bottom-3 right-3 md:bottom-6 md:right-6 z-[120] bg-emerald-500/90 text-black px-3 py-2 md:px-6 md:py-4 rounded-2xl border-2 border-white shadow-[0_0_30px_rgba(16,185,129,0.6)] animate-pulse backdrop-blur">
-                    <div className="text-[10px] md:text-xs font-bold uppercase tracking-[0.12em] md:tracking-widest">Show some love</div>
+                    <div className="text-xs md:text-sm font-bold uppercase tracking-[0.12em] md:tracking-widest">Show some love</div>
                     <div className="text-sm md:text-2xl font-black">Tip the host {EMOJI.tip}</div>
                 </div>
             )}
@@ -2042,11 +2072,11 @@ const PublicTV = ({ roomCode }) => {
                 <div className="absolute inset-0 z-[160] pointer-events-none">
                     <div className={`absolute inset-0 ${motionSafeFx ? '' : 'vibe-strobe'} ${motionSafeFx ? 'opacity-30' : 'opacity-45'} mix-blend-screen bg-white`}></div>
                     <div className={`absolute inset-0 ${motionSafeFx ? 'bg-gradient-to-b from-pink-500/10 via-transparent to-cyan-400/5' : 'bg-gradient-to-b from-pink-500/15 via-transparent to-cyan-400/10'}`}></div>
-                    <div className="absolute top-3 right-3 md:top-6 md:right-6 2xl:top-8 2xl:right-8 px-2 py-1 md:px-3 rounded-full bg-black/65 border border-yellow-300/40 text-[9px] md:text-[10px] uppercase tracking-[0.16em] md:tracking-[0.25em] text-yellow-200">
+                    <div className="absolute top-3 right-3 md:top-6 md:right-6 2xl:top-8 2xl:right-8 px-2 py-1 md:px-3 rounded-full bg-black/65 border border-yellow-300/40 text-xs md:text-sm uppercase tracking-[0.16em] md:tracking-[0.25em] text-yellow-200">
                         Sensitivity Warning
                     </div>
                     <div className="absolute top-3 md:top-6 2xl:top-8 left-1/2 -translate-x-1/2 text-center max-w-[92vw] md:max-w-[80vw]">
-                        <div className="text-[10px] md:text-sm uppercase tracking-[0.2em] md:tracking-[0.45em] text-white/80">Beat Drop</div>
+                        <div className="text-xs md:text-sm uppercase tracking-[0.2em] md:tracking-[0.45em] text-white/80">Beat Drop</div>
                         {strobePhase === 'countdown' && (
                             <>
                                 <div className={`${motionSafeFx ? 'text-6xl md:text-8xl' : 'text-[clamp(3.5rem,16vw,9rem)]'} font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.6)]`}>{strobeCountdown || 0}</div>
@@ -2061,7 +2091,7 @@ const PublicTV = ({ roomCode }) => {
                                 <div className="mt-3 md:mt-4 h-4 md:h-5 w-[85vw] max-w-[560px] bg-white/20 rounded-full overflow-hidden border border-white/30 mx-auto">
                                     <div className="h-full bg-white/90" style={{ width: `${strobeMeter}%` }}></div>
                                 </div>
-                                <div className="mt-2 text-[10px] md:text-xs uppercase tracking-[0.2em] md:tracking-[0.3em] text-white/70">Total taps {strobeTotalTaps}</div>
+                                <div className="mt-2 text-xs md:text-sm uppercase tracking-[0.2em] md:tracking-[0.3em] text-white/70">Total taps {strobeTotalTaps}</div>
                             </>
                         )}
                     </div>
@@ -2124,7 +2154,7 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                         ))}
                     </div>
-                    <div className="absolute top-8 md:top-10 2xl:top-12 left-1/2 -translate-x-1/2 text-[10px] md:text-sm font-bold tracking-[0.25em] md:tracking-[0.6em] text-white/70 uppercase">Lights Up - Sway</div>
+                    <div className="absolute top-8 md:top-10 2xl:top-12 left-1/2 -translate-x-1/2 text-xs md:text-sm font-bold tracking-[0.25em] md:tracking-[0.6em] text-white/70 uppercase">Lights Up - Sway</div>
                     {balladLights.slice(0, 4).map((light, idx) => (
                         <div
                             key={idx}
@@ -2442,10 +2472,10 @@ const PublicTV = ({ roomCode }) => {
                                                         <div className="truncate">
                                                             <span className="font-bold text-white">{group.user || 'Guest'}</span>
                                                             {group.isVip && (
-                                                                <span className="ml-2 px-2 py-0.5 rounded-full text-[9px] font-black tracking-widest bg-yellow-400 text-black">VIP</span>
+                                                                <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-yellow-400 text-black">VIP</span>
                                                             )}
                                                             {group.isHost && (
-                                                                <span className="ml-2 px-2 py-0.5 rounded-full text-[9px] font-black tracking-widest bg-cyan-500 text-black">HOST</span>
+                                                                <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-cyan-500 text-black">HOST</span>
                                                             )}
                                                         </div>
                                                         <div className="space-y-0.5">
@@ -2482,7 +2512,7 @@ const PublicTV = ({ roomCode }) => {
             {room?.activeMode === 'selfie_challenge' && (
                 <div className="absolute inset-0 z-[120] bg-black/70 backdrop-blur-sm flex flex-col p-4 md:p-6 2xl:p-10">
                     <div className="text-center mb-4 md:mb-6">
-                        <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] md:tracking-[0.4em] text-zinc-400">Selfie Challenge</div>
+                        <div className="text-xs md:text-sm uppercase tracking-[0.2em] md:tracking-[0.4em] text-zinc-300">Selfie Challenge</div>
                         <div className="text-2xl md:text-4xl font-bebas text-white">{room?.selfieChallenge?.prompt || 'Get ready'}</div>
                         {room?.selfieChallenge?.status && (
                             <div className="text-xs md:text-sm text-cyan-300 mt-2">Status: {room.selfieChallenge.status}</div>

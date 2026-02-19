@@ -350,6 +350,28 @@ html, body, #root { height: 100%; width: 100%; }
   color: #bff8ff;
 }
 
+/* Admin workspace readability pass */
+.host-app .host-admin-workspace .host-admin-content {
+  line-height: 1.45;
+}
+.host-app .host-admin-workspace .host-admin-content .text-zinc-400 {
+  color: #e5e7eb;
+}
+.host-app .host-admin-workspace .host-admin-content .text-zinc-500 {
+  color: #cbd5e1;
+}
+.host-app .host-admin-workspace .host-admin-content .text-xs {
+  font-size: 0.95rem;
+}
+.host-app .host-admin-workspace .host-admin-content [class*="text-[10px]"] {
+  font-size: 0.9rem;
+}
+.host-app .host-admin-workspace .host-admin-content .host-form-helper {
+  color: #e2e8f0;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
 /* --- SUPERCHARGED REACTION ANIMATIONS --- */
 
 /* Rocket: Jittery launch + Massive Scale Out */
