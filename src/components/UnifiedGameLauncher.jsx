@@ -1370,17 +1370,16 @@ const UnifiedGameLauncher = ({
             className="min-h-full flex flex-col"
         >
             {/* Header */}
-            <div className="px-8 pt-6 pb-0">
-                <div className="flex items-center gap-3 text-sm uppercase tracking-[0.4em] text-zinc-500">
-                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-zinc-900 border border-white/10">
+            <div className="px-4 md:px-5 pt-3 pb-0">
+                <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.34em] text-zinc-500">
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-zinc-900 border border-white/10">
                         <i className="fa-solid fa-gamepad text-cyan-300 text-xs"></i>
                     </span>
                     Game Launchpad
                 </div>
-                <h2 className="text-3xl font-bold text-white mt-3">Launch a crowd moment</h2>
-                <div className="mt-3 h-px w-32 bg-gradient-to-r from-cyan-400/80 via-pink-500/70 to-transparent"></div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <div className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${canUseAiGeneration ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200' : 'border-amber-400/40 bg-amber-500/10 text-amber-200'}`}>
+                <h2 className="text-2xl font-bold text-white mt-2">Launch a crowd moment</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <div className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-[11px] ${canUseAiGeneration ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200' : 'border-amber-400/40 bg-amber-500/10 text-amber-200'}`}>
                         <i className={`fa-solid ${canUseAiGeneration ? 'fa-bolt' : 'fa-lock'}`}></i>
                         {canUseAiGeneration ? 'AI tools enabled for this org' : aiGateMessage}
                     </div>
@@ -1395,7 +1394,7 @@ const UnifiedGameLauncher = ({
                     )}
                 </div>
                 {activeGameLabel && (
-                    <div className="mt-4 flex flex-wrap items-center justify-between bg-zinc-900/70 border border-white/10 rounded-2xl px-4 py-3 gap-3">
+                    <div className="mt-2.5 flex flex-wrap items-center justify-between bg-zinc-900/70 border border-white/10 rounded-2xl px-3 py-2 gap-2">
                         <div>
                             <div className="text-xs uppercase tracking-[0.3em] text-zinc-400">Active Game</div>
                             <div className="text-sm font-bold text-white">{activeGameLabel}</div>
@@ -1413,8 +1412,8 @@ const UnifiedGameLauncher = ({
             </div>
             
             {/* Game Grid */}
-            <div className="px-8 py-6 pr-2">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="px-4 md:px-5 py-3 pr-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
                     {GAMES_META.map(game => {
                         const config = participantConfigs[game.id];
                         return (
@@ -1643,6 +1642,12 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
     };
     const visualPills = visualMap[game.id] || [];
     const iconIsFa = typeof game.icon === 'string' && game.icon.includes('fa-');
+    const descriptionClamp = {
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden'
+    };
     const toggleParticipant = (uid) => {
         if (!participantConfig?.setParticipants) return;
         participantConfig.setMode?.('selected');
@@ -1652,17 +1657,17 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
     return (
         <div
             data-game-card={game.id}
-            className={`relative overflow-hidden bg-gradient-to-b from-zinc-900/80 to-zinc-950 border ${c.border} rounded-2xl p-3 md:p-4 flex flex-col gap-2 md:gap-3 shadow-lg hover:shadow-xl transition-all`}
+            className={`relative overflow-hidden bg-gradient-to-b from-zinc-900/80 to-zinc-950 border ${c.border} rounded-2xl p-2.5 md:p-3 flex flex-col gap-2 shadow-lg hover:shadow-xl transition-all`}
         >
             <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full blur-2xl opacity-10 bg-white"></div>
             <div className="absolute -left-4 bottom-0 w-16 h-16 rounded-full blur-2xl opacity-5 bg-white"></div>
             <div className="flex items-start justify-between relative z-10">
                 <div className="min-w-0">
-                    <div className="inline-flex w-12 h-12 rounded-xl border border-white/10 bg-black/35 items-center justify-center mb-2 text-cyan-200">
-                        {iconIsFa ? <i className={`${game.icon} text-xl`}></i> : <span className="text-xl">{game.icon}</span>}
+                    <div className="inline-flex w-10 h-10 rounded-xl border border-white/10 bg-black/35 items-center justify-center mb-1.5 text-cyan-200">
+                        {iconIsFa ? <i className={`${game.icon} text-lg`}></i> : <span className="text-lg">{game.icon}</span>}
                     </div>
-                    <h3 className={`text-lg md:text-xl font-bold ${c.text} mb-1`}>{game.name}</h3>
-                    <p className="text-xs text-zinc-400 max-w-xs leading-snug">{game.description}</p>
+                    <h3 className={`text-base md:text-lg font-bold ${c.text} mb-0.5`}>{game.name}</h3>
+                    <p className="text-[11px] text-zinc-400 max-w-xs leading-snug" style={descriptionClamp}>{game.description}</p>
                 </div>
                 {game.badge && (
                     <span className={`text-[9px] uppercase tracking-widest px-2 py-1 rounded-full border ${c.badge} flex-shrink-0`}>
@@ -1670,33 +1675,33 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                     </span>
                 )}
             </div>
-            <div className="grid grid-cols-3 gap-2 relative z-10">
+            <div className="flex flex-wrap gap-1.5 relative z-10">
                 {visualPills.map((item) => (
-                    <div key={`${game.id}_${item.label}`} className="rounded-xl border border-white/10 bg-black/35 px-2 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-300 flex flex-col items-center gap-1 text-center">
-                        <i className={`fa-solid ${item.icon} text-xs text-zinc-100`}></i>
-                        <span>{item.label}</span>
-                    </div>
+                    <span key={`${game.id}_${item.label}`} className="rounded-lg border border-white/10 bg-black/35 px-2 py-1 text-[9px] uppercase tracking-[0.1em] text-zinc-300 inline-flex items-center gap-1">
+                        <i className={`fa-solid ${item.icon} text-[10px] text-zinc-100`}></i>
+                        {item.label}
+                    </span>
                 ))}
             </div>
             {isActive && (
-                <div className="text-[11px] text-white bg-red-600 px-3 py-2 rounded-lg border border-red-500 font-bold animate-pulse inline-flex items-center gap-2">
+                <div className="text-[10px] text-white bg-red-600 px-2.5 py-1.5 rounded-lg border border-red-500 font-bold animate-pulse inline-flex items-center gap-2">
                     <i className="fa-solid fa-circle text-[9px]"></i>
                     LIVE NOW
                 </div>
             )}
-            <div className="grid grid-cols-2 gap-2 relative z-10">
-                <div className="bg-black/40 border border-white/10 rounded-xl p-2">
-                    <div className="text-[10px] uppercase tracking-widest text-zinc-500">Type</div>
-                    <div className="text-xs font-bold text-white capitalize">{game.category}</div>
-                </div>
-                <div className="bg-black/40 border border-white/10 rounded-xl p-2">
-                    <div className="text-[10px] uppercase tracking-widest text-zinc-500">Voice</div>
-                    <div className="text-xs font-bold text-white">{game.needsVoice ? 'Yes' : 'No'}</div>
-                </div>
+            <div className="flex flex-wrap gap-1.5 text-[10px] uppercase tracking-widest text-zinc-300 relative z-10">
+                <span className="px-2 py-1 rounded-lg border border-white/10 bg-black/35 inline-flex items-center gap-1">
+                    <i className="fa-solid fa-layer-group text-[10px]"></i>
+                    {game.category}
+                </span>
+                <span className="px-2 py-1 rounded-lg border border-white/10 bg-black/35 inline-flex items-center gap-1">
+                    <i className={`fa-solid ${game.needsVoice ? 'fa-microphone-lines' : 'fa-microphone-slash'} text-[10px]`}></i>
+                    Voice {game.needsVoice ? 'Yes' : 'No'}
+                </span>
             </div>
             {Array.isArray(infoBadges) && infoBadges.length > 0 && (
-                <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-widest text-zinc-400 relative z-10">
-                    {infoBadges.map((badge) => (
+                <div className="flex flex-wrap gap-1.5 text-[9px] uppercase tracking-widest text-zinc-400 relative z-10">
+                    {infoBadges.slice(0, 3).map((badge) => (
                         <span key={badge.label} className={`px-2 py-1 rounded-full border ${badge.tone} inline-flex items-center gap-1`}>
                             {badge.icon && <i className={`fa-solid ${badge.icon}`}></i>}
                             {badge.label}
@@ -1705,16 +1710,16 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                 </div>
             )}
             {smartDefaults && (
-                <div className="flex items-center justify-between gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[10px] uppercase tracking-widest text-zinc-300 relative z-10">
-                    <span>Smart Defaults</span>
-                    <span className="text-zinc-400 normal-case">{smartDefaults}</span>
+                <div className="flex items-center justify-between gap-2 bg-black/40 border border-white/10 rounded-xl px-2 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 relative z-10">
+                    <span className="shrink-0">Smart</span>
+                    <span className="text-zinc-400 normal-case truncate">{smartDefaults}</span>
                 </div>
             )}
             {participantConfig ? (
                 <div className="relative z-10">
                     <button
                         onClick={() => setShowPicker(v => !v)}
-                        className={`${STYLES.btnStd} ${participantConfig.mode === 'selected' ? STYLES.btnHighlight : STYLES.btnSecondary} w-full py-2 text-xs justify-between`}
+                        className={`${STYLES.btnStd} ${participantConfig.mode === 'selected' ? STYLES.btnHighlight : STYLES.btnSecondary} w-full py-1.5 text-xs justify-between`}
                     >
                         <span>{playerLabel}</span>
                         <i className={`fa-solid fa-chevron-${showPicker ? 'up' : 'down'}`}></i>
@@ -1764,13 +1769,13 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                     )}
                 </div>
             ) : (
-                <div className="h-9"></div>
+                <div className="h-6"></div>
             )}
             <div className="flex gap-2 relative z-10">
-                <button data-game-configure={game.id} onClick={() => onLaunch(game.id)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm md:text-base`}>
+                <button data-game-configure={game.id} onClick={() => onLaunch(game.id)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-1.5 text-xs`}>
                     <i className="fa-solid fa-sliders mr-1"></i> Configure
                 </button>
-                <button data-game-quick-launch={game.id} onClick={onQuickLaunch} className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1 py-2 text-sm md:text-base`}>
+                <button data-game-quick-launch={game.id} onClick={onQuickLaunch} className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1 py-1.5 text-xs`}>
                     <i className="fa-solid fa-bolt mr-1"></i> Quick Launch
                 </button>
             </div>

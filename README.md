@@ -26,6 +26,18 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 - `npm run deploy:hosting` - build + deploy web app to Firebase Hosting
 - Optional: set `VITE_BASE_PATH` only if deploying under a subpath (example: `/karaoke/`)
 
+## Build Versioning (Host Launch Screen)
+
+- Host launch now shows an auto-generated release/build string.
+- Source values:
+  - Release version: `package.json` -> `version`
+  - Build metadata: UTC timestamp + short git SHA (generated in `vite.config.js`)
+- Display format in Host launch: `v<package.version>+<UTCSTAMP>.<sha>`
+- This updates on every build/deploy automatically, even if `package.json` version is unchanged.
+- Optional release bump for investor/demo milestones:
+  - `npm version patch` (or `minor` / `major`)
+  - build + deploy as usual
+
 ## Deploy (Firebase Hosting)
 
 One-time local setup:

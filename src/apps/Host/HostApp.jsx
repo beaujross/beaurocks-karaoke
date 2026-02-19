@@ -104,7 +104,10 @@ import {
 } from './partyOrchestrator';
 
 // --- CONSTANTS & CONFIG ---
-const VERSION = HOST_APP_CONFIG.VERSION;
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || '';
+const APP_BUILD = import.meta.env.VITE_APP_BUILD || '';
+const RELEASE_VERSION = APP_VERSION ? `v${APP_VERSION}` : HOST_APP_CONFIG.VERSION;
+const VERSION = APP_BUILD ? `${RELEASE_VERSION}+${APP_BUILD}` : RELEASE_VERSION;
 const STORM_SEQUENCE = HOST_APP_CONFIG.STORM_SEQUENCE;
 const STROBE_COUNTDOWN_MS = HOST_APP_CONFIG.STROBE_COUNTDOWN_MS;
 const STROBE_ACTIVE_MS = HOST_APP_CONFIG.STROBE_ACTIVE_MS;
@@ -994,6 +997,15 @@ const buildBracketRound = ({ contestantUids = [], contestantsByUid = {}, roundIn
 };
 
 const resolveBracketVoterUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
+const resolveRoomUserUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
+const resolveLobbyUserToken = (roomUser = {}) => {
+    const uid = resolveRoomUserUid(roomUser);
+    if (uid) return uid;
+    if (roomUser?.id) return String(roomUser.id);
+    if (roomUser?.name) return String(roomUser.name);
+    return '';
+};
+const getLobbyCardAnchorId = (token = '') => `lobby-user-card-${String(token || '').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
 const getBracketMatchCrowdVotes = ({ users = [], bracketId = '', match = null }) => {
     const summary = {
@@ -3991,6 +4003,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             throw error;
         }
     }, [roomCode]);
+    const updateRoomByCode = useCallback(async (targetRoomCode = '', updates = {}) => {
+        const nextRoomCode = String(targetRoomCode || '').trim().toUpperCase();
+        if (!nextRoomCode) throw new Error('Room code is required to update room state.');
+        const encodedUpdates = encodeHostRoomUpdates(updates || {});
+        if (!Object.keys(encodedUpdates).length) return;
+        try {
+            await updateRoomAsHost(nextRoomCode, encodedUpdates);
+            setHostUpdateDeploymentWarning('');
+            hostUpdateWarningToastedRef.current = false;
+        } catch (error) {
+            if (isHostUpdateCallableUnavailableError(error)) {
+                setHostUpdateDeploymentWarning(HOST_UPDATE_DEPLOYMENT_WARNING);
+            }
+            throw error;
+        }
+    }, []);
     const appBase = typeof window !== 'undefined' ? `${window.location.origin}${import.meta.env.BASE_URL || '/'}` : '';
     const isChatPopout = typeof window !== 'undefined'
         && new URLSearchParams(window.location.search).get('chat') === '1';
@@ -4279,6 +4307,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [activeWorkspaceSection, setActiveWorkspaceSection] = useState('ops.room_setup');
     const [settingsNavQuery, setSettingsNavQuery] = useState('');
     const [settingsNavOpen, setSettingsNavOpen] = useState(false);
+    const [adminContextOpen, setAdminContextOpen] = useState(false);
+    const [adminFooterDetailsOpen, setAdminFooterDetailsOpen] = useState(false);
+    const [showAdminFieldHelp, setShowAdminFieldHelp] = useState(false);
     const [settingsRecentTabs, setSettingsRecentTabs] = useState(() => {
         try {
             if (typeof window === 'undefined') return ['general', 'media', 'chat'];
@@ -4307,7 +4338,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setAudioPanelOpen(false);
     }, [compactHostViewport]);
     useEffect(() => {
-        if (!showSettings) setSettingsNavOpen(false);
+        if (!showSettings) {
+            setSettingsNavOpen(false);
+            setAdminContextOpen(false);
+            setAdminFooterDetailsOpen(false);
+        }
     }, [showSettings]);
     useEffect(() => {
         if (!HOST_SETTINGS_TAB_KEYS.includes(settingsTab)) return;
@@ -4390,6 +4425,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [autoBgFadeInMs, setAutoBgFadeInMs] = useState(900);
     const [autoBgMixDuringSong, setAutoBgMixDuringSong] = useState(0);
     const [lobbyTab, setLobbyTab] = useState('users');
+    const [selectedLobbyUserToken, setSelectedLobbyUserToken] = useState('');
+    const [lockedLobbyUserToken, setLockedLobbyUserToken] = useState('');
     const [bracketBusy, setBracketBusy] = useState(false);
     const [bracketNoShow, setBracketNoShow] = useState(null);
     const [bracketNoShowNow, setBracketNoShowNow] = useState(nowMs());
@@ -4419,6 +4456,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [tipAmount, setTipAmount] = useState('');
     const [creatingRoom, setCreatingRoom] = useState(false);
     const [joiningRoom, setJoiningRoom] = useState(false);
+    const [roomManagerBusyCode, setRoomManagerBusyCode] = useState('');
+    const [roomManagerBusyAction, setRoomManagerBusyAction] = useState('');
+    const [roomManagerError, setRoomManagerError] = useState('');
+    const [recentHostRoomsLoading, setRecentHostRoomsLoading] = useState(false);
+    const [recentHostRooms, setRecentHostRooms] = useState([]);
     const [entryError, setEntryError] = useState('');
     const [hostUpdateDeploymentWarning, setHostUpdateDeploymentWarning] = useState('');
     const hostUpdateWarningToastedRef = useRef(false);
@@ -5770,6 +5812,68 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (lastError) throw lastError;
         return null;
     };
+    useEffect(() => {
+        let unsub = () => {};
+        const activeUid = auth.currentUser?.uid || uid || '';
+        if (!activeUid) {
+            setRecentHostRooms([]);
+            setRecentHostRoomsLoading(false);
+            return () => unsub();
+        }
+        setRecentHostRoomsLoading(true);
+        setRoomManagerError('');
+        try {
+            const recentRoomsQuery = query(
+                collection(db, 'artifacts', APP_ID, 'public', 'data', 'rooms'),
+                where('hostUids', 'array-contains', activeUid),
+                limit(20)
+            );
+            unsub = onSnapshot(
+                recentRoomsQuery,
+                (snapshot) => {
+                    const nextRooms = snapshot.docs
+                        .map((docSnap) => {
+                            const data = docSnap.data() || {};
+                            const createdAtMs = getTimestampMs(data.createdAt);
+                            const updatedAtMs = getTimestampMs(
+                                data.updatedAt
+                                || data.closedAt
+                                || data.createdAt
+                            );
+                            const archivedAtMs = getTimestampMs(data.archivedAt);
+                            return {
+                                code: docSnap.id,
+                                hostName: String(data.hostName || '').trim() || 'Host',
+                                orgName: String(data.orgName || '').trim() || '',
+                                activeMode: String(data.activeMode || 'karaoke').trim() || 'karaoke',
+                                createdAtMs,
+                                updatedAtMs,
+                                archivedAtMs,
+                                archived: !!archivedAtMs || String(data.archivedStatus || '').toLowerCase() === 'archived'
+                            };
+                        })
+                        .sort((a, b) => (b.updatedAtMs || b.createdAtMs || 0) - (a.updatedAtMs || a.createdAtMs || 0))
+                        .slice(0, 8);
+                    setRecentHostRooms(nextRooms);
+                    setRecentHostRoomsLoading(false);
+                },
+                (error) => {
+                    hostLogger.warn('Failed to load recent host rooms', error);
+                    setRoomManagerError('Could not load room history.');
+                    setRecentHostRooms([]);
+                    setRecentHostRoomsLoading(false);
+                }
+            );
+        } catch (error) {
+            hostLogger.warn('Recent room query failed', error);
+            setRoomManagerError('Could not load room history.');
+            setRecentHostRooms([]);
+            setRecentHostRoomsLoading(false);
+        }
+        return () => {
+            unsub();
+        };
+    }, [uid]);
 
     const syncOrgContextFromEntitlements = (entitlements = {}) => {
         setOrgContext(prev => ({
@@ -6613,6 +6717,111 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setCreatingRoom(false);
         }
     };
+    const openExistingRoomWorkspace = async (targetRoomCode = '', sectionId = 'queue.live_run') => {
+        const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
+        const joined = await joinRoom(normalizedCode || roomCodeInput);
+        if (!joined) return false;
+        if (sectionId) openAdminWorkspace(sectionId);
+        return true;
+    };
+    const clearRoomDataForCode = async (targetRoomCode = '') => {
+        const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
+        if (!normalizedCode) return;
+        const collections = [
+            'karaoke_songs',
+            'reactions',
+            'activities',
+            'messages',
+            'room_users',
+            'contacts',
+            'selfie_submissions',
+            'selfie_votes'
+        ];
+        await deleteRoomUploads(normalizedCode);
+        for (const name of collections) {
+            await deleteRoomCollection(name, normalizedCode);
+        }
+        await updateRoomByCode(normalizedCode, {
+            activeMode: 'karaoke',
+            activeScreen: 'stage',
+            spotlightUser: null,
+            bonusDrop: null,
+            guitarWinner: null,
+            bingoWin: null,
+            bingoBoardId: null,
+            bingoData: null,
+            selfieChallenge: null,
+            photoOverlay: null,
+            highlightedTile: null,
+            applausePeak: null,
+            currentApplauseLevel: 0,
+            howToPlay: { active: false, id: nowMs() },
+            gameRulesId: nowMs(),
+            archivedAt: null,
+            archivedBy: null,
+            archivedStatus: 'active',
+            closedAt: null,
+            updatedAt: serverTimestamp()
+        });
+    };
+    const setRoomArchivedState = async (targetRoomCode = '', nextArchived = true) => {
+        const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
+        if (!normalizedCode) return;
+        setRoomManagerBusyCode(normalizedCode);
+        setRoomManagerBusyAction(nextArchived ? 'archive' : 'restore');
+        setRoomManagerError('');
+        try {
+            const activeUid = await ensureActiveUid();
+            if (!activeUid) {
+                throw new Error('Auth unavailable');
+            }
+            await assertRoomHostAccess(normalizedCode);
+            await updateRoomByCode(normalizedCode, {
+                archivedAt: nextArchived ? serverTimestamp() : null,
+                archivedBy: nextArchived ? activeUid : null,
+                archivedStatus: nextArchived ? 'archived' : 'active',
+                closedAt: nextArchived ? nowMs() : null,
+                updatedAt: serverTimestamp()
+            });
+            toast(nextArchived ? `Room ${normalizedCode} archived.` : `Room ${normalizedCode} restored.`);
+        } catch (error) {
+            hostLogger.warn('Room archive update failed', { roomCode: normalizedCode, error });
+            setRoomManagerError(nextArchived ? 'Could not archive room.' : 'Could not restore room.');
+            toast(nextArchived ? 'Archive failed.' : 'Restore failed.');
+        } finally {
+            setRoomManagerBusyCode('');
+            setRoomManagerBusyAction('');
+        }
+    };
+    const runLandingRoomCleanup = async (targetRoomCode = '') => {
+        const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
+        if (!normalizedCode) {
+            toast('Enter a room code first');
+            setRoomManagerError('Enter a room code first.');
+            return;
+        }
+        const ok = window.confirm(`Clear queue, users, activity, and uploads for room ${normalizedCode}?`);
+        if (!ok) return;
+        setRoomManagerBusyCode(normalizedCode);
+        setRoomManagerBusyAction('cleanup');
+        setRoomManagerError('');
+        try {
+            const activeUid = await ensureActiveUid();
+            if (!activeUid) {
+                throw new Error('Auth unavailable');
+            }
+            await assertRoomHostAccess(normalizedCode);
+            await clearRoomDataForCode(normalizedCode);
+            toast(`Room ${normalizedCode} cleaned.`);
+        } catch (error) {
+            hostLogger.warn('Landing room cleanup failed', { roomCode: normalizedCode, error });
+            setRoomManagerError('Could not clean room data.');
+            toast('Cleanup failed.');
+        } finally {
+            setRoomManagerBusyCode('');
+            setRoomManagerBusyAction('');
+        }
+    };
 
     useEffect(() => {
         if (!normalizedInitialCode) return;
@@ -7206,8 +7415,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return () => unsub();
     }, [roomCode]);
 
-    const deleteRoomCollection = async (collectionName) => {
-        const snap = await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', collectionName), where('roomCode', '==', roomCode)));
+    const deleteRoomCollection = async (collectionName, targetRoomCode = roomCode) => {
+        const nextRoomCode = String(targetRoomCode || '').trim().toUpperCase();
+        if (!nextRoomCode) return 0;
+        const snap = await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', collectionName), where('roomCode', '==', nextRoomCode)));
         if (snap.empty) return 0;
         let deleted = 0;
         for (let i = 0; i < snap.docs.length; i += 400) {
@@ -7219,12 +7430,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return deleted;
     };
 
-    const deleteRoomUploads = async () => {
-        if (!roomCode) return 0;
+    const deleteRoomUploads = async (targetRoomCode = roomCode) => {
+        const nextRoomCode = String(targetRoomCode || '').trim().toUpperCase();
+        if (!nextRoomCode) return 0;
         const [uploadsSnap, reactionsSnap, selfieSnap] = await Promise.all([
-            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', roomCode))),
-            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', roomCode))),
-            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'), where('roomCode', '==', roomCode)))
+            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', nextRoomCode))),
+            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', nextRoomCode))),
+            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'), where('roomCode', '==', nextRoomCode)))
         ]);
         const storagePaths = new Set();
         uploadsSnap.docs.forEach((docSnap) => {
@@ -7264,37 +7476,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!window.confirm('Clear room data and uploads? This removes queue, reactions, users, activity, and stored uploads.')) return;
         setClearingRoom(true);
         try {
-            const collections = [
-                'karaoke_songs',
-                'reactions',
-                'activities',
-                'messages',
-                'room_users',
-                'contacts',
-                'selfie_submissions',
-                'selfie_votes'
-            ];
-            await deleteRoomUploads();
-            for (const name of collections) {
-                await deleteRoomCollection(name);
-            }
-            await updateRoom({
-                activeMode: 'karaoke',
-                activeScreen: 'stage',
-                spotlightUser: null,
-                bonusDrop: null,
-                guitarWinner: null,
-                bingoWin: null,
-                bingoBoardId: null,
-                bingoData: null,
-                selfieChallenge: null,
-                photoOverlay: null,
-                highlightedTile: null,
-                applausePeak: null,
-                currentApplauseLevel: 0,
-                howToPlay: { active: false, id: nowMs() },
-                gameRulesId: nowMs()
-            });
+            await clearRoomDataForCode(roomCode);
             toast('Room cleared.');
         } catch (e) {
             hostLogger.error(e);
@@ -8368,6 +8550,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         return stats;
     }, [users, songs]);
+    const selectedLobbyUser = useMemo(
+        () => users.find((entry) => resolveLobbyUserToken(entry) === selectedLobbyUserToken) || null,
+        [users, selectedLobbyUserToken]
+    );
+    const selectedLobbyUserUid = selectedLobbyUser ? resolveRoomUserUid(selectedLobbyUser) : '';
+    const selectedLobbyUserIsSpotlight = !!(selectedLobbyUserUid && room?.spotlightUser?.id === selectedLobbyUserUid);
+    const selectedLobbyUserQueueBusy = !!(selectedLobbyUserUid && tight15QueueBusyUid === selectedLobbyUserUid);
+    const selectedLobbyUserProfileBusy = !!(selectedLobbyUserUid && tight15ProfileBusyUid === selectedLobbyUserUid);
+    useEffect(() => {
+        const validTokens = new Set(users.map((entry) => resolveLobbyUserToken(entry)).filter(Boolean));
+        if (selectedLobbyUserToken && !validTokens.has(selectedLobbyUserToken)) {
+            setSelectedLobbyUserToken('');
+        }
+        if (lockedLobbyUserToken && !validTokens.has(lockedLobbyUserToken)) {
+            setLockedLobbyUserToken('');
+        }
+    }, [users, selectedLobbyUserToken, lockedLobbyUserToken]);
     const sampleArt = SAMPLE_ART;
     const top100Seed = TOP100_SEED;
 
@@ -10213,10 +10412,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <div className="rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-zinc-300">
                         {planLabel}
                     </div>
+                    <div className="rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-zinc-300">
+                        Role: {hostPermissionLevel}
+                    </div>
                 </div>
                 <img src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png" className="w-56 mx-auto mb-5 drop-shadow-[0_0_30px_rgba(0,196,217,0.28)]"/> 
-                <h1 className="text-[2.1rem] md:text-5xl font-black mb-3 text-white leading-tight">Launch Your Next Room Like a Headliner</h1>
-                <div className="text-sm text-zinc-300 mb-6 max-w-xl mx-auto">Use guided setup for workspace onboarding, or quick-start a fresh room in one click.</div>
+                <h1 className="text-[2.1rem] md:text-5xl font-black mb-3 text-white leading-tight">Open Your Karaoke Room In Seconds</h1>
+                <div className="text-sm text-zinc-300 mb-2 max-w-xl mx-auto">This screen is for hosts and captains. Singers and audience join with a room code from their own app view.</div>
+                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500 mb-6">Launch flow only. No super-admin bypass required.</div>
                 <button
                     onClick={() => {
                         if (!canUseWorkspaceOnboarding) {
@@ -10246,7 +10449,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         )}
                     </div>
                 )}
-                <div className="text-xs text-zinc-500 uppercase tracking-[0.28em] mb-2 text-left">Join Existing Room</div>
+                <div className="text-xs text-zinc-500 uppercase tracking-[0.28em] mb-2 text-left">Open Existing Room</div>
                 <div className="flex flex-col sm:flex-row gap-2 justify-center"> 
                     <input
                         value={roomCodeInput}
@@ -10259,11 +10462,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     /> 
                     <button
                         onClick={() => joinRoom()}
-                        disabled={joiningRoom}
+                        disabled={joiningRoom || !!roomManagerBusyCode}
                         className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 py-3 text-sm uppercase tracking-[0.2em] sm:min-w-[120px] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
-                        {joiningRoom ? 'Joining...' : 'Join'}
+                        {joiningRoom ? 'Opening...' : 'Open'}
                     </button> 
+                </div>
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                        onClick={() => openExistingRoomWorkspace(roomCodeInput, 'queue.live_run')}
+                        disabled={joiningRoom || !!roomManagerBusyCode}
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                        Open Live Controls
+                    </button>
+                    <button
+                        onClick={() => openExistingRoomWorkspace(roomCodeInput, 'ops.room_setup')}
+                        disabled={joiningRoom || !!roomManagerBusyCode}
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                        Manage Settings
+                    </button>
+                    <button
+                        onClick={() => openExistingRoomWorkspace(roomCodeInput, 'advanced.diagnostics')}
+                        disabled={joiningRoom || !!roomManagerBusyCode}
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                        Cleanup + Archive Tools
+                    </button>
                 </div>
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-left">
                     <div className="rounded-xl border border-zinc-700/70 bg-zinc-900/60 px-3 py-2">
@@ -10275,9 +10501,92 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         <div className="mt-1 text-xs text-zinc-300">{planLabel}</div>
                     </div>
                     <div className="rounded-xl border border-zinc-700/70 bg-zinc-900/60 px-3 py-2">
-                        <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Version</div>
-                        <div className="mt-1 text-xs text-zinc-300 font-mono">{VERSION}</div>
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Release Build</div>
+                        <div className="mt-1 text-xs text-zinc-300 font-mono break-all">{VERSION}</div>
                     </div>
+                </div>
+                <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/55 px-3 py-3 text-left">
+                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Room Manager</div>
+                    <div className="text-xs text-zinc-400 mt-1">Spin up new rooms, reopen previous rooms, or run cleanup/archive actions without hunting through admin tabs.</div>
+                    {recentHostRoomsLoading ? (
+                        <div className="text-xs text-zinc-400 mt-3">Loading recent rooms...</div>
+                    ) : recentHostRooms.length > 0 ? (
+                        <div className="mt-3 space-y-2">
+                            {recentHostRooms.map((roomItem) => {
+                                const roomBusy = roomManagerBusyCode === roomItem.code;
+                                const busyLabel = roomBusy ? (
+                                    roomManagerBusyAction === 'cleanup'
+                                        ? 'Cleaning...'
+                                        : roomManagerBusyAction === 'archive'
+                                            ? 'Archiving...'
+                                            : roomManagerBusyAction === 'restore'
+                                                ? 'Restoring...'
+                                                : 'Working...'
+                                ) : '';
+                                const modifiedMs = roomItem.updatedAtMs || roomItem.createdAtMs || nowMs();
+                                return (
+                                    <div key={roomItem.code} className="rounded-lg border border-zinc-800 bg-black/35 px-2.5 py-2">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div>
+                                                <div className="text-sm font-semibold text-white">
+                                                    {roomItem.code}
+                                                    {roomItem.archived && (
+                                                        <span className="ml-2 text-[10px] uppercase tracking-[0.16em] rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-amber-200">Archived</span>
+                                                    )}
+                                                </div>
+                                                <div className="text-[11px] text-zinc-400">
+                                                    {roomItem.orgName || 'Workspace'}
+                                                    {' | '}
+                                                    {roomItem.activeMode || 'karaoke'}
+                                                    {' | '}
+                                                    {new Date(modifiedMs).toLocaleString()}
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1 justify-end">
+                                                <button
+                                                    onClick={() => openExistingRoomWorkspace(roomItem.code, 'queue.live_run')}
+                                                    disabled={roomBusy || joiningRoom}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    Open
+                                                </button>
+                                                <button
+                                                    onClick={() => openExistingRoomWorkspace(roomItem.code, 'advanced.diagnostics')}
+                                                    disabled={roomBusy || joiningRoom}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    Manage
+                                                </button>
+                                                <button
+                                                    onClick={() => runLandingRoomCleanup(roomItem.code)}
+                                                    disabled={roomBusy || joiningRoom}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnDanger} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    {roomBusy && roomManagerBusyAction === 'cleanup' ? 'Cleaning...' : 'Cleanup'}
+                                                </button>
+                                                <button
+                                                    onClick={() => setRoomArchivedState(roomItem.code, !roomItem.archived)}
+                                                    disabled={roomBusy || joiningRoom}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    {roomBusy && (roomManagerBusyAction === 'archive' || roomManagerBusyAction === 'restore')
+                                                        ? busyLabel
+                                                        : roomItem.archived ? 'Restore' : 'Archive'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="text-xs text-zinc-400 mt-3">No recent hosted rooms yet. Create one with Quick Start and it will appear here.</div>
+                    )}
+                    {roomManagerError && (
+                        <div className="mt-2 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-2 py-1.5">
+                            {roomManagerError}
+                        </div>
+                    )}
                 </div>
                 {entryError && (
                     <div className="mt-3 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2 text-left">
@@ -10290,9 +10599,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 )}
                 <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-left text-xs text-zinc-400">
-                    <div className="font-semibold text-zinc-200 mb-1">Two Launch Paths</div>
+                    <div className="font-semibold text-zinc-200 mb-1">Three Launch Paths</div>
                     <div className="mb-1"><span className="text-cyan-200"><i className="fa-solid fa-wand-magic-sparkles mr-2"></i></span>Wizard: identity, billing, branding, then launch.</div>
-                    <div><span className="text-pink-200"><i className="fa-solid fa-bolt mr-2"></i></span>Quick Start: create room now, fine-tune in Night Setup.</div>
+                    <div className="mb-1"><span className="text-pink-200"><i className="fa-solid fa-bolt mr-2"></i></span>Quick Start: create room now, fine-tune in Night Setup.</div>
+                    <div><span className="text-emerald-200"><i className="fa-solid fa-layer-group mr-2"></i></span>Room Manager: reopen, cleanup, archive, and restore existing rooms.</div>
                 </div> 
             </div>
             {showOnboardingWizard && (
@@ -10707,20 +11017,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         || ADMIN_WORKSPACE_VIEWS[0]
         || HOST_WORKSPACE_VIEWS[0];
     const activeSectionMeta = getSectionMeta(activeWorkspaceSection || SETTINGS_TAB_TO_SECTION[settingsTab] || '') || null;
-    const workspaceSectionTabs = HOST_WORKSPACE_SECTIONS
-        .filter((section) => section.view === (activeWorkspaceMeta?.id || activeWorkspaceView))
-        .map((section) => {
-            const tabKey = SECTION_TO_SETTINGS_TAB[section.id];
-            const meta = HOST_SETTINGS_META[tabKey];
-            if (!tabKey || !meta) return null;
-            return {
-                id: section.id,
-                tabKey,
-                icon: meta.icon || 'fa-gear',
-                label: section.label
-            };
-        })
-        .filter(Boolean);
     const recentSettingsNavItems = settingsRecentTabs
         .filter((tab) => tab !== settingsTab)
         .map((tab) => ({ key: tab, ...(HOST_SETTINGS_META[tab] || { label: tab, icon: 'fa-gear' }) }))
@@ -11259,7 +11555,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     planId: orgContext.planId,
                                     status: orgContext.status
                                 }}
+                                activeBracket={activeBracket}
                                 bracketBusy={bracketBusy}
+                                bracketCrowdVotingEnabled={bracketCrowdVotingEnabled}
+                                bracketShowAdvancePrompt={bracketShowAdvancePrompt}
+                                bracketNoShow={bracketNoShow}
+                                bracketNoShowCountdownSec={bracketNoShowCountdownSec}
                                 onCreateSweet16Bracket={createSweet16Bracket}
                                 onQueueNextBracketMatch={queueNextBracketMatch}
                                 onClearSweet16Bracket={clearSweet16Bracket}
@@ -11287,6 +11588,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </div>
                         {lobbyTab === 'users' && (
                             <div className="flex flex-col gap-6">
+                                <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                                    Sweet 16 bracket controls now live in the Games tab to keep Audience focused on lobby management.
+                                </div>
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                                     <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4">
                                         <div className="text-sm uppercase tracking-widest text-zinc-500">Lobby guests</div>
@@ -11309,218 +11613,141 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <div className="text-sm text-zinc-500 mt-1">Session total</div>
                                     </div>
                                 </div>
-                                <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4 space-y-3">
+                                <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4">
                                     <div className="flex flex-wrap items-center justify-between gap-2">
                                         <div>
-                                            <div className="text-sm uppercase tracking-widest text-zinc-500">Tournament</div>
-                                            <div className="text-xl font-bold text-rose-300">Sweet 16 Bracket</div>
+                                            <div className="text-sm uppercase tracking-widest text-zinc-500">Lobby Lineup</div>
+                                            <div className="text-sm text-zinc-400 mt-1">Hover to preview a person, click to lock selection, then run actions fast.</div>
                                         </div>
-                                        <div className="flex gap-2">
+                                        <div className="flex items-center gap-2">
+                                            {lockedLobbyUserToken ? (
+                                                <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-200">
+                                                    Locked: {selectedLobbyUser?.name || 'Guest'}
+                                                </div>
+                                            ) : (
+                                                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                                                    Preview Mode
+                                                </div>
+                                            )}
                                             <button
-                                                onClick={createSweet16Bracket}
-                                                disabled={bracketBusy}
-                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs ${bracketBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                            >
-                                                {bracketBusy ? 'Working...' : 'Create / Reseed'}
-                                            </button>
-                                            <button
-                                                onClick={queueNextBracketMatch}
-                                                disabled={bracketBusy || !activeBracket?.rounds?.length || activeBracket?.status === 'complete'}
-                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${(bracketBusy || !activeBracket?.rounds?.length || activeBracket?.status === 'complete') ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                            >
-                                                Queue Next Match
-                                            </button>
-                                            <button
-                                                onClick={clearSweet16Bracket}
-                                                disabled={bracketBusy || !activeBracket}
-                                                className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs ${(bracketBusy || !activeBracket) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                onClick={() => {
+                                                    setLockedLobbyUserToken('');
+                                                    setSelectedLobbyUserToken('');
+                                                }}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-[10px]`}
                                             >
                                                 Clear
                                             </button>
-                                            <button
-                                                onClick={() => toggleBracketCrowdVoting(!bracketCrowdVotingEnabled)}
-                                                disabled={bracketBusy || !activeBracket}
-                                                className={`${STYLES.btnStd} ${bracketCrowdVotingEnabled ? STYLES.btnSecondary : STYLES.btnHighlight} px-3 py-1 text-xs ${(bracketBusy || !activeBracket) ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                            >
-                                                {bracketCrowdVotingEnabled ? 'Pause Crowd Vote' : 'Enable Crowd Vote'}
-                                            </button>
                                         </div>
                                     </div>
-                                    {!activeBracket?.rounds?.length ? (
-                                        <div className="text-sm text-zinc-400">
-                                            Creates single-elimination 1v1 matches. Each match auto-picks random songs from each singer's Tight 15.
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            <div className="text-sm text-zinc-400">
-                                                Round: <span className="text-zinc-200 font-bold">{activeBracket?.rounds?.[activeBracket?.activeRoundIndex || 0]?.name || 'Round'}</span>
-                                                {' '}| Bracket size: <span className="text-zinc-200 font-bold">{activeBracket?.size || 0}</span>
-                                                {' '}| Status: <span className="text-zinc-200 font-bold">{activeBracket?.status || 'setup'}</span>
-                                                {' '}| Crowd voting: <span className={`font-bold ${bracketCrowdVotingEnabled ? 'text-cyan-200' : 'text-zinc-500'}`}>{bracketCrowdVotingEnabled ? 'ON' : 'OFF'}</span>
+                                    <div className="mt-3 flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                                        {users.map((u) => {
+                                            const userUid = resolveRoomUserUid(u);
+                                            const userToken = resolveLobbyUserToken(u);
+                                            const isVip = u.isVip || (u.vipLevel || 0) > 0;
+                                            const isSelected = selectedLobbyUserToken === userToken;
+                                            const isLocked = lockedLobbyUserToken === userToken;
+                                            return (
+                                                <button
+                                                    key={`lineup_${u.id}`}
+                                                    onMouseEnter={() => {
+                                                        if (lockedLobbyUserToken) return;
+                                                        setSelectedLobbyUserToken(userToken);
+                                                    }}
+                                                    onMouseLeave={() => {
+                                                        if (lockedLobbyUserToken) return;
+                                                        setSelectedLobbyUserToken('');
+                                                    }}
+                                                    onFocus={() => setSelectedLobbyUserToken(userToken)}
+                                                    onBlur={() => {
+                                                        if (lockedLobbyUserToken) return;
+                                                        setSelectedLobbyUserToken('');
+                                                    }}
+                                                    onClick={() => {
+                                                        if (!userToken) return;
+                                                        const nextLockedToken = lockedLobbyUserToken === userToken ? '' : userToken;
+                                                        setLockedLobbyUserToken(nextLockedToken);
+                                                        setSelectedLobbyUserToken(nextLockedToken ? userToken : '');
+                                                        const targetId = getLobbyCardAnchorId(userToken);
+                                                        const card = document.getElementById(targetId);
+                                                        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                    }}
+                                                    className={`min-w-[150px] rounded-xl border px-3 py-2 text-left transition-all ${
+                                                        isSelected
+                                                            ? 'border-cyan-300/70 bg-cyan-500/15 text-cyan-50'
+                                                            : 'border-white/10 bg-black/35 text-zinc-200 hover:border-cyan-400/40'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <span className="text-lg">{u.avatar || EMOJI.mic}</span>
+                                                            <span className="text-xs font-semibold truncate">{u.name || 'Guest'}</span>
+                                                        </div>
+                                                        {isLocked && <span className="text-[10px] uppercase tracking-widest text-cyan-200">Lock</span>}
+                                                    </div>
+                                                    <div className="mt-1 text-[10px] text-zinc-400">{u.points || 0} pts{isVip ? ' | VIP' : ''}{userUid ? '' : ' | Offline'}</div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    {selectedLobbyUser && (
+                                        <div className="mt-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                                            <div className="text-sm text-zinc-200">
+                                                Selected: <span className="font-bold text-white">{selectedLobbyUser.name || 'Guest'}</span>
                                             </div>
-                                            {bracketShowAdvancePrompt && (
-                                                <div className="rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-3 py-3 flex flex-wrap items-center justify-between gap-3">
-                                                    <div>
-                                                        <div className="text-[10px] uppercase tracking-[0.3em] text-cyan-200">Round Complete</div>
-                                                        <div className="text-sm text-zinc-100 mt-1">
-                                                            {activeBracket?.roundTransition?.fromRoundName || 'Round'} done. Next up: <span className="font-bold text-cyan-200">{activeBracket?.roundTransition?.toRoundName || 'Next round'}</span>
-                                                        </div>
-                                                    </div>
-                                                    <button
-                                                        onClick={queueNextBracketMatch}
-                                                        disabled={bracketBusy || activeBracket?.status === 'complete'}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${(bracketBusy || activeBracket?.status === 'complete') ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        Start Next Round
-                                                    </button>
-                                                </div>
-                                            )}
-                                            {bracketNoShow && (
-                                                <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-3 flex flex-wrap items-center justify-between gap-3">
-                                                    <div>
-                                                        <div className="text-[10px] uppercase tracking-[0.3em] text-amber-200">No-Show Watch</div>
-                                                        <div className="text-sm text-zinc-100 mt-1">
-                                                            {bracketNoShow.missingName} left the room. Auto-forfeit in <span className="font-bold text-amber-200">{bracketNoShowCountdownSec}s</span>.
-                                                        </div>
-                                                    </div>
-                                                    <button
-                                                        onClick={() => forfeitBracketContestant(bracketNoShow.matchId, bracketNoShow.missingUid, 'host')}
-                                                        disabled={bracketBusy}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${bracketBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        Forfeit Now
-                                                    </button>
-                                                </div>
-                                            )}
-                                            {activeBracket?.status === 'complete' && (
-                                                <div className="text-sm text-emerald-200 bg-emerald-500/10 border border-emerald-400/30 rounded-xl px-3 py-2">
-                                                    Champion: {activeBracket?.championName || 'Winner'}
-                                                </div>
-                                            )}
-                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                                                {(activeBracket?.rounds?.[activeBracket?.activeRoundIndex || 0]?.matches || []).map((match) => {
-                                                    const a = activeBracket?.contestantsByUid?.[match.aUid] || null;
-                                                    const b = activeBracket?.contestantsByUid?.[match.bUid] || null;
-                                                    const winnerUid = match?.winnerUid || '';
-                                                    const voteSummary = getBracketMatchCrowdVotes({
-                                                        users,
-                                                        bracketId: activeBracket?.id || '',
-                                                        match
-                                                    });
-                                                    return (
-                                                        <div key={match.id} className={`rounded-xl border p-3 ${activeBracket?.activeMatchId === match.id ? 'border-cyan-400/50 bg-cyan-500/10' : 'border-zinc-700 bg-zinc-950/50'}`}>
-                                                            <div className="flex items-center justify-between mb-2">
-                                                                <div className="text-xs uppercase tracking-widest text-zinc-500">Match {match.slot}</div>
-                                                                {match.queuedAt && <div className="text-[10px] uppercase tracking-widest text-cyan-200">Queued</div>}
-                                                            </div>
-                                                            <div className="space-y-2 text-sm">
-                                                                <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === a?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
-                                                                    <div className="font-bold text-white">{a?.name || 'Open Slot'}</div>
-                                                                    <div className="text-zinc-400 truncate">{match?.aSong?.songTitle || '-'} {match?.aSong?.artist ? `- ${match.aSong.artist}` : ''}</div>
-                                                                    <div className="text-[11px] text-cyan-200 mt-1">{voteSummary.aVotes || 0} crowd votes</div>
-                                                                    {a?.uid && (
-                                                                        <button
-                                                                            onClick={() => setBracketMatchWinner(match.id, a.uid)}
-                                                                            disabled={bracketBusy}
-                                                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} mt-2 px-2 py-1 text-[10px] ${bracketBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                                        >
-                                                                            Mark Winner
-                                                                        </button>
-                                                                    )}
-                                                                    {a?.uid && b?.uid && (
-                                                                        <button
-                                                                            onClick={() => forfeitBracketContestant(match.id, b.uid, 'host')}
-                                                                            disabled={bracketBusy || !!winnerUid}
-                                                                            className={`${STYLES.btnStd} ${STYLES.btnDanger} mt-1 px-2 py-1 text-[10px] ${(bracketBusy || !!winnerUid) ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                                        >
-                                                                            Opponent No-Show
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                                <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === b?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
-                                                                    <div className="font-bold text-white">{b?.name || 'Open Slot'}</div>
-                                                                    <div className="text-zinc-400 truncate">{match?.bSong?.songTitle || '-'} {match?.bSong?.artist ? `- ${match.bSong.artist}` : ''}</div>
-                                                                    <div className="text-[11px] text-cyan-200 mt-1">{voteSummary.bVotes || 0} crowd votes</div>
-                                                                    {b?.uid && (
-                                                                        <button
-                                                                            onClick={() => setBracketMatchWinner(match.id, b.uid)}
-                                                                            disabled={bracketBusy}
-                                                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} mt-2 px-2 py-1 text-[10px] ${bracketBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                                        >
-                                                                            Mark Winner
-                                                                        </button>
-                                                                    )}
-                                                                    {a?.uid && b?.uid && (
-                                                                        <button
-                                                                            onClick={() => forfeitBracketContestant(match.id, a.uid, 'host')}
-                                                                            disabled={bracketBusy || !!winnerUid}
-                                                                            className={`${STYLES.btnStd} ${STYLES.btnDanger} mt-1 px-2 py-1 text-[10px] ${(bracketBusy || !!winnerUid) ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                                        >
-                                                                            Opponent No-Show
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                                <button
-                                                                    onClick={() => setBracketWinnerFromCrowdVotes(match.id)}
-                                                                    disabled={bracketBusy || !bracketCrowdVotingEnabled}
-                                                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-1 px-2 py-1 text-[10px] ${(bracketBusy || !bracketCrowdVotingEnabled) ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                                >
-                                                                    Use Crowd Winner
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                                                <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 p-3">
-                                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500 mb-2">Bracket Match History</div>
-                                                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
-                                                        {(activeBracket?.matchHistory || []).slice().reverse().slice(0, 10).map((entry) => (
-                                                            <div key={entry.id} className="rounded-lg border border-zinc-700 bg-black/30 px-2 py-2">
-                                                                <div className="text-[11px] text-zinc-300">
-                                                                    <span className="font-bold text-white">{entry.winnerName || 'Winner'}</span> beat {entry.aName || 'A'} vs {entry.bName || 'B'}
-                                                                </div>
-                                                                <div className="text-[10px] text-zinc-500 mt-1">
-                                                                    {entry.roundName || 'Round'} • Match {entry.slot || '-'} • {entry.resolutionType || 'manual'}
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                        {!(activeBracket?.matchHistory || []).length && (
-                                                            <div className="text-[11px] text-zinc-500">No resolved matches yet.</div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 p-3">
-                                                    <div className="text-xs uppercase tracking-[0.28em] text-zinc-500 mb-2">Bracket Audit Trail</div>
-                                                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
-                                                        {(activeBracket?.auditTrail || []).slice().reverse().slice(0, 12).map((entry) => (
-                                                            <div key={entry.id} className="rounded-lg border border-zinc-700 bg-black/30 px-2 py-2">
-                                                                <div className="text-[11px] text-zinc-200">{entry.text || entry.type || 'Event'}</div>
-                                                                <div className="text-[10px] text-zinc-500 mt-1">{new Date(Number(entry.at || nowMs())).toLocaleTimeString()}</div>
-                                                            </div>
-                                                        ))}
-                                                        {!(activeBracket?.auditTrail || []).length && (
-                                                            <div className="text-[11px] text-zinc-500">No audit events yet.</div>
-                                                        )}
-                                                    </div>
-                                                </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    onClick={() => sendUserMessage(selectedLobbyUserUid, selectedLobbyUserIsSpotlight ? null : 'SPOTLIGHT')}
+                                                    disabled={!selectedLobbyUserUid}
+                                                    className={`${STYLES.btnStd} ${selectedLobbyUserIsSpotlight ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-1 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    {selectedLobbyUserIsSpotlight ? 'Unspotlight' : 'Spotlight'}
+                                                </button>
+                                                <button
+                                                    onClick={() => queueRandomTight15ForUser(selectedLobbyUser)}
+                                                    disabled={!selectedLobbyUserUid || selectedLobbyUserQueueBusy}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs ${(!selectedLobbyUserUid || selectedLobbyUserQueueBusy) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    {selectedLobbyUserQueueBusy ? 'Queueing...' : 'Random Tight15'}
+                                                </button>
+                                                <button
+                                                    onClick={() => openTight15ProfileCard(selectedLobbyUser)}
+                                                    disabled={!selectedLobbyUserUid || selectedLobbyUserProfileBusy}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs ${(!selectedLobbyUserUid || selectedLobbyUserProfileBusy) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    {selectedLobbyUserProfileBusy ? 'Loading...' : 'Open Tight15 Card'}
+                                                </button>
                                             </div>
                                         </div>
                                     )}
                                 </div>
                                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                                     {users.map(u => {
-                                        const userUid = u.uid || u.id.split('_')[1] || '';
+                                        const userUid = resolveRoomUserUid(u);
+                                        const userToken = resolveLobbyUserToken(u);
+                                        const cardAnchorId = getLobbyCardAnchorId(userToken);
                                         const isSpotlight = room?.spotlightUser?.id === userUid;
-                                        const stats = userStats.get(userUid || u.name) || {};
+                                        const isSelected = selectedLobbyUserToken === userToken;
+                                        const stats = userStats.get(userUid || userToken || u.name) || {};
                                         const isVip = u.isVip || (u.vipLevel || 0) > 0;
                                         const lastActiveMs = u.lastActiveAt?.seconds ? u.lastActiveAt.seconds * 1000 : u.lastActiveAt;
                                         const userTight15Preview = sanitizeTight15List(u.tight15 || u.tight15Temp || []).slice(0, 3);
                                         const queueBusy = tight15QueueBusyUid === userUid;
                                         const profileBusy = tight15ProfileBusyUid === userUid;
                                         return (
-                                            <div key={u.id} className={`relative overflow-hidden bg-zinc-900/80 border border-white/10 rounded-2xl p-4 flex flex-col gap-3 group ${isSpotlight ? 'border-yellow-500/80 shadow-[0_0_25px_rgba(234,179,8,0.2)]' : ''}`}>
+                                            <div
+                                                id={cardAnchorId}
+                                                key={u.id}
+                                                onMouseEnter={() => {
+                                                    if (lockedLobbyUserToken) return;
+                                                    setSelectedLobbyUserToken(userToken);
+                                                }}
+                                                onMouseLeave={() => {
+                                                    if (lockedLobbyUserToken) return;
+                                                    setSelectedLobbyUserToken('');
+                                                }}
+                                                className={`relative overflow-hidden bg-zinc-900/80 border border-white/10 rounded-2xl p-4 flex flex-col gap-3 group transition-colors ${isSelected ? 'border-cyan-300/60 ring-1 ring-cyan-300/40' : ''} ${isSpotlight ? 'border-yellow-500/80 shadow-[0_0_25px_rgba(234,179,8,0.2)]' : ''}`}
+                                            >
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-12 h-12 rounded-full bg-black/40 border border-white/10 flex items-center justify-center text-3xl">
                                                         {u.avatar}
@@ -11548,8 +11775,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 {lastActiveMs && <div className="text-sm text-zinc-500">Last active {new Date(lastActiveMs).toLocaleTimeString()}</div>}
                                                 {u.lastSeen && <div className="text-sm text-zinc-600">Last seen {new Date(u.lastSeen.seconds ? u.lastSeen.seconds * 1000 : u.lastSeen).toLocaleTimeString()}</div>}
                                                 {u.phone && <div className="text-sm text-zinc-600">Phone {u.phone}</div>}
-                                                <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={()=>sendUserMessage(userUid, isSpotlight ? null : 'SPOTLIGHT')} className={`${STYLES.btnStd} ${isSpotlight ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-1 text-xs`}>
+                                                <div className={`absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-2 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                                                    <button
+                                                        onClick={() => sendUserMessage(userUid, isSpotlight ? null : 'SPOTLIGHT')}
+                                                        disabled={!userUid}
+                                                        className={`${STYLES.btnStd} ${isSpotlight ? STYLES.btnNeutral : STYLES.btnSecondary} px-3 py-1 text-xs ${!userUid ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
                                                         {isSpotlight ? 'UNSPOTLIGHT' : 'SPOTLIGHT'}
                                                     </button>
                                                     <button
@@ -11573,7 +11804,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     >
                                                         {profileBusy ? 'LOADING...' : 'TIGHT15 CARD'}
                                                     </button>
-                                                    <button onClick={()=>kickUser(userUid)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs`}>Kick</button>
+                                                    <button
+                                                        onClick={() => kickUser(userUid)}
+                                                        disabled={!userUid}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-xs ${!userUid ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        Kick
+                                                    </button>
                                                 </div>
                                                 {isSpotlight && <div className="absolute top-2 right-2 text-yellow-400 text-sm animate-pulse">LIVE</div>}
                                                 {isVip && (
@@ -11731,23 +11968,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         data-admin-workspace={inAdminWorkspace ? 'true' : 'modal'}
                         className={`host-admin-workspace bg-zinc-950/95 border border-zinc-700/80 w-full overflow-hidden flex flex-col ${inAdminWorkspace ? 'h-full rounded-2xl shadow-none' : 'rounded-none sm:rounded-2xl max-w-[1400px] shadow-[0_22px_80px_rgba(0,0,0,0.55)] h-[100dvh] sm:h-[90vh]'}`}
                     >
-                        <div className="border-b border-white/10 px-4 py-3 md:px-5 md:py-4 bg-zinc-950">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div>
-                                    <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">Host Admin</div>
-                                    <div className="text-xl md:text-2xl font-bold text-white">Admin Workspace</div>
-                                    <div className="text-sm text-zinc-300 mt-1">Configure queue, audience, media, games, billing, and diagnostics.</div>
-                                    <div className="text-sm text-zinc-400 mt-1">
-                                        Room <span className="text-zinc-200 font-semibold">{roomCode || '--'}</span>
-                                        {'  '}•{'  '}
-                                        Mode <span className="text-zinc-200 font-semibold">{room?.activeMode || 'karaoke'}</span>
-                                        {!!totalSocialUnread && (
-                                            <>
-                                                {'  '}•{'  '}
-                                                <span className="text-pink-200 font-semibold">Social alerts {totalSocialUnread}</span>
-                                            </>
-                                        )}
-                                    </div>
+                        <div className="border-b border-white/10 px-4 py-3 md:px-5 bg-zinc-950">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                                    <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] text-zinc-300">
+                                        Host Admin
+                                    </span>
+                                    <div className="text-lg font-bold text-white">Admin Workspace</div>
+                                    <span className="inline-flex items-center rounded-full border border-white/15 bg-zinc-900/80 px-2 py-1 text-xs text-zinc-300">
+                                        Room {roomCode || '--'}
+                                    </span>
+                                    <span className="inline-flex items-center rounded-full border border-white/15 bg-zinc-900/80 px-2 py-1 text-xs text-zinc-300">
+                                        Mode {room?.activeMode || 'karaoke'}
+                                    </span>
+                                    {!!totalSocialUnread && (
+                                        <span className="inline-flex items-center rounded-full border border-pink-400/30 bg-pink-500/10 px-2 py-1 text-xs text-pink-100">
+                                            Social {totalSocialUnread}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-2 text-sm text-zinc-400 flex-wrap">
                                     <button
@@ -11758,51 +11996,79 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <i className="fa-solid fa-bars"></i>
                                         Sections
                                     </button>
+                                    <button
+                                        onClick={() => setShowAdminFieldHelp((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${showAdminFieldHelp ? STYLES.btnInfo : STYLES.btnSecondary}`}
+                                    >
+                                        <i className="fa-solid fa-circle-question"></i>
+                                        Help {showAdminFieldHelp ? 'On' : 'Off'}
+                                    </button>
+                                    <button
+                                        onClick={() => setAdminContextOpen((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${adminContextOpen ? STYLES.btnInfo : STYLES.btnSecondary}`}
+                                    >
+                                        <i className="fa-solid fa-layer-group"></i>
+                                        Context {adminContextOpen ? 'On' : 'Off'}
+                                    </button>
                                     <button onClick={closeSettingsSurface} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>{inAdminWorkspace ? 'Exit Admin' : 'Close'}</button>
                                 </div>
                             </div>
-                            {inAdminWorkspace && (
-                                <div className="mt-3">
-                                    <div className="inline-flex flex-wrap rounded-xl border border-zinc-800 bg-zinc-950/90 p-1.5 gap-1.5">
-                                    {ADMIN_WORKSPACE_VIEWS.map((view) => (
-                                        <button
-                                            key={`workspace-view-chip-${view.id}`}
-                                            onClick={() => selectWorkspaceView(view.id)}
-                                            className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${
-                                                activeWorkspaceView === view.id
-                                                    ? 'bg-cyan-500/15 text-cyan-100 border border-cyan-400/30'
-                                                    : 'text-zinc-300 hover:bg-zinc-900 border border-transparent'
-                                            }`}
-                                        >
-                                            <i className={`fa-solid ${view.icon} text-[12px]`}></i>
-                                            {view.label}
-                                        </button>
-                                    ))}
+                            {adminContextOpen && (
+                                <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/65 p-3 space-y-3">
+                                    {inAdminWorkspace && (
+                                        <div className="inline-flex flex-wrap rounded-xl border border-zinc-800 bg-zinc-950/90 p-1.5 gap-1.5">
+                                            {ADMIN_WORKSPACE_VIEWS.map((view) => (
+                                                <button
+                                                    key={`workspace-view-chip-${view.id}`}
+                                                    onClick={() => selectWorkspaceView(view.id)}
+                                                    className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${
+                                                        activeWorkspaceView === view.id
+                                                            ? 'bg-cyan-500/15 text-cyan-100 border border-cyan-400/30'
+                                                            : 'text-zinc-300 hover:bg-zinc-900 border border-transparent'
+                                                    }`}
+                                                >
+                                                    <i className={`fa-solid ${view.icon} text-[12px]`}></i>
+                                                    {view.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <div className="max-w-xl md:max-w-2xl">
+                                        <label className="relative block">
+                                            <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
+                                            <input
+                                                value={settingsNavQuery}
+                                                onChange={(e) => setSettingsNavQuery(e.target.value)}
+                                                className={`${STYLES.input} pl-9`}
+                                                placeholder="Search host controls, settings, or tools..."
+                                            />
+                                        </label>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        {!!settingsNavQuery && (
+                                            <button
+                                                onClick={() => setSettingsNavQuery('')}
+                                                className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300 hover:text-white"
+                                            >
+                                                <i className="fa-solid fa-xmark text-[10px]"></i>
+                                                Clear Search
+                                            </button>
+                                        )}
+                                        <span className="inline-flex items-center rounded-full border border-white/10 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
+                                            Matching Sections {settingsResultCount}
+                                        </span>
+                                        <span className="inline-flex items-center rounded-full border border-white/10 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
+                                            Queue {queuedSongs.length}
+                                        </span>
+                                        <span className="inline-flex items-center rounded-full border border-white/10 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
+                                            Audience {users.length}
+                                        </span>
+                                        <span className="inline-flex items-center rounded-full border border-white/10 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
+                                            Pending Moderation {moderationQueueState.totalPending}
+                                        </span>
                                     </div>
                                 </div>
                             )}
-                            <div className="mt-3 max-w-xl md:max-w-2xl">
-                                <label className="relative block">
-                                    <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
-                                    <input
-                                        value={settingsNavQuery}
-                                        onChange={(e) => setSettingsNavQuery(e.target.value)}
-                                        className={`${STYLES.input} pl-9`}
-                                        placeholder="Search host controls, settings, or tools..."
-                                    />
-                                </label>
-                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                                    {!!settingsNavQuery && (
-                                        <button
-                                            onClick={() => setSettingsNavQuery('')}
-                                            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300 hover:text-white"
-                                        >
-                                            <i className="fa-solid fa-xmark text-[10px]"></i>
-                                            Clear Search
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
                         </div>
                         <HostWorkspaceShell
                             views={ADMIN_WORKSPACE_VIEWS}
@@ -11842,27 +12108,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         )}
                                     </div>
                                     <div className="text-sm text-zinc-300 mt-1">{activeSettingsMeta.description || 'Configure room behavior and host controls.'}</div>
-                                    {workspaceSectionTabs.length > 1 && (
-                                        <div className="mt-3 flex flex-wrap gap-1.5">
-                                            {workspaceSectionTabs.map((item) => {
-                                                const isActive = settingsTab === item.tabKey;
-                                                return (
-                                                    <button
-                                                        key={`workspace-section-tab-${item.id}`}
-                                                        onClick={() => handleSettingsNavSelect(item.tabKey)}
-                                                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${
-                                                            isActive
-                                                                ? 'border-cyan-400/40 bg-cyan-500/10 text-cyan-100'
-                                                                : 'border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-zinc-500 hover:text-white'
-                                                        }`}
-                                                    >
-                                                        <i className={`fa-solid ${item.icon} text-[10px]`}></i>
-                                                        {item.label}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
                                     <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-300">
                                         <button
                                             onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
@@ -11881,7 +12126,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </button>
                                     </div>
                                 </div>
-                                <div className="host-admin-content flex-1 overflow-y-auto custom-scrollbar p-4 md:p-5">
+                                <div
+                                    data-admin-help={showAdminFieldHelp ? 'on' : 'off'}
+                                    className="host-admin-content flex-1 overflow-y-auto custom-scrollbar p-4 md:p-5"
+                                >
                         {settingsTab === 'general' && (
                         <>
                         <div className="mb-5 bg-zinc-950/60 border border-cyan-500/30 rounded-xl p-4">
@@ -12976,7 +13224,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </button>
                                 </div>
                             </div>
-                            {ytPlaylistStatus && <div className="host-form-helper">{ytPlaylistStatus}</div>}
+                            {ytPlaylistStatus && <div className="host-form-helper host-form-helper-status">{ytPlaylistStatus}</div>}
                             <div className="host-form-helper">Indexes up to 150 videos per playlist load. INDEX + QUEUE ALL enables Auto-DJ and queues every indexed track.</div>
                         </div>
 
@@ -13027,7 +13275,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </button>
                             </div>
                             {appleMusicPlaylistStatus ? (
-                                <div className="host-form-helper">{appleMusicPlaylistStatus}</div>
+                                <div className="host-form-helper host-form-helper-status">{appleMusicPlaylistStatus}</div>
                             ) : null}
                             <div className="host-form-helper">Playlist playback is host-only and drives the room vibe.</div>
                         </div>
@@ -13101,7 +13349,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </button>
                                 <div className="host-form-helper">Adds a backing track to search results.</div>
                             </div>
-                            {ytAddStatus && <div className="host-form-helper">{ytAddStatus}</div>}
+                            {ytAddStatus && <div className="host-form-helper host-form-helper-status">{ytAddStatus}</div>}
                         </div>
 
                         <div className="mt-6 bg-zinc-950/40 border border-white/10 rounded-xl p-4 space-y-2">
@@ -13254,7 +13502,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                     <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-1">
                                         {marqueeDraftItems.length === 0 && (
-                                            <div className="host-form-helper">No marquee items yet. Add a few to rotate.</div>
+                                            <div className="host-form-helper host-form-helper-status">No marquee items yet. Add a few to rotate.</div>
                                         )}
                                         {marqueeDraftItems.map((item, idx) => (
                                             <div key={`${item}-${idx}`} className="flex items-center gap-2">
@@ -13545,12 +13793,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                                 <div className="shrink-0 border-t border-white/10 bg-zinc-950/90 px-3 py-2 md:px-5">
                                     <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <div className="text-[11px] text-zinc-500">
-                                            {hasPendingRoomSettings
-                                                ? 'Unsaved room settings detected. Save to apply across host, TV, and audience views.'
-                                                : (canSaveRoomSettings
-                                                    ? 'Save persists host identity, queue policy, automation defaults, and room-level controls.'
-                                                    : 'Billing and Diagnostics apply actions immediately; no extra save needed here.')}
+                                        <div className="flex items-center gap-2">
+                                            <span
+                                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] ${
+                                                    hasPendingRoomSettings
+                                                        ? 'border-amber-400/40 bg-amber-500/10 text-amber-100'
+                                                        : (canSaveRoomSettings
+                                                            ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-100'
+                                                            : 'border-cyan-400/30 bg-cyan-500/10 text-cyan-100')
+                                                }`}
+                                            >
+                                                <i className={`fa-solid ${hasPendingRoomSettings ? 'fa-triangle-exclamation' : (canSaveRoomSettings ? 'fa-circle-check' : 'fa-bolt')}`}></i>
+                                                {hasPendingRoomSettings
+                                                    ? 'Save Required'
+                                                    : (canSaveRoomSettings ? 'Saved' : 'Instant Apply')}
+                                            </span>
+                                            <button
+                                                onClick={() => setAdminFooterDetailsOpen((prev) => !prev)}
+                                                className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[11px] text-zinc-300 hover:text-white"
+                                            >
+                                                <i className={`fa-solid ${adminFooterDetailsOpen ? 'fa-chevron-up' : 'fa-chevron-down'} text-[10px]`}></i>
+                                                Details
+                                            </button>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <button
@@ -13565,6 +13829,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             )}
                                         </div>
                                     </div>
+                                    {adminFooterDetailsOpen && (
+                                        <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-[12px] text-zinc-300">
+                                            {hasPendingRoomSettings
+                                                ? 'Unsaved room settings detected. Save to apply updates across host, TV, and audience apps.'
+                                                : (canSaveRoomSettings
+                                                    ? 'This section stores room-level controls and defaults when you save.'
+                                                    : 'This section applies actions immediately. No extra save action is needed here.')}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>

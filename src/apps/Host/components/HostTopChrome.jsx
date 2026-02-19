@@ -480,15 +480,6 @@ const HostTopChrome = ({
         </div>
         <div className="w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">
-                <div className="text-xs uppercase tracking-[0.24em] text-zinc-300 pr-2">Live Deck</div>
-                <button
-                    onClick={() => startReadyCheck?.()}
-                    className={`${styles.btnStd} ${room?.readyCheck?.active ? styles.btnHighlight : styles.btnSecondary} px-3 py-1.5 text-xs min-w-[140px]`}
-                    title="Run a short room reset countdown"
-                >
-                    <i className="fa-solid fa-hourglass-half mr-1"></i>
-                    Ready Check
-                </button>
                 <div className="relative" ref={automationMenuRef}>
                     <button
                         data-feature-id="deck-automation-menu-toggle"

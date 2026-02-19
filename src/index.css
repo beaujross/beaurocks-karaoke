@@ -380,6 +380,12 @@ html, body, #root { height: 100%; width: 100%; }
   font-size: 1rem;
   line-height: 1.55;
 }
+.host-app .host-admin-workspace .host-admin-content[data-admin-help="off"] .host-form-helper {
+  display: none;
+}
+.host-app .host-admin-workspace .host-admin-content[data-admin-help="off"] .host-form-helper.host-form-helper-status {
+  display: block;
+}
 
 /* Public TV readability pass */
 .public-tv .text-xs {
