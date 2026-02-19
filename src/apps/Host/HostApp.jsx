@@ -610,6 +610,7 @@ const HOST_SETTINGS_SECTIONS = [
                 key: 'general',
                 label: 'Room Setup',
                 icon: 'fa-sliders',
+                ownership: 'config',
                 description: 'Host identity, queue policy, room defaults, and operational controls.',
                 keywords: 'queue room tips presets identity'
             },
@@ -617,6 +618,7 @@ const HOST_SETTINGS_SECTIONS = [
                 key: 'automations',
                 label: 'Automation',
                 icon: 'fa-bolt',
+                ownership: 'config',
                 description: 'Auto-DJ, background behavior, and one-click night profiles.',
                 keywords: 'auto dj automation presets profile'
             }
@@ -630,6 +632,7 @@ const HOST_SETTINGS_SECTIONS = [
                 key: 'chat',
                 label: 'Chat',
                 icon: 'fa-comments',
+                ownership: 'config',
                 description: 'Audience chat policy, DM controls, and TV feed behavior.',
                 keywords: 'chat dm social audience'
             },
@@ -637,6 +640,7 @@ const HOST_SETTINGS_SECTIONS = [
                 key: 'moderation',
                 label: 'Approvals',
                 icon: 'fa-shield-halved',
+                ownership: 'config',
                 description: 'Doodle review policy, audience visibility rules, and moderation shortcuts.',
                 keywords: 'moderation doodle review approve'
             },
@@ -644,6 +648,7 @@ const HOST_SETTINGS_SECTIONS = [
                 key: 'monetization',
                 label: 'Tips + Boosts',
                 icon: 'fa-sack-dollar',
+                ownership: 'config',
                 description: 'Tip crates and in-room boost economics.',
                 keywords: 'tips crates monetization'
             }
@@ -657,6 +662,7 @@ const HOST_SETTINGS_SECTIONS = [
                 key: 'media',
                 label: 'Playback',
                 icon: 'fa-tv',
+                ownership: 'config',
                 description: 'Media pipelines, uploads, and playback source controls.',
                 keywords: 'media visuals playback upload youtube apple music'
             },
@@ -664,6 +670,7 @@ const HOST_SETTINGS_SECTIONS = [
                 key: 'marquee',
                 label: 'Marquee',
                 icon: 'fa-panorama',
+                ownership: 'config',
                 description: 'Marquee timing, rotation content, and idle messaging behavior.',
                 keywords: 'marquee design overlay idle message'
             }
@@ -677,6 +684,7 @@ const HOST_SETTINGS_SECTIONS = [
                 key: 'gamepad',
                 label: 'Live Controls',
                 icon: 'fa-gamepad',
+                ownership: 'live',
                 description: 'Mode-specific host actions while games and specials are running.',
                 keywords: 'games mode gamepad launchpad doodle trivia bingo bracket'
             }
@@ -690,6 +698,7 @@ const HOST_SETTINGS_SECTIONS = [
                 key: 'billing',
                 label: 'Billing',
                 icon: 'fa-credit-card',
+                ownership: 'config',
                 description: 'Plan, usage, invoices, and subscription controls.',
                 keywords: 'billing usage plan invoice'
             }
@@ -703,6 +712,7 @@ const HOST_SETTINGS_SECTIONS = [
                 key: 'live_effects',
                 label: 'Live Effects',
                 icon: 'fa-wand-magic-sparkles',
+                ownership: 'fallback',
                 description: 'Special effects, vibe moments, and crowd-response controls.',
                 keywords: 'effects vibe storm beat drop soundboard'
             },
@@ -710,6 +720,7 @@ const HOST_SETTINGS_SECTIONS = [
                 key: 'qa',
                 label: 'Diagnostics',
                 icon: 'fa-screwdriver-wrench',
+                ownership: 'fallback',
                 description: 'Room diagnostics, smoke tests, and debug snapshots.',
                 keywords: 'qa debug tools diagnostics'
             }
@@ -724,6 +735,23 @@ const HOST_SETTINGS_META = HOST_SETTINGS_SECTIONS.reduce((acc, section) => {
     return acc;
 }, {});
 const HOST_SETTINGS_TAB_KEYS = Object.keys(HOST_SETTINGS_META);
+const SETTINGS_OWNERSHIP_META = Object.freeze({
+    config: {
+        label: 'Config',
+        className: 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100'
+    },
+    live: {
+        label: 'Live',
+        className: 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100'
+    },
+    fallback: {
+        label: 'Fallback',
+        className: 'border-amber-400/35 bg-amber-500/10 text-amber-100'
+    }
+});
+const ADMIN_WORKSPACE_VIEWS = HOST_WORKSPACE_VIEWS.filter((view) =>
+    HOST_WORKSPACE_SECTIONS.some((section) => section.view === view.id && !!SECTION_TO_SETTINGS_TAB[section.id])
+);
 
 const loadMusicKitScript = () => new Promise((resolve, reject) => {
     if (typeof window === 'undefined') return resolve(null);
@@ -7954,21 +7982,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return true;
     };
     const selectWorkspaceView = (viewId) => {
-        const nextView = String(viewId || 'ops').trim() || 'ops';
-        const sectionId = getViewDefaultSection(nextView);
+        const requestedView = String(viewId || 'ops').trim() || 'ops';
+        const hasSettingsForView = ADMIN_WORKSPACE_VIEWS.some((view) => view.id === requestedView);
+        const nextView = hasSettingsForView ? requestedView : 'ops';
+        const defaultSectionId = getViewDefaultSection(nextView);
+        const sectionId = SECTION_TO_SETTINGS_TAB[defaultSectionId]
+            ? defaultSectionId
+            : (
+                HOST_WORKSPACE_SECTIONS.find((section) =>
+                    section.view === nextView && !!SECTION_TO_SETTINGS_TAB[section.id]
+                )?.id || 'ops.room_setup'
+            );
         const mappedTab = SECTION_TO_SETTINGS_TAB[sectionId] || 'general';
-        if (nextView === 'queue') {
-            leaveAdminWithTarget('stage');
-            return;
-        }
-        if (nextView === 'games') {
-            leaveAdminWithTarget('games');
-            return;
-        }
-        if (nextView === 'audience' && sectionId === 'audience.roster') {
-            leaveAdminWithTarget('lobby');
-            return;
-        }
         setActiveWorkspaceView(nextView);
         setActiveWorkspaceSection(sectionId);
         setTab('admin');
@@ -10676,7 +10701,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         general: queuedSongs.length > 0 ? `${queuedSongs.length}Q` : ''
     };
     const activeSettingsMeta = HOST_SETTINGS_META[settingsTab] || HOST_SETTINGS_META.general;
-    const activeWorkspaceMeta = HOST_WORKSPACE_VIEWS.find((view) => view.id === activeWorkspaceView) || HOST_WORKSPACE_VIEWS[0];
+    const activeOwnershipMeta = SETTINGS_OWNERSHIP_META[activeSettingsMeta?.ownership] || SETTINGS_OWNERSHIP_META.config;
+    const activeWorkspaceMeta = ADMIN_WORKSPACE_VIEWS.find((view) => view.id === activeWorkspaceView)
+        || HOST_WORKSPACE_VIEWS.find((view) => view.id === activeWorkspaceView)
+        || ADMIN_WORKSPACE_VIEWS[0]
+        || HOST_WORKSPACE_VIEWS[0];
     const activeSectionMeta = getSectionMeta(activeWorkspaceSection || SETTINGS_TAB_TO_SECTION[settingsTab] || '') || null;
     const workspaceSectionTabs = HOST_WORKSPACE_SECTIONS
         .filter((section) => section.view === (activeWorkspaceMeta?.id || activeWorkspaceView))
@@ -10771,7 +10800,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 label: meta.label,
                 icon: meta.icon || 'fa-gear',
                 description: meta.description || '',
-                sectionLabel: meta.sectionLabel || ''
+                sectionLabel: meta.sectionLabel || '',
+                ownership: meta.ownership || 'config'
             };
         })
         .filter(Boolean);
@@ -10781,7 +10811,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             label: item.label,
             icon: item.icon || 'fa-gear',
             description: item.description || '',
-            sectionLabel: section.label
+            sectionLabel: section.label,
+            ownership: item.ownership || 'config'
         }))
     );
     const navigationItemsForRail = settingsNavQuery.trim()
@@ -10826,6 +10857,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <div className="flex items-center gap-2">
                                                 <i className={`fa-solid ${item.icon} text-sm ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
                                                 <span className="truncate text-[15px] leading-5 font-semibold">{item.label}</span>
+                                                <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.16em] ${
+                                                    (SETTINGS_OWNERSHIP_META[item.ownership] || SETTINGS_OWNERSHIP_META.config).className
+                                                }`}>
+                                                    {(SETTINGS_OWNERSHIP_META[item.ownership] || SETTINGS_OWNERSHIP_META.config).label}
+                                                </span>
                                             </div>
                                             {!!item.description && (
                                                 <div className="mt-0.5 text-xs text-zinc-400 leading-snug">{item.description}</div>
@@ -10907,13 +10943,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </span>
                     </button>
                     <button
-                        onClick={() => leaveAdminWithTarget('stage')}
-                        data-feature-id="quick-open-queue"
+                        onClick={() => openAdminWorkspace('ops.room_setup')}
+                        data-feature-id="quick-open-queue-settings"
                         className="w-full bg-zinc-900/70 px-3 py-2.5 text-left text-sm text-zinc-100 hover:bg-zinc-900"
                     >
                         <span className="inline-flex items-center gap-2">
-                            <i className="fa-solid fa-list-check text-zinc-500"></i>
-                            Open Queue
+                            <i className="fa-solid fa-sliders text-zinc-500"></i>
+                            Queue Settings (Admin)
                         </span>
                     </button>
                     <button
@@ -11728,7 +11764,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             {inAdminWorkspace && (
                                 <div className="mt-3">
                                     <div className="inline-flex flex-wrap rounded-xl border border-zinc-800 bg-zinc-950/90 p-1.5 gap-1.5">
-                                    {HOST_WORKSPACE_VIEWS.map((view) => (
+                                    {ADMIN_WORKSPACE_VIEWS.map((view) => (
                                         <button
                                             key={`workspace-view-chip-${view.id}`}
                                             onClick={() => selectWorkspaceView(view.id)}
@@ -11769,7 +11805,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                         </div>
                         <HostWorkspaceShell
-                            views={HOST_WORKSPACE_VIEWS}
+                            views={ADMIN_WORKSPACE_VIEWS}
                             activeView={activeWorkspaceView}
                             onSelectView={selectWorkspaceView}
                             context={workspaceContextPanel}
@@ -11796,6 +11832,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                     <div className="mt-1 flex flex-wrap items-center gap-2">
                                         <div data-admin-active-section-title className="text-xl font-bold text-white">{activeSettingsMeta.label || 'Host Settings'}</div>
+                                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] ${activeOwnershipMeta.className}`}>
+                                            {activeOwnershipMeta.label}
+                                        </span>
                                         {hasPendingRoomSettings && (
                                             <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-amber-100">
                                                 Unsaved Changes
@@ -11862,10 +11901,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 mt-3">
                                 <button
-                                    onClick={() => leaveAdminWithTarget('stage')}
+                                    onClick={() => openAdminWorkspace('ops.room_setup')}
                                     className={`${STYLES.btnStd} ${STYLES.btnHighlight} justify-start`}
                                 >
-                                    1. Go to Stage
+                                    1. Queue + Room Setup
                                 </button>
                                 <button
                                     onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
@@ -12219,11 +12258,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
                                         <button onClick={() => leaveAdminWithTarget('games')} className={`${STYLES.btnStd} ${STYLES.btnHighlight} justify-start`}>
                                             <i className="fa-solid fa-rocket"></i>
-                                            Open Launchpad
+                                            Open Launchpad (Exit Admin)
                                         </button>
                                         <button onClick={() => leaveAdminWithTarget('stage')} className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}>
                                             <i className="fa-solid fa-microphone-lines"></i>
-                                            Stage Controls
+                                            Stage Controls (Exit Admin)
                                         </button>
                                         <button onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')} className={`${STYLES.btnStd} ${STYLES.btnInfo} justify-start`}>
                                             <i className="fa-solid fa-tv"></i>
@@ -12390,15 +12429,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             {chatAudienceMode === 'vip' ? 'VIP-only audience chat' : 'All audience chat enabled'}
                                         </button>
                                         <button
-                                            onClick={async () => {
-                                                const next = !chatShowOnTv;
-                                                setChatShowOnTv(next);
-                                                await updateRoom({ chatShowOnTv: next });
-                                            }}
-                                            className={`${STYLES.btnStd} ${chatShowOnTv ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                            onClick={() => leaveAdminWithTarget('stage')}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
                                         >
                                             <i className="fa-solid fa-tv"></i>
-                                            {chatShowOnTv ? 'Chat shown on TV' : 'Chat hidden from TV'}
+                                            Configure Chat TV (Exit Admin)
                                         </button>
                                         <button
                                             onClick={() => selectSettingsTab('chat')}
@@ -13266,9 +13301,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 chatEnabled={chatEnabled}
                                 setChatEnabled={setChatEnabled}
                                 chatShowOnTv={chatShowOnTv}
-                                setChatShowOnTv={setChatShowOnTv}
                                 chatTvMode={chatTvMode}
-                                setChatTvMode={setChatTvMode}
                                 chatSlowModeSec={chatSlowModeSec}
                                 setChatSlowModeSec={setChatSlowModeSec}
                                 handleChatViewMode={handleChatViewMode}
@@ -13278,6 +13311,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 chatDraft={chatDraft}
                                 setChatDraft={setChatDraft}
                                 sendHostChat={sendHostChat}
+                                onOpenLiveDeck={() => leaveAdminWithTarget('stage')}
                             />
                         )}
                         {settingsTab === 'live_effects' && (
@@ -13286,10 +13320,48 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="text-xs uppercase tracking-[0.24em] text-zinc-400">Advanced Tools</div>
                                     <div className="text-xl font-bold text-white mt-1">Live Effects</div>
                                     <div className="text-base text-zinc-200 mt-2">
-                                        Scene effects are now in the top Live Deck for faster access while hosting.
+                                        Live effect controls now run from the top Live Deck for faster, safer show operation.
                                     </div>
                                     <div className="text-sm text-zinc-300 mt-2">
-                                        Open Queue and use the dedicated <span className="text-cyan-300 font-semibold">Live Deck TV</span>, <span className="text-cyan-300 font-semibold">SFX</span>, and <span className="text-cyan-300 font-semibold">Vibe</span> dropdowns.
+                                        This section is read-only plus emergency recovery actions.
+                                    </div>
+                                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                                        <div className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Vibe Mode</div>
+                                            <div className="text-sm font-semibold text-white mt-1">{room?.lightMode || 'off'}</div>
+                                        </div>
+                                        <div className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">TV Display</div>
+                                            <div className="text-sm font-semibold text-white mt-1">
+                                                {room?.showLyricsTv && room?.showVisualizerTv
+                                                    ? 'Lyrics + Viz'
+                                                    : room?.showLyricsTv
+                                                        ? 'Lyrics'
+                                                        : room?.showVisualizerTv
+                                                            ? 'Visualizer'
+                                                            : 'Video'}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">SFX Status</div>
+                                            <div className="text-sm font-semibold text-white mt-1">
+                                                {sfxMuted ? 'Muted' : `${Math.round((sfxVolume || 0) * 100)}%`}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Active Screen</div>
+                                            <div className="text-sm font-semibold text-white mt-1">{room?.activeScreen || 'stage'}</div>
+                                        </div>
+                                        <div className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Chat TV</div>
+                                            <div className="text-sm font-semibold text-white mt-1">
+                                                {room?.chatShowOnTv ? `On (${room?.chatTvMode || 'auto'})` : 'Off'}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Marquee</div>
+                                            <div className="text-sm font-semibold text-white mt-1">{room?.marqueeEnabled ? 'On' : 'Off'}</div>
+                                        </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2 mt-3">
                                         <button
@@ -13297,32 +13369,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             className={`${STYLES.btnStd} ${STYLES.btnHighlight}`}
                                         >
                                             <i className="fa-solid fa-sliders"></i>
-                                            Open Live Deck
+                                            Open Live Deck (Exit Admin)
                                         </button>
                                         <button
-                                            onClick={() => updateRoom({ lightMode: 'off', stormPhase: 'off', activeMode: room?.activeMode === 'selfie_cam' ? 'karaoke' : room?.activeMode })}
+                                            onClick={() => updateRoom({
+                                                lightMode: 'off',
+                                                stormPhase: 'off',
+                                                activeMode: room?.activeMode === 'selfie_cam' ? 'karaoke' : room?.activeMode,
+                                                activeScreen: 'stage',
+                                                chatShowOnTv: false,
+                                                chatTvMode: 'auto',
+                                                marqueeEnabled: false
+                                            })}
                                             className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
                                         >
                                             <i className="fa-solid fa-power-off"></i>
-                                            Clear active effects
+                                            Emergency Reset Scene
+                                        </button>
+                                        <button
+                                            onClick={() => silenceAll?.()}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                        >
+                                            <i className="fa-solid fa-volume-xmark"></i>
+                                            Silence All SFX
                                         </button>
                                     </div>
-                                </div>
-                                <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-                                    <div className="text-xs uppercase tracking-[0.24em] text-zinc-400 mb-2">Soundboard</div>
-                                    <SoundboardControls
-                                        soundboardOpen={true}
-                                        sfxMuted={sfxMuted}
-                                        setSfxMuted={setSfxMuted}
-                                        silenceAll={silenceAll}
-                                        styles={STYLES}
-                                        sfxLevel={sfxLevel}
-                                        sfxVolume={sfxVolume}
-                                        setSfxVolume={setSfxVolume}
-                                        sounds={SOUNDS}
-                                        playSfxSafe={playSfxSafe}
-                                        smallWaveform={SmallWaveform}
-                                    />
+                                    <div className="text-xs text-zinc-400 mt-3">
+                                        Effect triggers, SFX playback, TV mode switches, and vibe changes are intentionally managed in Live Deck only.
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -13483,7 +13557,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 onClick={() => leaveAdminWithTarget('stage')}
                                                 className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
                                             >
-                                                Go Stage
+                                                Open Stage Surface
                                             </button>
                                             <button onClick={closeSettingsSurface} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>{inAdminWorkspace ? 'Exit Admin' : 'Close'}</button>
                                             {showSaveAction && (

@@ -9,6 +9,10 @@ service firebase.storage {
       return /databases/(default)/documents/artifacts/bross-app/public/data/rooms/$(roomCode);
     }
 
+    function roomUserDocPath(roomCode, uid) {
+      return /databases/(default)/documents/artifacts/bross-app/public/data/room_users/$(roomCode)_$(uid);
+    }
+
     function isRoomHost(roomCode) {
       return isAuthed()
         && firestore.exists(roomDocPath(roomCode))
@@ -21,6 +25,11 @@ service firebase.storage {
         );
     }
 
+    function isRoomParticipant(roomCode) {
+      return isAuthed()
+        && firestore.exists(roomUserDocPath(roomCode, request.auth.uid));
+    }
+
     function isAllowedMediaUpload() {
       return request.resource != null
         && request.resource.size <= 150 * 1024 * 1024
@@ -29,6 +38,13 @@ service firebase.storage {
     }
 
     function isAllowedLogoUpload() {
+      return request.resource != null
+        && request.resource.size <= 12 * 1024 * 1024
+        && request.resource.contentType != null
+        && request.resource.contentType.matches('^image/.*$');
+    }
+
+    function isAllowedPhotoUpload() {
       return request.resource != null
         && request.resource.size <= 12 * 1024 * 1024
         && request.resource.contentType != null
@@ -46,6 +62,15 @@ service firebase.storage {
       allow read: if isRoomHost(roomCode);
       allow create: if isRoomHost(roomCode) && isAllowedLogoUpload();
       allow delete: if isRoomHost(roomCode);
+      allow update: if false;
+    }
+
+    match /room_photos/{roomCode}/{uploaderUid}/{fileName} {
+      allow read: if isRoomHost(roomCode) || isRoomParticipant(roomCode);
+      allow create: if uploaderUid == request.auth.uid
+        && (isRoomHost(roomCode) || isRoomParticipant(roomCode))
+        && isAllowedPhotoUpload();
+      allow delete: if isRoomHost(roomCode) || uploaderUid == request.auth.uid;
       allow update: if false;
     }
 

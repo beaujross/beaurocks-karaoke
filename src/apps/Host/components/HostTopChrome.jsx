@@ -155,6 +155,21 @@ const HostTopChrome = ({
     const tipCtaActive = room?.activeScreen === 'tipping';
     const howToPlayActive = !!room?.howToPlay?.active;
     const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive);
+    const liveModeHostGuide = bangerActive
+        ? {
+            toneClass: 'border-orange-400/45 bg-orange-500/12 text-orange-100',
+            title: 'Banger Host Playbook',
+            summary: 'Keep momentum high with fast singer handoffs and frequent crowd prompts.',
+            actions: 'Host actions: call for Hype/Clap bursts every 20-30s, drop short SFX accents, and switch out when energy plateaus.'
+        }
+        : balladActive
+            ? {
+                toneClass: 'border-pink-300/45 bg-pink-500/12 text-pink-100',
+                title: 'Ballad Host Playbook',
+                summary: 'Slow the room down and focus attention on the singer and lyrics.',
+                actions: 'Host actions: keep Lyrics + Viz on TV, reduce noisy overlays/SFX, and prompt hearts + singalong chat.'
+            }
+            : null;
     const closeAllDeckMenus = () => {
         setShowAutomationMenu(false);
         setShowTvQuickMenu(false);
@@ -815,6 +830,13 @@ const HostTopChrome = ({
                 <div className="mt-2 rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
                     <i className="fa-solid fa-triangle-exclamation mr-2"></i>
                     {missionStatusDetail || missionRecommendation?.reason || 'Action needed in room flow.'}
+                </div>
+            )}
+            {liveModeHostGuide && (
+                <div className={`mt-2 rounded-xl border px-3 py-2 ${liveModeHostGuide.toneClass}`}>
+                    <div className="text-[11px] uppercase tracking-[0.22em] font-bold">{liveModeHostGuide.title}</div>
+                    <div className="text-xs mt-1">{liveModeHostGuide.summary}</div>
+                    <div className="text-[11px] mt-1.5 text-white/90">{liveModeHostGuide.actions}</div>
                 </div>
             )}
         </div>

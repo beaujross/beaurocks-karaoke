@@ -80,6 +80,12 @@ const STORM_LAYER_VIBRATE = {
     stomp: [45, 24, 45],
     clap: [20, 16, 20]
 };
+const LOBBY_PLAYGROUND_INTERACTIONS = [
+    { id: 'wave', label: 'Wave Tunnel', emoji: emoji(0x1F44B), hint: 'Send a friendly room wave.' },
+    { id: 'laser', label: 'Laser Pop', emoji: emoji(0x2728), hint: 'Paint the TV with neon pops.' },
+    { id: 'echo', label: 'Echo Ring', emoji: emoji(0x1F30A), hint: 'Pulse a ripple through the room.' },
+    { id: 'confetti', label: 'Confetti', emoji: emoji(0x1F389), hint: 'Trigger a celebration burst.' }
+];
 
 const normalizeTight15Text = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -740,18 +746,41 @@ const SingerApp = ({ roomCode, uid }) => {
         }
     }, [room?.showLyricsSinger, room?.lyricsMode, currentSinger?.lyrics, dismissedHostLyrics]);
 
+    const stopStormAudio = useCallback((resetJoinState = false) => {
+        if (stormRafRef.current) {
+            cancelAnimationFrame(stormRafRef.current);
+            stormRafRef.current = null;
+        }
+        if (stormFlashTimerRef.current) {
+            clearTimeout(stormFlashTimerRef.current);
+            stormFlashTimerRef.current = null;
+        }
+        if (stormFlashTimeoutRef.current) {
+            clearTimeout(stormFlashTimeoutRef.current);
+            stormFlashTimeoutRef.current = null;
+        }
+
+        const ambient = stormAudioRef.current;
+        if (ambient) {
+            ambient.pause();
+            ambient.currentTime = 0;
+        }
+
+        stormThunderRefs.current.forEach((fx) => {
+            if (!fx) return;
+            fx.pause();
+            fx.currentTime = 0;
+        });
+
+        stormFlashCooldownRef.current = 0;
+        setStormFlash(false);
+        if (resetJoinState) setStormJoined(false);
+    }, []);
+
     useEffect(() => {
         if (room?.lightMode !== 'storm') {
             setStormPhase('off');
-            setStormJoined(false);
-            setStormFlash(false);
-            if (stormAudioRef.current) {
-                stormAudioRef.current.pause();
-                stormAudioRef.current.currentTime = 0;
-            }
-            if (stormRafRef.current) cancelAnimationFrame(stormRafRef.current);
-            if (stormFlashTimerRef.current) clearTimeout(stormFlashTimerRef.current);
-            if (stormFlashTimeoutRef.current) clearTimeout(stormFlashTimeoutRef.current);
+            stopStormAudio(true);
             return;
         }
 
@@ -770,7 +799,7 @@ const SingerApp = ({ roomCode, uid }) => {
         updatePhase();
         const timer = setInterval(updatePhase, 500);
         return () => clearInterval(timer);
-    }, [room?.lightMode, room?.stormStartedAt, room?.stormConfig, room?.stormPhase]);
+    }, [room?.lightMode, room?.stormStartedAt, room?.stormConfig, room?.stormPhase, stopStormAudio]);
 
     useEffect(() => {
         if (room?.lightMode !== 'strobe') return;
@@ -934,6 +963,7 @@ const SingerApp = ({ roomCode, uid }) => {
     useEffect(() => {
         if (room?.lightMode !== 'storm') return;
         if (!stormJoined) return;
+        let cancelled = false;
 
         if (!stormAudioRef.current) {
             stormAudioRef.current = new Audio(getStormAmbientUrl());
@@ -959,11 +989,18 @@ const SingerApp = ({ roomCode, uid }) => {
         stormAudioRef.current.volume = phaseVolume;
         stormAudioRef.current.play().catch(() => {});
 
+        if (stormRafRef.current) {
+            cancelAnimationFrame(stormRafRef.current);
+            stormRafRef.current = null;
+        }
+
         setupStormAnalyser().then(() => {
+            if (cancelled) return;
             const analyser = stormAnalyserRef.current;
             if (!analyser) return;
             const data = new Uint8Array(analyser.frequencyBinCount);
             const loop = () => {
+                if (cancelled) return;
                 analyser.getByteFrequencyData(data);
                 const low = averageBand(data, 20, 140, analyser.context.sampleRate);
                 const mid = averageBand(data, 500, 2000, analyser.context.sampleRate);
@@ -974,13 +1011,20 @@ const SingerApp = ({ roomCode, uid }) => {
             stormRafRef.current = requestAnimationFrame(loop);
         });
 
-        const raf = stormRafRef.current;
-        const flashTimer = stormFlashTimerRef.current;
-        const flashTimeout = stormFlashTimeoutRef.current;
         return () => {
-            if (raf) cancelAnimationFrame(raf);
-            if (flashTimer) clearTimeout(flashTimer);
-            if (flashTimeout) clearTimeout(flashTimeout);
+            cancelled = true;
+            if (stormRafRef.current) {
+                cancelAnimationFrame(stormRafRef.current);
+                stormRafRef.current = null;
+            }
+            if (stormFlashTimerRef.current) {
+                clearTimeout(stormFlashTimerRef.current);
+                stormFlashTimerRef.current = null;
+            }
+            if (stormFlashTimeoutRef.current) {
+                clearTimeout(stormFlashTimeoutRef.current);
+                stormFlashTimeoutRef.current = null;
+            }
         };
     }, [room?.lightMode, stormJoined, stormPhase, getStormAmbientUrl, triggerStormLightning]);
     const sampleArt = useMemo(() => ({
@@ -1214,6 +1258,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const pendingPointDelta = useRef(0);
     const lastPointsSync = useRef(0);
     const lastBonusDropId = useRef(null);
+    const lastLobbyPlayAtRef = useRef(0);
     const cooldownTimer = useRef(null);
     const lastGuitarWin = useRef(null);
     const chatSendTimesRef = useRef([]);
@@ -1236,6 +1281,20 @@ const SingerApp = ({ roomCode, uid }) => {
         (!!message?.toHost && message?.uid === uid)
         || message?.toUid === uid
     ), [uid]);
+    const getChatMessageTimestampMs = useCallback((message = {}) => {
+        if (!message) return 0;
+        if (typeof message?.timestamp?.toMillis === 'function') return message.timestamp.toMillis();
+        if (typeof message?.timestamp?.seconds === 'number') {
+            const nanos = typeof message?.timestamp?.nanoseconds === 'number' ? message.timestamp.nanoseconds : 0;
+            return (message.timestamp.seconds * 1000) + Math.floor(nanos / 1000000);
+        }
+        return 0;
+    }, []);
+    const getNewestRelevantChatTimestamp = useCallback((messages = []) => messages.reduce((latest, message) => {
+        if (!(isLoungeChatMessage(message) || isDmForCurrentUser(message))) return latest;
+        const ts = getChatMessageTimestampMs(message);
+        return ts > latest ? ts : latest;
+    }, 0), [isLoungeChatMessage, isDmForCurrentUser, getChatMessageTimestampMs]);
     const loungeMessages = useMemo(() => chatMessages.filter((msg) => isLoungeChatMessage(msg)), [chatMessages, isLoungeChatMessage]);
     const dmMessages = useMemo(() => chatMessages.filter((msg) => isDmForCurrentUser(msg)), [chatMessages, isDmForCurrentUser]);
     const [hallOfFameMode, setHallOfFameMode] = useState('all_time');
@@ -1298,20 +1357,19 @@ const SingerApp = ({ roomCode, uid }) => {
             limit(viewingChat ? 40 : 1)
         );
         const unsub = onSnapshot(q, snap => {
-            const next = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const next = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
             if (viewingChat) {
                 setChatMessages(next);
             } else if (!next.length) {
                 setChatMessages([]);
             }
-            const newestRelevant = next.find((msg) => isLoungeChatMessage(msg) || isDmForCurrentUser(msg));
-            const newest = newestRelevant?.timestamp?.seconds ? newestRelevant.timestamp.seconds * 1000 : 0;
+            const newest = getNewestRelevantChatTimestamp(next);
             if (newest && newest > chatLastSeenRef.current && !viewingChat) {
                 setChatUnread(true);
             }
         });
         return () => unsub();
-    }, [roomCode, room?.chatEnabled, tab, socialTab, isLoungeChatMessage, isDmForCurrentUser]);
+    }, [roomCode, room?.chatEnabled, tab, socialTab, getNewestRelevantChatTimestamp]);
 
     useEffect(() => {
         const viewingLeaderboard = tab === 'social' && socialTab === 'leaderboard';
@@ -2239,7 +2297,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (strumFlushTimer.current) clearTimeout(strumFlushTimer.current);
         if (strobeFlushTimer.current) clearTimeout(strobeFlushTimer.current);
         if (stormLayerFlushTimer.current) clearTimeout(stormLayerFlushTimer.current);
-    }, []);
+        stopStormAudio(false);
+    }, [stopStormAudio]);
 
     useEffect(() => {
         if (room?.lightMode === 'storm') return;
@@ -2646,6 +2705,40 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         return canvas;
     };
 
+    const waitForCameraFrame = (timeoutMs = 2200) => new Promise((resolve) => {
+        const video = videoRef.current;
+        if (!video) {
+            resolve(false);
+            return;
+        }
+        if (video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2) {
+            resolve(true);
+            return;
+        }
+        let settled = false;
+        const finalize = (ready) => {
+            if (settled) return;
+            settled = true;
+            clearInterval(poll);
+            clearTimeout(timeout);
+            video.removeEventListener('loadeddata', onReady);
+            video.removeEventListener('loadedmetadata', onReady);
+            video.removeEventListener('canplay', onReady);
+            resolve(ready);
+        };
+        const onReady = () => {
+            if (video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2) {
+                finalize(true);
+            }
+        };
+        const poll = setInterval(onReady, 120);
+        const timeout = setTimeout(() => finalize(false), timeoutMs);
+        video.addEventListener('loadeddata', onReady);
+        video.addEventListener('loadedmetadata', onReady);
+        video.addEventListener('canplay', onReady);
+        onReady();
+    });
+
     const canvasToJpegBlob = (canvas, quality = 0.6) => new Promise((resolve, reject) => {
         if (!canvas) {
             reject(new Error('Missing selfie canvas'));
@@ -2668,7 +2761,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const uploadSelfieBlob = async (blob, suffix = 'selfie') => {
         if (!blob || !roomCode) throw new Error('Missing selfie payload');
-        const safeUid = (uid || user?.uid || auth?.currentUser?.uid || 'guest').trim() || 'guest';
+        const safeUid = (auth?.currentUser?.uid || uid || user?.uid || 'guest').trim() || 'guest';
         const storagePath = `room_photos/${roomCode}/${safeUid}/${Date.now()}_${suffix}_${Math.random().toString(36).slice(2, 8)}.jpg`;
         const fileRef = storageRef(storage, storagePath);
         const task = uploadBytesResumable(fileRef, blob, { contentType: 'image/jpeg' });
@@ -2680,10 +2773,32 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     const captureAndUploadSelfie = async ({ quality = 0.6, suffix = 'selfie' } = {}) => {
-        const canvas = captureSelfieCanvas();
+        let canvas = captureSelfieCanvas();
+        if (!canvas) {
+            if (!cameraActive || !videoRef.current?.srcObject) {
+                await startCamera();
+            }
+            await waitForCameraFrame();
+            canvas = captureSelfieCanvas();
+        }
         if (!canvas) throw new Error('Camera frame unavailable');
         const blob = await canvasToJpegBlob(canvas, quality);
         return uploadSelfieBlob(blob, suffix);
+    };
+
+    const resolveSelfieErrorMessage = (error, fallback = 'Selfie upload failed') => {
+        const code = String(error?.code || '').toLowerCase();
+        const message = String(error?.message || '').toLowerCase();
+        if (code.includes('storage/unauthorized') || message.includes('403')) {
+            return 'Photo upload blocked by storage permissions. Host should deploy updated storage rules.';
+        }
+        if (message.includes('camera frame unavailable') || message.includes('missing selfie canvas')) {
+            return 'Camera is still warming up. Keep it open and tap again.';
+        }
+        if (code.includes('storage/retry-limit-exceeded') || code.includes('storage/network-request-failed')) {
+            return 'Upload network issue. Try again.';
+        }
+        return fallback;
     };
 
     const takeSelfie = async () => {
@@ -2702,7 +2817,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             toast(`Snapped & Sent! ${EMOJI.camera}`);
         } catch (e) {
             console.error(e);
-            toast('Selfie upload failed');
+            toast(resolveSelfieErrorMessage(e, 'Selfie upload failed'));
         }
     };
 
@@ -2739,7 +2854,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             toast('Victory selfie sent!');
         } catch (e) {
             console.error(e);
-            toast('Failed to send victory selfie');
+            toast(resolveSelfieErrorMessage(e, 'Failed to send victory selfie'));
         }
     };
 
@@ -2776,7 +2891,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             toast('Victory selfie sent!');
         } catch (e) {
             console.error(e);
-            toast('Failed to send victory selfie');
+            toast(resolveSelfieErrorMessage(e, 'Failed to send victory selfie'));
         }
     };
 
@@ -2798,7 +2913,42 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             toast('Selfie submitted');
         } catch (e) {
             console.error(e);
-            toast('Selfie submit failed');
+            toast(resolveSelfieErrorMessage(e, 'Selfie submit failed'));
+        }
+    };
+
+    const triggerLobbyPlayInteraction = async (interactionId) => {
+        if (!user || !roomCode || currentSinger) return;
+        const key = String(interactionId || '').trim().toLowerCase();
+        if (!key) return;
+        const now = Date.now();
+        if (now - lastLobbyPlayAtRef.current < 220) return;
+        lastLobbyPlayAtRef.current = now;
+        markActive();
+        const localId = `${now}_${key}`;
+        setLocalReactions(prev => [...prev, { id: localId, type: `spotlight_${key}`, left: Math.random() * 80 + 10 }]);
+        setTimeout(() => setLocalReactions(prev => prev.filter(r => r.id !== localId)), 2500);
+        if (navigator.vibrate) {
+            try { navigator.vibrate(18); } catch {
+                // Ignore vibration failures.
+            }
+        }
+        try {
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
+                roomCode,
+                type: `lobby_play_${key}`,
+                count: 1,
+                userName: user.name,
+                avatar: user.avatar,
+                uid: uid || null,
+                isVip: !!user.isVip || (profile?.vipLevel || 0) > 0,
+                isFree: true,
+                timestamp: serverTimestamp()
+            });
+            trackEvent('lobby_play_interaction', { room_code: roomCode, interaction: key });
+        } catch (error) {
+            console.error(error);
+            toast('Could not send interaction');
         }
     };
 
@@ -3932,11 +4082,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
         const handleJoinStorm = () => {
             setStormJoined(true);
-            if (!stormAudioRef.current) {
-                stormAudioRef.current = new Audio(getStormAmbientUrl());
-                stormAudioRef.current.loop = true;
-            }
-            stormAudioRef.current.play().catch(() => {});
         };
 
         return (
@@ -5708,6 +5853,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const showChatPanel = ['lounge', 'host'].includes(socialTab);
     const activeMessages = chatTab === 'host' ? dmMessages : loungeMessages;
     const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
+    const noSingerOnStage = !currentSinger;
     const chatTitle = socialTab === 'host' ? 'DM Host' : 'VIP Lounge';
     const chatStatusLabel = !room?.chatEnabled
         ? 'Chat paused'
@@ -5726,10 +5872,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         setSocialTab(nextTab);
         if (['lounge', 'host'].includes(nextTab)) {
             const source = nextTab === 'host' ? dmMessages : loungeMessages;
-            const newest = source[0]?.timestamp?.seconds ? source[0].timestamp.seconds * 1000 : 0;
+            const newest = source.reduce((latest, message) => {
+                const ts = getChatMessageTimestampMs(message);
+                return ts > latest ? ts : latest;
+            }, 0);
             if (newest) chatLastSeenRef.current = newest;
             setChatUnread(false);
         }
+    };
+    const openLoungeChat = () => {
+        setTab('social');
+        setSocialTab('lounge');
     };
 
     return (
@@ -5800,6 +5953,32 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             }}
                         ></div>
                     ))}
+                    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-[min(92vw,420px)] pointer-events-auto">
+                        <div className="rounded-2xl border border-pink-300/40 bg-black/65 backdrop-blur px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.24em] text-pink-100">Ballad Mode</div>
+                            <div className="text-xs text-zinc-200 mt-1">Warm up the room with supportive reactions and singalong chat.</div>
+                            <div className="grid grid-cols-3 gap-2 mt-2">
+                                <button
+                                    onClick={() => react('heart', REACTION_COSTS.heart)}
+                                    className="rounded-xl border border-pink-300/40 bg-pink-500/20 px-2 py-2 text-[11px] font-bold text-pink-100 active:scale-95 transition-transform"
+                                >
+                                    {getEmojiChar('heart')} Love
+                                </button>
+                                <button
+                                    onClick={() => react('drink', REACTION_COSTS.drink)}
+                                    className="rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 active:scale-95 transition-transform"
+                                >
+                                    {getEmojiChar('drink')} Cheers
+                                </button>
+                                <button
+                                    onClick={openLoungeChat}
+                                    className="rounded-xl border border-white/25 bg-white/10 px-2 py-2 text-[11px] font-bold text-white active:scale-95 transition-transform"
+                                >
+                                    <i className="fa-solid fa-comments mr-1"></i> Chat
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
             {showBanger && (
@@ -5807,6 +5986,32 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <div className="absolute inset-0 vibe-banger"></div>
                     <div className="absolute inset-0 bg-gradient-to-b from-pink-500/25 via-transparent to-cyan-500/25"></div>
                     <div className="absolute top-24 left-1/2 -translate-x-1/2 text-[10px] font-bold tracking-[0.45em] text-white/80 uppercase">Banger Mode - Feel The Bass</div>
+                    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-[min(92vw,420px)] pointer-events-auto">
+                        <div className="rounded-2xl border border-orange-300/40 bg-black/65 backdrop-blur px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.24em] text-orange-100">Banger Mode</div>
+                            <div className="text-xs text-zinc-200 mt-1">Build crowd heat fast with hype reactions and callouts.</div>
+                            <div className="grid grid-cols-3 gap-2 mt-2">
+                                <button
+                                    onClick={() => react('fire', REACTION_COSTS.fire)}
+                                    className="rounded-xl border border-orange-300/40 bg-orange-500/20 px-2 py-2 text-[11px] font-bold text-orange-100 active:scale-95 transition-transform"
+                                >
+                                    {getEmojiChar('fire')} Hype
+                                </button>
+                                <button
+                                    onClick={() => react('clap', REACTION_COSTS.clap)}
+                                    className="rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 active:scale-95 transition-transform"
+                                >
+                                    {getEmojiChar('clap')} Clap
+                                </button>
+                                <button
+                                    onClick={openLoungeChat}
+                                    className="rounded-xl border border-white/25 bg-white/10 px-2 py-2 text-[11px] font-bold text-white active:scale-95 transition-transform"
+                                >
+                                    <i className="fa-solid fa-comments mr-1"></i> Chat
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -6118,53 +6323,84 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
                 {tab === 'home' && (
                     <div className="space-y-5">
-                         <div className="grid grid-cols-2 gap-4">
-                            <button onClick={()=>react('fire', REACTION_COSTS.fire)} className={`relative overflow-hidden bg-gradient-to-b from-orange-500/20 via-orange-500/10 to-black/50 border-2 border-orange-500/80 rounded-2xl p-3 flex flex-col items-center active:bg-orange-500 active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${cooldownFlash ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
-                                <span className="text-5xl mb-2">{getEmojiChar('fire')}</span>
-                                <span className="font-bold text-orange-200 text-base">HYPE</span>
-                                <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-orange-500/25 text-orange-100">{REACTION_COSTS.fire} PTS</div>
-                            </button>
-                            <button onClick={()=>react('heart', REACTION_COSTS.heart)} className={`relative overflow-hidden bg-gradient-to-b from-pink-500/20 via-pink-500/10 to-black/50 border-2 border-pink-500/80 rounded-2xl p-3 flex flex-col items-center active:bg-pink-500 active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${cooldownFlash ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
-                                <span className="text-5xl mb-2">{getEmojiChar('heart')}</span>
-                                <span className="font-bold text-pink-200 text-base">LOVE</span>
-                                <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-pink-500/25 text-pink-100">{REACTION_COSTS.heart} PTS</div>
-                            </button>
-                            <button onClick={()=>react('clap', REACTION_COSTS.clap)} className={`relative overflow-hidden bg-gradient-to-b from-cyan-500/20 via-cyan-500/10 to-black/50 border-2 border-cyan-400/80 rounded-2xl p-3 flex flex-col items-center active:bg-[#00C4D9] active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${cooldownFlash ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
-                                <span className="text-5xl mb-2">{getEmojiChar('clap')}</span>
-                                <span className="font-bold text-cyan-200 text-base">CLAP</span>
-                                <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-[#00C4D9]/25 text-cyan-100">{REACTION_COSTS.clap} PTS</div>
-                            </button>
-                            <button onClick={()=>react('drink', REACTION_COSTS.drink)} className={`relative overflow-hidden bg-gradient-to-b from-blue-500/20 via-blue-500/10 to-black/50 border-2 border-blue-400/80 rounded-2xl p-3 flex flex-col items-center active:bg-blue-500 active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${cooldownFlash ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
-                                <span className="text-5xl mb-2">{getEmojiChar('drink')}</span>
-                                <span className="font-bold text-blue-200 text-base">CHEERS</span>
-                                <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-blue-500/25 text-blue-100">{REACTION_COSTS.drink} PTS</div>
-                            </button>
-                         </div>
-                         <div className="grid grid-cols-2 gap-4">{['rocket','diamond','money','crown'].map(t => {
-                             const accent = {
-                                 rocket: 'border-pink-400/80 text-pink-200 bg-pink-500/10 shadow-[0_0_24px_rgba(236,72,153,0.45)]',
-                                 diamond: 'border-cyan-300/80 text-cyan-200 bg-cyan-500/10 shadow-[0_0_24px_rgba(34,211,238,0.45)]',
-                                 money: 'border-emerald-300/80 text-emerald-200 bg-emerald-500/10 shadow-[0_0_24px_rgba(52,211,153,0.45)]',
-                                 crown: 'border-[#00C4D9]/60 text-cyan-100 bg-[#00C4D9]/10 shadow-[0_0_26px_rgba(0,196,217,0.4)]'
-                             }[t];
-                             const cost = REACTION_COSTS[t];
-                             return (
-                                 <button key={t} onClick={()=>user.isVip ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all active:scale-95 ${user.isVip ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'}`}>
-                                     <span className={`text-5xl mb-2 animate-${t}`}>{getEmojiChar(t)}</span>
-                                     <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'RICH'}[t]}</span>
-                                <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>
-                                    {cost} PTS
-                                </div>
-                                {!user.isVip && (
-                                    <div className="absolute top-2 right-2 text-[11px] text-cyan-200 bg-black/60 border border-cyan-500/50 px-2 py-1 rounded-full flex items-center gap-1 leading-none">
-                                        <i className="fa-solid fa-lock text-[11px]"></i>
-                                        <span className="leading-none">VIP</span>
-                                    </div>
-                                )}
-                            </button>
-                             );
-                         })}</div>
-                         {!user.isVip && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">UNLOCK VIP ACCOUNT +5000 PTS {EMOJI.phone}</button>}
+                         {noSingerOnStage ? (
+                             <div className="rounded-2xl border border-cyan-400/35 bg-gradient-to-br from-cyan-500/15 via-black/35 to-pink-500/10 p-4 space-y-3">
+                                 <div className="flex items-center justify-between gap-2">
+                                     <div>
+                                         <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">Lobby Playground</div>
+                                         <div className="text-xl font-bebas text-white">Free while stage is empty</div>
+                                     </div>
+                                     <span className="px-2.5 py-1 rounded-full text-xs font-black tracking-[0.14em] bg-cyan-400/20 border border-cyan-300/40 text-cyan-100">0 PTS</span>
+                                 </div>
+                                 <div className="text-xs text-zinc-200">Use these while nobody is singing. They trigger fun TV effects and do not spend points.</div>
+                                 <div className="grid grid-cols-2 gap-3">
+                                     {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction) => (
+                                         <button
+                                             key={interaction.id}
+                                             onClick={() => triggerLobbyPlayInteraction(interaction.id)}
+                                             className="relative overflow-hidden bg-black/45 border border-white/15 rounded-2xl p-3 flex flex-col items-center active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)]"
+                                         >
+                                             <span className="text-5xl mb-2">{interaction.emoji}</span>
+                                             <span className="font-bold text-cyan-100 text-base">{interaction.label}</span>
+                                             <div className="mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-cyan-500/20 text-cyan-100">{interaction.hint}</div>
+                                         </button>
+                                     ))}
+                                 </div>
+                                 <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-3 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
+                                     Add first song to start karaoke
+                                 </button>
+                             </div>
+                         ) : (
+                             <>
+                                 <div className="grid grid-cols-2 gap-4">
+                                     <button onClick={()=>react('fire', REACTION_COSTS.fire)} className={`relative overflow-hidden bg-gradient-to-b from-orange-500/20 via-orange-500/10 to-black/50 border-2 border-orange-500/80 rounded-2xl p-3 flex flex-col items-center active:bg-orange-500 active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${cooldownFlash ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                         <span className="text-5xl mb-2">{getEmojiChar('fire')}</span>
+                                         <span className="font-bold text-orange-200 text-base">HYPE</span>
+                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-orange-500/25 text-orange-100">{REACTION_COSTS.fire} PTS</div>
+                                     </button>
+                                     <button onClick={()=>react('heart', REACTION_COSTS.heart)} className={`relative overflow-hidden bg-gradient-to-b from-pink-500/20 via-pink-500/10 to-black/50 border-2 border-pink-500/80 rounded-2xl p-3 flex flex-col items-center active:bg-pink-500 active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${cooldownFlash ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                         <span className="text-5xl mb-2">{getEmojiChar('heart')}</span>
+                                         <span className="font-bold text-pink-200 text-base">LOVE</span>
+                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-pink-500/25 text-pink-100">{REACTION_COSTS.heart} PTS</div>
+                                     </button>
+                                     <button onClick={()=>react('clap', REACTION_COSTS.clap)} className={`relative overflow-hidden bg-gradient-to-b from-cyan-500/20 via-cyan-500/10 to-black/50 border-2 border-cyan-400/80 rounded-2xl p-3 flex flex-col items-center active:bg-[#00C4D9] active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${cooldownFlash ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                         <span className="text-5xl mb-2">{getEmojiChar('clap')}</span>
+                                         <span className="font-bold text-cyan-200 text-base">CLAP</span>
+                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-[#00C4D9]/25 text-cyan-100">{REACTION_COSTS.clap} PTS</div>
+                                     </button>
+                                     <button onClick={()=>react('drink', REACTION_COSTS.drink)} className={`relative overflow-hidden bg-gradient-to-b from-blue-500/20 via-blue-500/10 to-black/50 border-2 border-blue-400/80 rounded-2xl p-3 flex flex-col items-center active:bg-blue-500 active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${cooldownFlash ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                         <span className="text-5xl mb-2">{getEmojiChar('drink')}</span>
+                                         <span className="font-bold text-blue-200 text-base">CHEERS</span>
+                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-blue-500/25 text-blue-100">{REACTION_COSTS.drink} PTS</div>
+                                     </button>
+                                 </div>
+                                 <div className="grid grid-cols-2 gap-4">{['rocket','diamond','money','crown'].map(t => {
+                                     const accent = {
+                                         rocket: 'border-pink-400/80 text-pink-200 bg-pink-500/10 shadow-[0_0_24px_rgba(236,72,153,0.45)]',
+                                         diamond: 'border-cyan-300/80 text-cyan-200 bg-cyan-500/10 shadow-[0_0_24px_rgba(34,211,238,0.45)]',
+                                         money: 'border-emerald-300/80 text-emerald-200 bg-emerald-500/10 shadow-[0_0_24px_rgba(52,211,153,0.45)]',
+                                         crown: 'border-[#00C4D9]/60 text-cyan-100 bg-[#00C4D9]/10 shadow-[0_0_26px_rgba(0,196,217,0.4)]'
+                                     }[t];
+                                     const cost = REACTION_COSTS[t];
+                                     return (
+                                         <button key={t} onClick={()=>user.isVip ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all active:scale-95 ${user.isVip ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'}`}>
+                                             <span className={`text-5xl mb-2 animate-${t}`}>{getEmojiChar(t)}</span>
+                                             <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'RICH'}[t]}</span>
+                                             <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>
+                                                 {cost} PTS
+                                             </div>
+                                             {!user.isVip && (
+                                                 <div className="absolute top-2 right-2 text-[11px] text-cyan-200 bg-black/60 border border-cyan-500/50 px-2 py-1 rounded-full flex items-center gap-1 leading-none">
+                                                     <i className="fa-solid fa-lock text-[11px]"></i>
+                                                     <span className="leading-none">VIP</span>
+                                                 </div>
+                                             )}
+                                         </button>
+                                     );
+                                 })}</div>
+                                 {!user.isVip && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">UNLOCK VIP ACCOUNT +5000 PTS {EMOJI.phone}</button>}
+                             </>
+                         )}
                          {room?.multiplier >= 4 && <button onClick={()=>submitSong("Secret Track", "The Host", "")} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 p-4 rounded-xl font-bold animate-pulse shadow-lg border-2 border-white">SECRET SONG UNLOCKED! {EMOJI.gift}</button>}
                          <div className="flex gap-2 w-full">
                             <button onClick={() => setShowPoints(true)} className="flex-1 bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">{EMOJI.info} Points</button>
@@ -7137,7 +7373,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <button onClick={() => {
                         setTab('social');
                         setSocialTab('lounge');
-                        const newest = chatMessages[0]?.timestamp?.seconds ? chatMessages[0].timestamp.seconds * 1000 : 0;
+                        const newest = getNewestRelevantChatTimestamp(chatMessages);
                         if (newest) chatLastSeenRef.current = newest;
                         setChatUnread(false);
                     }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='social'?'text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]':'text-zinc-300'} relative`}>

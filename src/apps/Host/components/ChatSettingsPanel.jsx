@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import groupChatMessages from '../../../lib/chatGrouping';
 
 const ChatSettingsPanel = ({
@@ -9,9 +9,7 @@ const ChatSettingsPanel = ({
     chatEnabled,
     setChatEnabled,
     chatShowOnTv,
-    setChatShowOnTv,
     chatTvMode,
-    setChatTvMode,
     chatSlowModeSec,
     setChatSlowModeSec,
     handleChatViewMode,
@@ -20,7 +18,8 @@ const ChatSettingsPanel = ({
     emoji,
     chatDraft,
     setChatDraft,
-    sendHostChat
+    sendHostChat,
+    onOpenLiveDeck
 }) => {
     const isDirectChatMessage = (message = {}) => (
         !!message?.toHost
@@ -31,7 +30,13 @@ const ChatSettingsPanel = ({
     const visibleMessages = chatViewMode === 'room'
         ? chatMessages.filter(m => !isDirectChatMessage(m))
         : chatMessages.filter(m => isDirectChatMessage(m));
-    const groupedVisibleMessages = groupChatMessages(visibleMessages.slice(0, 24), { mergeWindowMs: 12 * 60 * 1000 });
+    const groupedVisibleMessages = groupChatMessages(visibleMessages.slice(-24), { mergeWindowMs: 12 * 60 * 1000 });
+    const recentChatScrollRef = useRef(null);
+    useEffect(() => {
+        const node = recentChatScrollRef.current;
+        if (!node) return;
+        node.scrollTop = node.scrollHeight;
+    }, [groupedVisibleMessages, chatViewMode]);
 
     return (
         <div className="bg-zinc-950/50 border border-zinc-800 rounded-xl p-4 space-y-4">
@@ -64,7 +69,7 @@ const ChatSettingsPanel = ({
                     <div className="host-form-helper">Use VIP-only chat for premium nights.</div>
                 </div>
                 <div className="space-y-2">
-                    <div className="text-xs uppercase tracking-widest text-zinc-400">Room status</div>
+                    <div className="text-xs uppercase tracking-widest text-zinc-400">Room chat status</div>
                     <div className="flex flex-wrap gap-2">
                         <button
                             onClick={async () => {
@@ -77,62 +82,28 @@ const ChatSettingsPanel = ({
                             <i className="fa-solid fa-comments mr-2"></i>
                             {chatEnabled ? 'Chat On' : 'Chat Off'}
                         </button>
-                        <button
-                            onClick={async () => {
-                                const next = !chatShowOnTv;
-                                setChatShowOnTv(next);
-                                await updateRoom({ chatShowOnTv: next });
-                            }}
-                            className={`${styles.btnStd} ${chatShowOnTv ? styles.btnHighlight : styles.btnNeutral}`}
-                        >
-                            <i className="fa-solid fa-tv mr-2"></i>
-                            {chatShowOnTv ? 'TV Feed On' : 'TV Feed Off'}
-                        </button>
                     </div>
+                    <div className="host-form-helper">Chat on/off policy is configured here. Live TV routing is controlled from Live Deck.</div>
                 </div>
             </div>
             <div className="space-y-2">
-                <div className="text-xs uppercase tracking-widest text-zinc-400">TV feed mode</div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                <div className="text-xs uppercase tracking-widest text-zinc-400">TV feed routing (live)</div>
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 space-y-2">
+                    <div className="text-sm text-zinc-200">
+                        Current TV Chat: <span className="font-semibold text-white">{chatShowOnTv ? 'On' : 'Off'}</span>
+                    </div>
+                    <div className="text-sm text-zinc-200">
+                        Current TV Mode: <span className="font-semibold text-white uppercase">{chatTvMode || 'auto'}</span>
+                    </div>
                     <button
-                        onClick={async () => {
-                            setChatTvMode('auto');
-                            await updateRoom({ chatTvMode: 'auto' });
-                        }}
-                        className={`${styles.btnStd} ${chatTvMode === 'auto' ? styles.btnHighlight : styles.btnNeutral}`}
+                        onClick={() => onOpenLiveDeck?.()}
+                        className={`${styles.btnStd} ${styles.btnSecondary}`}
                     >
-                        Auto Rotate
-                    </button>
-                    <button
-                        onClick={async () => {
-                            setChatTvMode('chat');
-                            await updateRoom({ chatTvMode: 'chat' });
-                        }}
-                        className={`${styles.btnStd} ${chatTvMode === 'chat' ? styles.btnHighlight : styles.btnNeutral}`}
-                    >
-                        Chat Only
-                    </button>
-                    <button
-                        onClick={async () => {
-                            setChatTvMode('activity');
-                            await updateRoom({ chatTvMode: 'activity' });
-                        }}
-                        className={`${styles.btnStd} ${chatTvMode === 'activity' ? styles.btnHighlight : styles.btnNeutral}`}
-                    >
-                        Activity Only
-                    </button>
-                    <button
-                        onClick={async () => {
-                            setChatShowOnTv(true);
-                            setChatTvMode('fullscreen');
-                            await updateRoom({ chatShowOnTv: true, chatTvMode: 'fullscreen' });
-                        }}
-                        className={`${styles.btnStd} ${chatTvMode === 'fullscreen' ? styles.btnHighlight : styles.btnNeutral}`}
-                    >
-                        Full Screen
+                        <i className="fa-solid fa-sliders mr-2"></i>
+                        Open Live Deck (Exit Admin)
                     </button>
                 </div>
-                <div className="host-form-helper">Auto rotates the lower feed, Chat Only locks the lower feed to chat, and Full Screen takes over the TV with chat.</div>
+                <div className="host-form-helper">Use Live Deck Overlays for Chat TV on/off and fullscreen takeover during the show.</div>
             </div>
             <div className="space-y-2">
                 <div className="text-xs uppercase tracking-widest text-zinc-400">Slow mode (seconds)</div>
@@ -167,7 +138,7 @@ const ChatSettingsPanel = ({
                 </button>
             </div>
             <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Recent chat</div>
-            <div className="max-h-56 overflow-y-auto custom-scrollbar pr-1 space-y-2">
+            <div ref={recentChatScrollRef} className="max-h-56 overflow-y-auto custom-scrollbar pr-1 space-y-2">
                 {groupedVisibleMessages.length === 0 && (
                     <div className="text-zinc-500 text-xs italic">No chat yet.</div>
                 )}

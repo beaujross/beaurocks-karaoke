@@ -83,6 +83,18 @@ const normalizeStormLayer = (layer = '') => {
     return 'clap';
 };
 
+const LOBBY_PLAY_EFFECTS = {
+    lobby_play_wave: { label: 'Wave Tunnel', icon: emoji(0x1F44B), accent: 'from-cyan-300/70 to-blue-400/70' },
+    lobby_play_laser: { label: 'Laser Pop', icon: emoji(0x2728), accent: 'from-fuchsia-300/70 to-cyan-300/70' },
+    lobby_play_echo: { label: 'Echo Ring', icon: emoji(0x1F30A), accent: 'from-blue-300/70 to-indigo-400/70' },
+    lobby_play_confetti: { label: 'Confetti', icon: emoji(0x1F389), accent: 'from-pink-300/70 to-yellow-300/70' }
+};
+
+const getLobbyPlayEffect = (type = '') => {
+    const key = String(type || '').trim().toLowerCase();
+    return LOBBY_PLAY_EFFECTS[key] || null;
+};
+
 const normalizeTight15Entry = (entry = {}) => {
     const songTitle = String(entry.songTitle || entry.song || '').trim();
     const artist = String(entry.artist || entry.singerName || '').trim();
@@ -413,6 +425,7 @@ const PublicTV = ({ roomCode }) => {
     const [room, setRoom] = useState(null);
     const [songs, setSongs] = useState([]);
     const [reactions, setReactions] = useState([]);
+    const [lobbyPlayBursts, setLobbyPlayBursts] = useState([]);
     const [messages, setMessages] = useState([]); 
     const [activities, setActivities] = useState([]);
     const [photoOverlay, setPhotoOverlay] = useState(null);
@@ -494,6 +507,8 @@ const PublicTV = ({ roomCode }) => {
     const messageTimeoutsRef = useRef([]);
     const bgVisualizerAudioRef = useRef(null);
     const multiplierRef = useRef(1);
+    const chatFullscreenScrollRef = useRef(null);
+    const chatSidebarScrollRef = useRef(null);
     const selfieVoteCounts = useMemo(() => {
         return selfieVotes.reduce((acc, v) => {
             acc[v.targetUid] = (acc[v.targetUid] || 0) + 1;
@@ -501,7 +516,7 @@ const PublicTV = ({ roomCode }) => {
         }, {});
     }, [selfieVotes]);
     const groupedChatMessages = useMemo(
-        () => groupChatMessages([...chatMessages].reverse(), { mergeWindowMs: 12 * 60 * 1000 }),
+        () => groupChatMessages(chatMessages, { mergeWindowMs: 12 * 60 * 1000 }),
         [chatMessages]
     );
     const pushLobbyLiveEvent = useCallback((event) => {
@@ -813,9 +828,26 @@ const PublicTV = ({ roomCode }) => {
         stormRafRef.current = null;
     }, []);
 
+    const stopStormAudio = useCallback(() => {
+        const storm = stormAudioRef.current;
+        if (storm) {
+            storm.pause();
+            storm.currentTime = 0;
+        }
+        stormThunderRefs.current.forEach((fx) => {
+            if (!fx) return;
+            fx.pause();
+            fx.currentTime = 0;
+        });
+        stopStormAnalyser();
+    }, [stopStormAnalyser]);
+
     // --- EFFECT: Storm Sound ---
     useEffect(() => {
-        if (!started) return;
+        if (!started) {
+            stopStormAudio();
+            return;
+        }
         if (!stormAudioRef.current) {
             stormAudioRef.current = new Audio(getStormAmbientUrl());
             stormAudioRef.current.crossOrigin = 'anonymous';
@@ -846,11 +878,13 @@ const PublicTV = ({ roomCode }) => {
             storm.play().catch(e => tvLogger.debug('Storm audio blocked', e));
             startStormAnalyser();
         } else {
-            storm.pause();
-            storm.currentTime = 0;
-            stopStormAnalyser();
+            stopStormAudio();
         }
-    }, [room?.lightMode, stormPhase, started, getStormAmbientUrl, startStormAnalyser, stopStormAnalyser]);
+    }, [room?.lightMode, stormPhase, started, getStormAmbientUrl, startStormAnalyser, stopStormAudio]);
+
+    useEffect(() => () => {
+        stopStormAudio();
+    }, [stopStormAudio]);
 
     useEffect(() => {
         if (!started || room?.lightMode !== 'storm') return;
@@ -909,6 +943,30 @@ const PublicTV = ({ roomCode }) => {
                                 user: d.userName || d.user || 'Guest',
                                 text: 'shared a selfie',
                                 timestampMs: nowMs()
+                            });
+                        } else if (getLobbyPlayEffect(d.type)) {
+                            const effect = getLobbyPlayEffect(d.type);
+                            const burstTime = nowMs();
+                            const count = Math.max(1, Number(d.count || 1));
+                            setLobbyPlayBursts((prev) => {
+                                const additions = Array.from({ length: Math.min(3, count) }, (_, idx) => ({
+                                    id: `lobby-play-${c.doc.id}-${idx}`,
+                                    label: effect.label,
+                                    icon: effect.icon,
+                                    accent: effect.accent,
+                                    user: d.userName || d.user || 'Guest',
+                                    createdAt: burstTime + idx,
+                                    left: Math.random() * 70 + 15,
+                                    top: Math.random() * 45 + 24
+                                }));
+                                return [...additions, ...(prev || [])].slice(0, 20);
+                            });
+                            pushLobbyLiveEvent({
+                                id: `lobby-play-live-${c.doc.id}`,
+                                avatar: d.avatar || effect.icon,
+                                user: d.userName || d.user || 'Guest',
+                                text: `triggered ${effect.label.toLowerCase()}`,
+                                timestampMs: burstTime
                             });
                         } else if (d.type === 'storm_layer') {
                             const layerId = normalizeStormLayer(d.layer || d.stormLayer || d.reactionLayer);
@@ -1040,6 +1098,7 @@ const PublicTV = ({ roomCode }) => {
         ), s => {
             const visibleMessages = s.docs
                 .map(d => ({ id: d.id, ...d.data() }))
+                .reverse()
                 .filter(isTvVisibleChatMessage);
             setChatMessages(visibleMessages);
         });
@@ -1080,6 +1139,15 @@ const PublicTV = ({ roomCode }) => {
             if (chatRotateRef.current) clearInterval(chatRotateRef.current);
         };
     }, [room?.chatShowOnTv, room?.chatTvMode, chatMessages.length]);
+
+    useEffect(() => {
+        const fullNode = chatFullscreenScrollRef.current;
+        if (fullNode) fullNode.scrollTop = fullNode.scrollHeight;
+        if (showChatFeed) {
+            const sidebarNode = chatSidebarScrollRef.current;
+            if (sidebarNode) sidebarNode.scrollTop = sidebarNode.scrollHeight;
+        }
+    }, [groupedChatMessages, showChatFeed]);
 
     useEffect(() => {
         if (room?.activeMode !== 'selfie_challenge' || !room?.selfieChallenge?.promptId) {
@@ -1344,6 +1412,7 @@ const PublicTV = ({ roomCode }) => {
     useEffect(() => {
         const i = setInterval(() => {
             setReactions(prev => prev.filter(r => nowMs() - (r.timestamp?.seconds * 1000 || nowMs()) < 4000));
+            setLobbyPlayBursts((prev) => prev.filter((burst) => (nowMs() - Number(burst?.createdAt || 0)) < 2800));
             setCombo(prev => {
                 const next = Math.max(0, prev - 0.2);
                 comboRef.current = next;
@@ -1932,7 +2001,7 @@ const PublicTV = ({ roomCode }) => {
                         </div>
                     </div>
                 </div>
-                <div className="flex-1 min-h-0 p-4 md:p-6 2xl:p-8 overflow-y-auto custom-scrollbar space-y-3">
+                <div ref={chatFullscreenScrollRef} className="flex-1 min-h-0 p-4 md:p-6 2xl:p-8 overflow-y-auto custom-scrollbar space-y-3">
                     {chatMessages.length === 0 && (
                         <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-5 text-zinc-200 text-lg md:text-2xl">
                             {room?.chatEnabled === false
@@ -2851,7 +2920,7 @@ const PublicTV = ({ roomCode }) => {
                                         <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-green-400 mb-2 border-b border-white/10 pb-2">
                                             {showChatFeed ? 'CHAT' : 'ACTIVITY'}
                                         </h3>
-                                        <div className="flex-1 min-h-[120px] overflow-y-auto space-y-2 custom-scrollbar">
+                                        <div ref={chatSidebarScrollRef} className="flex-1 min-h-[120px] overflow-y-auto space-y-2 custom-scrollbar">
                                             {showChatFeed ? (
                                                 <>
                                                     {chatMessages.length === 0 && (
@@ -3030,6 +3099,35 @@ const PublicTV = ({ roomCode }) => {
                     </div>
                 </div>
             )}
+
+            {/* Lobby Playground Bursts */}
+            <div className="absolute inset-0 z-[198] pointer-events-none overflow-hidden">
+                {lobbyPlayBursts.map((burst) => {
+                    const ageMs = nowMs() - Number(burst.createdAt || 0);
+                    const opacity = Math.max(0, 1 - (ageMs / 2800));
+                    return (
+                        <div
+                            key={burst.id}
+                            className="absolute -translate-x-1/2 -translate-y-1/2"
+                            style={{
+                                left: `${burst.left}%`,
+                                top: `${burst.top}%`,
+                                opacity
+                            }}
+                        >
+                            <div className={`rounded-2xl border border-white/35 bg-gradient-to-r ${burst.accent} px-3 py-2 shadow-[0_0_26px_rgba(34,211,238,0.35)] backdrop-blur-sm`}>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-2xl md:text-3xl">{burst.icon}</span>
+                                    <div className="min-w-0">
+                                        <div className="text-[11px] md:text-xs uppercase tracking-[0.14em] font-black text-black/80">{burst.label}</div>
+                                        <div className="text-xs md:text-sm text-black/75 truncate max-w-[180px]">{burst.user}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
 
             {/* Reactions */}
             <div className="absolute inset-0 z-[200] pointer-events-none overflow-hidden">

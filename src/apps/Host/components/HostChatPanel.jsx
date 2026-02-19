@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import groupChatMessages from '../../../lib/chatGrouping';
 
 const HostChatPanel = ({
@@ -36,8 +36,9 @@ const HostChatPanel = ({
     showPopoutButton = true
 }) => {
     const displayedMessages = chatViewMode === 'room' ? roomChatMessages : hostDmMessages;
-    const groupedMessages = groupChatMessages(displayedMessages.slice(0, 6), { mergeWindowMs: 12 * 60 * 1000 });
+    const groupedMessages = groupChatMessages(displayedMessages.slice(-6), { mergeWindowMs: 12 * 60 * 1000 });
     const dmInputRef = useRef(null);
+    const messagesScrollRef = useRef(null);
     const userNameByUid = useMemo(() => {
         const next = {};
         users.forEach((entry) => {
@@ -48,6 +49,11 @@ const HostChatPanel = ({
         return next;
     }, [users]);
     const dmSendDisabled = !dmTargetUid || !dmDraft.trim();
+    useEffect(() => {
+        const node = messagesScrollRef.current;
+        if (!node) return;
+        node.scrollTop = node.scrollHeight;
+    }, [groupedMessages, chatViewMode]);
 
     return (
     <div className={chatOpen ? 'block' : 'hidden'}>
@@ -185,7 +191,7 @@ const HostChatPanel = ({
                         </div>
                     </div>
                 )}
-                <div className="bg-zinc-950/60 border border-white/10 rounded-xl p-3 h-40 overflow-y-auto custom-scrollbar space-y-2">
+                <div ref={messagesScrollRef} className="bg-zinc-950/60 border border-white/10 rounded-xl p-3 h-40 overflow-y-auto custom-scrollbar space-y-2">
                     {groupedMessages.length === 0 && (
                         <div className="text-sm text-zinc-500 h-full flex items-center justify-center">No messages yet.</div>
                     )}
@@ -222,7 +228,7 @@ const HostChatPanel = ({
                                 <div className="mt-1.5 space-y-1.5">
                                     {group.messages.map((msg, msgIdx) => {
                                         const isPinned = pinnedChatIds.includes(msg.id);
-                                        const isLatest = groupIdx === 0 && msgIdx === 0;
+                                        const isLatest = groupIdx === groupedMessages.length - 1 && msgIdx === group.messages.length - 1;
                                         return (
                                             <div key={msg.id || `${group.id}-${msgIdx}`} className={`flex items-start justify-between gap-2 rounded-md px-1.5 py-1 ${isLatest ? 'ring-1 ring-pink-400/40 bg-pink-500/5' : ''}`}>
                                                 <div className="text-zinc-200 text-sm break-words leading-snug">{msg.text}</div>

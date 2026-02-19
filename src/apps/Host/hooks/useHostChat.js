@@ -24,14 +24,28 @@ const isDirectChatMessage = (message = {}) => (
     || message?.channel === 'dm'
 );
 const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
-const getNewestRoomTs = (messages) => getTimestampMs(messages.find(msg => isLoungeChatMessage(msg)));
-const getNewestDmTs = (messages) => getTimestampMs(messages.find(msg => isDirectChatMessage(msg)));
+const getNewestTimestamp = (messages = [], matcher) => messages.reduce((latest, message) => {
+    if (typeof matcher === 'function' && !matcher(message)) return latest;
+    const ts = getTimestampMs(message);
+    return ts > latest ? ts : latest;
+}, 0);
+const getNewestRoomTs = (messages = []) => getNewestTimestamp(messages, isLoungeChatMessage);
+const getNewestDmTs = (messages = []) => getNewestTimestamp(messages, isDirectChatMessage);
 const getDmTargetUidFromMessage = (message = {}) => (
     String(message?.uid || message?.fromUid || message?.userId || message?.toUid || '').trim()
 );
 const getNewestDmTargetUid = (messages = []) => {
-    const newestDm = messages.find((msg) => isDirectChatMessage(msg));
-    return newestDm ? getDmTargetUidFromMessage(newestDm) : '';
+    let newestMessage = null;
+    let newestTs = 0;
+    messages.forEach((message) => {
+        if (!isDirectChatMessage(message)) return;
+        const ts = getTimestampMs(message);
+        if (ts >= newestTs) {
+            newestTs = ts;
+            newestMessage = message;
+        }
+    });
+    return newestMessage ? getDmTargetUidFromMessage(newestMessage) : '';
 };
 
 const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
@@ -71,7 +85,7 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
     }, [chatMessages, dmTargetUid]);
 
     const markChatTabSeen = useCallback(() => {
-        const newestTs = getTimestampMs(chatMessages[0]);
+        const newestTs = getNewestRoomTs(chatMessages);
         if (newestTs) chatLastSeenRef.current = newestTs;
         setChatUnread(false);
     }, [chatMessages]);
@@ -98,7 +112,7 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
             limit(40)
         );
         const unsub = onSnapshot(q, snap => {
-            const next = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const next = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
             setChatMessages(next);
             const newestTargetUid = getNewestDmTargetUid(next);
             if (newestTargetUid) {
