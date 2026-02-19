@@ -10,7 +10,7 @@ service firebase.storage {
     }
 
     function roomUserDocPath(roomCode, uid) {
-      return /databases/(default)/documents/artifacts/bross-app/public/data/room_users/$(roomCode)_$(uid);
+      return /databases/(default)/documents/artifacts/bross-app/public/data/room_users/$(roomCode + "_" + uid);
     }
 
     function isRoomHost(roomCode) {
