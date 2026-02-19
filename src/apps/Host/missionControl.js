@@ -192,7 +192,7 @@ export const getRecommendedHostAction = ({
         return {
             id: 'review_moderation',
             label: 'Review Queue',
-            reason: `${pendingModerationCount} moderation item${pendingModerationCount === 1 ? '' : 's'} waiting`,
+            reason: `${pendingModerationCount} moderation item${pendingModerationCount === 1 ? '' : 's'} waiting for approval`,
             status: 'needs_attention'
         };
     }
@@ -219,7 +219,7 @@ export const getRecommendedHostAction = ({
         return {
             id: 'start_next',
             label: 'Start Next Singer',
-            reason: `${queueCount} singer${queueCount === 1 ? '' : 's'} in queue`,
+            reason: `${queueCount} song${queueCount === 1 ? '' : 's'} queued, but no one is on stage`,
             status: 'ready'
         };
     }
@@ -228,7 +228,7 @@ export const getRecommendedHostAction = ({
         return {
             id: 'crowd_check',
             label: 'Run Crowd Check',
-            reason: 'Queue is empty, rally the room',
+            reason: 'No songs are queued yet',
             status: 'needs_attention'
         };
     }

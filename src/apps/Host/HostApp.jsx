@@ -2521,7 +2521,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, openHostSettings, showLegacyLiveEffects = true, pendingModerationCount = 0, runMissionHypeMoment = null, missionControlEnabled = false, missionControlCohort = 'legacy', openModerationInbox = null, commandPaletteRequestToken = 0 }) => {
+const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -2632,39 +2632,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         currentSourceLabel,
         currentSourceToneClass
     } = useQueueDerivedState({ songs, room, users, appleMusicPlaying });
-    const missionRecommendation = useMemo(() => getRecommendedHostAction({
-        room,
-        queue,
-        current,
-        pendingModerationCount
-    }), [room, queue, current, pendingModerationCount]);
-    const missionRecommendationShownRef = useRef('');
-    useEffect(() => {
-        if (!missionControlEnabled || !missionRecommendation?.id) return;
-        const key = `${missionRecommendation.id}:${roomCode || ''}:${room?.activeMode || 'karaoke'}`;
-        if (missionRecommendationShownRef.current === key) return;
-        missionRecommendationShownRef.current = key;
-        trackEvent('host_mission_recommendation_shown', {
-            room_code: roomCode || '',
-            recommendation_id: missionRecommendation.id,
-            feature_flag: 'mission_control_v1',
-            cohort: missionControlCohort,
-            timestamp: nowMs()
-        });
-    }, [missionControlEnabled, missionRecommendation, roomCode, room?.activeMode, missionControlCohort]);
-    useEffect(() => {
-        if (!missionControlEnabled || !roomCode || !missionRecommendation?.id) return;
-        if (room?.missionControl?.lastSuggestedAction === missionRecommendation.id) return;
-        const baseMissionControl = mergeMissionControlParty(room?.missionControl, buildMissionPartyFromRoom(room));
-        updateRoom({
-            missionControl: {
-                ...baseMissionControl,
-                version: MISSION_CONTROL_VERSION,
-                enabled: true,
-                lastSuggestedAction: missionRecommendation.id
-            }
-        }).catch((error) => hostLogger.debug('Mission recommendation state write skipped', error));
-    }, [missionControlEnabled, roomCode, missionRecommendation?.id, room?.missionControl, updateRoom]);
     const openPanelCount = useMemo(
         () => Object.values(panelLayout || {}).filter(Boolean).length,
         [panelLayout]
@@ -3414,62 +3381,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             return haystack.includes(commandQueryNormalized);
         });
 
-    const runMissionAction = useCallback(async (actionId = '') => {
-        const action = String(actionId || '').trim();
-        if (!action) return;
-        try {
-            if (action === 'start_next') {
-                if (queue[0]) await updateStatus(queue[0].id, 'performing');
-            } else if (action === 'hype_moment') {
-                if (typeof runMissionHypeMoment === 'function') {
-                    await runMissionHypeMoment();
-                }
-            } else if (action === 'crowd_check') {
-                await startReadyCheck();
-            } else if (action === 'more') {
-                setCommandOpen(true);
-            } else if (action === 'review_moderation') {
-                if (typeof openModerationInbox === 'function') {
-                    openModerationInbox();
-                } else {
-                    openHostSettings?.();
-                }
-            }
-            trackEvent('host_mission_live_action_used', {
-                room_code: roomCode || '',
-                action_id: action,
-                recommendation_id: missionRecommendation?.id || '',
-                feature_flag: missionControlEnabled ? 'mission_control_v1' : 'legacy',
-                cohort: missionControlCohort,
-                timestamp: nowMs()
-            });
-            if (missionRecommendation?.id === action) {
-                trackEvent('host_mission_recommendation_accepted', {
-                    room_code: roomCode || '',
-                    recommendation_id: missionRecommendation.id,
-                    feature_flag: missionControlEnabled ? 'mission_control_v1' : 'legacy',
-                    cohort: missionControlCohort,
-                    timestamp: nowMs()
-                });
-            }
-        } catch (error) {
-            hostLogger.error('Mission action failed', error);
-            toast('Mission action failed.');
-        }
-    }, [
-        queue,
-        updateStatus,
-        runMissionHypeMoment,
-        startReadyCheck,
-        roomCode,
-        missionRecommendation,
-        missionControlEnabled,
-        missionControlCohort,
-        openHostSettings,
-        openModerationInbox,
-        toast
-    ]);
-    
     // Helper to open youtube search
     const _openYT = (query) => {
         if (!query) return;
@@ -3631,65 +3542,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                         </div>
                     </div>
                 </div>
-            )}
-            {missionControlEnabled && (
-            <div className={`${STYLES.panel} px-3 py-2 border border-cyan-400/20 bg-[#041019]/85 sticky top-0 z-20`}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">Mission Control</div>
-                        <div className="text-xs text-zinc-300">
-                            Recommended: <span className="text-white font-bold">{missionRecommendation?.label || 'No recommendation yet'}</span>
-                            {missionRecommendation?.reason ? <span className="text-zinc-500"> | {missionRecommendation.reason}</span> : null}
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border ${
-                            missionRecommendation?.status === 'needs_attention'
-                                ? 'border-amber-400/35 bg-amber-500/15 text-amber-100'
-                                : missionRecommendation?.status === 'live'
-                                    ? 'border-cyan-400/35 bg-cyan-500/15 text-cyan-100'
-                                    : 'border-emerald-400/35 bg-emerald-500/15 text-emerald-100'
-                        }`}>
-                            {missionRecommendation?.status || 'ready'}
-                        </span>
-                        <button
-                            onClick={() => runMissionAction('start_next')}
-                            disabled={!queue[0]}
-                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 text-[10px] ${!queue[0] ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                            Start Next
-                        </button>
-                        <button
-                            onClick={() => runMissionAction('hype_moment')}
-                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 text-[10px]`}
-                        >
-                            Hype Moment
-                        </button>
-                        <button
-                            onClick={() => runMissionAction('crowd_check')}
-                            className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 text-[10px]`}
-                        >
-                            Crowd Check
-                        </button>
-                        <button
-                            onClick={() => runMissionAction('more')}
-                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 text-[10px]`}
-                        >
-                            More
-                        </button>
-                    </div>
-                </div>
-                {missionControlEnabled && missionRecommendation?.id && (
-                    <button
-                        onClick={() => runMissionAction(missionRecommendation.id)}
-                        className="mt-2 w-full text-left rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 hover:border-cyan-300/50 transition-colors"
-                    >
-                        <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Smart Assist</div>
-                        <div className="text-sm text-white font-bold mt-1">{missionRecommendation.label}</div>
-                        <div className="text-xs text-zinc-300 mt-1">{missionRecommendation.reason || 'Suggested next action for room flow.'}</div>
-                    </button>
-                )}
-            </div>
             )}
             <div className={`flex-1 min-h-0 ${compactViewport ? 'flex flex-col gap-3' : 'grid grid-cols-3 gap-6'} overflow-hidden`}>
             {/* LEFT CONTROLS */}
@@ -4848,9 +4700,72 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const currentSong = songs.find(s => s.status === 'performing');
     const queuedSongs = songs.filter(s => s.status === 'requested' || s.status === 'pending');
+    const missionQueueSongs = useMemo(
+        () => songs
+            .filter((song) => song.status === 'requested')
+            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
+        [songs]
+    );
     const currentSongHasLyrics = !!String(currentSong?.lyrics || '').trim()
         || (Array.isArray(currentSong?.lyricsTimed) && currentSong.lyricsTimed.length > 0);
     const lyricsVisualizerModeActive = !!room?.showLyricsTv && !!room?.showVisualizerTv;
+    const hostMissionRecommendation = useMemo(() => getRecommendedHostAction({
+        room,
+        queue: missionQueueSongs,
+        current: currentSong,
+        pendingModerationCount: moderationQueueState.totalPending
+    }), [room, missionQueueSongs, currentSong, moderationQueueState.totalPending]);
+    const hostMissionStatusDetail = useMemo(() => {
+        if (!missionControlEnabled) return '';
+        const pendingModeration = Number(moderationQueueState.totalPending || 0);
+        const activeQueueCount = Number(queuedCount || 0);
+        if (pendingModeration > 0) {
+            return `${pendingModeration} moderation item${pendingModeration === 1 ? '' : 's'} waiting. Review inbox to unblock queue entries.`;
+        }
+        if (!currentSong && activeQueueCount <= 0) {
+            return 'No songs are queued. Add songs in Add to Queue so karaoke can continue.';
+        }
+        if (!currentSong && activeQueueCount > 0) {
+            return `${activeQueueCount} song${activeQueueCount === 1 ? '' : 's'} are waiting and nobody is on stage. Start the next singer.`;
+        }
+        if (currentSong && activeQueueCount <= 0) {
+            return 'Queue will be empty after the current performance. Add songs now to prevent dead air.';
+        }
+        return hostMissionRecommendation?.reason || 'Room flow is stable.';
+    }, [
+        missionControlEnabled,
+        moderationQueueState.totalPending,
+        queuedCount,
+        currentSong,
+        hostMissionRecommendation?.reason
+    ]);
+    const hostMissionRecommendationShownRef = useRef('');
+    useEffect(() => {
+        if (!missionControlEnabled || !hostMissionRecommendation?.id) return;
+        const key = `${hostMissionRecommendation.id}:${roomCode || ''}:${room?.activeMode || 'karaoke'}`;
+        if (hostMissionRecommendationShownRef.current === key) return;
+        hostMissionRecommendationShownRef.current = key;
+        trackEvent('host_mission_recommendation_shown', {
+            room_code: roomCode || '',
+            recommendation_id: hostMissionRecommendation.id,
+            feature_flag: 'mission_control_v1',
+            cohort: missionControlCohort,
+            timestamp: nowMs()
+        });
+    }, [missionControlEnabled, hostMissionRecommendation, roomCode, room?.activeMode, missionControlCohort]);
+    useEffect(() => {
+        if (!missionControlEnabled || !roomCode || !hostMissionRecommendation?.id) return;
+        if (room?.missionControl?.lastSuggestedAction === hostMissionRecommendation.id) return;
+        const baseMissionControl = mergeMissionControlParty(room?.missionControl, buildMissionPartyFromRoom(room));
+        updateRoom({
+            missionControl: {
+                ...baseMissionControl,
+                version: MISSION_CONTROL_VERSION,
+                enabled: true,
+                lastSuggestedAction: hostMissionRecommendation.id
+            }
+        }).catch((error) => hostLogger.debug('Mission recommendation state write skipped', error));
+    }, [missionControlEnabled, roomCode, hostMissionRecommendation?.id, room?.missionControl, updateRoom, room]);
     const hostPermissionLevel = useMemo(() => {
         const normalizedRole = String(orgContext?.role || '').toLowerCase();
         if (['owner', 'admin', 'member'].includes(normalizedRole)) return normalizedRole;
@@ -8013,6 +7928,61 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         setTab(nextTab);
     };
+    const runMissionDeckAction = async (actionId = '') => {
+        const action = String(actionId || '').trim();
+        if (!action) return;
+        try {
+            if (action === 'start_next') {
+                if (currentSong?.id) {
+                    toast('A singer is already on stage.');
+                    return;
+                }
+                const nextSong = missionQueueSongs[0];
+                if (!nextSong?.id) {
+                    toast('No songs are queued. Add songs in Add to Queue first.');
+                    return;
+                }
+                await activateQueueSong(nextSong, roomRef.current);
+            } else if (action === 'hype_moment') {
+                await runMissionHypeMoment();
+            } else if (action === 'crowd_check') {
+                if (room?.readyCheck?.active) {
+                    toast('Ready Check is already active.');
+                    return;
+                }
+                await startReadyCheck();
+            } else if (action === 'review_moderation') {
+                openModerationInbox();
+            } else if (action === 'more') {
+                handleTopChromeTabChange('stage');
+                setCommandPaletteRequestToken((prev) => prev + 1);
+            } else if (action === 'ready_check_live') {
+                toast('Ready Check is active now. Wait for it to complete.');
+                return;
+            }
+
+            trackEvent('host_mission_live_action_used', {
+                room_code: roomCode || '',
+                action_id: action,
+                recommendation_id: hostMissionRecommendation?.id || '',
+                feature_flag: missionControlEnabled ? 'mission_control_v1' : 'legacy',
+                cohort: missionControlCohort,
+                timestamp: nowMs()
+            });
+            if (hostMissionRecommendation?.id === action) {
+                trackEvent('host_mission_recommendation_accepted', {
+                    room_code: roomCode || '',
+                    recommendation_id: hostMissionRecommendation.id,
+                    feature_flag: missionControlEnabled ? 'mission_control_v1' : 'legacy',
+                    cohort: missionControlCohort,
+                    timestamp: nowMs()
+                });
+            }
+        } catch (error) {
+            hostLogger.error('Mission action failed', error);
+            toast('Mission action failed.');
+        }
+    };
     const refreshBillingEntitlements = async (showToast = false) => {
         setOrgContext(prev => ({ ...prev, loading: true, error: '' }));
         try {
@@ -11000,14 +10970,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setDmDraft,
         getAppleMusicUserToken,
         silenceAll,
-        pendingModerationCount: moderationQueueState.totalPending,
-        runMissionHypeMoment,
-        missionControlEnabled,
-        missionControlCohort,
-        openHostSettings: () => {
-            openAdminWorkspace('ops.room_setup');
-        },
-        openModerationInbox,
         commandPaletteRequestToken,
         showLegacyLiveEffects: false,
         compactViewport: compactHostViewport
@@ -11129,6 +11091,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     playSfxSafe={playSfxSafe}
                     sounds={SOUNDS}
                     silenceAll={silenceAll}
+                    missionControlEnabled={missionControlEnabled}
+                    missionRecommendation={hostMissionRecommendation}
+                    missionStatusDetail={hostMissionStatusDetail}
+                    onRunMissionAction={runMissionDeckAction}
                     moderationPendingCount={moderationQueueState.totalPending}
                     moderationSeverity={moderationInbox.meta?.severity || 'idle'}
                     moderationNeedsAttention={!!moderationInbox.meta?.needsAttention}

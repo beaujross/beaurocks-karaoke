@@ -257,19 +257,19 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
             )}
             
             {/* CORNER INFO */}
-            {!room?.hideCornerOverlay && current && !layout.includes('cinema') && (
-                <div className="absolute bottom-8 left-8 z-50 bg-black/60 p-6 rounded-2xl border border-white/20 flex gap-6 items-center animate-slide-in-from-bottom max-w-[80vw] pointer-events-none">
+            {!room?.hideCornerOverlay && current && !layout.includes('cinema') && !room?.showLyricsTv && (
+                <div className="absolute bottom-8 left-8 z-50 bg-black/65 p-6 rounded-2xl border border-white/20 flex gap-6 items-center animate-slide-in-from-bottom max-w-[86vw] pointer-events-none">
                     {current.albumArtUrl && <img src={current.albumArtUrl} className="w-24 h-24 sm:w-32 sm:h-32 rounded-xl shadow-lg" alt="Corner Art"/>}
                     <div className="min-w-0">
-                        <div className="text-lg text-zinc-400 uppercase tracking-widest font-bold mb-1">On Stage</div>
+                        <div className="text-xl sm:text-2xl text-zinc-300 uppercase tracking-[0.14em] font-bold mb-1">On Stage</div>
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                             {room?.showLyricsTv && (
-                                <div className="text-[10px] text-cyan-300 bg-black/50 border border-cyan-400/30 inline-flex px-2 py-0.5 rounded-full">
+                                <div className="text-sm text-cyan-200 bg-black/60 border border-cyan-400/30 inline-flex px-2.5 py-1 rounded-full">
                                     Lyrics Live
                                 </div>
                             )}
                             {nowPlayingLabel && (
-                                <div className="text-[10px] text-zinc-100 bg-black/60 border border-white/20 inline-flex px-2 py-0.5 rounded-full max-w-[80vw]">
+                                <div className="text-sm text-zinc-100 bg-black/65 border border-white/20 inline-flex px-2.5 py-1 rounded-full max-w-[82vw]">
                                     <span className={`mr-2 ${
                                         nowPlayingLabel.sourceKey === 'apple'
                                             ? 'text-emerald-300'

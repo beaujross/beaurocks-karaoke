@@ -70,6 +70,10 @@ const HostTopChrome = ({
     playSfxSafe,
     sounds = [],
     silenceAll,
+    missionControlEnabled = false,
+    missionRecommendation = null,
+    missionStatusDetail = '',
+    onRunMissionAction,
     moderationPendingCount = 0,
     moderationSeverity = 'idle',
     moderationNeedsAttention = false,
@@ -77,6 +81,10 @@ const HostTopChrome = ({
 }) => {
     const SmallWaveform = smallWaveform;
     const [showLiveEffectsMenu, setShowLiveEffectsMenu] = React.useState(false);
+    const [showMissionMenu, setShowMissionMenu] = React.useState(true);
+    const [showTvMenu, setShowTvMenu] = React.useState(true);
+    const [showSfxMenu, setShowSfxMenu] = React.useState(false);
+    const [showVibeMenu, setShowVibeMenu] = React.useState(false);
     const liveEffectsMenuRef = React.useRef(null);
     const stormActive = room?.lightMode === 'storm';
     const strobeActive = room?.lightMode === 'strobe';
@@ -99,6 +107,12 @@ const HostTopChrome = ({
             : normalizedPermission === 'member'
                 ? 'border-amber-400/35 bg-amber-500/10 text-amber-100'
                 : 'border-zinc-600 bg-zinc-900/70 text-zinc-300';
+    const missionStatus = missionRecommendation?.status || 'ready';
+    const missionToneClass = missionStatus === 'needs_attention'
+        ? 'border-amber-400/45 bg-amber-500/10 text-amber-100'
+        : missionStatus === 'live'
+            ? 'border-cyan-400/45 bg-cyan-500/10 text-cyan-100'
+            : 'border-emerald-400/45 bg-emerald-500/10 text-emerald-100';
 
     React.useEffect(() => {
         if (!showLiveEffectsMenu) return undefined;
@@ -167,6 +181,16 @@ const HostTopChrome = ({
         } else {
             await updateRoom({ showLyricsTv: false, showVisualizerTv: false });
         }
+    };
+    const runMissionDeckAction = async (actionId) => {
+        await onRunMissionAction?.(actionId);
+        setShowLiveEffectsMenu(false);
+    };
+    const toggleDeckSection = (section) => {
+        if (section === 'mission') setShowMissionMenu((prev) => !prev);
+        if (section === 'tv') setShowTvMenu((prev) => !prev);
+        if (section === 'sfx') setShowSfxMenu((prev) => !prev);
+        if (section === 'vibe') setShowVibeMenu((prev) => !prev);
     };
 
     return (
@@ -420,115 +444,209 @@ const HostTopChrome = ({
                                 <i className="fa-solid fa-terminal"></i>
                                 Command Palette
                             </button>
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400 mt-3 mb-2">TV Display</div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <button
-                                    data-feature-id="deck-tv-video"
-                                    onClick={() => applyTvDisplayMode('video')}
-                                    className={`${styles.btnStd} ${tvDisplayMode === 'video' ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}
-                                >
-                                    <i className="fa-solid fa-video"></i>
-                                    Video
-                                </button>
-                                <button
-                                    data-feature-id="deck-tv-lyrics"
-                                    onClick={() => applyTvDisplayMode('lyrics')}
-                                    className={`${styles.btnStd} ${tvDisplayMode === 'lyrics' ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}
-                                >
-                                    <i className="fa-solid fa-closed-captioning"></i>
-                                    Lyrics
-                                </button>
-                                <button
-                                    data-feature-id="deck-tv-visualizer"
-                                    onClick={() => applyTvDisplayMode('visualizer')}
-                                    className={`${styles.btnStd} ${tvDisplayMode === 'visualizer' ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}
-                                >
-                                    <i className="fa-solid fa-wave-square"></i>
-                                    Visualizer
-                                </button>
-                                <button
-                                    data-feature-id="deck-tv-lyrics-viz"
-                                    onClick={() => applyTvDisplayMode('lyrics_viz')}
-                                    className={`${styles.btnStd} ${tvDisplayMode === 'lyrics_viz' ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}
-                                >
-                                    <i className="fa-solid fa-layer-group"></i>
-                                    Lyrics + Viz
-                                </button>
-                            </div>
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400 mt-3 mb-2">Sound Effects</div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    data-feature-id="deck-sfx-mute"
-                                    onClick={() => setSfxMuted?.((prev) => {
-                                        const next = !prev;
-                                        if (next) silenceAll?.();
-                                        return next;
-                                    })}
-                                    className={`${styles.btnStd} ${sfxMuted ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs min-w-[48px]`}
-                                    title={sfxMuted ? 'Unmute FX' : 'Mute FX'}
-                                >
-                                    <i className={`fa-solid ${sfxMuted ? 'fa-volume-xmark' : 'fa-volume-high'}`}></i>
-                                </button>
-                                <input
-                                    data-feature-id="deck-sfx-volume"
-                                    type="range"
-                                    min="0"
-                                    max="100"
-                                    step="1"
-                                    value={Math.round((sfxVolume || 0) * 100)}
-                                    onChange={(event) => setSfxVolume?.(parseInt(event.target.value, 10) / 100)}
-                                    className="flex-1 h-2.5 bg-zinc-800 accent-[#00C4D9] rounded-lg appearance-none cursor-pointer"
-                                    style={{ background: `linear-gradient(90deg, #00E5FF ${Math.round((sfxVolume || 0) * 100)}%, #27272a ${Math.round((sfxVolume || 0) * 100)}%)` }}
-                                />
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 mt-2">
-                                {(sounds || []).slice(0, 6).map((sound) => (
+                            {missionControlEnabled && (
+                                <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-2">
                                     <button
-                                        data-feature-id="deck-sfx-button"
-                                        key={`deck-sfx-${sound.name}`}
-                                        onClick={() => playSfxSafe?.(sound.url)}
-                                        className={`${styles.btnStd} ${styles.btnNeutral} py-1.5 text-[10px] truncate`}
+                                        onClick={() => toggleDeckSection('mission')}
+                                        className="w-full flex items-center justify-between text-left"
                                     >
-                                        <i className={`fa-solid ${sound.icon} mr-1`}></i>
-                                        {sound.name}
+                                        <span className="text-[11px] uppercase tracking-[0.22em] text-zinc-300">Mission Control</span>
+                                        <span className={`rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.18em] ${missionToneClass}`}>
+                                            {missionStatus.replace('_', ' ')}
+                                        </span>
                                     </button>
-                                ))}
+                                    {showMissionMenu && (
+                                        <div className="mt-2 space-y-2">
+                                            <div className={`rounded-lg border px-2 py-1.5 ${missionToneClass}`}>
+                                                <div className="text-[11px] font-semibold text-white">{missionRecommendation?.label || 'No recommendation yet'}</div>
+                                                <div className="text-[11px] text-zinc-200/90">{missionStatusDetail || missionRecommendation?.reason || 'Room flow is stable.'}</div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button onClick={() => runMissionDeckAction('start_next')} className={`${styles.btnStd} ${styles.btnHighlight} py-1.5 text-xs`}>
+                                                    <i className="fa-solid fa-forward-step"></i>
+                                                    Start Next
+                                                </button>
+                                                <button onClick={() => runMissionDeckAction('hype_moment')} className={`${styles.btnStd} ${styles.btnSecondary} py-1.5 text-xs`}>
+                                                    <i className="fa-solid fa-bolt"></i>
+                                                    Hype Moment
+                                                </button>
+                                                <button onClick={() => runMissionDeckAction('crowd_check')} className={`${styles.btnStd} ${styles.btnInfo} py-1.5 text-xs`}>
+                                                    <i className="fa-solid fa-users"></i>
+                                                    Crowd Check
+                                                </button>
+                                                <button onClick={() => runMissionDeckAction('review_moderation')} className={`${styles.btnStd} ${styles.btnNeutral} py-1.5 text-xs`}>
+                                                    <i className="fa-solid fa-inbox"></i>
+                                                    Moderation
+                                                </button>
+                                            </div>
+                                            {missionRecommendation?.id && (
+                                                <button
+                                                    onClick={() => runMissionDeckAction(missionRecommendation.id)}
+                                                    className={`${styles.btnStd} ${styles.btnPrimary} w-full py-1.5 text-xs`}
+                                                >
+                                                    <i className="fa-solid fa-wand-magic-sparkles"></i>
+                                                    Smart Assist: {missionRecommendation.label}
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-2">
+                                <button
+                                    onClick={() => toggleDeckSection('tv')}
+                                    className="w-full flex items-center justify-between text-left"
+                                >
+                                    <span className="text-[11px] uppercase tracking-[0.22em] text-zinc-300">TV Display Modes</span>
+                                    <i className={`fa-solid fa-chevron-${showTvMenu ? 'up' : 'down'} text-zinc-500`}></i>
+                                </button>
+                                {showTvMenu && (
+                                    <div className="grid grid-cols-2 gap-2 mt-2">
+                                        <button
+                                            data-feature-id="deck-tv-video"
+                                            onClick={() => applyTvDisplayMode('video')}
+                                            className={`${styles.btnStd} ${tvDisplayMode === 'video' ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}
+                                        >
+                                            <i className="fa-solid fa-video"></i>
+                                            Video
+                                        </button>
+                                        <button
+                                            data-feature-id="deck-tv-lyrics"
+                                            onClick={() => applyTvDisplayMode('lyrics')}
+                                            className={`${styles.btnStd} ${tvDisplayMode === 'lyrics' ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}
+                                        >
+                                            <i className="fa-solid fa-closed-captioning"></i>
+                                            Lyrics
+                                        </button>
+                                        <button
+                                            data-feature-id="deck-tv-visualizer"
+                                            onClick={() => applyTvDisplayMode('visualizer')}
+                                            className={`${styles.btnStd} ${tvDisplayMode === 'visualizer' ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}
+                                        >
+                                            <i className="fa-solid fa-wave-square"></i>
+                                            Visualizer
+                                        </button>
+                                        <button
+                                            data-feature-id="deck-tv-lyrics-viz"
+                                            onClick={() => applyTvDisplayMode('lyrics_viz')}
+                                            className={`${styles.btnStd} ${tvDisplayMode === 'lyrics_viz' ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}
+                                        >
+                                            <i className="fa-solid fa-layer-group"></i>
+                                            Lyrics + Viz
+                                        </button>
+                                    </div>
+                                )}
                             </div>
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400 mt-3 mb-2">Vibe Sync + Moments</div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <button onClick={() => runLiveEffect('beat_drop')} className={`${styles.btnStd} ${strobeActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
-                                    <i className="fa-solid fa-bolt"></i>
-                                    {strobeActive ? 'Beat ON' : 'Beat Drop'}
+
+                            <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-2">
+                                <button
+                                    onClick={() => toggleDeckSection('sfx')}
+                                    className="w-full flex items-center justify-between text-left"
+                                >
+                                    <span className="text-[11px] uppercase tracking-[0.22em] text-zinc-300">Sound Effects</span>
+                                    <i className={`fa-solid fa-chevron-${showSfxMenu ? 'up' : 'down'} text-zinc-500`}></i>
                                 </button>
-                                <button onClick={() => runLiveEffect('storm')} className={`${styles.btnStd} ${stormActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
-                                    <i className="fa-solid fa-cloud-bolt"></i>
-                                    {stormActive ? 'Storm ON' : 'Storm'}
-                                </button>
-                                <button onClick={() => runLiveEffect('guitar')} className={`${styles.btnStd} ${guitarActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
-                                    <i className="fa-solid fa-guitar"></i>
-                                    {guitarActive ? 'Guitar ON' : 'Guitar'}
-                                </button>
-                                <button onClick={() => runLiveEffect('banger')} className={`${styles.btnStd} ${bangerActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
-                                    <i className="fa-solid fa-fire"></i>
-                                    {bangerActive ? 'Banger ON' : 'Banger'}
-                                </button>
-                                <button onClick={() => runLiveEffect('ballad')} className={`${styles.btnStd} ${balladActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
-                                    <i className="fa-solid fa-music"></i>
-                                    {balladActive ? 'Ballad ON' : 'Ballad'}
-                                </button>
-                                <button onClick={() => runLiveEffect('selfie_cam')} className={`${styles.btnStd} ${selfieCamActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
-                                    <i className="fa-solid fa-camera"></i>
-                                    {selfieCamActive ? 'Selfie Cam ON' : 'Selfie Cam'}
-                                </button>
+                                {showSfxMenu && (
+                                    <div className="mt-2">
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                data-feature-id="deck-sfx-mute"
+                                                onClick={() => setSfxMuted?.((prev) => {
+                                                    const next = !prev;
+                                                    if (next) silenceAll?.();
+                                                    return next;
+                                                })}
+                                                className={`${styles.btnStd} ${sfxMuted ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs min-w-[56px]`}
+                                                title={sfxMuted ? 'Unmute FX' : 'Mute FX'}
+                                            >
+                                                <i className={`fa-solid ${sfxMuted ? 'fa-volume-xmark' : 'fa-volume-high'}`}></i>
+                                            </button>
+                                            <input
+                                                data-feature-id="deck-sfx-volume"
+                                                type="range"
+                                                min="0"
+                                                max="100"
+                                                step="1"
+                                                value={Math.round((sfxVolume || 0) * 100)}
+                                                onChange={(event) => setSfxVolume?.(parseInt(event.target.value, 10) / 100)}
+                                                className="flex-1 h-2.5 bg-zinc-800 accent-[#00C4D9] rounded-lg appearance-none cursor-pointer"
+                                                style={{ background: `linear-gradient(90deg, #00E5FF ${Math.round((sfxVolume || 0) * 100)}%, #27272a ${Math.round((sfxVolume || 0) * 100)}%)` }}
+                                            />
+                                        </div>
+                                        <div className="mt-2 space-y-1 max-h-44 overflow-y-auto custom-scrollbar pr-1">
+                                            {(sounds || []).map((sound) => (
+                                                <button
+                                                    data-feature-id="deck-sfx-button"
+                                                    key={`deck-sfx-${sound.name}`}
+                                                    onClick={() => playSfxSafe?.(sound.url)}
+                                                    className={`${styles.btnStd} ${styles.btnNeutral} w-full justify-between py-1.5 text-[11px]`}
+                                                >
+                                                    <span className="inline-flex items-center gap-2">
+                                                        <i className={`fa-solid ${sound.icon}`}></i>
+                                                        {sound.name}
+                                                    </span>
+                                                    <i className="fa-solid fa-play text-[10px]"></i>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <button onClick={() => runLiveEffect('clear')} className={`${styles.btnStd} ${styles.btnSecondary} w-full mt-2 py-1.5 text-xs`}>
-                                <i className="fa-solid fa-power-off"></i>
-                                Clear Effects
-                            </button>
+
+                            <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-2">
+                                <button
+                                    onClick={() => toggleDeckSection('vibe')}
+                                    className="w-full flex items-center justify-between text-left"
+                                >
+                                    <span className="text-[11px] uppercase tracking-[0.22em] text-zinc-300">Vibe Sync Modes</span>
+                                    <i className={`fa-solid fa-chevron-${showVibeMenu ? 'up' : 'down'} text-zinc-500`}></i>
+                                </button>
+                                {showVibeMenu && (
+                                    <div className="mt-2">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button onClick={() => runLiveEffect('beat_drop')} className={`${styles.btnStd} ${strobeActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
+                                                <i className="fa-solid fa-bolt"></i>
+                                                {strobeActive ? 'Beat ON' : 'Beat Drop'}
+                                            </button>
+                                            <button onClick={() => runLiveEffect('storm')} className={`${styles.btnStd} ${stormActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
+                                                <i className="fa-solid fa-cloud-bolt"></i>
+                                                {stormActive ? 'Storm ON' : 'Storm'}
+                                            </button>
+                                            <button onClick={() => runLiveEffect('guitar')} className={`${styles.btnStd} ${guitarActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
+                                                <i className="fa-solid fa-guitar"></i>
+                                                {guitarActive ? 'Guitar ON' : 'Guitar'}
+                                            </button>
+                                            <button onClick={() => runLiveEffect('banger')} className={`${styles.btnStd} ${bangerActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
+                                                <i className="fa-solid fa-fire"></i>
+                                                {bangerActive ? 'Banger ON' : 'Banger'}
+                                            </button>
+                                            <button onClick={() => runLiveEffect('ballad')} className={`${styles.btnStd} ${balladActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
+                                                <i className="fa-solid fa-music"></i>
+                                                {balladActive ? 'Ballad ON' : 'Ballad'}
+                                            </button>
+                                            <button onClick={() => runLiveEffect('selfie_cam')} className={`${styles.btnStd} ${selfieCamActive ? styles.btnHighlight : styles.btnNeutral} py-1.5 text-xs`}>
+                                                <i className="fa-solid fa-camera"></i>
+                                                {selfieCamActive ? 'Selfie Cam ON' : 'Selfie Cam'}
+                                            </button>
+                                        </div>
+                                        <button onClick={() => runLiveEffect('clear')} className={`${styles.btnStd} ${styles.btnSecondary} w-full mt-2 py-1.5 text-xs`}>
+                                            <i className="fa-solid fa-power-off"></i>
+                                            Clear Effects
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>
             </div>
+            {missionControlEnabled && missionStatus === 'needs_attention' && (
+                <div className="mt-2 rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                    <i className="fa-solid fa-triangle-exclamation mr-2"></i>
+                    {missionStatusDetail || missionRecommendation?.reason || 'Action needed in room flow.'}
+                </div>
+            )}
         </div>
         <div className="w-full">
             <button
