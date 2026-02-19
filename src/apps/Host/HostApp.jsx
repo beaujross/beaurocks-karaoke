@@ -263,7 +263,7 @@ const getLocalVideos = async () => {
 
 // --- STYLES ---
 const STYLES = {
-    btnStd: "rounded-xl font-bold transition-all active:scale-95 shadow-md uppercase tracking-wider flex items-center justify-center border text-[11px] sm:text-xs py-2 px-3 cursor-pointer whitespace-nowrap backdrop-blur-sm gap-2 min-h-[34px] focus:outline-none focus-visible:outline-none focus-visible:ring-0 overflow-hidden bg-clip-padding relative",
+    btnStd: "host-btn rounded-xl font-bold transition-all active:scale-95 shadow-md uppercase tracking-wider flex items-center justify-center border text-[11px] sm:text-xs py-2 px-3 cursor-pointer whitespace-nowrap backdrop-blur-sm gap-2 min-h-[34px] focus:outline-none focus-visible:outline-none focus-visible:ring-0 overflow-hidden bg-clip-padding relative",
     btnPrimary: "bg-gradient-to-r from-[#0bb3c5] to-[#1f2937] text-white border-transparent bg-clip-padding overflow-hidden shadow-[0_0_18px_rgba(11,179,197,0.25)] hover:brightness-110",
     btnHighlight: "bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-white border-transparent bg-clip-padding overflow-hidden shadow-[0_0_14px_rgba(236,72,153,0.35)] hover:brightness-110",
     btnNeutral: "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#00C4D9]/60 hover:text-white hover:bg-zinc-800 transition-all",
@@ -9385,7 +9385,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const limitOption = NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === nightSetupQueueLimitMode) || NIGHT_SETUP_QUEUE_LIMIT_OPTIONS[0];
         const rotationOption = NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === nightSetupQueueRotation) || NIGHT_SETUP_QUEUE_ROTATION_OPTIONS[0];
         const activeStep = NIGHT_SETUP_STEPS[nightSetupStep] || NIGHT_SETUP_STEPS[0];
-        const sectionLabels = Array.isArray(activeStep?.sections) ? activeStep.sections : [];
         const presetFeaturePills = [
             { label: 'Auto DJ', enabled: !!selectedPreset?.settings?.autoDj },
             { label: 'Background Music', enabled: !!selectedPreset?.settings?.autoBgMusic },
@@ -9489,6 +9488,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
         const selectedPresetSnapshot = getPresetSnapshot(selectedPreset);
         const selectedPresetChangeSummary = getPresetChangeSummary(selectedPreset);
+        const clampOneLine = {
+            display: '-webkit-box',
+            WebkitLineClamp: 1,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden'
+        };
+        const clampTwoLines = {
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden'
+        };
+        const activeLiveDefaults = [
+            nightSetupAutoPlayMedia ? 'Auto-Play' : null,
+            nightSetupShowScoring ? 'Scoring' : null,
+            nightSetupChatOnTv ? 'TV Chat' : null,
+            nightSetupMarqueeEnabled ? 'Marquee' : null,
+            nightSetupQueueFirstTimeBoost ? 'First-Time Boost' : null
+        ].filter(Boolean);
 
         if (missionControlEnabled) {
             const missionPreset = HOST_NIGHT_PRESETS[missionDraft?.archetype] || HOST_NIGHT_PRESETS.casual;
@@ -9725,13 +9743,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }}
             >
                 <div className="mx-auto w-full max-w-6xl">
-                    <div className="w-full bg-zinc-950/94 border border-white/15 rounded-3xl shadow-[0_28px_80px_rgba(0,0,0,0.55)] overflow-hidden">
+                    <div className="w-full bg-zinc-950/94 border border-white/15 rounded-3xl shadow-[0_28px_80px_rgba(0,0,0,0.55)] overflow-hidden max-h-[88vh] flex flex-col">
                         <div className="px-4 py-4 md:px-6 md:py-5 border-b border-white/10">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
                                     <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Pre-Show Setup</div>
-                                    <div className="text-2xl md:text-3xl font-black text-white mt-1">Set The Night Physics</div>
-                                    <div className="text-sm text-zinc-400 mt-1">Pick the vibe, pacing, and spotlight so the room can run smoothly with less host micromanagement.</div>
+                                    <div className="text-2xl md:text-3xl font-black text-white mt-1">Set The Night Flow</div>
+                                    <div className="text-sm text-zinc-400 mt-1">Pick night type, queue rules, and spotlight mode.</div>
                                 </div>
                                 <button
                                     onClick={closeNightSetupWizard}
@@ -9752,10 +9770,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-all ${
                                             nightSetupStep === step.id
                                                 ? 'border-cyan-400/60 bg-cyan-500/12 text-cyan-100'
-                                                : nightSetupStep > step.id
+                                            : nightSetupStep > step.id
                                                     ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-100'
                                                     : 'border-zinc-700 bg-zinc-900/70 text-zinc-300 hover:border-zinc-500'
-                                        }`}
+                                        } min-w-[124px] justify-center`}
                                     >
                                         <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
                                             nightSetupStep === step.id
@@ -9770,21 +9788,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </button>
                                 ))}
                             </div>
-                            <div className="text-xs text-zinc-500 mt-2">
+                            <div className="text-xs text-zinc-500 mt-2 min-h-[18px]">
                                 {activeStep.subtitle}
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-                            <div className="px-4 py-4 md:px-6 md:py-5 max-h-[64vh] overflow-y-auto custom-scrollbar space-y-4">
-                                <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/10 px-3 py-3">
+                        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+                            <div className="px-4 py-4 md:px-6 md:py-5 min-h-0 overflow-y-auto custom-scrollbar space-y-4">
+                                <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/10 px-3 py-2.5">
                                     <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <div>
-                                            <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">Orchestrator Hint</div>
-                                            <div className="text-sm text-zinc-100 mt-1">
-                                                Step {activeStep.id + 1}: <span className="font-bold">{activeStep.label}</span>
-                                            </div>
-                                            <div className="text-xs text-zinc-300 mt-1">{recommendation.reason || activeStep.subtitle}</div>
+                                        <div className="text-sm text-zinc-100">
+                                            Step {activeStep.id + 1}: <span className="font-bold">{activeStep.label}</span>
                                         </div>
                                         {recommendation.presetId && recommendation.presetId !== nightSetupPresetId && (
                                             <button
@@ -9795,20 +9809,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </button>
                                         )}
                                     </div>
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                        {sectionLabels.map((label) => (
-                                            <span key={`night-setup-section-${label}`} className="text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border border-cyan-300/30 text-cyan-100 bg-black/25">
-                                                {label}
-                                            </span>
-                                        ))}
-                                    </div>
                                 </div>
                                 {nightSetupStep === 0 && (
                                     <div className="space-y-3">
-                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 1: Night Type</div>
-                                            <div className="text-xl font-bold text-white mt-1">Choose your night type</div>
-                                            <div className="text-sm text-zinc-400 mt-1">This sets your default controls, mode focus, and automation stack.</div>
+                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
+                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Choose Night Type</div>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             {Object.values(HOST_NIGHT_PRESETS).map((preset) => {
@@ -9819,67 +9824,36 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <button
                                                         key={`night-setup-preset-${preset.id}`}
                                                         onClick={() => seedNightSetupFromPreset(preset.id, { keepQueueDraft: false })}
-                                                        className={`relative overflow-hidden text-left rounded-2xl border transition-all ${active ? 'border-[#00C4D9]/65 shadow-[0_0_0_1px_rgba(0,196,217,0.45)]' : 'border-zinc-700 hover:border-zinc-500'}`}
+                                                        className={`relative overflow-hidden text-left rounded-2xl border transition-all h-[210px] ${active ? 'border-[#00C4D9]/65 shadow-[0_0_0_1px_rgba(0,196,217,0.45)]' : 'border-zinc-700 hover:border-zinc-500'}`}
                                                     >
                                                         <div className={`absolute inset-0 bg-gradient-to-br ${meta.accent}`}></div>
-                                                        <div className="relative px-4 py-4">
+                                                        <div className="relative h-full px-4 py-4 flex flex-col">
                                                             <div className="flex items-start justify-between gap-2">
                                                                 <div className="text-lg text-cyan-100"><i className={`fa-solid ${meta.icon}`}></i></div>
                                                                 {active && <span className="text-[10px] uppercase tracking-[0.25em] px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/20 text-cyan-100">Locked In</span>}
                                                             </div>
                                                             <div className="text-lg font-bold text-white mt-2">{preset.label}</div>
-                                                            <div className="text-sm text-zinc-300 mt-1">{preset.description}</div>
-                                                            <div className="mt-3">
-                                                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">
-                                                                    {changeSummary.count > 0 ? `${changeSummary.count} live setting change${changeSummary.count === 1 ? '' : 's'}` : 'No immediate change'}
+                                                            <div className="text-sm text-zinc-300 mt-1" style={clampTwoLines}>{preset.description}</div>
+                                                            <div className="mt-auto">
+                                                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-300">
+                                                                    {changeSummary.count > 0 ? `${changeSummary.count} setting change${changeSummary.count === 1 ? '' : 's'}` : 'No immediate change'}
                                                                 </div>
-                                                                {changeSummary.count > 0 ? (
-                                                                    <div className="mt-2 flex flex-wrap gap-1.5">
-                                                                        {changeSummary.chips.map((chip) => (
-                                                                            <span
-                                                                                key={`legacy-preset-change-${preset.id}-${chip.label}`}
-                                                                                className="text-[10px] px-2 py-1 rounded-full border border-cyan-300/30 bg-black/35 text-zinc-100"
-                                                                            >
-                                                                                {chip.label}: {chip.value}
-                                                                            </span>
-                                                                        ))}
-                                                                        {changeSummary.hiddenCount > 0 && (
-                                                                            <span className="text-[10px] px-2 py-1 rounded-full border border-zinc-600 bg-black/30 text-zinc-400">
-                                                                                +{changeSummary.hiddenCount} more
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="text-xs text-zinc-500 mt-1">
-                                                                        {active ? 'Already active.' : 'Matches current setup values.'}
-                                                                    </div>
-                                                                )}
+                                                                <div className="text-xs text-zinc-400 mt-1" style={clampOneLine}>
+                                                                    Queue: {changeSummary.queueSummary}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </button>
                                                 );
                                             })}
                                         </div>
-                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 2: Night Physics Applied</div>
-                                            <div className="text-sm text-zinc-400 mt-1">This is exactly what the selected night type sets right now.</div>
-                                            <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-950/60 p-3">
-                                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Queue Baseline</div>
-                                                <div className="text-sm text-zinc-200 mt-1">{selectedPresetSnapshot.queueSummary}</div>
-                                            </div>
-                                            <div className="mt-3 flex flex-wrap gap-2">
-                                                {presetFeaturePills.map((item) => (
-                                                    <span
-                                                        key={`night-preset-feature-${item.label}`}
-                                                        className={`text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border ${item.enabled ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-100' : 'border-zinc-700 text-zinc-500'}`}
-                                                    >
-                                                        {item.label}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                            <div className="text-xs text-zinc-400 mt-3">
-                                                {enabledPresetFeatureCount} of {presetFeaturePills.length} preset systems active.
-                                                {selectedPresetChangeSummary.count > 0 ? ` ${selectedPresetChangeSummary.count} immediate change${selectedPresetChangeSummary.count === 1 ? '' : 's'} from current setup.` : ' No differences from current setup.'}
+                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3">
+                                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">Current Selection</div>
+                                            <div className="text-sm text-zinc-200 mt-1">{selectedPreset.label}</div>
+                                            <div className="text-xs text-zinc-400 mt-1" style={clampOneLine}>Queue: {selectedPresetSnapshot.queueSummary}</div>
+                                            <div className="text-xs text-zinc-400 mt-1">
+                                                Defaults enabled: {enabledPresetFeatureCount}/{presetFeaturePills.length}
+                                                {selectedPresetChangeSummary.count > 0 ? ` | ${selectedPresetChangeSummary.count} change${selectedPresetChangeSummary.count === 1 ? '' : 's'} pending` : ''}
                                             </div>
                                         </div>
                                     </div>
@@ -9887,42 +9861,36 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
                                 {nightSetupStep === 1 && (
                                     <div className="space-y-4">
-                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 1: Request Limits</div>
-                                            <div className="text-xl font-bold text-white mt-1">Set queue behavior</div>
-                                            <div className="text-sm text-zinc-400 mt-1">Make queue expectations clear before singers start requesting songs.</div>
+                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
+                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Queue Rules</div>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             {NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.map((option) => (
                                                 <button
                                                     key={`queue-limit-${option.id}`}
                                                     onClick={() => setNightSetupQueueLimitMode(option.id)}
-                                                    className={`text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupQueueLimitMode === option.id ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                                    className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[98px] ${nightSetupQueueLimitMode === option.id ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         <i className={`fa-solid ${option.icon} text-cyan-200`}></i>
                                                         <span className="font-bold text-white">{option.label}</span>
                                                     </div>
-                                                    <div className="text-xs text-zinc-400 mt-2">{option.description}</div>
+                                                    <div className="text-xs text-zinc-400 mt-2" style={clampTwoLines}>{option.description}</div>
                                                 </button>
                                             ))}
-                                        </div>
-                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 2: Rotation + Fairness</div>
-                                            <div className="text-sm text-zinc-400 mt-1">Choose how turns rotate and whether new singers get a priority lift.</div>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             {NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.map((option) => (
                                                 <button
                                                     key={`queue-rotation-${option.id}`}
                                                     onClick={() => setNightSetupQueueRotation(option.id)}
-                                                    className={`text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupQueueRotation === option.id ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                                    className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[98px] ${nightSetupQueueRotation === option.id ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         <i className={`fa-solid ${option.icon} text-cyan-200`}></i>
                                                         <span className="font-bold text-white">{option.label}</span>
                                                     </div>
-                                                    <div className="text-xs text-zinc-400 mt-2">{option.description}</div>
+                                                    <div className="text-xs text-zinc-400 mt-2" style={clampTwoLines}>{option.description}</div>
                                                 </button>
                                             ))}
                                         </div>
@@ -9968,17 +9936,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
                                 {nightSetupStep === 2 && (
                                     <div className="space-y-4">
-                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 1: Spotlight Mode</div>
-                                            <div className="text-xl font-bold text-white mt-1">Pick the spotlight mode</div>
-                                            <div className="text-sm text-zinc-400 mt-1">Choose what this room leads with when you go live. Additional mode controls live in the Games tab.</div>
+                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
+                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Spotlight Mode</div>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                                             {NIGHT_SETUP_PRIMARY_MODES.map((mode) => (
                                                 <button
                                                     key={`night-setup-mode-${mode.id}`}
                                                     onClick={() => setNightSetupPrimaryMode(mode.id)}
-                                                    className={`relative overflow-hidden text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupPrimaryMode === mode.id ? 'border-fuchsia-400/60' : 'border-zinc-700 hover:border-zinc-500'}`}
+                                                    className={`relative overflow-hidden text-left rounded-2xl border px-3 py-3 transition-all min-h-[120px] ${nightSetupPrimaryMode === mode.id ? 'border-fuchsia-400/60' : 'border-zinc-700 hover:border-zinc-500'}`}
                                                 >
                                                     <div className={`absolute inset-0 bg-gradient-to-br ${mode.accent}`}></div>
                                                     <div className="relative flex items-center justify-between gap-2">
@@ -9988,18 +9954,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         </div>
                                                         {nightSetupPrimaryMode === mode.id && <span className="text-[10px] uppercase tracking-[0.25em] text-fuchsia-100">Primary</span>}
                                                     </div>
-                                                    <div className="relative text-xs text-zinc-300 mt-2">{mode.description}</div>
+                                                    <div className="relative text-xs text-zinc-300 mt-2" style={clampTwoLines}>{mode.description}</div>
                                                 </button>
                                             ))}
                                         </div>
-                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-                                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Section 2: Live Toggles</div>
-                                            <div className="text-sm text-zinc-400 mt-1">Enable the runtime overlays and audience layers you want active by default.</div>
+                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
+                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Live Defaults</div>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             <button
                                                 onClick={() => setNightSetupAutoPlayMedia((prev) => !prev)}
-                                                className={`text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupAutoPlayMedia ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                                className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[98px] ${nightSetupAutoPlayMedia ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
                                             >
                                                 <div className="flex items-center gap-2 text-white font-bold">
                                                     <i className="fa-solid fa-forward-step text-cyan-200"></i>
@@ -10009,7 +9974,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </button>
                                             <button
                                                 onClick={() => setNightSetupShowScoring((prev) => !prev)}
-                                                className={`text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupShowScoring ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                                className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[98px] ${nightSetupShowScoring ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
                                             >
                                                 <div className="flex items-center gap-2 text-white font-bold">
                                                     <i className="fa-solid fa-ranking-star text-cyan-200"></i>
@@ -10019,7 +9984,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </button>
                                             <button
                                                 onClick={() => setNightSetupChatOnTv((prev) => !prev)}
-                                                className={`text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupChatOnTv ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                                className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[98px] ${nightSetupChatOnTv ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
                                             >
                                                 <div className="flex items-center gap-2 text-white font-bold">
                                                     <i className="fa-solid fa-comments text-cyan-200"></i>
@@ -10029,7 +9994,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </button>
                                             <button
                                                 onClick={() => setNightSetupMarqueeEnabled((prev) => !prev)}
-                                                className={`text-left rounded-2xl border px-3 py-3 transition-all ${nightSetupMarqueeEnabled ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
+                                                className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[98px] ${nightSetupMarqueeEnabled ? 'border-cyan-400/60 bg-cyan-500/12' : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'}`}
                                             >
                                                 <div className="flex items-center gap-2 text-white font-bold">
                                                     <i className="fa-solid fa-panorama text-cyan-200"></i>
@@ -10045,57 +10010,39 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <aside className="border-t lg:border-t-0 lg:border-l border-white/10 bg-zinc-950/75 px-4 py-4 md:px-5 md:py-5">
                                 <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Tonight&apos;s Plan</div>
                                 <div className="mt-2 rounded-2xl border border-cyan-500/30 bg-zinc-900/80 p-3">
-                                    <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">TV Preview</div>
-                                    <div className="mt-2 rounded-xl border border-zinc-700 bg-black/40 overflow-hidden">
-                                        <div className="px-2 py-1 border-b border-zinc-700/80 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-zinc-400">
-                                            <span>Room {roomCode || '----'}</span>
-                                            <span>{selectedMode.label}</span>
+                                    <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">Quick Summary</div>
+                                    <div className="mt-2 space-y-2">
+                                        <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-2 text-sm text-zinc-200">
+                                            <span className="text-zinc-500">Night</span>
+                                            <span className="truncate">{selectedPreset.label}</span>
                                         </div>
-                                        <div className="p-2 space-y-2">
-                                            <div className="text-[11px] text-zinc-300">Now Performing: <span className="text-white font-semibold">Singer Queue</span></div>
-                                            <div className="flex flex-wrap gap-1">
-                                                <span className={`text-[10px] px-2 py-1 rounded-full border ${nightSetupShowScoring ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-100' : 'border-zinc-700 text-zinc-500'}`}>Scoring</span>
-                                                <span className={`text-[10px] px-2 py-1 rounded-full border ${nightSetupAutoPlayMedia ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-100' : 'border-zinc-700 text-zinc-500'}`}>Auto-Play</span>
-                                                <span className={`text-[10px] px-2 py-1 rounded-full border ${nightSetupQueueFirstTimeBoost ? 'border-amber-400/40 bg-amber-500/15 text-amber-100' : 'border-zinc-700 text-zinc-500'}`}>First-Time</span>
-                                                <span className={`text-[10px] px-2 py-1 rounded-full border ${nightSetupChatOnTv ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-100' : 'border-zinc-700 text-zinc-500'}`}>Chat</span>
-                                                <span className={`text-[10px] px-2 py-1 rounded-full border ${nightSetupMarqueeEnabled ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-100' : 'border-zinc-700 text-zinc-500'}`}>Marquee</span>
-                                            </div>
-                                            <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
-                                                <div
-                                                    className="h-full bg-gradient-to-r from-cyan-400 to-fuchsia-400 transition-all"
-                                                    style={{ width: `${Math.max(20, readinessScore)}%` }}
-                                                ></div>
-                                            </div>
+                                        <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-2 text-sm text-zinc-200">
+                                            <span className="text-zinc-500">Pacing</span>
+                                            <span className="truncate">
+                                                {limitOption.label}
+                                                {nightSetupQueueLimitMode !== 'none' ? ` (${Math.max(0, Number(nightSetupQueueLimitCount || 0))})` : ''}
+                                                {' | '}
+                                                {rotationOption.label}
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-2 text-sm text-zinc-200">
+                                            <span className="text-zinc-500">Spotlight</span>
+                                            <span className="inline-flex items-center gap-2 truncate">
+                                                <i className={`fa-solid ${selectedMode.icon}`}></i>
+                                                {selectedMode.label}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
                                 <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
-                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Night Type</div>
-                                    <div className="text-white font-bold mt-1">{selectedPreset.label}</div>
-                                    <div className="text-xs text-zinc-400 mt-1">{selectedPreset.description}</div>
-                                </div>
-                                <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
-                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Pacing Rules</div>
-                                    <div className="text-sm text-zinc-200 mt-1">
-                                        {limitOption.label}
-                                        {nightSetupQueueLimitMode !== 'none' ? ` (${Math.max(0, Number(nightSetupQueueLimitCount || 0))})` : ''}
-                                        {' '}| {rotationOption.label}
-                                        {nightSetupQueueFirstTimeBoost ? ' | First-time Boost' : ''}
-                                    </div>
-                                </div>
-                                <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
-                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Spotlight Mode</div>
-                                    <div className="flex items-center gap-2 text-sm text-zinc-100 mt-1">
-                                        <i className={`fa-solid ${selectedMode.icon}`}></i>
-                                        {selectedMode.label}
+                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Live Defaults</div>
+                                    <div className="text-xs text-zinc-300 mt-1" style={clampTwoLines}>
+                                        {activeLiveDefaults.length > 0 ? activeLiveDefaults.join(' | ') : 'No live defaults enabled yet.'}
                                     </div>
                                 </div>
                                 <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
                                     <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Show Readiness</div>
-                                    <div className="text-white font-bold mt-1">{readinessScore}%</div>
-                                    <div className="h-2 rounded-full bg-zinc-800 overflow-hidden mt-2">
-                                        <div className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all" style={{ width: `${readinessScore}%` }}></div>
-                                    </div>
+                                    <div className="text-white font-bold mt-1">{readinessScore}% Ready</div>
                                     {readinessMissing.length > 0 && (
                                         <div className="text-[11px] text-zinc-400 mt-2">
                                             Missing: {readinessMissing.join(', ')}
@@ -10105,7 +10052,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </aside>
                         </div>
 
-                        <div className="px-4 py-3 md:px-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+                        <div className="px-4 py-3 md:px-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 sticky bottom-0 bg-zinc-950/95 backdrop-blur-md mt-auto z-10">
                             <button
                                 data-host-open-full-admin
                                 onClick={() => {
@@ -10771,8 +10718,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         : (viewScopedSettingsItems.length ? viewScopedSettingsItems : flatSettingsItems);
     const settingsNavigationContent = (
         <div className="space-y-3" data-admin-sections-nav>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 overflow-hidden">
-                <div className="px-3 py-2 text-[10px] uppercase tracking-[0.26em] text-zinc-500 border-b border-zinc-900">Sections</div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+                <div className="px-3 py-2 text-xs uppercase tracking-[0.18em] text-zinc-400 border-b border-zinc-900">Sections</div>
                 <div className="divide-y divide-zinc-900">
                     {navigationItemsForRail.map((item) => {
                         const isActive = settingsTab === item.key;
@@ -10782,8 +10729,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 key={`settings-item-${item.key}`}
                                 data-admin-section-item={item.key}
                                 onClick={() => handleSettingsNavSelect(item.key)}
-                                className={`w-full px-3 py-2.5 text-left transition-colors ${
-                                    isActive ? 'bg-cyan-500/10 text-cyan-100' : 'bg-transparent text-zinc-300 hover:bg-zinc-900/80 hover:text-white'
+                                className={`w-full px-3 py-3 text-left transition-colors ${
+                                    isActive ? 'bg-cyan-500/10 text-cyan-100' : 'bg-transparent text-zinc-200 hover:bg-zinc-900/80 hover:text-white'
                                 }`}
                             >
                                 <div className="flex items-start justify-between gap-2">
@@ -10791,14 +10738,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <span className={`mt-0.5 h-4 w-0.5 rounded-full ${isActive ? 'bg-cyan-300' : 'bg-zinc-700'}`}></span>
                                         <div className="min-w-0">
                                             <div className="flex items-center gap-2">
-                                                <i className={`fa-solid ${item.icon} text-[11px] ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
-                                                <span className="truncate text-xs font-semibold tracking-wide">{item.label}</span>
+                                                <i className={`fa-solid ${item.icon} text-sm ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
+                                                <span className="truncate text-sm font-semibold">{item.label}</span>
                                             </div>
-                                            <div className="mt-0.5 text-[10px] uppercase tracking-[0.22em] text-zinc-500 truncate">{item.sectionLabel}</div>
+                                            {!!item.description && (
+                                                <div className="mt-0.5 text-xs text-zinc-400 truncate">{item.description}</div>
+                                            )}
                                         </div>
                                     </div>
                                     {badge ? (
-                                        <span className="rounded border border-zinc-600 px-1.5 py-0.5 text-[9px] text-zinc-200">{badge}</span>
+                                        <span className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-100">{badge}</span>
                                     ) : null}
                                 </div>
                             </button>
@@ -10812,16 +10761,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
             </div>
             {recentSettingsNavItems.length > 0 && (
-                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-                    <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Recent</div>
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                    <div className="text-xs uppercase tracking-[0.18em] text-zinc-400">Recent</div>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                         {recentSettingsNavItems.map((item) => (
                             <button
                                 key={`recent-${item.key}`}
                                 onClick={() => handleSettingsNavSelect(item.key)}
-                                className="inline-flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] text-zinc-300 hover:border-zinc-500 hover:text-white"
+                                className="inline-flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-200 hover:border-zinc-500 hover:text-white"
                             >
-                                <i className={`fa-solid ${item.icon || 'fa-gear'} text-[9px]`}></i>
+                                <i className={`fa-solid ${item.icon || 'fa-gear'} text-[10px]`}></i>
                                 {item.label}
                             </button>
                         ))}
@@ -10832,22 +10781,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     );
     const workspaceContextPanel = (
         <div className="space-y-3" data-admin-context-panel>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-                <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Room Status</div>
-                <div className="mt-2 space-y-1 text-xs text-zinc-300">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                <div className="text-xs uppercase tracking-[0.18em] text-zinc-400">Room Status</div>
+                <div className="mt-2 space-y-1.5 text-sm text-zinc-300">
                     <div className="flex items-center justify-between"><span>Queue</span><span className="font-semibold text-white">{queuedSongs.length}</span></div>
                     <div className="flex items-center justify-between"><span>Audience</span><span className="font-semibold text-white">{users.length}</span></div>
                     <div className="flex items-center justify-between"><span>Mode</span><span className="font-semibold text-white uppercase">{room?.activeMode || 'karaoke'}</span></div>
                     <div className="flex items-center justify-between"><span>Pending Moderation</span><span className="font-semibold text-white">{moderationQueueState.totalPending}</span></div>
                 </div>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-                <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Quick Actions</div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                <div className="text-xs uppercase tracking-[0.18em] text-zinc-400">Quick Actions</div>
                 <div className="mt-2 divide-y divide-zinc-900 rounded-md border border-zinc-800 overflow-hidden">
                     <button
                         data-feature-id="quick-open-tv"
                         onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
-                        className="w-full bg-zinc-900/70 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-900"
+                        className="w-full bg-zinc-900/70 px-3 py-2.5 text-left text-sm text-zinc-100 hover:bg-zinc-900"
                     >
                         <span className="inline-flex items-center gap-2">
                             <i className="fa-solid fa-tv text-zinc-500"></i>
@@ -10864,7 +10813,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 toast(audienceUrl);
                             }
                         }}
-                        className="w-full bg-zinc-900/70 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-900"
+                        className="w-full bg-zinc-900/70 px-3 py-2.5 text-left text-sm text-zinc-100 hover:bg-zinc-900"
                     >
                         <span className="inline-flex items-center gap-2">
                             <i className="fa-solid fa-link text-zinc-500"></i>
@@ -10874,7 +10823,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <button
                         onClick={() => leaveAdminWithTarget('stage')}
                         data-feature-id="quick-open-queue"
-                        className="w-full bg-zinc-900/70 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-900"
+                        className="w-full bg-zinc-900/70 px-3 py-2.5 text-left text-sm text-zinc-100 hover:bg-zinc-900"
                     >
                         <span className="inline-flex items-center gap-2">
                             <i className="fa-solid fa-list-check text-zinc-500"></i>
@@ -10884,7 +10833,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <button
                         data-feature-id="quick-open-live-effects"
                         onClick={() => handleSettingsNavSelect('live_effects')}
-                        className="w-full bg-zinc-900/70 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-900"
+                        className="w-full bg-zinc-900/70 px-3 py-2.5 text-left text-sm text-zinc-100 hover:bg-zinc-900"
                     >
                         <span className="inline-flex items-center gap-2">
                             <i className="fa-solid fa-wand-magic-sparkles text-zinc-500"></i>
@@ -10893,7 +10842,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </button>
                 </div>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-400">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">
                 Settings matches: <span className="text-white font-semibold">{settingsResultCount}</span>
             </div>
         </div>
@@ -11633,21 +11582,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         <div className="border-b border-white/10 px-4 py-3 md:px-5 md:py-4 bg-zinc-950">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div>
-                                    <div className="text-xs uppercase tracking-[0.32em] text-zinc-500">Host Admin</div>
+                                    <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">Host Admin</div>
                                     <div className="text-xl md:text-2xl font-bold text-white">Admin Workspace</div>
-                                    <div className="text-xs text-zinc-400 mt-1">Operational settings for queue, audience, media, games, billing, and diagnostics.</div>
+                                    <div className="text-sm text-zinc-300 mt-1">Configure queue, audience, media, games, billing, and diagnostics.</div>
+                                    <div className="text-sm text-zinc-400 mt-1">
+                                        Room <span className="text-zinc-200 font-semibold">{roomCode || '--'}</span>
+                                        {'  '}•{'  '}
+                                        Mode <span className="text-zinc-200 font-semibold">{room?.activeMode || 'karaoke'}</span>
+                                        {!!totalSocialUnread && (
+                                            <>
+                                                {'  '}•{'  '}
+                                                <span className="text-pink-200 font-semibold">Social alerts {totalSocialUnread}</span>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-zinc-500 flex-wrap">
-                                    <span className="px-2 py-1 rounded-full border border-zinc-600 bg-zinc-900 text-zinc-300">
-                                        Status Live
-                                    </span>
-                                    <span className="px-2 py-1 rounded-full border border-white/10">Room {roomCode || '--'}</span>
-                                    <span className="px-2 py-1 rounded-full border border-white/10">Mode {room?.activeMode || 'karaoke'}</span>
-                                    {!!totalSocialUnread && (
-                                        <span className="px-2 py-1 rounded-full border border-pink-400/30 text-pink-200 bg-pink-500/10">
-                                            Social alerts {totalSocialUnread}
-                                        </span>
-                                    )}
+                                <div className="flex items-center gap-2 text-sm text-zinc-400 flex-wrap">
                                     <button
                                         data-admin-sections-toggle
                                         onClick={() => setSettingsNavOpen((prev) => !prev)}
@@ -11661,18 +11611,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                             {inAdminWorkspace && (
                                 <div className="mt-3">
-                                    <div className="inline-flex flex-wrap rounded-lg border border-zinc-800 bg-zinc-950/90 p-1 gap-1">
+                                    <div className="inline-flex flex-wrap rounded-xl border border-zinc-800 bg-zinc-950/90 p-1.5 gap-1.5">
                                     {HOST_WORKSPACE_VIEWS.map((view) => (
                                         <button
                                             key={`workspace-view-chip-${view.id}`}
                                             onClick={() => selectWorkspaceView(view.id)}
-                                            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] ${
+                                            className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${
                                                 activeWorkspaceView === view.id
-                                                    ? 'bg-cyan-500/15 text-cyan-100'
-                                                    : 'text-zinc-300 hover:bg-zinc-900'
+                                                    ? 'bg-cyan-500/15 text-cyan-100 border border-cyan-400/30'
+                                                    : 'text-zinc-300 hover:bg-zinc-900 border border-transparent'
                                             }`}
                                         >
-                                            <i className={`fa-solid ${view.icon} text-[10px]`}></i>
+                                            <i className={`fa-solid ${view.icon} text-[12px]`}></i>
                                             {view.label}
                                         </button>
                                     ))}
@@ -11681,7 +11631,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             )}
                             <div className="mt-3 max-w-xl md:max-w-2xl">
                                 <label className="relative block">
-                                    <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-xs"></i>
+                                    <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
                                     <input
                                         value={settingsNavQuery}
                                         onChange={(e) => setSettingsNavQuery(e.target.value)}
@@ -11690,22 +11640,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     />
                                 </label>
                                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                                    {recentSettingsNavItems.slice(0, compactHostViewport ? 3 : 4).map((item) => (
-                                        <button
-                                            key={`header-recent-${item.key}`}
-                                            onClick={() => handleSettingsNavSelect(item.key)}
-                                            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-zinc-900/70 px-2.5 py-1 text-[10px] text-zinc-300 hover:border-cyan-400/40 hover:text-white"
-                                        >
-                                            <i className={`fa-solid ${item.icon || 'fa-gear'} text-[9px]`}></i>
-                                            {item.label}
-                                        </button>
-                                    ))}
                                     {!!settingsNavQuery && (
                                         <button
                                             onClick={() => setSettingsNavQuery('')}
-                                            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/80 px-2.5 py-1 text-[10px] text-zinc-400 hover:text-white"
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300 hover:text-white"
                                         >
-                                            <i className="fa-solid fa-xmark text-[9px]"></i>
+                                            <i className="fa-solid fa-xmark text-[10px]"></i>
                                             Clear Search
                                         </button>
                                     )}
@@ -11718,7 +11658,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             onSelectView={selectWorkspaceView}
                             context={workspaceContextPanel}
                         >
-                            <div className="h-full min-h-0 grid grid-cols-1 xl:grid-cols-[290px_minmax(0,1fr)]">
+                            <div className="h-full min-h-0 grid grid-cols-1 xl:grid-cols-[330px_minmax(0,1fr)]">
                                 <aside className={`${settingsNavOpen ? 'block' : 'hidden md:block'} xl:block border-b xl:border-b-0 xl:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar p-3 md:p-4`}>
                                     <div data-admin-sections-rail>
                                     <div className="mb-2 flex items-center justify-between md:hidden">
@@ -11730,23 +11670,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </aside>
                                 <div className="min-h-0 flex flex-col">
                                 <div className="border-b border-white/10 px-4 py-3 md:px-5 bg-zinc-950/70">
-                                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">{activeSettingsMeta.sectionLabel || 'Host Settings'}</div>
+                                    <div className="text-xs uppercase tracking-[0.2em] text-zinc-400">{activeSettingsMeta.sectionLabel || 'Host Settings'}</div>
                                     <div data-admin-active-section-title className="text-xl font-bold text-white mt-1">{activeSettingsMeta.label || 'Host Settings'}</div>
-                                    <div className="text-sm text-zinc-400 mt-1">{activeSettingsMeta.description || 'Configure room behavior and host controls.'}</div>
-                                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] sm:text-[11px] text-zinc-300">
+                                    <div className="text-sm text-zinc-300 mt-1">{activeSettingsMeta.description || 'Configure room behavior and host controls.'}</div>
+                                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-300">
                                         <button
                                             onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
-                                            className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-2.5 py-1 hover:bg-cyan-500/20"
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-3 py-1.5 hover:bg-cyan-500/20"
                                         >
-                                            <i className="fa-solid fa-tv text-[10px]"></i> Open TV
+                                            <i className="fa-solid fa-tv text-[11px]"></i> Open TV
                                         </button>
                                         <button
                                             onClick={() => setAudiencePreviewVisible(prev => !prev)}
-                                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 ${
+                                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 ${
                                                 audiencePreviewVisible ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-white/15 bg-zinc-900 text-zinc-300'
                                             }`}
                                         >
-                                            <i className="fa-solid fa-mobile-screen-button text-[10px]"></i>
+                                            <i className="fa-solid fa-mobile-screen-button text-[11px]"></i>
                                             Audience Preview {audiencePreviewVisible ? 'On' : 'Off'}
                                         </button>
                                     </div>

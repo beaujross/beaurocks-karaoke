@@ -354,6 +354,15 @@ html, body, #root { height: 100%; width: 100%; }
 .host-app .host-admin-workspace .host-admin-content {
   line-height: 1.45;
 }
+.host-app .host-admin-workspace .host-btn {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.host-app .host-admin-workspace [data-admin-section-item] {
+  min-height: 64px;
+}
 .host-app .host-admin-workspace .host-admin-content .text-zinc-400 {
   color: #e5e7eb;
 }
