@@ -47,7 +47,7 @@ const HostTopChrome = ({
 }) => {
     const SmallWaveform = smallWaveform;
     return (
-    <div className="bg-zinc-900 px-4 py-2 flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
+    <div data-host-top-chrome="true" className="bg-zinc-900 px-4 py-2 flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full">
             <div className="flex items-center gap-2 md:gap-3">
                 <img
@@ -55,7 +55,7 @@ const HostTopChrome = ({
                     className="h-11 md:h-14 object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5"
                     alt="Beaurocks Karaoke"
                 />
-                <div className="text-[14px] md:text-[18px] font-mono font-bold text-[#00C4D9] bg-black/40 px-2 py-0.5 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
+                <div data-host-room-code className="text-[14px] md:text-[18px] font-mono font-bold text-[#00C4D9] bg-black/40 px-2 py-0.5 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
                 <div className="relative">
                     <button
                         onClick={() => setShowLaunchMenu(prev => !prev)}
@@ -114,7 +114,7 @@ const HostTopChrome = ({
             </div>
             <div className="flex items-center gap-2 md:gap-3 justify-between md:justify-end">
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
-                    <div className="bg-red-600 px-2.5 py-0.5 rounded text-[10px] md:text-xs font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
+                    <div data-host-live-mode={room.activeMode} className="bg-red-600 px-2.5 py-0.5 rounded text-[10px] md:text-xs font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
                 )}
                 <ModerationInboxChip
                     pendingCount={moderationPendingCount}
@@ -131,6 +131,7 @@ const HostTopChrome = ({
                     ].map(t => (
                         <button
                             key={t.key}
+                            data-host-tab={t.key}
                             onClick={() => {
                                 if (t.key === 'admin' && typeof openAdminWorkspace === 'function') {
                                     openAdminWorkspace('ops.room_setup');
@@ -175,6 +176,7 @@ const HostTopChrome = ({
                             ].map(t => (
                                 <button
                                     key={t.key}
+                                    data-host-tab={t.key}
                                     onClick={() => {
                                         if (t.key === 'admin' && typeof openAdminWorkspace === 'function') {
                                             openAdminWorkspace('ops.room_setup');

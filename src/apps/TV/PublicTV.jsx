@@ -1966,7 +1966,7 @@ const PublicTV = ({ roomCode }) => {
                 <img src={room?.logoUrl || ASSETS.logo} className={`tv-logo absolute top-3 left-3 md:top-5 md:left-5 2xl:top-8 2xl:left-8 ${logoSizeClass} z-50 drop-shadow-xl opacity-90`} alt="Logo" />
             )}
             {isExperienceActive && (
-                <div className="absolute top-3 right-3 md:top-5 md:right-5 2xl:top-8 2xl:right-8 z-[240] flex items-center gap-2 md:gap-3 bg-red-600/90 border border-red-200/40 px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-[0_0_30px_rgba(239,68,68,0.5)]">
+                <div data-tv-live-pill={experienceLabel} className="absolute top-3 right-3 md:top-5 md:right-5 2xl:top-8 2xl:right-8 z-[240] flex items-center gap-2 md:gap-3 bg-red-600/90 border border-red-200/40 px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-[0_0_30px_rgba(239,68,68,0.5)]">
                     <div className="text-[10px] md:text-base font-black tracking-[0.12em] md:tracking-widest uppercase">
                         LIVE: {experienceLabel}
                     </div>

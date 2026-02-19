@@ -213,7 +213,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
 
         if (isPlayer) {
             return (
-                <div className="h-full flex flex-col justify-center p-6 bg-gradient-to-br from-black via-[#12001f] to-[#0b0b18] text-white font-saira text-center">
+                <div data-qa-player-view="trivia" className="h-full flex flex-col justify-center p-6 bg-gradient-to-br from-black via-[#12001f] to-[#0b0b18] text-white font-saira text-center">
                     <div className="text-xl font-bold mb-6 text-[#00C4D9] uppercase tracking-widest">Trivia Challenge</div>
                     {!isReveal && timerSecRemaining !== null && (
                         <div className="mb-4 inline-flex self-center items-center gap-2 text-xs uppercase tracking-[0.3em] bg-black/40 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
@@ -258,6 +258,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                             {gameState.options?.map((o, i) => (
                                 <button
                                     key={i}
+                                    data-qa-choice={i}
                                     onClick={() => castVote(i)}
                                     disabled={isSubmittingVote}
                                     className={`bg-black/50 border-2 border-[#00C4D9]/40 p-4 rounded-xl text-lg font-bold transition-colors text-left flex items-center gap-3 shadow-[0_0_20px_rgba(0,196,217,0.15)] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:bg-[#EC4899] active:border-white'}`}
@@ -275,7 +276,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
 
         // Trivia TV
         return (
-            <div className="h-full w-full flex flex-col items-center justify-center p-12 bg-gradient-to-br from-[#090014] via-[#120026] to-black text-white font-saira relative overflow-hidden z-[100]">
+            <div data-qa-tv-view="trivia" className="h-full w-full flex flex-col items-center justify-center p-12 bg-gradient-to-br from-[#090014] via-[#120026] to-black text-white font-saira relative overflow-hidden z-[100]">
                 <div className="absolute top-0 left-0 w-full h-full bg-[linear-gradient(90deg,rgba(236,72,153,0.08)_1px,transparent_1px),linear-gradient(0deg,rgba(0,196,217,0.08)_1px,transparent_1px)] bg-[size:60px_60px] opacity-30"></div>
                 
                 <h1 className="text-5xl font-bebas text-[#EC4899] mb-8 tracking-widest z-10 drop-shadow-[0_0_18px_rgba(236,72,153,0.55)]">
@@ -385,7 +386,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
     if (isWyr) {
         if (isPlayer) {
             return (
-                <div className="h-full flex flex-col justify-center p-6 bg-gradient-to-br from-black via-[#12001f] to-[#0b0b18] text-white font-saira text-center">
+                <div data-qa-player-view="wyr" className="h-full flex flex-col justify-center p-6 bg-gradient-to-br from-black via-[#12001f] to-[#0b0b18] text-white font-saira text-center">
                     <div className="text-xl font-bold mb-6 text-[#EC4899] uppercase tracking-widest">WOULD YOU RATHER...</div>
 
                     {hasVoted || isReveal ? (
@@ -406,6 +407,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                     ) : (
                         <div className="flex flex-col gap-4 h-full max-h-[60vh] justify-center">
                             <button
+                                data-wyr-choice="A"
                                 onClick={() => castVote('A')}
                                 disabled={isSubmittingVote}
                                 className={`flex-1 bg-[#EC4899] border-4 border-white/20 rounded-2xl text-2xl font-black shadow-lg transition-transform flex items-center justify-center p-4 leading-tight ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-95'}`}
@@ -414,6 +416,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                             </button>
                             <div className="text-xl font-bold opacity-50 py-2">OR</div>
                             <button
+                                data-wyr-choice="B"
                                 onClick={() => castVote('B')}
                                 disabled={isSubmittingVote}
                                 className={`flex-1 bg-[#00C4D9] border-4 border-white/20 rounded-2xl text-2xl font-black shadow-lg transition-transform flex items-center justify-center p-4 leading-tight ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-95'}`}
@@ -434,7 +437,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
         const perA = Math.round((votesA.length / total) * 100);
 
         return (
-            <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#090014] via-[#120026] to-black text-white font-saira relative overflow-hidden z-[100]">
+            <div data-qa-tv-view="wyr" className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#090014] via-[#120026] to-black text-white font-saira relative overflow-hidden z-[100]">
                 <h1 className="text-6xl font-bebas text-white mb-8 tracking-widest z-20 drop-shadow-[0_0_18px_rgba(236,72,153,0.55)] bg-black/50 px-8 py-2 rounded-full border border-white/10">
                     WOULD YOU RATHER...
                 </h1>

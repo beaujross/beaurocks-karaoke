@@ -26,12 +26,12 @@ const RecapView = ({ roomCode }) => {
     const tournament = recap?.tournament || null;
 
     if (!roomCode) {
-        return <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">Missing room code.</div>;
+        return <div data-recap-state="missing_room" className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">Missing room code.</div>;
     }
 
     if (!recap) {
         return (
-            <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center p-6 text-center">
+            <div data-recap-state="not_ready" className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center p-6 text-center">
                 <img src={ASSETS.logo} className="h-20 mb-4" alt="BROSS" />
                 <div className="text-2xl font-bold">Recap not ready yet</div>
                 <div className="text-sm text-zinc-400 mt-2">Ask the host to close the room to generate the highlight reel.</div>
@@ -40,7 +40,7 @@ const RecapView = ({ roomCode }) => {
     }
 
     return (
-        <div className="min-h-screen bg-zinc-950 text-white font-saira p-8">
+        <div data-recap-state="ready" className="min-h-screen bg-zinc-950 text-white font-saira p-8">
             <div className="max-w-6xl mx-auto">
                 <div className="relative overflow-hidden rounded-[2.5rem] border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-10 mb-10">
                     <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-cyan-500/10 blur-3xl"></div>

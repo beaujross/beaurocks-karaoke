@@ -8764,7 +8764,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 karaokeBracket: withAudit,
                 gameData: withAudit,
                 gameParticipantMode: 'all',
-                gameParticipants: null
+                gameParticipants: []
             });
             await logActivity(roomCode, hostName || 'Host', `created a Sweet ${bracketSize} bracket (${seedMode}).`, EMOJI.star);
             toast(`Sweet ${bracketSize} bracket ready.`);
@@ -10182,6 +10182,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
                         <div className="px-4 py-3 md:px-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
                             <button
+                                data-host-open-full-admin
                                 onClick={() => {
                                     setShowNightSetupWizard(false);
                                     setShowSettings(true);
@@ -10275,6 +10276,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     Guided Setup Wizard
                 </button>
                 <button
+                    data-host-quick-start
                     onClick={() => createRoom()}
                     disabled={creatingRoom}
                     className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-5 ${creatingRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -10843,7 +10845,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         })
         : (viewScopedSettingsItems.length ? viewScopedSettingsItems : flatSettingsItems);
     const settingsNavigationContent = (
-        <div className="space-y-3">
+        <div className="space-y-3" data-admin-sections-nav>
             <div className="rounded-lg border border-zinc-800 bg-zinc-950 overflow-hidden">
                 <div className="px-3 py-2 text-[10px] uppercase tracking-[0.26em] text-zinc-500 border-b border-zinc-900">Sections</div>
                 <div className="divide-y divide-zinc-900">
@@ -10853,6 +10855,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         return (
                             <button
                                 key={`settings-item-${item.key}`}
+                                data-admin-section-item={item.key}
                                 onClick={() => handleSettingsNavSelect(item.key)}
                                 className={`w-full px-3 py-2.5 text-left transition-colors ${
                                     isActive ? 'bg-cyan-500/10 text-cyan-100' : 'bg-transparent text-zinc-300 hover:bg-zinc-900/80 hover:text-white'
@@ -10903,7 +10906,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         </div>
     );
     const workspaceContextPanel = (
-        <div className="space-y-3">
+        <div className="space-y-3" data-admin-context-panel>
             <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
                 <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Room Status</div>
                 <div className="mt-2 space-y-1 text-xs text-zinc-300">
@@ -10945,6 +10948,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </button>
                     <button
                         onClick={() => leaveAdminWithTarget('stage')}
+                        data-feature-id="quick-open-queue"
                         className="w-full bg-zinc-900/70 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-900"
                     >
                         <span className="inline-flex items-center gap-2">
@@ -11686,7 +11690,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             )}
             {(showSettings || inAdminWorkspace) && (
                 <div className={inAdminWorkspace ? 'fixed inset-x-0 bottom-0 top-[94px] z-[40] px-3 sm:px-4 md:px-5 lg:px-6 pb-3 sm:pb-4 md:pb-5 lg:pb-6' : 'fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4'}>
-                    <div className={`bg-zinc-950/95 border border-zinc-700/80 w-full overflow-hidden flex flex-col ${inAdminWorkspace ? 'h-full rounded-2xl shadow-none' : 'rounded-none sm:rounded-2xl max-w-[1400px] shadow-[0_22px_80px_rgba(0,0,0,0.55)] h-[100dvh] sm:h-[90vh]'}`}>
+                    <div
+                        data-admin-workspace={inAdminWorkspace ? 'true' : 'modal'}
+                        className={`bg-zinc-950/95 border border-zinc-700/80 w-full overflow-hidden flex flex-col ${inAdminWorkspace ? 'h-full rounded-2xl shadow-none' : 'rounded-none sm:rounded-2xl max-w-[1400px] shadow-[0_22px_80px_rgba(0,0,0,0.55)] h-[100dvh] sm:h-[90vh]'}`}
+                    >
                         <div className="border-b border-white/10 px-4 py-3 md:px-5 md:py-4 bg-zinc-950">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div>
@@ -11706,6 +11713,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </span>
                                     )}
                                     <button
+                                        data-admin-sections-toggle
                                         onClick={() => setSettingsNavOpen((prev) => !prev)}
                                         className={`${STYLES.btnStd} ${STYLES.btnSecondary} md:hidden`}
                                     >
@@ -11776,16 +11784,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         >
                             <div className="h-full min-h-0 grid grid-cols-1 xl:grid-cols-[290px_minmax(0,1fr)]">
                                 <aside className={`${settingsNavOpen ? 'block' : 'hidden md:block'} xl:block border-b xl:border-b-0 xl:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar p-3 md:p-4`}>
+                                    <div data-admin-sections-rail>
                                     <div className="mb-2 flex items-center justify-between md:hidden">
                                         <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Sections</div>
                                         <button onClick={() => setSettingsNavOpen(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
                                     </div>
                                     {settingsNavigationContent}
+                                    </div>
                                 </aside>
                                 <div className="min-h-0 flex flex-col">
                                 <div className="border-b border-white/10 px-4 py-3 md:px-5 bg-zinc-950/70">
                                     <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">{activeSettingsMeta.sectionLabel || 'Host Settings'}</div>
-                                    <div className="text-xl font-bold text-white mt-1">{activeSettingsMeta.label || 'Host Settings'}</div>
+                                    <div data-admin-active-section-title className="text-xl font-bold text-white mt-1">{activeSettingsMeta.label || 'Host Settings'}</div>
                                     <div className="text-sm text-zinc-400 mt-1">{activeSettingsMeta.description || 'Configure room behavior and host controls.'}</div>
                                     <div className="mt-3 flex flex-wrap gap-2 text-[10px] sm:text-[11px] text-zinc-300">
                                         <button

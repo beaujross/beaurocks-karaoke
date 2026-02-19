@@ -3581,6 +3581,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     if(!user) return (
         <>
         <div
+            data-singer-view="join"
             ref={joinContainerRef}
             className="h-screen w-full bg-zinc-900 flex flex-col items-center p-3 text-center font-saira justify-start overflow-y-auto overflow-x-hidden relative custom-scrollbar"
             style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
@@ -3643,6 +3644,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 </div>
                 <div className="relative w-full max-w-sm mt-2 mb-2.5">
                     <input
+                        data-singer-join-name
                         value={form.name}
                         maxLength={NAME_LIMIT}
                         onChange={e => setForm({ ...form, name: clampName(e.target.value) })}
@@ -3667,6 +3669,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     ) : null}
                 </div>
                 <button
+                    data-singer-join-button
                     onClick={() => {
                         if (!termsAccepted) {
                             setPendingJoin({ type: 'join', payload: null });
@@ -3714,6 +3717,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     </ul>
                     <label className="flex items-center gap-2 mb-5 text-lg text-zinc-100">
                         <input
+                            data-singer-rules-checkbox
                             type="checkbox"
                             checked={termsAccepted}
                             onChange={e => setTermsAccepted(e.target.checked)}
@@ -3722,6 +3726,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         I agree to the party rules.
                     </label>
                     <button
+                        data-singer-rules-confirm
                         onClick={() => {
                             if (!termsAccepted) return;
                             if (typeof window !== 'undefined') {
@@ -5629,7 +5634,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     return (
-        <div className="relative h-[100dvh] min-h-[100dvh] bg-[#090612] text-white font-saira flex flex-col overflow-hidden">
+        <div data-singer-view="main" className="relative h-[100dvh] min-h-[100dvh] bg-[#090612] text-white font-saira flex flex-col overflow-hidden">
             {/* Header: Reorganized Layout */}
               <div className="pt-[calc(env(safe-area-inset-top)+12px)] bg-gradient-to-r from-[#4b1436] via-[#FF67B6] to-[#4b1436] shadow-lg z-20 relative h-24 overflow-visible">
                   <div className="relative h-full">

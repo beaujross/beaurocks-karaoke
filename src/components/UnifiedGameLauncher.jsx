@@ -553,13 +553,13 @@ const UnifiedGameLauncher = ({
     };
     
     const stopGame = async () => { 
-        await updateRoom({ activeMode: 'karaoke', gameData: null, gameParticipantMode: null, gameParticipants: null }); 
+        await updateRoom({ activeMode: 'karaoke', gameData: null, gameParticipantMode: 'all', gameParticipants: [] }); 
         toast("Game Stopped"); 
     };
 
     const buildParticipantPayload = (mode, participants) => ({
         gameParticipantMode: mode === 'selected' ? 'selected' : 'all',
-        gameParticipants: mode === 'selected' ? participants : null
+        gameParticipants: mode === 'selected' ? participants : []
     });
 
     const startGame = (gameId) => {
@@ -645,7 +645,7 @@ const UnifiedGameLauncher = ({
                     karaokeBracket: room.karaokeBracket,
                     gameData: room.karaokeBracket,
                     gameParticipantMode: 'all',
-                    gameParticipants: null
+                    gameParticipants: []
                 });
                 toast('Bracket launched');
                 return;
@@ -1617,7 +1617,10 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
     };
     
     return (
-        <div className={`relative overflow-hidden bg-gradient-to-b from-zinc-900/80 to-zinc-950 border ${c.border} rounded-2xl p-3 md:p-4 flex flex-col gap-2 md:gap-3 shadow-lg hover:shadow-xl transition-all`}>
+        <div
+            data-game-card={game.id}
+            className={`relative overflow-hidden bg-gradient-to-b from-zinc-900/80 to-zinc-950 border ${c.border} rounded-2xl p-3 md:p-4 flex flex-col gap-2 md:gap-3 shadow-lg hover:shadow-xl transition-all`}
+        >
             <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full blur-2xl opacity-10 bg-white"></div>
             <div className="absolute -left-4 bottom-0 w-16 h-16 rounded-full blur-2xl opacity-5 bg-white"></div>
             <div className="flex items-start justify-between relative z-10">
@@ -1731,10 +1734,10 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                 <div className="h-9"></div>
             )}
             <div className="flex gap-2 relative z-10">
-                <button onClick={() => onLaunch(game.id)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm md:text-base`}>
+                <button data-game-configure={game.id} onClick={() => onLaunch(game.id)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm md:text-base`}>
                     <i className="fa-solid fa-sliders mr-1"></i> Configure
                 </button>
-                <button onClick={onQuickLaunch} className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1 py-2 text-sm md:text-base`}>
+                <button data-game-quick-launch={game.id} onClick={onQuickLaunch} className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1 py-2 text-sm md:text-base`}>
                     <i className="fa-solid fa-bolt mr-1"></i> Quick Launch
                 </button>
             </div>
@@ -3093,7 +3096,7 @@ const GameConfigModal = ({
                                     karaokeBracket: activeBracket,
                                     gameData: activeBracket,
                                     gameParticipantMode: 'all',
-                                    gameParticipants: null
+                                    gameParticipants: []
                                 });
                                 toast('Bracket launched');
                             }}
