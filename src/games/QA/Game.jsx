@@ -57,17 +57,17 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
     const revealAtMs = getTimestampMs(gameState?.revealAt)
         || (startedAtMs && roundDurationSec ? startedAtMs + (roundDurationSec * 1000) : 0);
     const autoReveal = gameState?.autoReveal !== false;
-    const isTimerDriven = isTrivia && autoReveal && revealAtMs > 0;
+    const isTimerDriven = (isTrivia || isWyr) && autoReveal && revealAtMs > 0;
     const timerMsRemaining = isTimerDriven ? Math.max(0, revealAtMs - nowMs) : 0;
     const timerSecRemaining = isTimerDriven ? Math.ceil(timerMsRemaining / 1000) : null;
     const timerExpired = isTimerDriven && timerMsRemaining <= 0;
     const isReveal = modeReveal || questionStatus === 'reveal' || timerExpired;
 
     useEffect(() => {
-        if (!isTrivia || !isTimerDriven || isReveal) return;
+        if (!isTimerDriven || isReveal) return;
         const timer = setInterval(() => setNowMs(Date.now()), 250);
         return () => clearInterval(timer);
-    }, [isTrivia, isTimerDriven, isReveal, questionId]);
+    }, [isTimerDriven, isReveal, questionId]);
 
     // 3. Reset and rehydrate local vote state when the question changes
     useEffect(() => {
@@ -388,6 +388,12 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
             return (
                 <div data-qa-player-view="wyr" className="h-full flex flex-col justify-center p-6 bg-gradient-to-br from-black via-[#12001f] to-[#0b0b18] text-white font-saira text-center">
                     <div className="text-xl font-bold mb-6 text-[#EC4899] uppercase tracking-widest">WOULD YOU RATHER...</div>
+                    {!isReveal && timerSecRemaining !== null && (
+                        <div className="mb-4 inline-flex self-center items-center gap-2 text-xs uppercase tracking-[0.3em] bg-black/40 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
+                            <i className="fa-regular fa-clock"></i>
+                            {timerSecRemaining}s left
+                        </div>
+                    )}
 
                     {hasVoted || isReveal ? (
                         <div className="text-center animate-in zoom-in">
@@ -435,12 +441,29 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
         const votesB = votes.filter(v => v.val === 'B');
         const total = votesA.length + votesB.length || 1;
         const perA = Math.round((votesA.length / total) * 100);
+        const wyrPrompt = String(gameState?.question || '').trim();
 
         return (
             <div data-qa-tv-view="wyr" className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#090014] via-[#120026] to-black text-white font-saira relative overflow-hidden z-[100]">
                 <h1 className="text-6xl font-bebas text-white mb-8 tracking-widest z-20 drop-shadow-[0_0_18px_rgba(236,72,153,0.55)] bg-black/50 px-8 py-2 rounded-full border border-white/10">
                     WOULD YOU RATHER...
                 </h1>
+                {wyrPrompt && (
+                    <div className="z-20 mb-6 w-full max-w-[94vw] px-10">
+                        <div className="bg-black/65 border border-white/15 rounded-2xl px-6 py-4 text-center shadow-[0_0_24px_rgba(0,0,0,0.45)]">
+                            <div className="text-xs uppercase tracking-[0.3em] text-zinc-400 mb-2">Prompt</div>
+                            <div className="text-[clamp(1.1rem,2.4vw,2rem)] font-black leading-tight text-white whitespace-pre-wrap break-words">
+                                {wyrPrompt}
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {!isReveal && timerSecRemaining !== null && (
+                    <div className="z-20 mb-6 inline-flex items-center gap-2 text-xs uppercase tracking-[0.3em] bg-black/60 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
+                        <i className="fa-regular fa-clock"></i>
+                        {timerSecRemaining}s left
+                    </div>
+                )}
                 
                 <div className="flex w-full h-full absolute inset-0 z-0">
                     {/* Option A Side */}

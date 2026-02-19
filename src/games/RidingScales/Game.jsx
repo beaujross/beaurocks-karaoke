@@ -73,7 +73,11 @@ const buildStepMsList = (length, round, difficulty) =>
     Array.from({ length }, () => pickStepMs(round, difficulty));
 
 const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSource, view = 'tv', user }) => {
-    const isLocalInput = isPlayer && inputSource !== 'remote';
+    const gameData = useMemo(() => (playerData || gameState || {}), [playerData, gameState]);
+    const controlSource = gameData.inputSource || inputSource || 'remote';
+    const isRoomControlled = controlSource === 'ambient' || controlSource === 'crowd' || controlSource === 'local';
+    const isController = isPlayer && (isRoomControlled ? view === 'tv' : view !== 'tv');
+    const isLocalInput = isController && inputSource !== 'remote';
     const { stableNote, note, confidence, isSinging } = usePitch(isLocalInput);
 
     const [localState, setLocalState] = useState(null);
@@ -89,7 +93,6 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
     const endRef = useRef(false);
     const advanceRef = useRef(false);
 
-    const gameData = useMemo(() => (playerData || gameState || {}), [playerData, gameState]);
     const maxStrikes = Number(gameData.maxStrikes || 3);
     const rewardPerRound = Number(gameData.rewardPerRound || 50);
     const difficulty = gameData.difficulty || 'standard';
@@ -111,7 +114,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
     }, [roomCode]);
 
     const ensureInit = useCallback(() => {
-        if (!isPlayer) return;
+        if (!isController) return;
         if (stateRef.current) return;
         const round = 1;
         const length = 3;
@@ -134,7 +137,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         };
         syncState(init);
         writeState(init);
-    }, [isPlayer, difficulty, gameData, syncState, writeState]);
+    }, [isController, difficulty, gameData, syncState, writeState]);
 
     useEffect(() => {
         const t = setTimeout(() => ensureInit(), 0);
@@ -142,15 +145,15 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
     }, [ensureInit]);
 
     useEffect(() => {
-        if (isPlayer) return;
+        if (isController) return;
         stateRef.current = null;
         if (!gameData?.phase) return;
         const t = setTimeout(() => syncState(gameData), 0);
         return () => clearTimeout(t);
-    }, [isPlayer, gameData, syncState]);
+    }, [isController, gameData, syncState]);
 
     useEffect(() => {
-        if (!isPlayer) return;
+        if (!isController) return;
         if (!stateRef.current) return;
 
         const loop = setInterval(async () => {
@@ -230,11 +233,11 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         }, 200);
 
         return () => clearInterval(loop);
-    }, [isPlayer, stableNote, note, confidence, isSinging, maxStrikes, difficulty, holdMs, writeState, syncState]);
+    }, [isController, stableNote, note, confidence, isSinging, maxStrikes, difficulty, holdMs, writeState, syncState]);
 
     useEffect(() => {
         if (!localState || !guideTone) return;
-        if (!(view === 'tv' || isPlayer)) return;
+        if (!(view === 'tv' || isController)) return;
         if (localState.phase !== 'playback') return;
         if (localState.playbackIndex === null) return;
         if (lastToneIndexRef.current === localState.playbackIndex) return;
@@ -262,10 +265,10 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         osc.start();
         osc.stop(ctx.currentTime + 0.2);
         oscRef.current = osc;
-    }, [localState, guideTone, view, isPlayer]);
+    }, [localState, guideTone, view, isController]);
 
     useEffect(() => {
-        if (!isPlayer || rewarded || !localState || localState.phase !== 'over') return;
+        if (!isController || rewarded || !localState || localState.phase !== 'over') return;
         if (!roomCode) return;
         if (gameData.playerId === 'GROUP') {
             if (rewardRef.current) return;
@@ -291,11 +294,11 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         }
         const rewardTimer = setTimeout(() => setRewarded(true), 0);
         return () => clearTimeout(rewardTimer);
-    }, [isPlayer, localState, rewarded, roomCode, user?.uid, rewardPerRound, gameData.playerId]);
+    }, [isController, localState, rewarded, roomCode, user?.uid, rewardPerRound, gameData.playerId]);
 
     useEffect(() => {
         if (!localState || localState.phase !== 'over') return;
-        if (gameData.mode === 'turns' && isPlayer) {
+        if (gameData.mode === 'turns' && isController) {
             if (advanceRef.current) return;
             const participants = gameData.participants || [];
             const nextIndex = (gameData.turnIndex || 0) + 1;
@@ -330,7 +333,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
             activeMode: 'karaoke',
             gameData: null
         }).catch(() => {});
-    }, [localState, view, roomCode, gameData, isPlayer]);
+    }, [localState, view, roomCode, gameData, isController]);
 
     if (!localState) {
         return (
@@ -344,7 +347,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         ? localState.sequence?.[localState.inputIndex]
         : localState.sequence?.[localState.playbackIndex];
     const detected = localState.detectedNote || '-';
-    const waitingForTurn = !isPlayer && view !== 'tv' && gameData.playerId !== 'GROUP';
+    const waitingForTurn = !isController && view !== 'tv' && gameData.playerId !== 'GROUP';
     const metaList = gameData.participantMeta || [];
     const currentTurnMeta = metaList.find((p) => p.id === gameData.playerId);
     const nextTurnMeta = isTurnsMode
@@ -365,7 +368,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                     <div className="text-base md:text-lg text-zinc-400">Repeat the scale pattern as it grows.</div>
                     {isTurnsMode && (
                         <div className="mt-2 text-sm uppercase tracking-[0.2em] text-zinc-500">
-                            {isPlayer ? "You're up" : `Up now: ${currentTurnMeta?.name || gameData.playerName || 'Singer'}`}
+                            {isController ? "You're up" : `Up now: ${currentTurnMeta?.name || gameData.playerName || 'Singer'}`}
                         </div>
                     )}
                 </div>

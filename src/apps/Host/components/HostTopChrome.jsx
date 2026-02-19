@@ -1,13 +1,21 @@
 import React from 'react';
 import ModerationInboxChip from './ModerationInboxChip';
 
-const StatusPill = ({ label, value, active = false, toneClass = '' }) => (
-    <div className={`inline-flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] ${toneClass}`}>
-        <span className={`inline-flex h-2.5 w-2.5 rounded-full ${active ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.9)]' : 'bg-rose-300 shadow-[0_0_10px_rgba(252,165,165,0.6)]'}`}></span>
-        <span className="text-zinc-400">{label}</span>
-        <span className="font-bold text-zinc-100">{value}</span>
-    </div>
-);
+const StatusPill = ({ label, value, active = false, toneClass = '', onClick, title = '' }) => {
+    const Comp = typeof onClick === 'function' ? 'button' : 'div';
+    return (
+        <Comp
+            onClick={onClick}
+            title={title}
+            className={`inline-flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] ${toneClass} ${typeof onClick === 'function' ? 'cursor-pointer hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50' : ''}`}
+        >
+            <span className={`inline-flex h-2.5 w-2.5 rounded-full ${active ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.9)]' : 'bg-rose-300 shadow-[0_0_10px_rgba(252,165,165,0.6)]'}`}></span>
+            <span className="text-zinc-400">{label}</span>
+            <span className="font-bold text-zinc-100">{value}</span>
+            {typeof onClick === 'function' && <i className="fa-solid fa-arrow-up-right-from-square text-[9px] text-zinc-400"></i>}
+        </Comp>
+    );
+};
 
 const HostTopChrome = ({
     room,
@@ -45,6 +53,16 @@ const HostTopChrome = ({
     setAutoBgMusic,
     autoPlayMedia,
     setAutoPlayMedia,
+    autoDj = false,
+    setAutoDj,
+    toggleHowToPlay,
+    marqueeEnabled = false,
+    setMarqueeEnabled,
+    chatShowOnTv = false,
+    setChatShowOnTv,
+    chatTvMode = 'auto',
+    setChatTvMode,
+    chatUnread = 0,
     setBgMusicState,
     toggleBgMute,
     currentTrackName,
@@ -58,10 +76,6 @@ const HostTopChrome = ({
     aiToolsConnected = false,
     permissionLevel = 'unknown',
     authSessionReady = false,
-    lyricsVisualizerModeActive = false,
-    onToggleLyricsVisualizerMode,
-    currentSongHasLyrics = false,
-    aiGenerationAvailable = false,
     onOpenCommandPalette,
     sfxMuted = false,
     setSfxMuted,
@@ -73,20 +87,23 @@ const HostTopChrome = ({
     missionControlEnabled = false,
     missionRecommendation = null,
     missionStatusDetail = '',
-    onRunMissionAction,
     moderationPendingCount = 0,
     moderationSeverity = 'idle',
     moderationNeedsAttention = false,
-    onOpenModerationInbox
+    onOpenModerationInbox,
+    onOpenAppleMusicSettings,
+    onOpenAiSettings,
+    onOpenAccessSettings
 }) => {
     const SmallWaveform = smallWaveform;
-    const [showLiveEffectsMenu, setShowLiveEffectsMenu] = React.useState(false);
-    const [showMissionMenu, setShowMissionMenu] = React.useState(true);
+    const [showAutomationMenu, setShowAutomationMenu] = React.useState(false);
     const [showTvQuickMenu, setShowTvQuickMenu] = React.useState(false);
+    const [showOverlaysMenu, setShowOverlaysMenu] = React.useState(false);
     const [showSfxQuickMenu, setShowSfxQuickMenu] = React.useState(false);
     const [showVibeQuickMenu, setShowVibeQuickMenu] = React.useState(false);
-    const liveEffectsMenuRef = React.useRef(null);
+    const automationMenuRef = React.useRef(null);
     const tvQuickMenuRef = React.useRef(null);
+    const overlaysMenuRef = React.useRef(null);
     const sfxQuickMenuRef = React.useRef(null);
     const vibeQuickMenuRef = React.useRef(null);
     const stormActive = room?.lightMode === 'storm';
@@ -111,11 +128,6 @@ const HostTopChrome = ({
                 ? 'border-amber-400/35 bg-amber-500/10 text-amber-100'
                 : 'border-zinc-600 bg-zinc-900/70 text-zinc-300';
     const missionStatus = missionRecommendation?.status || 'ready';
-    const missionToneClass = missionStatus === 'needs_attention'
-        ? 'border-amber-400/45 bg-amber-500/10 text-amber-100'
-        : missionStatus === 'live'
-            ? 'border-cyan-400/45 bg-cyan-500/10 text-cyan-100'
-            : 'border-emerald-400/45 bg-emerald-500/10 text-emerald-100';
     const tvDisplayLabel = tvDisplayMode === 'lyrics_viz'
         ? 'Lyrics + Viz'
         : tvDisplayMode === 'lyrics'
@@ -136,19 +148,28 @@ const HostTopChrome = ({
                         : balladActive
                             ? 'Ballad'
                             : 'Off';
+    const marqueeActive = !!marqueeEnabled;
+    const chatTvActive = !!chatShowOnTv;
+    const chatFullscreenActive = chatTvActive && chatTvMode === 'fullscreen';
+    const leaderboardActive = room?.activeScreen === 'leaderboard';
+    const tipCtaActive = room?.activeScreen === 'tipping';
+    const howToPlayActive = !!room?.howToPlay?.active;
+    const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive);
     const closeAllDeckMenus = () => {
-        setShowLiveEffectsMenu(false);
+        setShowAutomationMenu(false);
         setShowTvQuickMenu(false);
+        setShowOverlaysMenu(false);
         setShowSfxQuickMenu(false);
         setShowVibeQuickMenu(false);
     };
 
     React.useEffect(() => {
-        if (!showLiveEffectsMenu && !showTvQuickMenu && !showSfxQuickMenu && !showVibeQuickMenu) return undefined;
+        if (!showAutomationMenu && !showTvQuickMenu && !showOverlaysMenu && !showSfxQuickMenu && !showVibeQuickMenu) return undefined;
         const handleWindowClick = (event) => {
             if (
-                liveEffectsMenuRef.current?.contains(event.target)
+                automationMenuRef.current?.contains(event.target)
                 || tvQuickMenuRef.current?.contains(event.target)
+                || overlaysMenuRef.current?.contains(event.target)
                 || sfxQuickMenuRef.current?.contains(event.target)
                 || vibeQuickMenuRef.current?.contains(event.target)
             ) return;
@@ -163,7 +184,7 @@ const HostTopChrome = ({
             window.removeEventListener('mousedown', handleWindowClick);
             window.removeEventListener('keydown', handleEscape);
         };
-    }, [showLiveEffectsMenu, showTvQuickMenu, showSfxQuickMenu, showVibeQuickMenu]);
+    }, [showAutomationMenu, showTvQuickMenu, showOverlaysMenu, showSfxQuickMenu, showVibeQuickMenu]);
 
     const runLiveEffect = async (effectId) => {
         if (effectId === 'beat_drop') {
@@ -216,11 +237,55 @@ const HostTopChrome = ({
         }
         closeAllDeckMenus();
     };
-    const runMissionDeckAction = async (actionId) => {
-        await onRunMissionAction?.(actionId);
+    const toggleAutoBg = async () => {
+        const next = !autoBgMusic;
+        setAutoBgMusic(next);
+        await updateRoom({ autoBgMusic: next });
+        if (next && !playingBg) setBgMusicState(true);
+    };
+    const toggleAutoPlay = async () => {
+        const next = !autoPlayMedia;
+        setAutoPlayMedia(next);
+        await updateRoom({ autoPlayMedia: next });
+    };
+    const toggleAutoDjMode = async () => {
+        const next = !autoDj;
+        setAutoDj?.(next);
+        await updateRoom({ autoDj: next });
+    };
+    const toggleOverlayScreen = async (screenId) => {
+        const nextScreen = room?.activeScreen === screenId ? 'stage' : screenId;
+        await updateRoom({ activeScreen: nextScreen });
         closeAllDeckMenus();
     };
-    const toggleMissionSection = () => setShowMissionMenu((prev) => !prev);
+    const toggleHowToPlayOverlay = async () => {
+        await toggleHowToPlay?.();
+        closeAllDeckMenus();
+    };
+    const toggleMarqueeOverlay = async () => {
+        const next = !marqueeActive;
+        setMarqueeEnabled?.(next);
+        await updateRoom({ marqueeEnabled: next });
+        closeAllDeckMenus();
+    };
+    const toggleChatTvOverlay = async () => {
+        const next = !chatTvActive;
+        setChatShowOnTv?.(next);
+        const nextMode = next ? (chatTvMode || 'auto') : 'auto';
+        setChatTvMode?.(nextMode);
+        await updateRoom({ chatShowOnTv: next, chatTvMode: nextMode });
+        closeAllDeckMenus();
+    };
+    const toggleChatTvFullscreen = async () => {
+        const nextFullscreen = !chatFullscreenActive;
+        setChatShowOnTv?.(true);
+        setChatTvMode?.(nextFullscreen ? 'fullscreen' : 'auto');
+        await updateRoom({
+            chatShowOnTv: true,
+            chatTvMode: nextFullscreen ? 'fullscreen' : 'auto'
+        });
+        closeAllDeckMenus();
+    };
 
     return (
     <div data-host-top-chrome="true" className="bg-zinc-900 px-4 py-2 flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
@@ -378,18 +443,24 @@ const HostTopChrome = ({
                 value={appleMusicConnected ? 'Connected' : 'Not Linked'}
                 active={appleMusicConnected}
                 toneClass={appleMusicConnected ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100' : 'border-rose-400/35 bg-rose-500/10 text-rose-100'}
+                onClick={onOpenAppleMusicSettings}
+                title="Open Apple Music connection settings"
             />
             <StatusPill
                 label="AI"
                 value={aiToolsConnected ? 'Enabled' : 'Locked'}
                 active={aiToolsConnected}
                 toneClass={aiToolsConnected ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100' : 'border-amber-400/35 bg-amber-500/10 text-amber-100'}
+                onClick={onOpenAiSettings}
+                title="Open AI tools/billing settings"
             />
             <StatusPill
                 label="Access"
                 value={`${String(permissionLevel || 'unknown').toUpperCase()}${authSessionReady ? '' : ' / No Auth'}`}
                 active={authSessionReady}
                 toneClass={permissionTone}
+                onClick={onOpenAccessSettings}
+                title="Open host access and room setup settings"
             />
         </div>
         <div className="w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 px-3 py-2">
@@ -403,52 +474,62 @@ const HostTopChrome = ({
                     <i className="fa-solid fa-hourglass-half mr-1"></i>
                     Ready Check
                 </button>
-                <button
-                    onClick={async () => {
-                        const next = !autoBgMusic;
-                        setAutoBgMusic(next);
-                        await updateRoom({ autoBgMusic: next });
-                        if (next && !playingBg) setBgMusicState(true);
-                    }}
-                    className={`${styles.btnStd} ${autoBgMusic ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-xs min-w-[130px]`}
-                    title="Automatically fill dead air with background music"
-                >
-                    <i className="fa-solid fa-wave-square mr-1"></i>
-                    {autoBgMusic ? 'BG Auto ON' : 'BG Auto'}
-                </button>
-                <button
-                    onClick={async () => {
-                        const next = !autoPlayMedia;
-                        setAutoPlayMedia(next);
-                        await updateRoom({ autoPlayMedia: next });
-                    }}
-                    className={`${styles.btnStd} ${autoPlayMedia ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-xs min-w-[140px]`}
-                    title="Automatically start stage media when songs begin"
-                >
-                    <i className="fa-solid fa-forward-step mr-1"></i>
-                    {autoPlayMedia ? 'Auto-Play ON' : 'Auto-Play'}
-                </button>
-                <button
-                    onClick={async () => {
-                        if (typeof onToggleLyricsVisualizerMode === 'function') {
-                            await onToggleLyricsVisualizerMode();
-                            return;
-                        }
-                        const next = !lyricsVisualizerModeActive;
-                        await updateRoom({
-                            showVisualizerTv: next,
-                            showLyricsTv: next,
-                            lyricsMode: room?.lyricsMode || 'auto'
-                        });
-                    }}
-                    className={`${styles.btnStd} ${lyricsVisualizerModeActive ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-xs min-w-[170px]`}
-                    title={!currentSongHasLyrics
-                        ? (aiGenerationAvailable ? 'Will try to generate AI lyrics for the current song, then overlay over visualizer.' : 'Current song has no lyrics yet. Enable auto-lyrics on queue or edit lyrics.')
-                        : 'Overlay lyrics on top of visualizer mode'}
-                >
-                    <i className="fa-solid fa-closed-captioning mr-1"></i>
-                    {lyricsVisualizerModeActive ? 'Lyrics + Viz ON' : 'Lyrics + Viz'}
-                </button>
+                <div className="relative" ref={automationMenuRef}>
+                    <button
+                        data-feature-id="deck-automation-menu-toggle"
+                        onClick={() => {
+                            const next = !showAutomationMenu;
+                            closeAllDeckMenus();
+                            setShowAutomationMenu(next);
+                        }}
+                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[170px]`}
+                        title="Automation controls"
+                    >
+                        <i className="fa-solid fa-gear mr-1"></i>
+                        Automation
+                        <span className="ml-1 text-[10px] text-zinc-300">
+                            {Number(!!autoPlayMedia) + Number(!!autoBgMusic) + Number(!!autoDj)} on
+                        </span>
+                        <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showAutomationMenu ? 'rotate-180' : ''}`}></i>
+                    </button>
+                    {showAutomationMenu && (
+                        <div className="absolute right-0 top-full mt-2 w-[min(360px,92vw)] rounded-2xl border border-cyan-300/30 bg-zinc-900/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
+                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-300 mb-2">Automation</div>
+                            <div className="grid grid-cols-1 gap-2">
+                                <button
+                                    onClick={toggleAutoPlay}
+                                    className={`${styles.btnStd} ${autoPlayMedia ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-forward-step"></i>
+                                        Auto-Play Media
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{autoPlayMedia ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={toggleAutoBg}
+                                    className={`${styles.btnStd} ${autoBgMusic ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-compact-disc"></i>
+                                        Background Auto DJ
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{autoBgMusic ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={toggleAutoDjMode}
+                                    className={`${styles.btnStd} ${autoDj ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-radio"></i>
+                                        Apple Auto DJ
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{autoDj ? 'On' : 'Off'}</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
                 <div className="relative" ref={tvQuickMenuRef}>
                     <button
                         data-feature-id="deck-tv-menu-toggle"
@@ -499,6 +580,104 @@ const HostTopChrome = ({
                                 >
                                     <i className="fa-solid fa-layer-group"></i>
                                     Lyrics + Viz
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                <div className="relative" ref={overlaysMenuRef}>
+                    <button
+                        data-feature-id="deck-overlays-menu-toggle"
+                        onClick={() => {
+                            const next = !showOverlaysMenu;
+                            closeAllDeckMenus();
+                            setShowOverlaysMenu(next);
+                        }}
+                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[164px]`}
+                        title="Overlays and guides"
+                    >
+                        <i className="fa-solid fa-layer-group mr-1"></i>
+                        Overlays
+                        <span className="ml-1 text-[10px] text-zinc-300">{overlaysActiveCount} on</span>
+                        <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showOverlaysMenu ? 'rotate-180' : ''}`}></i>
+                    </button>
+                    {showOverlaysMenu && (
+                        <div className="absolute right-0 top-full mt-2 w-[min(360px,92vw)] rounded-2xl border border-cyan-300/30 bg-zinc-900/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
+                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-300 mb-2">Overlays + Guides</div>
+                            <div className="grid grid-cols-1 gap-2">
+                                <button
+                                    onClick={() => toggleOverlayScreen('leaderboard')}
+                                    className={`${styles.btnStd} ${leaderboardActive ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-trophy"></i>
+                                        Leaderboard
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{leaderboardActive ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={() => toggleOverlayScreen('tipping')}
+                                    className={`${styles.btnStd} ${tipCtaActive ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-money-bill-wave"></i>
+                                        Tip CTA
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{tipCtaActive ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={toggleHowToPlayOverlay}
+                                    className={`${styles.btnStd} ${howToPlayActive ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-circle-question"></i>
+                                        How To Play
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{howToPlayActive ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        await startReadyCheck?.();
+                                        closeAllDeckMenus();
+                                    }}
+                                    className={`${styles.btnStd} ${room?.readyCheck?.active ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-hourglass-half"></i>
+                                        Ready Check
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{room?.readyCheck?.active ? 'Live' : 'Start'}</span>
+                                </button>
+                                <button
+                                    onClick={toggleMarqueeOverlay}
+                                    className={`${styles.btnStd} ${marqueeActive ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-scroll"></i>
+                                        Marquee
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{marqueeActive ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={toggleChatTvOverlay}
+                                    className={`${styles.btnStd} ${chatTvActive ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-comments"></i>
+                                        Chat TV
+                                        {chatUnread > 0 && <span className="inline-flex h-2.5 w-2.5 rounded-full bg-pink-400"></span>}
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{chatTvActive ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={toggleChatTvFullscreen}
+                                    className={`${styles.btnStd} ${chatFullscreenActive ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-expand"></i>
+                                        Full Screen Chat
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{chatFullscreenActive ? 'On' : 'Off'}</span>
                                 </button>
                             </div>
                         </div>
@@ -622,89 +801,15 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
-                <div className="relative" ref={liveEffectsMenuRef}>
-                    <button
-                        data-feature-id="deck-menu-toggle"
-                        onClick={() => {
-                            const next = !showLiveEffectsMenu;
-                            closeAllDeckMenus();
-                            setShowLiveEffectsMenu(next);
-                        }}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[150px]`}
-                        title="Open live deck menu"
-                    >
-                        <i className="fa-solid fa-sliders mr-1"></i>
-                        Deck Menu
-                        <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showLiveEffectsMenu ? 'rotate-180' : ''}`}></i>
-                    </button>
-                    {showLiveEffectsMenu && (
-                        <div className="absolute right-0 top-full mt-2 w-[min(420px,94vw)] max-h-[70vh] overflow-y-auto custom-scrollbar rounded-2xl border border-cyan-300/30 bg-zinc-900/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
-                            <button
-                                data-feature-id="deck-command-palette"
-                                onClick={() => {
-                                    onOpenCommandPalette?.();
-                                    setShowLiveEffectsMenu(false);
-                                }}
-                                className={`${styles.btnStd} ${styles.btnPrimary} w-full py-2 text-sm normal-case tracking-[0.03em]`}
-                            >
-                                <i className="fa-solid fa-terminal"></i>
-                                Command Palette
-                            </button>
-                            {missionControlEnabled && (
-                                <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-2">
-                                    <button
-                                        onClick={toggleMissionSection}
-                                        className="w-full flex items-center justify-between text-left"
-                                    >
-                                        <span className="text-xs uppercase tracking-[0.2em] text-zinc-300">Mission Control</span>
-                                        <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${missionToneClass}`}>
-                                            {missionStatus.replace('_', ' ')}
-                                        </span>
-                                    </button>
-                                    {showMissionMenu && (
-                                        <div className="mt-2 space-y-2">
-                                            <div className={`rounded-lg border px-2 py-2 ${missionToneClass}`}>
-                                                <div className="text-sm font-semibold text-white">{missionRecommendation?.label || 'No recommendation yet'}</div>
-                                                <div className="text-xs text-zinc-200/90 mt-1">{missionStatusDetail || missionRecommendation?.reason || 'Room flow is stable.'}</div>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <button onClick={() => runMissionDeckAction('start_next')} className={`${styles.btnStd} ${styles.btnHighlight} py-2 text-sm normal-case tracking-[0.03em]`}>
-                                                    <i className="fa-solid fa-forward-step"></i>
-                                                    Start Next
-                                                </button>
-                                                <button onClick={() => runMissionDeckAction('hype_moment')} className={`${styles.btnStd} ${styles.btnSecondary} py-2 text-sm normal-case tracking-[0.03em]`}>
-                                                    <i className="fa-solid fa-bolt"></i>
-                                                    Hype Moment
-                                                </button>
-                                                <button onClick={() => runMissionDeckAction('crowd_check')} className={`${styles.btnStd} ${styles.btnInfo} py-2 text-sm normal-case tracking-[0.03em]`}>
-                                                    <i className="fa-solid fa-users"></i>
-                                                    Crowd Check
-                                                </button>
-                                                <button onClick={() => runMissionDeckAction('review_moderation')} className={`${styles.btnStd} ${styles.btnNeutral} py-2 text-sm normal-case tracking-[0.03em]`}>
-                                                    <i className="fa-solid fa-inbox"></i>
-                                                    Moderation
-                                                </button>
-                                            </div>
-                                            {missionRecommendation?.id && (
-                                                <button
-                                                    onClick={() => runMissionDeckAction(missionRecommendation.id)}
-                                                    className={`${styles.btnStd} ${styles.btnPrimary} w-full py-2 text-sm normal-case tracking-[0.03em]`}
-                                                >
-                                                    <i className="fa-solid fa-wand-magic-sparkles"></i>
-                                                    Smart Assist: {missionRecommendation.label}
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            <div className="mt-3 rounded-xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-zinc-300">
-                                TV, Sound FX, and Vibe Sync now have dedicated Live Deck dropdowns for faster access.
-                            </div>
-                        </div>
-                    )}
-                </div>
+                <button
+                    data-feature-id="deck-command-palette"
+                    onClick={() => onOpenCommandPalette?.()}
+                    className={`${styles.btnStd} ${styles.btnPrimary} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[166px]`}
+                    title="Open command palette"
+                >
+                    <i className="fa-solid fa-terminal mr-1"></i>
+                    Command Palette
+                </button>
             </div>
             {missionControlEnabled && missionStatus === 'needs_attention' && (
                 <div className="mt-2 rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">

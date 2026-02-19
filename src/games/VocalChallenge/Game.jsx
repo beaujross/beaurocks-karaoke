@@ -56,7 +56,11 @@ const buildMelody = (length, difficulty) => {
 };
 
 const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSource, view = 'tv', user }) => {
-    const isLocalInput = isPlayer && inputSource !== 'remote';
+    const data = useMemo(() => (playerData || gameState || {}), [playerData, gameState]);
+    const controlSource = data.inputSource || inputSource || 'remote';
+    const isRoomControlled = controlSource === 'ambient' || controlSource === 'crowd' || controlSource === 'local';
+    const isController = isPlayer && (isRoomControlled ? view === 'tv' : view !== 'tv');
+    const isLocalInput = isController && inputSource !== 'remote';
     const { pitch, note, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging } = usePitch(isLocalInput);
 
     const [localState, setLocalState] = useState(null);
@@ -72,7 +76,6 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     const oscRef = useRef(null);
     const lastToneIndexRef = useRef(null);
 
-    const data = useMemo(() => (playerData || gameState || {}), [playerData, gameState]);
     const difficulty = data.difficulty || 'standard';
     const guideTone = data.guideTone !== false;
     const turnDurationMs = Math.max(10, Number(data.turnDurationMs || 30000));
@@ -89,7 +92,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     }, [roomCode]);
 
     const ensureInit = useCallback(() => {
-        if (!isPlayer) return;
+        if (!isController) return;
         if (stateRef.current) return;
         const length = difficulty === 'easy' ? 6 : difficulty === 'hard' ? 10 : 8;
         const sequence = buildMelody(length, difficulty);
@@ -110,7 +113,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
         stateRef.current = init;
         setLocalState(init);
         writeState(init);
-    }, [isPlayer, difficulty, data, intervalMs, turnDurationMs, writeState]);
+    }, [isController, difficulty, data, intervalMs, turnDurationMs, writeState]);
 
     useEffect(() => {
         const t = setTimeout(() => ensureInit(), 0);
@@ -118,7 +121,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     }, [ensureInit]);
 
     useEffect(() => {
-        if (isPlayer) return;
+        if (isController) return;
         if (!data?.phase) return;
         stateRef.current = data;
         const t = setTimeout(() => {
@@ -126,10 +129,10 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             if (data.voice) setRemoteVoice(data.voice);
         }, 0);
         return () => clearTimeout(t);
-    }, [isPlayer, data]);
+    }, [isController, data]);
 
     useEffect(() => {
-        if (!isPlayer) {
+        if (!isController) {
             stateRef.current = null;
             return;
         }
@@ -190,11 +193,11 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
         }, 200);
 
         return () => clearInterval(loop);
-    }, [isPlayer, stableNote, note, confidence, stability, isSinging, intervalMs, holdMs, minConfidence, minStability, volumeNormalized, writeState]);
+    }, [isController, stableNote, note, confidence, stability, isSinging, intervalMs, holdMs, minConfidence, minStability, volumeNormalized, writeState]);
 
     useEffect(() => {
         if (!localState || !guideTone) return;
-        if (!(view === 'tv' || isPlayer)) return;
+        if (!(view === 'tv' || isController)) return;
         if (localState.phase !== 'playing') return;
         if (lastToneIndexRef.current === localState.targetIndex) return;
         lastToneIndexRef.current = localState.targetIndex;
@@ -221,10 +224,10 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
         osc.start();
         osc.stop(ctx.currentTime + 0.18);
         oscRef.current = osc;
-    }, [localState, guideTone, view, isPlayer]);
+    }, [localState, guideTone, view, isController]);
 
     useEffect(() => {
-        if (!isPlayer || !localState || localState.phase !== 'over') return;
+        if (!isController || !localState || localState.phase !== 'over') return;
         if (mode === 'crowd') {
             if (rewardRef.current) return;
             rewardRef.current = true;
@@ -247,11 +250,11 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                 { points: increment(localState.score || 0) }
             ).catch(() => {});
         }
-    }, [isPlayer, localState, roomCode, user?.uid, data.playerId, mode]);
+    }, [isController, localState, roomCode, user?.uid, data.playerId, mode]);
 
     useEffect(() => {
         if (!localState || localState.phase !== 'over') return;
-        if (mode === 'turns' && isPlayer) {
+        if (mode === 'turns' && isController) {
             if (advanceRef.current) return;
             const participants = data.participants || [];
             const nextIndex = (data.turnIndex || 0) + 1;
@@ -288,7 +291,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             activeMode: 'karaoke',
             gameData: null
         }).catch(() => {});
-    }, [localState, view, roomCode, data, isPlayer, mode, turnDurationMs]);
+    }, [localState, view, roomCode, data, isController, mode, turnDurationMs]);
 
     if (!localState) {
         return (
@@ -300,7 +303,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
 
     const targetNote = localState.targetNote || localState.sequence?.[localState.targetIndex];
     const detected = localState.detectedNote || '-';
-    const waitingForTurn = !isPlayer && view !== 'tv' && data.playerId !== 'AMBIENT';
+    const waitingForTurn = !isController && view !== 'tv' && data.playerId !== 'AMBIENT';
     const metaList = data.participantMeta || [];
     const currentTurnMeta = metaList.find((p) => p.id === data.playerId);
     const nextTurnMeta = isTurnsMode
@@ -320,7 +323,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                     <div className="text-base md:text-lg text-zinc-400">Match the melody notes as they change.</div>
                     {isTurnsMode && (
                         <div className="mt-2 text-sm uppercase tracking-[0.2em] text-zinc-500">
-                            {isPlayer ? "You're up" : `Up now: ${currentTurnMeta?.name || data.playerName || 'Singer'}`}
+                            {isController ? "You're up" : `Up now: ${currentTurnMeta?.name || data.playerName || 'Singer'}`}
                         </div>
                     )}
                 </div>
@@ -400,13 +403,13 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             )}
 
             <VoiceHud
-                note={(isPlayer ? note : remoteVoice.note) || '-'}
-                pitch={isPlayer ? pitch : 0}
-                confidence={isPlayer ? confidence : remoteVoice.confidence}
-                volumeNormalized={isPlayer ? volumeNormalized : remoteVoice.volumeNormalized}
-                stableNote={isPlayer ? stableNote : remoteVoice.stableNote}
-                stability={isPlayer ? stability : remoteVoice.stability}
-                calibrating={isPlayer ? calibrating : remoteVoice.calibrating}
+                note={(isController ? note : remoteVoice.note) || '-'}
+                pitch={isController ? pitch : 0}
+                confidence={isController ? confidence : remoteVoice.confidence}
+                volumeNormalized={isController ? volumeNormalized : remoteVoice.volumeNormalized}
+                stableNote={isController ? stableNote : remoteVoice.stableNote}
+                stability={isController ? stability : remoteVoice.stability}
+                calibrating={isController ? calibrating : remoteVoice.calibrating}
             />
         </div>
     );

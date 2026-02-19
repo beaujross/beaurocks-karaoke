@@ -93,7 +93,7 @@ const ChatSettingsPanel = ({
             </div>
             <div className="space-y-2">
                 <div className="text-xs uppercase tracking-widest text-zinc-400">TV feed mode</div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                     <button
                         onClick={async () => {
                             setChatTvMode('auto');
@@ -121,8 +121,18 @@ const ChatSettingsPanel = ({
                     >
                         Activity Only
                     </button>
+                    <button
+                        onClick={async () => {
+                            setChatShowOnTv(true);
+                            setChatTvMode('fullscreen');
+                            await updateRoom({ chatShowOnTv: true, chatTvMode: 'fullscreen' });
+                        }}
+                        className={`${styles.btnStd} ${chatTvMode === 'fullscreen' ? styles.btnHighlight : styles.btnNeutral}`}
+                    >
+                        Full Screen
+                    </button>
                 </div>
-                <div className="host-form-helper">Auto rotates between chat and activity every few seconds when TV feed is on.</div>
+                <div className="host-form-helper">Auto rotates the lower feed, Chat Only locks the lower feed to chat, and Full Screen takes over the TV with chat.</div>
             </div>
             <div className="space-y-2">
                 <div className="text-xs uppercase tracking-widest text-zinc-400">Slow mode (seconds)</div>

@@ -13,10 +13,8 @@ const senderKeyForMessage = (message = {}) => (
     message?.uid
     || message?.userId
     || message?.fromUid
-    || message?.toUid
-    || message?.user
-    || message?.name
-    || 'unknown'
+    || (message?.isHost ? '__host__' : '')
+    || String(message?.user || message?.name || 'unknown').trim().toLowerCase()
 );
 
 export const groupChatMessages = (messages = [], options = {}) => {
@@ -48,7 +46,7 @@ export const groupChatMessages = (messages = [], options = {}) => {
         groups.push({
             id: message.id || `group-${senderKey}-${index}`,
             senderKey,
-            senderUid: String(message?.uid || message?.fromUid || message?.userId || message?.toUid || '').trim(),
+            senderUid: String(message?.uid || message?.fromUid || message?.userId || '').trim(),
             user: message.user || message.name || 'Guest',
             avatar: message.avatar || null,
             isVip: !!message.isVip,

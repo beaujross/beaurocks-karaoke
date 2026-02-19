@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePitch } from '../../hooks/usePitch';
-import { db, doc, onSnapshot, writeBatch } from '../../lib/firebase';
+import { db, doc, onSnapshot, updateDoc, writeBatch } from '../../lib/firebase';
 import { APP_ID, GAME_ASSETS } from '../../lib/assets';
 import { playSfx } from '../../lib/utils';
 import { EMOJI } from '../../lib/emoji';
@@ -9,10 +9,14 @@ import VoiceHud from '../../components/VoiceHud';
 
 const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
 
-const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, gameState }) => {
-    const isLocalInput = isPlayer && inputSource !== 'remote';
+const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, gameState, view = 'tv' }) => {
+    const data = playerData || gameState || {};
+    const controlSource = data.inputSource || inputSource || 'remote';
+    const isRoomControlled = controlSource === 'ambient' || controlSource === 'crowd' || controlSource === 'local';
+    const isController = isPlayer && (isRoomControlled ? view === 'tv' : view !== 'tv');
+    const isLocalInput = isController && inputSource !== 'remote';
     const { pitch, note, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging } = usePitch(isLocalInput, { smoothingFactor: 0.5 }); 
-    const startsPlaying = playerData?.inputSource === 'ambient' || inputSource === 'local';
+    const startsPlaying = isRoomControlled;
     
     // Create profiler instance
     const profilerRef = useRef(createProfiler('FlappyBird'));
@@ -40,14 +44,14 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
     const prevVolRef = useRef(0);
 
     useEffect(() => {
-        if (!isPlayer || gameStateLocal !== 'ready' || !startsPlaying) return;
+        if (!isController || gameStateLocal !== 'ready' || !startsPlaying) return;
         const t = setTimeout(() => setGameStateLocal('playing'), 0);
         return () => clearTimeout(t);
-    }, [isPlayer, gameStateLocal, startsPlaying]);
+    }, [isController, gameStateLocal, startsPlaying]);
 
     // 1. SYNC: Player sends state to Firebase
     useEffect(() => { 
-        if(!isPlayer) return; 
+        if(!isController) return; 
         const sync = setInterval(async () => { 
             const syncMark = profilerRef.current.markStart('firebaseSync');
             try {
@@ -75,11 +79,32 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
             profilerRef.current.markEnd(syncMark);
         }, 200); 
         return () => clearInterval(sync); 
-    }, [score, lives, gameStateLocal, isPlayer, roomCode, note]);
+    }, [score, lives, gameStateLocal, isController, roomCode, note]);
+
+    useEffect(() => {
+        if (!isController || gameStateLocal !== 'gameover') return;
+        updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
+            'gameData.birdY': birdYRef.current,
+            'gameData.score': scoreRef.current,
+            'gameData.lives': lives,
+            'gameData.status': 'gameover',
+            'gameData.obstacles': obstaclesRef.current,
+            'gameData.coins': coinsRef.current,
+            'gameData.voice': {
+                note: voiceRef.current.stableNote !== '-' ? voiceRef.current.stableNote : note,
+                confidence: voiceRef.current.confidence,
+                volumeNormalized: voiceRef.current.volumeNormalized,
+                stableNote: voiceRef.current.stableNote,
+                stability: voiceRef.current.stability
+            }
+        }).catch((e) => {
+            console.error('Final sync error:', e);
+        });
+    }, [isController, gameStateLocal, roomCode, lives, note]);
 
     // 2. SYNC: Spectator listens to Firebase
     useEffect(() => { 
-        if(isPlayer) return; 
+        if(isController) return; 
         const unsub = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => { 
             const d = s.data()?.gameData; 
             if(d) { 
@@ -93,7 +118,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
             } 
         }); 
         return () => unsub(); 
-    }, [isPlayer, roomCode]);
+    }, [isController, roomCode]);
 
     useEffect(() => {
         voiceRef.current = { pitch, confidence, volumeNormalized, stableNote, stability, isSinging };
@@ -101,7 +126,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
     
     // 3. GAME LOOP (Player Only)
     useEffect(() => {
-        if(!isPlayer || gameStateLocal !== 'playing') return;
+        if(!isController || gameStateLocal !== 'playing') return;
         let raf;
         const loop = () => {
             const loopMark = profilerRef.current.markStart('gameLoop');
@@ -176,6 +201,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
                         const newLives = prev - 1; 
                         if (newLives <= 0) { 
                             setGameStateLocal('gameover'); 
+                            setScore(scoreRef.current);
                             if(onGameOver) onGameOver(scoreRef.current); 
                         } else { 
                             setInvincible(true); 
@@ -196,7 +222,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
         }; 
         raf = requestAnimationFrame(loop); 
         return () => cancelAnimationFrame(raf);
-    }, [gameStateLocal, isPlayer, invincible, onGameOver]);
+    }, [gameStateLocal, isController, invincible, onGameOver]);
 
     return ( 
         <div className="relative w-full h-full bg-cyan-900 overflow-hidden font-pixel"> 
@@ -226,9 +252,9 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
             {coins.map(c => (<div key={c.id} className="absolute text-3xl animate-spin" style={{left: `${c.x}%`, top: `${c.y}%`}}>{EMOJI.coin}</div>))} 
             
             {/* Screens */}
-            {!isPlayer && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="text-white/50 animate-pulse text-xl">WATCHING LIVE FEED</div></div>} 
+            {!isController && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="text-white/50 animate-pulse text-xl">WATCHING LIVE FEED</div></div>} 
             
-            {isPlayer && gameStateLocal === 'ready' && (
+            {isController && gameStateLocal === 'ready' && (
                 <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50 text-center p-4">
                     <h1 className="text-4xl text-yellow-400 mb-4">VOICE CONTROL</h1>
                     <p>Sing HIGH = Fly Up</p>
@@ -243,18 +269,18 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
                 <div className="absolute inset-0 bg-red-900/90 flex flex-col items-center justify-center z-50 text-center">
                     <h1 className="text-4xl text-white mb-4">GAME OVER</h1>
                     <div className="text-2xl text-yellow-400 mb-8">SCORE: {score}</div>
-                    {isPlayer && <button onClick={()=>onGameOver(score)} className="bg-white text-black px-6 py-2 rounded font-bold">SUBMIT SCORE</button>}
+                    {isController && typeof onGameOver === 'function' && <button onClick={()=>onGameOver(score)} className="bg-white text-black px-6 py-2 rounded font-bold">SUBMIT SCORE</button>}
                 </div>
             )} 
 
             <VoiceHud
-                note={(isPlayer ? note : remoteVoice.note) || '-'}
-                pitch={isPlayer ? pitch : 0}
-                confidence={isPlayer ? confidence : remoteVoice.confidence}
-                volumeNormalized={isPlayer ? volumeNormalized : remoteVoice.volumeNormalized}
-                stableNote={isPlayer ? stableNote : remoteVoice.stableNote}
-                stability={isPlayer ? stability : remoteVoice.stability}
-                calibrating={isPlayer ? calibrating : remoteVoice.calibrating}
+                note={(isController ? note : remoteVoice.note) || '-'}
+                pitch={isController ? pitch : 0}
+                confidence={isController ? confidence : remoteVoice.confidence}
+                volumeNormalized={isController ? volumeNormalized : remoteVoice.volumeNormalized}
+                stableNote={isController ? stableNote : remoteVoice.stableNote}
+                stability={isController ? stability : remoteVoice.stability}
+                calibrating={isController ? calibrating : remoteVoice.calibrating}
             />
         </div> 
     );

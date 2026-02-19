@@ -68,6 +68,18 @@ const MOBILE_THEME_COLOR = '#7a2b76';
 const MOBILE_APP_BG = '#090612';
 const MOBILE_NAV_GRADIENT = 'linear-gradient(90deg, #4b1436 0%, #3a1b5c 52%, #15899a 100%)';
 const TIGHT15_MAX = 15;
+const STORM_CROWD_LAYERS = [
+    { id: 'snap', label: 'Snap', emoji: emoji(0x1F90F), hint: 'Light rain clicks' },
+    { id: 'tap', label: 'Thigh Tap', emoji: emoji(0x1F941), hint: 'Build the rain bed' },
+    { id: 'stomp', label: 'Stomp', emoji: emoji(0x1F463), hint: 'Roll in thunder' },
+    { id: 'clap', label: 'Clap', emoji: emoji(0x1F44F), hint: 'Sharp storm cracks' }
+];
+const STORM_LAYER_VIBRATE = {
+    snap: 16,
+    tap: 28,
+    stomp: [45, 24, 45],
+    clap: [20, 16, 20]
+};
 
 const normalizeTight15Text = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -1195,6 +1207,10 @@ const SingerApp = ({ roomCode, uid }) => {
     const pendingStrumHits = useRef(0);
     const strobeFlushTimer = useRef(null);
     const pendingStrobeTaps = useRef(0);
+    const stormLayerFlushTimer = useRef(null);
+    const pendingStormLayers = useRef({});
+    const pendingStormLayerCount = useRef(0);
+    const lastStormLayerAt = useRef(0);
     const pendingPointDelta = useRef(0);
     const lastPointsSync = useRef(0);
     const lastBonusDropId = useRef(null);
@@ -1428,6 +1444,74 @@ const SingerApp = ({ roomCode, uid }) => {
             strobeFlushTimer.current = null;
             await flushStrobeBuffer();
         }, 700);
+    };
+
+    const flushStormLayerBuffer = useCallback(async () => {
+        if (!roomCode || !user || pendingStormLayerCount.current <= 0) return;
+        const batch = pendingStormLayers.current;
+        const totalCount = pendingStormLayerCount.current;
+        pendingStormLayers.current = {};
+        pendingStormLayerCount.current = 0;
+        try {
+            const layerEntries = Object.entries(batch).filter(([, count]) => Number(count) > 0);
+            if (!layerEntries.length) return;
+            await Promise.all(layerEntries.map(([layer, count]) => addDoc(
+                collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
+                {
+                    roomCode,
+                    type: 'storm_layer',
+                    layer,
+                    count,
+                    uid: uid || null,
+                    userName: user.name,
+                    avatar: user.avatar,
+                    isVip: !!user.isVip,
+                    timestamp: serverTimestamp()
+                }
+            )));
+            const [topLayer] = [...layerEntries].sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0] || [];
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), {
+                stormLayerHits: increment(totalCount),
+                lastStormLayer: topLayer || null,
+                lastVibeAt: serverTimestamp()
+            });
+            trackEvent('storm_layer_sent', { room_code: roomCode, count: totalCount });
+        } catch (e) {
+            console.error(e);
+        }
+    }, [roomCode, user, uid]);
+
+    const queueStormLayerWrite = (layerId) => {
+        const key = String(layerId || '').trim().toLowerCase();
+        if (!key) return;
+        pendingStormLayers.current[key] = (pendingStormLayers.current[key] || 0) + 1;
+        pendingStormLayerCount.current += 1;
+        if (stormLayerFlushTimer.current) return;
+        stormLayerFlushTimer.current = setTimeout(async () => {
+            stormLayerFlushTimer.current = null;
+            await flushStormLayerBuffer();
+        }, 350);
+    };
+
+    const triggerStormLayer = (layerId) => {
+        if (!user || !roomCode || room?.lightMode !== 'storm') return;
+        const now = Date.now();
+        if (now - lastStormLayerAt.current < 110) return;
+        lastStormLayerAt.current = now;
+        markActive();
+        if (navigator.vibrate) {
+            try {
+                navigator.vibrate(STORM_LAYER_VIBRATE[layerId] || 24);
+            } catch {
+                // Ignore vibration failures.
+            }
+        }
+        if (layerId === 'stomp' || layerId === 'clap') {
+            setStormFlash(true);
+            if (stormFlashTimeoutRef.current) clearTimeout(stormFlashTimeoutRef.current);
+            stormFlashTimeoutRef.current = setTimeout(() => setStormFlash(false), 240);
+        }
+        queueStormLayerWrite(layerId);
     };
 
     const initDoodleCanvas = () => {
@@ -2154,7 +2238,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (reactionFlushTimer.current) clearTimeout(reactionFlushTimer.current);
         if (strumFlushTimer.current) clearTimeout(strumFlushTimer.current);
         if (strobeFlushTimer.current) clearTimeout(strobeFlushTimer.current);
+        if (stormLayerFlushTimer.current) clearTimeout(stormLayerFlushTimer.current);
     }, []);
+
+    useEffect(() => {
+        if (room?.lightMode === 'storm') return;
+        flushStormLayerBuffer();
+    }, [room?.lightMode, flushStormLayerBuffer]);
 
     useEffect(() => {
         if (!user) return;
@@ -2167,6 +2257,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     useEffect(() => {
         const onUnload = () => {
+            flushReactionBuffer();
+            flushStrumBuffer();
+            flushStrobeBuffer();
+            flushStormLayerBuffer();
             syncPoints(true);
         };
         const onVisibility = () => {
@@ -2174,6 +2268,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 flushReactionBuffer();
                 flushStrumBuffer();
                 flushStrobeBuffer();
+                flushStormLayerBuffer();
             }
         };
         window.addEventListener('beforeunload', onUnload);
@@ -2182,7 +2277,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             window.removeEventListener('beforeunload', onUnload);
             document.removeEventListener('visibilitychange', onVisibility);
         };
-    }, [user, syncPoints, flushReactionBuffer, flushStrumBuffer, flushStrobeBuffer]);
+    }, [user, syncPoints, flushReactionBuffer, flushStrumBuffer, flushStrobeBuffer, flushStormLayerBuffer]);
 
     useEffect(() => {
         if (!room?.readyCheck?.active) {
@@ -3874,23 +3969,27 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 <div className="absolute inset-0 flex items-center justify-center z-20 px-6">
                     <div className="w-full max-w-sm bg-black/60 border border-white/10 rounded-3xl p-6 text-center backdrop-blur">
                         <div className="text-xl font-bold mb-2">Storm Mode</div>
-                        <p className="text-sm text-zinc-300 mb-4">Sway with the music. Tap to spark lightning and feel the rumble.</p>
+                        <p className="text-sm text-zinc-300 mb-4">Build one storm together. Each phone controls a different rain or thunder layer.</p>
                         {!stormJoined ? (
                             <button onClick={handleJoinStorm} className="w-full bg-[#00C4D9] text-black py-3 rounded-full font-bold">Join the Storm</button>
                         ) : (
-                            <button
-                                onClick={() => {
-                                    setStormFlash(true);
-                                    if (navigator.vibrate) navigator.vibrate(80);
-                                    if (stormFlashTimeoutRef.current) clearTimeout(stormFlashTimeoutRef.current);
-                                    stormFlashTimeoutRef.current = setTimeout(() => setStormFlash(false), 260);
-                                }}
-                                className="w-full bg-white/20 border border-white/20 text-white py-3 rounded-full font-bold"
-                            >
-                                Tap to Spark
-                            </button>
+                            <div className="grid grid-cols-2 gap-2.5">
+                                {STORM_CROWD_LAYERS.map((layer) => (
+                                    <button
+                                        key={layer.id}
+                                        onClick={() => triggerStormLayer(layer.id)}
+                                        className="rounded-2xl border border-white/20 bg-white/10 px-2.5 py-3 active:scale-95 transition-transform text-white text-left"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-2xl">{layer.emoji}</span>
+                                            <span className="text-[12px] font-black uppercase tracking-[0.08em]">{layer.label}</span>
+                                        </div>
+                                        <div className="mt-1 text-[11px] text-zinc-300 leading-tight">{layer.hint}</div>
+                                    </button>
+                                ))}
+                            </div>
                         )}
-                        <div className="text-xs text-zinc-400 mt-3">Host controls the storm sequence.</div>
+                        <div className="text-xs text-zinc-400 mt-3">Host controls the phase. Crowd controls the texture.</div>
                     </div>
                 </div>
             </div>

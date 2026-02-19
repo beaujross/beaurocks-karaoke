@@ -37,6 +37,52 @@ const formatWaitTime = (seconds) => {
     return `${mins}m`;
 };
 
+const LOBBY_PLAYGROUND_PROMPTS = [
+    'Tap HYPE on your phone and watch the TV react.',
+    'Drop CLAP reactions together to fill the hype meter.',
+    'Send a chat message and see it land on the room feed.',
+    'Update your emoji/avatar and spot your card instantly.',
+    'Try LOVE or CHEERS to paint the screen with energy.'
+];
+
+const LOBBY_REACTION_LABELS = {
+    fire: 'Hype',
+    heart: 'Love',
+    clap: 'Clap',
+    drink: 'Cheers',
+    rocket: 'Boost',
+    diamond: 'Gem',
+    money: 'Rich',
+    crown: 'Royal',
+    strum: 'Strum'
+};
+
+const getLobbyReactionLabel = (type = '') => {
+    const key = String(type || '').trim().toLowerCase();
+    if (LOBBY_REACTION_LABELS[key]) return LOBBY_REACTION_LABELS[key];
+    if (!key) return 'Reaction';
+    return key
+        .split('_')
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+};
+
+const STORM_CROWD_LAYERS = [
+    { id: 'snap', label: 'Snap', icon: emoji(0x1F90F), accent: 'from-cyan-300 to-sky-200' },
+    { id: 'tap', label: 'Thigh Tap', icon: emoji(0x1F941), accent: 'from-blue-300 to-cyan-200' },
+    { id: 'stomp', label: 'Stomp', icon: emoji(0x1F463), accent: 'from-indigo-300 to-blue-200' },
+    { id: 'clap', label: 'Clap', icon: emoji(0x1F44F), accent: 'from-fuchsia-300 to-pink-200' }
+];
+const STORM_CROWD_LAYER_IDS = new Set(STORM_CROWD_LAYERS.map((layer) => layer.id));
+const makeStormLayerMeters = () => ({ snap: 0, tap: 0, stomp: 0, clap: 0 });
+
+const normalizeStormLayer = (layer = '') => {
+    const key = String(layer || '').trim().toLowerCase();
+    if (STORM_CROWD_LAYER_IDS.has(key)) return key;
+    if (key === 'thigh_tap' || key === 'thightap') return 'tap';
+    return 'clap';
+};
+
 const normalizeTight15Entry = (entry = {}) => {
     const songTitle = String(entry.songTitle || entry.song || '').trim();
     const artist = String(entry.artist || entry.singerName || '').trim();
@@ -402,11 +448,15 @@ const PublicTV = ({ roomCode }) => {
     const [doodleVotes, setDoodleVotes] = useState([]);
     const [roomUsers, setRoomUsers] = useState([]);
     const [stormPhase, setStormPhase] = useState('off');
+    const [stormLayerMeters, setStormLayerMeters] = useState(() => makeStormLayerMeters());
+    const [stormLayerEvents, setStormLayerEvents] = useState([]);
     const [showMarquee, setShowMarquee] = useState(false);
     const [marqueeIndex, setMarqueeIndex] = useState(-1);
     const [readyTimer, setReadyTimer] = useState(0);
     const [chatMessages, setChatMessages] = useState([]);
     const [showChatFeed, setShowChatFeed] = useState(false);
+    const [lobbyPromptIndex, setLobbyPromptIndex] = useState(0);
+    const [lobbyLiveEvents, setLobbyLiveEvents] = useState([]);
     const [bingoRngNow, setBingoRngNow] = useState(nowMs());
     const [bonusDropBurst, setBonusDropBurst] = useState(null);
     const [popTriviaVotes, setPopTriviaVotes] = useState([]);
@@ -423,6 +473,8 @@ const PublicTV = ({ roomCode }) => {
     const stormFlashCooldownRef = useRef(0);
     const stormThunderRefs = useRef([]);
     const stormAnalyserUnavailableRef = useRef(false);
+    const playStormLayerPulseRef = useRef(() => {});
+    const triggerStormLightningRef = useRef(() => {});
     const lastPromptAt = useRef(0);
     const lastRealMessageAt = useRef(0);
     const promptIndexRef = useRef(0);
@@ -452,6 +504,16 @@ const PublicTV = ({ roomCode }) => {
         () => groupChatMessages([...chatMessages].reverse(), { mergeWindowMs: 12 * 60 * 1000 }),
         [chatMessages]
     );
+    const pushLobbyLiveEvent = useCallback((event) => {
+        if (!event) return;
+        const eventTs = Number(event.timestampMs || nowMs());
+        setLobbyLiveEvents((prev) => {
+            const next = [{ ...event, timestampMs: eventTs }, ...(prev || [])];
+            return next
+                .filter((entry) => (eventTs - Number(entry.timestampMs || 0)) < 90000)
+                .slice(0, 12);
+        });
+    }, []);
     const doodleRequireReview = !!room?.doodleOke?.requireReview;
     const approvedDoodleUids = Array.isArray(room?.doodleOke?.approvedUids) ? room.doodleOke.approvedUids : [];
     const doodleApprovedUidSet = new Set(approvedDoodleUids.filter(Boolean));
@@ -658,6 +720,56 @@ const PublicTV = ({ roomCode }) => {
         }
     }, [stormPhase]);
 
+    const playStormLayerPulse = useCallback((layerId, intensity = 1) => {
+        if (!audioCtx) return;
+        const ctx = audioCtx;
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+        }
+        const now = ctx.currentTime;
+        const safeIntensity = Math.max(0.65, Math.min(1.8, Number(intensity) || 1));
+        const scheduleTone = (freq, type, volume, decay, offset = 0) => {
+            const startAt = now + offset;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(Math.max(40, Number(freq) || 180), startAt);
+            gain.gain.setValueAtTime(0.0001, startAt);
+            gain.gain.exponentialRampToValueAtTime(Math.max(0.0008, volume * safeIntensity), startAt + 0.005);
+            gain.gain.exponentialRampToValueAtTime(0.0001, startAt + Math.max(0.03, decay));
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(startAt);
+            osc.stop(startAt + Math.max(0.05, decay + 0.04));
+        };
+        switch (layerId) {
+            case 'snap':
+                scheduleTone(1950, 'square', 0.045, 0.03);
+                break;
+            case 'tap':
+                scheduleTone(210, 'triangle', 0.06, 0.11);
+                break;
+            case 'stomp':
+                scheduleTone(90, 'sine', 0.1, 0.24);
+                scheduleTone(165, 'triangle', 0.055, 0.18, 0.03);
+                break;
+            case 'clap':
+            default:
+                scheduleTone(880, 'square', 0.055, 0.045, 0);
+                scheduleTone(1120, 'square', 0.04, 0.04, 0.025);
+                scheduleTone(780, 'triangle', 0.035, 0.05, 0.06);
+                break;
+        }
+    }, [audioCtx]);
+
+    useEffect(() => {
+        playStormLayerPulseRef.current = playStormLayerPulse;
+    }, [playStormLayerPulse]);
+
+    useEffect(() => {
+        triggerStormLightningRef.current = triggerStormLightning;
+    }, [triggerStormLightning]);
+
     const startStormAnalyser = useCallback(() => {
         if (!audioCtx || !stormAudioRef.current) return;
         if (stormAnalyserUnavailableRef.current) return;
@@ -749,6 +861,24 @@ const PublicTV = ({ roomCode }) => {
         return () => clearInterval(id);
     }, [started, room?.lightMode, triggerStormLightning]);
 
+    useEffect(() => {
+        if (room?.lightMode !== 'storm') {
+            setStormLayerMeters(makeStormLayerMeters());
+            setStormLayerEvents([]);
+            return () => {};
+        }
+        const decayTimer = setInterval(() => {
+            setStormLayerMeters((prev) => ({
+                snap: Math.max(0, Number(prev?.snap || 0) - 3),
+                tap: Math.max(0, Number(prev?.tap || 0) - 3),
+                stomp: Math.max(0, Number(prev?.stomp || 0) - 4),
+                clap: Math.max(0, Number(prev?.clap || 0) - 3)
+            }));
+            setStormLayerEvents((prev) => prev.filter((event) => (nowMs() - Number(event?.timestampMs || 0)) < 15000));
+        }, 280);
+        return () => clearInterval(decayTimer);
+    }, [room?.lightMode]);
+
     // --- EFFECT: Data Sync ---
     useEffect(() => {
         if(!roomCode) return;
@@ -773,9 +903,57 @@ const PublicTV = ({ roomCode }) => {
                         if (d.type === 'photo') {
                             setPhotoOverlay(d); 
                             setTimeout(() => setPhotoOverlay(null), 8000); // Show photo for 8s
-                      } else if (d.type === 'strum') {
-                              // Guitar strums are reflected in the live guitar leaderboard instead.
-                          } else {
+                            pushLobbyLiveEvent({
+                                id: `photo-${c.doc.id}`,
+                                avatar: d.avatar || EMOJI.camera,
+                                user: d.userName || d.user || 'Guest',
+                                text: 'shared a selfie',
+                                timestampMs: nowMs()
+                            });
+                        } else if (d.type === 'storm_layer') {
+                            const layerId = normalizeStormLayer(d.layer || d.stormLayer || d.reactionLayer);
+                            const layerMeta = STORM_CROWD_LAYERS.find((layer) => layer.id === layerId) || STORM_CROWD_LAYERS[3];
+                            const totalCount = Math.max(1, Number(d.count || 1));
+                            const eventTimestamp = nowMs();
+                            const eventEntry = {
+                                id: `storm-${c.doc.id}`,
+                                layer: layerId,
+                                layerLabel: layerMeta.label,
+                                count: totalCount,
+                                user: d.userName || d.user || 'Guest',
+                                avatar: d.avatar || layerMeta.icon,
+                                timestampMs: eventTimestamp
+                            };
+                            setStormLayerMeters((prev) => {
+                                const next = { ...makeStormLayerMeters(), ...(prev || {}) };
+                                next[layerId] = Math.min(100, Number(next[layerId] || 0) + (totalCount * (layerId === 'stomp' ? 13 : 10)));
+                                return next;
+                            });
+                            setStormLayerEvents((prev) => [eventEntry, ...(prev || [])].slice(0, 28));
+                            const playCount = Math.min(totalCount, 3);
+                            for (let i = 0; i < playCount; i += 1) {
+                                playStormLayerPulseRef.current(layerId, 0.85 + (totalCount * 0.16) + (i * 0.08));
+                            }
+                            if ((layerId === 'stomp' || layerId === 'clap') && Math.random() < (layerId === 'stomp' ? 0.55 : 0.28)) {
+                                triggerStormLightningRef.current();
+                            }
+                            pushLobbyLiveEvent({
+                                id: `storm-live-${c.doc.id}`,
+                                avatar: d.avatar || layerMeta.icon,
+                                user: d.userName || d.user || 'Guest',
+                                text: `added ${layerMeta.label.toLowerCase()}${totalCount > 1 ? ` x${totalCount}` : ''}`,
+                                timestampMs: eventTimestamp
+                            });
+                        } else if (d.type === 'strum') {
+                            pushLobbyLiveEvent({
+                                id: `strum-${c.doc.id}`,
+                                avatar: d.avatar || EMOJI.guitar,
+                                user: d.userName || d.user || 'Guest',
+                                text: `sent ${Math.max(1, Number(d.count || 1))} ${getLobbyReactionLabel('strum').toLowerCase()}${Number(d.count || 1) > 1 ? 's' : ''}`,
+                                timestampMs: nowMs()
+                            });
+                            // Guitar strums are reflected in the live guitar leaderboard instead.
+                        } else {
                               const count = Math.min(d.count || 1, 6);
                               const totalCount = d.count || 1;
                               const val = REACTION_COSTS[d.type] || 5;
@@ -793,6 +971,13 @@ const PublicTV = ({ roomCode }) => {
                               setCombo(prev => Math.min(100, prev + totalVal));
                               lastHypeAtRef.current = nowMs();
                               setShowHypeMeter(true);
+                              pushLobbyLiveEvent({
+                                  id: `reaction-${c.doc.id}`,
+                                  avatar: d.avatar || EMOJI.sparkle,
+                                  user: d.userName || d.user || 'Guest',
+                                  text: `sent ${getLobbyReactionLabel(d.type).toLowerCase()}${Number(totalCount || 1) > 1 ? ` x${totalCount}` : ''}`,
+                                  timestampMs: nowMs()
+                              });
                           }
                     }
                 }
@@ -840,7 +1025,7 @@ const PublicTV = ({ roomCode }) => {
             messageTimeoutsRef.current.forEach(t => clearTimeout(t));
             messageTimeoutsRef.current = [];
         };
-    }, [roomCode]);
+    }, [roomCode, pushLobbyLiveEvent]);
 
     useEffect(() => {
         if (!roomCode || !room?.chatShowOnTv) {
@@ -872,6 +1057,10 @@ const PublicTV = ({ roomCode }) => {
             return;
         }
         if (tvMode === 'chat') {
+            setShowChatFeed(true);
+            return;
+        }
+        if (tvMode === 'fullscreen') {
             setShowChatFeed(true);
             return;
         }
@@ -1431,6 +1620,36 @@ const PublicTV = ({ roomCode }) => {
         spotlightPayload: room?.spotlightUser || null,
         roomUser: spotlightUser || null
     });
+    const lobbyWarmupMode = !current
+        && allQueue.length === 0
+        && (!room?.activeMode || room.activeMode === 'karaoke');
+    const lobbyPrompt = LOBBY_PLAYGROUND_PROMPTS[lobbyPromptIndex % LOBBY_PLAYGROUND_PROMPTS.length];
+    const lobbyMembers = [...roomUsers]
+        .sort((a, b) => getTimestampMs(b?.lastActiveAt) - getTimestampMs(a?.lastActiveAt))
+        .slice(0, 10);
+    const lobbyJoinEvents = activities
+        .filter((entry) => /joined the party/i.test(String(entry?.text || '')))
+        .map((entry, idx) => ({
+            id: `join-${idx}-${getTimestampMs(entry?.timestamp)}`,
+            avatar: entry?.icon || EMOJI.wave,
+            user: entry?.user || 'Guest',
+            text: 'joined the lobby',
+            timestampMs: getTimestampMs(entry?.timestamp)
+        }));
+    const lobbyEventFeed = [...lobbyLiveEvents, ...lobbyJoinEvents]
+        .filter((entry) => (nowMs() - Number(entry?.timestampMs || 0)) < 90000)
+        .sort((a, b) => Number(b?.timestampMs || 0) - Number(a?.timestampMs || 0))
+        .slice(0, 8);
+    useEffect(() => {
+        if (!lobbyWarmupMode) {
+            setLobbyPromptIndex(0);
+            return;
+        }
+        const interval = setInterval(() => {
+            setLobbyPromptIndex((prev) => (prev + 1) % LOBBY_PLAYGROUND_PROMPTS.length);
+        }, 9000);
+        return () => clearInterval(interval);
+    }, [lobbyWarmupMode]);
 
     const bgClass = multiplier >= 4 ? 'bg-gradient-to-br from-pink-900 via-purple-900 to-indigo-900 animate-pulse' : 
                     multiplier >= 2 ? 'bg-gradient-to-br from-blue-900 to-black' : 
@@ -1479,6 +1698,29 @@ const PublicTV = ({ roomCode }) => {
     const guitarEngagementScore = clampPct((guitarPeakHits * 4) + (guitarLeaders.length * 10));
     const bangerHeatScore = clampPct((combo * 0.72) + (reactionBurstScore * 0.6));
     const balladGlowScore = clampPct((combo * 0.55) + ((groupedChatMessages?.length || 0) * 12));
+    const stormLayerTotal = STORM_CROWD_LAYERS.reduce((sum, layer) => sum + Number(stormLayerMeters?.[layer.id] || 0), 0);
+    const stormLayerIntensity = clampPct(stormLayerTotal / Math.max(1, STORM_CROWD_LAYERS.length));
+    const stormRecentLayerEvents = stormLayerEvents
+        .filter((event) => (nowMs() - Number(event?.timestampMs || 0)) < 16000)
+        .slice(0, 6);
+    const stormLayerLeaders = useMemo(() => {
+        const totals = new Map();
+        stormRecentLayerEvents.forEach((event) => {
+            const key = event.user || 'Guest';
+            if (!totals.has(key)) {
+                totals.set(key, {
+                    user: key,
+                    avatar: event.avatar || EMOJI.sparkle,
+                    total: 0
+                });
+            }
+            const item = totals.get(key);
+            item.total += Math.max(1, Number(event.count || 1));
+        });
+        return [...totals.values()]
+            .sort((a, b) => b.total - a.total)
+            .slice(0, 3);
+    }, [stormRecentLayerEvents]);
     const stormBase = stormPhase === 'peak'
         ? 78
         : stormPhase === 'pass'
@@ -1488,7 +1730,7 @@ const PublicTV = ({ roomCode }) => {
                 : stormPhase === 'clear'
                     ? 24
                     : 0;
-    const stormChargeScore = clampPct((stormBase * 0.7) + (combo * 0.3));
+    const stormChargeScore = clampPct((stormBase * 0.52) + (combo * 0.2) + (stormLayerIntensity * 0.28));
     const motionSafeFx = !!room?.reduceMotionFx;
     const bangerParticleCount = motionSafeFx ? 8 : 15;
     const balladParticleCount = motionSafeFx ? 4 : 6;
@@ -1626,6 +1868,7 @@ const PublicTV = ({ roomCode }) => {
     const isDistanceConstrained = viewportSize.width <= 1680 || viewportSize.height <= 900;
     const showVerboseJoinUrl = viewportSize.width >= 1900 && !isShortViewport;
     const showExtendedSpotlightMeta = viewportSize.width >= 1760 && !isShortViewport;
+    const chatTvFullscreenActive = !!room?.chatShowOnTv && room?.chatTvMode === 'fullscreen';
 
     // --- RENDER ---
     
@@ -1671,6 +1914,61 @@ const PublicTV = ({ roomCode }) => {
                     <div className="h-full bg-gradient-to-r from-cyan-400 to-pink-400 transition-all duration-500" style={{ width: `${Math.min(100, Math.max(0, readyPct))}%` }}></div>
                 </div>
                 <div className="text-sm md:text-lg text-zinc-300 mt-3">Grab your phone and tap READY before the clock hits zero.</div>
+            </div>
+        );
+    }
+    if (chatTvFullscreenActive) {
+        return (
+            <div className="public-tv fixed inset-0 z-[190] bg-[radial-gradient(circle_at_top,rgba(6,182,212,0.18),transparent_55%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.2),transparent_45%),#07080a] text-white font-saira flex flex-col" style={{ height: '100dvh' }}>
+                <div className="px-5 md:px-8 py-4 border-b border-white/10 bg-black/35 backdrop-blur">
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <div className="text-xs uppercase tracking-[0.25em] text-cyan-200">Public TV</div>
+                            <div className="text-3xl md:text-5xl font-bebas text-cyan-300">Full Screen Chat</div>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-xs uppercase tracking-[0.2em] text-zinc-300">Room</div>
+                            <div className="text-xl md:text-2xl font-mono text-white">{roomCode || '--'}</div>
+                        </div>
+                    </div>
+                </div>
+                <div className="flex-1 min-h-0 p-4 md:p-6 2xl:p-8 overflow-y-auto custom-scrollbar space-y-3">
+                    {chatMessages.length === 0 && (
+                        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-5 text-zinc-200 text-lg md:text-2xl">
+                            {room?.chatEnabled === false
+                                ? 'Chat is paused by the host.'
+                                : room?.chatAudienceMode === 'vip'
+                                    ? 'Chat is VIP-only right now.'
+                                    : 'No chat yet.'}
+                        </div>
+                    )}
+                    {groupedChatMessages.map((group) => (
+                        <div key={group.id} className="rounded-2xl border border-white/10 bg-black/45 px-4 md:px-5 py-3 md:py-4">
+                            <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                                <span className="text-2xl md:text-3xl">{group.avatar || EMOJI.sparkle}</span>
+                                <span className="font-bold text-white text-lg md:text-2xl truncate">{group.user || 'Guest'}</span>
+                                {group.isVip && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black tracking-[0.12em] bg-yellow-400 text-black">VIP</span>
+                                )}
+                                {group.isHost && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black tracking-[0.12em] bg-cyan-500 text-black">HOST</span>
+                                )}
+                                {group.messages.length > 1 && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] md:text-xs border border-white/20 bg-white/5 text-zinc-200">
+                                        {group.messages.length} msgs
+                                    </span>
+                                )}
+                            </div>
+                            <div className="mt-2 md:mt-3 pl-9 md:pl-12 space-y-1.5">
+                                {group.messages.map((message, idx) => (
+                                    <div key={message.id || `${group.id}-${idx}`} className="text-base md:text-2xl leading-snug text-zinc-100 break-words">
+                                        {message.text}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
         );
     }
@@ -1804,12 +2102,10 @@ const PublicTV = ({ roomCode }) => {
             pickerName: pickerUser?.name || room.bingoPickerName || null
         };
 
-        const isVoiceGame = ['flappy_bird', 'vocal_challenge', 'riding_scales'].includes(room.activeMode);
         const isAmbientVoiceGame = (room.activeMode === 'flappy_bird' || room.activeMode === 'vocal_challenge') && room.gameData?.inputSource === 'ambient';
         const isScaleCrowd = room.activeMode === 'riding_scales' && room.gameData?.playerId === 'GROUP';
         const tvIsPlayer = isAmbientVoiceGame || isScaleCrowd;
-        const inputSource = tvIsPlayer ? 'local' : 'remote';
-        const showRemoteVoiceFeed = isVoiceGame && !tvIsPlayer;
+        const inputSource = room.gameData?.inputSource || (tvIsPlayer ? 'local' : 'remote');
 
         if (isBingo && room?.bingoShowTv === false) {
             return (
@@ -1818,58 +2114,6 @@ const PublicTV = ({ roomCode }) => {
                         <img src={room?.logoUrl || ASSETS.logo} className="w-40 mx-auto mb-4 opacity-80" alt="BROSS" />
                         <div className="text-3xl font-bebas text-cyan-300 mb-2">Bingo Live</div>
                         <div className="text-sm uppercase tracking-[0.4em] text-zinc-400">Check your phone to play</div>
-                    </div>
-                </div>
-            );
-        }
-
-        if (showRemoteVoiceFeed) {
-            const voiceNote = room.gameData?.voice?.note || room.gameData?.detectedNote || '-';
-            const score = Number(room.gameData?.score || 0);
-            const lives = room.gameData?.lives;
-            const strikes = room.gameData?.strikes;
-            const round = room.gameData?.round;
-            const playerName = room.gameData?.playerName || 'Singer';
-            const badge = room.activeMode === 'riding_scales' ? 'Scale Ladder' : room.activeMode === 'vocal_challenge' ? 'Vocal Challenge' : 'Flappy Bird';
-
-            return (
-                <div className="absolute inset-0 bg-black flex items-center justify-center p-4 md:p-6 2xl:p-8">
-                    <div className="w-full max-w-4xl bg-zinc-900/90 border border-white/10 rounded-[1.5rem] md:rounded-[2.5rem] p-4 md:p-7 2xl:p-10 text-center shadow-[0_0_80px_rgba(34,211,238,0.2)]">
-                        <div className="text-xs uppercase tracking-[0.4em] text-zinc-400 mb-3">{badge}</div>
-                        <div className="text-3xl md:text-5xl font-bebas text-cyan-300 mb-3 md:mb-4">{playerName}</div>
-                        <div className="text-xs md:text-sm uppercase tracking-[0.18em] md:tracking-[0.3em] text-zinc-500 mb-4 md:mb-6">Phone mic in control</div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-6">
-                            <div className="bg-black/40 border border-white/10 rounded-2xl p-4 md:p-6">
-                                <div className="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-2">Score</div>
-                                <div className="text-3xl md:text-5xl font-black text-white">{score}</div>
-                                <div className="mt-4 h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
-                                    <div
-                                        className="h-full bg-gradient-to-r from-cyan-400 to-pink-500"
-                                        style={{ width: `${Math.min(100, Math.max(6, (score / 500) * 100))}%` }}
-                                    ></div>
-                                </div>
-                            </div>
-                            <div className="bg-black/40 border border-white/10 rounded-2xl p-4 md:p-6">
-                                <div className="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-2">Detected note</div>
-                                <div className="text-3xl md:text-5xl font-black text-white">{voiceNote}</div>
-                            </div>
-                            {typeof lives === 'number' && (
-                                <div className="bg-black/40 border border-white/10 rounded-2xl p-4 md:p-6">
-                                    <div className="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-2">Lives</div>
-                                    <div className="text-3xl md:text-5xl font-black text-white">{lives}</div>
-                                </div>
-                            )}
-                            {typeof strikes === 'number' && (
-                                <div className="bg-black/40 border border-white/10 rounded-2xl p-4 md:p-6">
-                                    <div className="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-2">Strikes</div>
-                                    <div className="text-3xl md:text-5xl font-black text-white">{strikes}</div>
-                                    {typeof round === 'number' && (
-                                        <div className="text-sm text-zinc-400 mt-2">Round {round}</div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                        <div className="text-xs text-zinc-400 mt-5 md:mt-8">Live results update on the phones. TV shows the score feed.</div>
                     </div>
                 </div>
             );
@@ -2160,6 +2404,47 @@ const PublicTV = ({ roomCode }) => {
                         <div className="mt-1.5 h-2 w-full bg-white/20 rounded-full overflow-hidden">
                             <div className="h-full bg-gradient-to-r from-cyan-300 to-indigo-300 transition-all duration-500" style={{ width: `${stormChargeScore}%` }}></div>
                         </div>
+                    </div>
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-[min(92vw,760px)] bg-black/65 border border-white/15 rounded-2xl px-3 py-3 md:px-4 md:py-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] text-cyan-200">Crowd Storm Orchestra</div>
+                                <div className="text-xs md:text-sm text-zinc-100">Phones layer snap, tap, stomp, and clap into one soundscape.</div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-[10px] md:text-xs uppercase tracking-[0.16em] text-zinc-300">Intensity</div>
+                                <div className="text-xl md:text-2xl font-black text-white">{stormLayerIntensity}%</div>
+                            </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {STORM_CROWD_LAYERS.map((layer) => {
+                                const meter = clampPct(stormLayerMeters?.[layer.id] || 0);
+                                return (
+                                    <div key={layer.id} className="rounded-xl border border-white/15 bg-black/40 px-2.5 py-2">
+                                        <div className="flex items-center justify-between gap-1 text-[11px] md:text-xs uppercase tracking-[0.08em] text-zinc-100">
+                                            <span className="flex items-center gap-1.5">
+                                                <span>{layer.icon}</span>
+                                                <span>{layer.label}</span>
+                                            </span>
+                                            <span className="font-black text-white">{meter}%</span>
+                                        </div>
+                                        <div className="mt-1.5 h-1.5 w-full bg-white/15 rounded-full overflow-hidden">
+                                            <div className={`h-full bg-gradient-to-r ${layer.accent} transition-all duration-200`} style={{ width: `${meter}%` }}></div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {stormLayerLeaders.length > 0 && (
+                            <div className="mt-2.5 text-[11px] md:text-xs text-zinc-100 uppercase tracking-[0.1em]">
+                                Leaders: {stormLayerLeaders.map((leader) => `${leader.avatar} ${leader.user} (${leader.total})`).join(' • ')}
+                            </div>
+                        )}
+                        {stormRecentLayerEvents.length > 0 && (
+                            <div className="mt-1.5 text-[11px] md:text-xs text-zinc-200 truncate">
+                                Latest: {stormRecentLayerEvents.map((event) => `${event.avatar || EMOJI.sparkle} ${event.user} ${event.layerLabel.toLowerCase()}${event.count > 1 ? ` x${event.count}` : ''}`).join(' • ')}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -2476,101 +2761,148 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                          ) : (
                              <div className="flex-1 min-h-0 bg-zinc-800/80 backdrop-blur rounded-2xl md:rounded-3xl p-3 md:p-5 border border-white/10 flex flex-col overflow-hidden">
-                                <div className="flex items-center justify-between mb-2 border-b border-white/10 pb-2">
-                                    <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-cyan-400">UP NEXT</h3>
-                                </div>
-                                {!isDistanceConstrained && (
-                                    <div className="flex flex-wrap gap-2 mb-2">
-                                        {queueRules.map(rule => (
-                                            <div key={rule.label} className="flex items-center gap-2 bg-black/45 border border-white/10 px-3 py-1.5 rounded-full text-sm md:text-base font-semibold uppercase tracking-[0.12em] text-zinc-100">
-                                                <i className={`fa-solid ${rule.icon} text-cyan-300`}></i>
-                                                <span>{rule.shortLabel || rule.label}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                                <div className="mb-2 text-base md:text-lg uppercase tracking-[0.08em] md:tracking-[0.12em] text-zinc-100 font-semibold">
-                                    Queue: <span className="text-white font-bold">{allQueue.length}</span> songs
-                                    {' '}
-                                    | Est wait <span className="text-white font-bold">{formatWaitTime(queueWaitSec)}</span>
-                                </div>
-                                <div className="space-y-2 mb-3 max-h-[22vh] md:max-h-[18vh] overflow-y-auto custom-scrollbar pr-1">
-                                    {nextUp.length === 0 && (
-                                        <div className="bg-black/35 border border-white/10 rounded-2xl px-4 py-3 text-zinc-100 text-base md:text-xl font-bebas tracking-wide">
-                                            No singers yet - scan to join
+                                {lobbyWarmupMode ? (
+                                    <>
+                                        <div className="flex items-center justify-between mb-2 border-b border-white/10 pb-2">
+                                            <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-cyan-300">LOBBY PLAYGROUND</h3>
                                         </div>
-                                    )}
-                                    {nextUp.map((s, i) => {
-                                        const vip = isVipSong(s);
-                                        return (
-                                            <div key={s.id} className="bg-zinc-700/50 p-2 rounded-xl flex items-center gap-3 border-l-4 border-pink-500">
-                                                <div className="font-bebas text-2xl md:text-3xl text-zinc-400">#{i+1}</div>
-                                                <div className="min-w-0">
-                                                    <div className="font-bold truncate text-base md:text-xl leading-none">{s.songTitle}</div>
-                                                    <div className="text-base md:text-lg text-zinc-400 truncate flex items-center gap-2">
-                                                        <span>{s.singerName}</span>
-                                                        {vip && (
-                                                            <span className="px-2 py-0.5 rounded-full text-xs font-black tracking-[0.08em] bg-yellow-400 text-black">VIP</span>
-                                                        )}
-                                                    </div>
+                                        <div className="text-sm md:text-base text-zinc-100 mb-3">
+                                            As guests join, use phones to trigger live reactions, chat, and identity updates on this TV.
+                                        </div>
+                                        <div className="rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-3 mb-3">
+                                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200 mb-1">Try This Now</div>
+                                            <div className="text-lg md:text-2xl font-bebas text-white leading-tight">{lobbyPrompt}</div>
+                                        </div>
+                                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-300 mb-1">In Room ({roomUsers.length})</div>
+                                        <div className="grid grid-cols-2 gap-2 mb-3 max-h-[20vh] overflow-y-auto custom-scrollbar pr-1">
+                                            {lobbyMembers.length === 0 && (
+                                                <div className="col-span-2 rounded-xl border border-white/10 bg-black/35 px-3 py-3 text-zinc-200 text-sm md:text-base">
+                                                    Scan the QR to join. First person in unlocks live interaction.
                                                 </div>
+                                            )}
+                                            {lobbyMembers.map((member, idx) => (
+                                                <div key={`${member.uid || member.name || 'guest'}-${idx}`} className="rounded-xl border border-white/10 bg-black/35 px-2.5 py-2 flex items-center gap-2">
+                                                    <span className="text-lg md:text-xl">{member.avatar || EMOJI.sparkle}</span>
+                                                    <span className="truncate text-sm md:text-base font-semibold text-zinc-100">{member.name || 'Guest'}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-300 mb-1">Live Signals</div>
+                                        <div className="flex-1 min-h-[120px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
+                                            {lobbyEventFeed.length === 0 && (
+                                                <div className="rounded-xl border border-white/10 bg-black/35 px-3 py-3 text-zinc-200 text-sm md:text-base">
+                                                    Waiting for joins, reactions, or chat...
+                                                </div>
+                                            )}
+                                            {lobbyEventFeed.map((entry) => (
+                                                <div key={entry.id} className="rounded-xl border border-white/10 bg-black/45 px-3 py-2 flex items-center gap-2">
+                                                    <span className="text-lg md:text-xl">{entry.avatar || EMOJI.sparkle}</span>
+                                                    <span className="truncate text-sm md:text-base text-zinc-100">
+                                                        <span className="font-bold text-white">{entry.user || 'Guest'}</span> {entry.text}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="flex items-center justify-between mb-2 border-b border-white/10 pb-2">
+                                            <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-cyan-400">UP NEXT</h3>
+                                        </div>
+                                        {!isDistanceConstrained && (
+                                            <div className="flex flex-wrap gap-2 mb-2">
+                                                {queueRules.map(rule => (
+                                                    <div key={rule.label} className="flex items-center gap-2 bg-black/45 border border-white/10 px-3 py-1.5 rounded-full text-sm md:text-base font-semibold uppercase tracking-[0.12em] text-zinc-100">
+                                                        <i className={`fa-solid ${rule.icon} text-cyan-300`}></i>
+                                                        <span>{rule.shortLabel || rule.label}</span>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                                <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-green-400 mb-2 border-b border-white/10 pb-2">
-                                    {showChatFeed ? 'CHAT' : 'ACTIVITY'}
-                                </h3>
-                                <div className="flex-1 min-h-[120px] overflow-y-auto space-y-2 custom-scrollbar">
-                                    {showChatFeed ? (
-                                        <>
-                                            {chatMessages.length === 0 && (
-                                                <div className="text-zinc-500 text-base md:text-lg">
-                                                    {room?.chatEnabled === false
-                                                        ? 'Chat is paused by the host.'
-                                                        : room?.chatAudienceMode === 'vip'
-                                                            ? 'Chat is VIP-only right now.'
-                                                            : 'No chat yet.'}
+                                        )}
+                                        <div className="mb-2 text-base md:text-lg uppercase tracking-[0.08em] md:tracking-[0.12em] text-zinc-100 font-semibold">
+                                            Queue: <span className="text-white font-bold">{allQueue.length}</span> songs
+                                            {' '}
+                                            | Est wait <span className="text-white font-bold">{formatWaitTime(queueWaitSec)}</span>
+                                        </div>
+                                        <div className="space-y-2 mb-3 max-h-[22vh] md:max-h-[18vh] overflow-y-auto custom-scrollbar pr-1">
+                                            {nextUp.length === 0 && (
+                                                <div className="bg-black/35 border border-white/10 rounded-2xl px-4 py-3 text-zinc-100 text-base md:text-xl font-bebas tracking-wide">
+                                                    No singers yet - scan to join
                                                 </div>
                                             )}
-                                            {groupedChatMessages.map((group) => (
-                                                <div key={group.id} className="flex gap-2 items-start text-zinc-200 text-lg">
-                                                    <span>{group.avatar || EMOJI.sparkle}</span>
-                                                    <div className="min-w-0">
-                                                        <div className="truncate">
-                                                            <span className="font-bold text-white">{group.user || 'Guest'}</span>
-                                                            {group.isVip && (
-                                                                <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-yellow-400 text-black">VIP</span>
-                                                            )}
-                                                            {group.isHost && (
-                                                                <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-cyan-500 text-black">HOST</span>
-                                                            )}
-                                                        </div>
-                                                        <div className="space-y-0.5">
-                                                            {group.messages.map((message, idx) => (
-                                                                <div key={message.id || `${group.id}-${idx}`} className="break-words">{message.text}</div>
-                                                            ))}
+                                            {nextUp.map((s, i) => {
+                                                const vip = isVipSong(s);
+                                                return (
+                                                    <div key={s.id} className="bg-zinc-700/50 p-2 rounded-xl flex items-center gap-3 border-l-4 border-pink-500">
+                                                        <div className="font-bebas text-2xl md:text-3xl text-zinc-400">#{i+1}</div>
+                                                        <div className="min-w-0">
+                                                            <div className="font-bold truncate text-base md:text-xl leading-none">{s.songTitle}</div>
+                                                            <div className="text-base md:text-lg text-zinc-400 truncate flex items-center gap-2">
+                                                                <span>{s.singerName}</span>
+                                                                {vip && (
+                                                                    <span className="px-2 py-0.5 rounded-full text-xs font-black tracking-[0.08em] bg-yellow-400 text-black">VIP</span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            ))}
-                                        </>
-                                    ) : (
-                                        <>
-                                            {activities.length === 0 && (
-                                                <div className="text-zinc-200 text-lg md:text-2xl font-bebas tracking-wide">
-                                                    Activity starts when first singer joins.
-                                                </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-green-400 mb-2 border-b border-white/10 pb-2">
+                                            {showChatFeed ? 'CHAT' : 'ACTIVITY'}
+                                        </h3>
+                                        <div className="flex-1 min-h-[120px] overflow-y-auto space-y-2 custom-scrollbar">
+                                            {showChatFeed ? (
+                                                <>
+                                                    {chatMessages.length === 0 && (
+                                                        <div className="text-zinc-500 text-base md:text-lg">
+                                                            {room?.chatEnabled === false
+                                                                ? 'Chat is paused by the host.'
+                                                                : room?.chatAudienceMode === 'vip'
+                                                                    ? 'Chat is VIP-only right now.'
+                                                                    : 'No chat yet.'}
+                                                        </div>
+                                                    )}
+                                                    {groupedChatMessages.map((group) => (
+                                                        <div key={group.id} className="flex gap-2 items-start text-zinc-200 text-lg">
+                                                            <span>{group.avatar || EMOJI.sparkle}</span>
+                                                            <div className="min-w-0">
+                                                                <div className="truncate">
+                                                                    <span className="font-bold text-white">{group.user || 'Guest'}</span>
+                                                                    {group.isVip && (
+                                                                        <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-yellow-400 text-black">VIP</span>
+                                                                    )}
+                                                                    {group.isHost && (
+                                                                        <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-cyan-500 text-black">HOST</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="space-y-0.5">
+                                                                    {group.messages.map((message, idx) => (
+                                                                        <div key={message.id || `${group.id}-${idx}`} className="break-words">{message.text}</div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    {activities.length === 0 && (
+                                                        <div className="text-zinc-200 text-lg md:text-2xl font-bebas tracking-wide">
+                                                            Activity starts when first singer joins.
+                                                        </div>
+                                                    )}
+                                                    {activities.map((a, i) => (
+                                                        <div key={i} className="flex gap-2 items-center text-zinc-200 text-base md:text-xl">
+                                                            <span>{a.icon}</span>
+                                                            <span className="truncate"><span className="font-bold text-white">{a.user}</span> {a.text}</span>
+                                                        </div>
+                                                    ))}
+                                                </>
                                             )}
-                                            {activities.map((a, i) => (
-                                                <div key={i} className="flex gap-2 items-center text-zinc-200 text-base md:text-xl">
-                                                    <span>{a.icon}</span>
-                                                    <span className="truncate"><span className="font-bold text-white">{a.user}</span> {a.text}</span>
-                                                </div>
-                                            ))}
-                                        </>
-                                    )}
-                                </div>
+                                        </div>
+                                    </>
+                                )}
                              </div>
                          )}
                     </div>

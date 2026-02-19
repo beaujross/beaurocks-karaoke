@@ -348,6 +348,8 @@ const UnifiedGameLauncher = ({
     const [triviaParticipantMode, setTriviaParticipantMode] = useState('all');
     const [triviaRoundSec, setTriviaRoundSec] = useState(20);
     const [triviaAutoReveal, setTriviaAutoReveal] = useState(true);
+    const [wyrRoundSec, setWyrRoundSec] = useState(20);
+    const [wyrAutoReveal, setWyrAutoReveal] = useState(true);
     const [wyrParticipants, setWyrParticipants] = useState([]);
     const [wyrParticipantMode, setWyrParticipantMode] = useState('all');
     const [bingoBoards, setBingoBoards] = useState([]);
@@ -545,7 +547,19 @@ const UnifiedGameLauncher = ({
         if (defaults?.triviaAutoReveal !== undefined && defaults?.triviaAutoReveal !== null) {
             setTriviaAutoReveal(!!defaults.triviaAutoReveal);
         }
-    }, [room?.gameDefaults?.triviaRoundSec, room?.gameDefaults?.triviaAutoReveal, room?.gameDefaults]);
+        if (defaults?.wyrRoundSec !== undefined && defaults?.wyrRoundSec !== null) {
+            setWyrRoundSec(Math.max(5, Number(defaults.wyrRoundSec) || 20));
+        }
+        if (defaults?.wyrAutoReveal !== undefined && defaults?.wyrAutoReveal !== null) {
+            setWyrAutoReveal(!!defaults.wyrAutoReveal);
+        }
+    }, [
+        room?.gameDefaults?.triviaRoundSec,
+        room?.gameDefaults?.triviaAutoReveal,
+        room?.gameDefaults?.wyrRoundSec,
+        room?.gameDefaults?.wyrAutoReveal,
+        room?.gameDefaults
+    ]);
     
     const triggerGameRules = async () => {
         await updateRoom({ gameRulesId: Date.now() });
@@ -1018,9 +1032,24 @@ const UnifiedGameLauncher = ({
 
     const launchWyr = async (item) => {
         if (!item) return;
+        const durationSec = Math.max(5, Number(wyrRoundSec) || 20);
+        const startedAt = Date.now();
+        const autoReveal = !!wyrAutoReveal;
         await updateRoom({
             activeMode: 'wyr',
-            wyrData: { question: item.q, optionA: item.a, optionB: item.b, id: Date.now().toString(), rewarded: false, points: item.points || 50 },
+            wyrData: {
+                question: item.q,
+                optionA: item.a,
+                optionB: item.b,
+                id: Date.now().toString(),
+                status: 'live',
+                rewarded: false,
+                points: item.points || 50,
+                startedAt,
+                durationSec,
+                autoReveal,
+                revealAt: autoReveal ? startedAt + (durationSec * 1000) : null
+            },
             ...buildParticipantPayload(wyrParticipantMode, wyrParticipantMode === 'selected' ? wyrParticipants : [])
         });
         const nextBank = wyrBank.map(w => (w.id === item.id ? { ...w, asked: true } : w));
@@ -1505,6 +1534,10 @@ const UnifiedGameLauncher = ({
                 setTriviaRoundSec={setTriviaRoundSec}
                 triviaAutoReveal={triviaAutoReveal}
                 setTriviaAutoReveal={setTriviaAutoReveal}
+                wyrRoundSec={wyrRoundSec}
+                setWyrRoundSec={setWyrRoundSec}
+                wyrAutoReveal={wyrAutoReveal}
+                setWyrAutoReveal={setWyrAutoReveal}
                 wyrParticipants={wyrParticipants}
                 setWyrParticipants={setWyrParticipants}
                 wyrParticipantMode={wyrParticipantMode}
@@ -2413,6 +2446,10 @@ const GameConfigModal = ({
     setTriviaRoundSec,
     triviaAutoReveal,
     setTriviaAutoReveal,
+    wyrRoundSec,
+    setWyrRoundSec,
+    wyrAutoReveal,
+    setWyrAutoReveal,
     wyrParticipants,
     setWyrParticipants,
     wyrParticipantMode,
@@ -2906,6 +2943,30 @@ const GameConfigModal = ({
             >
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
+                        <div className="text-xs uppercase tracking-widest text-zinc-500">Round settings</div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <label className="text-xs text-zinc-400 flex flex-col gap-2">
+                                Round length (seconds)
+                                <input
+                                    type="number"
+                                    min="5"
+                                    max="180"
+                                    value={wyrRoundSec}
+                                    onChange={(e) => setWyrRoundSec(e.target.value)}
+                                    className={STYLES.input}
+                                />
+                            </label>
+                            <label className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/50 p-2 rounded-lg mt-[22px]">
+                                <input
+                                    type="checkbox"
+                                    checked={wyrAutoReveal}
+                                    onChange={(e) => setWyrAutoReveal(e.target.checked)}
+                                    className="w-4 h-4"
+                                />
+                                <span>Auto-reveal at timer end</span>
+                            </label>
+                        </div>
+                        <div className="h-px bg-white/10"></div>
                         <div className="text-xs uppercase tracking-widest text-zinc-500">Prompt bank</div>
                         <input
                             value={wyrFilter}
