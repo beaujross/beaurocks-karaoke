@@ -3394,7 +3394,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
     }, [compactViewport, setShowAddForm, setShowQueueList]);
 
     const addToQueueSection = (
-        <div className="p-4 border-b border-white/10 bg-black/20 relative">
+        <div className="p-3 border-b border-white/10 bg-black/20 relative">
             <SectionHeader
                 label="Add to Queue"
                 open={showAddForm}
@@ -13198,7 +13198,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         Scene effects are now in the top Live Deck for faster access while hosting.
                                     </div>
                                     <div className="text-sm text-zinc-300 mt-2">
-                                        Open Queue and use <span className="text-cyan-300 font-semibold">Live Deck &gt; Live Effects</span> for Beat Drop, Storm, Guitar, Banger, Ballad, and Selfie Cam.
+                                        Open Queue and use the dedicated <span className="text-cyan-300 font-semibold">Live Deck TV</span>, <span className="text-cyan-300 font-semibold">SFX</span>, and <span className="text-cyan-300 font-semibold">Vibe</span> dropdowns.
                                     </div>
                                     <div className="flex flex-wrap gap-2 mt-3">
                                         <button

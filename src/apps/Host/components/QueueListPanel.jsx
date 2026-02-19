@@ -43,6 +43,12 @@ const QueueListPanel = ({
                     No pending songs
                 </div>
             )}
+            {queue.length === 0 && (
+                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3 mb-2">
+                    <div className="text-sm font-semibold text-white">Queue is empty</div>
+                    <div className="text-xs text-zinc-400 mt-1">Add songs in Add to Queue to keep karaoke moving.</div>
+                </div>
+            )}
             {queue.map((s, i) => (
                 <QueueSongCard
                     key={s.id}

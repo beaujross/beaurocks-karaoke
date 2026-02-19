@@ -29,9 +29,9 @@ const AddToQueueFormBody = ({
     openYtSearch,
     addSong
 }) => (
-    <div className="mt-2 max-h-[26vh] md:max-h-[24vh] overflow-y-auto custom-scrollbar pr-1">
+    <div className="mt-2 pr-1">
         <div className="relative mb-2 z-30">
-            <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} className={`${styles.input} py-1.5 text-xs`} placeholder="Search Local + YouTube + Apple Music..."/>
+            <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} className={`${styles.input} py-2 text-sm`} placeholder="Search Local + YouTube + Apple Music..."/>
             <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-zinc-400">
                 <label className="inline-flex items-center gap-2 cursor-pointer select-none">
                     <input

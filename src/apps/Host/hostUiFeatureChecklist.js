@@ -1,4 +1,7 @@
 export const HOST_UI_FEATURE_CHECKLIST = [
+    { id: 'deck-tv-menu-toggle', label: 'Live Deck: TV Menu', selector: '[data-feature-id="deck-tv-menu-toggle"]' },
+    { id: 'deck-sfx-menu-toggle', label: 'Live Deck: SFX Menu', selector: '[data-feature-id="deck-sfx-menu-toggle"]' },
+    { id: 'deck-vibe-menu-toggle', label: 'Live Deck: Vibe Menu', selector: '[data-feature-id="deck-vibe-menu-toggle"]' },
     { id: 'deck-menu-toggle', label: 'Live Deck: Deck Menu', selector: '[data-feature-id="deck-menu-toggle"]' },
     { id: 'layout-workspace-select', label: 'Panel Layout: Workspace Select', selector: '[data-feature-id="layout-workspace-select"]' },
     { id: 'layout-expand-all', label: 'Panel Layout: Expand All', selector: '[data-feature-id="layout-expand-all"]' },
