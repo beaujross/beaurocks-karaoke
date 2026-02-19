@@ -255,84 +255,42 @@ const useQueueSongActions = ({
         const singerOverride = typeof options === 'string' ? options : options?.singerName;
         const isApple = r.source === 'itunes';
         const explicitAppleId = isApple ? String(r.trackId || '') : '';
-        const fetchedApple = await fetchAppleTimedLyrics(r.trackName, r.artistName || '');
-        const fetchedAiLyrics = (!fetchedApple?.lyrics && !(Array.isArray(fetchedApple?.lyricsTimed) && fetchedApple.lyricsTimed.length))
-            ? await fetchAiLyricsFallback(r.trackName, r.artistName || '')
-            : null;
-        const appleId = fetchedApple?.appleMusicId || explicitAppleId;
-        const preferAppleDefault = isApple && !!appleId;
-        const playbackAppleMusicId = preferAppleDefault ? appleId : '';
+        const preferAppleDefault = isApple && !!explicitAppleId;
         const itunesArt = (r.artworkUrl100 || '').replace('100x100', '600x600');
-        let songId = buildSongKey(r.trackName, r.artistName || 'Unknown');
-        try {
-            const songRecord = await ensureSong({
-                title: r.trackName,
-                artist: r.artistName || 'Unknown',
-                artworkUrl: r.source === 'itunes' ? itunesArt : r.artworkUrl100 || '',
-                itunesId: isApple ? r.trackId : '',
-                appleMusicId: playbackAppleMusicId,
-                verifyMeta: { lyricsSource: null, lyricsTimed: false },
-                verifiedBy: hostName || 'host'
-            });
-            songId = songRecord?.songId || songId;
-        } catch (err) {
-            console.warn('ensureSong failed', err);
-        }
+        const selectedDuration = manual.duration || 180;
         const trackSource = preferAppleDefault
             ? 'apple'
             : (r.source === 'youtube' ? 'youtube' : r.source === 'local' ? 'custom' : (isApple ? 'apple' : ''));
         const mediaUrl = preferAppleDefault ? '' : (r.source === 'youtube' || r.source === 'local' ? (r.url || '') : '');
-        let trackRecord = null;
-        if (trackSource) {
-            try {
-                trackRecord = await ensureTrack({
-                    songId,
-                    source: trackSource,
-                    mediaUrl,
-                    appleMusicId: playbackAppleMusicId,
-                    duration: manual.duration || null,
-                    audioOnly: trackSource === 'apple' ? true : r.mediaType === 'audio' || isAudioUrl(r.url),
-                    backingOnly: false,
-                    addedBy: hostName || 'Host'
-                });
-            } catch (err) {
-                console.warn('ensureTrack failed', err);
-            }
-        }
         const nextSong = {
             song: r.trackName,
             artist: r.artistName || '',
             singer: singerOverride || manual.singer || room?.hostName || hostName || 'Host',
             url: mediaUrl,
             art: r.source === 'itunes' ? itunesArt : r.artworkUrl100 || '',
-            lyrics: fetchedApple?.lyrics || fetchedAiLyrics?.lyrics || '',
-            lyricsTimed: fetchedApple?.lyricsTimed || null,
-            appleMusicId: playbackAppleMusicId,
-            duration: manual.duration || 180,
+            appleMusicId: preferAppleDefault ? explicitAppleId : '',
+            duration: selectedDuration,
             backingAudioOnly: false,
             audioOnly: trackSource === 'apple' ? true : r.mediaType === 'audio' || isAudioUrl(r.url)
         };
-        const hasAppleTimedLyrics = Array.isArray(fetchedApple?.lyricsTimed) && fetchedApple.lyricsTimed.length > 0;
-        const hasApplePlainLyrics = !!String(fetchedApple?.lyrics || '').trim();
-        const hasAiLyrics = !!String(fetchedAiLyrics?.lyrics || '').trim();
-        const needsAppleAuthForLyrics = !!fetchedApple?.needsUserToken && !hasAppleTimedLyrics && !hasApplePlainLyrics;
-        const noAppleMatch = fetchedApple?.resolution === 'no_match' || fetchedApple?.found === false;
+        const initialSongId = buildSongKey(r.trackName, r.artistName || 'Unknown');
+
         try {
             const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
                 roomCode,
-                songId,
-                trackId: trackRecord?.trackId || null,
+                songId: initialSongId,
+                trackId: null,
                 trackSource: trackSource || null,
                 songTitle: nextSong.song,
                 artist: nextSong.artist,
                 singerName: nextSong.singer,
                 mediaUrl: nextSong.url,
                 albumArtUrl: nextSong.art || '',
-                lyrics: nextSong.lyrics || '',
-                lyricsTimed: nextSong.lyricsTimed || null,
+                lyrics: '',
+                lyricsTimed: null,
                 appleMusicId: nextSong.appleMusicId,
                 musicSource: nextSong.appleMusicId ? 'apple' : '',
-                lyricsSource: fetchedApple?.lyricsSource || fetchedAiLyrics?.lyricsSource || '',
+                lyricsSource: '',
                 duration: nextSong.duration ? Math.round(nextSong.duration) : 180,
                 status: 'requested',
                 timestamp: serverTimestamp(),
@@ -341,18 +299,57 @@ const useQueueSongActions = ({
                 backingAudioOnly: nextSong.backingAudioOnly || false,
                 audioOnly: nextSong.audioOnly || isAudioUrl(nextSong.url)
             });
-            const statusText = hasAppleTimedLyrics
-                ? 'Queued with Apple backing and timed lyrics'
-                : hasApplePlainLyrics
-                    ? 'Queued with Apple backing and plain lyrics'
-                    : hasAiLyrics
-                        ? (preferAppleDefault ? 'Queued with Apple backing + AI lyrics fallback' : 'Queued with AI lyrics fallback')
-                        : needsAppleAuthForLyrics
-                            ? 'Queued with Apple backing. Lyrics need Apple Music host authorization (connect Apple Music).'
-                            : noAppleMatch
-                                ? (preferAppleDefault ? 'Queued with Apple backing. Apple lyrics not found for this track.' : 'Queued. Apple lyrics not found for this track.')
-                                : (preferAppleDefault ? 'Queued with Apple backing (no lyrics found)' : 'Queued');
+
+            const statusText = preferAppleDefault
+                ? 'Queued with Apple backing (finalizing lyrics...)'
+                : 'Queued (finalizing lyrics...)';
             toast(statusText);
+
+            void (async () => {
+                let songId = initialSongId;
+                try {
+                    const songRecord = await ensureSong({
+                        title: r.trackName,
+                        artist: r.artistName || 'Unknown',
+                        artworkUrl: r.source === 'itunes' ? itunesArt : r.artworkUrl100 || '',
+                        itunesId: isApple ? r.trackId : '',
+                        appleMusicId: nextSong.appleMusicId,
+                        verifyMeta: { lyricsSource: null, lyricsTimed: false },
+                        verifiedBy: hostName || 'host'
+                    });
+                    songId = songRecord?.songId || songId;
+                } catch (err) {
+                    console.warn('ensureSong failed', err);
+                }
+
+                let trackRecord = null;
+                if (trackSource) {
+                    try {
+                        trackRecord = await ensureTrack({
+                            songId,
+                            source: trackSource,
+                            mediaUrl: mediaUrl || '',
+                            appleMusicId: nextSong.appleMusicId,
+                            duration: selectedDuration,
+                            audioOnly: nextSong.audioOnly,
+                            backingOnly: false,
+                            addedBy: hostName || 'Host'
+                        });
+                    } catch (err) {
+                        console.warn('ensureTrack failed', err);
+                    }
+                }
+
+                try {
+                    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', docRef.id), {
+                        songId,
+                        trackId: trackRecord?.trackId || null
+                    });
+                } catch (err) {
+                    console.warn('Failed to apply queued song enrichment', err);
+                }
+            })();
+
             return {
                 id: docRef.id,
                 songTitle: nextSong.song,
@@ -360,13 +357,13 @@ const useQueueSongActions = ({
                 singerName: nextSong.singer,
                 mediaUrl: nextSong.url,
                 albumArtUrl: nextSong.art || '',
-                lyrics: nextSong.lyrics || '',
-                lyricsTimed: nextSong.lyricsTimed || null,
+                lyrics: '',
+                lyricsTimed: null,
                 appleMusicId: nextSong.appleMusicId || '',
                 duration: nextSong.duration ? Math.round(nextSong.duration) : 180,
                 statusText,
-                lyricsResolution: fetchedApple?.resolution || (hasAiLyrics ? 'ai_fallback' : ''),
-                lyricsMessage: fetchedApple?.message || ''
+                lyricsResolution: '',
+                lyricsMessage: ''
             };
         } catch (err) {
             console.warn('Failed to queue song', err);

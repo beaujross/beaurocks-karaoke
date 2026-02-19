@@ -39,6 +39,14 @@
 - Contrast old karaoke pain points with BeauRocks outcomes.
 - Never claim licensing bypass.
 - Include responsibility language for host music-rights compliance.
+- Frame AI as assistive and karaoke-first (never as the main event).
+- Pair each AI mention with a practical host outcome (speed, flow, engagement, cost control).
+
+## AI Copy Pattern
+- `Feature`: short capability name (2-4 words).
+- `What it does`: one sentence maximum.
+- `Use case`: one sentence tied to party-night flow.
+- `Guardrail`: mention metering/caching when pricing or scale is discussed.
 
 ## Current Implementation Scope
 - New route: `?mode=marketing`.

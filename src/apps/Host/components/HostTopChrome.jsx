@@ -35,17 +35,26 @@ const HostTopChrome = ({
     skipBg,
     autoBgMusic,
     setAutoBgMusic,
+    autoPlayMedia,
+    setAutoPlayMedia,
     setBgMusicState,
     toggleBgMute,
     currentTrackName,
     mixFader,
     handleMixFaderChange,
+    startReadyCheck,
+    startBeatDrop,
+    startStormSequence,
+    stopStormSequence,
     moderationPendingCount = 0,
     moderationSeverity = 'idle',
     moderationNeedsAttention = false,
     onOpenModerationInbox
 }) => {
     const SmallWaveform = smallWaveform;
+    const stormActive = room?.lightMode === 'storm';
+    const strobeActive = room?.lightMode === 'strobe';
+
     return (
     <div data-host-top-chrome="true" className="bg-zinc-900 px-4 py-2 flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full">
@@ -194,6 +203,80 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
+            </div>
+        </div>
+        <div className="w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-400 pr-2">Live Deck</div>
+                <button
+                    onClick={async () => {
+                        if (stormActive) {
+                            await stopStormSequence?.();
+                            return;
+                        }
+                        await startStormSequence?.();
+                    }}
+                    className={`${styles.btnStd} ${stormActive ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-xs min-w-[110px]`}
+                    title="Toggle storm sequence"
+                >
+                    <i className="fa-solid fa-cloud-bolt mr-1"></i>
+                    {stormActive ? 'Storm ON' : 'Storm'}
+                </button>
+                <button
+                    onClick={async () => {
+                        if (strobeActive) {
+                            await updateRoom({ lightMode: 'off' });
+                            return;
+                        }
+                        await startBeatDrop?.();
+                    }}
+                    className={`${styles.btnStd} ${strobeActive ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-xs min-w-[110px]`}
+                    title="Toggle beat drop lights"
+                >
+                    <i className="fa-solid fa-bolt mr-1"></i>
+                    {strobeActive ? 'Beat ON' : 'Beat Drop'}
+                </button>
+                <button
+                    onClick={() => startReadyCheck?.()}
+                    className={`${styles.btnStd} ${styles.btnSecondary} px-3 py-1.5 text-xs min-w-[120px]`}
+                    title="Run a short room reset countdown"
+                >
+                    <i className="fa-solid fa-hourglass-half mr-1"></i>
+                    Ready Check
+                </button>
+                <button
+                    onClick={async () => {
+                        const next = !autoBgMusic;
+                        setAutoBgMusic(next);
+                        await updateRoom({ autoBgMusic: next });
+                        if (next && !playingBg) setBgMusicState(true);
+                    }}
+                    className={`${styles.btnStd} ${autoBgMusic ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-xs min-w-[130px]`}
+                    title="Automatically fill dead air with background music"
+                >
+                    <i className="fa-solid fa-wave-square mr-1"></i>
+                    {autoBgMusic ? 'BG Auto ON' : 'BG Auto'}
+                </button>
+                <button
+                    onClick={async () => {
+                        const next = !autoPlayMedia;
+                        setAutoPlayMedia(next);
+                        await updateRoom({ autoPlayMedia: next });
+                    }}
+                    className={`${styles.btnStd} ${autoPlayMedia ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-xs min-w-[140px]`}
+                    title="Automatically start stage media when songs begin"
+                >
+                    <i className="fa-solid fa-forward-step mr-1"></i>
+                    {autoPlayMedia ? 'Auto-Play ON' : 'Auto-Play'}
+                </button>
+                <button
+                    onClick={() => onOpenModerationInbox?.()}
+                    className={`${styles.btnStd} ${moderationPendingCount > 0 ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-xs min-w-[140px]`}
+                    title="Open global moderation inbox"
+                >
+                    <i className="fa-solid fa-inbox mr-1"></i>
+                    Moderation ({moderationPendingCount})
+                </button>
             </div>
         </div>
         <div className="w-full">

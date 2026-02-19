@@ -36,6 +36,9 @@ const APPLE_MUSIC_PRIVATE_KEY = defineSecret("APPLE_MUSIC_PRIVATE_KEY");
 const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
 const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 const GOOGLE_MAPS_API_KEY = defineSecret("GOOGLE_MAPS_API_KEY");
+const GEMINI_LYRICS_MODEL = "gemini-2.5-flash-preview-09-2025";
+const GEMINI_LYRICS_INPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_INPUT_USD_PER_1M || "0.3");
+const GEMINI_LYRICS_OUTPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_OUTPUT_USD_PER_1M || "2.5");
 
 const rateState = new Map();
 const GLOBAL_LIMITS = { perMinute: 120, perHour: 1000 };
@@ -1840,6 +1843,18 @@ const buildGeminiPrompt = (type, context) => {
     const total = clampNumber(count || 12, 5, 30, 12);
     return `Generate ${total} short, recognizable lyric lines for a karaoke drawing game. Keep each line under 8 words. Theme: "${topic || 'karaoke hits'}". Format strictly as JSON array of strings. Do not include markdown.`;
   }
+  if (type === "doodle_prompts") {
+    const topic = Array.isArray(context)
+      ? String(context[0] || "").trim()
+      : String(context?.topic || "").trim();
+    const total = clampNumber(
+      Array.isArray(context) ? 12 : (context?.count || 12),
+      5,
+      30,
+      12
+    );
+    return `Generate ${total} short, visual drawing prompts for a party doodle game. Theme: "${topic || 'fun drawings'}". Format strictly as JSON array of strings. Do not include markdown.`;
+  }
   const songs = Array.isArray(context)
     ? context.slice(0, 5).map((s) => `${s.songTitle} by ${s.artist}`).join(", ")
     : "";
@@ -1847,6 +1862,61 @@ const buildGeminiPrompt = (type, context) => {
     return `Generate 3 trivia questions based on: ${songs}. Format strictly as JSON array of objects: [{q, correct, w1, w2, w3}]`;
   }
   return `Generate 3 "Would You Rather" questions based on: ${songs}. Format strictly as JSON array: [{q, a, b}]`;
+};
+
+const fetchAiLyricsFallbackText = async (title, artist) => {
+  const safeTitle = normalizeLyricsText(title);
+  if (!safeTitle) return null;
+  const safeArtist = normalizeLyricsText(artist || "Unknown") || "Unknown";
+  const apiKey = GEMINI_API_KEY.value();
+  if (!apiKey) {
+    console.warn("autoAppleLyrics AI fallback skipped: GEMINI_API_KEY not configured.");
+    return null;
+  }
+  const prompt = buildGeminiPrompt("lyrics", { title: safeTitle, artist: safeArtist });
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_LYRICS_MODEL}:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" },
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.warn("autoAppleLyrics AI fallback request failed", res.status, text?.slice(0, 300));
+      return null;
+    }
+    const data = await res.json();
+    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const cleanText = rawText.replace(/```json|```/g, "").trim();
+    if (!cleanText) return null;
+    const parsed = JSON.parse(cleanText);
+    const lyrics = normalizeLyricsText(parsed?.lyrics || "");
+    if (!lyrics) return null;
+    const usage = data?.usageMetadata || {};
+    const promptTokens = Math.max(0, Number(usage?.promptTokenCount || 0));
+    const outputTokens = Math.max(0, Number(usage?.candidatesTokenCount || 0));
+    const totalTokens = Math.max(0, Number(usage?.totalTokenCount || (promptTokens + outputTokens)));
+    const estimatedCostUsd = ((promptTokens / 1000000) * GEMINI_LYRICS_INPUT_USD_PER_1M)
+      + ((outputTokens / 1000000) * GEMINI_LYRICS_OUTPUT_USD_PER_1M);
+    return {
+      lyrics,
+      usage: {
+        model: GEMINI_LYRICS_MODEL,
+        promptTokens,
+        outputTokens,
+        totalTokens,
+        estimatedCostUsd: Number(estimatedCostUsd.toFixed(6)),
+        inputUsdPer1M: GEMINI_LYRICS_INPUT_USD_PER_1M,
+        outputUsdPer1M: GEMINI_LYRICS_OUTPUT_USD_PER_1M,
+      },
+    };
+  } catch (err) {
+    console.warn("autoAppleLyrics AI fallback failed", err?.message || err);
+    return null;
+  }
 };
 
 exports.itunesSearch = onCall({ cors: true }, async (request) => {
@@ -2540,7 +2610,7 @@ exports.appleMusicLyrics = onCall(
 exports.autoAppleLyrics = onDocumentCreated(
   {
     document: `artifacts/${APP_ID}/public/data/karaoke_songs/{songId}`,
-    secrets: [APPLE_MUSIC_TEAM_ID, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_PRIVATE_KEY],
+    secrets: [APPLE_MUSIC_TEAM_ID, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_PRIVATE_KEY, GEMINI_API_KEY],
   },
   async (event) => {
     const data = event.data?.data();
@@ -2560,7 +2630,90 @@ exports.autoAppleLyrics = onDocumentCreated(
     const cleanedArtist = rawArtist.replace(/\bkaraoke\b/gi, "").replace(/\s+/g, " ").trim();
     const term = `${cleanedTitle} ${cleanedArtist}`.trim();
     if (!cleanedTitle) return;
+    const resolvedArtist = cleanedArtist || "Unknown";
+    const canonicalSongId = (data.songId || buildSongKey(cleanedTitle, resolvedArtist)).trim();
+    const roomCode = normalizeRoomCode(data.roomCode || "");
+    let aiMeterContext = null;
+    if (roomCode) {
+      try {
+        const roomSnap = await getRootRef().collection("rooms").doc(roomCode).get();
+        const roomData = roomSnap.data() || {};
+        const orgId = String(roomData.orgId || "").trim();
+        if (orgId) {
+          const entitlements = await readOrganizationEntitlements(orgId);
+          aiMeterContext = { orgId, entitlements };
+        }
+      } catch (err) {
+        console.warn("autoAppleLyrics org usage lookup failed", err?.message || err);
+      }
+    }
 
+    const applyLyricsUpdate = async ({
+      lyricsText = "",
+      timedLyrics = null,
+      lyricsSource = "",
+      appleMusicId = "",
+      aiUsage = null,
+      verifiedBy = "auto_queue",
+    }) => {
+      const normalizedLyrics = normalizeLyricsText(lyricsText || "");
+      const normalizedTimed = normalizeTimedLyrics(timedLyrics || []);
+      const nextPayload = {
+        lyrics: normalizedLyrics,
+        lyricsTimed: normalizedTimed.length ? normalizedTimed : null,
+        lyricsSource: lyricsSource || (normalizedTimed.length || normalizedLyrics ? "queue" : ""),
+      };
+      if (appleMusicId) {
+        nextPayload.appleMusicId = String(appleMusicId);
+      }
+      if (aiUsage && typeof aiUsage === "object") {
+        nextPayload.aiLyricsUsage = {
+          model: String(aiUsage.model || GEMINI_LYRICS_MODEL),
+          promptTokens: Math.max(0, Number(aiUsage.promptTokens || 0)),
+          outputTokens: Math.max(0, Number(aiUsage.outputTokens || 0)),
+          totalTokens: Math.max(0, Number(aiUsage.totalTokens || 0)),
+          estimatedCostUsd: Math.max(0, Number(aiUsage.estimatedCostUsd || 0)),
+          inputUsdPer1M: Math.max(0, Number(aiUsage.inputUsdPer1M || GEMINI_LYRICS_INPUT_USD_PER_1M)),
+          outputUsdPer1M: Math.max(0, Number(aiUsage.outputUsdPer1M || GEMINI_LYRICS_OUTPUT_USD_PER_1M)),
+          generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+      }
+      await event.data.ref.set(nextPayload, { merge: true });
+      await cacheSongLyricsFromQueueDoc({
+        ...data,
+        songTitle: data.songTitle || cleanedTitle,
+        artist: data.artist || resolvedArtist,
+        lyrics: nextPayload.lyrics || "",
+        lyricsTimed: nextPayload.lyricsTimed || null,
+        appleMusicId: nextPayload.appleMusicId || data.appleMusicId || "",
+        lyricsSource: nextPayload.lyricsSource || "",
+      }, verifiedBy);
+    };
+
+    try {
+      if (canonicalSongId) {
+        const cachedLyricsSnap = await admin.firestore().collection("song_lyrics").doc(canonicalSongId).get();
+        if (cachedLyricsSnap.exists) {
+          const cachedLyrics = cachedLyricsSnap.data() || {};
+          const cachedTimed = normalizeTimedLyrics(cachedLyrics.lyricsTimed || []);
+          const cachedText = normalizeLyricsText(cachedLyrics.lyrics || "");
+          if (cachedTimed.length || cachedText) {
+            await applyLyricsUpdate({
+              lyricsText: cachedText,
+              timedLyrics: cachedTimed,
+              lyricsSource: cachedLyrics.lyricsSource || "catalog",
+              appleMusicId: cachedLyrics.appleMusicId || data.appleMusicId || "",
+              verifiedBy: "auto_catalog",
+            });
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("autoAppleLyrics catalog lookup failed", err?.message || err);
+    }
+
+    let matchedAppleMusicId = "";
     try {
       const storefront = data.storefront || "us";
       const token = getAppleMusicToken();
@@ -2581,46 +2734,81 @@ exports.autoAppleLyrics = onDocumentCreated(
       if (!song && cleanedTitle) {
         song = await searchApple(cleanedTitle);
       }
-      if (!song?.id) return;
-      const songId = song.id;
-      const lyricsUrl = `https://api.music.apple.com/v1/catalog/${storefront}/songs/${songId}/lyrics`;
-      const lyricsRes = await fetch(lyricsUrl, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!lyricsRes.ok) {
-        const text = await lyricsRes.text();
-        if (lyricsRes.status === 400 && text.includes("\"code\":\"40012\"")) {
-          // Server-side trigger does not have a Music User Token, so silently skip.
-          return;
+      if (song?.id) {
+        matchedAppleMusicId = String(song.id);
+        const lyricsUrl = `https://api.music.apple.com/v1/catalog/${storefront}/songs/${matchedAppleMusicId}/lyrics`;
+        const lyricsRes = await fetch(lyricsUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!lyricsRes.ok) {
+          const text = await lyricsRes.text();
+          if (!(lyricsRes.status === 400 && text.includes("\"code\":\"40012\""))) {
+            console.warn(`Apple lyrics failed (${lyricsRes.status})`, text?.slice(0, 300));
+          }
+        } else {
+          const lyricsData = await lyricsRes.json();
+          const attrs = lyricsData?.data?.[0]?.attributes || {};
+          const ttml = attrs.ttml || "";
+          const plainLyrics = attrs.lyrics || "";
+          const timedLyrics = parseTtml(ttml);
+          if (timedLyrics.length || plainLyrics) {
+            await applyLyricsUpdate({
+              lyricsText: plainLyrics,
+              timedLyrics,
+              lyricsSource: "apple",
+              appleMusicId: matchedAppleMusicId,
+              verifiedBy: "auto_apple",
+            });
+            return;
+          }
         }
-        console.warn(`Apple lyrics failed (${lyricsRes.status})`, text?.slice(0, 300));
-        return;
+        if (!data.appleMusicId) {
+          await event.data.ref.set({ appleMusicId: matchedAppleMusicId }, { merge: true });
+        }
       }
-      const lyricsData = await lyricsRes.json();
-      const attrs = lyricsData?.data?.[0]?.attributes || {};
-      const ttml = attrs.ttml || "";
-      const plainLyrics = attrs.lyrics || "";
-      const timedLyrics = parseTtml(ttml);
-      await event.data.ref.set(
-        {
-          lyrics: plainLyrics || "",
-          lyricsTimed: timedLyrics || null,
-          appleMusicId: songId,
-          lyricsSource: timedLyrics?.length ? "apple" : plainLyrics ? "apple" : "",
-        },
-        { merge: true }
-      );
-      await cacheSongLyricsFromQueueDoc({
-        ...data,
-        songTitle: data.songTitle || cleanedTitle,
-        artist: data.artist || cleanedArtist || "Unknown",
-        lyrics: plainLyrics || "",
-        lyricsTimed: timedLyrics || null,
-        appleMusicId: songId,
-        lyricsSource: timedLyrics?.length ? "apple" : plainLyrics ? "apple" : "",
-      }, "auto_apple");
     } catch (err) {
       console.error("autoAppleLyrics failed", err?.message || err);
+    }
+
+    if (!aiMeterContext?.orgId) {
+      console.warn(`autoAppleLyrics AI fallback skipped: no org usage context for room ${roomCode || "unknown"}`);
+      return;
+    }
+    const canUseAi = !!aiMeterContext.entitlements?.capabilities?.["ai.generate_content"];
+    if (!canUseAi) {
+      console.warn(`autoAppleLyrics AI fallback skipped: capability disabled for org ${aiMeterContext.orgId}`);
+      return;
+    }
+    try {
+      await reserveOrganizationUsageUnits({
+        orgId: aiMeterContext.orgId,
+        entitlements: aiMeterContext.entitlements,
+        meterId: "ai_generate_content",
+        units: 1,
+      });
+    } catch (err) {
+      const code = String(err?.code || "").toLowerCase();
+      if (code.includes("resource-exhausted")) {
+        console.warn(`autoAppleLyrics AI fallback skipped: ai_generate_content limit reached for org ${aiMeterContext.orgId}`);
+        return;
+      }
+      console.warn("autoAppleLyrics AI meter reserve failed", err?.message || err);
+      return;
+    }
+
+    const aiLyricsResult = await fetchAiLyricsFallbackText(cleanedTitle, resolvedArtist);
+    if (!aiLyricsResult?.lyrics) return;
+    try {
+      await applyLyricsUpdate({
+        lyricsText: aiLyricsResult.lyrics,
+        timedLyrics: null,
+        lyricsSource: "ai",
+        appleMusicId: matchedAppleMusicId || data.appleMusicId || "",
+        aiUsage: aiLyricsResult.usage || null,
+        verifiedBy: "auto_ai",
+      });
+    } catch (err) {
+      console.error("autoAppleLyrics AI merge failed", err?.message || err);
     }
   }
 );

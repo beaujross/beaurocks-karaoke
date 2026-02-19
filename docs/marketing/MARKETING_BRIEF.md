@@ -26,6 +26,23 @@
 - Host presets for different night formats.
 - VIP continuity across rooms.
 - Dedicated fundraiser workflows.
+- AI assist that supports karaoke flow without replacing the karaoke core.
+
+## AI Feature Story (Succinct)
+- **Lyrics Recovery**: If a queued song has no usable lyrics, the system attempts cached lyrics, then Apple lyrics, then AI fallback.
+- **Pop Trivia Companion**: During songs, AI can generate short trivia moments to engage non-singers.
+- **Game Content Copilot**: Hosts can generate selfie prompts, bingo boards, and trivia/WYR banks quickly.
+
+## AI Use Cases To Communicate
+- Keep momentum in live rooms when songs have metadata gaps.
+- Give non-singers lightweight participation between performances.
+- Reduce host prep time for recurring nights and private events.
+- Preserve karaoke-first pacing while still adding novelty.
+
+## AI Guardrails To Communicate
+- Usage is quota-based and meter-tracked per workspace.
+- Generated lyrics and timed lyrics are cached so successful outputs are reused.
+- AI tools are host-gated by subscription capability.
 
 ## Fundraiser Story
 - Showcase mode-driven donation mechanics:

@@ -8,6 +8,7 @@ const NAV_SECTIONS = [
     { id: 'experience', label: 'Why It Works' },
     { id: 'surfaces', label: 'How It Works' },
     { id: 'games', label: 'Games' },
+    { id: 'ai', label: 'AI Assist' },
     { id: 'pricing', label: 'Pricing' },
     { id: 'signup', label: 'Join' }
 ];
@@ -108,6 +109,30 @@ const ACCESS_TIERS = [
         title: 'Recurring Operators',
         detail: 'Weekly hosts building loyal crowds.'
     }
+];
+
+const AI_FEATURES = [
+    {
+        title: 'Lyrics Recovery',
+        summary: 'When lyrics are missing, BeauRocks fills the gap so the queue keeps moving.',
+        useCase: 'Keeps the night in singing flow, even on deep-cut songs.'
+    },
+    {
+        title: 'Pop Trivia Companion',
+        summary: 'AI generates lightweight song trivia while performances are active.',
+        useCase: 'Keeps non-singers engaged between choruses without hijacking karaoke.'
+    },
+    {
+        title: 'Game Content Copilot',
+        summary: 'Generate bingo boards, selfie prompts, and fresh trivia/WYR banks in seconds.',
+        useCase: 'Lets hosts refresh content fast for recurring nights and private events.'
+    }
+];
+
+const AI_GUARDRAILS = [
+    'Usage-metered by workspace with included quota and overage visibility',
+    'Cached lyrics are reused before new generation is attempted',
+    'Host controls keep karaoke as the primary loop'
 ];
 
 const FAQ_ITEMS = [
@@ -430,6 +455,33 @@ const MarketingSite = () => {
                             <button type="button" className="mk2-btn mk2-btn-primary mk2-btn-block" onClick={() => jumpTo('signup')}>
                                 Start Hosting
                             </button>
+                        </aside>
+                    </div>
+                </section>
+
+                <section className="mk2-section mk2-section-dark" id="ai">
+                    <div className="mk2-shell">
+                        <div className="mk2-kicker">AI Assist</div>
+                        <h2>AI That Protects Karaoke Flow</h2>
+                        <p className="mk2-lead">
+                            Built to support the night, not distract from it.
+                        </p>
+                        <div className="mk2-ai-grid">
+                            {AI_FEATURES.map((item) => (
+                                <article key={item.title} className="mk2-ai-card">
+                                    <h3>{item.title}</h3>
+                                    <p>{item.summary}</p>
+                                    <div className="mk2-ai-usecase">Use case: {item.useCase}</div>
+                                </article>
+                            ))}
+                        </div>
+                        <aside className="mk2-ai-guardrail">
+                            <div className="mk2-ai-guardrail-title">How usage stays controlled</div>
+                            <ul>
+                                {AI_GUARDRAILS.map((item) => (
+                                    <li key={item}>{item}</li>
+                                ))}
+                            </ul>
                         </aside>
                     </div>
                 </section>

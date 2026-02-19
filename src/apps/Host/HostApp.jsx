@@ -2938,25 +2938,28 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         if (quickAddOnResultClick) {
             if (quickAddLoadingKey) return;
             setQuickAddLoadingKey(rowKey);
-            const queued = await addSongFromResult(r);
-            setQuickAddLoadingKey('');
-            if (queued?.id) {
-                setQuickAddNotice({
-                    id: queued.id,
-                    songTitle: queued.songTitle,
-                    artist: queued.artist,
-                    singerName: queued.singerName,
-                    mediaUrl: queued.mediaUrl || '',
-                    albumArtUrl: queued.albumArtUrl || '',
-                    lyrics: queued.lyrics || '',
-                    lyricsTimed: queued.lyricsTimed || null,
-                    appleMusicId: queued.appleMusicId || '',
-                    duration: queued.duration || 180,
-                    statusText: queued.statusText || 'Queued'
-                });
-            }
             setResults([]);
             setSearchQ('');
+            try {
+                const queued = await addSongFromResult(r);
+                if (queued?.id) {
+                    setQuickAddNotice({
+                        id: queued.id,
+                        songTitle: queued.songTitle,
+                        artist: queued.artist,
+                        singerName: queued.singerName,
+                        mediaUrl: queued.mediaUrl || '',
+                        albumArtUrl: queued.albumArtUrl || '',
+                        lyrics: queued.lyrics || '',
+                        lyricsTimed: queued.lyricsTimed || null,
+                        appleMusicId: queued.appleMusicId || '',
+                        duration: queued.duration || 180,
+                        statusText: queued.statusText || 'Queued'
+                    });
+                }
+            } finally {
+                setQuickAddLoadingKey('');
+            }
             return;
         }
         const audioOnly = r.mediaType === 'audio' || isAudioUrl(r.url);
@@ -11144,11 +11147,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     skipBg={skipBg}
                     autoBgMusic={autoBgMusic}
                     setAutoBgMusic={setAutoBgMusic}
+                    autoPlayMedia={autoPlayMedia}
+                    setAutoPlayMedia={setAutoPlayMedia}
                     setBgMusicState={setBgMusicState}
                     toggleBgMute={toggleBgMute}
                     currentTrackName={BG_TRACKS[currentTrackIdx]?.name || 'BG Track'}
                     mixFader={mixFader}
                     handleMixFaderChange={handleMixFaderChange}
+                    startReadyCheck={startReadyCheck}
+                    startBeatDrop={startBeatDrop}
+                    startStormSequence={startStormSequence}
+                    stopStormSequence={stopStormSequence}
                     moderationPendingCount={moderationQueueState.totalPending}
                     moderationSeverity={moderationInbox.meta?.severity || 'idle'}
                     moderationNeedsAttention={!!moderationInbox.meta?.needsAttention}
@@ -11220,16 +11229,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 onSetBracketWinnerFromCrowdVotes={setBracketWinnerFromCrowdVotes}
                                 onToggleBracketCrowdVoting={toggleBracketCrowdVoting}
                                 onForfeitBracketContestant={forfeitBracketContestant}
-                            />
-                        </div>
-                        <div className="shrink-0">
-                            <IncomingModerationQueuePanel
-                                queueItems={moderationInbox.queueItems}
-                                counts={moderationInbox.counts}
-                                actions={moderationInbox.actions}
-                                busyAction={moderationInbox.meta?.busyAction}
-                                loading={moderationInbox.meta?.loading}
-                                embedded
                             />
                         </div>
                     </div>
@@ -12345,7 +12344,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         Audience + submission policy
                                     </div>
                                     <div className="text-sm text-zinc-400 mt-1">
-                                        Keep visibility and chat scope here. Handle game moderation in the Games queue.
+                                        Keep visibility and chat scope here. Review incoming items from the global moderation inbox in the top bar.
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

@@ -2653,8 +2653,20 @@ const GameConfigModal = ({
                                         setDoodleAiLoading(true);
                                         try {
                                             const res = await generateAIContent('doodle_prompts', [doodleAiTopic || 'fun drawings']);
+                                            let newPrompts = [];
                                             if (Array.isArray(res) && res.length) {
-                                                const newPrompts = res[0].split('\n').filter(p => p.trim());
+                                                if (res.every((item) => typeof item === 'string')) {
+                                                    newPrompts = res;
+                                                } else if (res.every((item) => typeof item?.prompt === 'string')) {
+                                                    newPrompts = res.map((item) => item.prompt);
+                                                }
+                                            } else if (typeof res?.text === 'string') {
+                                                newPrompts = res.text.split('\n');
+                                            }
+                                            newPrompts = newPrompts
+                                                .map((prompt) => String(prompt || '').trim())
+                                                .filter(Boolean);
+                                            if (newPrompts.length) {
                                                 setDoodlePromptsText(prev => {
                                                     const existing = prev.trim() ? prev.trim().split('\n') : [];
                                                     return [...existing, ...newPrompts].join('\n');
