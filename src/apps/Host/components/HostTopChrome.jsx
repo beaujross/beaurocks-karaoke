@@ -376,8 +376,15 @@ const HostTopChrome = ({
                     severity={moderationSeverity}
                     needsAttention={moderationNeedsAttention}
                     onClick={onOpenModerationInbox}
+                    className="md:hidden"
                 />
                 <div className="hidden md:flex items-center gap-2">
+                    <ModerationInboxChip
+                        pendingCount={moderationPendingCount}
+                        severity={moderationSeverity}
+                        needsAttention={moderationNeedsAttention}
+                        onClick={onOpenModerationInbox}
+                    />
                     {[
                         { key: 'stage', label: 'Queue' },
                         { key: 'games', label: 'Games' },

@@ -2471,102 +2471,6 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, appBase }) => 
     );
 };
 
-// --- GALLERY TAB ---
-const GalleryTab = ({ roomCode, room, updateRoom }) => {
-    const [photos, setPhotos] = useState([]);
-    const [selectedPhoto, setSelectedPhoto] = useState(null);
-    const toast = useToast() || console.log;
-    useEffect(() => {
-        const q = query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', roomCode), where('type', '==', 'photo'));
-        const unsub = onSnapshot(q, s => setPhotos(s.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => b.timestamp - a.timestamp)));
-        return () => unsub();
-    }, [roomCode]);
-
-    const pushToTV = async (photo) => {
-        await updateRoom({ photoOverlay: { url: photo.url, userName: photo.userName, timestamp: serverTimestamp() } });
-        setSelectedPhoto(photo.id);
-        setTimeout(() => setSelectedPhoto(null), 5000);
-    };
-    
-    const pushToQueue = async (photo) => {
-        await updateRoom({ photoOverlay: { url: photo.url, userName: photo.userName, timestamp: serverTimestamp() }, featuredPhotoId: photo.id });
-    };
-    
-    const deletePhoto = async (id) => {
-        if (!roomCode || !id) return;
-        try {
-            await callFunction('deleteRoomReaction', { roomCode, reactionId: id });
-        } catch (e) {
-            hostLogger.error('Delete photo failed', e);
-            toast('Delete failed');
-        }
-    };
-
-    const featured = room?.featuredPhotoId ? photos.find(p => p.id === room.featuredPhotoId) : null;
-
-    return (
-        <div className="h-full flex flex-col p-4 overflow-hidden gap-4">
-            {featured && (
-                <div className={`${STYLES.panel} p-4 border-2 border-yellow-500 bg-yellow-900/20`}>
-                    <div className="text-xs text-yellow-400 font-bold mb-2 flex items-center gap-2">
-                        <i className="fa-solid fa-star"></i> Currently displayed
-                    </div>
-                    <div className="flex gap-4 items-end">
-                        <img src={featured.url} className="h-32 w-auto rounded-lg object-cover border-2 border-yellow-500/30" />
-                        <div className="flex-1">
-                            <div className="text-sm font-bold text-yellow-300 mb-2">{featured.userName}</div>
-                            <button onClick={() => updateRoom({featuredPhotoId: null})} className={`${STYLES.btnStd} ${STYLES.btnDanger} w-full`}>
-                                <i className="fa-solid fa-trash mr-2"></i> Remove from display
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            <div className="flex-1 flex flex-col overflow-hidden">
-                <div className={STYLES.header}>INCOMING PHOTOS ({photos.length})</div>
-                <div className="grid grid-cols-5 gap-3 overflow-y-auto custom-scrollbar flex-1">
-                    {photos.map(p => (
-                        <div key={p.id} className={`relative group bg-zinc-800 rounded-xl overflow-hidden shadow-lg transition-all ${selectedPhoto === p.id ? 'ring-2 ring-cyan-400' : ''}`}>
-                            <img src={p.url} className="w-full h-32 object-cover" />
-                            <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity p-2">
-                                <button 
-                                    onClick={() => pushToTV(p)} 
-                                    title="Show on TV for 5 seconds"
-                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm w-full`}
-                                >
-                                    <i className="fa-solid fa-tv mr-1"></i> TV PREVIEW
-                                </button>
-                                <button 
-                                    onClick={() => pushToQueue(p)} 
-                                    title="Keep displayed on TV"
-                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm w-full`}
-                                >
-                                    <i className="fa-solid fa-thumbtack mr-1"></i> PIN
-                                </button>
-                                <button 
-                                    onClick={() => deletePhoto(p.id)} 
-                                    className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-sm w-full`}
-                                >
-                                    <i className="fa-solid fa-trash mr-1"></i> DEL
-                                </button>
-                            </div>
-                            <div className="absolute bottom-1 left-1 bg-black/80 px-2 py-1 rounded text-sm font-bold text-white truncate max-w-[90%]">
-                                {p.userName}
-                            </div>
-                        </div>
-                    ))}
-                    {photos.length === 0 && (
-                        <div className="col-span-5 flex flex-col items-center justify-center text-zinc-500 py-12">
-                            <i className="fa-solid fa-camera text-4xl mb-2 opacity-50"></i>
-                            <div className="text-sm">Turn on Selfie Cam to receive photos</div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
 const AudienceMiniPreview = ({
     room,
     roomCode,
@@ -5331,7 +5235,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
         } else if (t === 'photos') {
             setTab('lobby');
-            setLobbyTab('photos');
+            setLobbyTab('users');
+            openModerationInbox();
         } else if (t === 'qa') {
             setTab('admin');
             setSettingsTab('qa');
@@ -11545,7 +11450,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 {tab === 'lobby' && (
                     <div className="flex flex-col h-full gap-4">
                         <div className="flex flex-wrap bg-zinc-900 p-1 rounded-xl w-full sm:w-fit gap-1">
-                            {['users', 'history', 'vip', 'tips', 'photos', 'activity'].map(t => (
+                            {['users', 'history', 'vip', 'tips', 'activity'].map(t => (
                                 <button
                                     key={t}
                                     onClick={() => setLobbyTab(t)}
@@ -11905,9 +11810,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 </div>
                             </div>
-                        )}
-                        {lobbyTab === 'photos' && (
-                            <GalleryTab roomCode={roomCode} room={room} updateRoom={updateRoom} />
                         )}
                         {lobbyTab === 'activity' && (
                             <div className="flex flex-col h-full">
