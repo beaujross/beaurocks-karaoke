@@ -1307,6 +1307,32 @@ const requireCapability = async (request, capability) => {
   return { uid, entitlements };
 };
 
+const resolveAiDemoBypassForRoomHost = async ({ request, uid }) => {
+  const roomCode = normalizeRoomCode(request?.data?.roomCode || "");
+  if (!roomCode) return { enabled: false, roomCode: "" };
+  try {
+    const { roomData } = await ensureRoomHostAccess({
+      roomCode,
+      callerUid: uid,
+      deniedMessage: "Only room hosts can use AI demo bypass.",
+    });
+    const missionControl = isPlainObject(roomData?.missionControl)
+      ? roomData.missionControl
+      : {};
+    const enabled = missionControl?.aiDemoBypass === true;
+    const untilMsRaw = Number(missionControl?.aiDemoBypassUntil || 0);
+    const untilMs = Number.isFinite(untilMsRaw) && untilMsRaw > 0 ? untilMsRaw : 0;
+    const notExpired = !untilMs || untilMs > Date.now();
+    return {
+      enabled: enabled && notExpired,
+      roomCode,
+      untilMs,
+    };
+  } catch (_error) {
+    return { enabled: false, roomCode };
+  }
+};
+
 const resolvePlanIdFromStripeSubscription = ({ explicitPlanId = "", subscription = null, fallbackPlanId = "" }) => {
   const candidates = [explicitPlanId, fallbackPlanId, subscription?.metadata?.planId || ""];
   for (const candidate of candidates) {
@@ -2241,14 +2267,28 @@ exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asyn
 
 exports.geminiGenerate = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "gemini");
-  const { entitlements } = await requireCapability(request, "ai.generate_content");
+  const uid = requireAuth(request);
+  const entitlements = await resolveUserEntitlements(uid);
+  let aiDemoBypass = false;
+  if (!entitlements.capabilities?.["ai.generate_content"]) {
+    const bypass = await resolveAiDemoBypassForRoomHost({ request, uid });
+    aiDemoBypass = !!bypass.enabled;
+    if (!aiDemoBypass) {
+      throw new HttpsError(
+        "permission-denied",
+        "Capability \"ai.generate_content\" requires an active subscription."
+      );
+    }
+  }
   enforceAppCheckIfEnabled(request, "gemini");
-  await reserveOrganizationUsageUnits({
-    orgId: entitlements.orgId,
-    entitlements,
-    meterId: "ai_generate_content",
-    units: 1,
-  });
+  if (!aiDemoBypass) {
+    await reserveOrganizationUsageUnits({
+      orgId: entitlements.orgId,
+      entitlements,
+      meterId: "ai_generate_content",
+      units: 1,
+    });
+  }
   const type = request.data?.type || "";
   ensureString(type, "type");
   const prompt = buildGeminiPrompt(type, request.data?.context);

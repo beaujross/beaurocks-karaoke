@@ -223,9 +223,22 @@ const DOODLE_PROMPTS_DEFAULT = [
 ];
 
 // --- AI HELPER ---
+const getRoomCodeFromLocation = () => {
+    if (typeof window === 'undefined') return '';
+    try {
+        return String(new URLSearchParams(window.location.search).get('room') || '').trim().toUpperCase();
+    } catch {
+        return '';
+    }
+};
+
 const generateAIContent = async (type, context) => {
     try {
-        const data = await callFunction('geminiGenerate', { type, context });
+        const roomCode = getRoomCodeFromLocation();
+        const payload = roomCode
+            ? { type, context, roomCode }
+            : { type, context };
+        const data = await callFunction('geminiGenerate', payload);
         return data?.result || null;
     } catch (e) {
         hostLogger.error('AI Error', e);
@@ -3194,10 +3207,11 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         }
     };
 
-    async function updateStatus(id, status) { 
+    async function updateStatus(id, status, options = {}) { 
         if(status==='performing') { 
             const current = songs.find(x => x.status === 'performing');
-            if (current && current.id !== id) {
+            const allowedCurrentId = options?.allowCurrentId || null;
+            if (current && current.id !== id && current.id !== allowedCurrentId) {
                 toast('Another singer is already on stage');
                 return;
             }
@@ -3342,6 +3356,14 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
     }
 
     const nextQueueSong = queue[0];
+    const progressStageToNext = async () => {
+        const currentlyPerforming = current ? songs.find((song) => song.id === current.id) : null;
+        if (currentlyPerforming) {
+            await updateStatus(currentlyPerforming.id, 'performed');
+        }
+        if (!nextQueueSong?.id) return;
+        await updateStatus(nextQueueSong.id, 'performing', { allowCurrentId: currentlyPerforming?.id || null });
+    };
     const commandPaletteItems = [
             {
                 id: 'start-next',
@@ -3610,51 +3632,64 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             {/* LEFT CONTROLS */}
             <div className={`w-full ${compactViewport ? 'order-2 max-h-[40vh]' : 'min-h-0'} overflow-y-auto ${compactViewport ? 'pr-2' : 'pr-1'} custom-scrollbar`}>
                 <div className={`${STYLES.panel} overflow-hidden`}>
-                    {!essentialsMode && (
-                        <section className="px-4 py-4 border-b border-white/10 bg-black/30">
-                            <div className={STYLES.header}>Panel Layout</div>
-                            <div className="space-y-2">
-                                <select
-                                    value={activeWorkspace}
-                                    onChange={(e) => applyWorkspacePreset(e.target.value)}
-                                    data-feature-id="layout-workspace-select"
-                                    className={`${STYLES.input} text-xs py-2`}
-                                >
-                                    {workspaceOptions.map((opt) => (
-                                        <option key={opt.id} value={opt.id}>
-                                            {opt.label}
-                                        </option>
-                                    ))}
-                                </select>
-                                <div className="grid grid-cols-3 gap-2">
-                                    <button
-                                        onClick={expandAllPanels}
-                                        data-feature-id="layout-expand-all"
-                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 text-[10px]`}
-                                    >
-                                        Expand All
-                                    </button>
-                                    <button
-                                        onClick={collapseAllPanels}
-                                        data-feature-id="layout-collapse-all"
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 text-[10px]`}
-                                    >
-                                        Collapse All
-                                    </button>
-                                    <button
-                                        onClick={resetPanelLayout}
-                                        data-feature-id="layout-reset"
-                                        className={`${STYLES.btnStd} ${STYLES.btnInfo} px-2 text-[10px]`}
-                                    >
-                                        Reset
-                                    </button>
+                    <section className="px-4 py-4 border-b border-white/10 bg-zinc-950/90 sticky top-0 z-20 backdrop-blur-md">
+                        <div className="rounded-xl border border-cyan-400/25 bg-gradient-to-r from-cyan-500/12 via-black/45 to-pink-500/10 p-3">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <div className="text-[10px] uppercase tracking-[0.25em] text-cyan-200">Stage Deck</div>
+                                    <div className="text-sm font-bold text-white truncate">
+                                        {current ? (current.singerName || 'Singer') : 'Stage Empty'}
+                                    </div>
+                                    <div className="text-[12px] text-zinc-300 truncate">
+                                        {current ? (current.songTitle || 'Current performance') : 'Start the next singer to begin'}
+                                    </div>
                                 </div>
-                                <div className="text-[11px] text-zinc-500">
-                                    {openPanelCount}/{Object.keys(panelLayout || {}).length} panels open
+                                <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.15em] border ${current ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100' : 'border-zinc-600 bg-zinc-900/70 text-zinc-300'}`}>
+                                    {current ? 'Live' : 'Idle'}
+                                </span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] uppercase tracking-[0.14em] text-zinc-300">
+                                <div className="rounded-lg border border-white/10 bg-black/30 px-2 py-1">
+                                    Lobby <span className="text-white font-bold ml-1 normal-case tracking-normal">{lobbyCount}</span>
+                                </div>
+                                <div className="rounded-lg border border-white/10 bg-black/30 px-2 py-1">
+                                    Queue <span className="text-white font-bold ml-1 normal-case tracking-normal">{queueCount}</span>
+                                </div>
+                                <div className="rounded-lg border border-white/10 bg-black/30 px-2 py-1">
+                                    Wait <span className="text-white font-bold ml-1 normal-case tracking-normal">{formatWaitTime(waitTimeSec)}</span>
                                 </div>
                             </div>
-                        </section>
-                    )}
+                            <div className="mt-2 text-[11px] text-zinc-300 truncate">
+                                Next: <span className="text-white font-semibold">{nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued'}</span>
+                            </div>
+                            <div className="mt-3 grid grid-cols-3 gap-2">
+                                <button
+                                    onClick={togglePlay}
+                                    disabled={!current}
+                                    className={`${STYLES.btnStd} ${currentSourcePlaying ? STYLES.btnNeutral : STYLES.btnPrimary} py-2 text-[11px] ${!current ? 'opacity-55 cursor-not-allowed' : ''}`}
+                                >
+                                    <i className={`fa-solid ${currentSourcePlaying ? 'fa-pause' : 'fa-play'} mr-1`}></i>
+                                    {currentSourcePlaying ? 'Pause' : 'Play'}
+                                </button>
+                                <button
+                                    onClick={() => current && updateStatus(current.id, 'performed')}
+                                    disabled={!current}
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} py-2 text-[11px] ${!current ? 'opacity-55 cursor-not-allowed' : ''}`}
+                                >
+                                    <i className="fa-solid fa-flag-checkered mr-1"></i>
+                                    End
+                                </button>
+                                <button
+                                    onClick={progressStageToNext}
+                                    disabled={!nextQueueSong}
+                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} py-2 text-[11px] ${!nextQueueSong ? 'opacity-55 cursor-not-allowed' : ''}`}
+                                >
+                                    <i className="fa-solid fa-forward-step mr-1"></i>
+                                    Next
+                                </button>
+                            </div>
+                        </div>
+                    </section>
 
                     <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
                         Stage Operations
@@ -3716,6 +3751,51 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                             styles={STYLES}
                         />
                     </section>
+                    {!essentialsMode && (
+                        <section className="px-4 py-4 border-b border-white/10 bg-black/20">
+                            <div className={STYLES.header}>Panel Layout</div>
+                            <div className="space-y-2">
+                                <select
+                                    value={activeWorkspace}
+                                    onChange={(e) => applyWorkspacePreset(e.target.value)}
+                                    data-feature-id="layout-workspace-select"
+                                    className={`${STYLES.input} text-xs py-2`}
+                                >
+                                    {workspaceOptions.map((opt) => (
+                                        <option key={opt.id} value={opt.id}>
+                                            {opt.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        onClick={expandAllPanels}
+                                        data-feature-id="layout-expand-all"
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 text-[10px]`}
+                                    >
+                                        Expand All
+                                    </button>
+                                    <button
+                                        onClick={collapseAllPanels}
+                                        data-feature-id="layout-collapse-all"
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 text-[10px]`}
+                                    >
+                                        Collapse All
+                                    </button>
+                                    <button
+                                        onClick={resetPanelLayout}
+                                        data-feature-id="layout-reset"
+                                        className={`${STYLES.btnStd} ${STYLES.btnInfo} px-2 text-[10px]`}
+                                    >
+                                        Reset
+                                    </button>
+                                </div>
+                                <div className="text-[11px] text-zinc-500">
+                                    {openPanelCount}/{Object.keys(panelLayout || {}).length} panels open
+                                </div>
+                            </div>
+                        </section>
+                    )}
 
                     {!essentialsMode && showLegacyLiveEffects && (
                         <section className="px-4 py-4 border-b border-white/10">
@@ -4454,6 +4534,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const canUseWorkspaceOnboarding = !!capabilities[CAPABILITY_KEYS.WORKSPACE_ONBOARDING];
     const canUseInvoiceDrafts = !!capabilities[CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS];
     const canGenerateAiContent = !!capabilities[CAPABILITY_KEYS.AI_GENERATE_CONTENT];
+    const aiDemoBypassEnabled = !!room?.missionControl?.aiDemoBypass;
+    const canUseAiTools = canGenerateAiContent || aiDemoBypassEnabled;
     const missionQueryOverride = useMemo(() => {
         if (typeof window === 'undefined') return null;
         const value = String(new URLSearchParams(window.location.search).get(MISSION_QUERY_KEY) || '').trim().toLowerCase();
@@ -5097,7 +5179,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     useEffect(() => {
         if (!roomCode) return;
         if (room?.popTriviaEnabled === false) return;
-        if (!canGenerateAiContent) return;
+        if (!canUseAiTools) return;
 
         const eligibleSongs = songs
             .filter((song) => ['requested', 'pending', 'performing'].includes(song?.status))
@@ -5157,7 +5239,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
             })();
         });
-    }, [roomCode, room?.popTriviaEnabled, songs, canGenerateAiContent]);
+    }, [roomCode, room?.popTriviaEnabled, songs, canUseAiTools]);
     useEffect(() => {
         const ctx = bgCtxRef.current;
         if (ctx && ctx.state === 'suspended' && playingBg) {
@@ -6091,7 +6173,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Open a room first.');
             return false;
         }
-        const canUseAi = !!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT];
+        const canUseAi = !!canUseAiTools;
         const legacyPreset = HOST_NIGHT_PRESETS[nightSetupPresetId] || HOST_NIGHT_PRESETS.casual;
         const legacyPresetSettings = legacyPreset.settings || {};
         const legacyGameDefaults = legacyPresetSettings.gameDefaults || {};
@@ -6242,7 +6324,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         missionAdvancedOverrides,
         room?.missionControl?.lastSuggestedAction,
         missionControlCohort,
-        capabilities,
+        canUseAiTools,
         compileMissionPayloadWithAssist,
         updateRoom,
         playingBg,
@@ -7052,7 +7134,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const presetSettings = preset.settings || {};
         const queueSettings = presetSettings.queueSettings || {};
         const gameDefaults = presetSettings.gameDefaults || {};
-        const canUseAi = !!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT];
+        const canUseAi = !!canUseAiTools;
         const autoLyricsEnabled = !!presetSettings.autoLyricsOnQueue && canUseAi;
         const payload = {
             hostNightPreset: preset.id,
@@ -7157,6 +7239,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast(commands);
         }
     };
+    const toggleAiDemoBypass = async () => {
+        if (!roomCode) {
+            toast('Open a room first.');
+            return;
+        }
+        const nextEnabled = !aiDemoBypassEnabled;
+        const currentMissionControl = isPlainObject(room?.missionControl) ? room.missionControl : {};
+        await updateRoom({
+            missionControl: {
+                ...currentMissionControl,
+                aiDemoBypass: nextEnabled,
+                aiDemoBypassUpdatedAt: nowMs()
+            }
+        });
+        toast(nextEnabled
+            ? 'AI demo bypass enabled for this room.'
+            : 'AI demo bypass disabled.');
+    };
     const saveApiKeys = async () => { 
         localStorage.setItem('bross_host_name', hostName || 'Host');
         if (roomCode) {
@@ -7178,7 +7278,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 allowSingerTrackSelect: !!allowSingerTrackSelect,
                 hostNightPreset: hostNightPreset || 'custom',
                 bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
-                autoLyricsOnQueue: !!autoLyricsOnQueue && !!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT],
+                autoLyricsOnQueue: !!autoLyricsOnQueue && !!canUseAiTools,
                 popTriviaEnabled: popTriviaEnabled !== false,
                 queueSettings: {
                     limitMode: queueLimitMode || 'none',
@@ -10918,7 +11018,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         allowSingerTrackSelect: !!allowSingerTrackSelect,
         hostNightPreset: hostNightPreset || 'custom',
         bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
-        autoLyricsOnQueue: !!autoLyricsOnQueue && !!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT],
+        autoLyricsOnQueue: !!autoLyricsOnQueue && !!canUseAiTools,
         popTriviaEnabled: popTriviaEnabled !== false,
         queueSettings: {
             limitMode: queueLimitMode || 'none',
@@ -10948,7 +11048,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             allowSingerTrackSelect: !!room.allowSingerTrackSelect,
             hostNightPreset: room.hostNightPreset || 'custom',
             bingoAudienceReopenEnabled: room.bingoAudienceReopenEnabled !== false,
-            autoLyricsOnQueue: !!room.autoLyricsOnQueue && !!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT],
+            autoLyricsOnQueue: !!room.autoLyricsOnQueue && !!canUseAiTools,
             popTriviaEnabled: room.popTriviaEnabled !== false,
             queueSettings: {
                 limitMode: room.queueSettings?.limitMode || 'none',
@@ -11324,7 +11424,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     startStormSequence={startStormSequence}
                     stopStormSequence={stopStormSequence}
                     appleMusicConnected={appleMusicAuthorized}
-                    aiToolsConnected={canGenerateAiContent}
+                    aiToolsConnected={canUseAiTools}
                     permissionLevel={hostPermissionLevel}
                     authSessionReady={hostAuthSessionReady}
                     onOpenCommandPalette={() => {
@@ -12124,16 +12224,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </button>
                                 <button
                                     onClick={() => {
-                                        if (canGenerateAiContent) {
+                                        if (canUseAiTools) {
                                             setShowAiSetupGuide(true);
                                             return;
                                         }
                                         setSettingsTab('billing');
                                         toast('Enable AI in Billing to unlock AI tools.');
                                     }}
-                                    className={`${STYLES.btnStd} ${canGenerateAiContent ? STYLES.btnInfo : STYLES.btnSecondary} justify-start`}
+                                    className={`${STYLES.btnStd} ${canUseAiTools ? STYLES.btnInfo : STYLES.btnSecondary} justify-start`}
                                 >
-                                    {canGenerateAiContent ? 'AI Setup Guide' : 'Unlock AI Tools'}
+                                    {canUseAiTools ? 'AI Setup Guide' : 'Unlock AI Tools'}
+                                </button>
+                                <button
+                                    onClick={toggleAiDemoBypass}
+                                    className={`${STYLES.btnStd} ${aiDemoBypassEnabled ? STYLES.btnHighlight : STYLES.btnNeutral} justify-start`}
+                                    title="Temporary demo-only bypass for AI lyrics in this room."
+                                >
+                                    {aiDemoBypassEnabled ? 'Disable AI Demo Bypass' : 'Enable AI Demo Bypass'}
                                 </button>
                             </div>
                         </div>
@@ -12296,16 +12403,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                   <input
                                       type="checkbox"
                                       checked={autoLyricsOnQueue}
-                                      disabled={!capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT]}
+                                      disabled={!canUseAiTools}
                                       onChange={e => setAutoLyricsOnQueue(e.target.checked)}
                                       className="accent-[#00C4D9]"
                                   />
                                   Auto-generate lyrics on queue (AI)
                               </label>
                               <div className="host-form-helper">
-                                  {capabilities?.[CAPABILITY_KEYS.AI_GENERATE_CONTENT]
+                                  {canUseAiTools
                                       ? 'When no lyrics are available, generate fallback lyrics for queued songs.'
-                                      : 'AI lyric generation requires an active Host subscription.'}
+                                      : 'AI lyric generation requires an active Host subscription (or room demo bypass).'}
                               </div>
                               <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
                                   <input
