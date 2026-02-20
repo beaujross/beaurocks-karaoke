@@ -86,6 +86,8 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
     { id: 'echo', label: 'Echo Ring', emoji: emoji(0x1F30A), hint: 'Pulse a ripple through the room.' },
     { id: 'confetti', label: 'Confetti', emoji: emoji(0x1F389), hint: 'Trigger a celebration burst.' }
 ];
+const LOBBY_PLAYGROUND_WINDOW_MS = 60 * 1000;
+const LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE = 12;
 
 const normalizeTight15Text = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -1259,10 +1261,13 @@ const SingerApp = ({ roomCode, uid }) => {
     const lastPointsSync = useRef(0);
     const lastBonusDropId = useRef(null);
     const lastLobbyPlayAtRef = useRef(0);
+    const lobbyPlayWindowRef = useRef([]);
+    const lastLobbyPlayLimitToastAtRef = useRef(0);
     const cooldownTimer = useRef(null);
     const lastGuitarWin = useRef(null);
     const chatSendTimesRef = useRef([]);
     const lastActiveAtRef = useRef(0);
+    const [lobbyPlayUsageCount, setLobbyPlayUsageCount] = useState(0);
 
     const toast = useToast();
     const billingPlatform = useMemo(() => detectBillingPlatform(), []);
@@ -1309,6 +1314,13 @@ const SingerApp = ({ roomCode, uid }) => {
     const markActive = () => {
         lastActiveAtRef.current = Date.now();
     };
+    const pruneLobbyPlayWindow = useCallback((now = Date.now()) => {
+        const cutoff = now - LOBBY_PLAYGROUND_WINDOW_MS;
+        const next = lobbyPlayWindowRef.current.filter((timestamp) => Number(timestamp || 0) > cutoff);
+        lobbyPlayWindowRef.current = next;
+        setLobbyPlayUsageCount(next.length);
+        return next.length;
+    }, []);
 
     const queuePointDelta = useCallback((delta) => {
         pendingPointDelta.current += delta;
@@ -2292,6 +2304,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         cooldownTimer.current = setTimeout(() => setCooldownFlash(false), 350);
     };
 
+    useEffect(() => {
+        if (!lobbyPlayUsageCount) return undefined;
+        const interval = setInterval(() => {
+            pruneLobbyPlayWindow(Date.now());
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [lobbyPlayUsageCount, pruneLobbyPlayWindow]);
+
+    useEffect(() => {
+        lobbyPlayWindowRef.current = [];
+        setLobbyPlayUsageCount(0);
+        lastLobbyPlayLimitToastAtRef.current = 0;
+    }, [roomCode, uid]);
+
     useEffect(() => () => {
         if (reactionFlushTimer.current) clearTimeout(reactionFlushTimer.current);
         if (strumFlushTimer.current) clearTimeout(strumFlushTimer.current);
@@ -2922,8 +2948,22 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const key = String(interactionId || '').trim().toLowerCase();
         if (!key) return;
         const now = Date.now();
+        const maxPerMinute = Math.max(1, Math.min(120, Number(room?.lobbyPlaygroundMaxPerMinute || LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE)));
+        const usageCount = pruneLobbyPlayWindow(now);
+        if (usageCount >= maxPerMinute) {
+            triggerCooldownFlash();
+            const oldest = Number(lobbyPlayWindowRef.current[0] || now);
+            const retryInSec = Math.max(1, Math.ceil((LOBBY_PLAYGROUND_WINDOW_MS - (now - oldest)) / 1000));
+            if (now - lastLobbyPlayLimitToastAtRef.current > 1800) {
+                toast(`Lobby Playground is capped at ${maxPerMinute}/min. Try again in ${retryInSec}s.`);
+                lastLobbyPlayLimitToastAtRef.current = now;
+            }
+            return;
+        }
         if (now - lastLobbyPlayAtRef.current < 220) return;
         lastLobbyPlayAtRef.current = now;
+        lobbyPlayWindowRef.current = [...lobbyPlayWindowRef.current, now];
+        setLobbyPlayUsageCount(lobbyPlayWindowRef.current.length);
         markActive();
         const localId = `${now}_${key}`;
         setLocalReactions(prev => [...prev, { id: localId, type: `spotlight_${key}`, left: Math.random() * 80 + 10 }]);
@@ -2948,6 +2988,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             trackEvent('lobby_play_interaction', { room_code: roomCode, interaction: key });
         } catch (error) {
             console.error(error);
+            const rollbackIndex = lobbyPlayWindowRef.current.indexOf(now);
+            if (rollbackIndex >= 0) {
+                lobbyPlayWindowRef.current.splice(rollbackIndex, 1);
+                setLobbyPlayUsageCount(lobbyPlayWindowRef.current.length);
+            } else {
+                pruneLobbyPlayWindow(Date.now());
+            }
             toast('Could not send interaction');
         }
     };
@@ -5854,6 +5901,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const activeMessages = chatTab === 'host' ? dmMessages : loungeMessages;
     const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
     const noSingerOnStage = !currentSinger;
+    const lobbyPlayMaxPerMinute = Math.max(1, Math.min(120, Number(room?.lobbyPlaygroundMaxPerMinute || LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE)));
+    const lobbyPlayRemaining = Math.max(0, lobbyPlayMaxPerMinute - lobbyPlayUsageCount);
+    const lobbyPlayRateLimited = lobbyPlayRemaining <= 0;
     const chatTitle = socialTab === 'host' ? 'DM Host' : 'VIP Lounge';
     const chatStatusLabel = !room?.chatEnabled
         ? 'Chat paused'
@@ -6328,21 +6378,41 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                  <div className="flex items-center justify-between gap-2">
                                      <div>
                                          <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">Lobby Playground</div>
-                                         <div className="text-xl font-bebas text-white">Free while stage is empty</div>
+                                         <div className="text-xl font-bebas text-white">Stage Empty Mini-Game</div>
                                      </div>
-                                     <span className="px-2.5 py-1 rounded-full text-xs font-black tracking-[0.14em] bg-cyan-400/20 border border-cyan-300/40 text-cyan-100">0 PTS</span>
+                                     <div className="flex items-center gap-1.5">
+                                         <span className="px-2.5 py-1 rounded-full text-xs font-black tracking-[0.14em] bg-cyan-400/20 border border-cyan-300/40 text-cyan-100">FREE</span>
+                                         <span className={`px-2.5 py-1 rounded-full text-xs font-black tracking-[0.12em] border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-zinc-900/80 border-white/15 text-zinc-100'}`}>
+                                             {lobbyPlayRemaining}/{lobbyPlayMaxPerMinute}
+                                         </span>
+                                     </div>
                                  </div>
-                                 <div className="text-xs text-zinc-200">Use these while nobody is singing. They trigger fun TV effects and do not spend points.</div>
+                                 <div className="text-xs text-zinc-200">Quick warm-up preview while the stage is empty. Test shared TV interactivity without spending points.</div>
+                                 <div>
+                                     <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-zinc-300 mb-1">
+                                         <span>Interactions this minute</span>
+                                         <span>{lobbyPlayUsageCount}/{lobbyPlayMaxPerMinute}</span>
+                                     </div>
+                                     <div className="h-1.5 rounded-full bg-black/45 border border-white/10 overflow-hidden">
+                                         <div
+                                             className={`h-full transition-all ${lobbyPlayRateLimited ? 'bg-amber-300' : 'bg-cyan-300'}`}
+                                             style={{ width: `${Math.min(100, (lobbyPlayUsageCount / Math.max(1, lobbyPlayMaxPerMinute)) * 100)}%` }}
+                                         ></div>
+                                     </div>
+                                 </div>
                                  <div className="grid grid-cols-2 gap-3">
                                      {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction) => (
                                          <button
                                              key={interaction.id}
                                              onClick={() => triggerLobbyPlayInteraction(interaction.id)}
-                                             className="relative overflow-hidden bg-black/45 border border-white/15 rounded-2xl p-3 flex flex-col items-center active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)]"
+                                             disabled={lobbyPlayRateLimited}
+                                             className={`relative overflow-hidden bg-black/45 border border-white/15 rounded-2xl p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${lobbyPlayRateLimited ? 'opacity-50 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
                                          >
                                              <span className="text-5xl mb-2">{interaction.emoji}</span>
                                              <span className="font-bold text-cyan-100 text-base">{interaction.label}</span>
-                                             <div className="mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-cyan-500/20 text-cyan-100">{interaction.hint}</div>
+                                             <div className={`mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${lobbyPlayRateLimited ? 'bg-zinc-700/70 text-zinc-300' : 'bg-cyan-500/20 text-cyan-100'}`}>
+                                                 {lobbyPlayRateLimited ? 'Cooling down...' : interaction.hint}
+                                             </div>
                                          </button>
                                      ))}
                                  </div>
