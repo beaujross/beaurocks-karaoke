@@ -2603,7 +2603,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
+const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3458,7 +3458,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             }
         ];
     const commandQueryNormalized = (commandQuery || '').trim().toLowerCase();
-    /* eslint-disable react-hooks/refs */
     const filteredCommands = !commandQueryNormalized
         ? commandPaletteItems
         : commandPaletteItems.filter((item) => {
@@ -5358,7 +5357,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
             window.history.replaceState({}, '', nextUrl);
         }
-    }, []);
+    }, [openModerationInbox]);
     useEffect(() => {
         if (typeof window === 'undefined') return;
         const url = new URL(window.location.href);
@@ -5576,7 +5575,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         }
         logActivity(roomCode, next.singerName, `took the stage!`, EMOJI.mic);
-    }, [playAppleMusicTrack, roomCode, stopAppleMusic, updateRoom]);
+    }, [playAppleMusicTrack, roomCode, stopAppleMusic, updateRoom, logActivity]);
     useEffect(() => {
         if (autoDjTimerRef.current) {
             clearTimeout(autoDjTimerRef.current);
@@ -5630,6 +5629,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         room?.lastPerformance?.timestamp,
         room?.lastPerformance?.duration,
         room?.missionControl,
+        room,
         updateRoom
     ]);
     useEffect(() => {
@@ -6594,6 +6594,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 visualizerSensitivity: 1,
                 visualizerSmoothing: 0.35,
                 visualizerSyncLightMode: false,
+                lobbyPlaygroundPaused: false,
+                lobbyPlaygroundVisualOnly: false,
+                lobbyPlaygroundStrictMode: false,
+                lobbyPlaygroundPerUserCooldownMs: 220,
+                lobbyPlaygroundMaxPerMinute: 12,
                 reduceMotionFx: false,
                 showLyricsSinger: false,
                 hideCornerOverlay: false,
@@ -6966,7 +6971,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Gift failed');
         }
     };
-    const startReadyCheck = async (options = {}) => {
+    const startReadyCheck = useCallback(async (options = {}) => {
         const requestedDuration = options?.durationSec ?? readyCheckDurationSec ?? 10;
         const requestedReward = options?.rewardPoints ?? readyCheckRewardPoints ?? 0;
         const durationSec = Math.max(3, Number(requestedDuration));
@@ -6976,7 +6981,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         readyCheckTimerRef.current = setTimeout(() => {
             updateRoom({ 'readyCheck.active': false });
         }, durationSec * 1000);
-    };
+    }, [readyCheckDurationSec, readyCheckRewardPoints, updateRoom]);
     useEffect(() => {
         if (!roomCode || !room?.autoDj) return;
         const assistLevel = String(room?.missionControl?.setupDraft?.assistLevel || '').trim().toLowerCase();
@@ -8097,13 +8102,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const saveModifiedScore = async () => { await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', modifyingScoreId), { hypeScore: parseInt(scoreForm.hype), applauseScore: parseInt(scoreForm.applause), hostBonus: parseInt(scoreForm.bonus) }); setModifyingScoreId(null); toast("Score Updated"); };
     
     // Helper to log activities
-    async function logActivity(roomCode, user, text, icon) {
+    const logActivity = useCallback(async (roomCode, user, text, icon) => {
         try {
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
                 roomCode, user, text, icon, timestamp: serverTimestamp()
             });
         } catch(e) { hostLogger.error("Log error", e); }
-    }
+    }, []);
     const selectSettingsTab = useCallback((nextTab) => {
         setSettingsTab(nextTab);
         if (nextTab === 'chat') markChatTabSeen();
@@ -10372,32 +10377,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             className="relative min-h-screen overflow-hidden flex flex-col items-center justify-center p-4 md:p-8 text-center"
             style={{
                 background:
-                    'radial-gradient(circle at 14% 12%, rgba(0,196,217,0.22), transparent 34%), radial-gradient(circle at 88% 5%, rgba(236,72,153,0.18), transparent 32%), linear-gradient(160deg, #04060e 0%, #090d19 52%, #04060c 100%)'
+                    'radial-gradient(circle at 12% 8%, rgba(0,196,217,0.35), transparent 34%), radial-gradient(circle at 86% 10%, rgba(236,72,153,0.3), transparent 32%), radial-gradient(circle at 52% 92%, rgba(251,191,36,0.14), transparent 34%), linear-gradient(160deg, #050612 0%, #0b1020 48%, #130a1c 100%)'
             }}
         >
             <div className="pointer-events-none absolute inset-0">
-                <div className="absolute -left-16 top-20 h-56 w-56 rounded-full bg-cyan-500/15 blur-3xl"></div>
-                <div className="absolute -right-10 top-10 h-64 w-64 rounded-full bg-pink-500/12 blur-3xl"></div>
-                <div className="absolute bottom-[-5rem] left-1/3 h-56 w-56 rounded-full bg-emerald-500/10 blur-3xl"></div>
+                <div className="absolute -left-16 top-20 h-56 w-56 rounded-full bg-cyan-400/30 blur-3xl"></div>
+                <div className="absolute -right-10 top-10 h-64 w-64 rounded-full bg-pink-500/28 blur-3xl"></div>
+                <div className="absolute bottom-[-5rem] left-1/3 h-56 w-56 rounded-full bg-fuchsia-400/16 blur-3xl"></div>
             </div>
             <div className="relative z-10 w-full max-w-2xl">
-                <div className="bg-zinc-950/78 p-6 md:p-8 rounded-[2rem] border border-cyan-400/20 backdrop-blur-xl w-full shadow-[0_30px_90px_rgba(0,0,0,0.5)] relative overflow-hidden">
+                <div className="bg-gradient-to-br from-[#151125]/90 via-[#10182a]/90 to-[#0b111b]/95 p-6 md:p-8 rounded-[2rem] border border-cyan-300/35 backdrop-blur-xl w-full shadow-[0_30px_90px_rgba(0,0,0,0.5),0_0_60px_rgba(236,72,153,0.18)] relative overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100">
                         <span className="h-2 w-2 rounded-full bg-cyan-300 animate-pulse"></span>
                         Host Control Surface
                     </div>
-                    <div className="rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-zinc-300">
+                    <div className="rounded-full border border-pink-300/30 bg-pink-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-pink-100">
                         {planLabel}
                     </div>
-                    <div className="rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-zinc-300">
+                    <div className="rounded-full border border-fuchsia-300/25 bg-fuchsia-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-fuchsia-100">
                         Role: {hostPermissionLevel}
                     </div>
                 </div>
-                <img src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png" className="w-56 mx-auto mb-5 drop-shadow-[0_0_30px_rgba(0,196,217,0.28)]"/> 
-                <h1 className="text-[2.1rem] md:text-5xl font-black mb-3 text-white leading-tight">Open Your Karaoke Room In Seconds</h1>
-                <div className="text-sm text-zinc-300 mb-2 max-w-xl mx-auto">This screen is for hosts and captains. Singers and audience join with a room code from their own app view.</div>
-                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500 mb-6">Launch flow only. No super-admin bypass required.</div>
+                <img src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png" className="w-56 mx-auto mb-5 drop-shadow-[0_0_36px_rgba(0,196,217,0.38)]"/> 
+                <h1 className="text-[2.1rem] md:text-5xl font-black mb-3 text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] via-[#84e7f4] to-[#EC4899] leading-tight">Open Your Karaoke Room In Seconds</h1>
+                <div className="text-sm text-cyan-100/85 mb-2 max-w-xl mx-auto">This screen is for hosts and captains. Singers and audience join with a room code from their own app view.</div>
+                <div className="text-[11px] uppercase tracking-[0.2em] text-fuchsia-100/60 mb-6">Launch flow only. No super-admin bypass required.</div>
                 <button
                     onClick={() => {
                         if (!canUseWorkspaceOnboarding) {
@@ -10407,7 +10412,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         openOnboardingWizard();
                     }}
                     disabled={!canUseWorkspaceOnboarding}
-                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} w-full py-4 text-sm uppercase tracking-[0.24em] mb-3 ${!canUseWorkspaceOnboarding ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} w-full py-4 text-sm uppercase tracking-[0.24em] mb-3 bg-gradient-to-r from-[#00C4D9] via-[#48d5eb] to-[#EC4899] text-black border-transparent shadow-[0_0_30px_rgba(0,196,217,0.28)] ${!canUseWorkspaceOnboarding ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                     Guided Setup Wizard
                 </button>
@@ -10415,7 +10420,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     data-host-quick-start
                     onClick={() => createRoom()}
                     disabled={creatingRoom}
-                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-5 ${creatingRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-5 shadow-[0_0_34px_rgba(236,72,153,0.35)] ${creatingRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                     {creatingRoom ? 'Creating Room...' : 'Quick Start New Room'}
                 </button> 
@@ -10427,7 +10432,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         )}
                     </div>
                 )}
-                <div className="text-xs text-zinc-500 uppercase tracking-[0.28em] mb-2 text-left">Open Existing Room</div>
+                <div className="text-xs text-cyan-100/70 uppercase tracking-[0.28em] mb-2 text-left">Open Existing Room</div>
                 <div className="flex flex-col sm:flex-row gap-2 justify-center"> 
                     <input
                         value={roomCodeInput}
@@ -10436,12 +10441,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             if (e.key === 'Enter') joinRoom();
                         }}
                         placeholder="ROOM CODE"
-                        className={`${STYLES.input} text-center text-xl font-mono w-full tracking-[0.3em]`}
+                        className={`${STYLES.input} text-center text-xl font-mono w-full tracking-[0.3em] bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                     /> 
                     <button
                         onClick={() => joinRoom()}
                         disabled={joiningRoom || !!roomManagerBusyCode}
-                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 py-3 text-sm uppercase tracking-[0.2em] sm:min-w-[120px] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 py-3 text-sm uppercase tracking-[0.2em] sm:min-w-[120px] border-cyan-300/35 bg-gradient-to-r from-[#0d2333] via-[#111a31] to-[#2b1330] text-cyan-100 hover:border-pink-300/55 ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                         {joiningRoom ? 'Opening...' : 'Open'}
                     </button> 
@@ -10450,44 +10455,44 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <button
                         onClick={() => openExistingRoomWorkspace(roomCodeInput, 'queue.live_run')}
                         disabled={joiningRoom || !!roomManagerBusyCode}
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                         Open Live Controls
                     </button>
                     <button
                         onClick={() => openExistingRoomWorkspace(roomCodeInput, 'ops.room_setup')}
                         disabled={joiningRoom || !!roomManagerBusyCode}
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                         Manage Settings
                     </button>
                     <button
                         onClick={() => openExistingRoomWorkspace(roomCodeInput, 'advanced.diagnostics')}
                         disabled={joiningRoom || !!roomManagerBusyCode}
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                         Cleanup + Archive Tools
                     </button>
                 </div>
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-left">
-                    <div className="rounded-xl border border-zinc-700/70 bg-zinc-900/60 px-3 py-2">
-                        <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Workspace</div>
-                        <div className="mt-1 text-xs text-zinc-300 font-mono truncate">{orgContext?.orgId || 'not-initialized'}</div>
+                    <div className="rounded-xl border border-cyan-400/28 bg-cyan-500/8 px-3 py-2">
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/65">Workspace</div>
+                        <div className="mt-1 text-xs text-cyan-100 font-mono truncate">{orgContext?.orgId || 'not-initialized'}</div>
                     </div>
-                    <div className="rounded-xl border border-zinc-700/70 bg-zinc-900/60 px-3 py-2">
-                        <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Plan</div>
-                        <div className="mt-1 text-xs text-zinc-300">{planLabel}</div>
+                    <div className="rounded-xl border border-pink-400/28 bg-pink-500/8 px-3 py-2">
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-pink-100/65">Plan</div>
+                        <div className="mt-1 text-xs text-pink-100">{planLabel}</div>
                     </div>
-                    <div className="rounded-xl border border-zinc-700/70 bg-zinc-900/60 px-3 py-2">
-                        <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Release Build</div>
-                        <div className="mt-1 text-xs text-zinc-300 font-mono break-all">{VERSION}</div>
+                    <div className="rounded-xl border border-fuchsia-400/25 bg-fuchsia-500/8 px-3 py-2">
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-fuchsia-100/65">Release Build</div>
+                        <div className="mt-1 text-xs text-fuchsia-100 font-mono break-all">{VERSION}</div>
                     </div>
                 </div>
-                <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/55 px-3 py-3 text-left">
-                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Room Manager</div>
-                    <div className="text-xs text-zinc-400 mt-1">Spin up new rooms, reopen previous rooms, or run cleanup/archive actions without hunting through admin tabs.</div>
+                <div className="mt-4 rounded-xl border border-cyan-400/25 bg-gradient-to-br from-[#120f22]/90 via-[#11152a]/90 to-[#13151f]/90 px-3 py-3 text-left">
+                    <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Room Manager</div>
+                    <div className="text-xs text-cyan-100/75 mt-1">Spin up new rooms, reopen previous rooms, or run cleanup/archive actions without hunting through admin tabs.</div>
                     {recentHostRoomsLoading ? (
-                        <div className="text-xs text-zinc-400 mt-3">Loading recent rooms...</div>
+                        <div className="text-xs text-cyan-100/70 mt-3">Loading recent rooms...</div>
                     ) : recentHostRooms.length > 0 ? (
                         <div className="mt-3 space-y-2">
                             {recentHostRooms.map((roomItem) => {
@@ -10503,7 +10508,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 ) : '';
                                 const modifiedMs = roomItem.updatedAtMs || roomItem.createdAtMs || nowMs();
                                 return (
-                                    <div key={roomItem.code} className="rounded-lg border border-zinc-800 bg-black/35 px-2.5 py-2">
+                                    <div key={roomItem.code} className="rounded-lg border border-cyan-400/22 bg-gradient-to-r from-[#0a101f]/80 via-[#0d1424]/80 to-[#1a1024]/70 px-2.5 py-2">
                                         <div className="flex flex-wrap items-center justify-between gap-2">
                                             <div>
                                                 <div className="text-sm font-semibold text-white">
@@ -10512,7 +10517,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         <span className="ml-2 text-[10px] uppercase tracking-[0.16em] rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-amber-200">Archived</span>
                                                     )}
                                                 </div>
-                                                <div className="text-[11px] text-zinc-400">
+                                                <div className="text-[11px] text-cyan-100/70">
                                                     {roomItem.orgName || 'Workspace'}
                                                     {' | '}
                                                     {roomItem.activeMode || 'karaoke'}
@@ -10558,7 +10563,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             })}
                         </div>
                     ) : (
-                        <div className="text-xs text-zinc-400 mt-3">No recent hosted rooms yet. Create one with Quick Start and it will appear here.</div>
+                        <div className="text-xs text-cyan-100/70 mt-3">No recent hosted rooms yet. Create one with Quick Start and it will appear here.</div>
                     )}
                     {roomManagerError && (
                         <div className="mt-2 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-2 py-1.5">
@@ -10576,8 +10581,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         {hostUpdateDeploymentBanner}
                     </div>
                 )}
-                <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-left text-xs text-zinc-400">
-                    <div className="font-semibold text-zinc-200 mb-1">Three Launch Paths</div>
+                <div className="mt-5 rounded-xl border border-pink-400/22 bg-gradient-to-r from-[#141028]/90 via-[#121726]/90 to-[#0f1d27]/90 px-3 py-2 text-left text-xs text-cyan-100/75">
+                    <div className="font-semibold text-white mb-1">Three Launch Paths</div>
                     <div className="mb-1"><span className="text-cyan-200"><i className="fa-solid fa-wand-magic-sparkles mr-2"></i></span>Wizard: identity, billing, branding, then launch.</div>
                     <div className="mb-1"><span className="text-pink-200"><i className="fa-solid fa-bolt mr-2"></i></span>Quick Start: create room now, fine-tune in Night Setup.</div>
                     <div><span className="text-emerald-200"><i className="fa-solid fa-layer-group mr-2"></i></span>Room Manager: reopen, cleanup, archive, and restore existing rooms.</div>
@@ -10585,29 +10590,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             </div>
             {showOnboardingWizard && (
                 <div className="fixed inset-0 z-[95] bg-black/85 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
-                    <div className="w-full max-w-5xl mx-auto bg-zinc-950/95 border border-cyan-400/20 rounded-[2rem] shadow-[0_34px_100px_rgba(0,0,0,0.62)] overflow-hidden text-left">
-                        <div className="px-5 py-4 md:px-6 border-b border-zinc-800 flex items-center justify-between gap-3">
+                    <div className="w-full max-w-5xl mx-auto bg-gradient-to-br from-[#151026]/95 via-[#0f1628]/95 to-[#0a111c]/95 border border-cyan-300/35 rounded-[2rem] shadow-[0_34px_100px_rgba(0,0,0,0.62),0_0_60px_rgba(236,72,153,0.16)] overflow-hidden text-left">
+                        <div className="px-5 py-4 md:px-6 border-b border-cyan-400/20 flex items-center justify-between gap-3">
                             <div>
-                                <div className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">Turnkey Setup</div>
-                                <div className="text-2xl font-black text-white mt-1">Workspace Onboarding</div>
-                                <div className="text-sm text-zinc-400 mt-1">Configure identity, billing, branding, then launch your first room.</div>
+                                <div className="text-[11px] uppercase tracking-[0.3em] text-fuchsia-100/70">Turnkey Setup</div>
+                                <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] mt-1">Workspace Onboarding</div>
+                                <div className="text-sm text-cyan-100/80 mt-1">Configure identity, billing, branding, then launch your first room.</div>
                             </div>
                             <button
                                 onClick={closeOnboardingWizard}
                                 disabled={onboardingBusy || creatingRoom}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                             >
                                 Close
                             </button>
                         </div>
-                        <div className="px-5 pt-4 pb-3 border-b border-zinc-800">
-                            <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                        <div className="px-5 pt-4 pb-3 border-b border-cyan-400/20">
+                            <div className="h-1.5 rounded-full bg-[#0a1222] border border-cyan-500/20 overflow-hidden">
                                 <div
                                     className="h-full bg-gradient-to-r from-cyan-400 via-cyan-300 to-pink-400 transition-all duration-300"
                                     style={{ width: `${Math.round(((onboardingStep + 1) / Math.max(1, HOST_ONBOARDING_STEPS.length)) * 100)}%` }}
                                 ></div>
                             </div>
-                            <div className="mt-2 text-[11px] uppercase tracking-[0.24em] text-zinc-500">Step {onboardingStep + 1} of {HOST_ONBOARDING_STEPS.length}</div>
+                            <div className="mt-2 text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Step {onboardingStep + 1} of {HOST_ONBOARDING_STEPS.length}</div>
                             <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
                             {HOST_ONBOARDING_STEPS.map((step, idx) => (
                                 <button
@@ -10620,13 +10625,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     }}
                                     className={`rounded-xl border px-3 py-2 text-left transition-colors ${
                                         idx === onboardingStep
-                                            ? 'border-cyan-400/60 bg-cyan-500/12 text-cyan-100'
+                                            ? 'border-pink-300/55 bg-gradient-to-r from-cyan-400/25 to-pink-400/25 text-white'
                                             : idx < onboardingStep
-                                                ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-200'
-                                                : 'border-zinc-700 bg-zinc-900/75 text-zinc-400'
+                                                ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100'
+                                                : 'border-cyan-500/25 bg-[#0b1120]/85 text-cyan-100/60'
                                     }`}
                                 >
-                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Step {idx + 1}</div>
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/55">Step {idx + 1}</div>
                                     <div className="text-sm font-bold mt-1">{step.label}</div>
                                 </button>
                             ))}
@@ -10640,39 +10645,39 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             )}
                             {onboardingStep === 0 && (
                                 <div className="space-y-4">
-                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/65 p-4">
-                                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Identity</div>
+                                    <div className="rounded-2xl border border-fuchsia-300/30 bg-gradient-to-r from-[#1a1230]/80 via-[#111a2e]/85 to-[#10212d]/80 p-4 shadow-[0_0_28px_rgba(34,211,238,0.12)]">
+                                        <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Identity</div>
                                         <div className="text-lg font-bold text-white mt-1">Define your host profile</div>
-                                        <div className="text-sm text-zinc-400 mt-1">These values become your default organization and room identity.</div>
+                                        <div className="text-sm text-cyan-100/75 mt-1">These values become your default organization and room identity.</div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <div>
-                                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-500 mb-1">Host Name</div>
+                                            <div className="text-xs uppercase tracking-[0.22em] text-cyan-100/70 mb-1">Host Name</div>
                                             <input
                                                 value={onboardingHostName}
                                                 onChange={e => setOnboardingHostName(e.target.value)}
-                                                className={STYLES.input}
+                                                className={`${STYLES.input} bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                                 placeholder="Host name"
                                             />
                                         </div>
                                         <div>
-                                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-500 mb-1">Workspace Name</div>
+                                            <div className="text-xs uppercase tracking-[0.22em] text-cyan-100/70 mb-1">Workspace Name</div>
                                             <input
                                                 value={onboardingWorkspaceName}
                                                 onChange={e => setOnboardingWorkspaceName(e.target.value)}
-                                                className={STYLES.input}
+                                                className={`${STYLES.input} bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                                 placeholder="Workspace name"
                                             />
                                         </div>
                                     </div>
-                                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 px-3 py-2 text-xs text-zinc-400">
+                                    <div className="rounded-xl border border-cyan-400/28 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100/80">
                                         This creates or updates the organization record used for capabilities, billing, and room ownership.
                                     </div>
                                     <div className="flex justify-end">
                                         <button
                                             onClick={provisionOnboardingWorkspace}
                                             disabled={onboardingBusy}
-                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} ${onboardingBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} bg-gradient-to-r from-[#00C4D9] via-[#4dd7ea] to-[#EC4899] text-black border-transparent ${onboardingBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
                                         >
                                             {onboardingBusy ? 'Initializing...' : 'Continue to Plan'}
                                         </button>
@@ -10681,10 +10686,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             )}
                             {onboardingStep === 1 && (
                                 <div className="space-y-4">
-                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/65 p-4">
-                                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Billing</div>
+                                    <div className="rounded-2xl border border-fuchsia-300/30 bg-gradient-to-r from-[#1a1230]/80 via-[#111a2e]/85 to-[#10212d]/80 p-4 shadow-[0_0_28px_rgba(34,211,238,0.12)]">
+                                        <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Billing</div>
                                         <div className="text-lg font-bold text-white mt-1">Choose your workspace plan</div>
-                                        <div className="text-sm text-zinc-400 mt-1">Pick a tier now and keep momentum; you can change it later.</div>
+                                        <div className="text-sm text-cyan-100/75 mt-1">Pick a tier now and keep momentum; you can change it later.</div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                         {HOST_ONBOARDING_PLAN_OPTIONS.map((option) => (
@@ -10693,8 +10698,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 onClick={() => setOnboardingPlanId(option.id)}
                                                 className={`text-left rounded-xl border p-3 transition-colors ${
                                                     onboardingPlanId === option.id
-                                                        ? 'border-[#00C4D9]/60 bg-[#00C4D9]/12'
-                                                        : 'border-zinc-700 bg-zinc-950/70 hover:border-zinc-500'
+                                                        ? 'border-[#EC4899]/60 bg-gradient-to-r from-[#00C4D9]/20 to-[#EC4899]/22 shadow-[0_0_24px_rgba(236,72,153,0.18)]'
+                                                        : 'border-cyan-500/20 bg-[#0b1020]/80 hover:border-pink-300/45'
                                                 }`}
                                             >
                                                 <div className="flex items-center justify-between gap-2">
@@ -10703,12 +10708,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         <span className="text-[10px] uppercase tracking-[0.2em] rounded-full border border-cyan-300/35 bg-cyan-500/20 text-cyan-100 px-2 py-0.5">Selected</span>
                                                     )}
                                                 </div>
-                                                <div className="text-zinc-300 text-sm">{option.price}</div>
-                                                <div className="text-zinc-500 text-xs mt-2">{option.note}</div>
+                                                <div className="text-cyan-100 text-sm">{option.price}</div>
+                                                <div className="text-cyan-100/65 text-xs mt-2">{option.note}</div>
                                             </button>
                                         ))}
                                     </div>
-                                    <div className="text-sm text-zinc-300">
+                                    <div className="text-sm text-cyan-100/85">
                                         Current plan: <span className="text-white font-semibold">{planLabel}</span>
                                         {' '}({orgContext?.status || 'inactive'})
                                     </div>
@@ -10724,7 +10729,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <button
                                                 onClick={() => refreshBillingEntitlements(true)}
                                                 disabled={orgContext.loading}
-                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${orgContext.loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20 ${orgContext.loading ? 'opacity-70 cursor-not-allowed' : ''}`}
                                             >
                                                 {orgContext.loading ? 'Refreshing...' : 'I already paid - Refresh'}
                                             </button>
@@ -10733,7 +10738,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="flex justify-between gap-2">
                                         <button
                                             onClick={() => setOnboardingStep(0)}
-                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                         >
                                             Back
                                         </button>
@@ -10742,7 +10747,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 setOnboardingError('');
                                                 setOnboardingStep(2);
                                             }}
-                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} bg-gradient-to-r from-[#00C4D9] via-[#4dd7ea] to-[#EC4899] text-black border-transparent`}
                                         >
                                             Continue to Branding
                                         </button>
@@ -10756,21 +10761,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             )}
                             {onboardingStep === 2 && (
                                 <div className="space-y-4">
-                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/65 p-4">
-                                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Branding</div>
+                                    <div className="rounded-2xl border border-fuchsia-300/30 bg-gradient-to-r from-[#1a1230]/80 via-[#111a2e]/85 to-[#10212d]/80 p-4 shadow-[0_0_28px_rgba(34,211,238,0.12)]">
+                                        <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Branding</div>
                                         <div className="text-lg font-bold text-white mt-1">Set your room identity</div>
-                                        <div className="text-sm text-zinc-400 mt-1">Choose a default logo now. You can always override this per room later.</div>
+                                        <div className="text-sm text-cyan-100/75 mt-1">Choose a default logo now. You can always override this per room later.</div>
                                     </div>
-                                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
-                                        <div className="text-xs uppercase tracking-[0.22em] text-zinc-500 mb-2">Default Logo</div>
+                                    <div className="rounded-xl border border-cyan-400/28 bg-gradient-to-r from-[#0d1426]/85 to-[#191127]/80 p-3">
+                                        <div className="text-xs uppercase tracking-[0.22em] text-cyan-100/70 mb-2">Default Logo</div>
                                         <div className="flex items-center gap-3 mb-3">
-                                            <img src={onboardingLogoUrl || ASSETS.logo} alt="Onboarding logo preview" className="w-20 h-20 object-contain rounded-lg border border-zinc-700 bg-zinc-950 p-2" />
-                                            <div className="text-sm text-zinc-400">This logo becomes your initial room branding and can be changed later in settings.</div>
+                                            <img src={onboardingLogoUrl || ASSETS.logo} alt="Onboarding logo preview" className="w-20 h-20 object-contain rounded-lg border border-cyan-400/30 bg-[#070b17] p-2" />
+                                            <div className="text-sm text-cyan-100/75">This logo becomes your initial room branding and can be changed later in settings.</div>
                                         </div>
                                         <input
                                             value={onboardingLogoUrl}
                                             onChange={e => setOnboardingLogoUrl(e.target.value)}
-                                            className={STYLES.input}
+                                            className={`${STYLES.input} bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                             placeholder="Custom logo URL (optional)"
                                         />
                                     </div>
@@ -10781,25 +10786,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 onClick={() => setOnboardingLogoUrl(choice.url)}
                                                 className={`rounded-xl border p-2 flex flex-col items-center gap-2 transition-colors ${
                                                     onboardingLogoUrl === choice.url
-                                                        ? 'border-[#00C4D9]/60 bg-[#00C4D9]/10'
-                                                        : 'border-zinc-700 bg-zinc-950/70 hover:border-zinc-500'
+                                                        ? 'border-[#EC4899]/60 bg-gradient-to-r from-[#00C4D9]/18 to-[#EC4899]/24'
+                                                        : 'border-cyan-500/20 bg-[#0b1020]/80 hover:border-pink-300/45'
                                                 }`}
                                             >
-                                                <img src={choice.url} alt={choice.label} className="w-16 h-16 object-contain bg-zinc-950 rounded-md p-1" />
-                                                <div className="text-[10px] text-zinc-400 text-center">{choice.label}</div>
+                                                <img src={choice.url} alt={choice.label} className="w-16 h-16 object-contain bg-[#070b17] rounded-md p-1" />
+                                                <div className="text-[10px] text-cyan-100/65 text-center">{choice.label}</div>
                                             </button>
                                         ))}
                                     </div>
                                     <div className="flex justify-between gap-2">
                                         <button
                                             onClick={() => setOnboardingStep(1)}
-                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                         >
                                             Back
                                         </button>
                                         <button
                                             onClick={() => setOnboardingStep(3)}
-                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} bg-gradient-to-r from-[#00C4D9] via-[#4dd7ea] to-[#EC4899] text-black border-transparent`}
                                         >
                                             Continue to Launch
                                         </button>
@@ -10808,33 +10813,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             )}
                             {onboardingStep === 3 && (
                                 <div className="space-y-4">
-                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/65 p-4">
-                                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Launch</div>
+                                    <div className="rounded-2xl border border-fuchsia-300/30 bg-gradient-to-r from-[#1a1230]/80 via-[#111a2e]/85 to-[#10212d]/80 p-4 shadow-[0_0_28px_rgba(34,211,238,0.12)]">
+                                        <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Launch</div>
                                         <div className="text-lg font-bold text-white mt-1">Review and create your first room</div>
-                                        <div className="text-sm text-zinc-400 mt-1">Launch creates the room and opens Night Setup for queue and mode planning.</div>
+                                        <div className="text-sm text-cyan-100/75 mt-1">Launch creates the room and opens Night Setup for queue and mode planning.</div>
                                     </div>
-                                    <div className="bg-zinc-950/70 border border-zinc-800 rounded-xl p-4 space-y-2 text-sm">
+                                    <div className="bg-gradient-to-r from-[#0d1325]/85 to-[#1a1228]/80 border border-cyan-400/22 rounded-xl p-4 space-y-2 text-sm">
                                         <div className="flex justify-between gap-2">
-                                            <span className="text-zinc-500">Host</span>
+                                            <span className="text-cyan-100/70">Host</span>
                                             <span className="text-white font-semibold">{onboardingHostName || 'Host'}</span>
                                         </div>
                                         <div className="flex justify-between gap-2">
-                                            <span className="text-zinc-500">Workspace</span>
+                                            <span className="text-cyan-100/70">Workspace</span>
                                             <span className="text-white font-semibold">{onboardingWorkspaceName || '--'}</span>
                                         </div>
                                         <div className="flex justify-between gap-2">
-                                            <span className="text-zinc-500">Plan</span>
+                                            <span className="text-cyan-100/70">Plan</span>
                                             <span className="text-white font-semibold">{onboardingPlanLabel}</span>
                                         </div>
                                         <div className="flex justify-between gap-2">
-                                            <span className="text-zinc-500">Billing Status</span>
+                                            <span className="text-cyan-100/70">Billing Status</span>
                                             <span className="text-white font-semibold">{orgContext?.status || 'inactive'}</span>
                                         </div>
                                     </div>
                                     <div className="flex justify-between gap-2">
                                         <button
                                             onClick={() => setOnboardingStep(2)}
-                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                         >
                                             Back
                                         </button>
@@ -11256,8 +11261,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         stopStormSequence,
         startBeatDrop,
         users,
-        dropBonus,
-        giftPointsToUser,
         marqueeEnabled,
         setMarqueeEnabled,
         sfxMuted,
@@ -13180,42 +13183,42 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
                         {settingsTab === 'media' && (
                             <>
-                        <div className="mt-6 bg-zinc-950/40 border border-white/10 rounded-xl p-4 space-y-2">
-                            <div className="text-xs text-zinc-400 uppercase tracking-widest">YouTube playlist index</div>
+                        <div className="mt-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-[#12152b]/90 via-[#10192c]/90 to-[#20132d]/85 p-4 space-y-2 shadow-[0_0_24px_rgba(0,196,217,0.12)]">
+                            <div className="text-xs text-cyan-100/80 uppercase tracking-widest">YouTube playlist index</div>
                             <div className="flex flex-wrap gap-2 items-center">
                                 <input
                                     value={ytPlaylistUrl}
                                     onChange={e => setYtPlaylistUrl(e.target.value)}
-                                    className={`${STYLES.input} py-1.5 text-xs`}
+                                    className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                     placeholder="Paste a YouTube playlist URL or ID..."
                                     title="Paste a playlist URL or ID to index"
                                 />
                                 <button
                                     onClick={loadYouTubePlaylist}
                                     disabled={ytPlaylistLoading}
-                                    className={`${STYLES.btnStd} ${ytPlaylistLoading ? STYLES.btnNeutral : STYLES.btnSecondary} px-4 flex-shrink-0`}
+                                    className={`${STYLES.btnStd} ${ytPlaylistLoading ? STYLES.btnNeutral : STYLES.btnSecondary} px-4 flex-shrink-0 ${ytPlaylistLoading ? '' : 'border-cyan-400/35 bg-gradient-to-r from-[#0d2333] to-[#2b1330] text-cyan-100 hover:border-pink-300/55'}`}
                                 >
                                     {ytPlaylistLoading ? EMOJI.refresh : 'INDEX'}
                                 </button>
                                 <button
                                     onClick={loadAndQueueYouTubePlaylist}
                                     disabled={ytPlaylistLoading || !roomCode}
-                                    className={`${STYLES.btnStd} ${ytPlaylistLoading || !roomCode ? STYLES.btnNeutral : STYLES.btnPrimary} px-4 flex-shrink-0`}
+                                    className={`${STYLES.btnStd} ${ytPlaylistLoading || !roomCode ? STYLES.btnNeutral : STYLES.btnPrimary} px-4 flex-shrink-0 ${ytPlaylistLoading || !roomCode ? '' : 'bg-gradient-to-r from-[#00C4D9] via-[#4dd7ea] to-[#EC4899] text-black border-transparent shadow-[0_0_24px_rgba(236,72,153,0.24)]'}`}
                                     title={!roomCode ? 'Create or open a room first' : 'Index playlist and queue every track'}
                                 >
                                     {ytPlaylistLoading ? EMOJI.refresh : 'INDEX + QUEUE ALL'}
                                 </button>
                             </div>
-                            <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
-                                <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">QA Shortcut</div>
-                                <div className="text-xs text-zinc-300 break-all mb-2">{qaYtPlaylistUrl}</div>
+                            <div className="rounded-lg border border-fuchsia-300/25 bg-gradient-to-r from-[#0d1426]/80 to-[#1b1027]/75 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-fuchsia-100/65 mb-2">QA Shortcut</div>
+                                <div className="text-xs text-cyan-100/85 break-all mb-2">{qaYtPlaylistUrl}</div>
                                 <div className="flex flex-wrap gap-2">
                                     <button
                                         onClick={() => {
                                             setYtPlaylistUrl(qaYtPlaylistUrl);
                                             toast('QA playlist URL loaded');
                                         }}
-                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs`}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs border-cyan-400/35 bg-cyan-500/12 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                     >
                                         Use QA URL
                                     </button>
@@ -13228,7 +13231,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 toast('Copy failed');
                                             }
                                         }}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs`}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                     >
                                         Copy QA URL
                                     </button>
@@ -13242,7 +13245,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             setQaYtPlaylistUrl(next);
                                             toast('Saved current URL as QA shortcut');
                                         }}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs`}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                     >
                                         Save Current as QA
                                     </button>
@@ -13252,27 +13255,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="host-form-helper">Indexes up to 1000 videos per playlist load. INDEX + QUEUE ALL enables Auto-DJ and queues every indexed track.</div>
                         </div>
 
-                        <div className="mt-6 bg-zinc-950/40 border border-white/10 rounded-xl p-4 space-y-2">
-                            <div className="text-sm text-zinc-400 uppercase tracking-widest">Apple Music playback</div>
+                        <div className="mt-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-[#12152b]/90 via-[#10192c]/90 to-[#20132d]/85 p-4 space-y-2 shadow-[0_0_24px_rgba(0,196,217,0.12)]">
+                            <div className="text-sm text-cyan-100/80 uppercase tracking-widest">Apple Music playback</div>
                             <div className="flex items-center justify-between text-sm">
-                                <div className="uppercase tracking-[0.25em] text-zinc-500">Apple Music login</div>
+                                <div className="uppercase tracking-[0.25em] text-cyan-100/65">Apple Music login</div>
                                 {appleMusicAuthorized ? (
                                     <div className="flex items-center gap-2">
                                         <span className="text-emerald-300 font-bold">Connected</span>
-                                        <button onClick={disconnectAppleMusic} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-sm`}>Disconnect</button>
+                                        <button onClick={disconnectAppleMusic} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-sm border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}>Disconnect</button>
                                     </div>
                                 ) : (
-                                    <button onClick={connectAppleMusic} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm`}>Connect</button>
+                                    <button onClick={connectAppleMusic} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm shadow-[0_0_24px_rgba(236,72,153,0.24)]`}>Connect</button>
                                 )}
                             </div>
                             {appleMusicStatus ? (
-                                <div className="text-sm text-zinc-400 mt-1">{appleMusicStatus}</div>
+                                <div className="text-sm text-cyan-100/75 mt-1">{appleMusicStatus}</div>
                             ) : null}
                             <div className="flex flex-wrap gap-2 items-center">
                                 <input
                                     value={appleMusicPlaylistUrl}
                                     onChange={e => setAppleMusicPlaylistUrl(e.target.value)}
-                                    className={`${STYLES.input} py-1.5 text-xs`}
+                                    className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                     placeholder="Paste an Apple Music playlist URL or ID..."
                                     title="Paste a playlist URL or ID to play"
                                 />
@@ -13287,13 +13290,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         await playAppleMusicPlaylist(playlistId, { title: 'Playlist' });
                                         setAppleMusicPlaylistStatus('Playing playlist.');
                                     }}
-                                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-4 flex-shrink-0`}
+                                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-4 flex-shrink-0 bg-gradient-to-r from-[#00C4D9] via-[#4dd7ea] to-[#EC4899] text-black border-transparent`}
                                 >
                                     Play
                                 </button>
                                 <button
                                     onClick={() => (appleMusicPlaying ? pauseAppleMusic() : resumeAppleMusic())}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 flex-shrink-0`}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 flex-shrink-0 border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                 >
                                     {appleMusicPlaying ? 'Pause' : 'Resume'}
                                 </button>
@@ -13304,13 +13307,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="host-form-helper">Playlist playback is host-only and drives the room vibe.</div>
                         </div>
 
-                        <div className="mt-4 bg-zinc-950/40 border border-white/10 rounded-xl p-4 space-y-2">
-                            <div className="text-sm text-zinc-400 uppercase tracking-widest">Auto-DJ playlist fallback</div>
+                        <div className="mt-4 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-[#12152b]/90 via-[#10192c]/90 to-[#20132d]/85 p-4 space-y-2 shadow-[0_0_24px_rgba(0,196,217,0.12)]">
+                            <div className="text-sm text-cyan-100/80 uppercase tracking-widest">Auto-DJ playlist fallback</div>
                             <div className="flex flex-wrap gap-2 items-center">
                                 <input
                                     value={appleMusicAutoPlaylistId}
                                     onChange={e => setAppleMusicAutoPlaylistId(e.target.value)}
-                                    className={`${STYLES.input} py-1.5 text-xs`}
+                                    className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                     placeholder="Paste an Apple Music playlist URL or ID..."
                                     title="Auto-DJ uses this playlist when the queue is empty"
                                 />
@@ -13321,7 +13324,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         const title = await fetchAppleMusicPlaylistTitle(pid);
                                         if (title) setAppleMusicAutoPlaylistTitle(title);
                                     }}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 flex-shrink-0`}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 flex-shrink-0 border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                 >
                                     Lookup
                                 </button>
@@ -13329,27 +13332,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <input
                                 value={appleMusicAutoPlaylistTitle}
                                 onChange={e => setAppleMusicAutoPlaylistTitle(e.target.value)}
-                                className={`${STYLES.input} py-1.5 text-xs`}
+                                className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                 placeholder="Playlist title (optional)"
                                 title="Shown in Apple Music playback status"
                             />
                             <div className="host-form-helper">Auto-DJ will start this playlist when no requests are queued.</div>
                         </div>
 
-                        <div className="mt-4 bg-zinc-950/40 border border-white/10 rounded-xl p-4 space-y-2">
-                            <div className="text-sm text-zinc-400 uppercase tracking-widest">Make song searchable</div>
+                        <div className="mt-4 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-[#12152b]/90 via-[#10192c]/90 to-[#20132d]/85 p-4 space-y-2 shadow-[0_0_24px_rgba(0,196,217,0.12)]">
+                            <div className="text-sm text-cyan-100/80 uppercase tracking-widest">Make song searchable</div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                 <input
                                     value={ytAddTitle}
                                     onChange={e => setYtAddTitle(e.target.value)}
-                                    className={`${STYLES.input} py-1.5 text-xs`}
+                                    className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                     placeholder="Song title"
                                     title="Title used for search and display"
                                 />
                                 <input
                                     value={ytAddArtist}
                                     onChange={e => setYtAddArtist(e.target.value)}
-                                    className={`${STYLES.input} py-1.5 text-xs`}
+                                    className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                     placeholder="Artist (optional)"
                                     title="Optional artist name"
                                 />
@@ -13358,7 +13361,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <input
                                 value={ytAddUrl}
                                 onChange={e => setYtAddUrl(e.target.value)}
-                                className={`${STYLES.input} py-1.5 text-xs`}
+                                className={`${STYLES.input} py-1.5 text-xs bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                 placeholder="YouTube URL (optional)"
                                 title="Optional YouTube URL for the backing track"
                             />
@@ -13367,7 +13370,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <button
                                     onClick={addYouTubeIndexEntry}
                                     disabled={ytAddLoading}
-                                    className={`${STYLES.btnStd} ${ytAddLoading ? STYLES.btnNeutral : STYLES.btnSecondary} px-4`}
+                                    className={`${STYLES.btnStd} ${ytAddLoading ? STYLES.btnNeutral : STYLES.btnSecondary} px-4 ${ytAddLoading ? '' : 'border-cyan-400/35 bg-gradient-to-r from-[#0d2333] to-[#2b1330] text-cyan-100 hover:border-pink-300/55'}`}
                                 >
                                     {ytAddLoading ? EMOJI.refresh : 'Add to search'}
                                 </button>
@@ -13376,8 +13379,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             {ytAddStatus && <div className="host-form-helper host-form-helper-status">{ytAddStatus}</div>}
                         </div>
 
-                        <div className="mt-6 bg-zinc-950/40 border border-white/10 rounded-xl p-4 space-y-2">
-                            <div className="flex items-center gap-2 text-sm text-zinc-400 uppercase tracking-widest">
+                        <div className="mt-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-[#12152b]/90 via-[#10192c]/90 to-[#20132d]/85 p-4 space-y-2 shadow-[0_0_24px_rgba(0,196,217,0.12)]">
+                            <div className="flex items-center gap-2 text-sm text-cyan-100/80 uppercase tracking-widest">
                                 <i className="fa-solid fa-hard-drive text-[#00C4D9]"></i>
                                 Room Uploads
                             </div>
@@ -13386,19 +13389,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     type="file"
                                     accept="video/*,audio/*"
                                     onChange={e => setPendingLocalFile(e.target.files?.[0] || null)}
-                                    className="host-file-input text-xs text-zinc-300"
+                                    className="host-file-input text-xs text-cyan-100/80"
                                     disabled={uploadingLocal}
                                     title="Upload a local audio or video file"
                                 />
                                 <div className="host-form-helper ml-0 sm:ml-auto">Saved to room library and searchable</div>
                             </div>
                             <div className="host-form-helper">Audio/video only. Max 150MB. Room storage target: 2GB.</div>
-                            <div className="flex items-center justify-between text-sm text-zinc-500">
+                            <div className="flex items-center justify-between text-sm text-cyan-100/60">
                                 <span>Room storage used</span>
-                                <span className="text-zinc-300">{formatBytes(roomUploadBytes)} (~${estimateStorageMonthly(roomUploadBytes).toFixed(2)}/mo)</span>
+                                <span className="text-cyan-100/85">{formatBytes(roomUploadBytes)} (~${estimateStorageMonthly(roomUploadBytes).toFixed(2)}/mo)</span>
                             </div>
                             {pendingLocalFile && (
-                                <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-400">
+                                <div className="flex flex-wrap items-center gap-2 text-sm text-cyan-100/75">
                                     <span className="flex-1 truncate">{pendingLocalFile.name}</span>
                                     <button
                                         onClick={async () => {
@@ -13415,7 +13418,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             await handleLocalUpload(pendingLocalFile, false);
                                             setPendingLocalFile(null);
                                         }}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1`}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                         disabled={uploadingLocal}
                                     >
                                         Upload Only
@@ -13423,15 +13426,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             )}
                             {uploadingLocal && (
-                                <div className="text-sm text-zinc-400">
+                                <div className="text-sm text-cyan-100/75">
                                     Uploading... {Math.round(uploadProgress)}%
                                 </div>
                             )}
-                            <div className="border-t border-white/10 pt-2 text-sm text-zinc-500 uppercase tracking-widest">Recent uploads</div>
+                            <div className="border-t border-cyan-400/20 pt-2 text-sm text-cyan-100/60 uppercase tracking-widest">Recent uploads</div>
                             <div className="space-y-2">
                                 {localLibrary.filter(i => i._local || i._cloud).slice(-3).reverse().map(item => (
                                     <div key={item.id} className="flex items-center gap-2 text-xs">
-                                        <div className="flex-1 truncate text-zinc-200">{item.title}</div>
+                                        <div className="flex-1 truncate text-cyan-100/85">{item.title}</div>
                                         <button onClick={() => addLocalItemToQueue(item)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm`}>
                                             <i className="fa-solid fa-plus mr-1"></i> Add to Queue
                                         </button>
@@ -13443,14 +13446,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 ))}
                                 {localLibrary.filter(i => i._local || i._cloud).length === 0 && (
-                                    <div className="text-sm text-zinc-500">No uploads yet.</div>
+                                    <div className="text-sm text-cyan-100/60">No uploads yet.</div>
                                 )}
                             </div>
-                            <div className="border-t border-white/10 pt-2 text-sm text-zinc-500 uppercase tracking-widest">Room library</div>
+                            <div className="border-t border-cyan-400/20 pt-2 text-sm text-cyan-100/60 uppercase tracking-widest">Room library</div>
                             <input
                                 value={localFilter}
                                 onChange={(e)=>setLocalFilter(e.target.value)}
-                                className={`${STYLES.input} text-sm`}
+                                className={`${STYLES.input} text-sm bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                 placeholder="Filter uploads..."
                                 title="Filter your room upload library"
                             />
@@ -13464,7 +13467,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     )
                                     .map(item => (
                                         <div key={item.id} className="flex items-center gap-2 text-xs">
-                                            <div className="flex-1 truncate text-zinc-200">{item.title}</div>
+                                            <div className="flex-1 truncate text-cyan-100/85">{item.title}</div>
                                             <button onClick={() => addLocalItemToQueue(item)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm`}>
                                                 <i className="fa-solid fa-plus mr-1"></i> Add
                                             </button>
@@ -13476,7 +13479,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </div>
                                     ))}
                                 {localLibrary.filter(i => i._local || i._cloud).length === 0 && (
-                                    <div className="text-sm text-zinc-500">No uploads yet.</div>
+                                    <div className="text-sm text-cyan-100/60">No uploads yet.</div>
                                 )}
                             </div>
                         </div>
@@ -13484,33 +13487,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         )}
 
                             {settingsTab === 'marquee' && (
-                            <div className="bg-zinc-950/50 border border-zinc-800 rounded-xl p-4 space-y-4">
-                                <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Marquee Manager</div>
+                            <div className="rounded-xl border border-fuchsia-300/30 bg-gradient-to-br from-[#171129]/90 via-[#111a2c]/90 to-[#0f1c28]/88 p-4 space-y-4 shadow-[0_0_28px_rgba(236,72,153,0.16)]">
+                                <div className="text-sm uppercase tracking-[0.3em] text-fuchsia-100/70">Marquee Manager</div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <label className="text-xs text-zinc-400">
+                                    <label className="text-xs text-cyan-100/75">
                                         Show when
-                                        <select value={marqueeShowMode} onChange={e=>setMarqueeShowMode(e.target.value)} className={`${STYLES.input} w-full mt-1`}>
+                                        <select value={marqueeShowMode} onChange={e=>setMarqueeShowMode(e.target.value)} className={`${STYLES.input} w-full mt-1 bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300`}>
                                             <option value="always">Always</option>
                                             <option value="karaoke">During karaoke only</option>
                                             <option value="idle">Idle (no singer)</option>
                                         </select>
                                     </label>
-                                    <label className="text-xs text-zinc-400">
+                                    <label className="text-xs text-cyan-100/75">
                                         Duration (sec)
-                                        <input type="number" min="4" max="60" value={marqueeDurationSec} onChange={e=>setMarqueeDurationSec(e.target.value)} className={`${STYLES.input} w-full mt-1`} />
+                                        <input type="number" min="4" max="60" value={marqueeDurationSec} onChange={e=>setMarqueeDurationSec(e.target.value)} className={`${STYLES.input} w-full mt-1 bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300`} />
                                     </label>
-                                    <label className="text-xs text-zinc-400">
+                                    <label className="text-xs text-cyan-100/75">
                                         Interval (sec)
-                                        <input type="number" min="4" max="120" value={marqueeIntervalSec} onChange={e=>setMarqueeIntervalSec(e.target.value)} className={`${STYLES.input} w-full mt-1`} />
+                                        <input type="number" min="4" max="120" value={marqueeIntervalSec} onChange={e=>setMarqueeIntervalSec(e.target.value)} className={`${STYLES.input} w-full mt-1 bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300`} />
                                     </label>
                                 </div>
-                                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 space-y-3">
-                                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Rotation</div>
+                                <div className="rounded-xl border border-cyan-400/25 bg-gradient-to-r from-[#0e1527]/88 to-[#1a1129]/84 p-4 space-y-3">
+                                    <div className="text-sm uppercase tracking-[0.3em] text-cyan-100/70">Rotation</div>
                                     <div className="flex gap-2">
                                         <input
                                             value={marqueeDraft}
                                             onChange={e=>setMarqueeDraft(e.target.value)}
-                                            className={`${STYLES.input} flex-1`}
+                                            className={`${STYLES.input} flex-1 bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
                                             placeholder="Add a new marquee message..."
                                         />
                                         <button
@@ -13519,7 +13522,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 setMarqueeDraftItems(prev => [...prev, marqueeDraft.trim()]);
                                                 setMarqueeDraft('');
                                             }}
-                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} border-cyan-400/35 bg-gradient-to-r from-[#0d2333] to-[#2b1330] text-cyan-100 hover:border-pink-300/55`}
                                         >
                                             Add
                                         </button>
@@ -13537,7 +13540,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         next[idx] = e.target.value;
                                                         setMarqueeDraftItems(next);
                                                     }}
-                                                    className={`${STYLES.input} flex-1`}
+                                                    className={`${STYLES.input} flex-1 bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300`}
                                                 />
                                                 <button
                                                     onClick={() => setMarqueeDraftItems(prev => prev.filter((_, i) => i !== idx))}
@@ -13550,14 +13553,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 </div>
                                 <div className="flex justify-end gap-2">
-                                    <button onClick={closeSettingsSurface} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>{inAdminWorkspace ? 'Exit Admin' : 'Close'}</button>
+                                    <button onClick={closeSettingsSurface} className={`${STYLES.btnStd} ${STYLES.btnNeutral} border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}>{inAdminWorkspace ? 'Exit Admin' : 'Close'}</button>
                                     <button
                                         onClick={async () => {
                                             const cleaned = marqueeDraftItems.map(item => item.trim()).filter(Boolean);
                                             await updateMarqueeItems(cleaned);
                                             await saveMarqueeSettings();
                                         }}
-                                        className={`${STYLES.btnStd} ${STYLES.btnPrimary}`}
+                                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} bg-gradient-to-r from-[#00C4D9] via-[#4dd7ea] to-[#EC4899] text-black border-transparent`}
                                     >
                                         Save Marquee
                                     </button>
@@ -13588,22 +13591,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         )}
                         {settingsTab === 'live_effects' && (
                             <div className="space-y-4">
-                                <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
-                                    <div className="text-xs uppercase tracking-[0.24em] text-zinc-400">Advanced Tools</div>
+                                <div className="rounded-xl border border-fuchsia-300/30 bg-gradient-to-br from-[#171129]/90 via-[#111a2c]/90 to-[#0f1c28]/88 p-4 shadow-[0_0_28px_rgba(236,72,153,0.16)]">
+                                    <div className="text-xs uppercase tracking-[0.24em] text-fuchsia-100/70">Advanced Tools</div>
                                     <div className="text-xl font-bold text-white mt-1">Live Effects</div>
-                                    <div className="text-base text-zinc-200 mt-2">
+                                    <div className="text-base text-cyan-100/85 mt-2">
                                         Live effect controls now run from the top Live Deck for faster, safer show operation.
                                     </div>
-                                    <div className="text-sm text-zinc-300 mt-2">
+                                    <div className="text-sm text-cyan-100/75 mt-2">
                                         This section is read-only plus emergency recovery actions.
                                     </div>
                                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-                                        <div className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2">
-                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Vibe Mode</div>
+                                        <div className="rounded-lg border border-cyan-400/25 bg-[#0a1325]/75 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/60">Vibe Mode</div>
                                             <div className="text-sm font-semibold text-white mt-1">{room?.lightMode || 'off'}</div>
                                         </div>
-                                        <div className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2">
-                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">TV Display</div>
+                                        <div className="rounded-lg border border-cyan-400/25 bg-[#0a1325]/75 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/60">TV Display</div>
                                             <div className="text-sm font-semibold text-white mt-1">
                                                 {room?.showLyricsTv && room?.showVisualizerTv
                                                     ? 'Lyrics + Viz'
@@ -13614,31 +13617,72 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                             : 'Video'}
                                             </div>
                                         </div>
-                                        <div className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2">
-                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">SFX Status</div>
+                                        <div className="rounded-lg border border-cyan-400/25 bg-[#0a1325]/75 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/60">SFX Status</div>
                                             <div className="text-sm font-semibold text-white mt-1">
                                                 {sfxMuted ? 'Muted' : `${Math.round((sfxVolume || 0) * 100)}%`}
                                             </div>
                                         </div>
-                                        <div className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2">
-                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Active Screen</div>
+                                        <div className="rounded-lg border border-cyan-400/25 bg-[#0a1325]/75 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/60">Active Screen</div>
                                             <div className="text-sm font-semibold text-white mt-1">{room?.activeScreen || 'stage'}</div>
                                         </div>
-                                        <div className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2">
-                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Chat TV</div>
+                                        <div className="rounded-lg border border-cyan-400/25 bg-[#0a1325]/75 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/60">Chat TV</div>
                                             <div className="text-sm font-semibold text-white mt-1">
                                                 {room?.chatShowOnTv ? `On (${room?.chatTvMode || 'auto'})` : 'Off'}
                                             </div>
                                         </div>
-                                        <div className="rounded-lg border border-zinc-700 bg-zinc-950/70 px-3 py-2">
-                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Marquee</div>
+                                        <div className="rounded-lg border border-cyan-400/25 bg-[#0a1325]/75 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/60">Marquee</div>
                                             <div className="text-sm font-semibold text-white mt-1">{room?.marqueeEnabled ? 'On' : 'Off'}</div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 rounded-xl border border-fuchsia-300/30 bg-black/35 px-3 py-3">
+                                        <div className="text-[11px] uppercase tracking-[0.2em] text-fuchsia-100/80">Lobby Playground Safety</div>
+                                        <div className="text-sm text-zinc-300 mt-1">
+                                            Control no-singer interactions: pause intake, force visual-only rewards, and tighten anti-spam cooldowns.
+                                        </div>
+                                        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+                                            <button
+                                                onClick={() => updateRoom({ lobbyPlaygroundPaused: !room?.lobbyPlaygroundPaused })}
+                                                className={`${STYLES.btnStd} ${room?.lobbyPlaygroundPaused ? STYLES.btnDanger : STYLES.btnNeutral}`}
+                                            >
+                                                <i className="fa-solid fa-hand"></i>
+                                                {room?.lobbyPlaygroundPaused ? 'Resume Lobby Intake' : 'Pause Lobby Intake'}
+                                            </button>
+                                            <button
+                                                onClick={() => updateRoom({ lobbyPlaygroundVisualOnly: !room?.lobbyPlaygroundVisualOnly })}
+                                                className={`${STYLES.btnStd} ${room?.lobbyPlaygroundVisualOnly ? STYLES.btnHighlight : STYLES.btnNeutral}`}
+                                            >
+                                                <i className="fa-solid fa-gem"></i>
+                                                {room?.lobbyPlaygroundVisualOnly ? 'Visual-Only Rewards On' : 'Enable Visual-Only Rewards'}
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const nextStrict = !room?.lobbyPlaygroundStrictMode;
+                                                    updateRoom({
+                                                        lobbyPlaygroundStrictMode: nextStrict,
+                                                        lobbyPlaygroundPerUserCooldownMs: nextStrict ? 450 : 220,
+                                                        lobbyPlaygroundMaxPerMinute: nextStrict ? 8 : 12
+                                                    });
+                                                }}
+                                                className={`${STYLES.btnStd} ${room?.lobbyPlaygroundStrictMode ? STYLES.btnHighlight : STYLES.btnNeutral}`}
+                                            >
+                                                <i className="fa-solid fa-shield"></i>
+                                                {room?.lobbyPlaygroundStrictMode ? 'Strict Cooldown On' : 'Enable Strict Cooldown'}
+                                            </button>
+                                        </div>
+                                        <div className="mt-2 text-xs text-zinc-400">
+                                            Current cooldown: {Math.max(120, Number(room?.lobbyPlaygroundPerUserCooldownMs || 220))}ms per tap
+                                            {' • '}
+                                            Cap: {Math.max(1, Math.min(120, Number(room?.lobbyPlaygroundMaxPerMinute || 12)))}/min
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2 mt-3">
                                         <button
                                             onClick={() => leaveAdminWithTarget('stage')}
-                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight}`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} shadow-[0_0_24px_rgba(236,72,153,0.24)]`}
                                         >
                                             <i className="fa-solid fa-sliders"></i>
                                             Open Live Deck (Exit Admin)
@@ -13653,7 +13697,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 chatTvMode: 'auto',
                                                 marqueeEnabled: false
                                             })}
-                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
                                         >
                                             <i className="fa-solid fa-power-off"></i>
                                             Emergency Reset Scene
@@ -13872,30 +13916,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             {showNightSetupWizard && renderNightSetupWizard()}
             {showAiSetupGuide && (
                 <div className="fixed inset-0 z-[90] bg-black/80 flex items-center justify-center p-4">
-                    <div className="w-full max-w-2xl bg-zinc-950 border border-zinc-700 rounded-2xl p-5 shadow-2xl">
+                    <div className="w-full max-w-2xl rounded-2xl border border-cyan-300/35 bg-gradient-to-br from-[#151026]/95 via-[#101a2c]/95 to-[#0b121e]/95 p-5 shadow-[0_30px_85px_rgba(0,0,0,0.6),0_0_48px_rgba(236,72,153,0.16)]">
                         <div className="flex items-start justify-between gap-3">
                             <div>
-                                <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">AI Setup</div>
-                                <div className="text-xl font-bold text-white mt-1">Gemini API Key + Host AI Access</div>
-                                <div className="text-sm text-zinc-400 mt-1">
+                                <div className="text-xs uppercase tracking-[0.3em] text-fuchsia-100/70">AI Setup</div>
+                                <div className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] mt-1">Gemini API Key + Host AI Access</div>
+                                <div className="text-sm text-cyan-100/80 mt-1">
                                     Use this once when onboarding new hosts or a fresh environment.
                                 </div>
                             </div>
-                            <button onClick={() => setShowAiSetupGuide(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
+                            <button onClick={() => setShowAiSetupGuide(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}>Close</button>
                         </div>
-                        <div className="mt-4 space-y-3 text-sm text-zinc-200">
-                            <div className="rounded-xl border border-white/10 bg-zinc-900/60 px-3 py-3">
+                        <div className="mt-4 space-y-3 text-sm text-cyan-100/85">
+                            <div className="rounded-xl border border-cyan-400/25 bg-[#0b1426]/80 px-3 py-3">
                                 1. In <span className="text-white font-semibold">Billing</span>, enable AI access for the host workspace.
                             </div>
-                            <div className="rounded-xl border border-white/10 bg-zinc-900/60 px-3 py-3">
+                            <div className="rounded-xl border border-cyan-400/25 bg-[#0b1426]/80 px-3 py-3">
                                 2. In Firebase Functions secrets, set <code>GEMINI_API_KEY</code>.
                             </div>
-                            <div className="rounded-xl border border-white/10 bg-zinc-900/60 px-3 py-3">
+                            <div className="rounded-xl border border-cyan-400/25 bg-[#0b1426]/80 px-3 py-3">
                                 3. Deploy updated cloud function so AI calls resolve in production.
                             </div>
-                            <div className="rounded-xl border border-cyan-400/20 bg-black/60 p-3">
-                                <div className="text-xs uppercase tracking-[0.3em] text-cyan-300 mb-2">CLI Commands</div>
-                                <pre className="text-xs text-zinc-200 whitespace-pre-wrap">firebase functions:secrets:set GEMINI_API_KEY{'\n'}firebase deploy --only functions:geminiGenerate</pre>
+                            <div className="rounded-xl border border-pink-300/30 bg-gradient-to-r from-[#0d1426]/85 to-[#1b1028]/80 p-3">
+                                <div className="text-xs uppercase tracking-[0.3em] text-cyan-200 mb-2">CLI Commands</div>
+                                <pre className="text-xs text-cyan-100/90 whitespace-pre-wrap">firebase functions:secrets:set GEMINI_API_KEY{'\n'}firebase deploy --only functions:geminiGenerate</pre>
                             </div>
                         </div>
                         <div className="mt-4 flex flex-wrap gap-2">
@@ -13908,7 +13952,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     setShowAiSetupGuide(false);
                                     setSettingsTab('billing');
                                 }}
-                                className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} border-cyan-400/35 bg-gradient-to-r from-[#0d2333] to-[#2b1330] text-cyan-100 hover:border-pink-300/55`}
                             >
                                 <i className="fa-solid fa-wallet"></i>
                                 Open Billing
@@ -13919,38 +13963,38 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             )}
             {tight15Profile && (
                 <div className="fixed inset-0 z-[95] bg-black/80 flex items-center justify-center p-4">
-                    <div className="w-full max-w-2xl bg-zinc-900 border border-zinc-700 rounded-3xl p-5">
+                    <div className="w-full max-w-2xl rounded-3xl border border-fuchsia-300/30 bg-gradient-to-br from-[#171129]/95 via-[#111a2c]/95 to-[#0d1220]/95 p-5 shadow-[0_30px_85px_rgba(0,0,0,0.6),0_0_48px_rgba(236,72,153,0.16)]">
                         <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center gap-3">
                                 <div className="text-3xl">{tight15Profile.avatar || EMOJI.mic}</div>
                                 <div>
-                                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Singer Card</div>
+                                    <div className="text-xs uppercase tracking-[0.35em] text-fuchsia-100/70">Singer Card</div>
                                     <div className="text-2xl font-bebas text-cyan-300">{tight15Profile.name || 'Singer'}</div>
                                 </div>
                             </div>
                             <button
                                 onClick={() => setTight15Profile(null)}
-                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs`}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs border-cyan-400/35 bg-gradient-to-r from-[#0d2333] to-[#2b1330] text-cyan-100 hover:border-pink-300/55`}
                             >
                                 Close
                             </button>
                         </div>
-                        <div className="mt-4 text-sm text-zinc-400">
+                        <div className="mt-4 text-sm text-cyan-100/75">
                             Tight 15 songs ({tight15Profile.tight15?.length || 0}/{TIGHT15_MAX})
                         </div>
                         <div className="mt-3 space-y-2 max-h-[55vh] overflow-y-auto pr-1 custom-scrollbar">
                             {tight15Profile.tight15?.length ? (
                                 tight15Profile.tight15.map((entry, idx) => (
-                                    <div key={entry.id || `${entry.songTitle}_${entry.artist}_${idx}`} className="rounded-xl border border-zinc-700 bg-black/40 p-3 flex items-center justify-between gap-3">
+                                    <div key={entry.id || `${entry.songTitle}_${entry.artist}_${idx}`} className="rounded-xl border border-cyan-400/25 bg-[#0a1325]/78 p-3 flex items-center justify-between gap-3">
                                         <div className="min-w-0">
                                             <div className="font-bold text-white truncate">{entry.songTitle}</div>
-                                            <div className="text-sm text-zinc-400 truncate">{entry.artist}</div>
+                                            <div className="text-sm text-cyan-100/70 truncate">{entry.artist}</div>
                                         </div>
                                         <div className="flex items-center gap-2 shrink-0">
                                             <button
                                                 onClick={() => queueSelectedTight15ForUser(tight15Profile.roomUser, entry, 'tight15_profile_card')}
                                                 disabled={tight15QueueBusyUid === tight15Profile.uid}
-                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px] ${(tight15QueueBusyUid === tight15Profile.uid) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px] border-cyan-400/35 bg-gradient-to-r from-[#0d2333] to-[#2b1330] text-cyan-100 hover:border-pink-300/55 ${(tight15QueueBusyUid === tight15Profile.uid) ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             >
                                                 Queue
                                             </button>
@@ -13964,7 +14008,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 ))
                             ) : (
-                                <div className="rounded-xl border border-zinc-700 bg-black/40 p-4 text-sm text-zinc-500">
+                                <div className="rounded-xl border border-cyan-400/25 bg-[#0a1325]/78 p-4 text-sm text-cyan-100/60">
                                     No Tight 15 songs found for this singer yet.
                                 </div>
                             )}

@@ -20,6 +20,16 @@ import {
     dedupeQuestionVotes,
     getActivePopTriviaQuestion
 } from '../../lib/popTrivia';
+import {
+    createLobbyVolleyState,
+    applyLobbyInteraction,
+    deriveComboMoment,
+    getActiveParticipants,
+    getTierTransitions,
+    buildAwardPayload,
+    quantizeToBeat,
+    LOBBY_PLAYGROUND_ENGINE_CONSTANTS
+} from './lobbyPlaygroundEngine';
 
 const isTvVisibleChatMessage = (message) => {
     if (!message) return false;
@@ -84,15 +94,177 @@ const normalizeStormLayer = (layer = '') => {
 };
 
 const LOBBY_PLAY_EFFECTS = {
-    lobby_play_wave: { label: 'Wave Tunnel', icon: emoji(0x1F44B), accent: 'from-cyan-300/70 to-blue-400/70' },
-    lobby_play_laser: { label: 'Laser Pop', icon: emoji(0x2728), accent: 'from-fuchsia-300/70 to-cyan-300/70' },
-    lobby_play_echo: { label: 'Echo Ring', icon: emoji(0x1F30A), accent: 'from-blue-300/70 to-indigo-400/70' },
-    lobby_play_confetti: { label: 'Confetti', icon: emoji(0x1F389), accent: 'from-pink-300/70 to-yellow-300/70' }
+    lobby_play_wave: {
+        label: 'Wave Tunnel',
+        icon: emoji(0x1F44B),
+        accent: 'from-cyan-300/80 to-blue-400/80',
+        motion: 'wave',
+        aura: 'rgba(34,211,238,0.45)',
+        particles: [emoji(0x1F44B), emoji(0x1F30A), emoji(0x1F4AB)]
+    },
+    lobby_play_laser: {
+        label: 'Laser Pop',
+        icon: emoji(0x2728),
+        accent: 'from-fuchsia-300/80 to-cyan-300/80',
+        motion: 'laser',
+        aura: 'rgba(232,121,249,0.42)',
+        particles: [emoji(0x2728), emoji(0x1F31F), emoji(0x1F4A5)]
+    },
+    lobby_play_echo: {
+        label: 'Echo Ring',
+        icon: emoji(0x1F30A),
+        accent: 'from-blue-300/80 to-indigo-400/80',
+        motion: 'echo',
+        aura: 'rgba(96,165,250,0.4)',
+        particles: [emoji(0x1F30A), emoji(0x1F4A7), emoji(0x1F4AB)]
+    },
+    lobby_play_confetti: {
+        label: 'Confetti',
+        icon: emoji(0x1F389),
+        accent: 'from-pink-300/80 to-yellow-300/80',
+        motion: 'confetti',
+        aura: 'rgba(244,114,182,0.38)',
+        particles: [emoji(0x1F389), emoji(0x1F38A), emoji(0x1F31F)]
+    }
 };
 
 const getLobbyPlayEffect = (type = '') => {
     const key = String(type || '').trim().toLowerCase();
     return LOBBY_PLAY_EFFECTS[key] || null;
+};
+
+const normalizeLobbyPlayInteractionType = (type = '') => {
+    const key = String(type || '').trim().toLowerCase();
+    if (!key) return '';
+    if (key.startsWith('lobby_play_')) return key.slice('lobby_play_'.length);
+    return key;
+};
+
+const getLobbyPlayEffectByInteractionType = (interactionType = '') => {
+    const key = normalizeLobbyPlayInteractionType(interactionType);
+    if (!key) return null;
+    return getLobbyPlayEffect(`lobby_play_${key}`);
+};
+
+const getLobbyScreenFxDurationMs = (motion = 'wave') => {
+    if (motion === 'laser') return 1900;
+    if (motion === 'confetti') return 2600;
+    if (motion === 'echo') return 2200;
+    if (motion === 'prism_sweep_link') return 2200;
+    if (motion === 'ripple_tunnel') return 2400;
+    if (motion === 'spark_shower_bridge') return 2500;
+    if (motion === 'pulse_bloom') return 2300;
+    return 2300;
+};
+
+const LOBBY_ANCHOR_BASE = {
+    wave: { x: 34, y: 43 },
+    laser: { x: 62, y: 42 },
+    echo: { x: 42, y: 61 },
+    confetti: { x: 59, y: 62 }
+};
+
+const getLobbyInteractionAnchor = (interactionType = '', seed = 1, index = 0) => {
+    const type = normalizeLobbyPlayInteractionType(interactionType) || 'wave';
+    const base = LOBBY_ANCHOR_BASE[type] || LOBBY_ANCHOR_BASE.wave;
+    const orbit = 2 + (index % 3) * 1.3;
+    const jitterX = (seededUnit(seed + (index * 5)) - 0.5) * orbit * 2;
+    const jitterY = (seededUnit(seed + 11 + (index * 7)) - 0.5) * orbit * 1.65;
+    return {
+        x: Math.max(22, Math.min(78, base.x + jitterX)),
+        y: Math.max(24, Math.min(78, base.y + jitterY))
+    };
+};
+
+const LOBBY_COMBO_STYLES = {
+    wave_laser: { accent: 'from-cyan-300/70 via-fuchsia-300/65 to-cyan-200/70', beam: 'rgba(125,211,252,0.75)' },
+    wave_echo: { accent: 'from-cyan-300/70 via-blue-300/65 to-indigo-300/75', beam: 'rgba(103,232,249,0.72)' },
+    laser_confetti: { accent: 'from-fuchsia-300/75 via-pink-300/68 to-yellow-200/70', beam: 'rgba(244,114,182,0.76)' },
+    echo_confetti: { accent: 'from-indigo-300/75 via-blue-300/70 to-pink-300/68', beam: 'rgba(165,180,252,0.74)' }
+};
+
+const getLobbyComboStyle = (comboKey = '') => LOBBY_COMBO_STYLES[comboKey] || {
+    accent: 'from-cyan-300/65 via-blue-300/60 to-fuchsia-300/65',
+    beam: 'rgba(147,197,253,0.72)'
+};
+
+const quantizeLobbyStartTime = ({ now, micVolume, visualizerEnabled }) => {
+    const hasRhythmSignal = !!visualizerEnabled && Number(micVolume || 0) >= 10;
+    if (!hasRhythmSignal) return Math.round(now);
+    const beatMs = Math.max(360, Math.min(760, 690 - (Number(micVolume || 0) * 2.8)));
+    return quantizeToBeat(now, beatMs, 130);
+};
+
+const parseAwardFailureCode = (error = null) => {
+    const raw = String(error?.code || error?.message || '').toLowerCase();
+    if (!raw) return '';
+    if (raw.includes('permission-denied')) return 'permission-denied';
+    if (raw.includes('unauthenticated')) return 'unauthenticated';
+    if (raw.includes('failed-precondition')) return 'failed-precondition';
+    return raw;
+};
+
+const LOBBY_PLAYGROUND_REWARD_SOURCE = 'lobby_playground';
+const LOBBY_AWARD_VISUAL_WINDOW_MS = 4200;
+const LOBBY_COMBO_WINDOW_MS = 4600;
+const LOBBY_LINK_WINDOW_MS = 2500;
+const LOBBY_BURST_WINDOW_MS = 3000;
+const LOBBY_SCREEN_FX_WINDOW_MS = 3200;
+const LOBBY_SCREEN_FX_CAP = 12;
+const LOBBY_BURST_CAP = 16;
+const LOBBY_LINK_CAP = 16;
+const LOBBY_COMBO_CAP = 12;
+const LOBBY_TIER_CHIP_CAP = 8;
+const LOBBY_ORB_EVENT_CAP = 14;
+const LOBBY_PARTICLE_MAX = 24;
+
+const getLobbyTierDefinition = (tierNumber = 0) => (
+    (LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.TIER_DEFINITIONS || []).find((entry) => Number(entry?.tier || 0) === Number(tierNumber || 0)) || null
+);
+
+const clampLobby = (value, min, max) => Math.max(min, Math.min(max, Number(value || 0)));
+
+const shouldDisableLobbyMotion = (reduceMotion) => !!reduceMotion;
+
+const toEpochMs = (ts) => {
+    if (!ts) return 0;
+    if (typeof ts === 'number') return ts;
+    if (typeof ts?.toMillis === 'function') return ts.toMillis();
+    if (typeof ts?.seconds === 'number') return ts.seconds * 1000;
+    return 0;
+};
+
+const getLobbyEventTimestampMs = (event) => {
+    const explicit = Number(event?.timestampMs || event?.createdAtMs || 0);
+    if (explicit > 0) return explicit;
+    const derived = toEpochMs(event?.timestamp);
+    if (derived > 0) return derived;
+    return nowMs();
+};
+
+const getLobbyContributionAlpha = (weight = 1) => clampLobby(0.25 + (Number(weight || 0) * 0.65), 0.25, 1);
+
+const getLobbyOrbMeterValue = (state = null, now = nowMs()) => {
+    if (!state) return 0;
+    const elapsed = Math.max(0, now - Number(state.lastInteractionAtMs || now));
+    const liveEnergy = Math.max(0, Number(state.energy || 0) - ((elapsed / 1000) * 0.28));
+    return clampLobby(liveEnergy, 0, 100);
+};
+
+const getLobbyBurstParticleCount = ({ reduceMotion = false, loadFactor = 0 }) => {
+    const maxCount = reduceMotion ? 8 : 14;
+    const loadedCount = maxCount - Math.floor(clampLobby(loadFactor, 0, 1.5) * (reduceMotion ? 4 : 7));
+    return clampLobby(loadedCount, reduceMotion ? 3 : 5, maxCount);
+};
+
+const getLobbyTrailLength = ({ reduceMotion = false, loadFactor = 0 }) => {
+    const base = reduceMotion ? 1 : 2;
+    return clampLobby(base - Math.floor(clampLobby(loadFactor, 0, 1.5)), 0, base);
+};
+
+const getLobbyRetentionMs = ({ reduceMotion = false, loadFactor = 0, defaultMs = 2400 }) => {
+    const reduction = Math.floor(clampLobby(loadFactor, 0, 1.5) * (reduceMotion ? 280 : 420));
+    return clampLobby(defaultMs - reduction, 1200, defaultMs);
 };
 
 const normalizeTight15Entry = (entry = {}) => {
@@ -426,6 +598,12 @@ const PublicTV = ({ roomCode }) => {
     const [songs, setSongs] = useState([]);
     const [reactions, setReactions] = useState([]);
     const [lobbyPlayBursts, setLobbyPlayBursts] = useState([]);
+    const [lobbyPlayScreenFx, setLobbyPlayScreenFx] = useState([]);
+    const [lobbyVolleyState, setLobbyVolleyState] = useState(() => createLobbyVolleyState());
+    const [lobbyComboMoments, setLobbyComboMoments] = useState([]);
+    const [lobbyVolleyLinks, setLobbyVolleyLinks] = useState([]);
+    const [lobbyTierChips, setLobbyTierChips] = useState([]);
+    const [lobbyTransitionPhase, setLobbyTransitionPhase] = useState('idle');
     const [messages, setMessages] = useState([]); 
     const [activities, setActivities] = useState([]);
     const [photoOverlay, setPhotoOverlay] = useState(null);
@@ -507,6 +685,15 @@ const PublicTV = ({ roomCode }) => {
     const messageTimeoutsRef = useRef([]);
     const bgVisualizerAudioRef = useRef(null);
     const multiplierRef = useRef(1);
+    const lobbyVolleyStateRef = useRef(createLobbyVolleyState());
+    const lobbyLastAnchorRef = useRef(null);
+    const lobbyAwardAuthLockedRef = useRef(false);
+    const lobbyMicVolumeRef = useRef(0);
+    const lobbyVisualizerEnabledRef = useRef(false);
+    const lobbyReduceMotionRef = useRef(false);
+    const lobbyPausedRef = useRef(false);
+    const lobbyVisualOnlyRef = useRef(false);
+    const lobbyTransitionTimerRef = useRef(null);
     const chatFullscreenScrollRef = useRef(null);
     const chatSidebarScrollRef = useRef(null);
     const selfieVoteCounts = useMemo(() => {
@@ -519,6 +706,10 @@ const PublicTV = ({ roomCode }) => {
         () => groupChatMessages(chatMessages, { mergeWindowMs: 12 * 60 * 1000 }),
         [chatMessages]
     );
+    useEffect(() => {
+        lobbyVolleyStateRef.current = lobbyVolleyState;
+        lobbyAwardAuthLockedRef.current = !!lobbyVolleyState?.authFailureLocked;
+    }, [lobbyVolleyState]);
     const pushLobbyLiveEvent = useCallback((event) => {
         if (!event) return;
         const eventTs = Number(event.timestampMs || nowMs());
@@ -530,12 +721,15 @@ const PublicTV = ({ roomCode }) => {
         });
     }, []);
     const doodleRequireReview = !!room?.doodleOke?.requireReview;
-    const approvedDoodleUids = Array.isArray(room?.doodleOke?.approvedUids) ? room.doodleOke.approvedUids : [];
-    const doodleApprovedUidSet = new Set(approvedDoodleUids.filter(Boolean));
+    const approvedDoodleUids = useMemo(
+        () => (Array.isArray(room?.doodleOke?.approvedUids) ? room.doodleOke.approvedUids : []),
+        [room?.doodleOke?.approvedUids]
+    );
     const doodleVisibleSubmissions = useMemo(() => {
         if (!doodleRequireReview) return doodleSubmissions;
-        return doodleSubmissions.filter((submission) => doodleApprovedUidSet.has(submission.uid));
-    }, [doodleRequireReview, doodleApprovedUidSet, doodleSubmissions]);
+        const approvedSet = new Set(approvedDoodleUids.filter(Boolean));
+        return doodleSubmissions.filter((submission) => approvedSet.has(submission.uid));
+    }, [doodleRequireReview, approvedDoodleUids, doodleSubmissions]);
     const doodlePendingReviewCount = Math.max(0, doodleSubmissions.length - doodleVisibleSubmissions.length);
     const bingoRngResults = useMemo(() => {
         const results = room?.bingoMysteryRng?.results || {};
@@ -582,7 +776,9 @@ const PublicTV = ({ roomCode }) => {
     }, [room?.multiplier]);
 
     const awardRoomPointsOnce = useCallback(async ({ awardKey, awards = [], source = 'tv_mode' }) => {
-        if (!roomCode || !awardKey || !Array.isArray(awards) || !awards.length) return;
+        if (!roomCode || !awardKey || !Array.isArray(awards) || !awards.length) {
+            return { ok: false, skipped: true };
+        }
         try {
             await callFunction('awardRoomPoints', {
                 roomCode,
@@ -590,8 +786,10 @@ const PublicTV = ({ roomCode }) => {
                 source,
                 awards
             });
+            return { ok: true };
         } catch (err) {
             tvLogger.debug('awardRoomPoints callable failed', awardKey, err?.message || err);
+            return { ok: false, error: err, code: parseAwardFailureCode(err) };
         }
     }, [roomCode]);
 
@@ -604,7 +802,7 @@ const PublicTV = ({ roomCode }) => {
         } catch(e) { tvLogger.error("Audio Context Failed", e); }
     };
 
-    const getStormPhase = () => {
+    const getStormPhase = useCallback(() => {
         if (room?.lightMode !== 'storm') return 'off';
         if (!room?.stormStartedAt) return room?.stormPhase || 'approach';
         const cfg = room?.stormConfig || { approachMs: 15000, peakMs: 20000, passMs: 12000, clearMs: 6000 };
@@ -614,7 +812,7 @@ const PublicTV = ({ roomCode }) => {
         if (elapsed < cfg.approachMs + cfg.peakMs + cfg.passMs) return 'pass';
         if (elapsed < cfg.approachMs + cfg.peakMs + cfg.passMs + cfg.clearMs) return 'clear';
         return 'clear';
-    };
+    }, [room?.lightMode, room?.stormStartedAt, room?.stormPhase, room?.stormConfig]);
 
     useEffect(() => {
         if (room?.lightMode !== 'storm') {
@@ -625,7 +823,7 @@ const PublicTV = ({ roomCode }) => {
         updatePhase();
         const timer = setInterval(updatePhase, 500);
         return () => clearInterval(timer);
-    }, [room?.lightMode, room?.stormStartedAt, room?.stormConfig, room?.stormPhase]);
+    }, [room?.lightMode, getStormPhase]);
 
     useEffect(() => {
         if (room?.activeMode !== 'doodle_oke') return;
@@ -945,27 +1143,268 @@ const PublicTV = ({ roomCode }) => {
                                 timestampMs: nowMs()
                             });
                         } else if (getLobbyPlayEffect(d.type)) {
-                            const effect = getLobbyPlayEffect(d.type);
-                            const burstTime = nowMs();
-                            const count = Math.max(1, Number(d.count || 1));
-                            setLobbyPlayBursts((prev) => {
-                                const additions = Array.from({ length: Math.min(3, count) }, (_, idx) => ({
-                                    id: `lobby-play-${c.doc.id}-${idx}`,
-                                    label: effect.label,
-                                    icon: effect.icon,
-                                    accent: effect.accent,
-                                    user: d.userName || d.user || 'Guest',
-                                    createdAt: burstTime + idx,
-                                    left: Math.random() * 70 + 15,
-                                    top: Math.random() * 45 + 24
-                                }));
-                                return [...additions, ...(prev || [])].slice(0, 20);
+                            if (lobbyPausedRef.current) return;
+                            const interactionType = normalizeLobbyPlayInteractionType(d.type);
+                            const effect = getLobbyPlayEffectByInteractionType(interactionType);
+                            if (!effect) return;
+                            const eventTimestamp = getLobbyEventTimestampMs(d);
+                            const burstTime = quantizeLobbyStartTime({
+                                now: eventTimestamp,
+                                micVolume: lobbyMicVolumeRef.current,
+                                visualizerEnabled: lobbyVisualizerEnabledRef.current
                             });
+                            const totalCount = Math.max(1, Number(d.count || 1));
+                            const previousVolleyState = lobbyVolleyStateRef.current || createLobbyVolleyState();
+                            const nextVolleyStateRaw = applyLobbyInteraction(
+                                previousVolleyState,
+                                {
+                                    type: interactionType,
+                                    count: totalCount,
+                                    uid: d.uid || '',
+                                    userName: d.userName || d.user || 'Guest',
+                                    avatar: d.avatar || effect.icon,
+                                    timestampMs: burstTime
+                                },
+                                burstTime
+                            );
+                            const tierTransitions = getTierTransitions(previousVolleyState, nextVolleyStateRaw);
+                            const comboMoment = deriveComboMoment(previousVolleyState, {
+                                type: interactionType,
+                                uid: d.uid || '',
+                                userName: d.userName || d.user || 'Guest',
+                                avatar: d.avatar || effect.icon,
+                                count: totalCount,
+                                timestampMs: burstTime
+                            });
+                            const activeParticipants = getActiveParticipants(nextVolleyStateRaw, burstTime);
+                            const loadFactor = clampLobby(
+                                (Number(nextVolleyStateRaw.energy || 0) / 100) + (Number(nextVolleyStateRaw.streakCount || 0) / 44),
+                                0,
+                                1.4
+                            );
+                            const reduceMotion = shouldDisableLobbyMotion(lobbyReduceMotionRef.current);
+                            const retentionMs = getLobbyRetentionMs({
+                                reduceMotion,
+                                loadFactor,
+                                defaultMs: LOBBY_BURST_WINDOW_MS
+                            });
+                            const anchorSeed = burstTime + (c.doc.id.length * 17);
+                            const anchor = getLobbyInteractionAnchor(interactionType, anchorSeed, nextVolleyStateRaw.streakCount);
+                            const previousAnchor = lobbyLastAnchorRef.current;
+                            lobbyLastAnchorRef.current = anchor;
+                            const particleCount = getLobbyBurstParticleCount({ reduceMotion, loadFactor });
+                            const symbols = Array.isArray(effect.particles) && effect.particles.length
+                                ? effect.particles
+                                : [effect.icon];
+                            const particles = Array.from({ length: Math.min(LOBBY_PARTICLE_MAX, particleCount) }, (_, idx) => {
+                                const particleSeed = anchorSeed + (idx * 19);
+                                const angle = (Math.PI * 2 * idx) / Math.max(1, particleCount);
+                                const radius = 18 + (seededUnit(particleSeed + 3) * 26);
+                                return {
+                                    id: `${c.doc.id}-particle-${idx}`,
+                                    icon: symbols[idx % symbols.length],
+                                    x: Math.cos(angle) * radius,
+                                    y: Math.sin(angle) * radius * 0.8,
+                                    delayMs: idx * 35
+                                };
+                            });
+                            const burstEntry = {
+                                id: `lobby-play-${c.doc.id}`,
+                                label: effect.label,
+                                icon: effect.icon,
+                                accent: effect.accent,
+                                motion: effect.motion || interactionType || 'wave',
+                                aura: effect.aura || 'rgba(34,211,238,0.4)',
+                                user: d.userName || d.user || 'Guest',
+                                count: totalCount,
+                                createdAt: burstTime,
+                                durationMs: retentionMs,
+                                left: anchor.x,
+                                top: anchor.y,
+                                scale: 0.94 + (seededUnit(anchorSeed + 6) * 0.24),
+                                rotationDeg: -8 + (seededUnit(anchorSeed + 9) * 16),
+                                risePx: 14 + Math.round(seededUnit(anchorSeed + 12) * 20),
+                                particles,
+                                staggerMs: 0,
+                                contributionAlpha: getLobbyContributionAlpha(nextVolleyStateRaw?.interactions?.[0]?.weight || 1),
+                                streakCount: nextVolleyStateRaw.streakCount
+                            };
+                            setLobbyPlayBursts((prev) => {
+                                const active = (prev || []).filter(
+                                    (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_BURST_WINDOW_MS
+                                );
+                                return [burstEntry, ...active].slice(0, LOBBY_BURST_CAP);
+                            });
+                            const baseScreenFx = {
+                                id: `lobby-play-screen-${c.doc.id}`,
+                                motion: effect.motion || interactionType || 'wave',
+                                createdAt: burstTime,
+                                durationMs: getLobbyScreenFxDurationMs(effect.motion || interactionType || 'wave'),
+                                intensity: Math.min(4, totalCount + Math.floor(nextVolleyStateRaw.energy / 30)),
+                                seed: anchorSeed,
+                                symbols,
+                                anchorX: anchor.x,
+                                anchorY: anchor.y
+                            };
+                            setLobbyPlayScreenFx((prev) => {
+                                const active = (prev || []).filter(
+                                    (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_SCREEN_FX_WINDOW_MS
+                                );
+                                return [baseScreenFx, ...active].slice(0, LOBBY_SCREEN_FX_CAP);
+                            });
+                            if (previousAnchor) {
+                                const trailLength = getLobbyTrailLength({ reduceMotion, loadFactor });
+                                if (trailLength > 0) {
+                                    const beamColor = getLobbyComboStyle('').beam;
+                                    setLobbyVolleyLinks((prev) => {
+                                        const active = (prev || []).filter(
+                                            (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_LINK_WINDOW_MS
+                                        );
+                                        const next = [{
+                                            id: `lobby-link-${c.doc.id}`,
+                                            from: previousAnchor,
+                                            to: anchor,
+                                            createdAt: burstTime,
+                                            durationMs: getLobbyRetentionMs({
+                                                reduceMotion,
+                                                loadFactor,
+                                                defaultMs: LOBBY_LINK_WINDOW_MS
+                                            }),
+                                            color: beamColor,
+                                            width: 4 + Math.min(4, totalCount),
+                                            mode: 'relay'
+                                        }, ...active];
+                                        return next.slice(0, LOBBY_LINK_CAP);
+                                    });
+                                }
+                            }
+                            if (comboMoment) {
+                                const comboStyle = getLobbyComboStyle(comboMoment.key);
+                                setLobbyComboMoments((prev) => {
+                                    const active = (prev || []).filter(
+                                        (entry) => (burstTime - Number(entry?.createdAtMs || 0)) < LOBBY_COMBO_WINDOW_MS
+                                    );
+                                    return [{ ...comboMoment, style: comboStyle, createdAtMs: burstTime }, ...active].slice(0, LOBBY_COMBO_CAP);
+                                });
+                                setLobbyPlayScreenFx((prev) => {
+                                    const active = (prev || []).filter(
+                                        (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_SCREEN_FX_WINDOW_MS
+                                    );
+                                    const comboFx = {
+                                        id: `lobby-combo-screen-${c.doc.id}`,
+                                        motion: comboMoment.effect || 'pulse_bloom',
+                                        createdAt: burstTime,
+                                        durationMs: getLobbyScreenFxDurationMs(comboMoment.effect || 'pulse_bloom'),
+                                        intensity: Math.min(5, totalCount + 1),
+                                        seed: anchorSeed + 97,
+                                        symbols,
+                                        anchorX: anchor.x,
+                                        anchorY: anchor.y
+                                    };
+                                    return [comboFx, ...active].slice(0, LOBBY_SCREEN_FX_CAP);
+                                });
+                                if (previousAnchor) {
+                                    setLobbyVolleyLinks((prev) => {
+                                        const active = (prev || []).filter(
+                                            (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_LINK_WINDOW_MS
+                                        );
+                                        const next = [{
+                                            id: `lobby-combo-link-${c.doc.id}`,
+                                            from: previousAnchor,
+                                            to: anchor,
+                                            createdAt: burstTime,
+                                            durationMs: LOBBY_LINK_WINDOW_MS,
+                                            color: comboStyle.beam,
+                                            width: 8,
+                                            mode: comboMoment.key
+                                        }, ...active];
+                                        return next.slice(0, LOBBY_LINK_CAP);
+                                    });
+                                }
+                            }
+                            if (tierTransitions.length) {
+                                setLobbyTierChips((prev) => {
+                                    const additions = tierTransitions.map((transition, idx) => ({
+                                        id: `lobby-tier-${c.doc.id}-${transition.tier}-${idx}`,
+                                        label: `Tier ${transition.tier}: ${transition.name}`,
+                                        tier: transition.tier,
+                                        createdAt: burstTime + idx,
+                                        durationMs: LOBBY_AWARD_VISUAL_WINDOW_MS,
+                                        accent: transition.visualOnly
+                                            ? 'from-cyan-300/65 to-indigo-300/65'
+                                            : 'from-pink-300/70 to-yellow-300/70',
+                                        subtitle: transition.visualOnly ? 'Visual moment unlocked' : 'Points moment unlocked'
+                                    }));
+                                    const active = (prev || []).filter(
+                                        (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_AWARD_VISUAL_WINDOW_MS
+                                    );
+                                    return [...additions, ...active].slice(0, LOBBY_TIER_CHIP_CAP);
+                                });
+                            }
+                            let nextVolleyState = {
+                                ...nextVolleyStateRaw,
+                                activeParticipantCount: activeParticipants.length
+                            };
+                            const awardPayload = buildAwardPayload(nextVolleyState, burstTime);
+                            const forceVisualOnlyRewards = lobbyVisualOnlyRef.current || lobbyAwardAuthLockedRef.current;
+                            if (awardPayload?.shouldProcess) {
+                                nextVolleyState = {
+                                    ...(awardPayload.nextState || nextVolleyState),
+                                    activeParticipantCount: activeParticipants.length,
+                                    authFailureLocked: lobbyAwardAuthLockedRef.current || !!nextVolleyState.authFailureLocked
+                                };
+                                const tierMeta = getLobbyTierDefinition(awardPayload.tier);
+                                const totalAwardedPoints = (awardPayload.awards || []).reduce(
+                                    (sum, entry) => sum + Number(entry?.points || 0),
+                                    0
+                                );
+                                setLobbyTierChips((prev) => {
+                                    const active = (prev || []).filter(
+                                        (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_AWARD_VISUAL_WINDOW_MS
+                                    );
+                                    const awardChip = {
+                                        id: `lobby-award-${c.doc.id}-${awardPayload.tier}`,
+                                        label: `Tier ${awardPayload.tier}: ${awardPayload.tierName || tierMeta?.name || 'Volley'}`,
+                                        subtitle: (awardPayload.visualOnly || forceVisualOnlyRewards)
+                                            ? 'Visual reward'
+                                            : `${totalAwardedPoints} pts to active players`,
+                                        tier: awardPayload.tier,
+                                        createdAt: burstTime,
+                                        durationMs: LOBBY_AWARD_VISUAL_WINDOW_MS,
+                                        accent: (awardPayload.visualOnly || forceVisualOnlyRewards)
+                                            ? 'from-cyan-300/65 to-indigo-300/65'
+                                            : 'from-emerald-300/70 to-yellow-300/70'
+                                    };
+                                    return [awardChip, ...active].slice(0, LOBBY_TIER_CHIP_CAP);
+                                });
+                                if (!forceVisualOnlyRewards && !awardPayload.visualOnly && Array.isArray(awardPayload.awards) && awardPayload.awards.length) {
+                                    if (lobbyAwardAuthLockedRef.current) {
+                                        nextVolleyState.authFailureLocked = true;
+                                    } else {
+                                        void awardRoomPointsOnce({
+                                            awardKey: awardPayload.awardKey,
+                                            awards: awardPayload.awards,
+                                            source: LOBBY_PLAYGROUND_REWARD_SOURCE
+                                        }).then((result) => {
+                                            if (result?.ok) return;
+                                            const code = String(result?.code || '');
+                                            if (!['permission-denied', 'unauthenticated', 'failed-precondition'].includes(code)) {
+                                                return;
+                                            }
+                                            if (lobbyAwardAuthLockedRef.current) return;
+                                            lobbyAwardAuthLockedRef.current = true;
+                                            setLobbyVolleyState((prev) => ({ ...(prev || createLobbyVolleyState()), authFailureLocked: true }));
+                                        });
+                                    }
+                                }
+                            }
+                            lobbyVolleyStateRef.current = nextVolleyState;
+                            setLobbyVolleyState(nextVolleyState);
                             pushLobbyLiveEvent({
                                 id: `lobby-play-live-${c.doc.id}`,
                                 avatar: d.avatar || effect.icon,
                                 user: d.userName || d.user || 'Guest',
-                                text: `triggered ${effect.label.toLowerCase()}`,
+                                text: `kept the volley alive with ${effect.label.toLowerCase()}${totalCount > 1 ? ` x${totalCount}` : ''} (streak ${nextVolleyState.streakCount})`,
                                 timestampMs: burstTime
                             });
                         } else if (d.type === 'storm_layer') {
@@ -1083,7 +1522,7 @@ const PublicTV = ({ roomCode }) => {
             messageTimeoutsRef.current.forEach(t => clearTimeout(t));
             messageTimeoutsRef.current = [];
         };
-    }, [roomCode, pushLobbyLiveEvent]);
+    }, [roomCode, pushLobbyLiveEvent, awardRoomPointsOnce]);
 
     useEffect(() => {
         if (!roomCode || !room?.chatShowOnTv) {
@@ -1411,8 +1850,36 @@ const PublicTV = ({ roomCode }) => {
     useEffect(() => { comboRef.current = combo; }, [combo]);
     useEffect(() => {
         const i = setInterval(() => {
-            setReactions(prev => prev.filter(r => nowMs() - (r.timestamp?.seconds * 1000 || nowMs()) < 4000));
-            setLobbyPlayBursts((prev) => prev.filter((burst) => (nowMs() - Number(burst?.createdAt || 0)) < 2800));
+            const tickNow = nowMs();
+            setReactions(prev => prev.filter(r => tickNow - (r.timestamp?.seconds * 1000 || tickNow) < 4000));
+            setLobbyPlayBursts((prev) => prev.filter((burst) => (tickNow - Number(burst?.createdAt || 0)) < LOBBY_BURST_WINDOW_MS));
+            setLobbyPlayScreenFx((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAt || 0)) < LOBBY_SCREEN_FX_WINDOW_MS));
+            setLobbyComboMoments((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAtMs || 0)) < LOBBY_COMBO_WINDOW_MS));
+            setLobbyVolleyLinks((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAt || 0)) < LOBBY_LINK_WINDOW_MS));
+            setLobbyTierChips((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAt || 0)) < LOBBY_AWARD_VISUAL_WINDOW_MS));
+            setLobbyVolleyState((prev) => {
+                if (!prev) return prev;
+                const lastAt = Number(prev.lastInteractionAtMs || 0);
+                if (!lastAt) return prev;
+                const elapsedMs = Math.max(0, tickNow - lastAt);
+                const liveEnergy = Math.max(0, Number(prev.energy || 0) - ((elapsedMs / 1000) * 0.28));
+                const timeoutMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.STREAK_TIMEOUT_MS || 6200);
+                if (elapsedMs > (timeoutMs * 1.6) && Number(prev.streakCount || 0) > 0) {
+                    const resetState = {
+                        ...createLobbyVolleyState(),
+                        streakId: Number(prev.streakId || 0) + 1,
+                        lastPayoutAtMs: Number(prev.lastPayoutAtMs || 0),
+                        authFailureLocked: !!prev.authFailureLocked
+                    };
+                    lobbyVolleyStateRef.current = resetState;
+                    lobbyLastAnchorRef.current = null;
+                    return resetState;
+                }
+                if (Math.abs(liveEnergy - Number(prev.energy || 0)) < 0.05) return prev;
+                const next = { ...prev, energy: liveEnergy };
+                lobbyVolleyStateRef.current = next;
+                return next;
+            });
             setCombo(prev => {
                 const next = Math.max(0, prev - 0.2);
                 comboRef.current = next;
@@ -1649,6 +2116,7 @@ const PublicTV = ({ roomCode }) => {
 
     const handleVolume = (vol) => {
         const level = Math.min(100, Math.round(vol / 1.5));
+        lobbyMicVolumeRef.current = level;
         setMicVolume(level);
         if (applauseStep === 'measuring') {
             if (level > applauseMax) setApplauseMax(level);
@@ -1709,6 +2177,23 @@ const PublicTV = ({ roomCode }) => {
         .filter((entry) => (nowMs() - Number(entry?.timestampMs || 0)) < 90000)
         .sort((a, b) => Number(b?.timestampMs || 0) - Number(a?.timestampMs || 0))
         .slice(0, 8);
+    const lobbyOrbEnergy = getLobbyOrbMeterValue(lobbyVolleyState, nowMs());
+    const lobbyActiveParticipants = getActiveParticipants(lobbyVolleyState, nowMs()).slice(0, LOBBY_ORB_EVENT_CAP);
+    const lobbyCurrentTierMeta = getLobbyTierDefinition(lobbyVolleyState?.currentTier || 0);
+    const lobbyStreakTimeoutMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.STREAK_TIMEOUT_MS || 6200);
+    const lobbyStreakAgeMs = Math.max(0, nowMs() - Number(lobbyVolleyState?.lastInteractionAtMs || 0));
+    const lobbyStreakDecayPct = clampLobby(
+        100 - ((lobbyStreakAgeMs / Math.max(1, lobbyStreakTimeoutMs)) * 100),
+        0,
+        100
+    );
+    const showLobbyPlaygroundFx = lobbyWarmupMode
+        || lobbyTransitionPhase === 'exiting'
+        || lobbyPlayBursts.length > 0
+        || lobbyPlayScreenFx.length > 0
+        || lobbyVolleyLinks.length > 0
+        || lobbyComboMoments.length > 0
+        || lobbyTierChips.length > 0;
     useEffect(() => {
         if (!lobbyWarmupMode) {
             setLobbyPromptIndex(0);
@@ -1719,6 +2204,59 @@ const PublicTV = ({ roomCode }) => {
         }, 9000);
         return () => clearInterval(interval);
     }, [lobbyWarmupMode]);
+    useEffect(() => {
+        if (lobbyTransitionTimerRef.current) {
+            clearTimeout(lobbyTransitionTimerRef.current);
+            lobbyTransitionTimerRef.current = null;
+        }
+        if (lobbyWarmupMode) {
+            setLobbyTransitionPhase('idle');
+            return undefined;
+        }
+        setLobbyTransitionPhase('exiting');
+        lobbyTransitionTimerRef.current = setTimeout(() => {
+            const resetState = createLobbyVolleyState();
+            setLobbyPlayBursts([]);
+            setLobbyPlayScreenFx([]);
+            setLobbyComboMoments([]);
+            setLobbyVolleyLinks([]);
+            setLobbyTierChips([]);
+            setLobbyVolleyState(resetState);
+            lobbyVolleyStateRef.current = resetState;
+            lobbyLastAnchorRef.current = null;
+            setLobbyTransitionPhase('idle');
+            lobbyTransitionTimerRef.current = null;
+        }, 1200);
+        return () => {
+            if (lobbyTransitionTimerRef.current) {
+                clearTimeout(lobbyTransitionTimerRef.current);
+                lobbyTransitionTimerRef.current = null;
+            }
+        };
+    }, [lobbyWarmupMode]);
+    useEffect(() => {
+        if (lobbyTransitionTimerRef.current) {
+            clearTimeout(lobbyTransitionTimerRef.current);
+            lobbyTransitionTimerRef.current = null;
+        }
+        const resetState = createLobbyVolleyState();
+        setLobbyPlayBursts([]);
+        setLobbyPlayScreenFx([]);
+        setLobbyComboMoments([]);
+        setLobbyVolleyLinks([]);
+        setLobbyTierChips([]);
+        setLobbyTransitionPhase('idle');
+        setLobbyVolleyState(resetState);
+        lobbyVolleyStateRef.current = resetState;
+        lobbyLastAnchorRef.current = null;
+        lobbyAwardAuthLockedRef.current = false;
+    }, [roomCode]);
+    useEffect(() => () => {
+        if (lobbyTransitionTimerRef.current) {
+            clearTimeout(lobbyTransitionTimerRef.current);
+            lobbyTransitionTimerRef.current = null;
+        }
+    }, []);
 
     const bgClass = multiplier >= 4 ? 'bg-gradient-to-br from-pink-900 via-purple-900 to-indigo-900 animate-pulse' : 
                     multiplier >= 2 ? 'bg-gradient-to-br from-blue-900 to-black' : 
@@ -1801,6 +2339,19 @@ const PublicTV = ({ roomCode }) => {
                     : 0;
     const stormChargeScore = clampPct((stormBase * 0.52) + (combo * 0.2) + (stormLayerIntensity * 0.28));
     const motionSafeFx = !!room?.reduceMotionFx;
+    useEffect(() => {
+        lobbyVisualizerEnabledRef.current = !!visualizerEnabled;
+    }, [visualizerEnabled]);
+    useEffect(() => {
+        lobbyReduceMotionRef.current = motionSafeFx;
+    }, [motionSafeFx]);
+    useEffect(() => {
+        lobbyMicVolumeRef.current = Number(micVolume || 0);
+    }, [micVolume]);
+    useEffect(() => {
+        lobbyPausedRef.current = !!room?.lobbyPlaygroundPaused;
+        lobbyVisualOnlyRef.current = !!room?.lobbyPlaygroundVisualOnly;
+    }, [room?.lobbyPlaygroundPaused, room?.lobbyPlaygroundVisualOnly]);
     const bangerParticleCount = motionSafeFx ? 8 : 15;
     const balladParticleCount = motionSafeFx ? 4 : 6;
     const particleSeedBase = useMemo(
@@ -2842,6 +3393,47 @@ const PublicTV = ({ roomCode }) => {
                                             <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200 mb-1">Try This Now</div>
                                             <div className="text-lg md:text-2xl font-bebas text-white leading-tight">{lobbyPrompt}</div>
                                         </div>
+                                        <div className="rounded-2xl border border-fuchsia-300/35 bg-gradient-to-r from-cyan-500/14 via-indigo-500/14 to-fuchsia-500/16 px-3 py-3 mb-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100">Volley Streak</div>
+                                                <div className="px-2 py-1 rounded-full border border-white/25 bg-black/35 text-[10px] uppercase tracking-[0.15em] text-white">
+                                                    Tier {lobbyVolleyState?.currentTier || 0}{lobbyCurrentTierMeta?.name ? `: ${lobbyCurrentTierMeta.name}` : ''}
+                                                </div>
+                                            </div>
+                                            <div className="mt-2 flex items-end justify-between gap-3">
+                                                <div className="text-2xl md:text-3xl font-bebas text-white">{lobbyVolleyState?.streakCount || 0}</div>
+                                                <div className="text-xs md:text-sm text-cyan-100">
+                                                    {lobbyActiveParticipants.length} active
+                                                </div>
+                                            </div>
+                                            <div className="mt-2 h-2 rounded-full overflow-hidden border border-white/20 bg-black/45">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-yellow-300 transition-all duration-200"
+                                                    style={{ width: `${lobbyOrbEnergy}%` }}
+                                                />
+                                            </div>
+                                            <div className="mt-1 h-1 rounded-full overflow-hidden bg-black/45">
+                                                <div
+                                                    className="h-full bg-white/65 transition-all duration-150"
+                                                    style={{ width: `${lobbyStreakDecayPct}%` }}
+                                                />
+                                            </div>
+                                            {lobbyVolleyState?.authFailureLocked && (
+                                                <div className="mt-2 text-[10px] uppercase tracking-[0.14em] text-amber-100">
+                                                    Host auth unavailable: running visual-only rewards
+                                                </div>
+                                            )}
+                                            {!!room?.lobbyPlaygroundVisualOnly && (
+                                                <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-fuchsia-100">
+                                                    Host forced visual-only rewards
+                                                </div>
+                                            )}
+                                            {!!room?.lobbyPlaygroundPaused && (
+                                                <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-amber-100">
+                                                    Lobby playground intake paused by host
+                                                </div>
+                                            )}
+                                        </div>
                                         <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-300 mb-1">In Room ({roomUsers.length})</div>
                                         <div className="grid grid-cols-2 gap-2 mb-3 max-h-[20vh] overflow-y-auto custom-scrollbar pr-1">
                                             {lobbyMembers.length === 0 && (
@@ -3100,27 +3692,310 @@ const PublicTV = ({ roomCode }) => {
                 </div>
             )}
 
+            {showLobbyPlaygroundFx && (
+            <>
+            {/* Lobby Playground Full-Screen FX */}
+            <div className={`absolute inset-0 z-[197] pointer-events-none overflow-hidden transition-opacity duration-700 ${lobbyTransitionPhase === 'exiting' ? 'opacity-0' : 'opacity-100'}`}>
+                {lobbyPlayScreenFx.map((fx) => {
+                    const ageMs = nowMs() - Number(fx.createdAt || 0);
+                    if (ageMs < 0) return null;
+                    const durationMs = Math.max(1200, Number(fx.durationMs || 2200));
+                    const progress = Math.min(1, ageMs / durationMs);
+                    if (progress >= 1) return null;
+                    const opacity = Math.max(0, 1 - (progress * 0.95));
+                    const intensity = Math.max(1, Number(fx.intensity || 1));
+                    const baseSeed = Number(fx.seed || 0);
+                    const motion = fx.motion || 'wave';
+                    const centerX = clampLobby(Number(fx.anchorX || (30 + (seededUnit(baseSeed + 2) * 40))), 8, 92);
+                    const centerY = clampLobby(Number(fx.anchorY || (28 + (seededUnit(baseSeed + 4) * 40))), 8, 92);
+                    if (motion === 'laser' || motion === 'prism_sweep_link' || motion === 'spark_shower_bridge') {
+                        const beamLength = motion === 'spark_shower_bridge' ? 4 : 3;
+                        return (
+                            <div key={fx.id} className="absolute inset-0" style={{ opacity }}>
+                                {Array.from({ length: beamLength + Math.min(3, intensity) }, (_, idx) => {
+                                    const localSeed = baseSeed + (idx * 37);
+                                    const top = clampLobby(centerY - 10 + (seededUnit(localSeed + 1) * 20), 8, 92);
+                                    const tilt = -22 + (seededUnit(localSeed + 5) * 44);
+                                    const delayMs = idx * 80;
+                                    const beamDur = 820 + Math.round(seededUnit(localSeed + 8) * 300);
+                                    return (
+                                        <span
+                                            key={`${fx.id}-laser-${idx}`}
+                                            className="lobby-screen-laser-beam"
+                                            style={{
+                                                top: `${top}%`,
+                                                animationDelay: `${delayMs}ms`,
+                                                '--beam-tilt': `${tilt}deg`,
+                                                '--beam-dur': `${beamDur}ms`
+                                            }}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        );
+                    }
+                    if (motion === 'echo' || motion === 'ripple_tunnel' || motion === 'pulse_bloom') {
+                        const ringBase = motion === 'pulse_bloom' ? 190 : 220;
+                        return (
+                            <div key={fx.id} className="absolute inset-0" style={{ opacity }}>
+                                <div className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: `${centerX}%`, top: `${centerY}%` }}>
+                                    {Array.from({ length: 3 + Math.min(2, intensity) }, (_, idx) => (
+                                        <span
+                                            key={`${fx.id}-echo-${idx}`}
+                                            className="lobby-screen-echo-ring"
+                                            style={{
+                                                animationDelay: `${idx * 190}ms`,
+                                                '--echo-size': `${ringBase + (idx * 130)}px`
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    }
+                    if (motion === 'confetti' || motion === 'spark_shower_bridge') {
+                        const symbols = Array.isArray(fx.symbols) && fx.symbols.length ? fx.symbols : [emoji(0x1F389), emoji(0x1F31F)];
+                        return (
+                            <div key={fx.id} className="absolute inset-0" style={{ opacity }}>
+                                {Array.from({ length: 12 + (intensity * 4) }, (_, idx) => {
+                                    const localSeed = baseSeed + (idx * 23);
+                                    const left = clampLobby(centerX - 18 + (seededUnit(localSeed + 2) * 36), 3, 97);
+                                    const delayMs = Math.round(seededUnit(localSeed + 4) * 320);
+                                    const fallMs = 1200 + Math.round(seededUnit(localSeed + 6) * 1000);
+                                    const swayPx = -28 + Math.round(seededUnit(localSeed + 9) * 56);
+                                    const spinDeg = -80 + Math.round(seededUnit(localSeed + 12) * 160);
+                                    return (
+                                        <span
+                                            key={`${fx.id}-confetti-${idx}`}
+                                            className="lobby-screen-confetti-piece"
+                                            style={{
+                                                left: `${left}%`,
+                                                animationDelay: `${delayMs}ms`,
+                                                '--fall-dur': `${fallMs}ms`,
+                                                '--fall-sway': `${swayPx}px`,
+                                                '--fall-rot': `${spinDeg}deg`
+                                            }}
+                                        >
+                                            {symbols[idx % symbols.length]}
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        );
+                    }
+                    return (
+                        <div key={fx.id} className="absolute inset-0" style={{ opacity }}>
+                            <div className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: `${centerX}%`, top: `${centerY}%` }}>
+                                {Array.from({ length: 3 + Math.min(3, intensity) }, (_, idx) => (
+                                    <span
+                                        key={`${fx.id}-wave-${idx}`}
+                                        className="lobby-screen-wave-ring"
+                                        style={{
+                                            animationDelay: `${idx * 170}ms`,
+                                            '--wave-size': `${240 + (idx * 115)}px`
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Lobby Playground Volley Links + Orb + Banners */}
+            <div className={`absolute inset-0 z-[198] pointer-events-none overflow-hidden transition-opacity duration-700 ${lobbyTransitionPhase === 'exiting' ? 'opacity-0' : 'opacity-100'}`}>
+                {lobbyVolleyLinks.length > 0 && (
+                    <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        {lobbyVolleyLinks.map((link) => {
+                            const ageMs = nowMs() - Number(link?.createdAt || 0);
+                            if (ageMs < 0) return null;
+                            const durationMs = Math.max(900, Number(link?.durationMs || LOBBY_LINK_WINDOW_MS));
+                            const progress = Math.min(1, ageMs / durationMs);
+                            if (progress >= 1) return null;
+                            const opacity = Math.max(0, (1 - progress) * 0.95);
+                            const fromX = clampLobby(Number(link?.from?.x || 50), 0, 100);
+                            const fromY = clampLobby(Number(link?.from?.y || 50), 0, 100);
+                            const toX = clampLobby(Number(link?.to?.x || 50), 0, 100);
+                            const toY = clampLobby(Number(link?.to?.y || 50), 0, 100);
+                            return (
+                                <g key={link.id} style={{ opacity }}>
+                                    <line
+                                        x1={fromX}
+                                        y1={fromY}
+                                        x2={toX}
+                                        y2={toY}
+                                        stroke={link.color || 'rgba(125,211,252,0.75)'}
+                                        strokeWidth={Math.max(2, Number(link.width || 4))}
+                                        strokeLinecap="round"
+                                        className="lobby-volley-link"
+                                    />
+                                    <circle
+                                        cx={toX}
+                                        cy={toY}
+                                        r={Math.max(1.6, Number(link.width || 4) * 0.45)}
+                                        fill={link.color || 'rgba(147,197,253,0.9)'}
+                                    />
+                                </g>
+                            );
+                        })}
+                    </svg>
+                )}
+                {(lobbyWarmupMode || lobbyTransitionPhase === 'exiting') && (
+                    <div className="absolute left-1/2 top-[52%] -translate-x-1/2 -translate-y-1/2">
+                        <div className={`lobby-volley-orb-shell ${motionSafeFx ? 'lobby-volley-orb-shell-safe' : ''}`}>
+                            <div
+                                className="lobby-volley-orb-core"
+                                style={{
+                                    '--orb-glow': `${0.35 + (lobbyOrbEnergy / 140)}`,
+                                    '--orb-scale': `${1 + (lobbyOrbEnergy / 360)}`
+                                }}
+                            >
+                                <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100">Volley Orb</div>
+                                <div className="text-3xl md:text-4xl font-bebas text-white leading-none">{lobbyVolleyState?.streakCount || 0}</div>
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-white/80">
+                                    Tier {lobbyVolleyState?.currentTier || 0}
+                                </div>
+                            </div>
+                            <div className="lobby-volley-orb-ring">
+                                <div
+                                    className="lobby-volley-orb-ring-fill"
+                                    style={{ '--orb-fill': `${lobbyOrbEnergy}%` }}
+                                />
+                            </div>
+                            <div className="lobby-volley-orb-activity">
+                                {lobbyActiveParticipants.slice(0, 5).map((participant, idx) => (
+                                    <span key={`${participant.uid}-${idx}`} className="lobby-volley-participant">
+                                        {participant.avatar || EMOJI.sparkle}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+                <div className="absolute top-5 left-1/2 -translate-x-1/2 w-[min(72vw,620px)]">
+                    <div className="rounded-full border border-white/20 bg-black/45 px-4 py-2 backdrop-blur-sm">
+                        <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-cyan-100">
+                            <span>Streak Meter</span>
+                            <span>{lobbyVolleyState?.streakCount || 0} hits</span>
+                        </div>
+                        <div className="mt-2 h-2 rounded-full overflow-hidden bg-black/55 border border-white/20">
+                            <div className="h-full bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-yellow-300 transition-all duration-200" style={{ width: `${lobbyOrbEnergy}%` }} />
+                        </div>
+                        <div className="mt-1 h-1 rounded-full overflow-hidden bg-black/45">
+                            <div className="h-full bg-white/70 transition-all duration-150" style={{ width: `${lobbyStreakDecayPct}%` }} />
+                        </div>
+                    </div>
+                </div>
+                <div className="absolute top-24 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+                    {lobbyComboMoments.slice(0, 3).map((combo) => {
+                        const ageMs = nowMs() - Number(combo.createdAtMs || 0);
+                        if (ageMs < 0) return null;
+                        const durationMs = Math.max(1200, Number(combo.expiresAtMs || 0) - Number(combo.createdAtMs || 0) || LOBBY_COMBO_WINDOW_MS);
+                        const progress = Math.min(1, ageMs / durationMs);
+                        if (progress >= 1) return null;
+                        return (
+                            <div
+                                key={combo.id}
+                                className={`rounded-full border border-white/40 bg-gradient-to-r ${combo?.style?.accent || 'from-cyan-300/65 to-indigo-300/65'} px-4 py-1.5 text-black font-black uppercase tracking-[0.14em] text-xs shadow-[0_0_24px_rgba(255,255,255,0.35)] lobby-combo-chip`}
+                                style={{ opacity: Math.max(0, 1 - (progress * 0.75)) }}
+                            >
+                                {combo.label}
+                            </div>
+                        );
+                    })}
+                </div>
+                <div className="absolute top-5 right-5 flex flex-col items-end gap-2">
+                    {lobbyTierChips.slice(0, 3).map((chip) => {
+                        const ageMs = nowMs() - Number(chip?.createdAt || 0);
+                        if (ageMs < 0) return null;
+                        const durationMs = Math.max(1500, Number(chip?.durationMs || LOBBY_AWARD_VISUAL_WINDOW_MS));
+                        const progress = Math.min(1, ageMs / durationMs);
+                        if (progress >= 1) return null;
+                        return (
+                            <div
+                                key={chip.id}
+                                className={`rounded-xl border border-white/35 bg-gradient-to-r ${chip.accent || 'from-cyan-300/65 to-indigo-300/65'} px-3 py-2 min-w-[190px] text-black shadow-[0_0_26px_rgba(255,255,255,0.28)]`}
+                                style={{ opacity: Math.max(0, 1 - (progress * 0.8)) }}
+                            >
+                                <div className="text-[10px] uppercase tracking-[0.16em] font-black">Lobby Reward</div>
+                                <div className="text-sm font-black">{chip.label}</div>
+                                {chip.subtitle && <div className="text-[10px] uppercase tracking-[0.1em] font-bold">{chip.subtitle}</div>}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
             {/* Lobby Playground Bursts */}
-            <div className="absolute inset-0 z-[198] pointer-events-none overflow-hidden">
+            <div className={`absolute inset-0 z-[199] pointer-events-none overflow-hidden transition-opacity duration-700 ${lobbyTransitionPhase === 'exiting' ? 'opacity-0' : 'opacity-100'}`}>
                 {lobbyPlayBursts.map((burst) => {
                     const ageMs = nowMs() - Number(burst.createdAt || 0);
-                    const opacity = Math.max(0, 1 - (ageMs / 2800));
+                    if (ageMs < 0) return null;
+                    const durationMs = Math.max(2200, Number(burst.durationMs || 3600));
+                    const progress = Math.min(1, ageMs / durationMs);
+                    const opacity = Math.max(0, 1 - progress);
+                    const particleOpacity = Math.max(0, 1 - (progress * 1.25));
                     return (
                         <div
                             key={burst.id}
-                            className="absolute -translate-x-1/2 -translate-y-1/2"
+                            className="absolute"
                             style={{
                                 left: `${burst.left}%`,
                                 top: `${burst.top}%`,
                                 opacity
                             }}
                         >
-                            <div className={`rounded-2xl border border-white/35 bg-gradient-to-r ${burst.accent} px-3 py-2 shadow-[0_0_26px_rgba(34,211,238,0.35)] backdrop-blur-sm`}>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-2xl md:text-3xl">{burst.icon}</span>
-                                    <div className="min-w-0">
-                                        <div className="text-[11px] md:text-xs uppercase tracking-[0.14em] font-black text-black/80">{burst.label}</div>
-                                        <div className="text-xs md:text-sm text-black/75 truncate max-w-[180px]">{burst.user}</div>
+                            <div className="lobby-burst-anchor">
+                                <div
+                                    className={`lobby-burst-motion lobby-burst-motion-${burst.motion || 'wave'}`}
+                                    style={{
+                                        animationDelay: `${Number(burst.staggerMs || 0)}ms`,
+                                        '--lobby-rise': `${Math.max(18, Number(burst.risePx || 32))}px`
+                                    }}
+                                >
+                                    <div
+                                        className="relative"
+                                        style={{
+                                            transform: `scale(${Math.max(0.82, Number(burst.scale || 1))}) rotate(${Number(burst.rotationDeg || 0)}deg)`
+                                        }}
+                                    >
+                                        <div
+                                            className="absolute -inset-10 rounded-full lobby-burst-aura"
+                                            style={{
+                                                background: `radial-gradient(circle, ${burst.aura || 'rgba(34,211,238,0.42)'} 0%, rgba(0,0,0,0) 72%)`,
+                                                opacity: Math.max(0.2, Number(burst.contributionAlpha || 1))
+                                            }}
+                                        />
+                                        <div className={`relative rounded-[24px] border border-white/45 bg-gradient-to-r ${burst.accent} px-4 py-3 shadow-[0_0_34px_rgba(34,211,238,0.38)] backdrop-blur-sm lobby-burst-card`}>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-4xl md:text-5xl drop-shadow-[0_0_18px_rgba(255,255,255,0.65)]">{burst.icon}</span>
+                                                <div className="min-w-0">
+                                                    <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] font-black text-black/85">{burst.label}</div>
+                                                    <div className="text-sm md:text-base text-black/80 font-bold truncate max-w-[220px]">{burst.user}</div>
+                                                </div>
+                                                {Number(burst.count || 1) > 1 && (
+                                                    <div className="rounded-full border border-black/40 bg-black/20 px-2 py-1 text-[10px] md:text-xs uppercase tracking-[0.16em] font-black text-black/85">
+                                                        x{Number(burst.count || 1)}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="absolute inset-0 pointer-events-none">
+                                            {(Array.isArray(burst.particles) ? burst.particles : []).map((particle) => (
+                                                <span
+                                                    key={`${burst.id}-${particle.id}`}
+                                                    className="lobby-burst-particle"
+                                                    style={{
+                                                        marginLeft: `${Number(particle.x || 0)}px`,
+                                                        marginTop: `${Number(particle.y || 0)}px`,
+                                                        animationDelay: `${Number(particle.delayMs || 0)}ms`,
+                                                        opacity: particleOpacity
+                                                    }}
+                                                >
+                                                    {particle.icon}
+                                                </span>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -3128,6 +4003,8 @@ const PublicTV = ({ roomCode }) => {
                     );
                 })}
             </div>
+            </>
+            )}
 
             {/* Reactions */}
             <div className="absolute inset-0 z-[200] pointer-events-none overflow-hidden">
@@ -3215,6 +4092,21 @@ const PublicTV = ({ roomCode }) => {
               @keyframes tv-sweep { 0% { transform: translateX(-120%); opacity: 0; } 20% { opacity: 0.45; } 50% { opacity: 0.12; } 100% { transform: translateX(120%); opacity: 0; } }
               @keyframes bonus-pop { 0% { opacity: 0; transform: scale(0.7); } 20% { opacity: 1; transform: scale(1.02); } 100% { opacity: 0; transform: scale(1.08); } }
               @keyframes bonus-sheen { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
+              @keyframes lobby-burst-rise { 0% { opacity: 0; transform: translateY(12px) scale(0.84); } 16% { opacity: 1; } 100% { opacity: 0; transform: translateY(calc(var(--lobby-rise, 32px) * -1)) scale(1.03); } }
+              @keyframes lobby-wave-card { 0%, 100% { transform: rotate(0deg) scale(1); } 25% { transform: rotate(-2.5deg) scale(1.03); } 50% { transform: rotate(2.2deg) scale(1.05); } 75% { transform: rotate(-1.5deg) scale(1.02); } }
+              @keyframes lobby-laser-card { 0% { transform: scale(0.9); filter: brightness(0.95); } 35% { transform: scale(1.09); filter: brightness(1.28); } 70% { transform: scale(0.98); filter: brightness(1.08); } 100% { transform: scale(1); filter: brightness(1); } }
+              @keyframes lobby-echo-card { 0% { transform: scale(0.94); box-shadow: 0 0 0 rgba(96,165,250,0.0); } 45% { transform: scale(1.08); box-shadow: 0 0 24px rgba(96,165,250,0.45), 0 0 42px rgba(99,102,241,0.34); } 100% { transform: scale(1); box-shadow: 0 0 0 rgba(96,165,250,0.0); } }
+              @keyframes lobby-confetti-card { 0% { transform: translateY(8px) rotate(-4deg) scale(0.9); } 25% { transform: translateY(-6px) rotate(6deg) scale(1.08); } 55% { transform: translateY(0px) rotate(-2deg) scale(1.02); } 100% { transform: translateY(0px) rotate(0deg) scale(1); } }
+              @keyframes lobby-aura-pulse { 0% { opacity: 0.35; transform: scale(0.72); } 35% { opacity: 0.85; transform: scale(1.05); } 100% { opacity: 0; transform: scale(1.28); } }
+              @keyframes lobby-particle-pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.25); } 20% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } 100% { opacity: 0; transform: translate(-50%, calc(-50% - 22px)) scale(0.72); } }
+              @keyframes lobby-screen-wave-expand { 0% { opacity: 0.9; transform: translate(-50%, -50%) scale(0.42); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.22); } }
+              @keyframes lobby-screen-echo-expand { 0% { opacity: 0.88; transform: translate(-50%, -50%) scale(0.36); } 65% { opacity: 0.52; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.34); } }
+              @keyframes lobby-screen-laser-sweep { 0% { opacity: 0; transform: translateX(-110%) rotate(var(--beam-tilt, 0deg)); } 20% { opacity: 0.88; } 80% { opacity: 0.7; } 100% { opacity: 0; transform: translateX(130%) rotate(var(--beam-tilt, 0deg)); } }
+              @keyframes lobby-screen-confetti-fall { 0% { opacity: 0; transform: translate3d(0, -12vh, 0) rotate(0deg) scale(0.8); } 12% { opacity: 0.95; } 100% { opacity: 0; transform: translate3d(var(--fall-sway, 0px), 108vh, 0) rotate(var(--fall-rot, 80deg)) scale(1.04); } }
+              @keyframes lobby-link-pulse { 0% { stroke-dashoffset: 22; } 100% { stroke-dashoffset: 0; } }
+              @keyframes lobby-orb-float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-6px); } }
+              @keyframes lobby-orb-glow { 0%, 100% { filter: drop-shadow(0 0 16px rgba(56,189,248,0.35)); } 50% { filter: drop-shadow(0 0 34px rgba(244,114,182,0.42)); } }
+              @keyframes lobby-combo-chip-pop { 0% { transform: translateY(8px) scale(0.92); opacity: 0; } 20% { transform: translateY(0) scale(1.02); opacity: 1; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
               .bonus-drop-burst { 
                 min-width: min(80vw, 980px);
                 background: radial-gradient(circle at top, rgba(34,211,238,0.35), rgba(236,72,153,0.35) 45%, rgba(0,0,0,0.9) 70%);
@@ -3242,6 +4134,144 @@ const PublicTV = ({ roomCode }) => {
               .vip-reaction-emoji { animation: vip-jolt 0.6s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(250, 204, 21, 0.75)); }
               .animate-vip-spin { animation: vip-spin 1.2s linear infinite; }
               .tv-light-sweep { background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.12) 45%, transparent 80%); animation: tv-sweep 10s ease-in-out infinite; mix-blend-mode: screen; }
+              .lobby-burst-anchor { transform: translate(-50%, -50%); }
+              .lobby-burst-motion { animation: lobby-burst-rise 3.6s cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
+              .lobby-burst-aura { animation: lobby-aura-pulse 1.2s ease-out forwards; mix-blend-mode: screen; }
+              .lobby-burst-particle {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                font-size: clamp(1rem, 2.3vw, 1.5rem);
+                filter: drop-shadow(0 0 10px rgba(255,255,255,0.5));
+                animation: lobby-particle-pop 1.25s ease-out forwards;
+                transform: translate(-50%, -50%);
+              }
+              .lobby-burst-motion-wave .lobby-burst-card { animation: lobby-wave-card 0.95s ease-in-out 2; }
+              .lobby-burst-motion-laser .lobby-burst-card { animation: lobby-laser-card 0.9s ease-out 1; }
+              .lobby-burst-motion-echo .lobby-burst-card { animation: lobby-echo-card 1s ease-out 1; }
+              .lobby-burst-motion-confetti .lobby-burst-card { animation: lobby-confetti-card 1s ease-out 1; }
+              .lobby-screen-wave-ring {
+                position: absolute;
+                width: var(--wave-size, 260px);
+                height: var(--wave-size, 260px);
+                border-radius: 9999px;
+                border: 4px solid rgba(34,211,238,0.6);
+                box-shadow: 0 0 26px rgba(34,211,238,0.45), inset 0 0 22px rgba(56,189,248,0.35);
+                animation: lobby-screen-wave-expand 1s ease-out forwards;
+              }
+              .lobby-screen-echo-ring {
+                position: absolute;
+                width: var(--echo-size, 240px);
+                height: var(--echo-size, 240px);
+                border-radius: 9999px;
+                border: 3px solid rgba(129,140,248,0.7);
+                box-shadow: 0 0 30px rgba(129,140,248,0.48), inset 0 0 24px rgba(96,165,250,0.3);
+                animation: lobby-screen-echo-expand 1.15s ease-out forwards;
+              }
+              .lobby-screen-laser-beam {
+                position: absolute;
+                left: -25%;
+                width: 150%;
+                height: 8px;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, rgba(0,0,0,0), rgba(232,121,249,0.92), rgba(34,211,238,0.92), rgba(0,0,0,0));
+                box-shadow: 0 0 20px rgba(232,121,249,0.65), 0 0 34px rgba(34,211,238,0.55);
+                animation: lobby-screen-laser-sweep var(--beam-dur, 980ms) ease-out forwards;
+                transform-origin: center;
+              }
+              .lobby-screen-confetti-piece {
+                position: absolute;
+                top: -10vh;
+                font-size: clamp(1rem, 2.4vw, 1.65rem);
+                filter: drop-shadow(0 0 8px rgba(255,255,255,0.45));
+                animation: lobby-screen-confetti-fall var(--fall-dur, 1700ms) ease-in forwards;
+              }
+              .lobby-volley-link {
+                stroke-dasharray: 12 10;
+                animation: lobby-link-pulse 0.9s linear infinite;
+                filter: drop-shadow(0 0 10px rgba(125,211,252,0.52));
+              }
+              .lobby-volley-orb-shell {
+                width: clamp(180px, 18vw, 260px);
+                height: clamp(180px, 18vw, 260px);
+                border-radius: 9999px;
+                background: radial-gradient(circle at 28% 25%, rgba(255,255,255,0.2), rgba(34,211,238,0.14) 35%, rgba(15,23,42,0.85) 72%);
+                border: 1px solid rgba(255,255,255,0.34);
+                position: relative;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                backdrop-filter: blur(6px);
+                animation: lobby-orb-float 2.8s ease-in-out infinite, lobby-orb-glow 2.8s ease-in-out infinite;
+              }
+              .lobby-volley-orb-shell-safe {
+                animation-duration: 4.5s;
+              }
+              .lobby-volley-orb-core {
+                --orb-glow: 0.4;
+                --orb-scale: 1;
+                width: 62%;
+                height: 62%;
+                border-radius: 9999px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                background: radial-gradient(circle, rgba(15,23,42,0.76), rgba(2,6,23,0.9));
+                border: 1px solid rgba(255,255,255,0.28);
+                box-shadow: 0 0 calc(30px * var(--orb-glow)) rgba(34,211,238,0.45);
+                transform: scale(var(--orb-scale));
+              }
+              .lobby-volley-orb-ring {
+                position: absolute;
+                inset: 7%;
+                border-radius: 9999px;
+                border: 1px solid rgba(255,255,255,0.24);
+                overflow: hidden;
+              }
+              .lobby-volley-orb-ring-fill {
+                --orb-fill: 0%;
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                height: var(--orb-fill);
+                background: linear-gradient(180deg, rgba(34,211,238,0.65), rgba(244,114,182,0.6));
+                transition: height 180ms ease;
+              }
+              .lobby-volley-orb-activity {
+                position: absolute;
+                bottom: 10%;
+                left: 50%;
+                transform: translateX(-50%);
+                display: flex;
+                gap: 6px;
+              }
+              .lobby-volley-participant {
+                width: 24px;
+                height: 24px;
+                border-radius: 9999px;
+                border: 1px solid rgba(255,255,255,0.3);
+                background: rgba(2,6,23,0.7);
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 13px;
+              }
+              .lobby-combo-chip {
+                animation: lobby-combo-chip-pop 0.36s ease-out;
+                will-change: transform, opacity;
+              }
+              .motion-safe-fx .lobby-burst-motion {
+                animation-duration: 2.8s;
+              }
+              .motion-safe-fx .lobby-volley-link {
+                animation-duration: 1.6s;
+              }
+              .motion-safe-fx .lobby-combo-chip {
+                animation: none;
+              }
             `}</style>
         </div>
     );

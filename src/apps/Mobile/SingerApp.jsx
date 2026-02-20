@@ -33,6 +33,12 @@ import {
     dedupeQuestionVotes,
     getActivePopTriviaQuestion
 } from '../../lib/popTrivia';
+import {
+    createLobbyVolleyState,
+    applyLobbyInteraction,
+    getActiveParticipants,
+    LOBBY_PLAYGROUND_ENGINE_CONSTANTS
+} from '../TV/lobbyPlaygroundEngine';
 
 // Helper Component for Animated Points
 const AnimatedPoints = ({ value, onClick, className = '' }) => {
@@ -81,13 +87,64 @@ const STORM_LAYER_VIBRATE = {
     clap: [20, 16, 20]
 };
 const LOBBY_PLAYGROUND_INTERACTIONS = [
-    { id: 'wave', label: 'Wave Tunnel', emoji: emoji(0x1F44B), hint: 'Send a friendly room wave.' },
-    { id: 'laser', label: 'Laser Pop', emoji: emoji(0x2728), hint: 'Paint the TV with neon pops.' },
-    { id: 'echo', label: 'Echo Ring', emoji: emoji(0x1F30A), hint: 'Pulse a ripple through the room.' },
-    { id: 'confetti', label: 'Confetti', emoji: emoji(0x1F389), hint: 'Trigger a celebration burst.' }
+    {
+        id: 'wave',
+        label: 'Wave Tunnel',
+        emoji: emoji(0x1F44B),
+        hint: 'Send a friendly room wave.',
+        accentCard: 'from-cyan-500/22 via-sky-500/12 to-black/55',
+        accentBorder: 'border-cyan-300/80',
+        accentText: 'text-cyan-100',
+        accentPill: 'bg-cyan-400/25 text-cyan-100 border-cyan-300/45',
+        boost: 'Streak Boost: Flow'
+    },
+    {
+        id: 'laser',
+        label: 'Laser Pop',
+        emoji: emoji(0x2728),
+        hint: 'Paint the TV with neon pops.',
+        accentCard: 'from-fuchsia-500/24 via-cyan-500/10 to-black/55',
+        accentBorder: 'border-fuchsia-300/80',
+        accentText: 'text-fuchsia-100',
+        accentPill: 'bg-fuchsia-400/25 text-fuchsia-100 border-fuchsia-300/45',
+        boost: 'Streak Boost: Prism'
+    },
+    {
+        id: 'echo',
+        label: 'Echo Ring',
+        emoji: emoji(0x1F30A),
+        hint: 'Pulse a ripple through the room.',
+        accentCard: 'from-indigo-500/22 via-blue-500/14 to-black/55',
+        accentBorder: 'border-indigo-300/80',
+        accentText: 'text-indigo-100',
+        accentPill: 'bg-indigo-400/25 text-indigo-100 border-indigo-300/45',
+        boost: 'Streak Boost: Ripple'
+    },
+    {
+        id: 'confetti',
+        label: 'Confetti',
+        emoji: emoji(0x1F389),
+        hint: 'Trigger a celebration burst.',
+        accentCard: 'from-pink-500/24 via-yellow-400/15 to-black/55',
+        accentBorder: 'border-pink-300/80',
+        accentText: 'text-pink-100',
+        accentPill: 'bg-pink-400/25 text-pink-100 border-pink-300/45',
+        boost: 'Streak Boost: Party'
+    }
 ];
 const LOBBY_PLAYGROUND_WINDOW_MS = 60 * 1000;
 const LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE = 12;
+
+const timestampToMs = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'number') return value;
+    if (typeof value?.toMillis === 'function') return value.toMillis();
+    if (typeof value?.seconds === 'number') {
+        const nanos = typeof value?.nanoseconds === 'number' ? value.nanoseconds : 0;
+        return (value.seconds * 1000) + Math.floor(nanos / 1000000);
+    }
+    return 0;
+};
 
 const normalizeTight15Text = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -1268,6 +1325,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const chatSendTimesRef = useRef([]);
     const lastActiveAtRef = useRef(0);
     const [lobbyPlayUsageCount, setLobbyPlayUsageCount] = useState(0);
+    const [lobbyVolleyPreview, setLobbyVolleyPreview] = useState(() => createLobbyVolleyState());
+    const [lobbyVolleyNowMs, setLobbyVolleyNowMs] = useState(Date.now());
 
     const toast = useToast();
     const billingPlatform = useMemo(() => detectBillingPlatform(), []);
@@ -1996,6 +2055,43 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         });
         return () => unsub();
     }, [roomCode]);
+    useEffect(() => {
+        if (!roomCode) return () => {};
+        const q = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
+            where('roomCode', '==', roomCode),
+            orderBy('timestamp', 'desc'),
+            limit(120)
+        );
+        const unsub = onSnapshot(q, (snap) => {
+            const now = Date.now();
+            const entries = snap.docs
+                .map((docSnap) => docSnap.data())
+                .filter((entry) => String(entry?.type || '').startsWith('lobby_play_'))
+                .map((entry, idx) => ({
+                    ...entry,
+                    timestampMs: timestampToMs(entry?.timestamp) || (now - (idx * 120))
+                }))
+                .filter((entry) => (now - Number(entry.timestampMs || 0)) <= 90000)
+                .sort((a, b) => Number(a.timestampMs || 0) - Number(b.timestampMs || 0));
+            let nextState = createLobbyVolleyState();
+            entries.forEach((entry) => {
+                nextState = applyLobbyInteraction(
+                    nextState,
+                    {
+                        type: entry.type,
+                        count: Math.max(1, Number(entry.count || 1)),
+                        uid: entry.uid || '',
+                        userName: entry.userName || entry.user || 'Guest',
+                        avatar: entry.avatar || ''
+                    },
+                    Number(entry.timestampMs || now)
+                );
+            });
+            setLobbyVolleyPreview(nextState);
+        });
+        return () => unsub();
+    }, [roomCode]);
     const popTriviaRoundSec = Math.max(8, Number(room?.popTriviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC));
     const popTriviaState = useMemo(() => {
         if (room?.activeMode !== 'karaoke') return null;
@@ -2311,11 +2407,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }, 1000);
         return () => clearInterval(interval);
     }, [lobbyPlayUsageCount, pruneLobbyPlayWindow]);
+    useEffect(() => {
+        const interval = setInterval(() => setLobbyVolleyNowMs(Date.now()), 300);
+        return () => clearInterval(interval);
+    }, []);
 
     useEffect(() => {
         lobbyPlayWindowRef.current = [];
         setLobbyPlayUsageCount(0);
         lastLobbyPlayLimitToastAtRef.current = 0;
+        setLobbyVolleyPreview(createLobbyVolleyState());
     }, [roomCode, uid]);
 
     useEffect(() => () => {
@@ -2947,8 +3048,23 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (!user || !roomCode || currentSinger) return;
         const key = String(interactionId || '').trim().toLowerCase();
         if (!key) return;
+        if (room?.lobbyPlaygroundPaused) {
+            if (Date.now() - lastLobbyPlayLimitToastAtRef.current > 1800) {
+                toast('Lobby Playground is temporarily paused by host.');
+                lastLobbyPlayLimitToastAtRef.current = Date.now();
+            }
+            return;
+        }
         const now = Date.now();
-        const maxPerMinute = Math.max(1, Math.min(120, Number(room?.lobbyPlaygroundMaxPerMinute || LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE)));
+        const strictMode = !!room?.lobbyPlaygroundStrictMode;
+        const maxPerMinute = Math.max(
+            1,
+            Math.min(120, Number(room?.lobbyPlaygroundMaxPerMinute || (strictMode ? 8 : LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE)))
+        );
+        const perUserCooldownMs = Math.max(
+            120,
+            Math.min(1200, Number(room?.lobbyPlaygroundPerUserCooldownMs || (strictMode ? 450 : 220)))
+        );
         const usageCount = pruneLobbyPlayWindow(now);
         if (usageCount >= maxPerMinute) {
             triggerCooldownFlash();
@@ -2960,7 +3076,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
             return;
         }
-        if (now - lastLobbyPlayAtRef.current < 220) return;
+        if (now - lastLobbyPlayAtRef.current < perUserCooldownMs) return;
         lastLobbyPlayAtRef.current = now;
         lobbyPlayWindowRef.current = [...lobbyPlayWindowRef.current, now];
         setLobbyPlayUsageCount(lobbyPlayWindowRef.current.length);
@@ -5901,9 +6017,26 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const activeMessages = chatTab === 'host' ? dmMessages : loungeMessages;
     const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
     const noSingerOnStage = !currentSinger;
-    const lobbyPlayMaxPerMinute = Math.max(1, Math.min(120, Number(room?.lobbyPlaygroundMaxPerMinute || LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE)));
+    const lobbyPlayStrictMode = !!room?.lobbyPlaygroundStrictMode;
+    const lobbyPlaygroundPaused = !!room?.lobbyPlaygroundPaused;
+    const lobbyPlayMaxPerMinute = Math.max(
+        1,
+        Math.min(120, Number(room?.lobbyPlaygroundMaxPerMinute || (lobbyPlayStrictMode ? 8 : LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE)))
+    );
     const lobbyPlayRemaining = Math.max(0, lobbyPlayMaxPerMinute - lobbyPlayUsageCount);
     const lobbyPlayRateLimited = lobbyPlayRemaining <= 0;
+    const lobbyPlayInteractionDisabled = lobbyPlayRateLimited || lobbyPlaygroundPaused;
+    const lobbyPlayCooldownMs = Math.max(
+        120,
+        Math.min(1200, Number(room?.lobbyPlaygroundPerUserCooldownMs || (lobbyPlayStrictMode ? 450 : 220)))
+    );
+    const lobbyVolleyTimeoutMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.STREAK_TIMEOUT_MS || 6200);
+    const lobbyVolleyAgeMs = Math.max(0, lobbyVolleyNowMs - Number(lobbyVolleyPreview?.lastInteractionAtMs || 0));
+    const lobbyVolleyStreakDecayPct = Math.max(0, Math.min(100, Math.round(100 - ((lobbyVolleyAgeMs / Math.max(1, lobbyVolleyTimeoutMs)) * 100))));
+    const lobbyVolleyEnergyLive = Math.max(0, Math.min(100, Math.round(
+        Number(lobbyVolleyPreview?.energy || 0) - ((lobbyVolleyAgeMs / 1000) * 0.28)
+    )));
+    const lobbyVolleyParticipants = getActiveParticipants(lobbyVolleyPreview, lobbyVolleyNowMs).slice(0, 4);
     const chatTitle = socialTab === 'host' ? 'DM Host' : 'VIP Lounge';
     const chatStatusLabel = !room?.chatEnabled
         ? 'Chat paused'
@@ -6374,28 +6507,63 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 {tab === 'home' && (
                     <div className="space-y-5">
                          {noSingerOnStage ? (
-                             <div className="rounded-2xl border border-cyan-400/35 bg-gradient-to-br from-cyan-500/15 via-black/35 to-pink-500/10 p-4 space-y-3">
+                             <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-4 space-y-3 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
                                  <div className="flex items-center justify-between gap-2">
                                      <div>
                                          <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">Lobby Playground</div>
-                                         <div className="text-xl font-bebas text-white">Stage Empty Mini-Game</div>
+                                         <div className="text-xl font-bebas text-white leading-none">Keep The Volley Alive</div>
                                      </div>
                                      <div className="flex items-center gap-1.5">
-                                         <span className="px-2.5 py-1 rounded-full text-xs font-black tracking-[0.14em] bg-cyan-400/20 border border-cyan-300/40 text-cyan-100">FREE</span>
-                                         <span className={`px-2.5 py-1 rounded-full text-xs font-black tracking-[0.12em] border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-zinc-900/80 border-white/15 text-zinc-100'}`}>
+                                         <span className="px-2.5 py-1 rounded-full text-xs font-black tracking-[0.14em] bg-cyan-400/20 border border-cyan-300/45 text-cyan-100">FREE</span>
+                                         {lobbyPlayStrictMode && (
+                                             <span className="px-2.5 py-1 rounded-full text-xs font-black tracking-[0.12em] border bg-fuchsia-500/20 border-fuchsia-300/45 text-fuchsia-100">
+                                                 STRICT
+                                             </span>
+                                         )}
+                                         {lobbyPlaygroundPaused && (
+                                             <span className="px-2.5 py-1 rounded-full text-xs font-black tracking-[0.12em] border bg-amber-500/20 border-amber-300/40 text-amber-100">
+                                                 PAUSED
+                                             </span>
+                                         )}
+                                         <span className={`px-2.5 py-1 rounded-full text-xs font-black tracking-[0.12em] border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/55 border-white/20 text-zinc-100'}`}>
                                              {lobbyPlayRemaining}/{lobbyPlayMaxPerMinute}
                                          </span>
                                      </div>
                                  </div>
-                                 <div className="text-xs text-zinc-200">Quick warm-up preview while the stage is empty. Test shared TV interactivity without spending points.</div>
-                                 <div>
-                                     <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-zinc-300 mb-1">
+                                 <div className="text-xs text-zinc-100">Send linked interactions while the stage is empty to build shared streak moments on TV.</div>
+                                 <div className="rounded-xl border border-cyan-300/30 bg-black/35 p-2.5">
+                                     <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-cyan-100">
+                                         <span>Live Volley</span>
+                                         <span>Tier {lobbyVolleyPreview?.currentTier || 0}</span>
+                                     </div>
+                                     <div className="mt-1 flex items-end justify-between gap-2">
+                                         <div className="text-2xl font-bebas text-white leading-none">{lobbyVolleyPreview?.streakCount || 0}</div>
+                                         <div className="text-[11px] text-zinc-200">{lobbyVolleyParticipants.length} active</div>
+                                     </div>
+                                     <div className="mt-2 h-2 rounded-full bg-black/60 border border-white/10 overflow-hidden">
+                                         <div className="h-full bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-yellow-300 transition-all duration-200" style={{ width: `${lobbyVolleyEnergyLive}%` }}></div>
+                                     </div>
+                                     <div className="mt-1 h-1 rounded-full bg-black/60 overflow-hidden">
+                                         <div className="h-full bg-white/70 transition-all duration-200" style={{ width: `${lobbyVolleyStreakDecayPct}%` }}></div>
+                                     </div>
+                                     <div className="mt-2 flex items-center gap-1.5">
+                                         {lobbyVolleyParticipants.length ? lobbyVolleyParticipants.map((participant, idx) => (
+                                             <span key={`${participant.uid || participant.userName || 'guest'}_${idx}`} className="w-6 h-6 rounded-full border border-white/25 bg-black/50 flex items-center justify-center text-sm">
+                                                 {participant.avatar || DEFAULT_EMOJI}
+                                             </span>
+                                         )) : (
+                                             <span className="text-[11px] text-zinc-300">Waiting for the next volley...</span>
+                                         )}
+                                     </div>
+                                 </div>
+                                 <div className="rounded-xl border border-white/15 bg-black/35 p-2.5">
+                                     <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-zinc-200 mb-1">
                                          <span>Interactions this minute</span>
                                          <span>{lobbyPlayUsageCount}/{lobbyPlayMaxPerMinute}</span>
                                      </div>
-                                     <div className="h-1.5 rounded-full bg-black/45 border border-white/10 overflow-hidden">
+                                     <div className="h-2 rounded-full bg-black/60 border border-white/10 overflow-hidden">
                                          <div
-                                             className={`h-full transition-all ${lobbyPlayRateLimited ? 'bg-amber-300' : 'bg-cyan-300'}`}
+                                             className={`h-full transition-all ${lobbyPlayRateLimited ? 'bg-gradient-to-r from-amber-300 to-amber-200' : 'bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-yellow-300'}`}
                                              style={{ width: `${Math.min(100, (lobbyPlayUsageCount / Math.max(1, lobbyPlayMaxPerMinute)) * 100)}%` }}
                                          ></div>
                                      </div>
@@ -6405,18 +6573,23 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          <button
                                              key={interaction.id}
                                              onClick={() => triggerLobbyPlayInteraction(interaction.id)}
-                                             disabled={lobbyPlayRateLimited}
-                                             className={`relative overflow-hidden bg-black/45 border border-white/15 rounded-2xl p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${lobbyPlayRateLimited ? 'opacity-50 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
+                                             disabled={lobbyPlayInteractionDisabled}
+                                             className={`relative overflow-hidden bg-gradient-to-b ${interaction.accentCard} border-2 ${interaction.accentBorder} rounded-2xl p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
                                          >
+                                             <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[10px] font-black tracking-[0.14em] border border-white/25 bg-black/40 text-white">FREE</span>
                                              <span className="text-5xl mb-2">{interaction.emoji}</span>
-                                             <span className="font-bold text-cyan-100 text-base">{interaction.label}</span>
-                                             <div className={`mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${lobbyPlayRateLimited ? 'bg-zinc-700/70 text-zinc-300' : 'bg-cyan-500/20 text-cyan-100'}`}>
-                                                 {lobbyPlayRateLimited ? 'Cooling down...' : interaction.hint}
+                                             <span className={`font-bold text-base ${interaction.accentText}`}>{interaction.label}</span>
+                                             <div className={`mt-1 px-2 py-0.5 rounded-full border text-[11px] font-black ${interaction.accentPill}`}>
+                                                 {interaction.boost}
+                                             </div>
+                                             <div className={`mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/45 border-white/20 text-zinc-100'}`}>
+                                                 {lobbyPlaygroundPaused ? 'Paused by host' : lobbyPlayRateLimited ? 'Cooling down...' : interaction.hint}
                                              </div>
                                          </button>
                                      ))}
                                  </div>
-                                 <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-3 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
+                                 <div className="text-[11px] text-zinc-300">Cooldown: {lobbyPlayCooldownMs}ms per tap</div>
+                                 <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#27d3f7] to-[#26D7E8] text-black py-3 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
                                      Add first song to start karaoke
                                  </button>
                              </div>
