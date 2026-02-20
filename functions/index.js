@@ -2134,7 +2134,7 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
   }
-  const maxTotal = clampNumber(request.data?.maxTotal || 150, 1, 250, 150);
+  const maxTotal = clampNumber(request.data?.maxTotal || 1000, 1, 1000, 1000);
   const items = [];
   let pageToken = "";
   while (items.length < maxTotal) {

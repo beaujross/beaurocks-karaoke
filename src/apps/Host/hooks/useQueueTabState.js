@@ -8,7 +8,6 @@ const PANEL_LAYOUT_DEFAULTS = {
     overlaysOpen: true,
     vibeSyncOpen: true,
     automationOpen: true,
-    crowdPointsOpen: true,
     showAddForm: true,
     showQueueList: true
 };
@@ -21,8 +20,7 @@ const PANEL_LAYOUT_PRESETS = {
         ...PANEL_LAYOUT_DEFAULTS,
         overlaysOpen: false,
         vibeSyncOpen: false,
-        chatOpen: false,
-        crowdPointsOpen: false
+        chatOpen: false
     },
     crowd: {
         ...PANEL_LAYOUT_DEFAULTS,
@@ -33,7 +31,6 @@ const PANEL_LAYOUT_PRESETS = {
         ...PANEL_LAYOUT_DEFAULTS,
         soundboardOpen: false,
         chatOpen: false,
-        crowdPointsOpen: false,
         showAddForm: false
     },
     all_open: PANEL_LAYOUT_KEYS.reduce((acc, key) => ({ ...acc, [key]: true }), {}),
@@ -83,7 +80,6 @@ const useQueueTabState = ({ hostName, roomCode }) => {
     const [overlaysOpen, setOverlaysOpen] = useState(PANEL_LAYOUT_DEFAULTS.overlaysOpen);
     const [vibeSyncOpen, setVibeSyncOpen] = useState(PANEL_LAYOUT_DEFAULTS.vibeSyncOpen);
     const [automationOpen, setAutomationOpen] = useState(PANEL_LAYOUT_DEFAULTS.automationOpen);
-    const [crowdPointsOpen, setCrowdPointsOpen] = useState(PANEL_LAYOUT_DEFAULTS.crowdPointsOpen);
     const [showAddForm, setShowAddForm] = useState(PANEL_LAYOUT_DEFAULTS.showAddForm);
     const [showQueueList, setShowQueueList] = useState(PANEL_LAYOUT_DEFAULTS.showQueueList);
     const [activeWorkspace, setActiveWorkspace] = useState('default');
@@ -114,8 +110,6 @@ const useQueueTabState = ({ hostName, roomCode }) => {
     });
     const [quickAddLoadingKey, setQuickAddLoadingKey] = useState('');
     const [quickAddNotice, setQuickAddNotice] = useState(null);
-    const [giftTargetUid, setGiftTargetUid] = useState('');
-    const [giftAmount, setGiftAmount] = useState('');
     const [lyricsOpen, setLyricsOpen] = useState(false);
     const [manualSingerMode, setManualSingerMode] = useState('select');
     const [editingSongId, setEditingSongId] = useState(null);
@@ -158,7 +152,6 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         overlaysOpen,
         vibeSyncOpen,
         automationOpen,
-        crowdPointsOpen,
         showAddForm,
         showQueueList
     }), [
@@ -169,7 +162,6 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         overlaysOpen,
         vibeSyncOpen,
         automationOpen,
-        crowdPointsOpen,
         showAddForm,
         showQueueList
     ]);
@@ -183,7 +175,6 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         setOverlaysOpen(!!resolved.overlaysOpen);
         setVibeSyncOpen(!!resolved.vibeSyncOpen);
         setAutomationOpen(!!resolved.automationOpen);
-        setCrowdPointsOpen(!!resolved.crowdPointsOpen);
         setShowAddForm(!!resolved.showAddForm);
         setShowQueueList(!!resolved.showQueueList);
     };
@@ -257,8 +248,6 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         setVibeSyncOpen,
         automationOpen,
         setAutomationOpen,
-        crowdPointsOpen,
-        setCrowdPointsOpen,
         showAddForm,
         setShowAddForm,
         showQueueList,
@@ -283,10 +272,6 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         setQuickAddLoadingKey,
         quickAddNotice,
         setQuickAddNotice,
-        giftTargetUid,
-        setGiftTargetUid,
-        giftAmount,
-        setGiftAmount,
         lyricsOpen,
         setLyricsOpen,
         manualSingerMode,

@@ -3,6 +3,7 @@ import {
     addDoc,
     collection,
     doc,
+    writeBatch,
     updateDoc,
     serverTimestamp,
     increment,
@@ -19,6 +20,44 @@ import {
     extractYouTubeId
 } from '../../../lib/songCatalog';
 import { normalizeBackingChoice } from '../../../lib/playbackSource';
+
+const YOUTUBE_PLAYLIST_QUEUE_MAX = 1000;
+
+const parseYouTubePlaylistId = (input = '') => {
+    if (!input) return '';
+    const raw = String(input || '').trim();
+    if (!raw) return '';
+    try {
+        const url = new URL(raw);
+        const host = String(url.hostname || '').toLowerCase();
+        if (host.includes('youtube.com') || host.includes('youtu.be')) {
+            const listParam = url.searchParams.get('list');
+            if (listParam) return listParam.trim();
+        }
+    } catch {
+        // Not a URL, continue with id heuristics.
+    }
+    if ((/youtube\.com|youtu\.be/i.test(raw)) && /[?&]list=([^&]+)/i.test(raw)) {
+        return (raw.match(/[?&]list=([^&]+)/i)?.[1] || '').trim();
+    }
+    // Accept direct playlist ids (PL..., UU..., OLAK5uy..., etc).
+    if (/^[A-Za-z0-9_-]{10,}$/.test(raw) && /^(PL|UU|LL|OLAK5uy|RDCLAK|FL)/i.test(raw)) {
+        return raw;
+    }
+    return '';
+};
+
+const normalizeYouTubePlaylistItems = (rawItems = []) => (
+    (rawItems || [])
+        .map((item) => ({
+            id: item?.id || item?.snippet?.resourceId?.videoId || '',
+            title: item?.title || item?.snippet?.title || 'Untitled',
+            channel: item?.channelTitle || item?.snippet?.channelTitle || 'YouTube',
+            thumbnail: item?.thumbnails?.medium?.url || item?.thumbnails?.default?.url || item?.snippet?.thumbnails?.medium?.url || '',
+            url: item?.id ? `https://www.youtube.com/watch?v=${item.id}` : ''
+        }))
+        .filter((item) => item.id)
+);
 
 const useQueueSongActions = ({
     roomCode,
@@ -154,6 +193,83 @@ const useQueueSongActions = ({
     };
 
     const addSong = async () => {
+        const playlistId = parseYouTubePlaylistId(manual.url || '');
+        if (playlistId) {
+            if (!roomCode) {
+                toast('Create or open a room first');
+                return;
+            }
+            toast('Loading YouTube playlist...');
+            try {
+                const data = await callFunction('youtubePlaylist', {
+                    playlistId,
+                    maxTotal: YOUTUBE_PLAYLIST_QUEUE_MAX
+                });
+                const playlistItems = normalizeYouTubePlaylistItems(data?.items || []);
+                const queueItems = playlistItems.filter((item) => item?.id && item?.url);
+                if (!queueItems.length) {
+                    toast('Playlist has no queueable videos.');
+                    return;
+                }
+                const songsCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs');
+                const basePriority = Date.now();
+                const singerName = manual.singer || room?.hostName || hostName || 'Host';
+                let queuedCount = 0;
+                for (let start = 0; start < queueItems.length; start += 400) {
+                    const chunk = queueItems.slice(start, start + 400);
+                    const batch = writeBatch(db);
+                    chunk.forEach((item, idx) => {
+                        const globalIdx = start + idx;
+                        const songRef = doc(songsCol);
+                        batch.set(songRef, {
+                            roomCode,
+                            songId: buildSongKey(item.title, item.channel || 'YouTube'),
+                            trackId: null,
+                            trackSource: 'youtube',
+                            songTitle: item.title,
+                            artist: item.channel || 'YouTube',
+                            singerName,
+                            mediaUrl: item.url,
+                            albumArtUrl: item.thumbnail || '',
+                            lyrics: '',
+                            lyricsTimed: null,
+                            appleMusicId: '',
+                            musicSource: '',
+                            lyricsSource: '',
+                            duration: 180,
+                            status: 'requested',
+                            timestamp: serverTimestamp(),
+                            priorityScore: basePriority + globalIdx,
+                            emoji: EMOJI.mic,
+                            backingAudioOnly: false,
+                            audioOnly: false
+                        });
+                    });
+                    await batch.commit();
+                    queuedCount += chunk.length;
+                }
+                setManual({
+                    song: '',
+                    artist: '',
+                    singer: hostName || 'Host',
+                    url: '',
+                    art: '',
+                    lyrics: '',
+                    lyricsTimed: null,
+                    appleMusicId: '',
+                    duration: 180,
+                    backingAudioOnly: false,
+                    audioOnly: false
+                });
+                setSearchQ('');
+                toast(`Queued ${queuedCount} songs from YouTube playlist`);
+            } catch (err) {
+                console.warn('YouTube playlist queue failed', err);
+                toast('Could not queue playlist. Check playlist visibility and API setup.');
+            }
+            return;
+        }
+
         if (!manual.song) return;
         const manualTitle = manual.song;
         const manualArtist = manual.artist || 'Unknown';

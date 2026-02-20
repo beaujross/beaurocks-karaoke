@@ -8,7 +8,6 @@ import AutomationControls from './components/AutomationControls';
 import SoundboardControls from './components/SoundboardControls';
 import HostChatPanel from './components/HostChatPanel';
 import OverlaysGuidesPanel from './components/OverlaysGuidesPanel';
-import RewardPointsPanel from './components/RewardPointsPanel';
 import QueueListPanel from './components/QueueListPanel';
 import QueueYouTubeSearchModal from './components/QueueYouTubeSearchModal';
 import QueueEditSongModal from './components/QueueEditSongModal';
@@ -111,6 +110,8 @@ const VERSION = APP_BUILD ? `${RELEASE_VERSION}+${APP_BUILD}` : RELEASE_VERSION;
 const STORM_SEQUENCE = HOST_APP_CONFIG.STORM_SEQUENCE;
 const STROBE_COUNTDOWN_MS = HOST_APP_CONFIG.STROBE_COUNTDOWN_MS;
 const STROBE_ACTIVE_MS = HOST_APP_CONFIG.STROBE_ACTIVE_MS;
+const TIP_POINTS_PER_DOLLAR = 100;
+const YOUTUBE_PLAYLIST_MAX_TOTAL = 1000;
 let itunesBackoffUntil = 0;
 const nowMs = () => Date.now();
 const hostLogger = createLogger('HostApp');
@@ -2685,7 +2686,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, tipPointRate, setTipPointRate, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
+const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, dropBonus, giftPointsToUser, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -2701,8 +2702,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         setVibeSyncOpen,
         automationOpen,
         setAutomationOpen,
-        crowdPointsOpen,
-        setCrowdPointsOpen,
         panelLayout,
         activeWorkspace,
         workspaceOptions,
@@ -2724,10 +2723,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         setQuickAddLoadingKey,
         quickAddNotice,
         setQuickAddNotice,
-        giftTargetUid,
-        setGiftTargetUid,
-        giftAmount,
-        setGiftAmount,
         lyricsOpen,
         setLyricsOpen,
         manualSingerMode,
@@ -3935,27 +3930,6 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                                 />
                             </section>
 
-                            <section className="px-4 py-4 border-b border-white/10">
-                                <SectionHeader
-                                    label="Reward Points"
-                                    open={crowdPointsOpen}
-                                    onToggle={() => setCrowdPointsOpen(v => !v)}
-                                    featureId="panel-reward-points"
-                                />
-                                <RewardPointsPanel
-                                    crowdPointsOpen={crowdPointsOpen}
-                                    tipPointRate={tipPointRate}
-                                    setTipPointRate={setTipPointRate}
-                                    styles={STYLES}
-                                    giftTargetUid={giftTargetUid}
-                                    setGiftTargetUid={setGiftTargetUid}
-                                    users={users}
-                                    giftAmount={giftAmount}
-                                    setGiftAmount={setGiftAmount}
-                                    giftPointsToUser={giftPointsToUser}
-                                    dropBonus={dropBonus}
-                                />
-                            </section>
                         </>
                     )}
 
@@ -4392,7 +4366,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [marqueeIntervalSec, setMarqueeIntervalSec] = useState(20);
     const [marqueeItems, setMarqueeItems] = useState([]);
     const [marqueeShowMode, setMarqueeShowMode] = useState('always');
-    const [tipPointRate, setTipPointRate] = useState(100);
     const [queueLimitMode, setQueueLimitMode] = useState('none');
     const [queueLimitCount, setQueueLimitCount] = useState(0);
     const [queueRotation, setQueueRotation] = useState('round_robin');
@@ -4454,6 +4427,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [bgMuteBackup, setBgMuteBackup] = useState(0.3);
     const [tipUserId, setTipUserId] = useState('');
     const [tipAmount, setTipAmount] = useState('');
+    const [tipGiftUserId, setTipGiftUserId] = useState('');
+    const [tipGiftAmount, setTipGiftAmount] = useState('');
     const [creatingRoom, setCreatingRoom] = useState(false);
     const [joiningRoom, setJoiningRoom] = useState(false);
     const [roomManagerBusyCode, setRoomManagerBusyCode] = useState('');
@@ -5434,7 +5409,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         if (room.hostName) setHostName(room.hostName);
         setLogoUrl(room.logoUrl || '');
-        if (room.tipPointRate) setTipPointRate(room.tipPointRate);
         if (room.autoBgFadeOutMs !== undefined && room.autoBgFadeOutMs !== null) {
             setAutoBgFadeOutMs(room.autoBgFadeOutMs);
         }
@@ -6622,7 +6596,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 marqueeIntervalMs: 20000,
                 marqueeItems: DEFAULT_MARQUEE_ITEMS,
                 marqueeShowMode: 'idle',
-                tipPointRate: 100,
+                tipPointRate: TIP_POINTS_PER_DOLLAR,
                 tipCrates: DEFAULT_TIP_CRATES,
                 audienceVideoMode: 'off',
                 showLyricsTv: false,
@@ -7155,7 +7129,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const awardTipPoints = async () => {
         const amount = parseFloat(tipAmount);
         if (!tipUserId || !amount || amount <= 0) return;
-        const points = Math.round(amount * (tipPointRate || 100));
+        const points = Math.round(amount * TIP_POINTS_PER_DOLLAR);
         try {
             const target = users.find(u => (u.uid || u.id?.split('_')[1]) === tipUserId);
             await callFunction('awardRoomPoints', { roomCode, awards: [{ uid: tipUserId, points }] });
@@ -7286,7 +7260,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 tipQrUrl: tipSettings.qr.trim() || null,
                 hostName: hostName || 'Host',
                 logoUrl: logoUrl?.trim() || null,
-                tipPointRate: tipPointRate || 100,
                 tipCrates: normalizeTipCratesForSave(tipCrates),
                 appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId),
                 appleMusicAutoPlaylistTitle: (appleMusicAutoPlaylistTitle || '').trim(),
@@ -7511,7 +7484,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     );
 
     const indexYouTubePlaylist = async (playlistId) => {
-        const data = await callFunction('youtubePlaylist', { playlistId, maxTotal: 150 });
+        const data = await callFunction('youtubePlaylist', { playlistId, maxTotal: YOUTUBE_PLAYLIST_MAX_TOTAL });
         const items = normalizeYouTubePlaylistItems(data?.items || []);
         const updated = (() => {
             const existing = new Map((ytIndex || []).map(item => [item.videoId, item]));
@@ -11027,7 +11000,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         tipQrUrl: (tipSettings.qr || '').trim() || null,
         hostName: hostName || 'Host',
         logoUrl: (logoUrl || '').trim() || null,
-        tipPointRate: Number(tipPointRate || 100),
         tipCrates: normalizeTipCratesForSave(tipCrates),
         appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId),
         appleMusicAutoPlaylistTitle: (appleMusicAutoPlaylistTitle || '').trim(),
@@ -11058,7 +11030,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             tipQrUrl: (room.tipQrUrl || '').trim() || null,
             hostName: room.hostName || 'Host',
             logoUrl: (room.logoUrl || '').trim() || null,
-            tipPointRate: Number(room.tipPointRate || 100),
             tipCrates: normalizeTipCratesForSave(persistedTipCrates),
             appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(room.appleMusicAutoPlaylistId || ''),
             appleMusicAutoPlaylistTitle: (room.appleMusicAutoPlaylistTitle || '').trim(),
@@ -11282,8 +11253,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         users,
         dropBonus,
         giftPointsToUser,
-        tipPointRate,
-        setTipPointRate,
         marqueeEnabled,
         setMarqueeEnabled,
         sfxMuted,
@@ -11588,9 +11557,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </div>
                         {lobbyTab === 'users' && (
                             <div className="flex flex-col gap-6">
-                                <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
-                                    Sweet 16 bracket controls now live in the Games tab to keep Audience focused on lobby management.
-                                </div>
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                                     <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4">
                                         <div className="text-sm uppercase tracking-widest text-zinc-500">Lobby guests</div>
@@ -11886,7 +11852,56 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <input value={tipAmount} onChange={e=>setTipAmount(e.target.value)} className={`${STYLES.input} w-full`} placeholder="$ Amount" />
                                             <button onClick={awardTipPoints} className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}>Award</button>
                                         </div>
-                                        <div className="text-sm text-zinc-500">Rate: {tipPointRate || 100} pts per $1</div>
+                                        <div className="text-sm text-zinc-500">BROSS standard: {TIP_POINTS_PER_DOLLAR} pts per $1 tip</div>
+                                    </div>
+                                </div>
+                                <div className={`${STYLES.panel} p-4 border-white/10 mt-3`}>
+                                    <div className="text-sm text-zinc-400 mb-3 font-bold uppercase tracking-wider">Manual Point Gifts</div>
+                                    <div className="space-y-2">
+                                        <div className="text-xs uppercase tracking-widest text-zinc-400">Gift individual</div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                            <select
+                                                value={tipGiftUserId}
+                                                onChange={(e) => setTipGiftUserId(e.target.value)}
+                                                className={`${STYLES.input} w-full`}
+                                            >
+                                                <option value="">Select member...</option>
+                                                {users.map((u) => (
+                                                    <option key={u.uid || u.id} value={u.uid || u.id?.split('_')[1]}>
+                                                        {u.name || 'Guest'}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <input
+                                                value={tipGiftAmount}
+                                                onChange={(e) => setTipGiftAmount(e.target.value)}
+                                                className={`${STYLES.input} w-full`}
+                                                placeholder="Pts"
+                                            />
+                                            <button
+                                                onClick={() => {
+                                                    const points = Math.max(1, Number(tipGiftAmount || 0));
+                                                    if (!tipGiftUserId || !points) return;
+                                                    giftPointsToUser(tipGiftUserId, points);
+                                                    setTipGiftAmount('');
+                                                }}
+                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight}`}
+                                            >
+                                                Gift
+                                            </button>
+                                        </div>
+                                        <div className="text-xs uppercase tracking-widest text-zinc-400 pt-2">Gift all</div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {[50, 100, 250].map((points) => (
+                                                <button
+                                                    key={`tips-gift-all-${points}`}
+                                                    onClick={() => dropBonus(points)}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
+                                                >
+                                                    +{points} pts
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -13225,7 +13240,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             </div>
                             {ytPlaylistStatus && <div className="host-form-helper host-form-helper-status">{ytPlaylistStatus}</div>}
-                            <div className="host-form-helper">Indexes up to 150 videos per playlist load. INDEX + QUEUE ALL enables Auto-DJ and queues every indexed track.</div>
+                            <div className="host-form-helper">Indexes up to 1000 videos per playlist load. INDEX + QUEUE ALL enables Auto-DJ and queues every indexed track.</div>
                         </div>
 
                         <div className="mt-6 bg-zinc-950/40 border border-white/10 rounded-xl p-4 space-y-2">

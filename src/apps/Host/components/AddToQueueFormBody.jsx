@@ -225,11 +225,12 @@ const AddToQueueFormBody = ({
                 </button>
             </div>
             <div className="flex gap-2 items-center">
-                <input value={manual.url} onChange={e=>setManual({...manual, url:e.target.value})} className={styles.input} placeholder="Paste a YouTube or local URL"/>
+                <input value={manual.url} onChange={e=>setManual({...manual, url:e.target.value})} className={styles.input} placeholder="Paste a YouTube/local URL or YouTube playlist URL"/>
                 <button onClick={addSong} className={`${styles.btnStd} ${styles.btnHighlight} px-4`}>
                     Add to Queue
                 </button>
             </div>
+            <div className="host-form-helper mt-2">Playlist URL in this field queues up to 1000 tracks.</div>
         </div>
     </div>
 );

@@ -1,18 +1,17 @@
 import React from 'react';
 import ModerationInboxChip from './ModerationInboxChip';
 
-const StatusPill = ({ label, value, active = false, toneClass = '', onClick, title = '' }) => {
+const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', onClick, title = '' }) => {
     const Comp = typeof onClick === 'function' ? 'button' : 'div';
     return (
         <Comp
             onClick={onClick}
             title={title}
-            className={`inline-flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.18em] ${toneClass} ${typeof onClick === 'function' ? 'cursor-pointer hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50' : ''}`}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${toneClass} ${typeof onClick === 'function' ? 'cursor-pointer hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50' : ''}`}
         >
-            <span className={`inline-flex h-2.5 w-2.5 rounded-full ${active ? 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.9)]' : 'bg-rose-300 shadow-[0_0_10px_rgba(252,165,165,0.6)]'}`}></span>
-            <span className="text-zinc-400">{label}</span>
-            <span className="font-bold text-zinc-100">{value}</span>
-            {typeof onClick === 'function' && <i className="fa-solid fa-arrow-up-right-from-square text-[9px] text-zinc-400"></i>}
+            <span className={`inline-flex h-2 w-2 rounded-full ${active ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.85)]' : 'bg-rose-300 shadow-[0_0_8px_rgba(252,165,165,0.55)]'}`}></span>
+            {!!iconClass && <i className={`${iconClass} text-[10px] text-zinc-200`}></i>}
+            <span className="text-zinc-100 hidden lg:inline">{label}</span>
         </Comp>
     );
 };
@@ -401,6 +400,32 @@ const HostTopChrome = ({
                         </button>
                     ))}
                 </div>
+                <div className="flex items-center gap-1.5">
+                    <NavStatusLight
+                        label="Apple"
+                        iconClass="fa-brands fa-apple"
+                        active={appleMusicConnected}
+                        toneClass={appleMusicConnected ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100' : 'border-rose-400/35 bg-rose-500/10 text-rose-100'}
+                        onClick={onOpenAppleMusicSettings}
+                        title={appleMusicConnected ? 'Apple Music connected. Open music settings.' : 'Apple Music not linked. Open music settings.'}
+                    />
+                    <NavStatusLight
+                        label="AI"
+                        iconClass="fa-solid fa-robot"
+                        active={aiToolsConnected}
+                        toneClass={aiToolsConnected ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100' : 'border-amber-400/35 bg-amber-500/10 text-amber-100'}
+                        onClick={onOpenAiSettings}
+                        title={aiToolsConnected ? 'AI tools enabled. Open AI settings.' : 'AI tools locked. Open AI settings.'}
+                    />
+                    <NavStatusLight
+                        label={String(permissionLevel || 'unknown').toUpperCase()}
+                        iconClass="fa-solid fa-user-shield"
+                        active={authSessionReady}
+                        toneClass={permissionTone}
+                        onClick={onOpenAccessSettings}
+                        title={authSessionReady ? 'Session active. Open access settings.' : 'Session not ready. Open access settings.'}
+                    />
+                </div>
                 <button
                     onClick={() => {
                         if (typeof openAdminWorkspace === 'function') {
@@ -451,32 +476,6 @@ const HostTopChrome = ({
                     )}
                 </div>
             </div>
-        </div>
-        <div className="w-full flex flex-wrap items-center gap-2">
-            <StatusPill
-                label="Apple"
-                value={appleMusicConnected ? 'Connected' : 'Not Linked'}
-                active={appleMusicConnected}
-                toneClass={appleMusicConnected ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100' : 'border-rose-400/35 bg-rose-500/10 text-rose-100'}
-                onClick={onOpenAppleMusicSettings}
-                title="Open Apple Music connection settings"
-            />
-            <StatusPill
-                label="AI"
-                value={aiToolsConnected ? 'Enabled' : 'Locked'}
-                active={aiToolsConnected}
-                toneClass={aiToolsConnected ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100' : 'border-amber-400/35 bg-amber-500/10 text-amber-100'}
-                onClick={onOpenAiSettings}
-                title="Open AI tools/billing settings"
-            />
-            <StatusPill
-                label="Access"
-                value={`${String(permissionLevel || 'unknown').toUpperCase()}${authSessionReady ? '' : ' / No Auth'}`}
-                active={authSessionReady}
-                toneClass={permissionTone}
-                onClick={onOpenAccessSettings}
-                title="Open host access and room setup settings"
-            />
         </div>
         <div className="w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">

@@ -292,7 +292,6 @@ const UnifiedGameLauncher = ({
     const aiGateMessage = entitlementStatus?.loading
         ? 'Checking AI entitlement...'
         : 'AI tools require an active Host subscription.';
-    const [subscriptionCheckoutLoading, setSubscriptionCheckoutLoading] = useState(false);
     const getTimestampMs = (value) => {
         if (!value) return 0;
         if (typeof value === 'number') return value;
@@ -1130,28 +1129,6 @@ const UnifiedGameLauncher = ({
         return wyrBank.filter(w => !q || `${w.q} ${w.a} ${w.b}`.toLowerCase().includes(q));
     }, [wyrBank, wyrFilter]);
 
-    const startHostSubscriptionCheckout = async () => {
-        if (subscriptionCheckoutLoading) return;
-        setSubscriptionCheckoutLoading(true);
-        try {
-            const origin = typeof window !== 'undefined' ? window.location.origin : '';
-            const payload = await callFunction('createSubscriptionCheckout', {
-                planId: 'host_monthly',
-                origin
-            });
-            if (payload?.url) {
-                window.location.href = payload.url;
-                return;
-            }
-            toast('Subscription checkout is unavailable right now.');
-        } catch (e) {
-            console.error('Subscription checkout failed', e);
-            toast('Could not open subscription checkout.');
-        } finally {
-            setSubscriptionCheckoutLoading(false);
-        }
-    };
-
     useEffect(() => {
         const rng = room?.bingoMysteryRng;
         if (!rng?.active || rng?.finalized || room?.bingoMode !== 'mystery') return;
@@ -1378,21 +1355,6 @@ const UnifiedGameLauncher = ({
                     Game Launchpad
                 </div>
                 <h2 className="text-2xl font-bold text-white mt-2">Launch a crowd moment</h2>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <div className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-[11px] ${canUseAiGeneration ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200' : 'border-amber-400/40 bg-amber-500/10 text-amber-200'}`}>
-                        <i className={`fa-solid ${canUseAiGeneration ? 'fa-bolt' : 'fa-lock'}`}></i>
-                        {canUseAiGeneration ? 'AI tools enabled for this org' : aiGateMessage}
-                    </div>
-                    {!canUseAiGeneration && !entitlementStatus?.loading && (
-                        <button
-                            onClick={startHostSubscriptionCheckout}
-                            disabled={subscriptionCheckoutLoading}
-                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-xs ${subscriptionCheckoutLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
-                        >
-                            {subscriptionCheckoutLoading ? 'Opening checkout...' : 'Upgrade for AI'}
-                        </button>
-                    )}
-                </div>
                 {activeGameLabel && (
                     <div className="mt-2.5 flex flex-wrap items-center justify-between bg-zinc-900/70 border border-white/10 rounded-2xl px-3 py-2 gap-2">
                         <div>
