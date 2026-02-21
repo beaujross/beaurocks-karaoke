@@ -50,12 +50,36 @@
   - Additional: `npm run test:unit` passed
 - Result: P1.2 validation suite passed.
 
+### [2026-02-21 01:16:26] Commit
+- Commit: `a7c0dd2`
+- Message: `P1.2: harden snapshot listeners with shared fallback handling`
+- Included tasks: P1.2
+
+### [2026-02-21 01:17:02] Task Started
+- Priority: P2
+- Task ID (ex: P1.1): P2.1
+- Task: Smoke coverage for recent regressions
+- Planned scope: add Playwright smoke script for host/audience/tv critical runtime checks and wire into npm scripts.
+
+### [2026-02-21 01:27:13] Progress Update
+- What changed: Added `scripts/qa/overnight-audience-tv-host-smoke.mjs` and `qa:overnight:smoke` npm command with checks for audience runtime errors, TV stuck preview overlay, and host deck menu availability.
+- Files touched: `scripts/qa/overnight-audience-tv-host-smoke.mjs`, `package.json`
+- Notes: Hardened selectors to account for pre-show setup state and avoid false negatives in unattended runs.
+
+### [2026-02-21 01:27:13] Validation
+- Commands run:
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - Additional: `npm run test:unit` passed
+  - Additional: `npm run qa:overnight:smoke` passed
+- Result: P2.1 validation suite passed.
+
 ---
 
 ## Task Checklist
 - [x] P1.1 Firestore index source-of-truth and query audit
-- [ ] P1.2 Listener resilience wrapper for high-risk screens
-- [ ] P2.1 Smoke coverage for recent regressions
+- [x] P1.2 Listener resilience wrapper for high-risk screens
+- [x] P2.1 Smoke coverage for recent regressions
 - [ ] P2.2 Safe modularization extraction (behavior-preserving)
 - [ ] P3.1 Build budget visibility
 

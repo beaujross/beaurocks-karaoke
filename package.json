@@ -30,6 +30,7 @@
     "qa:p0:users": "node scripts/qa/users-profile-smoke.mjs",
     "qa:p0:firebase-safety": "npm run test:rules && npm run qa:p0:appcheck",
     "qa:p0": "npm run qa:p0:firebase-safety && npm run qa:p0:host-join && npm run qa:p0:vip-readiness && npm run qa:p0:users",
+    "qa:overnight:smoke": "node scripts/qa/overnight-audience-tv-host-smoke.mjs",
     "preview": "vite preview",
     "deploy:hosting": "npm run build && npx firebase-tools deploy --only hosting",
     "deploy:hosting:ci": "npx firebase-tools deploy --only hosting --non-interactive"
