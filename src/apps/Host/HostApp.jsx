@@ -3324,10 +3324,10 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         if(status==='performed') { 
             const s = songs.find(x=>x.id===id); 
             if(s) { 
-                const topFan = (() => {
+                const rankedFans = (() => {
                     if (!users?.length) return null;
                     const performanceId = s.id || null;
-                    const ranked = users
+                    return users
                         .filter((u) => !performanceId || u.lastPerformanceId === performanceId)
                         .map((u) => ({
                             name: u.name || 'Guest',
@@ -3335,10 +3335,16 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                             pointsGifted: u.performancePointsGifted || 0
                         }))
                         .sort((a, b) => (b.pointsGifted || 0) - (a.pointsGifted || 0));
-                    const best = ranked[0];
+                })();
+                const topFan = (() => {
+                    const best = rankedFans?.[0];
                     if (!best || best.pointsGifted <= 0) return null;
                     return best;
                 })();
+                const crowdGiftedPointsTotal = (rankedFans || []).reduce(
+                    (sum, fan) => sum + Math.max(0, Number(fan?.pointsGifted || 0)),
+                    0
+                );
                 const vibeStats = (() => {
                     const guitarSessionId = room?.guitarSessionId;
                     const strobeSessionId = room?.strobeSessionId;
@@ -3367,10 +3373,53 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     }
                     return (stats.guitar || stats.strobe) ? stats : null;
                 })();
-                await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), { applauseScore: room?.applausePeak||0 }); 
+                const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id);
+                const finalApplauseScore = Math.round(Number(room?.applausePeak || 0));
+                await updateDoc(songRef, { applauseScore: finalApplauseScore });
+                let latestSong = { ...s, applauseScore: finalApplauseScore };
+                try {
+                    const latestSongSnap = await getDoc(songRef);
+                    if (latestSongSnap.exists()) {
+                        latestSong = { id, ...latestSongSnap.data(), applauseScore: finalApplauseScore };
+                    }
+                } catch (error) {
+                    hostLogger.warn('Could not load latest song snapshot for recap; using in-memory fallback', error);
+                }
+                const latestHypeScore = Math.max(0, Math.round(Number(latestSong?.hypeScore || 0)));
+                const resolvedHypeScore = Math.max(latestHypeScore, Math.round(crowdGiftedPointsTotal));
+                const resolvedHostBonus = Math.max(0, Math.round(Number(latestSong?.hostBonus || 0)));
+                if (resolvedHypeScore > latestHypeScore) {
+                    try {
+                        await updateDoc(songRef, { hypeScore: resolvedHypeScore });
+                    } catch {
+                        // Ignore score sync failures; recap payload still carries resolved values.
+                    }
+                }
+                const recapPayload = {
+                    ...s,
+                    ...latestSong,
+                    id,
+                    hypeScore: resolvedHypeScore,
+                    applauseScore: finalApplauseScore,
+                    hostBonus: resolvedHostBonus,
+                    timestamp: nowMs(),
+                    albumArtUrl: latestSong?.albumArtUrl || s.albumArtUrl || '',
+                    topFan,
+                    vibeStats
+                };
                 await stopAppleMusic?.();
-                await updateRoom({ lastPerformance: { ...s, applauseScore: room?.applausePeak||0, timestamp: nowMs(), albumArtUrl: s.albumArtUrl || '', topFan, vibeStats }, activeMode: 'karaoke', mediaUrl: '', singAlongMode: false, videoPlaying: false, showLyricsTv: false, showVisualizerTv: false, showLyricsSinger: false, appleMusicPlayback: null }); 
-                await logPerformance({ ...s, applauseScore: room?.applausePeak || 0 });
+                await updateRoom({
+                    lastPerformance: recapPayload,
+                    activeMode: 'karaoke',
+                    mediaUrl: '',
+                    singAlongMode: false,
+                    videoPlaying: false,
+                    showLyricsTv: false,
+                    showVisualizerTv: false,
+                    showLyricsSinger: false,
+                    appleMusicPlayback: null
+                });
+                await logPerformance(recapPayload);
                 logActivity(roomCode, s.singerName, `crushed ${s.songTitle}!`, EMOJI.star);
                 toast("Performance Finished"); 
             } 
