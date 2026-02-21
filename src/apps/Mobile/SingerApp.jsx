@@ -37,6 +37,7 @@ import {
     createLobbyVolleyState,
     applyLobbyInteraction,
     getActiveParticipants,
+    deriveRelayObjective,
     LOBBY_PLAYGROUND_ENGINE_CONSTANTS
 } from '../TV/lobbyPlaygroundEngine';
 
@@ -6037,6 +6038,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         Number(lobbyVolleyPreview?.energy || 0) - ((lobbyVolleyAgeMs / 1000) * 0.28)
     )));
     const lobbyVolleyParticipants = getActiveParticipants(lobbyVolleyPreview, lobbyVolleyNowMs).slice(0, 4);
+    const lobbyRelayObjective = deriveRelayObjective(lobbyVolleyPreview, lobbyVolleyNowMs);
+    const lobbyRelayTarget = LOBBY_PLAYGROUND_INTERACTIONS.find((interaction) => interaction.id === lobbyRelayObjective?.targetType) || null;
+    const lobbyRelayRemainingSec = Math.max(0, Math.ceil(Number(lobbyRelayObjective?.remainingMs || 0) / 100) / 10);
     const chatTitle = socialTab === 'host' ? 'DM Host' : 'VIP Lounge';
     const chatStatusLabel = !room?.chatEnabled
         ? 'Chat paused'
@@ -6556,6 +6560,38 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          )}
                                      </div>
                                  </div>
+                                 <div className={`rounded-xl border p-2.5 ${
+                                     lobbyRelayObjective.active
+                                         ? 'border-emerald-300/45 bg-emerald-500/12'
+                                         : 'border-white/15 bg-black/35'
+                                 }`}>
+                                     <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-emerald-100 mb-1">
+                                         <span>Relay Target</span>
+                                         <span>{lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s` : 'Idle'}</span>
+                                     </div>
+                                     <div className="text-sm font-bold text-white leading-tight">
+                                         {lobbyRelayObjective.active
+                                             ? `Different teammate should tap ${lobbyRelayTarget?.label || lobbyRelayObjective?.targetType || 'wave'}`
+                                             : 'Start a volley to unlock pass targets'}
+                                     </div>
+                                     <div className="mt-1 text-[11px] text-emerald-100/90">
+                                         {lobbyRelayObjective.active
+                                             ? `${lobbyRelayTarget?.emoji || DEFAULT_EMOJI} Chain x${lobbyRelayObjective.chainCount || 0} - keep the orb in the air together.`
+                                             : 'Relay progress only counts when a different person catches the next target in time.'}
+                                     </div>
+                                     <div className="mt-2 h-1.5 rounded-full bg-black/60 border border-white/10 overflow-hidden">
+                                         <div
+                                             className={`h-full transition-all duration-150 ${
+                                                 lobbyRelayObjective?.urgency === 'danger'
+                                                     ? 'bg-gradient-to-r from-red-300 to-amber-200'
+                                                     : lobbyRelayObjective?.urgency === 'warning'
+                                                         ? 'bg-gradient-to-r from-amber-300 to-yellow-200'
+                                                         : 'bg-gradient-to-r from-emerald-300 to-cyan-300'
+                                             }`}
+                                             style={{ width: `${Math.max(0, Number(lobbyRelayObjective?.progressPct || 0))}%` }}
+                                         />
+                                     </div>
+                                 </div>
                                  <div className="rounded-xl border border-white/15 bg-black/35 p-2.5">
                                      <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-zinc-200 mb-1">
                                          <span>Interactions this minute</span>
@@ -6574,7 +6610,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                              key={interaction.id}
                                              onClick={() => triggerLobbyPlayInteraction(interaction.id)}
                                              disabled={lobbyPlayInteractionDisabled}
-                                             className={`relative overflow-hidden bg-gradient-to-b ${interaction.accentCard} border-2 ${interaction.accentBorder} rounded-2xl p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
+                                             className={`relative overflow-hidden bg-gradient-to-b ${interaction.accentCard} border-2 ${interaction.accentBorder} rounded-2xl p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${
+                                                 lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType
+                                                     ? 'ring-2 ring-emerald-300/75 shadow-[0_0_18px_rgba(52,211,153,0.5)]'
+                                                     : ''
+                                             } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
                                          >
                                              <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[10px] font-black tracking-[0.14em] border border-white/25 bg-black/40 text-white">FREE</span>
                                              <span className="text-5xl mb-2">{interaction.emoji}</span>
@@ -6583,7 +6623,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                  {interaction.boost}
                                              </div>
                                              <div className={`mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/45 border-white/20 text-zinc-100'}`}>
-                                                 {lobbyPlaygroundPaused ? 'Paused by host' : lobbyPlayRateLimited ? 'Cooling down...' : interaction.hint}
+                                                 {lobbyPlaygroundPaused
+                                                     ? 'Paused by host'
+                                                     : lobbyPlayRateLimited
+                                                         ? 'Cooling down...'
+                                                         : (lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType)
+                                                             ? 'Pass target: teammate tap now'
+                                                             : interaction.hint}
                                              </div>
                                          </button>
                                      ))}

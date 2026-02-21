@@ -11,13 +11,16 @@ const SPAM_WINDOW_MS = 700;
 const RAPID_FIRE_WINDOW_MS = 280;
 const SPAM_WEIGHT_MIN = 0.34;
 const GROUND_HIT_GRACE_MS = 360;
+const RELAY_WINDOW_MS = 2400;
 const ENERGY_DECAY_PER_SEC = 0.28;
 const ENERGY_GAIN_BASE = 1.8;
 const ENERGY_GAIN_PER_COUNT = 0.78;
 const AIR_MULTIPLIER_STEP_MS = 7000;
 const AIR_MULTIPLIER_TEAM_BONUS_PER_USER = 0.25;
 const AIR_MULTIPLIER_HANDOFF_BONUS_PER_CHAIN = 0.08;
+const AIR_MULTIPLIER_RELAY_BONUS_PER_CHAIN = 0.05;
 const AIR_MULTIPLIER_CAP = 5;
+const RELAY_SEQUENCE = ['wave', 'laser', 'echo', 'confetti'];
 
 const TIER_DEFINITIONS = [
     { tier: 1, name: 'Warm Up', threshold: 4, visualOnly: true, pointsBudget: 0, maxPointsPerUser: 0 },
@@ -45,6 +48,13 @@ const normalizeInteractionType = (rawType = '') => {
 const isSupportedInteractionType = (type = '') => DEFAULT_INTERACTION_TYPES.includes(type);
 
 const normalizeCount = (rawCount) => clamp(Math.round(Number(rawCount) || 1), 1, 4);
+
+const getNextRelayTargetType = (type = '') => {
+    const normalized = normalizeInteractionType(type);
+    const index = RELAY_SEQUENCE.indexOf(normalized);
+    if (index < 0) return RELAY_SEQUENCE[0];
+    return RELAY_SEQUENCE[(index + 1) % RELAY_SEQUENCE.length];
+};
 
 const getTierForStreak = (streakCount = 0) => {
     let tier = {
@@ -136,6 +146,15 @@ export const createLobbyVolleyState = () => ({
     airborneMs: 0,
     teamworkMultiplier: 1,
     handoffCount: 0,
+    relayChainCount: 0,
+    relaySuccessCount: 0,
+    relayTargetType: 'wave',
+    relayExpiryAtMs: 0,
+    lastRelayAtMs: 0,
+    lastRelayPasserUid: '',
+    lastRelayPasserName: '',
+    lastRelayReceiverUid: '',
+    lastRelayReceiverName: '',
     currentTier: 0,
     tierName: '',
     startedAtMs: 0,
@@ -171,7 +190,35 @@ export const deriveTeamworkMultiplier = (state = createLobbyVolleyState(), nowMs
     const baseMultiplier = 1 + Math.min(2, airSteps * 0.5);
     const teamBonus = Math.min(1.5, Math.max(0, activeTeamCount - 1) * AIR_MULTIPLIER_TEAM_BONUS_PER_USER);
     const handoffBonus = Math.min(1.5, Math.max(0, Number(state?.handoffCount || 0)) * AIR_MULTIPLIER_HANDOFF_BONUS_PER_CHAIN);
-    return clamp(roundToTenths(baseMultiplier + teamBonus + handoffBonus), 1, AIR_MULTIPLIER_CAP);
+    const relayBonus = Math.min(0.8, Math.max(0, Number(state?.relayChainCount || 0)) * AIR_MULTIPLIER_RELAY_BONUS_PER_CHAIN);
+    return clamp(roundToTenths(baseMultiplier + teamBonus + handoffBonus + relayBonus), 1, AIR_MULTIPLIER_CAP);
+};
+
+export const deriveRelayObjective = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
+    const safeNow = Number(nowMs || Date.now());
+    const streakCount = Number(state?.streakCount || 0);
+    const lastInteractionAtMs = Number(state?.lastInteractionAtMs || 0);
+    const fallbackExpiry = lastInteractionAtMs > 0 ? (lastInteractionAtMs + RELAY_WINDOW_MS) : 0;
+    const expiresAtMs = Number(state?.relayExpiryAtMs || fallbackExpiry || 0);
+    const remainingMs = Math.max(0, expiresAtMs - safeNow);
+    const active = streakCount > 0 && remainingMs > 0;
+    const progressPct = active ? clamp((remainingMs / RELAY_WINDOW_MS) * 100, 0, 100) : 0;
+    const urgency = progressPct > 66 ? 'stable' : (progressPct > 33 ? 'warning' : 'danger');
+    return {
+        active,
+        targetType: String(state?.relayTargetType || getNextRelayTargetType(state?.lastInteractionType || 'wave')),
+        expiresAtMs,
+        remainingMs,
+        progressPct: Math.round(progressPct),
+        urgency,
+        chainCount: Number(state?.relayChainCount || 0),
+        successCount: Number(state?.relaySuccessCount || 0),
+        requiresDifferentUser: true,
+        lastPasserUid: String(state?.lastRelayPasserUid || ''),
+        lastPasserName: String(state?.lastRelayPasserName || ''),
+        lastReceiverUid: String(state?.lastRelayReceiverUid || ''),
+        lastReceiverName: String(state?.lastRelayReceiverName || '')
+    };
 };
 
 export const deriveComboMoment = (state = createLobbyVolleyState(), event = {}) => {
@@ -245,6 +292,15 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         && !!activeState.lastInteractionUid
         && activeState.lastInteractionUid !== eventMeta.uid;
     const nextHandoffCount = isHandoff ? Number(activeState.handoffCount || 0) + 1 : Number(activeState.handoffCount || 0);
+    const previousInteractionType = String(activeState.lastInteractionType || '');
+    const expectedRelayType = getNextRelayTargetType(previousInteractionType || eventMeta.type);
+    const relayWindowOpen = Number(activeState.lastInteractionAtMs || 0) > 0
+        && (safeNow - Number(activeState.lastInteractionAtMs || 0)) <= RELAY_WINDOW_MS;
+    const relayHit = relayWindowOpen
+        && isHandoff
+        && eventMeta.type === expectedRelayType;
+    const nextRelayChainCount = relayHit ? (Number(activeState.relayChainCount || 0) + 1) : 0;
+    const nextRelaySuccessCount = relayHit ? (Number(activeState.relaySuccessCount || 0) + 1) : Number(activeState.relaySuccessCount || 0);
     const participants = { ...(activeState.participants || {}) };
     const participant = eventMeta.uid
         ? (participants[eventMeta.uid] || createParticipant(eventMeta, safeNow))
@@ -298,6 +354,8 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         { ...activeState, currentTier: nextTier.tier }
     );
     const airborneStartedAtMs = Number(activeState.airborneStartedAtMs || activeState.startedAtMs || safeNow);
+    const relayTargetType = getNextRelayTargetType(eventMeta.type);
+    const relayPasser = relayHit ? (participants[activeState.lastInteractionUid] || null) : null;
     const nextStateWithoutMultiplier = {
         ...activeState,
         streakId: streakSeed,
@@ -309,6 +367,15 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         airborneStartedAtMs,
         airborneMs: Math.max(0, safeNow - airborneStartedAtMs),
         handoffCount: nextHandoffCount,
+        relayChainCount: nextRelayChainCount,
+        relaySuccessCount: nextRelaySuccessCount,
+        relayTargetType,
+        relayExpiryAtMs: safeNow + RELAY_WINDOW_MS,
+        lastRelayAtMs: relayHit ? safeNow : Number(activeState.lastRelayAtMs || 0),
+        lastRelayPasserUid: relayHit ? String(activeState.lastInteractionUid || '') : '',
+        lastRelayPasserName: relayHit ? String(relayPasser?.userName || 'Guest') : '',
+        lastRelayReceiverUid: relayHit ? String(eventMeta.uid || '') : '',
+        lastRelayReceiverName: relayHit ? String(eventMeta.userName || 'Guest') : '',
         lastInteractionAtMs: safeNow,
         lastInteractionType: eventMeta.type,
         lastInteractionUid: eventMeta.uid,
@@ -413,6 +480,7 @@ export const quantizeToBeat = (nowMs, beatMs, windowMs) => {
 export const LOBBY_PLAYGROUND_ENGINE_CONSTANTS = {
     STREAK_TIMEOUT_MS,
     GROUND_HIT_GRACE_MS,
+    RELAY_WINDOW_MS,
     CONTRIBUTION_WINDOW_MS,
     TEAMWORK_WINDOW_MS,
     COMBO_WINDOW_MS,
@@ -420,6 +488,7 @@ export const LOBBY_PLAYGROUND_ENGINE_CONSTANTS = {
     PAYOUT_COOLDOWN_MS,
     AIR_MULTIPLIER_STEP_MS,
     AIR_MULTIPLIER_CAP,
+    RELAY_SEQUENCE,
     TIER_DEFINITIONS,
     COMBO_DEFINITIONS
 };

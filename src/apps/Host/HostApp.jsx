@@ -796,6 +796,43 @@ const parseAppleMusicPlaylistId = (value = '') => {
     return trimmed;
 };
 
+const normalizeYouTubeSearchItems = (rawItems = []) => (
+    (rawItems || [])
+        .map((item) => {
+            const videoId = String(item?.id || '').trim();
+            if (!videoId) return null;
+            return {
+                source: 'youtube',
+                videoId,
+                trackName: String(item?.title || 'YouTube Track').trim() || 'YouTube Track',
+                artistName: String(item?.channelTitle || item?.channel || 'YouTube').trim() || 'YouTube',
+                artworkUrl100: item?.thumbnails?.medium?.url || item?.thumbnails?.default?.url || '',
+                url: `https://www.youtube.com/watch?v=${videoId}`
+            };
+        })
+        .filter(Boolean)
+);
+
+const mergeUniqueQueueSearchResults = (...groups) => {
+    const merged = [];
+    const seen = new Set();
+    groups.flat().forEach((entry) => {
+        if (!entry) return;
+        const key = [
+            String(entry.source || ''),
+            String(entry.trackId || ''),
+            String(entry.videoId || ''),
+            String(entry.url || ''),
+            String(entry.trackName || ''),
+            String(entry.artistName || '')
+        ].join('|');
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push(entry);
+    });
+    return merged;
+};
+
 const formatBytes = (bytes = 0) => {
     if (!bytes || bytes <= 0) return '0 MB';
     const mb = bytes / (1024 * 1024);
@@ -2603,7 +2640,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
+const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -2686,6 +2723,9 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
     );
     const toast = useToast() || console.log;
     const hallOfFameTimerRef = useRef(null);
+    const autoDjApplausePendingSongRef = useRef('');
+    const autoDjApplauseFallbackTimerRef = useRef(null);
+    const updateStatusRef = useRef(null);
     const mediaOverrideStopRef = useRef('');
     const commandInputRef = useRef(null);
     const [commandOpen, setCommandOpen] = useState(false);
@@ -2768,6 +2808,10 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
     }, [current?.id, current?.mediaUrl, current?.appleMusicId, room?.mediaUrl, room?.appleMusicPlayback?.status, appleMusicPlaying, stopAppleMusic, updateRoom, current, room]);
     useEffect(() => () => {
         if (hallOfFameTimerRef.current) clearTimeout(hallOfFameTimerRef.current);
+        if (autoDjApplauseFallbackTimerRef.current) {
+            clearTimeout(autoDjApplauseFallbackTimerRef.current);
+            autoDjApplauseFallbackTimerRef.current = null;
+        }
     }, []);
     useEffect(() => {
         const onKeyDown = (event) => {
@@ -2917,40 +2961,55 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         let controller;
         const t = setTimeout(async () => { 
             controller = new AbortController();
+            const normalizedQuery = String(searchQ || '').trim();
+            const shouldUseYouTubeFallback = !!searchSources.itunes && !appleMusicAuthorized;
             // 1. Local Search
             const localMatches = searchSources.local
                 ? localLibrary.filter(s =>
-                    s.title.toLowerCase().includes(searchQ.toLowerCase()) ||
-                    s.artist.toLowerCase().includes(searchQ.toLowerCase()) ||
-                    (s.fileName || '').toLowerCase().includes(searchQ.toLowerCase())
+                    s.title.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
+                    s.artist.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
+                    (s.fileName || '').toLowerCase().includes(normalizedQuery.toLowerCase())
                 ).map(s => ({ ...s, source: 'local', trackName: s.title, artistName: s.artist, artworkUrl100: '' }))
                 : [];
             const ytMatches = searchSources.youtube
                 ? ytIndex.filter(s =>
-                    s.trackName.toLowerCase().includes(searchQ.toLowerCase()) ||
-                    s.artistName.toLowerCase().includes(searchQ.toLowerCase())
+                    s.trackName.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
+                    s.artistName.toLowerCase().includes(normalizedQuery.toLowerCase())
                 )
                 : [];
+            let liveYouTubeMatches = [];
+            if (shouldUseYouTubeFallback) {
+                try {
+                    const ytFallbackData = await callFunction('youtubeSearch', {
+                        query: `${normalizedQuery} karaoke`,
+                        maxResults: 6
+                    });
+                    liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || []);
+                } catch (ytErr) {
+                    hostLogger.debug('YouTube fallback search failed', ytErr);
+                }
+            }
+            const fallbackResults = mergeUniqueQueueSearchResults(localMatches, ytMatches, liveYouTubeMatches);
 
             try { 
                 // 2. iTunes Search
-                if (!searchSources.itunes) {
-                    setResults([...localMatches, ...ytMatches]);
+                if (!searchSources.itunes || shouldUseYouTubeFallback) {
+                    setResults(fallbackResults);
                     return;
                 }
-                const data = await callFunction('itunesSearch', { term: searchQ, limit: 5 });
+                const data = await callFunction('itunesSearch', { term: normalizedQuery, limit: 5 });
                 const itunesMatches = (data?.results || []).map(r => ({ ...r, source: 'itunes' }));
-                setResults([...localMatches, ...ytMatches, ...itunesMatches]); 
+                setResults(mergeUniqueQueueSearchResults(localMatches, ytMatches, itunesMatches)); 
             } catch(e) { 
                 if (e.name === 'AbortError') return;
-                setResults([...localMatches, ...ytMatches]);
+                setResults(fallbackResults);
             } 
         }, 500); 
         return () => {
             clearTimeout(t);
             if (controller) controller.abort();
         }; 
-    }, [searchQ, localLibrary, ytIndex, searchSources, setResults]);
+    }, [searchQ, localLibrary, ytIndex, searchSources, setResults, appleMusicAuthorized]);
 
     const getResultRowKey = (r, idx = 0) => {
         return `${r?.source || 'song'}_${r?.trackId || r?.videoId || r?.url || r?.trackName || idx}`;
@@ -3317,6 +3376,77 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             } 
         } 
     }
+    updateStatusRef.current = updateStatus;
+
+    const clearAutoDjApplauseFallback = useCallback(() => {
+        if (!autoDjApplauseFallbackTimerRef.current) return;
+        clearTimeout(autoDjApplauseFallbackTimerRef.current);
+        autoDjApplauseFallbackTimerRef.current = null;
+    }, []);
+
+    const startApplauseSequence = useCallback(async ({ songId = '', autoFinalize = false } = {}) => {
+        if (!songId) return;
+        if (autoFinalize) {
+            autoDjApplausePendingSongRef.current = songId;
+            clearAutoDjApplauseFallback();
+            autoDjApplauseFallbackTimerRef.current = setTimeout(() => {
+                const pendingSongId = autoDjApplausePendingSongRef.current;
+                if (!pendingSongId) return;
+                autoDjApplausePendingSongRef.current = '';
+                const runUpdateStatus = updateStatusRef.current;
+                if (!runUpdateStatus) return;
+                runUpdateStatus(pendingSongId, 'performed').catch((error) => {
+                    hostLogger.warn('Auto-DJ applause fallback finalization failed', error);
+                });
+            }, 17000);
+        }
+        await updateRoom({ activeMode: 'applause_countdown', applausePeak: 0, currentApplauseLevel: 0 });
+        if (autoFinalize) toast('Measuring applause now. Auto-DJ will end this performance after results.');
+        else toast('Applause countdown started.');
+    }, [clearAutoDjApplauseFallback, toast, updateRoom]);
+
+    const handleEndPerformance = useCallback(async (songId = '') => {
+        const targetSongId = String(songId || '').trim();
+        if (!targetSongId) return;
+        if (!autoDj) {
+            autoDjApplausePendingSongRef.current = '';
+            clearAutoDjApplauseFallback();
+            const runUpdateStatus = updateStatusRef.current;
+            if (!runUpdateStatus) return;
+            await runUpdateStatus(targetSongId, 'performed');
+            return;
+        }
+        const applauseMode = String(room?.activeMode || '');
+        const applauseRunning = applauseMode === 'applause_countdown' || applauseMode === 'applause';
+        if (applauseRunning && autoDjApplausePendingSongRef.current === targetSongId) {
+            toast('Applause capture in progress. Auto-DJ will end performance after results.');
+            return;
+        }
+        await startApplauseSequence({ songId: targetSongId, autoFinalize: true });
+    }, [autoDj, clearAutoDjApplauseFallback, room?.activeMode, startApplauseSequence, toast]);
+
+    useEffect(() => {
+        if (!autoDj) return;
+        const pendingSongId = autoDjApplausePendingSongRef.current;
+        if (!pendingSongId) return;
+        if (room?.activeMode !== 'applause_result') return;
+        autoDjApplausePendingSongRef.current = '';
+        clearAutoDjApplauseFallback();
+        const runUpdateStatus = updateStatusRef.current;
+        if (!runUpdateStatus) return;
+        runUpdateStatus(pendingSongId, 'performed').catch((error) => {
+            hostLogger.warn('Auto-DJ applause finalization failed', error);
+        });
+    }, [autoDj, clearAutoDjApplauseFallback, room?.activeMode]);
+
+    useEffect(() => {
+        const activeMode = String(room?.activeMode || '');
+        const applauseFlowActive = activeMode === 'applause_countdown' || activeMode === 'applause' || activeMode === 'applause_result';
+        if (applauseFlowActive) return;
+        if (!autoDjApplausePendingSongRef.current) return;
+        autoDjApplausePendingSongRef.current = '';
+        clearAutoDjApplauseFallback();
+    }, [clearAutoDjApplauseFallback, room?.activeMode]);
 
     // Unified play/pause for the current backing source (Apple or media URL).
     async function togglePlay() {
@@ -3661,7 +3791,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                             <div className="mt-2 text-[11px] text-zinc-300 truncate">
                                 Next: <span className="text-white font-semibold">{nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued'}</span>
                             </div>
-                            <div className="mt-3 grid grid-cols-3 gap-2">
+                            <div className="mt-3 grid grid-cols-4 gap-2">
                                 <button
                                     onClick={togglePlay}
                                     disabled={!current}
@@ -3671,9 +3801,19 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                                     {currentSourcePlaying ? 'Pause' : 'Play'}
                                 </button>
                                 <button
-                                    onClick={() => current && updateStatus(current.id, 'performed')}
+                                    onClick={() => current && startApplauseSequence({ songId: current.id, autoFinalize: false })}
+                                    disabled={!current}
+                                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} py-2 text-[11px] ${!current ? 'opacity-55 cursor-not-allowed' : ''}`}
+                                    title="Start applause countdown + crowd meter"
+                                >
+                                    <i className="fa-solid fa-microphone-lines mr-1"></i>
+                                    Applause
+                                </button>
+                                <button
+                                    onClick={() => current && handleEndPerformance(current.id)}
                                     disabled={!current}
                                     className={`${STYLES.btnStd} ${STYLES.btnSecondary} py-2 text-[11px] ${!current ? 'opacity-55 cursor-not-allowed' : ''}`}
+                                    title={autoDj ? 'Runs applause flow first, then auto-ends performance' : 'End performance now'}
                                 >
                                     <i className="fa-solid fa-flag-checkered mr-1"></i>
                                     End
@@ -3724,6 +3864,8 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                                 setCustomBonus={setCustomBonus}
                                 addBonusToCurrent={addBonusToCurrent}
                                 updateStatus={updateStatus}
+                                onMeasureApplause={() => current && startApplauseSequence({ songId: current.id, autoFinalize: false })}
+                                onEndPerformance={(songId) => handleEndPerformance(songId)}
                                 styles={STYLES}
                                 emoji={EMOJI}
                             />
@@ -4724,37 +4866,52 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         let controller;
         const t = setTimeout(async () => {
             controller = new AbortController();
+            const normalizedQuery = String(catalogueSearchQ || '').trim();
+            const shouldUseYouTubeFallback = !!searchSources.itunes && !appleMusicAuthorized;
             const localMatches = searchSources.local
                 ? localLibrary.filter(s =>
-                    s.title.toLowerCase().includes(catalogueSearchQ.toLowerCase()) ||
-                    s.artist.toLowerCase().includes(catalogueSearchQ.toLowerCase()) ||
-                    (s.fileName || '').toLowerCase().includes(catalogueSearchQ.toLowerCase())
+                    s.title.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
+                    s.artist.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
+                    (s.fileName || '').toLowerCase().includes(normalizedQuery.toLowerCase())
                 ).map(s => ({ ...s, source: 'local', trackName: s.title, artistName: s.artist, artworkUrl100: '' }))
                 : [];
             const ytMatches = searchSources.youtube
                 ? ytIndex.filter(s =>
-                    s.trackName.toLowerCase().includes(catalogueSearchQ.toLowerCase()) ||
-                    s.artistName.toLowerCase().includes(catalogueSearchQ.toLowerCase())
+                    s.trackName.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
+                    s.artistName.toLowerCase().includes(normalizedQuery.toLowerCase())
                 )
                 : [];
+            let liveYouTubeMatches = [];
+            if (shouldUseYouTubeFallback) {
+                try {
+                    const ytFallbackData = await callFunction('youtubeSearch', {
+                        query: `${normalizedQuery} karaoke`,
+                        maxResults: 8
+                    });
+                    liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || []);
+                } catch (ytErr) {
+                    hostLogger.debug('Catalogue YouTube fallback search failed', ytErr);
+                }
+            }
+            const fallbackResults = mergeUniqueQueueSearchResults(localMatches, ytMatches, liveYouTubeMatches);
             try {
-                if (!searchSources.itunes) {
-                    setCatalogueResults([...localMatches, ...ytMatches]);
+                if (!searchSources.itunes || shouldUseYouTubeFallback) {
+                    setCatalogueResults(fallbackResults);
                     return;
                 }
-                const data = await callFunction('itunesSearch', { term: catalogueSearchQ, limit: 5 });
+                const data = await callFunction('itunesSearch', { term: normalizedQuery, limit: 5 });
                 const itunesMatches = (data?.results || []).map(r => ({ ...r, source: 'itunes' }));
-                setCatalogueResults([...localMatches, ...ytMatches, ...itunesMatches]);
+                setCatalogueResults(mergeUniqueQueueSearchResults(localMatches, ytMatches, itunesMatches));
             } catch (e) {
                 if (e.name === 'AbortError') return;
-                setCatalogueResults([...localMatches, ...ytMatches]);
+                setCatalogueResults(fallbackResults);
             }
         }, 500);
         return () => {
             clearTimeout(t);
             if (controller) controller.abort();
         };
-    }, [catalogueSearchQ, localLibrary, ytIndex, searchSources]);
+    }, [catalogueSearchQ, localLibrary, ytIndex, searchSources, appleMusicAuthorized]);
 
     const bgAudio = useRef(null);
     const bgCtxRef = useRef(null);
@@ -11402,6 +11559,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setPinnedChatIds,
         chatViewMode,
         handleChatViewMode,
+        appleMusicAuthorized,
         appleMusicPlaying,
         appleMusicStatus,
         playAppleMusicTrack,

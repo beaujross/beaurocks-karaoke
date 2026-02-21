@@ -23,6 +23,8 @@ const StageNowPlayingPanel = ({
     setCustomBonus,
     addBonusToCurrent,
     updateStatus,
+    onMeasureApplause,
+    onEndPerformance,
     styles,
     emoji
 }) => (
@@ -190,11 +192,29 @@ const StageNowPlayingPanel = ({
                         <i className="fa-solid fa-gift mr-2"></i>Bonus
                     </button>
                 </div>
-                <div className="grid grid-cols-1 gap-2 mt-3">
-                    <button onClick={() => updateRoom({ activeMode: room?.activeMode === 'applause' ? 'karaoke' : 'applause_countdown', applausePeak: 0 })} className={`${styles.btnStd} ${styles.btnPrimary}`}>
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                    <button
+                        onClick={() => {
+                            if (typeof onMeasureApplause === 'function') {
+                                onMeasureApplause();
+                                return;
+                            }
+                            updateRoom({ activeMode: room?.activeMode === 'applause' ? 'karaoke' : 'applause_countdown', applausePeak: 0 });
+                        }}
+                        className={`${styles.btnStd} ${styles.btnPrimary}`}
+                    >
                         <i className="fa-solid fa-microphone-lines mr-2"></i>Measure applause
                     </button>
-                    <button onClick={() => updateStatus(current.id, 'performed')} className={`${styles.btnStd} ${styles.btnSecondary}`}>
+                    <button
+                        onClick={() => {
+                            if (typeof onEndPerformance === 'function') {
+                                onEndPerformance(current.id);
+                                return;
+                            }
+                            updateStatus(current.id, 'performed');
+                        }}
+                        className={`${styles.btnStd} ${styles.btnSecondary}`}
+                    >
                         <i className="fa-solid fa-flag-checkered mr-2"></i>End performance
                     </button>
                 </div>

@@ -7,6 +7,7 @@ import {
     buildAwardPayload,
     deriveAirborneMs,
     deriveTeamworkMultiplier,
+    deriveRelayObjective,
     quantizeToBeat,
     LOBBY_PLAYGROUND_ENGINE_CONSTANTS
 } from '../../src/apps/TV/lobbyPlaygroundEngine.js';
@@ -14,6 +15,7 @@ import {
 const run = () => {
     const timeoutMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS.STREAK_TIMEOUT_MS || 6200);
     const contributionWindowMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS.CONTRIBUTION_WINDOW_MS || 28000);
+    const relayWindowMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS.RELAY_WINDOW_MS || 2400);
 
     // Streak progression + reset timing.
     let state = createLobbyVolleyState();
@@ -101,6 +103,27 @@ const run = () => {
     assert.ok(sustainedMultiplier > 1);
     const burstState = applyLobbyInteraction(teamworkState, { type: 'wave', uid: 'u1', userName: 'Ava' }, 18820);
     assert.ok(Number(burstState.teamworkMultiplier || 1) <= Number(sustainedMultiplier || 1) + 0.3);
+
+    // Relay objective and chain progression.
+    let relayState = createLobbyVolleyState();
+    relayState = applyLobbyInteraction(relayState, { type: 'wave', uid: 'u1', userName: 'Ava' }, 22000);
+    let relayObjective = deriveRelayObjective(relayState, 22080);
+    assert.equal(relayObjective.active, true);
+    assert.equal(relayObjective.targetType, 'laser');
+    assert.equal(relayObjective.chainCount, 0);
+    relayState = applyLobbyInteraction(relayState, { type: 'laser', uid: 'u2', userName: 'Ben' }, 23100);
+    relayObjective = deriveRelayObjective(relayState, 23110);
+    assert.equal(relayObjective.chainCount, 1);
+    assert.equal(relayObjective.lastPasserUid, 'u1');
+    assert.equal(relayObjective.lastReceiverUid, 'u2');
+    relayState = applyLobbyInteraction(relayState, { type: 'echo', uid: 'u3', userName: 'Cam' }, 24100);
+    relayObjective = deriveRelayObjective(relayState, 24110);
+    assert.equal(relayObjective.chainCount, 2);
+    relayState = applyLobbyInteraction(relayState, { type: 'confetti', uid: 'u3', userName: 'Cam' }, 24800);
+    relayObjective = deriveRelayObjective(relayState, 24820);
+    assert.equal(relayObjective.chainCount, 0);
+    const expiredRelayObjective = deriveRelayObjective(relayState, 24800 + relayWindowMs + 100);
+    assert.equal(expiredRelayObjective.active, false);
 
     // Beat quantization + fallback.
     assert.equal(quantizeToBeat(1020, 500, 40), 1000);
