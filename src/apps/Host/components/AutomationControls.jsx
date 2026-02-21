@@ -28,9 +28,9 @@ const AutomationControls = ({
                 }
             }}
             className={`${styles.btnStd} ${autoDj ? styles.btnPrimary : styles.btnNeutral} flex-1`}
-            title="Auto-advance the queue after each performance"
+            title="Automatically moves the next queued song to stage after each performance"
         >
-            <i className="fa-solid fa-forward-fast mr-2"></i>Auto-Progress Queue
+            <i className="fa-solid fa-forward-fast mr-2"></i>Auto DJ Queue Runner
         </button>
         <ToggleSwitch checked={!!room?.bouncerMode} onChange={(v) => updateRoom({ bouncerMode: v })} icon={<i className="fa-solid fa-lock"></i>} label="Bouncer" />
         <button

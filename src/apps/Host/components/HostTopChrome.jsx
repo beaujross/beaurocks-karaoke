@@ -534,17 +534,18 @@ const HostTopChrome = ({
                                 >
                                     <span className="inline-flex items-center gap-2">
                                         <i className="fa-solid fa-compact-disc"></i>
-                                        Background Auto DJ
+                                        Auto BG Music
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{autoBgMusic ? 'On' : 'Off'}</span>
                                 </button>
                                 <button
                                     onClick={toggleAutoDjMode}
                                     className={`${styles.btnStd} ${autoDj ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    title="Automatically starts the next queued singer after each performance."
                                 >
                                     <span className="inline-flex items-center gap-2">
-                                        <i className="fa-solid fa-radio"></i>
-                                        Apple Auto DJ
+                                        <i className="fa-solid fa-forward-fast"></i>
+                                        Auto DJ Queue Runner
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{autoDj ? 'On' : 'Off'}</span>
                                 </button>
@@ -564,6 +565,18 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
+                <button
+                    data-feature-id="deck-auto-dj-queue-toggle"
+                    onClick={toggleAutoDjMode}
+                    className={`${styles.btnStd} ${autoDj ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[220px] justify-between`}
+                    title="When enabled, queued songs automatically move to stage after each performance."
+                >
+                    <span className="inline-flex items-center gap-2">
+                        <i className="fa-solid fa-forward-fast"></i>
+                        Auto DJ Queue
+                    </span>
+                    <span className="text-[11px] uppercase tracking-widest">{autoDj ? 'On' : 'Off'}</span>
+                </button>
                 <div className="relative" ref={tvQuickMenuRef}>
                     <button
                         data-feature-id="deck-tv-menu-toggle"

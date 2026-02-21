@@ -2,6 +2,7 @@ const DEFAULT_INTERACTION_TYPES = ['wave', 'laser', 'echo', 'confetti'];
 const INTERACTION_PREFIX = 'lobby_play_';
 const STREAK_TIMEOUT_MS = 6200;
 const CONTRIBUTION_WINDOW_MS = 28000;
+const TEAMWORK_WINDOW_MS = 9000;
 const INTERACTION_HISTORY_LIMIT = 48;
 const COMBO_WINDOW_MS = 2200;
 const MAX_PARTICIPANTS_PER_PAYOUT = 6;
@@ -9,9 +10,14 @@ const PAYOUT_COOLDOWN_MS = 22000;
 const SPAM_WINDOW_MS = 700;
 const RAPID_FIRE_WINDOW_MS = 280;
 const SPAM_WEIGHT_MIN = 0.34;
+const GROUND_HIT_GRACE_MS = 360;
 const ENERGY_DECAY_PER_SEC = 0.28;
 const ENERGY_GAIN_BASE = 1.8;
 const ENERGY_GAIN_PER_COUNT = 0.78;
+const AIR_MULTIPLIER_STEP_MS = 7000;
+const AIR_MULTIPLIER_TEAM_BONUS_PER_USER = 0.25;
+const AIR_MULTIPLIER_HANDOFF_BONUS_PER_CHAIN = 0.08;
+const AIR_MULTIPLIER_CAP = 5;
 
 const TIER_DEFINITIONS = [
     { tier: 1, name: 'Warm Up', threshold: 4, visualOnly: true, pointsBudget: 0, maxPointsPerUser: 0 },
@@ -82,6 +88,8 @@ const buildContributionScore = ({ count, spamWeight }) => {
     return base * spamWeight;
 };
 
+const roundToTenths = (value = 1) => Math.round((Number(value) || 0) * 10) / 10;
+
 const decayEnergy = (energy = 0, elapsedMs = 0) => {
     if (!elapsedMs) return Math.max(0, Number(energy) || 0);
     const decayed = (Number(energy) || 0) - ((elapsedMs / 1000) * ENERGY_DECAY_PER_SEC);
@@ -124,6 +132,10 @@ export const createLobbyVolleyState = () => ({
     streakId: 0,
     streakCount: 0,
     energy: 0,
+    airborneStartedAtMs: 0,
+    airborneMs: 0,
+    teamworkMultiplier: 1,
+    handoffCount: 0,
     currentTier: 0,
     tierName: '',
     startedAtMs: 0,
@@ -137,6 +149,30 @@ export const createLobbyVolleyState = () => ({
     lastPayoutAtMs: 0,
     authFailureLocked: false
 });
+
+export const deriveAirborneMs = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
+    const safeNow = Number(nowMs || Date.now());
+    const streakCount = Number(state?.streakCount || 0);
+    if (streakCount <= 0) return 0;
+    const startedAtMs = Number(state?.airborneStartedAtMs || state?.startedAtMs || 0);
+    if (!startedAtMs) return 0;
+    return Math.max(0, safeNow - startedAtMs);
+};
+
+export const deriveTeamworkMultiplier = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
+    const safeNow = Number(nowMs || Date.now());
+    const airborneMs = deriveAirborneMs(state, safeNow);
+    if (airborneMs <= 0) return 1;
+    const participants = Object.values(state?.participants || {});
+    const activeTeamCount = participants
+        .filter((entry) => (safeNow - Number(entry?.lastAtMs || 0)) <= TEAMWORK_WINDOW_MS)
+        .length;
+    const airSteps = Math.floor(airborneMs / AIR_MULTIPLIER_STEP_MS);
+    const baseMultiplier = 1 + Math.min(2, airSteps * 0.5);
+    const teamBonus = Math.min(1.5, Math.max(0, activeTeamCount - 1) * AIR_MULTIPLIER_TEAM_BONUS_PER_USER);
+    const handoffBonus = Math.min(1.5, Math.max(0, Number(state?.handoffCount || 0)) * AIR_MULTIPLIER_HANDOFF_BONUS_PER_CHAIN);
+    return clamp(roundToTenths(baseMultiplier + teamBonus + handoffBonus), 1, AIR_MULTIPLIER_CAP);
+};
 
 export const deriveComboMoment = (state = createLobbyVolleyState(), event = {}) => {
     const eventMeta = makeDefaultEventMeta(event);
@@ -198,12 +234,17 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
             ...createLobbyVolleyState(),
             streakId: streakSeed,
             startedAtMs: safeNow,
+            airborneStartedAtMs: safeNow,
             lastPayoutAtMs: Number(baseState.lastPayoutAtMs || 0),
             authFailureLocked: !!baseState.authFailureLocked
         }
         : { ...baseState };
 
     const elapsedMs = Math.max(0, safeNow - Number(activeState.lastInteractionAtMs || safeNow));
+    const isHandoff = !!eventMeta.uid
+        && !!activeState.lastInteractionUid
+        && activeState.lastInteractionUid !== eventMeta.uid;
+    const nextHandoffCount = isHandoff ? Number(activeState.handoffCount || 0) + 1 : Number(activeState.handoffCount || 0);
     const participants = { ...(activeState.participants || {}) };
     const participant = eventMeta.uid
         ? (participants[eventMeta.uid] || createParticipant(eventMeta, safeNow))
@@ -256,8 +297,8 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         { ...activeState, currentTier: prevTier.tier },
         { ...activeState, currentTier: nextTier.tier }
     );
-
-    return {
+    const airborneStartedAtMs = Number(activeState.airborneStartedAtMs || activeState.startedAtMs || safeNow);
+    const nextStateWithoutMultiplier = {
         ...activeState,
         streakId: streakSeed,
         streakCount: nextStreakCount,
@@ -265,12 +306,21 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         currentTier: nextTier.tier,
         tierName: nextTier.name,
         startedAtMs: Number(activeState.startedAtMs || safeNow),
+        airborneStartedAtMs,
+        airborneMs: Math.max(0, safeNow - airborneStartedAtMs),
+        handoffCount: nextHandoffCount,
         lastInteractionAtMs: safeNow,
         lastInteractionType: eventMeta.type,
         lastInteractionUid: eventMeta.uid,
         interactions: interactionHistory,
         participants,
         pendingTierTransitions
+    };
+    const teamworkMultiplier = deriveTeamworkMultiplier(nextStateWithoutMultiplier, safeNow);
+
+    return {
+        ...nextStateWithoutMultiplier,
+        teamworkMultiplier
     };
 };
 
@@ -362,10 +412,14 @@ export const quantizeToBeat = (nowMs, beatMs, windowMs) => {
 
 export const LOBBY_PLAYGROUND_ENGINE_CONSTANTS = {
     STREAK_TIMEOUT_MS,
+    GROUND_HIT_GRACE_MS,
     CONTRIBUTION_WINDOW_MS,
+    TEAMWORK_WINDOW_MS,
     COMBO_WINDOW_MS,
     MAX_PARTICIPANTS_PER_PAYOUT,
     PAYOUT_COOLDOWN_MS,
+    AIR_MULTIPLIER_STEP_MS,
+    AIR_MULTIPLIER_CAP,
     TIER_DEFINITIONS,
     COMBO_DEFINITIONS
 };

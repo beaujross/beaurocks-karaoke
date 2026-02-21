@@ -24,6 +24,8 @@ import {
     createLobbyVolleyState,
     applyLobbyInteraction,
     deriveComboMoment,
+    deriveAirborneMs,
+    deriveTeamworkMultiplier,
     getActiveParticipants,
     getTierTransitions,
     buildAwardPayload,
@@ -48,11 +50,11 @@ const formatWaitTime = (seconds) => {
 };
 
 const LOBBY_PLAYGROUND_PROMPTS = [
-    'Tap HYPE on your phone and watch the TV react.',
-    'Drop CLAP reactions together to fill the hype meter.',
+    'Goal: keep the Volley Orb above the ground line.',
+    'Trade turns on your phones to keep the orb airborne.',
+    'Mix wave + laser + echo + confetti for combo links.',
     'Send a chat message and see it land on the room feed.',
-    'Update your emoji/avatar and spot your card instantly.',
-    'Try LOVE or CHEERS to paint the screen with energy.'
+    'Update your emoji/avatar and spot your card instantly.'
 ];
 
 const LOBBY_REACTION_LABELS = {
@@ -217,6 +219,9 @@ const LOBBY_COMBO_CAP = 12;
 const LOBBY_TIER_CHIP_CAP = 8;
 const LOBBY_ORB_EVENT_CAP = 14;
 const LOBBY_PARTICLE_MAX = 24;
+const LOBBY_ORB_MIN_TOP_PCT = 32;
+const LOBBY_ORB_IDLE_TOP_PCT = 74;
+const LOBBY_GROUND_LINE_TOP_PCT = 84;
 
 const getLobbyTierDefinition = (tierNumber = 0) => (
     (LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.TIER_DEFINITIONS || []).find((entry) => Number(entry?.tier || 0) === Number(tierNumber || 0)) || null
@@ -249,6 +254,18 @@ const getLobbyOrbMeterValue = (state = null, now = nowMs()) => {
     const elapsed = Math.max(0, now - Number(state.lastInteractionAtMs || now));
     const liveEnergy = Math.max(0, Number(state.energy || 0) - ((elapsed / 1000) * 0.28));
     return clampLobby(liveEnergy, 0, 100);
+};
+
+const getLobbyOrbTopPct = ({ hasStreak = false, streakDecayPct = 0 }) => {
+    if (!hasStreak) return LOBBY_ORB_IDLE_TOP_PCT;
+    const decay = clampLobby(streakDecayPct, 0, 100);
+    const fallProgress = 1 - (decay / 100);
+    const maxTravel = Math.max(0, (LOBBY_GROUND_LINE_TOP_PCT - LOBBY_ORB_MIN_TOP_PCT) - 4);
+    return clampLobby(
+        LOBBY_ORB_MIN_TOP_PCT + (fallProgress * maxTravel),
+        LOBBY_ORB_MIN_TOP_PCT,
+        LOBBY_GROUND_LINE_TOP_PCT - 4
+    );
 };
 
 const getLobbyBurstParticleCount = ({ reduceMotion = false, loadFactor = 0 }) => {
@@ -1404,7 +1421,7 @@ const PublicTV = ({ roomCode }) => {
                                 id: `lobby-play-live-${c.doc.id}`,
                                 avatar: d.avatar || effect.icon,
                                 user: d.userName || d.user || 'Guest',
-                                text: `kept the volley alive with ${effect.label.toLowerCase()}${totalCount > 1 ? ` x${totalCount}` : ''} (streak ${nextVolleyState.streakCount})`,
+                                text: `kept the volley alive with ${effect.label.toLowerCase()}${totalCount > 1 ? ` x${totalCount}` : ''} (x${Number(nextVolleyState.teamworkMultiplier || 1).toFixed(1)} teamwork)`,
                                 timestampMs: burstTime
                             });
                         } else if (d.type === 'storm_layer') {
@@ -1857,6 +1874,7 @@ const PublicTV = ({ roomCode }) => {
             setLobbyComboMoments((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAtMs || 0)) < LOBBY_COMBO_WINDOW_MS));
             setLobbyVolleyLinks((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAt || 0)) < LOBBY_LINK_WINDOW_MS));
             setLobbyTierChips((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAt || 0)) < LOBBY_AWARD_VISUAL_WINDOW_MS));
+            let groundedVolleySummary = null;
             setLobbyVolleyState((prev) => {
                 if (!prev) return prev;
                 const lastAt = Number(prev.lastInteractionAtMs || 0);
@@ -1864,22 +1882,61 @@ const PublicTV = ({ roomCode }) => {
                 const elapsedMs = Math.max(0, tickNow - lastAt);
                 const liveEnergy = Math.max(0, Number(prev.energy || 0) - ((elapsedMs / 1000) * 0.28));
                 const timeoutMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.STREAK_TIMEOUT_MS || 6200);
-                if (elapsedMs > (timeoutMs * 1.6) && Number(prev.streakCount || 0) > 0) {
+                const groundedAtMs = timeoutMs + Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.GROUND_HIT_GRACE_MS || 360);
+                if (elapsedMs > groundedAtMs && Number(prev.streakCount || 0) > 0) {
                     const resetState = {
                         ...createLobbyVolleyState(),
                         streakId: Number(prev.streakId || 0) + 1,
                         lastPayoutAtMs: Number(prev.lastPayoutAtMs || 0),
                         authFailureLocked: !!prev.authFailureLocked
                     };
+                    groundedVolleySummary = {
+                        streakCount: Number(prev.streakCount || 0),
+                        teamworkMultiplier: Number(prev.teamworkMultiplier || 1)
+                    };
                     lobbyVolleyStateRef.current = resetState;
                     lobbyLastAnchorRef.current = null;
                     return resetState;
                 }
-                if (Math.abs(liveEnergy - Number(prev.energy || 0)) < 0.05) return prev;
-                const next = { ...prev, energy: liveEnergy };
+                const airborneMs = deriveAirborneMs(prev, tickNow);
+                const teamworkMultiplier = deriveTeamworkMultiplier(prev, tickNow);
+                const needsEnergyUpdate = Math.abs(liveEnergy - Number(prev.energy || 0)) >= 0.05;
+                const needsAirborneUpdate = Math.abs(airborneMs - Number(prev.airborneMs || 0)) >= 40;
+                const needsMultiplierUpdate = Math.abs(teamworkMultiplier - Number(prev.teamworkMultiplier || 1)) >= 0.1;
+                if (!needsEnergyUpdate && !needsAirborneUpdate && !needsMultiplierUpdate) return prev;
+                const next = {
+                    ...prev,
+                    energy: liveEnergy,
+                    airborneMs,
+                    teamworkMultiplier
+                };
                 lobbyVolleyStateRef.current = next;
                 return next;
             });
+            if (groundedVolleySummary) {
+                setLobbyTierChips((prev) => {
+                    const active = (prev || []).filter(
+                        (entry) => (tickNow - Number(entry?.createdAt || 0)) < LOBBY_AWARD_VISUAL_WINDOW_MS
+                    );
+                    const groundChip = {
+                        id: `lobby-ground-${tickNow}`,
+                        label: 'Orb touched the ground',
+                        subtitle: `Volley ended at ${groundedVolleySummary.streakCount} saves`,
+                        tier: 0,
+                        createdAt: tickNow,
+                        durationMs: LOBBY_AWARD_VISUAL_WINDOW_MS,
+                        accent: 'from-amber-300/70 to-red-300/70'
+                    };
+                    return [groundChip, ...active].slice(0, LOBBY_TIER_CHIP_CAP);
+                });
+                pushLobbyLiveEvent({
+                    id: `lobby-ground-live-${tickNow}`,
+                    avatar: EMOJI.warning || emoji(0x26A0),
+                    user: 'Volley Orb',
+                    text: `touched the ground at x${Number(groundedVolleySummary.teamworkMultiplier || 1).toFixed(1)} teamwork. Rally again!`,
+                    timestampMs: tickNow
+                });
+            }
             setCombo(prev => {
                 const next = Math.max(0, prev - 0.2);
                 comboRef.current = next;
@@ -1898,7 +1955,7 @@ const PublicTV = ({ roomCode }) => {
             }
         }, 100);
         return () => clearInterval(i);
-    }, [showHypeMeter]);
+    }, [showHypeMeter, pushLobbyLiveEvent]);
     
     const getTimestampMs = (value) => {
         if (!value) return 0;
@@ -2177,13 +2234,27 @@ const PublicTV = ({ roomCode }) => {
         .filter((entry) => (nowMs() - Number(entry?.timestampMs || 0)) < 90000)
         .sort((a, b) => Number(b?.timestampMs || 0) - Number(a?.timestampMs || 0))
         .slice(0, 8);
-    const lobbyOrbEnergy = getLobbyOrbMeterValue(lobbyVolleyState, nowMs());
-    const lobbyActiveParticipants = getActiveParticipants(lobbyVolleyState, nowMs()).slice(0, LOBBY_ORB_EVENT_CAP);
+    const lobbyNow = nowMs();
+    const lobbyOrbEnergy = getLobbyOrbMeterValue(lobbyVolleyState, lobbyNow);
+    const lobbyActiveParticipants = getActiveParticipants(lobbyVolleyState, lobbyNow).slice(0, LOBBY_ORB_EVENT_CAP);
     const lobbyCurrentTierMeta = getLobbyTierDefinition(lobbyVolleyState?.currentTier || 0);
     const lobbyStreakTimeoutMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.STREAK_TIMEOUT_MS || 6200);
-    const lobbyStreakAgeMs = Math.max(0, nowMs() - Number(lobbyVolleyState?.lastInteractionAtMs || 0));
+    const lobbyStreakAgeMs = Math.max(0, lobbyNow - Number(lobbyVolleyState?.lastInteractionAtMs || 0));
     const lobbyStreakDecayPct = clampLobby(
         100 - ((lobbyStreakAgeMs / Math.max(1, lobbyStreakTimeoutMs)) * 100),
+        0,
+        100
+    );
+    const lobbyHasActiveVolley = Number(lobbyVolleyState?.streakCount || 0) > 0 && Number(lobbyVolleyState?.lastInteractionAtMs || 0) > 0;
+    const lobbyOrbTopPct = getLobbyOrbTopPct({
+        hasStreak: lobbyHasActiveVolley,
+        streakDecayPct: lobbyStreakDecayPct
+    });
+    const lobbyAirborneMs = deriveAirborneMs(lobbyVolleyState, lobbyNow);
+    const lobbyTeamworkMultiplier = deriveTeamworkMultiplier(lobbyVolleyState, lobbyNow);
+    const lobbyAirborneSec = Math.floor(lobbyAirborneMs / 1000);
+    const lobbyOrbClearancePct = clampLobby(
+        ((LOBBY_GROUND_LINE_TOP_PCT - lobbyOrbTopPct) / Math.max(1, (LOBBY_GROUND_LINE_TOP_PCT - LOBBY_ORB_MIN_TOP_PCT))) * 100,
         0,
         100
     );
@@ -3389,34 +3460,44 @@ const PublicTV = ({ roomCode }) => {
                                         <div className="text-sm md:text-base text-zinc-100 mb-3">
                                             As guests join, use phones to trigger live reactions, chat, and identity updates on this TV.
                                         </div>
+                                        <div className="rounded-2xl border border-emerald-300/35 bg-emerald-500/10 px-3 py-3 mb-3">
+                                            <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-100 mb-1">Volley Goal</div>
+                                            <div className="text-base md:text-xl font-bebas text-white leading-tight">
+                                                Keep the Volley Orb in the air. Do not let it touch the ground line at the bottom.
+                                            </div>
+                                        </div>
                                         <div className="rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-3 mb-3">
                                             <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200 mb-1">Try This Now</div>
                                             <div className="text-lg md:text-2xl font-bebas text-white leading-tight">{lobbyPrompt}</div>
                                         </div>
                                         <div className="rounded-2xl border border-fuchsia-300/35 bg-gradient-to-r from-cyan-500/14 via-indigo-500/14 to-fuchsia-500/16 px-3 py-3 mb-3">
                                             <div className="flex items-center justify-between gap-2">
-                                                <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100">Volley Streak</div>
+                                                <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100">Teamwork Multiplier</div>
                                                 <div className="px-2 py-1 rounded-full border border-white/25 bg-black/35 text-[10px] uppercase tracking-[0.15em] text-white">
                                                     Tier {lobbyVolleyState?.currentTier || 0}{lobbyCurrentTierMeta?.name ? `: ${lobbyCurrentTierMeta.name}` : ''}
                                                 </div>
                                             </div>
                                             <div className="mt-2 flex items-end justify-between gap-3">
-                                                <div className="text-2xl md:text-3xl font-bebas text-white">{lobbyVolleyState?.streakCount || 0}</div>
+                                                <div className="text-2xl md:text-3xl font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
                                                 <div className="text-xs md:text-sm text-cyan-100">
-                                                    {lobbyActiveParticipants.length} active
+                                                    {lobbyHasActiveVolley ? `${lobbyAirborneSec}s airborne` : 'waiting for launch'}
                                                 </div>
                                             </div>
                                             <div className="mt-2 h-2 rounded-full overflow-hidden border border-white/20 bg-black/45">
                                                 <div
-                                                    className="h-full bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-yellow-300 transition-all duration-200"
-                                                    style={{ width: `${lobbyOrbEnergy}%` }}
+                                                    className="h-full bg-gradient-to-r from-red-300 via-amber-300 to-emerald-300 transition-all duration-200"
+                                                    style={{ width: `${lobbyStreakDecayPct}%` }}
                                                 />
                                             </div>
                                             <div className="mt-1 h-1 rounded-full overflow-hidden bg-black/45">
                                                 <div
-                                                    className="h-full bg-white/65 transition-all duration-150"
-                                                    style={{ width: `${lobbyStreakDecayPct}%` }}
+                                                    className="h-full bg-cyan-300/85 transition-all duration-150"
+                                                    style={{ width: `${lobbyOrbEnergy}%` }}
                                                 />
+                                            </div>
+                                            <div className="mt-1 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-cyan-100/90">
+                                                <span>{lobbyVolleyState?.streakCount || 0} saves</span>
+                                                <span>{lobbyActiveParticipants.length} active</span>
                                             </div>
                                             {lobbyVolleyState?.authFailureLocked && (
                                                 <div className="mt-2 text-[10px] uppercase tracking-[0.14em] text-amber-100">
@@ -3841,7 +3922,12 @@ const PublicTV = ({ roomCode }) => {
                     </svg>
                 )}
                 {(lobbyWarmupMode || lobbyTransitionPhase === 'exiting') && (
-                    <div className="absolute left-1/2 top-[52%] -translate-x-1/2 -translate-y-1/2">
+                    <>
+                    <div className="absolute left-[8%] right-[8%] lobby-volley-ground-line" style={{ top: `${LOBBY_GROUND_LINE_TOP_PCT}%` }}>
+                        <div className="lobby-volley-ground-core" />
+                        <div className="lobby-volley-ground-label">Ground Line</div>
+                    </div>
+                    <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 transition-[top] duration-200 ease-out" style={{ top: `${lobbyOrbTopPct}%` }}>
                         <div className={`lobby-volley-orb-shell ${motionSafeFx ? 'lobby-volley-orb-shell-safe' : ''}`}>
                             <div
                                 className="lobby-volley-orb-core"
@@ -3851,15 +3937,18 @@ const PublicTV = ({ roomCode }) => {
                                 }}
                             >
                                 <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100">Volley Orb</div>
-                                <div className="text-3xl md:text-4xl font-bebas text-white leading-none">{lobbyVolleyState?.streakCount || 0}</div>
+                                <div className="text-3xl md:text-4xl font-bebas text-white leading-none">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
                                 <div className="text-[10px] uppercase tracking-[0.16em] text-white/80">
-                                    Tier {lobbyVolleyState?.currentTier || 0}
+                                    {lobbyHasActiveVolley ? `${lobbyAirborneSec}s airborne` : 'tap to launch'}
+                                </div>
+                                <div className="text-[10px] uppercase tracking-[0.12em] text-white/70">
+                                    {lobbyVolleyState?.streakCount || 0} saves
                                 </div>
                             </div>
                             <div className="lobby-volley-orb-ring">
                                 <div
                                     className="lobby-volley-orb-ring-fill"
-                                    style={{ '--orb-fill': `${lobbyOrbEnergy}%` }}
+                                    style={{ '--orb-fill': `${lobbyStreakDecayPct}%` }}
                                 />
                             </div>
                             <div className="lobby-volley-orb-activity">
@@ -3871,18 +3960,23 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                         </div>
                     </div>
+                    </>
                 )}
                 <div className="absolute top-5 left-1/2 -translate-x-1/2 w-[min(72vw,620px)]">
                     <div className="rounded-full border border-white/20 bg-black/45 px-4 py-2 backdrop-blur-sm">
                         <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-cyan-100">
-                            <span>Streak Meter</span>
-                            <span>{lobbyVolleyState?.streakCount || 0} hits</span>
+                            <span>Goal: Keep Orb Above Ground</span>
+                            <span>x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)} teamwork</span>
                         </div>
                         <div className="mt-2 h-2 rounded-full overflow-hidden bg-black/55 border border-white/20">
-                            <div className="h-full bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-yellow-300 transition-all duration-200" style={{ width: `${lobbyOrbEnergy}%` }} />
+                            <div className="h-full bg-gradient-to-r from-red-300 via-amber-300 to-emerald-300 transition-all duration-200" style={{ width: `${lobbyStreakDecayPct}%` }} />
                         </div>
                         <div className="mt-1 h-1 rounded-full overflow-hidden bg-black/45">
-                            <div className="h-full bg-white/70 transition-all duration-150" style={{ width: `${lobbyStreakDecayPct}%` }} />
+                            <div className="h-full bg-cyan-300/80 transition-all duration-150" style={{ width: `${lobbyOrbEnergy}%` }} />
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-[10px] uppercase tracking-[0.13em] text-cyan-100/90">
+                            <span>Clearance {Math.round(lobbyOrbClearancePct)}%</span>
+                            <span>{lobbyVolleyState?.streakCount || 0} saves</span>
                         </div>
                     </div>
                 </div>
@@ -4190,6 +4284,32 @@ const PublicTV = ({ roomCode }) => {
                 stroke-dasharray: 12 10;
                 animation: lobby-link-pulse 0.9s linear infinite;
                 filter: drop-shadow(0 0 10px rgba(125,211,252,0.52));
+              }
+              .lobby-volley-ground-line {
+                position: absolute;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              }
+              .lobby-volley-ground-core {
+                width: 100%;
+                height: 5px;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, rgba(244,114,182,0.2), rgba(251,191,36,0.95), rgba(244,114,182,0.2));
+                box-shadow: 0 0 18px rgba(251,191,36,0.52), 0 0 36px rgba(239,68,68,0.2);
+              }
+              .lobby-volley-ground-label {
+                position: absolute;
+                top: -20px;
+                padding: 2px 10px;
+                border-radius: 9999px;
+                border: 1px solid rgba(255,255,255,0.3);
+                background: rgba(2,6,23,0.72);
+                color: rgba(254,243,199,0.95);
+                font-size: 10px;
+                font-weight: 800;
+                letter-spacing: 0.16em;
+                text-transform: uppercase;
               }
               .lobby-volley-orb-shell {
                 width: clamp(180px, 18vw, 260px);

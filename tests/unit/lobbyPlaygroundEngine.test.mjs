@@ -5,6 +5,8 @@ import {
     getTierTransitions,
     getActiveParticipants,
     buildAwardPayload,
+    deriveAirborneMs,
+    deriveTeamworkMultiplier,
     quantizeToBeat,
     LOBBY_PLAYGROUND_ENGINE_CONSTANTS
 } from '../../src/apps/TV/lobbyPlaygroundEngine.js';
@@ -23,6 +25,8 @@ const run = () => {
     state = applyLobbyInteraction(state, { type: 'echo', uid: 'u3', userName: 'Cam', count: 1 }, 1700 + timeoutMs + 60);
     assert.equal(state.streakCount, 1);
     assert.equal(state.streakId, streakId + 1);
+    assert.equal(Number(state.airborneMs || 0), 0);
+    assert.equal(Number(state.teamworkMultiplier || 1), 1);
 
     // Contribution weighting + anti-spam.
     let spamState = createLobbyVolleyState();
@@ -83,6 +87,20 @@ const run = () => {
     const cooldown = buildAwardPayload(cooldownState, 5000 + (28 * 320));
     assert.equal(cooldown.shouldProcess, false);
     assert.equal(cooldown.reason, 'cooldown');
+
+    // Airborne/teamwork multiplier progression (time + handoff based).
+    let teamworkState = createLobbyVolleyState();
+    teamworkState = applyLobbyInteraction(teamworkState, { type: 'wave', uid: 'u1', userName: 'Ava' }, 10000);
+    assert.equal(deriveAirborneMs(teamworkState, 10000), 0);
+    const earlyMultiplier = deriveTeamworkMultiplier(teamworkState, 12000);
+    assert.equal(earlyMultiplier, 1);
+    teamworkState = applyLobbyInteraction(teamworkState, { type: 'laser', uid: 'u2', userName: 'Ben' }, 13000);
+    teamworkState = applyLobbyInteraction(teamworkState, { type: 'echo', uid: 'u3', userName: 'Cam' }, 15800);
+    teamworkState = applyLobbyInteraction(teamworkState, { type: 'confetti', uid: 'u1', userName: 'Ava' }, 18800);
+    const sustainedMultiplier = deriveTeamworkMultiplier(teamworkState, 18800);
+    assert.ok(sustainedMultiplier > 1);
+    const burstState = applyLobbyInteraction(teamworkState, { type: 'wave', uid: 'u1', userName: 'Ava' }, 18820);
+    assert.ok(Number(burstState.teamworkMultiplier || 1) <= Number(sustainedMultiplier || 1) + 0.3);
 
     // Beat quantization + fallback.
     assert.equal(quantizeToBeat(1020, 500, 40), 1000);
