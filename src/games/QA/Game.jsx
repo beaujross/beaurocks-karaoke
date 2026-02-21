@@ -443,41 +443,48 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
         const perA = Math.round((votesA.length / total) * 100);
         const wyrPrompt = String(gameState?.question || '').trim();
 
+        const topRailPadding = wyrPrompt ? 'clamp(210px, 29vh, 360px)' : 'clamp(150px, 20vh, 250px)';
+
         return (
-            <div data-qa-tv-view="wyr" className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#090014] via-[#120026] to-black text-white font-saira relative overflow-hidden z-[100]">
-                <h1 className="text-6xl font-bebas text-white mb-8 tracking-widest z-20 drop-shadow-[0_0_18px_rgba(236,72,153,0.55)] bg-black/50 px-8 py-2 rounded-full border border-white/10">
-                    WOULD YOU RATHER...
-                </h1>
-                {wyrPrompt && (
-                    <div className="z-20 mb-6 w-full max-w-[94vw] px-10">
-                        <div className="bg-black/65 border border-white/15 rounded-2xl px-6 py-4 text-center shadow-[0_0_24px_rgba(0,0,0,0.45)]">
-                            <div className="text-xs uppercase tracking-[0.3em] text-zinc-400 mb-2">Prompt</div>
-                            <div className="text-[clamp(1.1rem,2.4vw,2rem)] font-black leading-tight text-white whitespace-pre-wrap break-words">
-                                {wyrPrompt}
+            <div data-qa-tv-view="wyr" className="h-full w-full bg-gradient-to-br from-[#090014] via-[#120026] to-black text-white font-saira relative overflow-hidden z-[100]">
+                <div className="absolute inset-x-0 top-5 z-30 px-6 flex flex-col items-center gap-3 pointer-events-none">
+                    <h1 className="text-[clamp(2.4rem,4.8vw,6.5rem)] font-bebas text-white tracking-[0.14em] drop-shadow-[0_0_18px_rgba(236,72,153,0.55)] bg-black/55 px-8 py-2 rounded-full border border-white/10">
+                        WOULD YOU RATHER...
+                    </h1>
+                    {wyrPrompt && (
+                        <div className="w-full max-w-[94vw] px-8">
+                            <div className="bg-black/68 border border-white/15 rounded-2xl px-6 py-4 text-center shadow-[0_0_24px_rgba(0,0,0,0.45)]">
+                                <div className="text-xs uppercase tracking-[0.3em] text-zinc-400 mb-2">Prompt</div>
+                                <div className="text-[clamp(1rem,2vw,1.85rem)] font-black leading-tight text-white whitespace-pre-wrap break-words">
+                                    {wyrPrompt}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
-                {!isReveal && timerSecRemaining !== null && (
-                    <div className="z-20 mb-6 inline-flex items-center gap-2 text-xs uppercase tracking-[0.3em] bg-black/60 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
-                        <i className="fa-regular fa-clock"></i>
-                        {timerSecRemaining}s left
-                    </div>
-                )}
-                
+                    )}
+                    {!isReveal && timerSecRemaining !== null && (
+                        <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.24em] bg-black/65 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
+                            <i className="fa-regular fa-clock"></i>
+                            {timerSecRemaining}s left
+                        </div>
+                    )}
+                </div>
+
                 <div className="flex w-full h-full absolute inset-0 z-0">
-                    {/* Option A Side */}
-                    <div className="flex-1 bg-[#EC4899] flex flex-col items-center justify-center relative transition-all duration-1000 border-r-4 border-black overflow-hidden"
-                         style={{ flex: isReveal ? (perA === 0 ? 0.0001 : perA/100) : 1 }}>
-                        
-                        <div className="z-10 p-12 text-center w-full">
-                            <div className="text-6xl font-black drop-shadow-xl mb-4 leading-tight">{gameState.optionA}</div>
+                    <div
+                        className="flex-1 bg-[#EC4899] flex flex-col items-center justify-center relative transition-all duration-1000 border-r-4 border-black overflow-hidden"
+                        style={{ flex: isReveal ? (perA === 0 ? 0.0001 : perA / 100) : 1 }}
+                    >
+                        <div className="absolute top-6 left-6 text-sm uppercase tracking-[0.18em] bg-black/35 border border-white/20 rounded-full px-3 py-1 font-bold">A</div>
+                        <div className="z-10 text-center w-full px-8 md:px-12 pb-10" style={{ paddingTop: topRailPadding }}>
+                            <div className="text-[clamp(2rem,5.2vw,6rem)] font-black drop-shadow-xl mb-4 leading-[1.05] break-words">
+                                {gameState.optionA}
+                            </div>
                             {isReveal && (
                                 <div className="animate-in zoom-in">
-                                    <div className="text-[12rem] font-bebas mb-4 leading-none opacity-80">{perA}%</div>
-                                    <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto">
+                                    <div className="text-[clamp(4.5rem,11vw,12rem)] font-bebas mb-4 leading-none opacity-80">{perA}%</div>
+                                    <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto max-h-[26vh] overflow-y-auto custom-scrollbar pr-1">
                                         {votesA.map((v, i) => (
-                                            <div key={i} className="bg-black/40 px-3 py-1 rounded-full text-lg font-bold flex items-center gap-2 border border-white/10 animate-float" style={{animationDelay: `${i*100}ms`}}>
+                                            <div key={i} className="bg-black/40 px-3 py-1 rounded-full text-lg font-bold flex items-center gap-2 border border-white/10 animate-float" style={{ animationDelay: `${i * 100}ms` }}>
                                                 {v.avatar || DEFAULT_EMOJI} <span className="text-xs">{v.userName || 'Player'}</span>
                                             </div>
                                         ))}
@@ -487,18 +494,21 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                         </div>
                     </div>
 
-                    {/* Option B Side */}
-                    <div className="flex-1 bg-[#00C4D9] flex flex-col items-center justify-center relative transition-all duration-1000 border-l-4 border-black overflow-hidden"
-                         style={{ flex: isReveal ? ((100-perA) === 0 ? 0.0001 : (100-perA)/100) : 1 }}>
-                        
-                        <div className="z-10 p-12 text-center w-full">
-                            <div className="text-6xl font-black drop-shadow-xl mb-4 leading-tight">{gameState.optionB}</div>
+                    <div
+                        className="flex-1 bg-[#00C4D9] flex flex-col items-center justify-center relative transition-all duration-1000 border-l-4 border-black overflow-hidden"
+                        style={{ flex: isReveal ? ((100 - perA) === 0 ? 0.0001 : (100 - perA) / 100) : 1 }}
+                    >
+                        <div className="absolute top-6 right-6 text-sm uppercase tracking-[0.18em] bg-black/35 border border-white/20 rounded-full px-3 py-1 font-bold">B</div>
+                        <div className="z-10 text-center w-full px-8 md:px-12 pb-10" style={{ paddingTop: topRailPadding }}>
+                            <div className="text-[clamp(2rem,5.2vw,6rem)] font-black drop-shadow-xl mb-4 leading-[1.05] break-words">
+                                {gameState.optionB}
+                            </div>
                             {isReveal && (
                                 <div className="animate-in zoom-in">
-                                    <div className="text-[12rem] font-bebas mb-4 leading-none opacity-80">{100-perA}%</div>
-                                    <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto">
+                                    <div className="text-[clamp(4.5rem,11vw,12rem)] font-bebas mb-4 leading-none opacity-80">{100 - perA}%</div>
+                                    <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto max-h-[26vh] overflow-y-auto custom-scrollbar pr-1">
                                         {votesB.map((v, i) => (
-                                            <div key={i} className="bg-black/40 px-3 py-1 rounded-full text-lg font-bold flex items-center gap-2 border border-white/10 animate-float" style={{animationDelay: `${i*100}ms`}}>
+                                            <div key={i} className="bg-black/40 px-3 py-1 rounded-full text-lg font-bold flex items-center gap-2 border border-white/10 animate-float" style={{ animationDelay: `${i * 100}ms` }}>
                                                 {v.avatar || DEFAULT_EMOJI} <span className="text-xs">{v.userName || 'Player'}</span>
                                             </div>
                                         ))}
@@ -508,9 +518,9 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                         </div>
                     </div>
                 </div>
-                
+
                 {!isReveal && (
-                    <div className="absolute bottom-12 text-4xl font-bold animate-pulse text-[#EC4899] bg-black/90 px-12 py-4 rounded-full z-50 border-2 border-[#EC4899] shadow-[0_0_30px_rgba(236,72,153,0.45)]">
+                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-[clamp(1.4rem,2.5vw,3rem)] font-black animate-pulse text-[#EC4899] bg-black/88 px-10 py-3 rounded-full z-50 border-2 border-[#EC4899] shadow-[0_0_30px_rgba(236,72,153,0.45)]">
                         VOTE NOW ON YOUR PHONES!
                     </div>
                 )}

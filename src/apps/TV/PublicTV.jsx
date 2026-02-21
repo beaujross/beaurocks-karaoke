@@ -346,6 +346,7 @@ const nowMs = () => Date.now();
 const clampPct = (value) => Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
 const ACTIVE_SCREEN_AUTO_CLOSE_MS = 90000;
 const HOW_TO_PLAY_AUTO_CLOSE_MS = 60000;
+const GAME_PREVIEW_AUTO_HIDE_MS = 20000;
 const tvLogger = createLogger('PublicTV');
 const seededUnit = (seed) => {
     const x = Math.sin(seed * 12.9898) * 43758.5453;
@@ -711,6 +712,8 @@ const PublicTV = ({ roomCode }) => {
     const [bonusDropBurst, setBonusDropBurst] = useState(null);
     const [popTriviaVotes, setPopTriviaVotes] = useState([]);
     const [popTriviaNow, setPopTriviaNow] = useState(nowMs());
+    const [previewNowMs, setPreviewNowMs] = useState(nowMs());
+    const [previewSession, setPreviewSession] = useState({ key: '', startMs: 0 });
     const [viewportSize, setViewportSize] = useState(() => ({
         width: typeof window !== 'undefined' ? window.innerWidth : 1920,
         height: typeof window !== 'undefined' ? window.innerHeight : 1080
@@ -2746,8 +2749,28 @@ const PublicTV = ({ roomCode }) => {
     const joinUrlPieces = joinUrlDisplay.split('?');
     const joinUrlBaseDisplay = joinUrlPieces[0];
     const joinUrlQueryDisplay = joinUrlPieces[1] ? `?${joinUrlPieces[1]}` : `?room=${roomCode}`;
+    useEffect(() => {
+        if (!room?.gamePreviewId || room?.activeMode !== 'karaoke') {
+            setPreviewSession((prev) => (prev.startMs || prev.key ? { key: '', startMs: 0 } : prev));
+            return undefined;
+        }
+        const previewKey = String(room.gamePreviewId || '');
+        const roomPreviewTs = getTimestampMs(room?.gamePreviewAt);
+        setPreviewSession((prev) => {
+            if (roomPreviewTs > 0) return { key: previewKey, startMs: roomPreviewTs };
+            if (prev.key === previewKey && prev.startMs > 0) return prev;
+            return { key: previewKey, startMs: nowMs() };
+        });
+        setPreviewNowMs(nowMs());
+        const timer = setInterval(() => setPreviewNowMs(nowMs()), 500);
+        return () => clearInterval(timer);
+    }, [room?.gamePreviewId, room?.gamePreviewAt, room?.activeMode]);
     const previewGameId = room?.gamePreviewId || '';
-    const previewActive = previewGameId && room?.activeMode === 'karaoke';
+    const previewStartMs = previewGameId ? Number(previewSession.startMs || 0) : 0;
+    const previewAgeMs = previewStartMs ? Math.max(0, previewNowMs - previewStartMs) : 0;
+    const previewActive = !!previewGameId
+        && room?.activeMode === 'karaoke'
+        && previewAgeMs < GAME_PREVIEW_AUTO_HIDE_MS;
     const previewTitleMap = {
         bingo: 'Bingo',
         trivia_pop: 'Trivia',

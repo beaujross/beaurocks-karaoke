@@ -167,6 +167,13 @@ const HostTopChrome = ({
     const howToPlayActive = !!room?.howToPlay?.active;
     const activeAutomationCount = Number(!!autoPlayMedia) + Number(!!autoBgMusic) + Number(!!autoDj) + Number(!!room?.bouncerMode);
     const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive);
+    const quickMenuPanelClass = 'absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[80]';
+    const quickMenuScrollClass = 'overflow-y-auto custom-scrollbar overscroll-contain';
+    const quickMenuSectionTitleClass = 'text-xs uppercase tracking-[0.22em] text-zinc-100';
+    const quickMenuSectionHintClass = 'mt-1 text-[11px] leading-relaxed text-zinc-400';
+    const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
+    const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
+    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} h-9 px-3 py-1.5 text-[12px] normal-case tracking-[0.04em]`;
     const liveModeHostGuide = bangerActive
         ? {
             toneClass: 'border-orange-400/45 bg-orange-500/12 text-orange-100',
@@ -541,7 +548,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowAutomationMenu(next);
                         }}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[220px] justify-between`}
+                        className={`${quickMenuToggleClass} min-w-[220px] justify-between`}
                         title="Automation controls"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -557,15 +564,15 @@ const HostTopChrome = ({
                         </span>
                     </button>
                     {showAutomationMenu && (
-                        <div className="absolute left-0 top-full mt-2 w-[min(420px,94vw)] rounded-2xl border border-cyan-300/30 bg-zinc-900/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
-                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-300">Automation</div>
-                            <div className="mt-1 text-[11px] text-zinc-400">
+                        <div className={`${quickMenuPanelClass} left-0 w-[min(430px,94vw)] p-3.5`}>
+                            <div className={quickMenuSectionTitleClass}>Automation</div>
+                            <div className={quickMenuSectionHintClass}>
                                 Queue handoff, media continuity, and room guardrails.
                             </div>
-                            <div className="grid grid-cols-1 gap-2">
+                            <div className="mt-2.5 grid grid-cols-1 gap-2.5">
                                 <button
                                     onClick={toggleAutoPlay}
-                                    className={`${styles.btnStd} ${autoPlayMedia ? styles.btnHighlight : styles.btnNeutral} mt-2 w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${autoPlayMedia ? styles.btnHighlight : styles.btnNeutral} mt-0 w-full min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <span className="inline-flex items-center gap-2">
                                         <i className="fa-solid fa-forward-step"></i>
@@ -576,7 +583,7 @@ const HostTopChrome = ({
                                 <button
                                     onClick={toggleAutoBg}
                                     data-feature-id="deck-auto-bg-music-toggle"
-                                    className={`${styles.btnStd} ${autoBgMusic ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${autoBgMusic ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <span className="inline-flex items-center gap-2">
                                         <i className="fa-solid fa-compact-disc"></i>
@@ -587,7 +594,7 @@ const HostTopChrome = ({
                                 <button
                                     onClick={toggleAutoDjMode}
                                     data-feature-id="deck-auto-dj-queue-toggle"
-                                    className={`${styles.btnStd} ${autoDj ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${autoDj ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                     title="Automatically starts the next queued singer after each performance."
                                 >
                                     <span className="inline-flex items-center gap-2">
@@ -600,7 +607,7 @@ const HostTopChrome = ({
                                     onClick={async () => {
                                         await updateRoom({ bouncerMode: !room?.bouncerMode });
                                     }}
-                                    className={`${styles.btnStd} ${room?.bouncerMode ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${room?.bouncerMode ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <span className="inline-flex items-center gap-2">
                                         <i className="fa-solid fa-lock"></i>
@@ -620,7 +627,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowTvQuickMenu(next);
                         }}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[156px]`}
+                        className={`${quickMenuToggleClass} min-w-[156px]`}
                         title="TV display modes"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -629,13 +636,16 @@ const HostTopChrome = ({
                         <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showTvQuickMenu ? 'rotate-180' : ''}`}></i>
                     </button>
                     {showTvQuickMenu && (
-                        <div className="absolute left-0 top-full mt-2 w-[min(420px,92vw)] max-h-[70vh] overflow-y-auto custom-scrollbar rounded-2xl border border-cyan-300/30 bg-zinc-900/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
-                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-300 mb-2">TV Display Modes</div>
+                        <div className={`${quickMenuPanelClass} ${quickMenuScrollClass} left-0 w-[min(540px,95vw)] max-h-[74vh] p-3.5`}>
+                            <div className={quickMenuSectionTitleClass}>TV Display Modes</div>
+                            <div className={quickMenuSectionHintClass}>
+                                Choose the audience TV layer, then tune the visualizer behavior.
+                            </div>
                             <div className="grid grid-cols-2 gap-2">
                                 <button
                                     data-feature-id="deck-tv-video"
                                     onClick={() => applyTvDisplayMode('video')}
-                                    className={`${styles.btnStd} ${tvDisplayMode === 'video' ? styles.btnHighlight : styles.btnNeutral} py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${tvDisplayMode === 'video' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <i className="fa-solid fa-video"></i>
                                     Video
@@ -643,7 +653,7 @@ const HostTopChrome = ({
                                 <button
                                     data-feature-id="deck-tv-lyrics"
                                     onClick={() => applyTvDisplayMode('lyrics')}
-                                    className={`${styles.btnStd} ${tvDisplayMode === 'lyrics' ? styles.btnHighlight : styles.btnNeutral} py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${tvDisplayMode === 'lyrics' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <i className="fa-solid fa-closed-captioning"></i>
                                     Lyrics
@@ -651,7 +661,7 @@ const HostTopChrome = ({
                                 <button
                                     data-feature-id="deck-tv-visualizer"
                                     onClick={() => applyTvDisplayMode('visualizer')}
-                                    className={`${styles.btnStd} ${tvDisplayMode === 'visualizer' ? styles.btnHighlight : styles.btnNeutral} py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${tvDisplayMode === 'visualizer' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <i className="fa-solid fa-wave-square"></i>
                                     Visualizer
@@ -659,22 +669,24 @@ const HostTopChrome = ({
                                 <button
                                     data-feature-id="deck-tv-lyrics-viz"
                                     onClick={() => applyTvDisplayMode('lyrics_viz')}
-                                    className={`${styles.btnStd} ${tvDisplayMode === 'lyrics_viz' ? styles.btnHighlight : styles.btnNeutral} py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${tvDisplayMode === 'lyrics_viz' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <i className="fa-solid fa-layer-group"></i>
                                     Lyrics + Viz
                                 </button>
                             </div>
-                            <div className="mt-3 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Tip: Lyrics and visualizer can run together.</div>
-                            <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-300 mb-2">Visualizer Engine</div>
-                            <div className="rounded-xl border border-white/10 bg-black/30 p-2 space-y-2">
+                            <div className="mt-2.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                Tip: Lyrics and visualizer can run together.
+                            </div>
+                            <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-200">Visualizer Engine</div>
+                            <div className={`${quickMenuCardClass} mt-2 space-y-2.5`}>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    <label className="text-xs text-zinc-400">
+                                    <label className="text-xs text-zinc-300">
                                         Source
                                         <select
                                             value={visualizerSource}
                                             onChange={(e) => updateRoom({ visualizerSource: e.target.value })}
-                                            className={`${styles.input} mt-1`}
+                                            className={quickMenuSelectClass}
                                         >
                                             <option value="auto">Auto (Recommended)</option>
                                             <option value="host_bg">Host BG Music</option>
@@ -682,12 +694,12 @@ const HostTopChrome = ({
                                             <option value="off">Off</option>
                                         </select>
                                     </label>
-                                    <label className="text-xs text-zinc-400">
+                                    <label className="text-xs text-zinc-300">
                                         Style
                                         <select
                                             value={visualizerMode}
                                             onChange={(e) => updateRoom({ visualizerMode: e.target.value })}
-                                            className={`${styles.input} mt-1`}
+                                            className={quickMenuSelectClass}
                                         >
                                             <option value="ribbon">Liquid ribbon</option>
                                             <option value="rings">Neon rings</option>
@@ -702,12 +714,12 @@ const HostTopChrome = ({
                                             <option value="waveform">Waveform</option>
                                         </select>
                                     </label>
-                                    <label className="text-xs text-zinc-400">
+                                    <label className="text-xs text-zinc-300">
                                         Preset
                                         <select
                                             value={visualizerPreset}
                                             onChange={(e) => updateRoom({ visualizerPreset: e.target.value })}
-                                            className={`${styles.input} mt-1`}
+                                            className={quickMenuSelectClass}
                                         >
                                             <option value="calm">Calm</option>
                                             <option value="club">Club</option>
@@ -721,14 +733,14 @@ const HostTopChrome = ({
                                     </label>
                                     <button
                                         onClick={() => updateRoom({ visualizerSyncLightMode: !visualizerSyncLightMode })}
-                                        className={`${styles.btnStd} ${visualizerSyncLightMode ? styles.btnHighlight : styles.btnNeutral} mt-5`}
+                                        className={`${styles.btnStd} ${visualizerSyncLightMode ? styles.btnHighlight : styles.btnNeutral} mt-5 h-10`}
                                         title="Sync visualizer preset with live light modes"
                                     >
                                         <i className="fa-solid fa-link mr-2"></i>{visualizerSyncLightMode ? 'Light Sync On' : 'Light Sync Off'}
                                     </button>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    <label className="text-xs text-zinc-400">
+                                    <label className="text-xs text-zinc-300">
                                         Sensitivity: <span className="text-white">{visualizerSensitivity.toFixed(2)}x</span>
                                         <input
                                             type="range"
@@ -737,10 +749,10 @@ const HostTopChrome = ({
                                             step="0.05"
                                             value={visualizerSensitivity}
                                             onChange={(e) => updateRoom({ visualizerSensitivity: Number(e.target.value) })}
-                                            className="w-full accent-[#00C4D9] mt-1"
+                                            className="w-full accent-[#00C4D9] mt-1 h-2.5"
                                         />
                                     </label>
-                                    <label className="text-xs text-zinc-400">
+                                    <label className="text-xs text-zinc-300">
                                         Smoothing: <span className="text-white">{visualizerSmoothing.toFixed(2)}</span>
                                         <input
                                             type="range"
@@ -749,7 +761,7 @@ const HostTopChrome = ({
                                             step="0.05"
                                             value={visualizerSmoothing}
                                             onChange={(e) => updateRoom({ visualizerSmoothing: Number(e.target.value) })}
-                                            className="w-full accent-[#00C4D9] mt-1"
+                                            className="w-full accent-[#00C4D9] mt-1 h-2.5"
                                         />
                                     </label>
                                 </div>
@@ -765,7 +777,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowOverlaysMenu(next);
                         }}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[164px]`}
+                        className={`${quickMenuToggleClass} min-w-[164px]`}
                         title="Overlays and guides"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -775,15 +787,15 @@ const HostTopChrome = ({
                         <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showOverlaysMenu ? 'rotate-180' : ''}`}></i>
                     </button>
                     {showOverlaysMenu && (
-                        <div className="absolute right-0 top-full mt-2 w-[min(420px,94vw)] max-h-[72vh] overflow-y-auto custom-scrollbar rounded-2xl border border-cyan-300/30 bg-zinc-900/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
-                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-300">Overlays + Guides</div>
-                            <div className="mt-1 mb-2 text-[11px] text-zinc-400">
+                        <div className={`${quickMenuPanelClass} ${quickMenuScrollClass} right-0 w-[min(430px,94vw)] max-h-[74vh] p-3.5`}>
+                            <div className={quickMenuSectionTitleClass}>Overlays + Guides</div>
+                            <div className={`${quickMenuSectionHintClass} mb-2`}>
                                 TV assist layers and quick audience prompts.
                             </div>
-                            <div className="grid grid-cols-1 gap-1.5">
+                            <div className="grid grid-cols-1 gap-2">
                                 <button
                                     onClick={() => toggleOverlayScreen('leaderboard')}
-                                    className={`${styles.btnStd} ${leaderboardActive ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${leaderboardActive ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-trophy"></i>
@@ -796,7 +808,7 @@ const HostTopChrome = ({
                                 </button>
                                 <button
                                     onClick={() => toggleOverlayScreen('tipping')}
-                                    className={`${styles.btnStd} ${tipCtaActive ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${tipCtaActive ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-money-bill-wave"></i>
@@ -809,7 +821,7 @@ const HostTopChrome = ({
                                 </button>
                                 <button
                                     onClick={toggleHowToPlayOverlay}
-                                    className={`${styles.btnStd} ${howToPlayActive ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${howToPlayActive ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-circle-question"></i>
@@ -825,7 +837,7 @@ const HostTopChrome = ({
                                         await startReadyCheck?.();
                                         closeAllTopMenus();
                                     }}
-                                    className={`${styles.btnStd} ${room?.readyCheck?.active ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${room?.readyCheck?.active ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-hourglass-half"></i>
@@ -838,7 +850,7 @@ const HostTopChrome = ({
                                 </button>
                                 <button
                                     onClick={toggleMarqueeOverlay}
-                                    className={`${styles.btnStd} ${marqueeActive ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${marqueeActive ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-scroll"></i>
@@ -851,7 +863,7 @@ const HostTopChrome = ({
                                 </button>
                                 <button
                                     onClick={toggleChatTvOverlay}
-                                    className={`${styles.btnStd} ${chatTvActive ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${chatTvActive ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-comments"></i>
@@ -867,7 +879,7 @@ const HostTopChrome = ({
                                 </button>
                                 <button
                                     onClick={toggleChatTvFullscreen}
-                                    className={`${styles.btnStd} ${chatFullscreenActive ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${chatFullscreenActive ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-expand"></i>
@@ -890,7 +902,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowSfxQuickMenu(next);
                         }}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[160px]`}
+                        className={`${quickMenuToggleClass} min-w-[160px]`}
                         title="Sound effects controls"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -899,9 +911,9 @@ const HostTopChrome = ({
                         <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showSfxQuickMenu ? 'rotate-180' : ''}`}></i>
                     </button>
                     {showSfxQuickMenu && (
-                        <div className="absolute right-0 top-full mt-2 w-[min(340px,92vw)] rounded-2xl border border-cyan-300/30 bg-zinc-900/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
-                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-300 mb-2">Sound Effects</div>
-                            <div className="rounded-xl border border-white/10 bg-black/30 p-2">
+                        <div className={`${quickMenuPanelClass} right-0 w-[min(360px,92vw)] p-3.5`}>
+                            <div className={`${quickMenuSectionTitleClass} mb-2`}>Sound Effects</div>
+                            <div className={quickMenuCardClass}>
                                 <div className="flex items-center gap-2">
                                     <button
                                         data-feature-id="deck-sfx-mute"
@@ -928,13 +940,13 @@ const HostTopChrome = ({
                                         style={{ background: `linear-gradient(90deg, #00E5FF ${Math.round((sfxVolume || 0) * 100)}%, #27272a ${Math.round((sfxVolume || 0) * 100)}%)` }}
                                     />
                                 </div>
-                                <div className="mt-2 space-y-1 max-h-52 overflow-y-auto custom-scrollbar pr-1">
+                                <div className="mt-2.5 space-y-1.5 max-h-52 overflow-y-auto custom-scrollbar pr-1">
                                     {(sounds || []).map((sound) => (
                                         <button
                                             data-feature-id="deck-sfx-button"
                                             key={`deck-sfx-quick-${sound.name}`}
                                             onClick={() => playSfxSafe?.(sound.url)}
-                                            className={`${styles.btnStd} ${styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                            className={`${styles.btnStd} ${styles.btnNeutral} w-full min-h-[40px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                         >
                                             <span className="inline-flex items-center gap-2">
                                                 <i className={`fa-solid ${sound.icon}`}></i>
@@ -956,7 +968,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowVibeQuickMenu(next);
                         }}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[164px]`}
+                        className={`${quickMenuToggleClass} min-w-[164px]`}
                         title="Vibe sync modes"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -965,36 +977,36 @@ const HostTopChrome = ({
                         <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showVibeQuickMenu ? 'rotate-180' : ''}`}></i>
                     </button>
                     {showVibeQuickMenu && (
-                        <div className="absolute right-0 top-full mt-2 w-[min(360px,92vw)] rounded-2xl border border-cyan-300/30 bg-zinc-900/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
-                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-300 mb-2">Vibe Sync Modes</div>
-                            <div className="rounded-xl border border-white/10 bg-black/30 p-2">
+                        <div className={`${quickMenuPanelClass} right-0 w-[min(380px,92vw)] p-3.5`}>
+                            <div className={`${quickMenuSectionTitleClass} mb-2`}>Vibe Sync Modes</div>
+                            <div className={quickMenuCardClass}>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => runLiveEffect('beat_drop')} className={`${styles.btnStd} ${strobeActive ? styles.btnHighlight : styles.btnNeutral} py-2 text-sm normal-case tracking-[0.03em]`}>
+                                    <button onClick={() => runLiveEffect('beat_drop')} className={`${styles.btnStd} ${strobeActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                         <i className="fa-solid fa-bolt"></i>
                                         {strobeActive ? 'Beat ON' : 'Beat Drop'}
                                     </button>
-                                    <button onClick={() => runLiveEffect('storm')} className={`${styles.btnStd} ${stormActive ? styles.btnHighlight : styles.btnNeutral} py-2 text-sm normal-case tracking-[0.03em]`}>
+                                    <button onClick={() => runLiveEffect('storm')} className={`${styles.btnStd} ${stormActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                         <i className="fa-solid fa-cloud-bolt"></i>
                                         {stormActive ? 'Storm ON' : 'Storm'}
                                     </button>
-                                    <button onClick={() => runLiveEffect('guitar')} className={`${styles.btnStd} ${guitarActive ? styles.btnHighlight : styles.btnNeutral} py-2 text-sm normal-case tracking-[0.03em]`}>
+                                    <button onClick={() => runLiveEffect('guitar')} className={`${styles.btnStd} ${guitarActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                         <i className="fa-solid fa-guitar"></i>
                                         {guitarActive ? 'Guitar ON' : 'Guitar'}
                                     </button>
-                                    <button onClick={() => runLiveEffect('banger')} className={`${styles.btnStd} ${bangerActive ? styles.btnHighlight : styles.btnNeutral} py-2 text-sm normal-case tracking-[0.03em]`}>
+                                    <button onClick={() => runLiveEffect('banger')} className={`${styles.btnStd} ${bangerActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                         <i className="fa-solid fa-fire"></i>
                                         {bangerActive ? 'Banger ON' : 'Banger'}
                                     </button>
-                                    <button onClick={() => runLiveEffect('ballad')} className={`${styles.btnStd} ${balladActive ? styles.btnHighlight : styles.btnNeutral} py-2 text-sm normal-case tracking-[0.03em]`}>
+                                    <button onClick={() => runLiveEffect('ballad')} className={`${styles.btnStd} ${balladActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                         <i className="fa-solid fa-music"></i>
                                         {balladActive ? 'Ballad ON' : 'Ballad'}
                                     </button>
-                                    <button onClick={() => runLiveEffect('selfie_cam')} className={`${styles.btnStd} ${selfieCamActive ? styles.btnHighlight : styles.btnNeutral} py-2 text-sm normal-case tracking-[0.03em]`}>
+                                    <button onClick={() => runLiveEffect('selfie_cam')} className={`${styles.btnStd} ${selfieCamActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                         <i className="fa-solid fa-camera"></i>
                                         {selfieCamActive ? 'Selfie Cam ON' : 'Selfie Cam'}
                                     </button>
                                 </div>
-                                <button onClick={() => runLiveEffect('clear')} className={`${styles.btnStd} ${styles.btnSecondary} w-full mt-2 py-2 text-sm normal-case tracking-[0.03em]`}>
+                                <button onClick={() => runLiveEffect('clear')} className={`${styles.btnStd} ${styles.btnSecondary} w-full mt-2 h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                     <i className="fa-solid fa-power-off"></i>
                                     Clear Effects
                                 </button>
