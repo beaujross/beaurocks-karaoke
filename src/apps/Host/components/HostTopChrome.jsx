@@ -165,6 +165,7 @@ const HostTopChrome = ({
     const leaderboardActive = room?.activeScreen === 'leaderboard';
     const tipCtaActive = room?.activeScreen === 'tipping';
     const howToPlayActive = !!room?.howToPlay?.active;
+    const activeAutomationCount = Number(!!autoPlayMedia) + Number(!!autoBgMusic) + Number(!!autoDj) + Number(!!room?.bouncerMode);
     const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive);
     const liveModeHostGuide = bangerActive
         ? {
@@ -540,24 +541,31 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowAutomationMenu(next);
                         }}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[170px]`}
+                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[220px] justify-between`}
                         title="Automation controls"
                         style={{ touchAction: 'manipulation' }}
                     >
-                        <i className="fa-solid fa-gear mr-1"></i>
-                        Automation
-                        <span className="ml-1 text-[10px] text-zinc-300">
-                            {Number(!!autoPlayMedia) + Number(!!autoBgMusic) + Number(!!autoDj) + Number(!!room?.bouncerMode)} on
+                        <span className="inline-flex items-center gap-2">
+                            <i className="fa-solid fa-wand-magic-sparkles"></i>
+                            Auto
                         </span>
-                        <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showAutomationMenu ? 'rotate-180' : ''}`}></i>
+                        <span className="inline-flex items-center gap-2">
+                            <span className="rounded-full border border-cyan-300/35 bg-cyan-500/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100">
+                                {activeAutomationCount} on
+                            </span>
+                            <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${showAutomationMenu ? 'rotate-180' : ''}`}></i>
+                        </span>
                     </button>
                     {showAutomationMenu && (
-                        <div className="absolute left-0 top-full mt-2 w-[min(360px,92vw)] rounded-2xl border border-cyan-300/30 bg-zinc-900/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
-                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-300 mb-2">Automation</div>
+                        <div className="absolute left-0 top-full mt-2 w-[min(420px,94vw)] rounded-2xl border border-cyan-300/30 bg-zinc-900/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
+                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-300">Automation</div>
+                            <div className="mt-1 text-[11px] text-zinc-400">
+                                Queue handoff, media continuity, and room guardrails.
+                            </div>
                             <div className="grid grid-cols-1 gap-2">
                                 <button
                                     onClick={toggleAutoPlay}
-                                    className={`${styles.btnStd} ${autoPlayMedia ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${autoPlayMedia ? styles.btnHighlight : styles.btnNeutral} mt-2 w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <span className="inline-flex items-center gap-2">
                                         <i className="fa-solid fa-forward-step"></i>
@@ -567,7 +575,8 @@ const HostTopChrome = ({
                                 </button>
                                 <button
                                     onClick={toggleAutoBg}
-                                    className={`${styles.btnStd} ${autoBgMusic ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    data-feature-id="deck-auto-bg-music-toggle"
+                                    className={`${styles.btnStd} ${autoBgMusic ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
                                     <span className="inline-flex items-center gap-2">
                                         <i className="fa-solid fa-compact-disc"></i>
@@ -577,12 +586,13 @@ const HostTopChrome = ({
                                 </button>
                                 <button
                                     onClick={toggleAutoDjMode}
+                                    data-feature-id="deck-auto-dj-queue-toggle"
                                     className={`${styles.btnStd} ${autoDj ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                     title="Automatically starts the next queued singer after each performance."
                                 >
                                     <span className="inline-flex items-center gap-2">
                                         <i className="fa-solid fa-forward-fast"></i>
-                                        Auto DJ Queue Runner
+                                        Auto DJ Queue
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{autoDj ? 'On' : 'Off'}</span>
                                 </button>
@@ -602,18 +612,6 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
-                <button
-                    data-feature-id="deck-auto-dj-queue-toggle"
-                    onClick={toggleAutoDjMode}
-                    className={`${styles.btnStd} ${autoDj ? styles.btnHighlight : styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[220px] justify-between`}
-                    title="When enabled, queued songs automatically move to stage after each performance."
-                >
-                    <span className="inline-flex items-center gap-2">
-                        <i className="fa-solid fa-forward-fast"></i>
-                        Auto DJ Queue
-                    </span>
-                    <span className="text-[11px] uppercase tracking-widest">{autoDj ? 'On' : 'Off'}</span>
-                </button>
                 <div className="relative" ref={tvQuickMenuRef}>
                     <button
                         data-feature-id="deck-tv-menu-toggle"
@@ -777,36 +775,48 @@ const HostTopChrome = ({
                         <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showOverlaysMenu ? 'rotate-180' : ''}`}></i>
                     </button>
                     {showOverlaysMenu && (
-                        <div className="absolute right-0 top-full mt-2 w-[min(360px,92vw)] rounded-2xl border border-cyan-300/30 bg-zinc-900/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
-                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-300 mb-2">Overlays + Guides</div>
-                            <div className="grid grid-cols-1 gap-2">
+                        <div className="absolute right-0 top-full mt-2 w-[min(420px,94vw)] max-h-[72vh] overflow-y-auto custom-scrollbar rounded-2xl border border-cyan-300/30 bg-zinc-900/98 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] z-50">
+                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-300">Overlays + Guides</div>
+                            <div className="mt-1 mb-2 text-[11px] text-zinc-400">
+                                TV assist layers and quick audience prompts.
+                            </div>
+                            <div className="grid grid-cols-1 gap-1.5">
                                 <button
                                     onClick={() => toggleOverlayScreen('leaderboard')}
-                                    className={`${styles.btnStd} ${leaderboardActive ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${leaderboardActive ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
-                                    <span className="inline-flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-trophy"></i>
-                                        Leaderboard
+                                        <span className="flex flex-col">
+                                            <span>Leaderboard</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Show top scores on TV</span>
+                                        </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{leaderboardActive ? 'On' : 'Off'}</span>
                                 </button>
                                 <button
                                     onClick={() => toggleOverlayScreen('tipping')}
-                                    className={`${styles.btnStd} ${tipCtaActive ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${tipCtaActive ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
-                                    <span className="inline-flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-money-bill-wave"></i>
-                                        Tip CTA
+                                        <span className="flex flex-col">
+                                            <span>Tip CTA</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Promote tipping and support</span>
+                                        </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{tipCtaActive ? 'On' : 'Off'}</span>
                                 </button>
                                 <button
                                     onClick={toggleHowToPlayOverlay}
-                                    className={`${styles.btnStd} ${howToPlayActive ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${howToPlayActive ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
-                                    <span className="inline-flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-circle-question"></i>
-                                        How To Play
+                                        <span className="flex flex-col">
+                                            <span>How To Play</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Audience instruction panel</span>
+                                        </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{howToPlayActive ? 'On' : 'Off'}</span>
                                 </button>
@@ -815,42 +825,56 @@ const HostTopChrome = ({
                                         await startReadyCheck?.();
                                         closeAllTopMenus();
                                     }}
-                                    className={`${styles.btnStd} ${room?.readyCheck?.active ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${room?.readyCheck?.active ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
-                                    <span className="inline-flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-hourglass-half"></i>
-                                        Ready Check
+                                        <span className="flex flex-col">
+                                            <span>Ready Check</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Countdown and attendance ping</span>
+                                        </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{room?.readyCheck?.active ? 'Live' : 'Start'}</span>
                                 </button>
                                 <button
                                     onClick={toggleMarqueeOverlay}
-                                    className={`${styles.btnStd} ${marqueeActive ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${marqueeActive ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
-                                    <span className="inline-flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-scroll"></i>
-                                        Marquee
+                                        <span className="flex flex-col">
+                                            <span>Marquee</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Ticker text across screen</span>
+                                        </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{marqueeActive ? 'On' : 'Off'}</span>
                                 </button>
                                 <button
                                     onClick={toggleChatTvOverlay}
-                                    className={`${styles.btnStd} ${chatTvActive ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${chatTvActive ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
-                                    <span className="inline-flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-comments"></i>
-                                        Chat TV
-                                        {chatUnread > 0 && <span className="inline-flex h-2.5 w-2.5 rounded-full bg-pink-400"></span>}
+                                        <span className="flex flex-col">
+                                            <span>
+                                                Chat TV
+                                                {chatUnread > 0 && <span className="inline-flex h-2.5 w-2.5 rounded-full bg-pink-400 ml-1.5"></span>}
+                                            </span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Audience chat on TV</span>
+                                        </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{chatTvActive ? 'On' : 'Off'}</span>
                                 </button>
                                 <button
                                     onClick={toggleChatTvFullscreen}
-                                    className={`${styles.btnStd} ${chatFullscreenActive ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    className={`${styles.btnStd} ${chatFullscreenActive ? styles.btnHighlight : styles.btnNeutral} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
-                                    <span className="inline-flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-expand"></i>
-                                        Full Screen Chat
+                                        <span className="flex flex-col">
+                                            <span>Full Screen Chat</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Prioritize chat as main layer</span>
+                                        </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{chatFullscreenActive ? 'On' : 'Off'}</span>
                                 </button>

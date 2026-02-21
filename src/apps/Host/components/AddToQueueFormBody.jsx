@@ -33,27 +33,43 @@ const AddToQueueFormBody = ({
 }) => (
     <div className="mt-2 pr-1">
         <div className="relative mb-2 z-30">
-            <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} className={`${styles.input} py-2 text-sm`} placeholder="Search Local + YouTube + Apple Music..."/>
-            {queueSearchSourceNote && (
-                <div className="mt-2 text-[11px] text-cyan-200 bg-cyan-500/10 border border-cyan-400/25 rounded px-2 py-1">
-                    {queueSearchSourceNote}
-                </div>
-            )}
-            <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-zinc-400">
-                <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+            <div className="rounded-xl border border-cyan-400/25 bg-zinc-950/70 px-2 py-2">
+                <div className="relative">
+                    <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
                     <input
-                        type="checkbox"
-                        checked={quickAddOnResultClick}
-                        onChange={(e) => setQuickAddOnResultClick(e.target.checked)}
-                        className="accent-[#00C4D9]"
+                        value={searchQ}
+                        onChange={e=>setSearchQ(e.target.value)}
+                        className={`${styles.input} py-2 text-sm pl-8`}
+                        placeholder="Search songs (Local, verified YouTube, Apple Music)"
                     />
-                    Quick Add on click
-                </label>
-                <span>{quickAddOnResultClick ? 'Click result = queued' : 'Click result = fill form only'}</span>
+                </div>
+                {queueSearchSourceNote && (
+                    <div className="mt-2 text-[11px] text-cyan-200 bg-cyan-500/10 border border-cyan-400/25 rounded px-2 py-1">
+                        {queueSearchSourceNote}
+                    </div>
+                )}
+                <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-zinc-400">
+                    <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                            type="checkbox"
+                            checked={quickAddOnResultClick}
+                            onChange={(e) => setQuickAddOnResultClick(e.target.checked)}
+                            className="accent-[#00C4D9]"
+                        />
+                        Quick Add on click
+                    </label>
+                    <span>{quickAddOnResultClick ? 'Tap row to queue instantly' : 'Tap row to fill form'}</span>
+                </div>
             </div>
             {(results.length > 0 || searchQ.length >= 3) && (
-                <div className="absolute top-full mt-1 left-0 right-0 bg-zinc-900 border border-zinc-600 z-50 shadow-2xl rounded-lg overflow-hidden">
-                    <div className="max-h-64 overflow-y-auto">
+                <div className="absolute top-full mt-2 left-0 right-0 rounded-2xl border border-cyan-400/25 bg-zinc-950/98 z-50 shadow-[0_20px_44px_rgba(0,0,0,0.65)] overflow-hidden">
+                    <div className="px-3 py-2 border-b border-white/10 bg-black/30 flex items-center justify-between gap-2">
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">Search Results</div>
+                        <div className="text-[10px] uppercase tracking-[0.12em] text-cyan-200">
+                            {results.length > 0 ? `${results.length} match${results.length === 1 ? '' : 'es'}` : 'No matches'}
+                        </div>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto custom-scrollbar">
                         {results.length > 0 ? results.map((r, idx) => (
                             (() => {
                                 const rowKey = getResultRowKey(r, idx);
@@ -62,23 +78,23 @@ const AddToQueueFormBody = ({
                                     <div
                                         key={rowKey}
                                         onClick={() => handleResultClick(r, idx)}
-                                        className="p-2 hover:bg-zinc-800 text-xs flex gap-3 items-center border-b border-white/5 cursor-pointer"
+                                        className="group grid grid-cols-[52px_minmax(0,1fr)_auto] gap-3 items-center px-3 py-2.5 hover:bg-zinc-900/90 border-b border-white/5 cursor-pointer"
                                     >
-                                        <div className="w-12 h-12 flex items-center justify-center bg-zinc-800 rounded overflow-hidden flex-shrink-0">
+                                        <div className="w-[52px] h-[52px] flex items-center justify-center bg-zinc-900 rounded-lg overflow-hidden border border-white/10 flex-shrink-0">
                                             {r.source === 'local' ? (
                                                 <i className="fa-solid fa-hard-drive text-[#00C4D9] text-lg"></i>
                                             ) : r.source === 'youtube' ? (
                                                 <div className="relative">
-                                                    <img src={r.artworkUrl100} className="w-12 h-12 rounded" />
+                                                    <img src={r.artworkUrl100} className="w-[52px] h-[52px] rounded-lg object-cover" alt="" />
                                                     <i className="fa-brands fa-youtube text-red-500 absolute -bottom-1 -right-1 text-[10px] bg-black/70 rounded-full p-[2px]"></i>
                                                 </div>
                                             ) : (
-                                                <img src={r.artworkUrl100} className="w-12 h-12 rounded"/>
+                                                <img src={r.artworkUrl100} className="w-[52px] h-[52px] rounded-lg object-cover" alt="" />
                                             )}
                                         </div>
-                                        <div className="min-w-0">
-                                            <div className="font-bold text-white text-base">{r.trackName}</div>
-                                            <div className="text-zinc-400 text-sm">{r.artistName}</div>
+                                        <div className="min-w-0 space-y-0.5">
+                                            <div className="font-semibold text-white text-sm leading-tight truncate">{r.trackName}</div>
+                                            <div className="text-zinc-400 text-xs truncate">{r.artistName}</div>
                                             <div className="flex items-center gap-1.5 mt-1">
                                                 <span className={`px-1.5 py-0.5 rounded-full border text-[10px] uppercase tracking-[0.08em] ${
                                                     r.source === 'itunes'
@@ -91,19 +107,19 @@ const AddToQueueFormBody = ({
                                                 </span>
                                                 {r.source === 'youtube' && (
                                                     <span className={`px-1.5 py-0.5 rounded-full border text-[10px] uppercase tracking-[0.08em] ${r.playable === false ? 'border-rose-300/40 bg-rose-500/10 text-rose-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
-                                                        {r.playable === false ? 'Unverified' : 'Playable'}
-                                                    </span>
+                                                    {r.playable === false ? 'Unverified' : 'Playable'}
+                                                </span>
                                                 )}
                                             </div>
                                             {!!r.sourceDetail && (
-                                                <div className="text-[10px] text-zinc-500 truncate max-w-[320px]">{r.sourceDetail}</div>
+                                                <div className="text-[10px] text-zinc-500 truncate">{r.sourceDetail}</div>
                                             )}
                                         </div>
-                                        <div className="ml-auto flex items-center gap-2 text-xs uppercase tracking-widest text-zinc-400">
-                                            <span className="px-2 py-1 rounded-full border border-white/10 bg-black/40">
+                                        <div className="ml-auto flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-zinc-300">
+                                            <span className="px-2 py-1 rounded-full border border-cyan-300/25 bg-cyan-500/10 text-cyan-100 whitespace-nowrap">
                                                 {isAdding ? 'Adding...' : (quickAddOnResultClick ? 'Quick Add' : 'Select Track')}
                                             </span>
-                                            <i className="fa-solid fa-chevron-right text-zinc-500"></i>
+                                            <i className="fa-solid fa-chevron-right text-zinc-500 group-hover:text-cyan-200"></i>
                                         </div>
                                     </div>
                                 );

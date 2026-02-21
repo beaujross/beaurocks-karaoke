@@ -4947,8 +4947,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const canUseWorkspaceOnboarding = !!capabilities[CAPABILITY_KEYS.WORKSPACE_ONBOARDING];
     const canUseInvoiceDrafts = !!capabilities[CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS];
     const canGenerateAiContent = !!capabilities[CAPABILITY_KEYS.AI_GENERATE_CONTENT];
+    const hasOwnerHostAiAccess = ['owner', 'admin'].includes(String(orgContext?.role || '').toLowerCase());
     const aiDemoBypassEnabled = !!room?.missionControl?.aiDemoBypass;
-    const canUseAiTools = canGenerateAiContent || aiDemoBypassEnabled;
+    const canUseAiTools = canGenerateAiContent || aiDemoBypassEnabled || hasOwnerHostAiAccess;
     const missionQueryOverride = useMemo(() => {
         if (typeof window === 'undefined') return null;
         const value = String(new URLSearchParams(window.location.search).get(MISSION_QUERY_KEY) || '').trim().toLowerCase();

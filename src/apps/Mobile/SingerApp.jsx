@@ -73,6 +73,7 @@ const DEFAULT_EMOJI = emoji(0x1F600);
 const BRAND_ICON = 'https://beauross.com/wp-content/uploads/beaurocks-karaoke-logo-2.png';
 const MOBILE_THEME_COLOR = '#7a2b76';
 const MOBILE_APP_BG = '#090612';
+const MOBILE_BROWSER_CHROME_BG = 'linear-gradient(180deg, #4b1436 0%, #110a1d 24%, #090612 74%, #3a1b5c 100%)';
 const MOBILE_NAV_GRADIENT = 'linear-gradient(90deg, #4b1436 0%, #3a1b5c 52%, #15899a 100%)';
 const TIGHT15_MAX = 15;
 const STORM_CROWD_LAYERS = [
@@ -195,6 +196,15 @@ const loadImage = (src) => new Promise((resolve, reject) => {
     img.onerror = reject;
     img.src = src;
 });
+
+const isStandaloneDisplayMode = () => {
+    if (typeof window === 'undefined') return false;
+    const navStandalone = typeof window.navigator?.standalone === 'boolean' && window.navigator.standalone;
+    const hasMatchMedia = typeof window.matchMedia === 'function';
+    const mediaStandalone = hasMatchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    const mediaFullscreen = hasMatchMedia && window.matchMedia('(display-mode: fullscreen)').matches;
+    return !!(navStandalone || mediaStandalone || mediaFullscreen);
+};
 
 const normalizeVipForm = (vip = {}) => ({
     location: (vip.location || '').trim(),
@@ -742,6 +752,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [readyTimer, setReadyTimer] = useState(0);
     const [activeBrowseList, setActiveBrowseList] = useState(null);
     const [mobileLayoutMode, setMobileLayoutMode] = useState('native');
+    const [isStandaloneDisplay, setIsStandaloneDisplay] = useState(() => isStandaloneDisplayMode());
     const stormAudioRef = useRef(null);
     const stormAudioCtxRef = useRef(null);
     const stormAnalyserRef = useRef(null);
@@ -773,6 +784,13 @@ const SingerApp = ({ roomCode, uid }) => {
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !isVipAccount;
     const tipCrates = useMemo(() => (Array.isArray(room?.tipCrates) ? room.tipCrates : []), [room?.tipCrates]);
     const isNativeMobileLayout = mobileLayoutMode === 'native';
+    const mobileTopInset = isStandaloneDisplay ? 'max(8px, env(safe-area-inset-top))' : '10px';
+    const mobileHeaderTopInset = isNativeMobileLayout
+        ? mobileTopInset
+        : (isStandaloneDisplay ? 'calc(env(safe-area-inset-top) + 12px)' : '12px');
+    const mobileSideInset = isStandaloneDisplay ? 'max(16px, env(safe-area-inset-left))' : '16px';
+    const mobileBottomInset = isStandaloneDisplay ? 'max(10px, env(safe-area-inset-bottom))' : '10px';
+    const mobileFloatingBottomInset = isStandaloneDisplay ? 'calc(env(safe-area-inset-bottom) + 80px)' : '80px';
     const showBallad = room?.lightMode === 'ballad';
     const showBanger = room?.lightMode === 'banger';
     const motionSafeFx = !!room?.reduceMotionFx;
@@ -897,21 +915,35 @@ const SingerApp = ({ roomCode, uid }) => {
         const msTileMeta = document.querySelector('meta[name="msapplication-TileColor"]');
         const previousThemeColor = themeMeta?.getAttribute('content') ?? '';
         const previousMsTileColor = msTileMeta?.getAttribute('content') ?? '';
+        const previousRootBackground = rootEl.style.background ?? '';
         const previousRootBg = rootEl.style.backgroundColor;
         const previousBodyBg = bodyEl?.style.background ?? '';
+        const previousBodyBgColor = bodyEl?.style.backgroundColor ?? '';
+        const chromeBackground = isNativeMobileLayout ? MOBILE_BROWSER_CHROME_BG : MOBILE_APP_BG;
+        const chromeThemeColor = isNativeMobileLayout ? '#4b1436' : MOBILE_THEME_COLOR;
 
-        if (themeMeta) themeMeta.setAttribute('content', MOBILE_THEME_COLOR);
-        if (msTileMeta) msTileMeta.setAttribute('content', MOBILE_THEME_COLOR);
-        rootEl.style.backgroundColor = MOBILE_APP_BG;
-        if (bodyEl) bodyEl.style.background = MOBILE_APP_BG;
+        if (themeMeta) themeMeta.setAttribute('content', chromeThemeColor);
+        if (msTileMeta) msTileMeta.setAttribute('content', chromeThemeColor);
+        rootEl.style.background = chromeBackground;
+        rootEl.style.backgroundColor = '#0f0818';
+        if (bodyEl) {
+            bodyEl.style.background = chromeBackground;
+            bodyEl.style.backgroundColor = '#0f0818';
+            bodyEl.style.backgroundAttachment = 'fixed';
+        }
 
         return () => {
             if (themeMeta) themeMeta.setAttribute('content', previousThemeColor || '#ec4899');
             if (msTileMeta) msTileMeta.setAttribute('content', previousMsTileColor || '#ec4899');
+            rootEl.style.background = previousRootBackground;
             rootEl.style.backgroundColor = previousRootBg;
-            if (bodyEl) bodyEl.style.background = previousBodyBg;
+            if (bodyEl) {
+                bodyEl.style.background = previousBodyBg;
+                bodyEl.style.backgroundColor = previousBodyBgColor;
+                bodyEl.style.backgroundAttachment = '';
+            }
         };
-    }, []);
+    }, [isNativeMobileLayout]);
 
     useEffect(() => {
         if (!room?.showLyricsSinger) {
@@ -1421,6 +1453,30 @@ const SingerApp = ({ roomCode, uid }) => {
         }
         const nextMode = forcedMode || storedMode || 'native';
         setMobileLayoutMode(nextMode);
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        const mediaStandalone = typeof window.matchMedia === 'function' ? window.matchMedia('(display-mode: standalone)') : null;
+        const mediaFullscreen = typeof window.matchMedia === 'function' ? window.matchMedia('(display-mode: fullscreen)') : null;
+        const syncDisplayMode = () => setIsStandaloneDisplay(isStandaloneDisplayMode());
+
+        syncDisplayMode();
+        mediaStandalone?.addEventListener?.('change', syncDisplayMode);
+        mediaFullscreen?.addEventListener?.('change', syncDisplayMode);
+        mediaStandalone?.addListener?.(syncDisplayMode);
+        mediaFullscreen?.addListener?.(syncDisplayMode);
+        window.addEventListener('resize', syncDisplayMode);
+        window.addEventListener('orientationchange', syncDisplayMode);
+
+        return () => {
+            mediaStandalone?.removeEventListener?.('change', syncDisplayMode);
+            mediaFullscreen?.removeEventListener?.('change', syncDisplayMode);
+            mediaStandalone?.removeListener?.(syncDisplayMode);
+            mediaFullscreen?.removeListener?.(syncDisplayMode);
+            window.removeEventListener('resize', syncDisplayMode);
+            window.removeEventListener('orientationchange', syncDisplayMode);
+        };
     }, []);
 
     useEffect(() => {
@@ -2267,8 +2323,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const q = query(
             collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
             where('roomCode', '==', roomCode),
-            orderBy('timestamp', 'desc'),
-            limit(120)
+            limit(240)
         );
         const unsub = onSnapshot(q, (snap) => {
             const now = Date.now();
@@ -6383,9 +6438,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <div
                         className="absolute inset-x-0 z-[22] pointer-events-none flex items-center justify-between px-4"
                         style={{
-                            top: 'max(2px, env(safe-area-inset-top))',
-                            paddingLeft: 'max(16px, env(safe-area-inset-left))',
-                            paddingRight: 'max(16px, env(safe-area-inset-right))'
+                            top: isStandaloneDisplay ? 'max(2px, env(safe-area-inset-top))' : '2px',
+                            paddingLeft: mobileSideInset,
+                            paddingRight: mobileSideInset
                         }}
                     >
                         <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/85">Native Mobile</div>
@@ -6397,16 +6452,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
               <div
                   className="bg-gradient-to-r from-[#4b1436] via-[#FF67B6] to-[#4b1436] shadow-lg z-20 relative h-24 overflow-visible"
                   style={{
-                      paddingTop: isNativeMobileLayout
-                          ? 'max(8px, env(safe-area-inset-top))'
-                          : 'calc(env(safe-area-inset-top) + 12px)'
+                      paddingTop: mobileHeaderTopInset
                   }}
               >
                   <div className="relative h-full">
                       <button onClick={() => setShowAbout(true)} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-pointer hover:opacity-90 transition-opacity overflow-visible z-[80]">
                           <img src={BRAND_ICON} className="w-[212px] h-[106px] object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.75)] logo-bounce relative z-[60]" alt="Beaurocks Karaoke" />
                       </button>
-                      <div className="grid grid-cols-[minmax(0,140px)_auto_minmax(0,140px)] items-center h-full gap-2 px-4" style={{ paddingLeft: 'max(16px, env(safe-area-inset-left))', paddingRight: 'max(16px, env(safe-area-inset-right))' }}>
+                      <div className="grid grid-cols-[minmax(0,140px)_auto_minmax(0,140px)] items-center h-full gap-2 px-4" style={{ paddingLeft: mobileSideInset, paddingRight: mobileSideInset }}>
                       {/* Left: User Emoji & Name */}
                       <div className="flex items-center justify-start min-w-0 relative z-10">
                           <button onClick={() => { setTab('social'); setSocialTab('profile'); }} className="bg-black/60 backdrop-blur-sm px-3 py-2 rounded-full border border-white/10 flex items-center gap-2 shadow-lg h-11 w-[126px] sm:w-[140px] min-w-0">
@@ -6874,114 +6927,65 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 {tab === 'home' && (
                     <div className="space-y-5">
                          {noSingerOnStage ? (
-                             <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-4 space-y-3 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
+                             <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-3 space-y-2 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
                                  <div className="flex items-center justify-between gap-2">
-                                     <div>
-                                         <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">Lobby Playground</div>
-                                         <div className="text-xl font-bebas text-white leading-none">Keep The Volley Alive</div>
+                                     <div className="min-w-0">
+                                         <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Lobby Playground</div>
+                                         <div className="text-sm font-black text-white leading-none truncate">
+                                             Keep the orb airborne
+                                         </div>
                                      </div>
-                                     <div className="flex items-center gap-1.5">
-                                         <span className="px-2.5 py-1 rounded-full text-xs font-black tracking-[0.14em] bg-cyan-400/20 border border-cyan-300/45 text-cyan-100">FREE</span>
+                                     <div className="flex items-center gap-1">
+                                         <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] bg-cyan-400/20 border border-cyan-300/45 text-cyan-100">FREE</span>
                                          {lobbyPlayStrictMode && (
-                                             <span className="px-2.5 py-1 rounded-full text-xs font-black tracking-[0.12em] border bg-fuchsia-500/20 border-fuchsia-300/45 text-fuchsia-100">
+                                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] border bg-fuchsia-500/20 border-fuchsia-300/45 text-fuchsia-100">
                                                  STRICT
                                              </span>
                                          )}
                                          {lobbyPlaygroundPaused && (
-                                             <span className="px-2.5 py-1 rounded-full text-xs font-black tracking-[0.12em] border bg-amber-500/20 border-amber-300/40 text-amber-100">
+                                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] border bg-amber-500/20 border-amber-300/40 text-amber-100">
                                                  PAUSED
                                              </span>
                                          )}
-                                         <span className={`px-2.5 py-1 rounded-full text-xs font-black tracking-[0.12em] border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/55 border-white/20 text-zinc-100'}`}>
+                                     </div>
+                                 </div>
+                                 <div className="rounded-xl border border-cyan-300/30 bg-black/35 px-2.5 py-2">
+                                     <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-zinc-100">
+                                         <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
+                                             Streak {lobbyVolleyPreview?.streakCount || 0}
+                                         </span>
+                                         <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
+                                             Tier {lobbyVolleyPreview?.currentTier || 0}
+                                         </span>
+                                         <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
+                                             {lobbyVolleyParticipants.length} active
+                                         </span>
+                                         <span className={`px-2 py-0.5 rounded-full border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/45 border-white/20 text-zinc-100'}`}>
                                              {lobbyPlayRemaining}/{lobbyPlayMaxPerMinute}
                                          </span>
                                      </div>
-                                 </div>
-                                 <div className="text-xs text-zinc-100">Send linked interactions while the stage is empty to build shared streak moments on TV.</div>
-                                 <div className="rounded-xl border border-cyan-300/30 bg-black/35 p-2.5">
-                                     <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-cyan-100">
-                                         <span>Live Volley</span>
-                                         <span>Tier {lobbyVolleyPreview?.currentTier || 0}</span>
-                                     </div>
-                                     <div className="mt-1 flex items-end justify-between gap-2">
-                                         <div className="text-2xl font-bebas text-white leading-none">{lobbyVolleyPreview?.streakCount || 0}</div>
-                                         <div className="text-[11px] text-zinc-200">{lobbyVolleyParticipants.length} active</div>
-                                     </div>
-                                     <div className="mt-2 h-2 rounded-full bg-black/60 border border-white/10 overflow-hidden">
+                                     <div className="mt-2 h-1.5 rounded-full bg-black/60 border border-white/10 overflow-hidden">
                                          <div className="h-full bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-yellow-300 transition-all duration-200" style={{ width: `${lobbyVolleyEnergyLive}%` }}></div>
                                      </div>
                                      <div className="mt-1 h-1 rounded-full bg-black/60 overflow-hidden">
                                          <div className="h-full bg-white/70 transition-all duration-200" style={{ width: `${lobbyVolleyStreakDecayPct}%` }}></div>
                                      </div>
-                                     <div className="mt-2 flex items-center gap-1.5">
-                                         {lobbyVolleyParticipants.length ? lobbyVolleyParticipants.map((participant, idx) => (
-                                             <span key={`${participant.uid || participant.userName || 'guest'}_${idx}`} className="w-6 h-6 rounded-full border border-white/25 bg-black/50 flex items-center justify-center text-sm">
-                                                 {participant.avatar || DEFAULT_EMOJI}
-                                             </span>
-                                         )) : (
-                                             <span className="text-[11px] text-zinc-300">Waiting for the next volley...</span>
-                                         )}
-                                     </div>
                                  </div>
-                                 <div className={`rounded-xl border p-2.5 ${
-                                     lobbyRelayObjective.active
-                                         ? 'border-emerald-300/45 bg-emerald-500/12'
-                                         : 'border-white/15 bg-black/35'
-                                 }`}>
-                                     <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-emerald-100 mb-1">
-                                         <span>Relay Target</span>
-                                         <span>{lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s` : 'Idle'}</span>
-                                     </div>
-                                     <div className="text-sm font-bold text-white leading-tight">
-                                         {lobbyRelayObjective.active
-                                             ? `Different teammate should tap ${lobbyRelayTarget?.label || lobbyRelayObjective?.targetType || 'wave'}`
-                                             : 'Start a volley to unlock pass targets'}
-                                     </div>
-                                     <div className="mt-1 text-[11px] text-emerald-100/90">
-                                         {lobbyRelayObjective.active
-                                             ? `${lobbyRelayTarget?.emoji || DEFAULT_EMOJI} Chain x${lobbyRelayObjective.chainCount || 0} - keep the orb in the air together.`
-                                             : 'Relay progress only counts when a different person catches the next target in time.'}
-                                     </div>
-                                     <div className="mt-2 h-1.5 rounded-full bg-black/60 border border-white/10 overflow-hidden">
-                                         <div
-                                             className={`h-full transition-all duration-150 ${
-                                                 lobbyRelayObjective?.urgency === 'danger'
-                                                     ? 'bg-gradient-to-r from-red-300 to-amber-200'
-                                                     : lobbyRelayObjective?.urgency === 'warning'
-                                                         ? 'bg-gradient-to-r from-amber-300 to-yellow-200'
-                                                         : 'bg-gradient-to-r from-emerald-300 to-cyan-300'
-                                             }`}
-                                             style={{ width: `${Math.max(0, Number(lobbyRelayObjective?.progressPct || 0))}%` }}
-                                         />
-                                     </div>
-                                 </div>
-                                 <div className="rounded-xl border border-white/15 bg-black/35 p-2.5">
-                                     <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-zinc-200 mb-1">
-                                         <span>Interactions this minute</span>
-                                         <span>{lobbyPlayUsageCount}/{lobbyPlayMaxPerMinute}</span>
-                                     </div>
-                                     <div className="h-2 rounded-full bg-black/60 border border-white/10 overflow-hidden">
-                                         <div
-                                             className={`h-full transition-all ${lobbyPlayRateLimited ? 'bg-gradient-to-r from-amber-300 to-amber-200' : 'bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-yellow-300'}`}
-                                             style={{ width: `${Math.min(100, (lobbyPlayUsageCount / Math.max(1, lobbyPlayMaxPerMinute)) * 100)}%` }}
-                                         ></div>
-                                     </div>
-                                 </div>
-                                 <div className="grid grid-cols-2 gap-3">
+                                 <div className="grid grid-cols-2 gap-2.5">
                                      {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction) => (
                                          <button
                                              key={interaction.id}
                                              onClick={() => triggerLobbyPlayInteraction(interaction.id)}
                                              disabled={lobbyPlayInteractionDisabled}
-                                             className={`relative overflow-hidden bg-gradient-to-b ${interaction.accentCard} border-2 ${interaction.accentBorder} rounded-2xl p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${
+                                             className={`relative overflow-hidden bg-gradient-to-b ${interaction.accentCard} border-2 ${interaction.accentBorder} rounded-2xl p-2.5 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${
                                                  lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType
                                                      ? 'ring-2 ring-emerald-300/75 shadow-[0_0_18px_rgba(52,211,153,0.5)]'
                                                      : ''
                                              } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
                                          >
                                              <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[10px] font-black tracking-[0.14em] border border-white/25 bg-black/40 text-white">FREE</span>
-                                             <span className="text-5xl mb-2">{interaction.emoji}</span>
-                                             <span className={`font-bold text-base ${interaction.accentText}`}>{interaction.label}</span>
+                                             <span className="text-4xl mb-1.5">{interaction.emoji}</span>
+                                             <span className={`font-bold text-[15px] ${interaction.accentText}`}>{interaction.label}</span>
                                              <div className={`mt-1 px-2 py-0.5 rounded-full border text-[11px] font-black ${interaction.accentPill}`}>
                                                  {interaction.boost}
                                              </div>
@@ -6997,7 +7001,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          </button>
                                      ))}
                                  </div>
-                                 <div className="text-[11px] text-zinc-300">Cooldown: {lobbyPlayCooldownMs}ms per tap</div>
+                                 <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-zinc-200">
+                                     <span className={`px-2 py-0.5 rounded-full border ${
+                                         lobbyRelayObjective.active
+                                             ? 'border-emerald-300/45 bg-emerald-500/12 text-emerald-100'
+                                             : 'border-white/15 bg-black/35 text-zinc-300'
+                                     }`}>
+                                         {lobbyRelayObjective.active
+                                             ? `${lobbyRelayTarget?.emoji || DEFAULT_EMOJI} teammate tap ${lobbyRelayTarget?.label || lobbyRelayObjective?.targetType || 'wave'} in ${lobbyRelayRemainingSec}s`
+                                             : 'Relay unlocks when a different teammate catches the next target'}
+                                     </span>
+                                     <span className="px-2 py-0.5 rounded-full border border-white/15 bg-black/35 text-zinc-300">
+                                         Cooldown {lobbyPlayCooldownMs}ms
+                                     </span>
+                                 </div>
                                  <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#27d3f7] to-[#26D7E8] text-black py-3 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
                                      Add first song to start karaoke
                                  </button>
@@ -8013,7 +8030,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             <button
                 onClick={toggleMobileLayoutMode}
                 className={`fixed left-3 z-[96] px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.18em] transition-colors ${isNativeMobileLayout ? 'border-cyan-300/50 bg-cyan-400/20 text-cyan-100' : 'border-white/30 bg-black/45 text-zinc-200'}`}
-                style={{ bottom: 'calc(env(safe-area-inset-bottom) + 80px)' }}
+                style={{ bottom: mobileFloatingBottomInset }}
                 title="Toggle between native and classic mobile layout"
             >
                 {isNativeMobileLayout ? 'UI Native' : 'UI Classic'}
@@ -8021,7 +8038,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
             <div
                 className={`relative border-t border-pink-400/30 flex-none z-20 ${isNativeMobileLayout ? 'backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)]' : ''}`}
-                style={{ paddingBottom: isNativeMobileLayout ? 'max(10px, env(safe-area-inset-bottom))' : 'env(safe-area-inset-bottom)' }}
+                style={{ paddingBottom: isNativeMobileLayout ? mobileBottomInset : (isStandaloneDisplay ? 'env(safe-area-inset-bottom)' : '0px') }}
             >
                 <div className="absolute inset-0" style={{ background: MOBILE_NAV_GRADIENT }}></div>
                 {isNativeMobileLayout && (
@@ -8031,7 +8048,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 )}
                 <div
                     className="relative py-1.5 flex"
-                    style={{ paddingLeft: 'max(8px, env(safe-area-inset-left))', paddingRight: 'max(8px, env(safe-area-inset-right))' }}
+                    style={{ paddingLeft: isStandaloneDisplay ? 'max(8px, env(safe-area-inset-left))' : '8px', paddingRight: isStandaloneDisplay ? 'max(8px, env(safe-area-inset-right))' : '8px' }}
                 >
                     <button onClick={()=>setTab('home')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='home'?'text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]':'text-zinc-300'}`}><i className="fa-solid fa-champagne-glasses text-[28px]"></i><span className="text-base font-semibold">PARTY</span></button>
                     <button onClick={()=>setTab('request')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='request'?'text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]':'text-zinc-300'}`}><i className="fa-solid fa-music text-[28px]"></i><span className="text-base font-semibold">SONGS</span></button>
