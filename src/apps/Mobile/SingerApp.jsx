@@ -40,6 +40,7 @@ import {
     deriveRelayObjective,
     LOBBY_PLAYGROUND_ENGINE_CONSTANTS
 } from '../TV/lobbyPlaygroundEngine';
+import { watchQuerySnapshot } from '../../lib/firestoreWatch';
 
 // Helper Component for Animated Points
 const AnimatedPoints = ({ value, onClick, className = '' }) => {
@@ -1090,14 +1091,31 @@ const SingerApp = ({ roomCode, uid }) => {
             orderBy('timestamp', 'desc'),
             limit(80)
         );
-        const unsubSubs = onSnapshot(subsQ, snap => {
-            setDoodleSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-        const unsubVotes = onSnapshot(votesQ, snap => {
-            const votes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setDoodleVotes(votes);
-            setDoodleMyVote(votes.find(v => v.uid === uid) || null);
-        });
+        const unsubSubs = watchQuerySnapshot(
+            subsQ,
+            (snap) => {
+                setDoodleSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            },
+            {
+                label: `singer:doodle_submissions:${roomCode}`,
+                onFallback: () => setDoodleSubmissions([])
+            }
+        );
+        const unsubVotes = watchQuerySnapshot(
+            votesQ,
+            (snap) => {
+                const votes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                setDoodleVotes(votes);
+                setDoodleMyVote(votes.find(v => v.uid === uid) || null);
+            },
+            {
+                label: `singer:doodle_votes:${roomCode}`,
+                onFallback: () => {
+                    setDoodleVotes([]);
+                    setDoodleMyVote(null);
+                }
+            }
+        );
         return () => {
             unsubSubs();
             unsubVotes();
@@ -1645,18 +1663,28 @@ const SingerApp = ({ roomCode, uid }) => {
             orderBy('timestamp', 'desc'),
             limit(viewingChat ? 40 : 1)
         );
-        const unsub = onSnapshot(q, snap => {
-            const next = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
-            if (viewingChat) {
-                setChatMessages(next);
-            } else if (!next.length) {
-                setChatMessages([]);
+        const unsub = watchQuerySnapshot(
+            q,
+            (snap) => {
+                const next = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
+                if (viewingChat) {
+                    setChatMessages(next);
+                } else if (!next.length) {
+                    setChatMessages([]);
+                }
+                const newest = getNewestRelevantChatTimestamp(next);
+                if (newest && newest > chatLastSeenRef.current && !viewingChat) {
+                    setChatUnread(true);
+                }
+            },
+            {
+                label: `singer:chat_messages:${roomCode}`,
+                onFallback: () => {
+                    setChatMessages([]);
+                    setChatUnread(false);
+                }
             }
-            const newest = getNewestRelevantChatTimestamp(next);
-            if (newest && newest > chatLastSeenRef.current && !viewingChat) {
-                setChatUnread(true);
-            }
-        });
+        );
         return () => unsub();
     }, [roomCode, room?.chatEnabled, tab, socialTab, getNewestRelevantChatTimestamp]);
 
@@ -1668,9 +1696,16 @@ const SingerApp = ({ roomCode, uid }) => {
         const q = hallOfFameMode === 'week'
             ? query(collection(db, collectionName), where('weekKey', '==', weekKey), orderBy('bestScore', 'desc'), limit(50))
             : query(collection(db, collectionName), orderBy('bestScore', 'desc'), limit(50));
-        const unsub = onSnapshot(q, snap => {
-            setHallOfFameEntries(snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() })));
-        });
+        const unsub = watchQuerySnapshot(
+            q,
+            (snap) => {
+                setHallOfFameEntries(snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() })));
+            },
+            {
+                label: `singer:hall_of_fame:${hallOfFameMode}`,
+                onFallback: () => setHallOfFameEntries([])
+            }
+        );
         return () => unsub();
     }, [roomCode, hallOfFameMode, tab, socialTab]);
 

@@ -38,6 +38,7 @@ import {
     deriveBalladModeState,
     deriveStrobeModeState
 } from './vibeModeEngine';
+import { watchQuerySnapshot } from '../../lib/firestoreWatch';
 
 const isTvVisibleChatMessage = (message) => {
     if (!message) return false;
@@ -962,12 +963,26 @@ const PublicTV = ({ roomCode }) => {
             orderBy('timestamp', 'desc'),
             limit(120)
         );
-        const unsubSubs = onSnapshot(subsQ, snap => {
-            setDoodleSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-        const unsubVotes = onSnapshot(votesQ, snap => {
-            setDoodleVotes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
+        const unsubSubs = watchQuerySnapshot(
+            subsQ,
+            (snap) => {
+                setDoodleSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            },
+            {
+                label: `tv:doodle_submissions:${roomCode}`,
+                onFallback: () => setDoodleSubmissions([])
+            }
+        );
+        const unsubVotes = watchQuerySnapshot(
+            votesQ,
+            (snap) => {
+                setDoodleVotes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            },
+            {
+                label: `tv:doodle_votes:${roomCode}`,
+                onFallback: () => setDoodleVotes([])
+            }
+        );
         return () => {
             unsubSubs();
             unsubVotes();
@@ -1746,18 +1761,26 @@ const PublicTV = ({ roomCode }) => {
             setChatMessages([]);
             return () => {};
         }
-        const unsubChat = onSnapshot(query(
+        const chatQuery = query(
             collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'),
             where('roomCode', '==', roomCode),
             orderBy('timestamp', 'desc'),
             limit(20)
-        ), s => {
-            const visibleMessages = s.docs
-                .map(d => ({ id: d.id, ...d.data() }))
-                .reverse()
-                .filter(isTvVisibleChatMessage);
-            setChatMessages(visibleMessages);
-        });
+        );
+        const unsubChat = watchQuerySnapshot(
+            chatQuery,
+            (snap) => {
+                const visibleMessages = snap.docs
+                    .map(d => ({ id: d.id, ...d.data() }))
+                    .reverse()
+                    .filter(isTvVisibleChatMessage);
+                setChatMessages(visibleMessages);
+            },
+            {
+                label: `tv:chat_messages:${roomCode}`,
+                onFallback: () => setChatMessages([])
+            }
+        );
         return () => unsubChat();
     }, [roomCode, room?.chatShowOnTv]);
 

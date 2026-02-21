@@ -27,15 +27,33 @@
   - Additional: `npm run test:unit` passed
 - Result: P1.1 validation suite passed.
 
-### [time] Commit
-- Commit:
-- Message:
-- Included tasks:
+### [2026-02-21 01:14:17] Commit
+- Commit: `d19889a`
+- Message: `P1.1: add Firestore index config and query coverage docs`
+- Included tasks: P1.1
+
+### [2026-02-21 01:14:30] Task Started
+- Priority: P1
+- Task ID (ex: P1.1): P1.2
+- Task: Listener resilience wrapper for high-risk screens
+- Planned scope: add shared snapshot error handling helper and apply it to Mobile/TV/Host chat listeners with safe fallback behavior.
+
+### [2026-02-21 01:15:51] Progress Update
+- What changed: Added `src/lib/firestoreWatch.js` and migrated high-risk listeners in Singer app, Public TV, and host chat hook to centralized watcher error handling with fallback state reset.
+- Files touched: `src/lib/firestoreWatch.js`, `src/apps/Mobile/SingerApp.jsx`, `src/apps/TV/PublicTV.jsx`, `src/apps/Host/hooks/useHostChat.js`
+- Notes: Fallback handlers now prevent hard failure states by clearing stale feed arrays and unread indicators when listeners error.
+
+### [2026-02-21 01:15:51] Validation
+- Commands run:
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - Additional: `npm run test:unit` passed
+- Result: P1.2 validation suite passed.
 
 ---
 
 ## Task Checklist
-- [ ] P1.1 Firestore index source-of-truth and query audit
+- [x] P1.1 Firestore index source-of-truth and query audit
 - [ ] P1.2 Listener resilience wrapper for high-risk screens
 - [ ] P2.1 Smoke coverage for recent regressions
 - [ ] P2.2 Safe modularization extraction (behavior-preserving)
