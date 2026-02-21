@@ -791,13 +791,28 @@ const SingerApp = ({ roomCode, uid }) => {
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !isVipAccount;
     const tipCrates = useMemo(() => (Array.isArray(room?.tipCrates) ? room.tipCrates : []), [room?.tipCrates]);
     const isNativeMobileLayout = mobileLayoutMode === 'native';
-    const mobileTopInset = isStandaloneDisplay ? 'max(8px, env(safe-area-inset-top))' : '10px';
+    const mobileSafeTopInset = 'env(safe-area-inset-top)';
+    const mobileSafeLeftInset = 'env(safe-area-inset-left)';
+    const mobileSafeRightInset = 'env(safe-area-inset-right)';
+    const mobileSafeBottomInset = 'env(safe-area-inset-bottom)';
+    const mobileTopInset = isNativeMobileLayout
+        ? `max(0px, ${mobileSafeTopInset})`
+        : (isStandaloneDisplay ? `max(8px, ${mobileSafeTopInset})` : '10px');
     const mobileHeaderTopInset = isNativeMobileLayout
-        ? mobileTopInset
-        : (isStandaloneDisplay ? 'calc(env(safe-area-inset-top) + 12px)' : '12px');
-    const mobileSideInset = isStandaloneDisplay ? 'max(16px, env(safe-area-inset-left))' : '16px';
-    const mobileBottomInset = isStandaloneDisplay ? 'max(10px, env(safe-area-inset-bottom))' : '10px';
-    const mobileFloatingBottomInset = isStandaloneDisplay ? 'calc(env(safe-area-inset-bottom) + 80px)' : '80px';
+        ? `calc(${mobileTopInset} + 2px)`
+        : (isStandaloneDisplay ? `calc(${mobileSafeTopInset} + 12px)` : '12px');
+    const mobileSideInsetLeft = isNativeMobileLayout
+        ? `max(0px, ${mobileSafeLeftInset})`
+        : (isStandaloneDisplay ? `max(16px, ${mobileSafeLeftInset})` : '16px');
+    const mobileSideInsetRight = isNativeMobileLayout
+        ? `max(0px, ${mobileSafeRightInset})`
+        : (isStandaloneDisplay ? `max(16px, ${mobileSafeRightInset})` : '16px');
+    const mobileBottomInset = isNativeMobileLayout
+        ? `max(0px, ${mobileSafeBottomInset})`
+        : (isStandaloneDisplay ? `max(10px, ${mobileSafeBottomInset})` : '10px');
+    const mobileFloatingBottomInset = isNativeMobileLayout
+        ? `calc(${mobileBottomInset} + 80px)`
+        : (isStandaloneDisplay ? `calc(${mobileSafeBottomInset} + 80px)` : '80px');
     const showBallad = room?.lightMode === 'ballad';
     const showBanger = room?.lightMode === 'banger';
     const motionSafeFx = !!room?.reduceMotionFx;
@@ -6551,9 +6566,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <div
                         className="absolute inset-x-0 z-[22] pointer-events-none flex items-center justify-between px-4"
                         style={{
-                            top: isStandaloneDisplay ? 'max(2px, env(safe-area-inset-top))' : '2px',
-                            paddingLeft: mobileSideInset,
-                            paddingRight: mobileSideInset
+                            top: `calc(${mobileTopInset} + 2px)`,
+                            paddingLeft: mobileSideInsetLeft,
+                            paddingRight: mobileSideInsetRight
                         }}
                     >
                         <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/85">Native Mobile</div>
@@ -6572,7 +6587,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                       <button onClick={() => setShowAbout(true)} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-pointer hover:opacity-90 transition-opacity overflow-visible z-[80]">
                           <img src={BRAND_ICON} className="w-[212px] h-[106px] object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.75)] logo-bounce relative z-[60]" alt="Beaurocks Karaoke" />
                       </button>
-                      <div className="grid grid-cols-[minmax(0,140px)_auto_minmax(0,140px)] items-center h-full gap-2 px-4" style={{ paddingLeft: mobileSideInset, paddingRight: mobileSideInset }}>
+                      <div className="grid grid-cols-[minmax(0,140px)_auto_minmax(0,140px)] items-center h-full gap-2 px-4" style={{ paddingLeft: mobileSideInsetLeft, paddingRight: mobileSideInsetRight }}>
                       {/* Left: User Emoji & Name */}
                       <div className="flex items-center justify-start min-w-0 relative z-10">
                           <button onClick={() => { setTab('social'); setSocialTab('profile'); }} className="bg-black/60 backdrop-blur-sm px-3 py-2 rounded-full border border-white/10 flex items-center gap-2 shadow-lg h-11 w-[126px] sm:w-[140px] min-w-0">
@@ -8171,7 +8186,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 )}
                 <div
                     className="relative py-1.5 flex"
-                    style={{ paddingLeft: isStandaloneDisplay ? 'max(8px, env(safe-area-inset-left))' : '8px', paddingRight: isStandaloneDisplay ? 'max(8px, env(safe-area-inset-right))' : '8px' }}
+                    style={{
+                        paddingLeft: isNativeMobileLayout
+                            ? mobileSideInsetLeft
+                            : (isStandaloneDisplay ? 'max(8px, env(safe-area-inset-left))' : '8px'),
+                        paddingRight: isNativeMobileLayout
+                            ? mobileSideInsetRight
+                            : (isStandaloneDisplay ? 'max(8px, env(safe-area-inset-right))' : '8px')
+                    }}
                 >
                     <button onClick={()=>setTab('home')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='home'?'text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]':'text-zinc-300'}`}><i className="fa-solid fa-champagne-glasses text-[28px]"></i><span className="text-base font-semibold">PARTY</span></button>
                     <button onClick={()=>setTab('request')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='request'?'text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]':'text-zinc-300'}`}><i className="fa-solid fa-music text-[28px]"></i><span className="text-base font-semibold">SONGS</span></button>

@@ -1546,6 +1546,9 @@ const PublicTV = ({ roomCode }) => {
                                     (sum, entry) => sum + Number(entry?.points || 0),
                                     0
                                 );
+                                const awardMultiplierLabel = Number(
+                                    awardPayload.rewardMultiplier || awardPayload.teamworkMultiplier || 1
+                                ).toFixed(1);
                                 setLobbyTierChips((prev) => {
                                     const active = (prev || []).filter(
                                         (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_AWARD_VISUAL_WINDOW_MS
@@ -1555,7 +1558,7 @@ const PublicTV = ({ roomCode }) => {
                                         label: `Tier ${awardPayload.tier}: ${awardPayload.tierName || tierMeta?.name || 'Volley'}`,
                                         subtitle: (awardPayload.visualOnly || forceVisualOnlyRewards)
                                             ? 'Visual reward'
-                                            : `${totalAwardedPoints} pts to active players`,
+                                            : `${totalAwardedPoints} pts to active players (x${awardMultiplierLabel})`,
                                         tier: awardPayload.tier,
                                         createdAt: burstTime,
                                         durationMs: LOBBY_AWARD_VISUAL_WINDOW_MS,

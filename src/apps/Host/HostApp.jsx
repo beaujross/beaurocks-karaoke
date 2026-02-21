@@ -10778,15 +10778,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         onClick={() => seedNightSetupFromPreset(preset.id, { keepQueueDraft: false })}
                                                         className={`relative overflow-hidden text-left rounded-2xl border transform-gpu transition-all duration-200 ease-out h-[238px] md:h-[246px] ${
                                                             active
-                                                                ? 'scale-[1.02] border-2 border-cyan-300/85 shadow-[0_0_0_1px_rgba(34,211,238,0.55),0_0_34px_rgba(34,211,238,0.22)]'
-                                                                : 'border-zinc-700 hover:border-zinc-500 hover:scale-[1.01]'
+                                                                ? 'border-cyan-300/85 ring-1 ring-cyan-300/55 shadow-[0_0_34px_rgba(34,211,238,0.22)]'
+                                                                : 'border-zinc-700 hover:border-zinc-500'
                                                         }`}
                                                     >
                                                         <div className={`absolute inset-0 bg-gradient-to-br ${meta.accent}`}></div>
                                                         <div className="relative h-full px-4 py-4 flex flex-col">
                                                             <div className="flex items-start justify-between gap-2">
                                                                 <div className="text-lg text-cyan-100"><i className={`fa-solid ${meta.icon}`}></i></div>
-                                                                {active && <span className="text-[10px] uppercase tracking-[0.25em] px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/20 text-cyan-100">Locked In</span>}
+                                                                <span
+                                                                    className={`text-[10px] uppercase tracking-[0.25em] px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/20 text-cyan-100 min-w-[102px] text-center ${
+                                                                        active ? '' : 'opacity-0'
+                                                                    }`}
+                                                                    aria-hidden={!active}
+                                                                >
+                                                                    Locked In
+                                                                </span>
                                                             </div>
                                                             <div className="text-lg font-bold text-white mt-2">{preset.label}</div>
                                                             <div className="text-sm text-zinc-300 mt-1" style={clampTwoLines}>{preset.description}</div>
@@ -10910,7 +10917,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                             <i className={`fa-solid ${mode.icon} text-fuchsia-200`}></i>
                                                             <div className="text-sm font-bold text-white">{mode.label}</div>
                                                         </div>
-                                                        {nightSetupPrimaryMode === mode.id && <span className="text-[10px] uppercase tracking-[0.25em] text-fuchsia-100">Primary</span>}
+                                                        <span
+                                                            className={`text-[10px] uppercase tracking-[0.25em] text-fuchsia-100 min-w-[70px] text-right ${
+                                                                nightSetupPrimaryMode === mode.id ? '' : 'opacity-0'
+                                                            }`}
+                                                            aria-hidden={nightSetupPrimaryMode !== mode.id}
+                                                        >
+                                                            Primary
+                                                        </span>
                                                     </div>
                                                     <div className="relative text-xs text-zinc-300 mt-2" style={clampTwoLines}>{mode.description}</div>
                                                 </button>

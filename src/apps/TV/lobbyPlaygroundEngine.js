@@ -20,6 +20,9 @@ const AIR_MULTIPLIER_TEAM_BONUS_PER_USER = 0.25;
 const AIR_MULTIPLIER_HANDOFF_BONUS_PER_CHAIN = 0.08;
 const AIR_MULTIPLIER_RELAY_BONUS_PER_CHAIN = 0.05;
 const AIR_MULTIPLIER_CAP = 5;
+const POINTS_MULTIPLIER_WEIGHT = 0.65;
+const MAX_POINTS_BUDGET_SCALE = 5;
+const MAX_POINTS_PER_USER_SCALE = 3;
 const RELAY_SEQUENCE = ['wave', 'laser', 'echo', 'confetti'];
 
 const TIER_DEFINITIONS = [
@@ -423,25 +426,36 @@ export const buildAwardPayload = (state = createLobbyVolleyState(), nowMs = Date
         .filter((participant) => !!participant.uid)
         .slice(0, MAX_PARTICIPANTS_PER_PAYOUT);
 
-    const pointsBudget = clamp(Number(tier.pointsBudget || 0), 0, 120);
+    const teamworkMultiplier = clamp(Number(state.teamworkMultiplier || 1), 1, AIR_MULTIPLIER_CAP);
+    const rewardMultiplier = 1 + ((teamworkMultiplier - 1) * POINTS_MULTIPLIER_WEIGHT);
+    const basePointsBudget = Math.max(0, Number(tier.pointsBudget || 0));
+    const baseMaxPointsPerUser = Math.max(0, Number(tier.maxPointsPerUser || 0));
+    const pointsBudget = clamp(
+        Math.round(basePointsBudget * rewardMultiplier),
+        0,
+        Math.max(120, Math.round(basePointsBudget * MAX_POINTS_BUDGET_SCALE))
+    );
+    const maxPointsPerUser = clamp(
+        Math.round(baseMaxPointsPerUser * rewardMultiplier),
+        0,
+        Math.max(baseMaxPointsPerUser, Math.round(baseMaxPointsPerUser * MAX_POINTS_PER_USER_SCALE))
+    );
     const pointsEligible = !tier.visualOnly && pointsBudget > 0 && activeParticipants.length > 0;
     const awards = [];
 
     if (pointsEligible) {
         const count = activeParticipants.length;
-        const basePerUser = Math.max(1, Math.floor(pointsBudget / count));
-        let remainder = Math.max(0, pointsBudget - (basePerUser * count));
+        let remainingBudget = pointsBudget;
         activeParticipants.forEach((participant, idx) => {
-            let points = basePerUser + (idx < remainder ? 1 : 0);
-            if (points > Number(tier.maxPointsPerUser || points)) {
-                points = Number(tier.maxPointsPerUser || points);
-                remainder += 1;
-            }
+            const slotsLeft = Math.max(1, count - idx);
+            let points = Math.max(1, Math.floor(remainingBudget / slotsLeft));
+            points = Math.min(points, maxPointsPerUser || points);
             if (points > 0) {
                 awards.push({
                     uid: participant.uid,
                     points
                 });
+                remainingBudget = Math.max(0, remainingBudget - points);
             }
         });
     }
@@ -460,6 +474,9 @@ export const buildAwardPayload = (state = createLobbyVolleyState(), nowMs = Date
         visualOnly: !awards.length,
         tier: tier.tier,
         tierName: tier.name,
+        teamworkMultiplier: roundToTenths(teamworkMultiplier),
+        rewardMultiplier: roundToTenths(rewardMultiplier),
+        pointsBudget,
         awardKey,
         awards,
         nextState
