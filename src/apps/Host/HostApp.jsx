@@ -4780,6 +4780,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const moderationNudgeAtRef = useRef(0);
     const openModerationInbox = useCallback(() => setShowModerationInbox(true), []);
     const closeModerationInbox = useCallback(() => setShowModerationInbox(false), []);
+    const logActivity = useCallback(async (targetRoomCode, user, text, icon) => {
+        try {
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
+                roomCode: targetRoomCode,
+                user,
+                text,
+                icon,
+                timestamp: serverTimestamp()
+            });
+        } catch (e) {
+            hostLogger.error('Log error', e);
+        }
+    }, []);
     const moderationInbox = useModerationInboxState({
         roomCode,
         room,
@@ -8101,14 +8114,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const openModifyScore = (s) => { setModifyingScoreId(s.id); setScoreForm({ hype: s.hypeScore||0, applause: s.applauseScore||0, bonus: s.hostBonus||0 }); }; 
     const saveModifiedScore = async () => { await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', modifyingScoreId), { hypeScore: parseInt(scoreForm.hype), applauseScore: parseInt(scoreForm.applause), hostBonus: parseInt(scoreForm.bonus) }); setModifyingScoreId(null); toast("Score Updated"); };
     
-    // Helper to log activities
-    const logActivity = useCallback(async (roomCode, user, text, icon) => {
-        try {
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
-                roomCode, user, text, icon, timestamp: serverTimestamp()
-            });
-        } catch(e) { hostLogger.error("Log error", e); }
-    }, []);
     const selectSettingsTab = useCallback((nextTab) => {
         setSettingsTab(nextTab);
         if (nextTab === 'chat') markChatTabSeen();
