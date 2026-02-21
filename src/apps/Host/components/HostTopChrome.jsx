@@ -1,5 +1,6 @@
 import React from 'react';
 import ModerationInboxChip from './ModerationInboxChip';
+import { CROWD_OBJECTIVE_MODES, getCrowdObjectiveModeFromLightMode } from '../../../lib/crowdObjectiveModes';
 
 const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', onClick, title = '' }) => {
     const Comp = typeof onClick === 'function' ? 'button' : 'div';
@@ -59,6 +60,8 @@ const HostTopChrome = ({
     setMarqueeEnabled,
     chatShowOnTv = false,
     setChatShowOnTv,
+    popTriviaEnabled = true,
+    setPopTriviaEnabled,
     chatTvMode = 'auto',
     setChatTvMode,
     chatUnread = 0,
@@ -112,6 +115,8 @@ const HostTopChrome = ({
     const guitarActive = room?.lightMode === 'guitar';
     const bangerActive = room?.lightMode === 'banger';
     const balladActive = room?.lightMode === 'ballad';
+    const activeCrowdObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
+    const volleyActive = activeCrowdObjectiveMode?.id === 'volley_orb';
     const selfieCamActive = room?.activeMode === 'selfie_cam';
     const normalizedPermission = String(permissionLevel || 'unknown').toLowerCase();
     const tvDisplayMode = room?.showLyricsTv && room?.showVisualizerTv
@@ -158,15 +163,17 @@ const HostTopChrome = ({
                         ? 'Banger'
                         : balladActive
                             ? 'Ballad'
-                            : 'Off';
+                            : activeCrowdObjectiveMode?.label || 'Off';
     const marqueeActive = !!marqueeEnabled;
     const chatTvActive = !!chatShowOnTv;
+    const popTriviaActive = popTriviaEnabled !== false;
     const chatFullscreenActive = chatTvActive && chatTvMode === 'fullscreen';
     const leaderboardActive = room?.activeScreen === 'leaderboard';
     const tipCtaActive = room?.activeScreen === 'tipping';
     const howToPlayActive = !!room?.howToPlay?.active;
+    const lobbyVolleyEnabled = room?.lobbyVolleyEnabled !== false;
     const activeAutomationCount = Number(!!autoPlayMedia) + Number(!!autoBgMusic) + Number(!!autoDj) + Number(!!room?.bouncerMode);
-    const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive);
+    const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive) + Number(popTriviaActive);
     const quickMenuPanelClass = 'absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[80]';
     const quickMenuScrollClass = 'overflow-y-auto custom-scrollbar overscroll-contain';
     const quickMenuSectionTitleClass = 'text-xs uppercase tracking-[0.22em] text-zinc-100';
@@ -268,6 +275,8 @@ const HostTopChrome = ({
             await updateRoom({ lightMode: bangerActive ? 'off' : 'banger' });
         } else if (effectId === 'ballad') {
             await updateRoom({ lightMode: balladActive ? 'off' : 'ballad' });
+        } else if (effectId === 'volley') {
+            await updateRoom({ lightMode: volleyActive ? 'off' : 'volley', lobbyVolleyEnabled: true });
         } else if (effectId === 'selfie_cam') {
             await updateRoom({ activeMode: selfieCamActive ? 'karaoke' : 'selfie_cam' });
         } else if (effectId === 'clear') {
@@ -342,6 +351,16 @@ const HostTopChrome = ({
             chatShowOnTv: true,
             chatTvMode: nextFullscreen ? 'fullscreen' : 'auto'
         });
+        closeAllTopMenus();
+    };
+    const togglePopTriviaOverlay = async () => {
+        const next = !popTriviaActive;
+        setPopTriviaEnabled?.(next);
+        await updateRoom({ popTriviaEnabled: next });
+        closeAllTopMenus();
+    };
+    const toggleLobbyVolleyMiniGame = async () => {
+        await updateRoom({ lobbyVolleyEnabled: !lobbyVolleyEnabled });
         closeAllTopMenus();
     };
 
@@ -862,6 +881,32 @@ const HostTopChrome = ({
                                     <span className="text-[11px] uppercase tracking-widest">{marqueeActive ? 'On' : 'Off'}</span>
                                 </button>
                                 <button
+                                    onClick={toggleLobbyVolleyMiniGame}
+                                    className={`${styles.btnStd} ${lobbyVolleyEnabled ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2 text-left">
+                                        <i className="fa-solid fa-gamepad"></i>
+                                        <span className="flex flex-col">
+                                            <span>Idle Crowd Objective</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Interactive mode while stage is empty</span>
+                                        </span>
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{lobbyVolleyEnabled ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={togglePopTriviaOverlay}
+                                    className={`${styles.btnStd} ${popTriviaActive ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2 text-left">
+                                        <i className="fa-solid fa-brain"></i>
+                                        <span className="flex flex-col">
+                                            <span>Pop Trivia (AI)</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Song trivia for audience phones + TV</span>
+                                        </span>
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{popTriviaActive ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
                                     onClick={toggleChatTvOverlay}
                                     className={`${styles.btnStd} ${chatTvActive ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
@@ -1001,6 +1046,16 @@ const HostTopChrome = ({
                                         <i className="fa-solid fa-music"></i>
                                         {balladActive ? 'Ballad ON' : 'Ballad'}
                                     </button>
+                                    {CROWD_OBJECTIVE_MODES.map((mode) => {
+                                        const isActive = room?.lightMode === mode.lightMode;
+                                        const effectId = 'volley';
+                                        return (
+                                            <button key={`vibe-objective-${mode.id}`} onClick={() => runLiveEffect(effectId)} className={`${styles.btnStd} ${isActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
+                                                <i className={`fa-solid ${mode.icon}`}></i>
+                                                {isActive ? `${mode.shortLabel} ON` : mode.label}
+                                            </button>
+                                        );
+                                    })}
                                     <button onClick={() => runLiveEffect('selfie_cam')} className={`${styles.btnStd} ${selfieCamActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                         <i className="fa-solid fa-camera"></i>
                                         {selfieCamActive ? 'Selfie Cam ON' : 'Selfie Cam'}

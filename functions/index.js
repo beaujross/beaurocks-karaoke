@@ -1910,6 +1910,33 @@ const buildGeminiPrompt = (type, context) => {
   const songs = Array.isArray(context)
     ? context.slice(0, 5).map((s) => `${s.songTitle} by ${s.artist}`).join(", ")
     : "";
+  const singleSong = (!Array.isArray(context) && context && typeof context === "object")
+    ? context
+    : null;
+  if (type === "pop_trivia_song") {
+    const songTitle = String(singleSong?.songTitle || "").trim() || "Unknown Song";
+    const artist = String(singleSong?.artist || "").trim() || "Unknown Artist";
+    const singerName = String(singleSong?.singerName || "").trim();
+    const metadata = (singleSong?.metadata && typeof singleSong.metadata === "object" && !Array.isArray(singleSong.metadata))
+      ? Object.entries(singleSong.metadata)
+        .map(([k, v]) => `${k}: ${String(v || "").trim()}`)
+        .filter((entry) => !entry.endsWith(": "))
+      : [];
+    const metadataLine = metadata.length ? metadata.join(", ") : "none";
+    return `Create 4 multiple-choice karaoke pop-up trivia questions for "${songTitle}" by "${artist}".
+Tone: funny, clever, and insightful (VH1 Pop-Up Video vibe), never mean.
+Audience: live karaoke crowd answering quickly on phones while the song plays.
+Known metadata: ${metadataLine}.
+Current singer: ${singerName || "N/A"}.
+Rules:
+- Each question must be answerable in under 10 seconds.
+- Mix playful culture facts and music-insight facts.
+- Keep each answer option concise (under 45 characters).
+- Avoid obscure deep-cut facts and avoid speculation.
+Format strictly as JSON array of objects:
+[{"q":"...","correct":"...","w1":"...","w2":"...","w3":"..."}]
+Do not include markdown.`;
+  }
   if (type === "trivia") {
     return `Generate 3 trivia questions based on: ${songs}. Format strictly as JSON array of objects: [{q, correct, w1, w2, w3}]`;
   }

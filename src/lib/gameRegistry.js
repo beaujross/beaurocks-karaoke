@@ -4,6 +4,7 @@ import QAGame from '../games/QA/Game'; // The new file
 import VocalChallengeGame from '../games/VocalChallenge/Game';
 import RidingScalesGame from '../games/RidingScales/Game';
 import KaraokeBracketGame from '../games/KaraokeBracket/Game';
+import TeamPongGame from '../games/TeamPong/Game';
 
 export const GAME_REGISTRY = {
     'flappy_bird': FlappyGame, 
@@ -11,6 +12,7 @@ export const GAME_REGISTRY = {
     'riding_scales': RidingScalesGame,
     'bingo': BingoGame,
     'karaoke_bracket': KaraokeBracketGame,
+    'team_pong': TeamPongGame,
     // Map multiple modes to the same "Cartridge"
     'trivia_pop': QAGame,
     'trivia_reveal': QAGame,
@@ -75,6 +77,20 @@ export const GAMES_META = [
         color: 'cyan',
         hasConfig: true,
         needsVoice: true,
+    },
+    {
+        id: 'team_pong',
+        name: 'Team Pong',
+        description: 'Split the room into left vs right and keep the rally alive.',
+        goal: 'Build the longest rally streak as a team.',
+        howToPlay: 'Tap your paddle on phone to return the ball.',
+        playModes: ['All players', 'Crowd teams'],
+        icon: 'fa-solid fa-table-tennis-paddle-ball',
+        category: 'social',
+        badge: 'Teams',
+        color: 'cyan',
+        hasConfig: true,
+        needsVoice: false,
     },
     {
         id: 'trivia_pop',

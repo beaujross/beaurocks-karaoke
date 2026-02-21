@@ -62,7 +62,12 @@ import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabi
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
 import { buildSongKey, ensureSong, ensureTrack } from '../../lib/songCatalog';
 import { createLogger } from '../../lib/logger';
-import { DEFAULT_POP_TRIVIA_MAX_QUESTIONS, normalizePopTriviaQuestions } from '../../lib/popTrivia';
+import {
+    DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+    POP_TRIVIA_VOTE_TYPE,
+    normalizePopTriviaQuestions,
+    normalizePopTriviaSeedRows
+} from '../../lib/popTrivia';
 import {
     DEFAULT_LOGO_PRESETS,
     DEFAULT_MARQUEE_ITEMS,
@@ -127,6 +132,7 @@ const hostLogger = createLogger('HostApp');
 const HOST_UPDATE_DEPLOYMENT_WARNING = "Host control updates are unavailable because the backend callable `updateRoomAsHost` is not deployed. Deploy functions and reload Host.";
 const HOST_UPDATE_OP_FIELD = '__hostOp';
 const HOST_UPDATE_SERVER_TIMESTAMP = 'serverTimestamp';
+const POP_TRIVIA_CACHE_FIELD = 'popTriviaSongCache';
 
 const isPlainObject = (value) =>
     !!value && Object.prototype.toString.call(value) === '[object Object]';
@@ -479,6 +485,13 @@ const NIGHT_SETUP_PRIMARY_MODES = [
         description: 'Queue plus crowd bingo participation throughout the night.',
         icon: 'fa-table-cells-large',
         accent: 'from-emerald-500/25 via-emerald-500/10 to-transparent'
+    },
+    {
+        id: 'team_pong',
+        label: 'Team Pong',
+        description: 'Left vs right crowd rally mode between performances.',
+        icon: 'fa-table-tennis-paddle-ball',
+        accent: 'from-cyan-500/25 via-indigo-500/10 to-transparent'
     },
     {
         id: 'trivia_pop',
@@ -952,6 +965,90 @@ const getTimestampMs = (value) => {
     if (typeof value?.toMillis === 'function') return value.toMillis();
     if (typeof value?.seconds === 'number') return value.seconds * 1000;
     return 0;
+};
+
+const sanitizePopTriviaCacheKey = (value = '') => String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120);
+
+const buildPopTriviaCacheKey = (song = {}) => {
+    const title = String(song?.songTitle || song?.title || '').trim();
+    const artist = String(song?.artist || 'Unknown').trim() || 'Unknown';
+    if (!title) return '';
+    return sanitizePopTriviaCacheKey(buildSongKey(title, artist));
+};
+
+const buildPopTriviaSongContext = (song = {}) => {
+    const safeTitle = String(song?.songTitle || song?.title || '').trim();
+    const safeArtist = String(song?.artist || 'Unknown').trim() || 'Unknown';
+    const safeSinger = String(song?.singerName || '').trim();
+    const metadata = {};
+    const metadataPairs = [
+        ['album', song?.album || song?.albumName || ''],
+        ['releaseYear', song?.releaseYear || song?.year || ''],
+        ['genre', song?.genre || song?.primaryGenre || song?.primaryGenreName || ''],
+        ['language', song?.language || ''],
+        ['decade', song?.decade || ''],
+        ['source', song?.source || song?.trackSource || ''],
+        ['songId', song?.songId || ''],
+        ['appleMusicId', song?.appleMusicId || '']
+    ];
+    metadataPairs.forEach(([key, value]) => {
+        const clean = String(value || '').trim();
+        if (clean) metadata[key] = clean;
+    });
+    return {
+        songTitle: safeTitle,
+        artist: safeArtist,
+        singerName: safeSinger,
+        metadata,
+        style: 'funny_insightful'
+    };
+};
+
+const normalizePopTriviaSongCache = (value = {}) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const next = {};
+    Object.entries(value).forEach(([key, entry]) => {
+        const safeKey = sanitizePopTriviaCacheKey(key);
+        if (!safeKey || !entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+        const seedRows = normalizePopTriviaSeedRows(entry?.seedRows || entry?.rows || entry?.questions || [], {
+            limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS
+        });
+        if (!seedRows.length) return;
+        next[safeKey] = {
+            seedRows,
+            songTitle: String(entry?.songTitle || '').trim(),
+            artist: String(entry?.artist || '').trim(),
+            source: String(entry?.source || 'ai').trim() || 'ai',
+            updatedAtMs: Math.max(0, Number(entry?.updatedAtMs || toMs(entry?.updatedAt) || 0))
+        };
+    });
+    return next;
+};
+
+const summarizePopTriviaVotes = (entries = []) => {
+    const participantKeys = new Set();
+    const answerKeys = new Set();
+    entries.forEach((entry) => {
+        if (!entry || entry.type !== POP_TRIVIA_VOTE_TYPE) return;
+        const questionId = String(entry?.questionId || '').trim();
+        if (!questionId) return;
+        const voterKey = entry?.uid
+            ? `uid:${entry.uid}`
+            : `guest:${String(entry?.userName || 'Guest').trim().toLowerCase()}|${String(entry?.avatar || '').trim()}`;
+        if (!voterKey) return;
+        participantKeys.add(voterKey);
+        answerKeys.add(`${questionId}::${voterKey}`);
+    });
+    return {
+        participantCount: participantKeys.size,
+        answerCount: answerKeys.size
+    };
 };
 
 const isPermissionDeniedError = (error) => {
@@ -1835,6 +1932,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, appBase }) => 
         doodle_oke: 'Doodle-oke',
         selfie_challenge: 'Selfie Challenge',
         karaoke_bracket: 'Karaoke Bracket',
+        team_pong: 'Team Pong',
         bingo: 'Bingo',
         trivia_pop: 'Trivia Pop',
         wyr: 'Would You Rather',
@@ -2144,6 +2242,11 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, appBase }) => 
             label: 'Scale Storm',
             description: 'Trigger storm lighting during the round.'
         },
+        team_pong: {
+            icon: 'fa-table-tennis-paddle-ball',
+            label: 'Rally Boost',
+            description: 'Inject a host paddle hit to keep momentum up.'
+        },
         applause: {
             icon: 'fa-hands-clapping',
             label: 'Crowd Surge',
@@ -2336,6 +2439,24 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, appBase }) => 
                 });
                 toast('Scale Storm triggered.');
                 await logHostInteraction('triggered Scale Storm FX.');
+                return;
+            }
+
+            if (activeMode === 'team_pong') {
+                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
+                    roomCode,
+                    type: 'team_pong_hit',
+                    count: 2,
+                    team: 'left',
+                    sessionId: room?.gameData?.sessionId || null,
+                    userName: room?.hostName || 'Host',
+                    avatar: room?.hostAvatar || EMOJI.sparkle,
+                    uid: room?.hostUid || null,
+                    isFree: true,
+                    timestamp: serverTimestamp()
+                });
+                toast('Team Pong rally boost sent.');
+                await logHostInteraction('sent a Team Pong rally boost.');
                 return;
             }
 
@@ -2587,6 +2708,7 @@ const AudienceMiniPreview = ({
     const modeLabelMap = {
         karaoke: 'Karaoke',
         bingo: `Bingo${room?.bingoMode === 'mystery' ? ' (Mystery)' : ''}`,
+        team_pong: 'Team Pong',
         trivia_pop: 'Trivia',
         trivia_reveal: 'Trivia Reveal',
         wyr: 'Would You Rather',
@@ -2693,7 +2815,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
+const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3552,6 +3674,35 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                         // Ignore score sync failures; recap payload still carries resolved values.
                     }
                 }
+                let popTriviaSummary = null;
+                const popTriviaQuestions = Array.isArray(latestSong?.popTrivia)
+                    ? latestSong.popTrivia.filter(Boolean)
+                    : [];
+                const popTriviaQuestionIds = popTriviaQuestions
+                    .map((entry) => String(entry?.id || '').trim())
+                    .filter(Boolean)
+                    .slice(0, 10);
+                if (popTriviaQuestionIds.length) {
+                    popTriviaSummary = {
+                        questionCount: popTriviaQuestionIds.length,
+                        participantCount: 0,
+                        answerCount: 0,
+                        source: String(latestSong?.popTriviaSource || s?.popTriviaSource || 'ai').trim() || 'ai'
+                    };
+                    try {
+                        const popTriviaVotesSnap = await getDocs(query(
+                            collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
+                            where('roomCode', '==', roomCode),
+                            where('type', '==', POP_TRIVIA_VOTE_TYPE),
+                            where('questionId', 'in', popTriviaQuestionIds)
+                        ));
+                        const voteSummary = summarizePopTriviaVotes(popTriviaVotesSnap.docs.map((docSnap) => docSnap.data()));
+                        popTriviaSummary.participantCount = voteSummary.participantCount;
+                        popTriviaSummary.answerCount = voteSummary.answerCount;
+                    } catch (error) {
+                        hostLogger.warn('Pop trivia recap summary failed', { songId: id, error });
+                    }
+                }
                 const recapPayload = {
                     ...s,
                     ...latestSong,
@@ -3563,6 +3714,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     albumArtUrl: latestSong?.albumArtUrl || s.albumArtUrl || '',
                     topFan: resolvedTopFan,
                     vibeStats: resolvedVibeStats,
+                    popTriviaSummary,
                     recapLedgerSource: reconciled?.source || null,
                     recapEventCount: Number(reconciled?.eventCount || 0)
                 };
@@ -4267,6 +4419,8 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                                     setMarqueeEnabled={setMarqueeEnabled}
                                     chatShowOnTv={chatShowOnTv}
                                     setChatShowOnTv={setChatShowOnTv}
+                                    popTriviaEnabled={popTriviaEnabled}
+                                    setPopTriviaEnabled={setPopTriviaEnabled}
                                     chatUnread={chatUnread}
                                     vibeSyncOpen={vibeSyncOpen}
                                     setVibeSyncOpen={setVibeSyncOpen}
@@ -4747,6 +4901,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [hostName, setHostName] = useState(localStorage.getItem('bross_host_name') || 'Host');
     const [logoUrl, setLogoUrl] = useState('');
     const [logoLibrary, setLogoLibrary] = useState([]);
+    const [popTriviaSongCache, setPopTriviaSongCache] = useState({});
     const [logoUploading, setLogoUploading] = useState(false);
     const [logoUploadProgress, setLogoUploadProgress] = useState(0);
     const logoInputRef = useRef(null);
@@ -5562,7 +5717,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     useEffect(() => {
         if (!roomCode) return;
         if (room?.popTriviaEnabled === false) return;
-        if (!canUseAiTools) return;
+        if (!canUseAiTools && Object.keys(popTriviaSongCache || {}).length === 0) return;
 
         const eligibleSongs = songs
             .filter((song) => ['requested', 'pending', 'performing'].includes(song?.status))
@@ -5581,23 +5736,49 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             popTriviaGeneratingRef.current.add(song.id);
 
             const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id);
+            const cacheKey = buildPopTriviaCacheKey(song);
+            const cacheEntry = cacheKey ? popTriviaSongCache?.[cacheKey] : null;
             (async () => {
                 try {
+                    const cachedSeedRows = normalizePopTriviaSeedRows(cacheEntry?.seedRows || [], {
+                        limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS
+                    });
+                    if (cachedSeedRows.length) {
+                        const cachedQuestions = normalizePopTriviaQuestions(cachedSeedRows, {
+                            limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+                            idPrefix: `${roomCode}_${song.id}`
+                        });
+                        if (cachedQuestions.length) {
+                            await updateDoc(songRef, {
+                                popTrivia: cachedQuestions,
+                                popTriviaStatus: 'ready',
+                                popTriviaSource: cacheEntry?.source || 'cache',
+                                popTriviaCacheKey: cacheKey,
+                                popTriviaGeneratedAt: serverTimestamp(),
+                                popTriviaError: null
+                            });
+                            return;
+                        }
+                    }
+
+                    if (!canUseAiTools) {
+                        return;
+                    }
+
                     await updateDoc(songRef, {
                         popTriviaStatus: 'pending',
                         popTriviaError: null
                     });
-                    const context = [{
-                        songTitle: song.songTitle,
-                        artist: song.artist || '',
-                        singerName: song.singerName || ''
-                    }];
-                    const result = await callFunction('geminiGenerate', { type: 'trivia', context });
-                    const triviaQuestions = normalizePopTriviaQuestions(result?.result || result || [], {
+                    const context = buildPopTriviaSongContext(song);
+                    const result = await callFunction('geminiGenerate', { type: 'pop_trivia_song', context });
+                    const seedRows = normalizePopTriviaSeedRows(result?.result || result || [], {
+                        limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS
+                    });
+                    const triviaQuestions = normalizePopTriviaQuestions(seedRows, {
                         limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
                         idPrefix: `${roomCode}_${song.id}`
                     });
-                    if (!triviaQuestions.length) {
+                    if (!triviaQuestions.length || !seedRows.length) {
                         await updateDoc(songRef, {
                             popTriviaStatus: 'failed',
                             popTriviaError: 'AI returned no trivia questions.'
@@ -5608,9 +5789,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         popTrivia: triviaQuestions,
                         popTriviaStatus: 'ready',
                         popTriviaSource: 'ai',
+                        popTriviaCacheKey: cacheKey || null,
                         popTriviaGeneratedAt: serverTimestamp(),
                         popTriviaError: null
                     });
+                    if (cacheKey) {
+                        const nextCacheEntry = {
+                            seedRows,
+                            songTitle: String(song?.songTitle || '').trim(),
+                            artist: String(song?.artist || '').trim(),
+                            source: 'ai',
+                            updatedAtMs: nowMs()
+                        };
+                        setPopTriviaSongCache((prev) => ({ ...prev, [cacheKey]: nextCacheEntry }));
+                        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), {
+                            [`${POP_TRIVIA_CACHE_FIELD}.${cacheKey}`]: nextCacheEntry
+                        }).catch(async () => {
+                            await setDoc(
+                                doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode),
+                                { [POP_TRIVIA_CACHE_FIELD]: { [cacheKey]: nextCacheEntry } },
+                                { merge: true }
+                            ).catch(() => {});
+                        });
+                    }
                 } catch (error) {
                     hostLogger.warn('Pop trivia generation failed', { songId: song.id, error });
                     await updateDoc(songRef, {
@@ -5622,7 +5823,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
             })();
         });
-    }, [roomCode, room?.popTriviaEnabled, songs, canUseAiTools]);
+    }, [roomCode, room?.popTriviaEnabled, songs, canUseAiTools, popTriviaSongCache]);
     useEffect(() => {
         const ctx = bgCtxRef.current;
         if (ctx && ctx.state === 'suspended' && playingBg) {
@@ -7862,6 +8063,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             } else {
                 setLogoLibrary([]);
             }
+            setPopTriviaSongCache(normalizePopTriviaSongCache(data?.[POP_TRIVIA_CACHE_FIELD]));
         });
         return () => unsub();
     }, [roomCode]);
@@ -8516,6 +8718,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
             return (stats.guitar || stats.strobe) ? stats : null;
         })();
+        const popTriviaSummary = (() => {
+            if (baseSong?.popTriviaSummary && typeof baseSong.popTriviaSummary === 'object') {
+                return baseSong.popTriviaSummary;
+            }
+            const questionCount = Array.isArray(baseSong?.popTrivia) ? baseSong.popTrivia.length : 0;
+            if (!questionCount) return null;
+            return {
+                questionCount,
+                participantCount: Math.max(0, Number(baseSong?.popTriviaSummary?.participantCount || 0)),
+                answerCount: Math.max(0, Number(baseSong?.popTriviaSummary?.answerCount || 0)),
+                source: String(baseSong?.popTriviaSource || 'ai').trim() || 'ai'
+            };
+        })();
         const recapPreview = {
             songTitle: baseSong.songTitle || 'Featured Performance',
             singerName: baseSong.singerName || room?.hostName || 'Guest',
@@ -8525,6 +8740,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             albumArtUrl: baseSong.albumArtUrl || '',
             topFan,
             vibeStats,
+            popTriviaSummary,
             timestamp: nowMs(),
             preview: true
         };
@@ -10269,7 +10485,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 missionPartyPreview.maxConsecutiveNonKaraokeModes !== missionPartyBaseline.maxConsecutiveNonKaraokeModes
             ].filter(Boolean).length;
             const missionOverrideCount = Object.keys(missionAdvancedOverrides || {}).length + missionPartyOverrideCount;
-            const featuredSpotlightModeIds = ['karaoke', 'bingo', 'trivia_pop', 'karaoke_bracket'];
+            const featuredSpotlightModeIds = ['karaoke', 'bingo', 'team_pong', 'trivia_pop', 'karaoke_bracket'];
             const missionVisibleSpotlightModes = missionShowAllSpotlightModes
                 ? NIGHT_SETUP_PRIMARY_MODES
                 : NIGHT_SETUP_PRIMARY_MODES.filter((mode) => featuredSpotlightModeIds.includes(mode.id) || mode.id === missionDraft?.spotlightMode);
@@ -11756,6 +11972,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         startReadyCheck,
         chatShowOnTv,
         setChatShowOnTv,
+        popTriviaEnabled,
+        setPopTriviaEnabled,
         chatUnread,
         dmUnread,
         chatEnabled,
@@ -11889,6 +12107,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     setMarqueeEnabled={setMarqueeEnabled}
                     chatShowOnTv={chatShowOnTv}
                     setChatShowOnTv={setChatShowOnTv}
+                    popTriviaEnabled={popTriviaEnabled}
+                    setPopTriviaEnabled={setPopTriviaEnabled}
                     chatTvMode={chatTvMode}
                     setChatTvMode={setChatTvMode}
                     chatUnread={chatUnread}

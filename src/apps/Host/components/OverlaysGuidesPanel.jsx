@@ -1,4 +1,5 @@
 import React from 'react';
+import { CROWD_OBJECTIVE_MODES } from '../../../lib/crowdObjectiveModes';
 
 const OverlaysGuidesPanel = ({
     overlaysOpen,
@@ -10,6 +11,8 @@ const OverlaysGuidesPanel = ({
     setMarqueeEnabled,
     chatShowOnTv,
     setChatShowOnTv,
+    popTriviaEnabled,
+    setPopTriviaEnabled,
     chatUnread,
     vibeSyncOpen,
     setVibeSyncOpen,
@@ -53,6 +56,17 @@ const OverlaysGuidesPanel = ({
                     <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-pink-400"></span>
                 )}
             </button>
+            <button
+                onClick={async () => {
+                    const next = !(popTriviaEnabled !== false);
+                    setPopTriviaEnabled?.(next);
+                    await updateRoom({ popTriviaEnabled: next });
+                }}
+                className={`${styles.btnStd} ${popTriviaEnabled !== false ? styles.btnHighlight : styles.btnNeutral} flex-1`}
+                title="Enable AI pop-up trivia during karaoke songs"
+            >
+                <i className="fa-solid fa-brain mr-2"></i>Pop Trivia
+            </button>
         </div>
         {showVibeSync && (
             <div className="mt-3">
@@ -84,6 +98,16 @@ const OverlaysGuidesPanel = ({
                 }} className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.lightMode === 'guitar' ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`} title="Guitar vibe sync takeover"><i className="fa-solid fa-guitar"></i> Guitar</button>
                 <button onClick={() => updateRoom({ lightMode: room?.lightMode === 'banger' ? 'off' : 'banger' })} className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.lightMode === 'banger' ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`} title="High-energy fire visuals"><i className="fa-solid fa-fire"></i> Banger</button>
                 <button onClick={() => updateRoom({ lightMode: room?.lightMode === 'ballad' ? 'off' : 'ballad' })} className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.lightMode === 'ballad' ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`} title="Lighter sway mode"><i className="fa-solid fa-music"></i> Ballad</button>
+                {CROWD_OBJECTIVE_MODES.map((mode) => (
+                    <button
+                        key={`overlay-objective-${mode.id}`}
+                        onClick={() => updateRoom({ lightMode: room?.lightMode === mode.lightMode ? 'off' : mode.lightMode, lobbyVolleyEnabled: true })}
+                        className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.lightMode === mode.lightMode ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`}
+                        title={`${mode.label} crowd objective while stage is idle`}
+                    >
+                        <i className={`fa-solid ${mode.icon}`}></i> {mode.shortLabel}
+                    </button>
+                ))}
                 <button
                     onClick={() => (room?.lightMode === 'storm' ? stopStormSequence() : startStormSequence())}
                     className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.lightMode === 'storm' ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`}
