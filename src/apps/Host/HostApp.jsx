@@ -10521,6 +10521,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 </div>
                                 <button
+                                    data-host-setup-skip-intro
                                     onClick={closeNightSetupWizard}
                                     disabled={nightSetupApplying}
                                     className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}

@@ -109,6 +109,13 @@ const validateHostDropdown = async (hostPage, timeoutMs) => {
       const tvToggle = hostPage.locator('[data-feature-id="deck-tv-menu-toggle"]').first();
       if (await tvToggle.isVisible().catch(() => false)) return tvToggle;
 
+      const skipIntroHook = hostPage.locator("[data-host-setup-skip-intro]").first();
+      if (await skipIntroHook.isVisible().catch(() => false)) {
+        await skipIntroHook.click({ force: true });
+        await delay(1500);
+        continue;
+      }
+
       const skipIntro = hostPage.getByRole("button", { name: /skip intro/i }).first();
       if (await skipIntro.isVisible().catch(() => false)) {
         await skipIntro.click({ force: true });
