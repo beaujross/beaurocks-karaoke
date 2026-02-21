@@ -108,7 +108,9 @@ const QueueYouTubeSearchModal = ({
                 </div>
 
                 {ytSearchQ && ytResults.length === 0 && !ytLoading && (
-                    <div className="host-search-helper text-center py-8">No results found</div>
+                    <div className="host-search-helper text-center py-8">
+                        No verified playable results. Try a different keyword or paste a direct YouTube URL.
+                    </div>
                 )}
             </div>
         </div>

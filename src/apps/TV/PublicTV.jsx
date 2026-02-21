@@ -33,6 +33,11 @@ import {
     quantizeToBeat,
     LOBBY_PLAYGROUND_ENGINE_CONSTANTS
 } from './lobbyPlaygroundEngine';
+import {
+    deriveBangerModeState,
+    deriveBalladModeState,
+    deriveStrobeModeState
+} from './vibeModeEngine';
 
 const isTvVisibleChatMessage = (message) => {
     if (!message) return false;
@@ -226,12 +231,43 @@ const LOBBY_PARTICLE_MAX = 24;
 const LOBBY_ORB_MIN_TOP_PCT = 32;
 const LOBBY_ORB_IDLE_TOP_PCT = 74;
 const LOBBY_GROUND_LINE_TOP_PCT = 84;
+const GUITAR_SYNC_DECAY_PER_SECOND = 14;
+const GUITAR_SYNC_GAIN_PER_HIT = 11;
+const GUITAR_SYNC_GROUND_THRESHOLD = 12;
+const GUITAR_SYNC_ACTIVE_WINDOW_MS = 3400;
+const GUITAR_SYNC_BASE_BEAT_MS = 620;
+const GUITAR_SYNC_BEAT_WINDOW_MS = 130;
+const GUITAR_SYNC_EVENT_WINDOW_MS = 12000;
 
 const getLobbyTierDefinition = (tierNumber = 0) => (
     (LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.TIER_DEFINITIONS || []).find((entry) => Number(entry?.tier || 0) === Number(tierNumber || 0)) || null
 );
 
 const clampLobby = (value, min, max) => Math.max(min, Math.min(max, Number(value || 0)));
+
+const createGuitarSyncState = () => ({
+    meter: 0,
+    streakMs: 0,
+    airtimeMs: 0,
+    drops: 0,
+    cadenceScore: 0,
+    perfectHits: 0,
+    totalHits: 0,
+    lastHitAt: 0,
+    recentHits: []
+});
+
+const getGuitarBeatMs = ({ micVolume = 0, visualizerEnabled = false } = {}) => {
+    const hasRhythmSignal = !!visualizerEnabled && Number(micVolume || 0) >= 10;
+    if (!hasRhythmSignal) return GUITAR_SYNC_BASE_BEAT_MS;
+    return Math.max(420, Math.min(760, 700 - (Number(micVolume || 0) * 2.6)));
+};
+
+const getBeatOffsetMs = (timestampMs, beatMs) => {
+    const safeBeatMs = Math.max(260, Number(beatMs || GUITAR_SYNC_BASE_BEAT_MS));
+    const mod = ((Number(timestampMs || 0) % safeBeatMs) + safeBeatMs) % safeBeatMs;
+    return Math.min(mod, safeBeatMs - mod);
+};
 
 const shouldDisableLobbyMotion = (reduceMotion) => !!reduceMotion;
 
@@ -654,6 +690,7 @@ const PublicTV = ({ roomCode }) => {
     const [micVolume, setMicVolume] = useState(0);
     const [vibeUsers, setVibeUsers] = useState([]);
     const [guitarWinner, setGuitarWinner] = useState(null);
+    const [guitarSyncState, setGuitarSyncState] = useState(() => createGuitarSyncState());
     const [selfieSubmissions, setSelfieSubmissions] = useState([]);
     const [selfieVotes, setSelfieVotes] = useState([]);
     const [doodleNow, setDoodleNow] = useState(nowMs());
@@ -701,12 +738,14 @@ const PublicTV = ({ roomCode }) => {
     const lastBonusDropRef = useRef(null);
     const lastGuitarModeRef = useRef(null);
     const activeGuitarSessionRef = useRef(null);
+    const guitarSyncSessionRef = useRef(null);
     const lastStrobeSessionRef = useRef(null);
     const doodleWinnerAwardRef = useRef(null);
     const chatRotateRef = useRef(null);
     const messageTimeoutsRef = useRef([]);
     const bgVisualizerAudioRef = useRef(null);
     const multiplierRef = useRef(1);
+    const guitarSyncStateRef = useRef(createGuitarSyncState());
     const lobbyVolleyStateRef = useRef(createLobbyVolleyState());
     const lobbyLastAnchorRef = useRef(null);
     const lobbyAwardAuthLockedRef = useRef(false);
@@ -796,6 +835,51 @@ const PublicTV = ({ roomCode }) => {
     useEffect(() => {
         multiplierRef.current = Math.max(1, room?.multiplier || 1);
     }, [room?.multiplier]);
+
+    useEffect(() => {
+        if (room?.lightMode !== 'guitar') {
+            guitarSyncSessionRef.current = null;
+            return;
+        }
+        const sessionId = room?.guitarSessionId || null;
+        if (!sessionId) return;
+        if (guitarSyncSessionRef.current === sessionId) return;
+        guitarSyncSessionRef.current = sessionId;
+        setGuitarSyncState(createGuitarSyncState());
+    }, [room?.lightMode, room?.guitarSessionId]);
+
+    useEffect(() => {
+        guitarSyncStateRef.current = guitarSyncState;
+    }, [guitarSyncState]);
+
+    useEffect(() => {
+        if (room?.lightMode !== 'guitar') {
+            setGuitarSyncState(createGuitarSyncState());
+            return;
+        }
+        let lastTickAt = nowMs();
+        const timer = setInterval(() => {
+            const tickNow = nowMs();
+            const deltaMs = Math.max(0, tickNow - lastTickAt);
+            lastTickAt = tickNow;
+            setGuitarSyncState((prev) => {
+                const decay = (deltaMs / 1000) * GUITAR_SYNC_DECAY_PER_SECOND;
+                const prevAirborne = Number(prev?.meter || 0) > GUITAR_SYNC_GROUND_THRESHOLD;
+                const meter = clampLobby(Number(prev?.meter || 0) - decay, 0, 100);
+                const airborne = meter > GUITAR_SYNC_GROUND_THRESHOLD;
+                const droppedToGround = prevAirborne && !airborne;
+                return {
+                    ...prev,
+                    meter,
+                    streakMs: airborne ? Number(prev?.streakMs || 0) + deltaMs : 0,
+                    airtimeMs: airborne ? Number(prev?.airtimeMs || 0) + deltaMs : Number(prev?.airtimeMs || 0),
+                    drops: droppedToGround ? Number(prev?.drops || 0) + 1 : Number(prev?.drops || 0),
+                    recentHits: (prev?.recentHits || []).filter((entry) => (tickNow - Number(entry?.timestampMs || 0)) < GUITAR_SYNC_EVENT_WINDOW_MS)
+                };
+            });
+        }, 120);
+        return () => clearInterval(timer);
+    }, [room?.lightMode, room?.guitarSessionId]);
 
     const awardRoomPointsOnce = useCallback(async ({ awardKey, awards = [], source = 'tv_mode' }) => {
         if (!roomCode || !awardKey || !Array.isArray(awards) || !awards.length) {
@@ -1531,14 +1615,54 @@ const PublicTV = ({ roomCode }) => {
                                 timestampMs: eventTimestamp
                             });
                         } else if (d.type === 'strum') {
+                            const strumCount = Math.max(1, Number(d.count || 1));
+                            const eventTimestamp = nowMs();
+                            const beatMs = getGuitarBeatMs({
+                                micVolume: lobbyMicVolumeRef.current,
+                                visualizerEnabled: lobbyVisualizerEnabledRef.current
+                            });
+                            const beatOffsetMs = getBeatOffsetMs(eventTimestamp, beatMs);
+                            const timingScore = clampLobby(100 - ((beatOffsetMs / Math.max(1, beatMs / 2)) * 100), 0, 100);
+                            const inBeatWindow = beatOffsetMs <= GUITAR_SYNC_BEAT_WINDOW_MS;
+                            setGuitarSyncState((prev) => {
+                                const baseGain = strumCount * GUITAR_SYNC_GAIN_PER_HIT;
+                                const timingBoost = 0.72 + (timingScore / 100) * 0.7;
+                                const meter = clampLobby(Number(prev?.meter || 0) + (baseGain * timingBoost), 0, 100);
+                                return {
+                                    ...prev,
+                                    meter,
+                                    cadenceScore: clampLobby((Number(prev?.cadenceScore || 0) * 0.58) + (timingScore * 0.42), 0, 100),
+                                    perfectHits: Number(prev?.perfectHits || 0) + (inBeatWindow ? strumCount : 0),
+                                    totalHits: Number(prev?.totalHits || 0) + strumCount,
+                                    lastHitAt: eventTimestamp,
+                                    recentHits: [
+                                        ...(prev?.recentHits || []),
+                                        {
+                                            timestampMs: eventTimestamp,
+                                            count: strumCount,
+                                            uid: d.uid || ''
+                                        }
+                                    ].filter((entry) => (eventTimestamp - Number(entry?.timestampMs || 0)) < GUITAR_SYNC_EVENT_WINDOW_MS)
+                                };
+                            });
                             pushLobbyLiveEvent({
                                 id: `strum-${c.doc.id}`,
                                 avatar: d.avatar || EMOJI.guitar,
                                 user: d.userName || d.user || 'Guest',
-                                text: `sent ${Math.max(1, Number(d.count || 1))} ${getLobbyReactionLabel('strum').toLowerCase()}${Number(d.count || 1) > 1 ? 's' : ''}`,
-                                timestampMs: nowMs()
+                                text: `${inBeatWindow ? 'hit the groove with' : 'sent'} ${strumCount} ${getLobbyReactionLabel('strum').toLowerCase()}${strumCount > 1 ? 's' : ''}${inBeatWindow ? ' in the sync window' : ''}`,
+                                timestampMs: eventTimestamp
                             });
                             // Guitar strums are reflected in the live guitar leaderboard instead.
+                        } else if (d.type === 'strobe_tap') {
+                            const strobeCount = Math.max(1, Number(d.count || 1));
+                            pushLobbyLiveEvent({
+                                id: `strobe-${c.doc.id}`,
+                                avatar: d.avatar || emoji(0x26A1),
+                                user: d.userName || d.user || 'Guest',
+                                text: `dropped ${strobeCount} beat tap${strobeCount > 1 ? 's' : ''}`,
+                                timestampMs: nowMs()
+                            });
+                            // Strobe taps are reflected via room_users aggregates and dedicated mode HUD.
                         } else {
                               const count = Math.min(d.count || 1, 6);
                               const totalCount = d.count || 1;
@@ -1580,6 +1704,7 @@ const PublicTV = ({ roomCode }) => {
                 avatar: u.avatar,
                 guitarHits: u.guitarHits || 0,
                 guitarSessionId: u.guitarSessionId || null,
+                lastVibeAt: toEpochMs(u.lastVibeAt),
                 strobeTaps: u.strobeTaps || 0,
                 strobeSessionId: u.strobeSessionId || null
             }));
@@ -2431,10 +2556,14 @@ const PublicTV = ({ roomCode }) => {
     const guitarLeaders = room?.guitarSessionId
         ? vibeUsers.filter(u => u.guitarSessionId === room.guitarSessionId)
         : vibeUsers;
+    const guitarLeaderMaxHits = Math.max(1, ...guitarLeaders.map((user) => Number(user.guitarHits || 0)));
     const strobeSessionId = room?.strobeSessionId;
-    const strobeUsers = strobeSessionId
-        ? roomUsers.filter(u => u.strobeSessionId === strobeSessionId)
-        : [];
+    const strobeUsers = useMemo(
+        () => (strobeSessionId
+            ? roomUsers.filter(u => u.strobeSessionId === strobeSessionId)
+            : []),
+        [roomUsers, strobeSessionId]
+    );
     const strobeLeaders = [...strobeUsers]
         .sort((a, b) => (b.strobeTaps || 0) - (a.strobeTaps || 0))
         .slice(0, 3);
@@ -2447,14 +2576,85 @@ const PublicTV = ({ roomCode }) => {
     const strobeCountdown = Math.max(0, Math.ceil((strobeCountdownUntil - nowMs()) / 1000));
     const strobeRemaining = Math.max(0, Math.ceil((strobeEndsAt - nowMs()) / 1000));
     const strobeMeter = Math.min(100, Math.round(strobeTotalTaps * 2));
-    const reactionBurstScore = clampPct(reactions.length * 12);
-    const strobeEngagementScore = clampPct((strobeMeter * 0.75) + (strobeLeaders.length * 8));
+    const vibeReactionEvents = useMemo(
+        () => reactions.map((reaction, idx) => ({
+            type: reaction?.type || '',
+            count: Math.max(1, Number(reaction?.count || 1)),
+            uid: reaction?.uid || `${reaction?.userName || reaction?.user || 'guest'}_${idx}`,
+            userName: reaction?.userName || reaction?.user || 'Guest',
+            timestampMs: toEpochMs(reaction?.timestamp) || nowMs()
+        })),
+        [reactions]
+    );
+    const strobeModeEvents = useMemo(() => {
+        const strobeReactionEvents = vibeReactionEvents.filter((event) => event.type === 'strobe_tap');
+        const userAggregateEvents = strobeUsers.map((user) => ({
+            type: 'strobe_tap',
+            count: Math.max(1, Number(user?.strobeTaps || 0)),
+            uid: user?.uid || '',
+            userName: user?.name || 'Guest',
+            timestampMs: toEpochMs(user?.lastVibeAt) || nowMs()
+        })).filter((event) => Number(event.count || 0) > 0);
+        return [...strobeReactionEvents, ...userAggregateEvents];
+    }, [strobeUsers, vibeReactionEvents]);
+    const bangerModeState = useMemo(
+        () => deriveBangerModeState({
+            combo,
+            events: vibeReactionEvents,
+            nowMs: nowMs()
+        }),
+        [combo, vibeReactionEvents]
+    );
+    const balladModeState = useMemo(
+        () => deriveBalladModeState({
+            combo,
+            chatCount: groupedChatMessages?.length || 0,
+            events: vibeReactionEvents,
+            nowMs: nowMs()
+        }),
+        [combo, groupedChatMessages?.length, vibeReactionEvents]
+    );
+    const strobeModeState = useMemo(
+        () => deriveStrobeModeState({
+            totalTaps: strobeTotalTaps,
+            leaderCount: strobeLeaders.length,
+            phase: strobePhase,
+            events: strobeModeEvents,
+            nowMs: nowMs()
+        }),
+        [strobeTotalTaps, strobeLeaders.length, strobePhase, strobeModeEvents]
+    );
+    const strobeEngagementScore = clampPct(Number(strobeModeState?.score || 0));
     const guitarPeakHits = guitarLeaders.length
         ? Math.max(...guitarLeaders.map((user) => Number(user.guitarHits || 0)))
         : 0;
-    const guitarEngagementScore = clampPct((guitarPeakHits * 4) + (guitarLeaders.length * 10));
-    const bangerHeatScore = clampPct((combo * 0.72) + (reactionBurstScore * 0.6));
-    const balladGlowScore = clampPct((combo * 0.55) + ((groupedChatMessages?.length || 0) * 12));
+    const guitarSessionTotalHits = guitarLeaders.reduce((sum, user) => sum + Number(user?.guitarHits || 0), 0);
+    const guitarActivePlayers = room?.guitarSessionId
+        ? roomUsers.filter((user) => (
+            user?.guitarSessionId === room.guitarSessionId
+            && (nowMs() - toEpochMs(user?.lastVibeAt)) <= GUITAR_SYNC_ACTIVE_WINDOW_MS
+        ))
+        : [];
+    const guitarActiveCount = guitarActivePlayers.length;
+    const guitarSyncAccuracy = Number(guitarSyncState?.totalHits || 0) > 0
+        ? Math.round((Number(guitarSyncState?.perfectHits || 0) / Number(guitarSyncState?.totalHits || 1)) * 100)
+        : 0;
+    const guitarTeamworkMultiplier = Number((1 + Math.min(4, (Number(guitarSyncState?.airtimeMs || 0) / 14000) + (guitarActiveCount * 0.22))).toFixed(1));
+    const guitarStreakSeconds = Math.floor(Number(guitarSyncState?.streakMs || 0) / 1000);
+    const guitarSyncPower = clampPct(
+        (Number(guitarSyncState?.meter || 0) * 0.5)
+        + (Number(guitarSyncState?.cadenceScore || 0) * 0.28)
+        + (guitarSyncAccuracy * 0.22)
+        + (guitarActiveCount * 10)
+    );
+    const guitarOrbBottomPct = clampLobby(10 + (Number(guitarSyncState?.meter || 0) * 0.78), 10, 88);
+    const guitarEngagementScore = clampPct(
+        (guitarSyncPower * 0.64)
+        + (Math.min(100, guitarSessionTotalHits) * 0.2)
+        + (Math.min(100, guitarPeakHits * 4) * 0.16)
+    );
+    const bangerHeatScore = clampPct(Number(bangerModeState?.score || 0));
+    const balladGlowScore = clampPct(Number(balladModeState?.score || 0));
     const stormLayerTotal = STORM_CROWD_LAYERS.reduce((sum, layer) => sum + Number(stormLayerMeters?.[layer.id] || 0), 0);
     const stormLayerIntensity = clampPct(stormLayerTotal / Math.max(1, STORM_CROWD_LAYERS.length));
     const stormRecentLayerEvents = stormLayerEvents
@@ -2529,6 +2729,16 @@ const PublicTV = ({ roomCode }) => {
             animationDuration: `${(1.8 + seededUnit(particleSeedBase + idx * 31) * 1.6).toFixed(2)}s`
         })),
         [balladParticleCount, particleSeedBase]
+    );
+    const balladPhoneLights = useMemo(
+        () => Array.from({ length: 12 }, (_, idx) => ({
+            id: `ballad-phone-light-${idx}`,
+            offsetPx: Math.round((seededUnit(particleSeedBase + idx * 19) - 0.5) * 20),
+            delay: `${(seededUnit(particleSeedBase + idx * 37) * 1.8).toFixed(2)}s`,
+            duration: `${(1.2 + seededUnit(particleSeedBase + idx * 41) * 1.1).toFixed(2)}s`,
+            scale: (0.82 + (seededUnit(particleSeedBase + idx * 53) * 0.36)).toFixed(2)
+        })),
+        [particleSeedBase]
     );
     const appBase = `${window.location.origin}${import.meta.env.BASE_URL || '/'}`;
     const joinUrl = `${appBase}?room=${roomCode}`;
@@ -3267,12 +3477,31 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                         ))}
                     </div>
-                    <div className="absolute top-8 md:top-10 2xl:top-12 left-1/2 -translate-x-1/2 text-xs md:text-sm font-bold tracking-[0.25em] md:tracking-[0.6em] text-white/70 uppercase">Lights Up - Sway</div>
+                    <div className="absolute top-6 md:top-8 2xl:top-10 left-1/2 -translate-x-1/2 text-center px-3">
+                        <div className="text-xs md:text-sm font-bold tracking-[0.25em] md:tracking-[0.55em] text-white/80 uppercase">Lighter Wave</div>
+                        <div className="mt-1 text-[11px] md:text-xs uppercase tracking-[0.18em] text-amber-100/90">Raise phones like zippos and sway with the chorus</div>
+                    </div>
                     <div className="absolute top-4 right-4 md:top-6 md:right-6 bg-black/65 border border-pink-300/40 rounded-2xl px-3 py-2 md:px-4 md:py-3 text-right min-w-[190px]">
                         <div className="text-xs md:text-sm uppercase tracking-[0.2em] text-pink-100">Singalong Glow</div>
                         <div className="mt-1 text-2xl md:text-3xl font-black text-white">{balladGlowScore}%</div>
                         <div className="mt-2 h-2 w-full bg-white/20 rounded-full overflow-hidden">
                             <div className="h-full bg-gradient-to-r from-pink-300 to-cyan-300 transition-all duration-500" style={{ width: `${balladGlowScore}%` }}></div>
+                        </div>
+                    </div>
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[min(92vw,940px)]">
+                        <div className="rounded-2xl border border-amber-300/25 bg-black/45 backdrop-blur px-4 py-3">
+                            <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] text-amber-100 mb-2 text-center">Audience Phone Lights</div>
+                            <div className="flex items-end justify-center gap-1.5 md:gap-2">
+                                {balladPhoneLights.map((light) => (
+                                    <div
+                                        key={light.id}
+                                        className="relative w-6 h-10 md:w-7 md:h-12 rounded-md md:rounded-lg border border-white/25 bg-black/50 overflow-visible"
+                                        style={{ transform: `translateY(${light.offsetPx}px)` }}
+                                    >
+                                        <div className="ballad-mini-flame" style={{ animationDelay: light.delay, animationDuration: light.duration, transform: `translateX(-50%) scale(${light.scale})` }}></div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                     {balladLights.slice(0, 4).map((light, idx) => (
@@ -3299,39 +3528,73 @@ const PublicTV = ({ roomCode }) => {
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,59,120,0.15),transparent_55%)]"></div>
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(255,140,0,0.1),transparent_60%)]"></div>
                     </div>
-                <div className="absolute inset-0 z-[85] pointer-events-none flex flex-col items-center justify-between py-4 md:py-6 2xl:py-8">
-                        <div className="flex flex-col items-center gap-2">
-                            <div className={`${motionSafeFx ? 'text-4xl md:text-6xl' : 'text-[clamp(2.5rem,9vw,6rem)] 2xl:text-8xl'} font-bebas text-transparent bg-clip-text bg-gradient-to-t from-yellow-400 via-orange-500 to-red-600 drop-shadow-[0_0_30px_rgba(255,100,0,0.8)] ${motionSafeFx ? '' : 'animate-pulse'}`}>GUITAR SOLO!</div>
-                            <div className="bg-black/60 border border-yellow-300/35 rounded-full px-4 py-1.5 md:px-5 md:py-2 text-center min-w-[220px]">
-                                <div className="text-[11px] md:text-xs uppercase tracking-[0.18em] text-yellow-100">Strum Power</div>
-                                <div className="mt-1 text-xl md:text-2xl font-black text-white">{guitarEngagementScore}%</div>
-                                <div className="mt-1.5 h-2 w-full bg-white/20 rounded-full overflow-hidden">
-                                    <div className="h-full bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-400 transition-all duration-300" style={{ width: `${guitarEngagementScore}%` }}></div>
+                    <div className="absolute inset-0 z-[85] pointer-events-none flex flex-col justify-between py-4 md:py-6 2xl:py-8">
+                        <div className="px-4 md:px-8">
+                            <div className="mx-auto max-w-[1080px] flex flex-col md:flex-row md:items-start md:justify-between gap-3 md:gap-4">
+                                <div className="min-w-0">
+                                    <div className={`${motionSafeFx ? 'text-3xl md:text-5xl' : 'text-[clamp(2.4rem,8.6vw,5.5rem)]'} font-bebas text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 drop-shadow-[0_0_26px_rgba(255,120,0,0.8)] ${motionSafeFx ? '' : 'animate-pulse'}`}>GUITAR VIBE SYNC</div>
+                                    <div className="text-xs md:text-sm uppercase tracking-[0.2em] text-yellow-100/90">Keep the sync orb above the ground line.</div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <div className="bg-black/65 border border-yellow-300/35 rounded-full px-3 py-1 text-[11px] md:text-xs uppercase tracking-[0.16em] text-yellow-100">Teamwork x{guitarTeamworkMultiplier.toFixed(1)}</div>
+                                        <div className="bg-black/65 border border-cyan-300/35 rounded-full px-3 py-1 text-[11px] md:text-xs uppercase tracking-[0.16em] text-cyan-100">Streak {guitarStreakSeconds}s</div>
+                                        <div className="bg-black/65 border border-fuchsia-300/35 rounded-full px-3 py-1 text-[11px] md:text-xs uppercase tracking-[0.16em] text-fuchsia-100">{guitarActiveCount} Active</div>
+                                    </div>
+                                </div>
+                                <div className="bg-black/65 border border-white/20 rounded-2xl px-4 py-3 min-w-[220px] md:min-w-[280px]">
+                                    <div className="flex items-center justify-between gap-3 text-[11px] md:text-xs uppercase tracking-[0.2em] text-zinc-200">
+                                        <span>Sync Power</span>
+                                        <span className="font-black text-white">{guitarSyncPower}%</span>
+                                    </div>
+                                    <div className="mt-2 h-2.5 w-full bg-white/20 rounded-full overflow-hidden border border-white/20">
+                                        <div className="h-full bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-400 transition-all duration-200" style={{ width: `${guitarSyncPower}%` }}></div>
+                                    </div>
+                                    <div className="mt-2 flex items-center justify-between text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-zinc-200">
+                                        <span>Accuracy {guitarSyncAccuracy}%</span>
+                                        <span>Drops {Number(guitarSyncState?.drops || 0)}</span>
+                                    </div>
+                                    <div className="mt-1 text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-zinc-300">Energy {guitarEngagementScore}%</div>
                                 </div>
                             </div>
                         </div>
-                        <div className="flex justify-center pointer-events-none w-full px-3 md:px-6">
-                            <div className="bg-black/60 border border-white/10 rounded-2xl md:rounded-3xl px-4 py-3 md:px-6 md:py-5 2xl:px-8 2xl:py-6 backdrop-blur-md min-w-0 w-full max-w-[90vw] 2xl:min-w-[60%] 2xl:max-w-[80vw]">
-                                <div className="text-sm text-zinc-300 mb-4 text-center tracking-[0.3em] uppercase">Top Strummers</div>
-                                <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 2xl:gap-5">
-                                    {guitarLeaders.length === 0 && (
-                                        <div className="text-zinc-400 text-sm">Start strumming to appear here.</div>
-                                    )}
-                                    {guitarLeaders.map(p => {
-                                        const max = Math.max(1, ...guitarLeaders.map(v=>v.guitarHits || 0));
-                                        const scale = 1 + Math.min(0.9, (p.guitarHits || 0) / max * 0.9);
-                                        return (
-                                            <div key={p.uid} className="flex items-center gap-2 md:gap-3 bg-black/70 px-3 py-1.5 md:px-4 md:py-2 rounded-full border border-white/15 shadow-lg transition-transform duration-200 max-w-full" style={{ transform: `scale(${scale})` }}>
-                                                <div className="text-2xl md:text-4xl">{p.avatar}</div>
-                                                <div className="text-white font-bold text-sm md:text-lg truncate max-w-[26vw] md:max-w-[32vw]">{p.name}</div>
-                                                <div className="text-yellow-400 font-mono text-sm md:text-lg ml-1 md:ml-2">{p.guitarHits || 0}</div>
+                        <div className="w-full px-3 md:px-6 pb-2 md:pb-4">
+                            <div className="mx-auto max-w-[1220px] grid grid-cols-1 lg:grid-cols-[210px_minmax(0,1fr)] gap-3 md:gap-4 items-end">
+                                <div className="bg-black/65 border border-white/15 rounded-2xl p-3 md:p-4 backdrop-blur-md">
+                                    <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] text-zinc-300 text-center">Sync Orb</div>
+                                    <div className="relative mx-auto mt-2 h-[176px] w-[104px] rounded-2xl border border-white/20 bg-gradient-to-b from-white/5 to-black/50 overflow-hidden">
+                                        <div className="absolute inset-x-2 bottom-[10%] border-t-2 border-red-300/70"></div>
+                                        <div className="absolute left-1/2 -translate-x-1/2 bottom-[2%] text-[10px] uppercase tracking-[0.2em] text-red-100">Ground</div>
+                                        <div className={`absolute left-1/2 -translate-x-1/2 transition-all duration-150 ${motionSafeFx ? '' : 'animate-pulse'}`} style={{ bottom: `${guitarOrbBottomPct}%` }}>
+                                            <div className="h-12 w-12 md:h-14 md:w-14 rounded-full border border-yellow-300/65 bg-gradient-to-br from-yellow-300 via-orange-400 to-pink-500 shadow-[0_0_28px_rgba(251,146,60,0.65)] flex items-center justify-center text-black text-xl md:text-2xl">
+                                                {EMOJI.guitar}
                                             </div>
-                                        );
-                                    })}
+                                        </div>
+                                    </div>
+                                    <div className="mt-2 text-[10px] md:text-[11px] uppercase tracking-[0.16em] text-zinc-200 text-center">Do not let it touch the line</div>
+                                </div>
+                                <div className="bg-black/60 border border-white/10 rounded-2xl md:rounded-3xl px-4 py-3 md:px-6 md:py-5 2xl:px-8 2xl:py-6 backdrop-blur-md min-w-0">
+                                    <div className="flex items-center justify-between gap-3 mb-3 md:mb-4">
+                                        <div className="text-sm text-zinc-200 tracking-[0.28em] uppercase">Top Strummers</div>
+                                        <div className="text-[11px] md:text-xs uppercase tracking-[0.16em] text-zinc-300">Session hits {guitarSessionTotalHits}</div>
+                                    </div>
+                                    <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 2xl:gap-5">
+                                        {guitarLeaders.length === 0 && (
+                                            <div className="text-zinc-400 text-sm">Start strumming to appear here.</div>
+                                        )}
+                                        {guitarLeaders.map((p) => {
+                                            const scale = 1 + Math.min(0.9, (p.guitarHits || 0) / guitarLeaderMaxHits * 0.9);
+                                            return (
+                                                <div key={p.uid} className="flex items-center gap-2 md:gap-3 bg-black/70 px-3 py-1.5 md:px-4 md:py-2 rounded-full border border-white/15 shadow-lg transition-transform duration-200 max-w-full" style={{ transform: `scale(${scale})` }}>
+                                                    <div className="text-2xl md:text-4xl">{p.avatar}</div>
+                                                    <div className="text-white font-bold text-sm md:text-lg truncate max-w-[26vw] md:max-w-[32vw]">{p.name}</div>
+                                                    <div className="text-yellow-400 font-mono text-sm md:text-lg ml-1 md:ml-2">{p.guitarHits || 0}</div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                </div>
+                    </div>
                 </>
             )}
             

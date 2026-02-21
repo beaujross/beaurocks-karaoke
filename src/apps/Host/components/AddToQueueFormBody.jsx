@@ -7,6 +7,8 @@ const AddToQueueFormBody = ({
     quickAddOnResultClick,
     setQuickAddOnResultClick,
     results,
+    queueSearchSourceNote,
+    queueSearchNoResultHint,
     getResultRowKey,
     quickAddLoadingKey,
     handleResultClick,
@@ -32,6 +34,11 @@ const AddToQueueFormBody = ({
     <div className="mt-2 pr-1">
         <div className="relative mb-2 z-30">
             <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} className={`${styles.input} py-2 text-sm`} placeholder="Search Local + YouTube + Apple Music..."/>
+            {queueSearchSourceNote && (
+                <div className="mt-2 text-[11px] text-cyan-200 bg-cyan-500/10 border border-cyan-400/25 rounded px-2 py-1">
+                    {queueSearchSourceNote}
+                </div>
+            )}
             <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-zinc-400">
                 <label className="inline-flex items-center gap-2 cursor-pointer select-none">
                     <input
@@ -57,7 +64,7 @@ const AddToQueueFormBody = ({
                                         onClick={() => handleResultClick(r, idx)}
                                         className="p-2 hover:bg-zinc-800 text-xs flex gap-3 items-center border-b border-white/5 cursor-pointer"
                                     >
-                                        <div className="w-8 h-8 flex items-center justify-center bg-zinc-800 rounded">
+                                        <div className="w-12 h-12 flex items-center justify-center bg-zinc-800 rounded overflow-hidden flex-shrink-0">
                                             {r.source === 'local' ? (
                                                 <i className="fa-solid fa-hard-drive text-[#00C4D9] text-lg"></i>
                                             ) : r.source === 'youtube' ? (
@@ -69,9 +76,28 @@ const AddToQueueFormBody = ({
                                                 <img src={r.artworkUrl100} className="w-12 h-12 rounded"/>
                                             )}
                                         </div>
-                                        <div>
+                                        <div className="min-w-0">
                                             <div className="font-bold text-white text-base">{r.trackName}</div>
                                             <div className="text-zinc-400 text-sm">{r.artistName}</div>
+                                            <div className="flex items-center gap-1.5 mt-1">
+                                                <span className={`px-1.5 py-0.5 rounded-full border text-[10px] uppercase tracking-[0.08em] ${
+                                                    r.source === 'itunes'
+                                                        ? 'border-pink-300/40 bg-pink-500/10 text-pink-100'
+                                                        : r.source === 'youtube'
+                                                            ? 'border-red-300/40 bg-red-500/10 text-red-100'
+                                                            : 'border-cyan-300/40 bg-cyan-500/10 text-cyan-100'
+                                                }`}>
+                                                    {r.source === 'itunes' ? 'Apple' : r.source === 'youtube' ? 'YouTube' : 'Local'}
+                                                </span>
+                                                {r.source === 'youtube' && (
+                                                    <span className={`px-1.5 py-0.5 rounded-full border text-[10px] uppercase tracking-[0.08em] ${r.playable === false ? 'border-rose-300/40 bg-rose-500/10 text-rose-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
+                                                        {r.playable === false ? 'Unverified' : 'Playable'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {!!r.sourceDetail && (
+                                                <div className="text-[10px] text-zinc-500 truncate max-w-[320px]">{r.sourceDetail}</div>
+                                            )}
                                         </div>
                                         <div className="ml-auto flex items-center gap-2 text-xs uppercase tracking-widest text-zinc-400">
                                             <span className="px-2 py-1 rounded-full border border-white/10 bg-black/40">
@@ -83,7 +109,9 @@ const AddToQueueFormBody = ({
                                 );
                             })()
                         )) : (
-                            <div className="host-search-helper text-center py-3 text-zinc-500 text-xs uppercase tracking-widest">No results yet</div>
+                            <div className="host-search-helper text-center py-3 text-zinc-500 text-xs uppercase tracking-widest">
+                                {queueSearchNoResultHint || 'No results yet'}
+                            </div>
                         )}
                     </div>
                 </div>

@@ -15,6 +15,7 @@ const {
   resolveUsageMeterQuota,
   buildUsageMeterSummary,
 } = require("./lib/entitlementsUsage");
+const REACTION_POINT_COSTS = require("./lib/reactionPointCosts.json");
 
 admin.initializeApp();
 const APP_ID = "bross-app";
@@ -43,8 +44,33 @@ const GEMINI_LYRICS_OUTPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_OUTPUT_
 const rateState = new Map();
 const GLOBAL_LIMITS = { perMinute: 120, perHour: 1000 };
 const DEFAULT_LIMITS = { perMinute: 30, perHour: 300 };
+const youtubeSearchCache = new Map();
+const YOUTUBE_SEARCH_CACHE_TTL_MS = 30000;
+const YOUTUBE_SEARCH_CACHE_MAX_KEYS = 120;
 
 const nowMs = () => Date.now();
+
+const readYoutubeSearchCache = (cacheKey = "") => {
+  if (!cacheKey) return null;
+  const entry = youtubeSearchCache.get(cacheKey);
+  if (!entry) return null;
+  if (Number(entry.expiresAtMs || 0) <= nowMs()) {
+    youtubeSearchCache.delete(cacheKey);
+    return null;
+  }
+  return Array.isArray(entry.items) ? entry.items : null;
+};
+
+const writeYoutubeSearchCache = (cacheKey = "", items = []) => {
+  if (!cacheKey) return;
+  youtubeSearchCache.set(cacheKey, {
+    items: Array.isArray(items) ? items : [],
+    expiresAtMs: nowMs() + YOUTUBE_SEARCH_CACHE_TTL_MS,
+  });
+  if (youtubeSearchCache.size <= YOUTUBE_SEARCH_CACHE_MAX_KEYS) return;
+  const oldest = youtubeSearchCache.keys().next().value;
+  if (oldest) youtubeSearchCache.delete(oldest);
+};
 
 const getClientIp = (req) => {
   const forwarded = req.get("x-forwarded-for");
@@ -2115,6 +2141,304 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.reconcilePerformanceRecap = onCall({ cors: true }, async (request) => {
+  const callerUid = requireAuth(request);
+  const data = request.data || {};
+  const roomCode = normalizeRoomCode(data.roomCode || "");
+  const performanceId = String(data.performanceId || "").trim();
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (!performanceId) {
+    throw new HttpsError("invalid-argument", "performanceId is required.");
+  }
+
+  const rootRef = getRootRef();
+  await ensureRoomHostAccess({
+    rootRef,
+    roomCode,
+    callerUid,
+    deniedMessage: "Only room hosts can reconcile recap data.",
+  });
+
+  const now = Date.now();
+  const fallbackEndedAtMs = clampNumber(data.endedAtMs || now, 0, 4102444800000, now);
+  const fallbackStartedAtMs = clampNumber(data.startedAtMs || 0, 0, 4102444800000, 0);
+  const fallbackHypeScore = Math.max(0, Math.round(Number(data.fallbackHypeScore || 0)));
+  const fallbackApplauseScore = Math.max(0, Math.round(Number(data.fallbackApplauseScore || 0)));
+  const fallbackHostBonus = Math.max(0, Math.round(Number(data.fallbackHostBonus || 0)));
+
+  const songRef = rootRef.collection("karaoke_songs").doc(performanceId);
+  const songSnap = await songRef.get();
+  const songData = songSnap.exists ? (songSnap.data() || {}) : {};
+  const songStartedAtMs = toEpochMs(songData?.performingStartedAt) || toEpochMs(songData?.startedAt) || toEpochMs(songData?.timestamp);
+  const windowStartMs = fallbackStartedAtMs || songStartedAtMs || Math.max(0, fallbackEndedAtMs - (12 * 60 * 1000));
+  const windowEndMs = Math.max(windowStartMs, fallbackEndedAtMs);
+
+  let reactionDocs = [];
+  let reactionSource = "performance_id";
+  try {
+    const snap = await rootRef.collection("reactions").where("performanceId", "==", performanceId).get();
+    reactionDocs = snap.docs;
+  } catch (error) {
+    console.warn("reconcilePerformanceRecap: performanceId query failed", error);
+  }
+  if (!reactionDocs.length) {
+    reactionSource = "room_window_indexed";
+    try {
+      reactionDocs = await fetchRoomReactionsInWindow({
+        rootRef,
+        roomCode,
+        windowStartMs,
+        windowEndMs,
+      });
+    } catch (error) {
+      reactionSource = "room_window_fallback";
+      console.warn("reconcilePerformanceRecap: indexed room window query failed", error);
+      try {
+        const fallbackSnap = await rootRef
+          .collection("reactions")
+          .where("roomCode", "==", roomCode)
+          .orderBy("timestamp", "desc")
+          .limit(RECAP_WINDOW_QUERY_MAX_DOCS)
+          .get();
+        reactionDocs = fallbackSnap.docs;
+      } catch (legacyError) {
+        console.warn("reconcilePerformanceRecap: ordered fallback query failed", legacyError);
+        const legacySnap = await rootRef
+          .collection("reactions")
+          .where("roomCode", "==", roomCode)
+          .limit(RECAP_WINDOW_QUERY_MAX_DOCS)
+          .get();
+        reactionDocs = legacySnap.docs;
+      }
+    }
+  }
+
+  const reactionTotals = {};
+  const contributionByParticipant = new Map();
+  let eventCount = 0;
+  let pointWeightedHype = 0;
+  let nonPointCrowdActions = 0;
+  let strumTotal = 0;
+  let strobeTapTotal = 0;
+  let stormLayerTotal = 0;
+  let lobbyPlayTotal = 0;
+
+  reactionDocs.forEach((docSnap) => {
+    const entry = docSnap.data() || {};
+    const entryRoomCode = normalizeRoomCode(entry.roomCode || "");
+    if (entryRoomCode && entryRoomCode !== roomCode) return;
+
+    const entryPerformanceId = String(entry.performanceId || entry.songId || "").trim();
+    const timestampMs = toEpochMs(entry.timestamp);
+    const inWindow = timestampMs > 0 && timestampMs >= (windowStartMs - RECAP_WINDOW_LEAD_MS) && timestampMs <= (windowEndMs + RECAP_WINDOW_TAIL_MS);
+    const hasExplicitPerformance = !!entryPerformanceId;
+    const matchesPerformance = entryPerformanceId === performanceId;
+    if (!matchesPerformance && hasExplicitPerformance) return;
+    if (!matchesPerformance && !inWindow) return;
+
+    const type = normalizeReactionType(entry.type);
+    if (!type) return;
+    const count = Math.max(1, Math.min(600, Math.round(Number(entry.count || 1))));
+    const multiplier = Math.max(1, Math.min(8, Number(entry.multiplier || 1)));
+    const uid = String(entry.uid || "").trim();
+    const participantKey = uid
+      || String(entry.userName || entry.user || "guest").trim().toLowerCase()
+      || `anon_${docSnap.id}`;
+    if (!contributionByParticipant.has(participantKey)) {
+      contributionByParticipant.set(participantKey, {
+        uid: uid || null,
+        userName: String(entry.userName || entry.user || "Guest").trim() || "Guest",
+        avatar: String(entry.avatar || "").trim() || null,
+        pointsGifted: 0,
+        actions: 0,
+        strums: 0,
+        strobeTaps: 0,
+        stormHits: 0,
+      });
+    }
+    const participant = contributionByParticipant.get(participantKey);
+    participant.actions += count;
+
+    eventCount += 1;
+    reactionTotals[type] = (reactionTotals[type] || 0) + count;
+    const basePoints = Number(RECAP_REACTION_POINT_COSTS[type] || 0);
+    if (basePoints > 0) {
+      const weighted = Math.round(basePoints * count * multiplier);
+      pointWeightedHype += weighted;
+      participant.pointsGifted += weighted;
+    } else {
+      nonPointCrowdActions += count;
+    }
+    if (type === "strum") {
+      strumTotal += count;
+      participant.strums += count;
+    } else if (type === "strobe_tap") {
+      strobeTapTotal += count;
+      participant.strobeTaps += count;
+    } else if (type === "storm_layer") {
+      stormLayerTotal += count;
+      participant.stormHits += count;
+    } else if (type.startsWith("lobby_play_")) {
+      lobbyPlayTotal += count;
+    }
+  });
+
+  const roomUsersSnap = await rootRef.collection("room_users").where("roomCode", "==", roomCode).get();
+  let roomUserHype = 0;
+  roomUsersSnap.docs.forEach((docSnap) => {
+    const user = docSnap.data() || {};
+    if (String(user.lastPerformanceId || "") !== performanceId) return;
+    const uid = String(user.uid || "").trim();
+    const userName = String(user.name || "Guest").trim() || "Guest";
+    const key = uid || userName.toLowerCase();
+    const points = Math.max(0, Math.round(Number(user.performancePointsGifted || 0)));
+    roomUserHype += points;
+    if (!contributionByParticipant.has(key)) {
+      contributionByParticipant.set(key, {
+        uid: uid || null,
+        userName,
+        avatar: String(user.avatar || "").trim() || null,
+        pointsGifted: points,
+        actions: 0,
+        strums: 0,
+        strobeTaps: 0,
+        stormHits: 0,
+      });
+      return;
+    }
+    const current = contributionByParticipant.get(key);
+    current.uid = current.uid || uid || null;
+    current.userName = current.userName || userName;
+    current.avatar = current.avatar || String(user.avatar || "").trim() || null;
+    current.pointsGifted = Math.max(current.pointsGifted, points);
+  });
+
+  const crowdSignalScore = Math.round(
+    (nonPointCrowdActions * 1.4)
+    + (strumTotal * 1.8)
+    + (strobeTapTotal * 1.1)
+    + (stormLayerTotal * 1.5)
+    + (lobbyPlayTotal * 0.75)
+  );
+  const resolvedHypeScore = Math.max(
+    fallbackHypeScore,
+    Math.round(pointWeightedHype),
+    Math.round(roomUserHype),
+    crowdSignalScore
+  );
+  const participantTotals = [...contributionByParticipant.values()]
+    .sort((a, b) => (
+      Number(b.pointsGifted || 0) - Number(a.pointsGifted || 0)
+      || Number(b.actions || 0) - Number(a.actions || 0)
+    ));
+  const topFan = participantTotals[0] && (participantTotals[0].pointsGifted > 0 || participantTotals[0].actions > 0)
+    ? {
+      name: participantTotals[0].userName,
+      avatar: participantTotals[0].avatar || null,
+      pointsGifted: Number(participantTotals[0].pointsGifted || 0),
+    }
+    : null;
+
+  const topStrummer = [...participantTotals].sort((a, b) => Number(b.strums || 0) - Number(a.strums || 0))[0] || null;
+  const topStrobe = [...participantTotals].sort((a, b) => Number(b.strobeTaps || 0) - Number(a.strobeTaps || 0))[0] || null;
+  const vibeStats = {
+    guitar: strumTotal > 0
+      ? {
+        totalHits: strumTotal,
+        top: topStrummer && topStrummer.strums > 0
+          ? {
+            name: topStrummer.userName,
+            avatar: topStrummer.avatar || null,
+            hits: Number(topStrummer.strums || 0),
+          }
+          : null,
+      }
+      : null,
+    strobe: strobeTapTotal > 0
+      ? {
+        totalTaps: strobeTapTotal,
+        top: topStrobe && topStrobe.strobeTaps > 0
+          ? {
+            name: topStrobe.userName,
+            avatar: topStrobe.avatar || null,
+            taps: Number(topStrobe.strobeTaps || 0),
+          }
+          : null,
+      }
+      : null,
+    storm: stormLayerTotal > 0
+      ? {
+        totalHits: stormLayerTotal,
+      }
+      : null,
+  };
+
+  const ledgerId = buildLedgerDocId(roomCode, performanceId);
+  await rootRef.collection("performance_event_ledgers").doc(ledgerId).set({
+    roomCode,
+    performanceId,
+    songDocId: performanceId,
+    songId: String(songData.songId || "").trim() || null,
+    singerUid: String(songData.singerUid || data.singerUid || "").trim() || null,
+    singerName: String(songData.singerName || data.singerName || "").trim() || null,
+    computedByUid: callerUid,
+    computedAt: admin.firestore.FieldValue.serverTimestamp(),
+    version: 1,
+    source: reactionSource,
+    windowStartMs,
+    windowEndMs,
+    eventCount,
+    reactionTotals,
+    aggregate: {
+      pointWeightedHype,
+      roomUserHype,
+      crowdSignalScore,
+      resolvedHypeScore,
+      applauseScore: fallbackApplauseScore,
+      hostBonus: fallbackHostBonus,
+      participantCount: participantTotals.length,
+      nonPointCrowdActions,
+      strumTotal,
+      strobeTapTotal,
+      stormLayerTotal,
+      lobbyPlayTotal,
+    },
+    participants: participantTotals.slice(0, 18).map((entry) => ({
+      uid: entry.uid || null,
+      userName: entry.userName,
+      avatar: entry.avatar || null,
+      pointsGifted: Number(entry.pointsGifted || 0),
+      actions: Number(entry.actions || 0),
+      strums: Number(entry.strums || 0),
+      strobeTaps: Number(entry.strobeTaps || 0),
+      stormHits: Number(entry.stormHits || 0),
+    })),
+    topFan: topFan || null,
+    vibeStats,
+  }, { merge: true });
+
+  return {
+    ok: true,
+    roomCode,
+    performanceId,
+    source: reactionSource,
+    windowStartMs,
+    windowEndMs,
+    eventCount,
+    reactionTotals,
+    resolved: {
+      hypeScore: resolvedHypeScore,
+      applauseScore: fallbackApplauseScore,
+      hostBonus: fallbackHostBonus,
+    },
+    topFan,
+    vibeStats,
+    participantCount: participantTotals.length,
+  };
+});
+
 exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_search");
   const uid = requireAuth(request);
@@ -2123,6 +2447,13 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
   const query = request.data?.query || "";
   ensureString(query, "query");
   const maxResults = clampNumber(request.data?.maxResults || 10, 1, 10, 10);
+  const playableOnly = request.data?.playableOnly !== false;
+  const normalizedQuery = String(query || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const cacheKey = `${normalizedQuery}|${maxResults}|${playableOnly ? "playable" : "all"}`;
+  const cachedItems = readYoutubeSearchCache(cacheKey);
+  if (cachedItems) {
+    return { items: cachedItems, cached: true };
+  }
   const apiKey = YOUTUBE_API_KEY.value();
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
@@ -2140,13 +2471,64 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     throw new HttpsError("unavailable", `YouTube search failed: ${text}`);
   }
   const data = await res.json();
-  const items = (data.items || []).map((item) => ({
+  const baseItems = (data.items || []).map((item) => ({
     id: item.id?.videoId || item.id,
     title: item.snippet?.title || "",
     channelTitle: item.snippet?.channelTitle || "",
     thumbnails: item.snippet?.thumbnails || {},
-  }));
-  return { items };
+  })).filter((item) => !!item.id);
+  if (!baseItems.length) {
+    return { items: [] };
+  }
+
+  await reserveOrganizationUsageUnits({
+    orgId: entitlements.orgId,
+    entitlements,
+    meterId: "youtube_data_request",
+    units: 1,
+  });
+  const ids = baseItems.map((item) => item.id).slice(0, 50);
+  const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,contentDetails&id=${ids.join(",")}`;
+  const detailsRes = await fetch(detailsUrl);
+  if (!detailsRes.ok) {
+    const text = await detailsRes.text();
+    throw new HttpsError("unavailable", `YouTube playability check failed: ${text}`);
+  }
+  const details = await detailsRes.json();
+  const statusById = new Map();
+  (details.items || []).forEach((item) => {
+    const id = String(item.id || "").trim();
+    if (!id) return;
+    const embeddable = !!item.status?.embeddable;
+    const uploadStatus = String(item.status?.uploadStatus || "").toLowerCase();
+    const privacyStatus = String(item.status?.privacyStatus || "").toLowerCase();
+    const isUploadReady = uploadStatus === "processed" || uploadStatus === "uploaded";
+    const isAllowedPrivacy = privacyStatus === "public" || privacyStatus === "unlisted";
+    const playable = embeddable && isUploadReady && isAllowedPrivacy;
+    const durationSec = parseIsoDuration(item.contentDetails?.duration || "");
+    statusById.set(id, {
+      embeddable,
+      uploadStatus,
+      privacyStatus,
+      durationSec,
+      playable,
+    });
+  });
+  const items = baseItems
+    .map((item) => {
+      const status = statusById.get(item.id) || {};
+      return {
+        ...item,
+        embeddable: !!status.embeddable,
+        uploadStatus: status.uploadStatus || "",
+        privacyStatus: status.privacyStatus || "",
+        durationSec: Number(status.durationSec || 0),
+        playable: !!status.playable,
+      };
+    })
+    .filter((item) => (playableOnly ? item.playable : true));
+  writeYoutubeSearchCache(cacheKey, items);
+  return { items, cached: false };
 });
 
 exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
@@ -2231,6 +2613,70 @@ const parseIsoDuration = (value = "") => {
   const minutes = parseInt(match[2] || "0", 10);
   const seconds = parseInt(match[3] || "0", 10);
   return hours * 3600 + minutes * 60 + seconds;
+};
+
+const RECAP_REACTION_POINT_COSTS = Object.freeze({ ...REACTION_POINT_COSTS });
+const RECAP_WINDOW_LEAD_MS = 12000;
+const RECAP_WINDOW_TAIL_MS = 20000;
+const RECAP_WINDOW_QUERY_PAGE_SIZE = 1000;
+const RECAP_WINDOW_QUERY_MAX_DOCS = 12000;
+
+const toEpochMs = (value) => {
+  if (!value) return 0;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value?.toMillis === "function") {
+    const ms = Number(value.toMillis());
+    return Number.isFinite(ms) ? ms : 0;
+  }
+  if (typeof value?.seconds === "number") {
+    const nanos = Number(value?.nanoseconds || 0);
+    return (Number(value.seconds) * 1000) + Math.floor(nanos / 1000000);
+  }
+  if (value instanceof Date) {
+    const ms = Number(value.getTime());
+    return Number.isFinite(ms) ? ms : 0;
+  }
+  return 0;
+};
+
+const normalizeReactionType = (value = "") => String(value || "").trim().toLowerCase();
+
+const buildLedgerDocId = (roomCode = "", performanceId = "") =>
+  `${String(roomCode || "").trim().toUpperCase()}_${String(performanceId || "").trim()}`
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 140);
+
+const fetchRoomReactionsInWindow = async ({
+  rootRef,
+  roomCode,
+  windowStartMs,
+  windowEndMs,
+  maxDocs = RECAP_WINDOW_QUERY_MAX_DOCS,
+}) => {
+  const safeStart = Math.max(0, Number(windowStartMs || 0) - RECAP_WINDOW_LEAD_MS);
+  const safeEnd = Math.max(safeStart, Number(windowEndMs || 0) + RECAP_WINDOW_TAIL_MS);
+  const lowerTs = admin.firestore.Timestamp.fromMillis(safeStart);
+  const upperTs = admin.firestore.Timestamp.fromMillis(safeEnd);
+  const collected = [];
+  let cursor = null;
+  while (collected.length < maxDocs) {
+    const remaining = maxDocs - collected.length;
+    const pageSize = Math.min(RECAP_WINDOW_QUERY_PAGE_SIZE, remaining);
+    let q = rootRef
+      .collection("reactions")
+      .where("roomCode", "==", roomCode)
+      .where("timestamp", ">=", lowerTs)
+      .where("timestamp", "<=", upperTs)
+      .orderBy("timestamp", "asc")
+      .limit(pageSize);
+    if (cursor) q = q.startAfter(cursor);
+    const snap = await q.get();
+    if (snap.empty) break;
+    collected.push(...snap.docs);
+    cursor = snap.docs[snap.docs.length - 1];
+    if (snap.size < pageSize) break;
+  }
+  return collected;
 };
 
 exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {

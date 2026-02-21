@@ -101,6 +101,13 @@ import {
     recordGroupMoment,
     shouldAllowGroupMoment
 } from './partyOrchestrator';
+import {
+    AUTO_DJ_EVENTS,
+    createAutoDjSequenceState,
+    transitionAutoDjSequenceState,
+    deriveAutoDjStepItems,
+    describeAutoDjSequenceState
+} from './autoDjStateMachine';
 
 // --- CONSTANTS & CONFIG ---
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || '';
@@ -796,22 +803,66 @@ const parseAppleMusicPlaylistId = (value = '') => {
     return trimmed;
 };
 
-const normalizeYouTubeSearchItems = (rawItems = []) => (
+const normalizeYouTubeSearchItems = (rawItems = [], { reason = 'youtube_search' } = {}) => (
     (rawItems || [])
         .map((item) => {
             const videoId = String(item?.id || '').trim();
             if (!videoId) return null;
+            const playable = item?.playable !== false;
+            if (!playable) return null;
+            const durationSec = Math.max(0, Math.round(Number(item?.durationSec || 0)));
             return {
                 source: 'youtube',
                 videoId,
                 trackName: String(item?.title || 'YouTube Track').trim() || 'YouTube Track',
                 artistName: String(item?.channelTitle || item?.channel || 'YouTube').trim() || 'YouTube',
                 artworkUrl100: item?.thumbnails?.medium?.url || item?.thumbnails?.default?.url || '',
-                url: `https://www.youtube.com/watch?v=${videoId}`
+                url: `https://www.youtube.com/watch?v=${videoId}`,
+                durationSec,
+                playable: true,
+                sourceReason: reason,
+                sourceDetail: reason === 'apple_missing'
+                    ? 'Apple Music account not connected. Showing verified YouTube playable tracks.'
+                    : 'Verified YouTube playable track.'
             };
         })
         .filter(Boolean)
 );
+
+const annotateQueueSearchResults = (items = [], { sourceReason = '', sourceDetail = '' } = {}) => (
+    (Array.isArray(items) ? items : []).map((item) => ({
+        ...item,
+        sourceReason: item?.sourceReason || sourceReason || '',
+        sourceDetail: item?.sourceDetail || sourceDetail || ''
+    }))
+);
+
+const fetchYouTubeEmbeddableStatusMap = async (videoIds = [], { batchSize = 50, concurrency = 4 } = {}) => {
+    const ids = [...new Set((Array.isArray(videoIds) ? videoIds : []).map((id) => String(id || '').trim()).filter(Boolean))];
+    const statusMap = new Map();
+    if (!ids.length) return statusMap;
+    const safeBatchSize = Math.max(1, Math.min(50, Number(batchSize || 50)));
+    const workerCount = Math.max(1, Math.min(Number(concurrency || 4), Math.ceil(ids.length / safeBatchSize)));
+    let cursor = 0;
+    const workers = Array.from({ length: workerCount }, async () => {
+        while (cursor < ids.length) {
+            const start = cursor;
+            cursor += safeBatchSize;
+            const chunkIds = ids.slice(start, start + safeBatchSize);
+            if (!chunkIds.length) continue;
+            try {
+                const statusData = await callFunction('youtubeStatus', { ids: chunkIds });
+                (statusData?.items || []).forEach((entry) => {
+                    statusMap.set(entry.id, !!entry.embeddable);
+                });
+            } catch (error) {
+                hostLogger.warn('YouTube status chunk failed', error);
+            }
+        }
+    });
+    await Promise.all(workers);
+    return statusMap;
+};
 
 const mergeUniqueQueueSearchResults = (...groups) => {
     const merged = [];
@@ -2728,8 +2779,13 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
     const updateStatusRef = useRef(null);
     const mediaOverrideStopRef = useRef('');
     const commandInputRef = useRef(null);
+    const autoDjObservedSongRef = useRef('');
+    const autoDjObservedPerfTsRef = useRef(0);
     const [commandOpen, setCommandOpen] = useState(false);
     const [commandQuery, setCommandQuery] = useState('');
+    const [autoDjSequenceState, setAutoDjSequenceState] = useState(() => createAutoDjSequenceState());
+    const [queueSearchSourceNote, setQueueSearchSourceNote] = useState('');
+    const [queueSearchNoResultHint, setQueueSearchNoResultHint] = useState('');
     const essentialsMode = false;
     const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
     const hostDmMessages = chatMessages.filter((msg) => isDirectChatMessage(msg));
@@ -2752,6 +2808,17 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         () => Object.values(panelLayout || {}).filter(Boolean).length,
         [panelLayout]
     );
+    const autoDjStepItems = useMemo(
+        () => deriveAutoDjStepItems(autoDjSequenceState),
+        [autoDjSequenceState]
+    );
+    const autoDjSequenceSummary = useMemo(
+        () => describeAutoDjSequenceState(autoDjSequenceState),
+        [autoDjSequenceState]
+    );
+    const pushAutoDjEvent = useCallback((event, payload = {}) => {
+        setAutoDjSequenceState((prev) => transitionAutoDjSequenceState(prev, event, payload, nowMs()));
+    }, []);
     const runUiFeatureCheck = () => {
         if (typeof document === 'undefined') return;
         const missing = HOST_UI_FEATURE_CHECKLIST.filter((item) => !document.querySelector(item.selector));
@@ -2774,6 +2841,33 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         const timeout = setTimeout(() => setQuickAddNotice(null), 8000);
         return () => clearTimeout(timeout);
     }, [quickAddNotice, setQuickAddNotice]);
+    useEffect(() => {
+        if (autoDj) return;
+        autoDjObservedSongRef.current = '';
+        autoDjObservedPerfTsRef.current = 0;
+        setAutoDjSequenceState(createAutoDjSequenceState());
+    }, [autoDj]);
+    useEffect(() => {
+        if (!autoDj) return;
+        const songId = String(current?.id || '').trim();
+        if (!songId) return;
+        if (autoDjObservedSongRef.current === songId) return;
+        autoDjObservedSongRef.current = songId;
+        pushAutoDjEvent(AUTO_DJ_EVENTS.START, { songId });
+        pushAutoDjEvent(AUTO_DJ_EVENTS.STAGE_READY, { songId });
+    }, [autoDj, current?.id, pushAutoDjEvent]);
+    useEffect(() => {
+        if (!autoDj) return;
+        const perfTs = getTimestampMs(room?.lastPerformance?.timestamp);
+        if (!perfTs) return;
+        if (autoDjObservedPerfTsRef.current === perfTs) return;
+        autoDjObservedPerfTsRef.current = perfTs;
+        const completedSongId = String(room?.lastPerformance?.id || room?.lastPerformance?.songDocId || '').trim();
+        if (completedSongId) {
+            pushAutoDjEvent(AUTO_DJ_EVENTS.SCORING_COMPLETE, { songId: completedSongId });
+            pushAutoDjEvent(AUTO_DJ_EVENTS.TRANSITION_COMPLETE, { songId: completedSongId });
+        }
+    }, [autoDj, room?.lastPerformance?.timestamp, room?.lastPerformance?.id, room?.lastPerformance?.songDocId, pushAutoDjEvent]);
     useEffect(() => {
         if (!current) {
             mediaOverrideStopRef.current = '';
@@ -2957,39 +3051,62 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
 
     // Hybrid Search Logic
     useEffect(() => { 
-        if(searchQ.length < 3) { setResults([]); return; } 
+        if(searchQ.length < 3) {
+            setResults([]);
+            setQueueSearchSourceNote('');
+            setQueueSearchNoResultHint('');
+            return;
+        } 
         let controller;
         const t = setTimeout(async () => { 
             controller = new AbortController();
             const normalizedQuery = String(searchQ || '').trim();
             const shouldUseYouTubeFallback = !!searchSources.itunes && !appleMusicAuthorized;
             // 1. Local Search
-            const localMatches = searchSources.local
+            const localMatchesRaw = searchSources.local
                 ? localLibrary.filter(s =>
                     s.title.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
                     s.artist.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
                     (s.fileName || '').toLowerCase().includes(normalizedQuery.toLowerCase())
                 ).map(s => ({ ...s, source: 'local', trackName: s.title, artistName: s.artist, artworkUrl100: '' }))
                 : [];
-            const ytMatches = searchSources.youtube
+            const localMatches = annotateQueueSearchResults(localMatchesRaw, {
+                sourceReason: 'local_library',
+                sourceDetail: 'Room media library match.'
+            });
+            const ytMatchesRaw = searchSources.youtube
                 ? ytIndex.filter(s =>
                     s.trackName.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
                     s.artistName.toLowerCase().includes(normalizedQuery.toLowerCase())
                 )
                 : [];
+            const ytMatches = annotateQueueSearchResults(ytMatchesRaw.filter((entry) => entry?.playable === true), {
+                sourceReason: 'youtube_index',
+                sourceDetail: 'Indexed YouTube playlist match.'
+            });
             let liveYouTubeMatches = [];
             if (shouldUseYouTubeFallback) {
                 try {
                     const ytFallbackData = await callFunction('youtubeSearch', {
                         query: `${normalizedQuery} karaoke`,
-                        maxResults: 6
+                        maxResults: 6,
+                        playableOnly: true
                     });
-                    liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || []);
+                    liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
+                        reason: 'apple_missing'
+                    });
                 } catch (ytErr) {
                     hostLogger.debug('YouTube fallback search failed', ytErr);
                 }
             }
             const fallbackResults = mergeUniqueQueueSearchResults(localMatches, ytMatches, liveYouTubeMatches);
+            if (shouldUseYouTubeFallback) {
+                setQueueSearchSourceNote('Apple Music is not connected. Showing local + verified YouTube playable tracks.');
+                setQueueSearchNoResultHint('No playable YouTube tracks were found. Connect Apple Music or paste a direct playable URL.');
+            } else {
+                setQueueSearchSourceNote('');
+                setQueueSearchNoResultHint('No matching tracks yet. Try artist + song, or open YouTube search.');
+            }
 
             try { 
                 // 2. iTunes Search
@@ -2998,7 +3115,10 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     return;
                 }
                 const data = await callFunction('itunesSearch', { term: normalizedQuery, limit: 5 });
-                const itunesMatches = (data?.results || []).map(r => ({ ...r, source: 'itunes' }));
+                const itunesMatches = annotateQueueSearchResults((data?.results || []).map(r => ({ ...r, source: 'itunes' })), {
+                    sourceReason: 'apple_authorized',
+                    sourceDetail: 'Apple Music/iTunes search match.'
+                });
                 setResults(mergeUniqueQueueSearchResults(localMatches, ytMatches, itunesMatches)); 
             } catch(e) { 
                 if (e.name === 'AbortError') return;
@@ -3268,10 +3388,12 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
 
     async function updateStatus(id, status, options = {}) { 
         if(status==='performing') { 
+            pushAutoDjEvent(AUTO_DJ_EVENTS.START, { songId: id });
             const current = songs.find(x => x.status === 'performing');
             const allowedCurrentId = options?.allowCurrentId || null;
             if (current && current.id !== id && current.id !== allowedCurrentId) {
                 toast('Another singer is already on stage');
+                pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: id, error: 'stage_blocked_existing_performer' });
                 return;
             }
             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), {
@@ -3318,12 +3440,14 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                 });
             }
             logActivity(roomCode, s.singerName, `took the stage!`, EMOJI.mic);
+            pushAutoDjEvent(AUTO_DJ_EVENTS.STAGE_READY, { songId: id });
             return;
         }
         await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), { status }); 
         if(status==='performed') { 
             const s = songs.find(x=>x.id===id); 
             if(s) { 
+                pushAutoDjEvent(AUTO_DJ_EVENTS.APPLAUSE_RESULT, { songId: id });
                 const rankedFans = (() => {
                     if (!users?.length) return null;
                     const performanceId = s.id || null;
@@ -3345,7 +3469,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     (sum, fan) => sum + Math.max(0, Number(fan?.pointsGifted || 0)),
                     0
                 );
-                const vibeStats = (() => {
+                const localVibeStats = (() => {
                     const guitarSessionId = room?.guitarSessionId;
                     const strobeSessionId = room?.strobeSessionId;
                     const stats = { guitar: null, strobe: null };
@@ -3386,8 +3510,39 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     hostLogger.warn('Could not load latest song snapshot for recap; using in-memory fallback', error);
                 }
                 const latestHypeScore = Math.max(0, Math.round(Number(latestSong?.hypeScore || 0)));
-                const resolvedHypeScore = Math.max(latestHypeScore, Math.round(crowdGiftedPointsTotal));
                 const resolvedHostBonus = Math.max(0, Math.round(Number(latestSong?.hostBonus || 0)));
+                let reconciled = null;
+                try {
+                    const reconciledData = await callFunction('reconcilePerformanceRecap', {
+                        roomCode,
+                        performanceId: id,
+                        startedAtMs: getTimestampMs(latestSong?.performingStartedAt) || getTimestampMs(s?.performingStartedAt) || getTimestampMs(s?.timestamp),
+                        endedAtMs: nowMs(),
+                        fallbackHypeScore: latestHypeScore,
+                        fallbackApplauseScore: finalApplauseScore,
+                        fallbackHostBonus: resolvedHostBonus,
+                        singerUid: s?.singerUid || null,
+                        singerName: s?.singerName || ''
+                    });
+                    if (reconciledData?.ok) {
+                        reconciled = reconciledData;
+                    }
+                } catch (error) {
+                    hostLogger.warn('Performance recap reconciliation failed; using host-side fallback', error);
+                }
+                const resolvedHypeScore = Math.max(
+                    latestHypeScore,
+                    Math.round(crowdGiftedPointsTotal),
+                    Math.round(Number(reconciled?.resolved?.hypeScore || 0))
+                );
+                const resolvedTopFan = reconciled?.topFan
+                    ? {
+                        name: reconciled.topFan.name || 'Guest',
+                        avatar: reconciled.topFan.avatar || EMOJI.sparkle,
+                        pointsGifted: Math.max(0, Number(reconciled.topFan.pointsGifted || 0))
+                    }
+                    : topFan;
+                const resolvedVibeStats = reconciled?.vibeStats || localVibeStats;
                 if (resolvedHypeScore > latestHypeScore) {
                     try {
                         await updateDoc(songRef, { hypeScore: resolvedHypeScore });
@@ -3404,8 +3559,10 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     hostBonus: resolvedHostBonus,
                     timestamp: nowMs(),
                     albumArtUrl: latestSong?.albumArtUrl || s.albumArtUrl || '',
-                    topFan,
-                    vibeStats
+                    topFan: resolvedTopFan,
+                    vibeStats: resolvedVibeStats,
+                    recapLedgerSource: reconciled?.source || null,
+                    recapEventCount: Number(reconciled?.eventCount || 0)
                 };
                 await stopAppleMusic?.();
                 await updateRoom({
@@ -3420,6 +3577,8 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     appleMusicPlayback: null
                 });
                 await logPerformance(recapPayload);
+                pushAutoDjEvent(AUTO_DJ_EVENTS.SCORING_COMPLETE, { songId: id });
+                pushAutoDjEvent(AUTO_DJ_EVENTS.TRANSITION_COMPLETE, { songId: id });
                 logActivity(roomCode, s.singerName, `crushed ${s.songTitle}!`, EMOJI.star);
                 toast("Performance Finished"); 
             } 
@@ -3435,6 +3594,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
 
     const startApplauseSequence = useCallback(async ({ songId = '', autoFinalize = false } = {}) => {
         if (!songId) return;
+        pushAutoDjEvent(AUTO_DJ_EVENTS.APPLAUSE_STARTED, { songId });
         if (autoFinalize) {
             autoDjApplausePendingSongRef.current = songId;
             clearAutoDjApplauseFallback();
@@ -3442,9 +3602,11 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                 const pendingSongId = autoDjApplausePendingSongRef.current;
                 if (!pendingSongId) return;
                 autoDjApplausePendingSongRef.current = '';
+                pushAutoDjEvent(AUTO_DJ_EVENTS.RETRY, { songId: pendingSongId, error: 'applause_result_timeout' });
                 const runUpdateStatus = updateStatusRef.current;
                 if (!runUpdateStatus) return;
                 runUpdateStatus(pendingSongId, 'performed').catch((error) => {
+                    pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: pendingSongId, error: error?.message || 'fallback_finalize_failed' });
                     hostLogger.warn('Auto-DJ applause fallback finalization failed', error);
                 });
             }, 17000);
@@ -3452,7 +3614,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
         await updateRoom({ activeMode: 'applause_countdown', applausePeak: 0, currentApplauseLevel: 0 });
         if (autoFinalize) toast('Measuring applause now. Auto-DJ will end this performance after results.');
         else toast('Applause countdown started.');
-    }, [clearAutoDjApplauseFallback, toast, updateRoom]);
+    }, [clearAutoDjApplauseFallback, toast, updateRoom, pushAutoDjEvent]);
 
     const handleEndPerformance = useCallback(async (songId = '') => {
         const targetSongId = String(songId || '').trim();
@@ -3463,6 +3625,8 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             const runUpdateStatus = updateStatusRef.current;
             if (!runUpdateStatus) return;
             await runUpdateStatus(targetSongId, 'performed');
+            pushAutoDjEvent(AUTO_DJ_EVENTS.SCORING_COMPLETE, { songId: targetSongId });
+            pushAutoDjEvent(AUTO_DJ_EVENTS.TRANSITION_COMPLETE, { songId: targetSongId });
             return;
         }
         const applauseMode = String(room?.activeMode || '');
@@ -3472,30 +3636,41 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
             return;
         }
         await startApplauseSequence({ songId: targetSongId, autoFinalize: true });
-    }, [autoDj, clearAutoDjApplauseFallback, room?.activeMode, startApplauseSequence, toast]);
+    }, [autoDj, clearAutoDjApplauseFallback, room?.activeMode, startApplauseSequence, toast, pushAutoDjEvent]);
 
     useEffect(() => {
         if (!autoDj) return;
         const pendingSongId = autoDjApplausePendingSongRef.current;
         if (!pendingSongId) return;
         if (room?.activeMode !== 'applause_result') return;
+        pushAutoDjEvent(AUTO_DJ_EVENTS.APPLAUSE_RESULT, { songId: pendingSongId });
         autoDjApplausePendingSongRef.current = '';
         clearAutoDjApplauseFallback();
         const runUpdateStatus = updateStatusRef.current;
         if (!runUpdateStatus) return;
-        runUpdateStatus(pendingSongId, 'performed').catch((error) => {
-            hostLogger.warn('Auto-DJ applause finalization failed', error);
-        });
-    }, [autoDj, clearAutoDjApplauseFallback, room?.activeMode]);
+        runUpdateStatus(pendingSongId, 'performed')
+            .then(() => {
+                pushAutoDjEvent(AUTO_DJ_EVENTS.SCORING_COMPLETE, { songId: pendingSongId });
+                pushAutoDjEvent(AUTO_DJ_EVENTS.TRANSITION_COMPLETE, { songId: pendingSongId });
+            })
+            .catch((error) => {
+                pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: pendingSongId, error: error?.message || 'auto_finalize_failed' });
+                hostLogger.warn('Auto-DJ applause finalization failed', error);
+            });
+    }, [autoDj, clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
 
     useEffect(() => {
         const activeMode = String(room?.activeMode || '');
         const applauseFlowActive = activeMode === 'applause_countdown' || activeMode === 'applause' || activeMode === 'applause_result';
         if (applauseFlowActive) return;
         if (!autoDjApplausePendingSongRef.current) return;
+        pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, {
+            songId: autoDjApplausePendingSongRef.current,
+            error: 'applause_flow_interrupted'
+        });
         autoDjApplausePendingSongRef.current = '';
         clearAutoDjApplauseFallback();
-    }, [clearAutoDjApplauseFallback, room?.activeMode]);
+    }, [clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
 
     // Unified play/pause for the current backing source (Apple or media URL).
     async function togglePlay() {
@@ -3538,10 +3713,19 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
     const progressStageToNext = async () => {
         const currentlyPerforming = current ? songs.find((song) => song.id === current.id) : null;
         if (currentlyPerforming) {
+            pushAutoDjEvent(AUTO_DJ_EVENTS.APPLAUSE_RESULT, { songId: currentlyPerforming.id });
             await updateStatus(currentlyPerforming.id, 'performed');
+            pushAutoDjEvent(AUTO_DJ_EVENTS.SCORING_COMPLETE, { songId: currentlyPerforming.id });
         }
         if (!nextQueueSong?.id) return;
-        await updateStatus(nextQueueSong.id, 'performing', { allowCurrentId: currentlyPerforming?.id || null });
+        pushAutoDjEvent(AUTO_DJ_EVENTS.START, { songId: nextQueueSong.id });
+        try {
+            await updateStatus(nextQueueSong.id, 'performing', { allowCurrentId: currentlyPerforming?.id || null });
+            pushAutoDjEvent(AUTO_DJ_EVENTS.STAGE_READY, { songId: nextQueueSong.id });
+        } catch (error) {
+            pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: nextQueueSong.id, error: error?.message || 'stage_start_failed' });
+            throw error;
+        }
     };
     const commandPaletteItems = [
             {
@@ -3673,6 +3857,8 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     quickAddOnResultClick={quickAddOnResultClick}
                     setQuickAddOnResultClick={setQuickAddOnResultClick}
                     results={results}
+                    queueSearchSourceNote={queueSearchSourceNote}
+                    queueSearchNoResultHint={queueSearchNoResultHint}
                     getResultRowKey={getResultRowKey}
                     quickAddLoadingKey={quickAddLoadingKey}
                     handleResultClick={handleResultClick}
@@ -3840,6 +4026,37 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                             <div className="mt-2 text-[11px] text-zinc-300 truncate">
                                 Next: <span className="text-white font-semibold">{nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued'}</span>
                             </div>
+                            {autoDj && (
+                                <div className="mt-2 rounded-lg border border-cyan-400/25 bg-black/35 px-2.5 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className={`text-[10px] uppercase tracking-[0.18em] ${autoDjSequenceSummary.tone === 'danger' ? 'text-rose-200' : autoDjSequenceSummary.tone === 'warning' ? 'text-amber-200' : autoDjSequenceSummary.tone === 'success' ? 'text-emerald-200' : 'text-cyan-200'}`}>
+                                            {autoDjSequenceSummary.title}
+                                        </div>
+                                        <div className="text-[10px] text-zinc-300 truncate max-w-[50%]">{autoDjSequenceSummary.detail}</div>
+                                    </div>
+                                    <div className="mt-2 grid grid-cols-4 gap-1">
+                                        {autoDjStepItems.map((step) => (
+                                            <div
+                                                key={step.id}
+                                                className={`rounded px-1.5 py-1 text-[9px] uppercase tracking-[0.12em] text-center border ${
+                                                    step.status === 'complete'
+                                                        ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100'
+                                                        : step.status === 'active'
+                                                            ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100'
+                                                            : step.status === 'retrying'
+                                                                ? 'border-amber-300/45 bg-amber-500/15 text-amber-100'
+                                                                : step.status === 'error'
+                                                                    ? 'border-rose-300/45 bg-rose-500/15 text-rose-100'
+                                                                    : 'border-white/15 bg-black/25 text-zinc-300'
+                                                }`}
+                                                title={step.retries > 0 ? `${step.label} retries: ${step.retries}` : step.label}
+                                            >
+                                                {step.short}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             <div className="mt-3 grid grid-cols-4 gap-2">
                                 <button
                                     onClick={togglePlay}
@@ -4917,27 +5134,36 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             controller = new AbortController();
             const normalizedQuery = String(catalogueSearchQ || '').trim();
             const shouldUseYouTubeFallback = !!searchSources.itunes && !appleMusicAuthorized;
-            const localMatches = searchSources.local
+            const localMatches = annotateQueueSearchResults(searchSources.local
                 ? localLibrary.filter(s =>
                     s.title.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
                     s.artist.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
                     (s.fileName || '').toLowerCase().includes(normalizedQuery.toLowerCase())
                 ).map(s => ({ ...s, source: 'local', trackName: s.title, artistName: s.artist, artworkUrl100: '' }))
-                : [];
-            const ytMatches = searchSources.youtube
+                : [], {
+                    sourceReason: 'local_library',
+                    sourceDetail: 'Room media library match.'
+                });
+            const ytMatches = annotateQueueSearchResults(searchSources.youtube
                 ? ytIndex.filter(s =>
                     s.trackName.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
                     s.artistName.toLowerCase().includes(normalizedQuery.toLowerCase())
-                )
-                : [];
+                ).filter((entry) => entry?.playable === true)
+                : [], {
+                    sourceReason: 'youtube_index',
+                    sourceDetail: 'Indexed YouTube playable match.'
+                });
             let liveYouTubeMatches = [];
             if (shouldUseYouTubeFallback) {
                 try {
                     const ytFallbackData = await callFunction('youtubeSearch', {
                         query: `${normalizedQuery} karaoke`,
-                        maxResults: 8
+                        maxResults: 8,
+                        playableOnly: true
                     });
-                    liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || []);
+                    liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
+                        reason: 'apple_missing'
+                    });
                 } catch (ytErr) {
                     hostLogger.debug('Catalogue YouTube fallback search failed', ytErr);
                 }
@@ -4949,7 +5175,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     return;
                 }
                 const data = await callFunction('itunesSearch', { term: normalizedQuery, limit: 5 });
-                const itunesMatches = (data?.results || []).map(r => ({ ...r, source: 'itunes' }));
+                const itunesMatches = annotateQueueSearchResults((data?.results || []).map(r => ({ ...r, source: 'itunes' })), {
+                    sourceReason: 'apple_authorized',
+                    sourceDetail: 'Apple Music/iTunes search match.'
+                });
                 setCatalogueResults(mergeUniqueQueueSearchResults(localMatches, ytMatches, itunesMatches));
             } catch (e) {
                 if (e.name === 'AbortError') return;
@@ -7812,22 +8041,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const indexYouTubePlaylist = async (playlistId) => {
         const data = await callFunction('youtubePlaylist', { playlistId, maxTotal: YOUTUBE_PLAYLIST_MAX_TOTAL });
         const items = normalizeYouTubePlaylistItems(data?.items || []);
+        const playableMap = await fetchYouTubeEmbeddableStatusMap(items.map((item) => item.id), {
+            batchSize: 50,
+            concurrency: 4
+        });
+        const playableItems = items.filter((item) => playableMap.get(item.id) === true);
         const updated = (() => {
             const existing = new Map((ytIndex || []).map(item => [item.videoId, item]));
-            items.forEach(item => {
+            playableItems.forEach(item => {
                 existing.set(item.id, {
                     videoId: item.id,
                     source: 'youtube',
                     trackName: item.title,
                     artistName: item.channel,
                     artworkUrl100: item.thumbnail,
-                    url: item.url
+                    url: item.url,
+                    playable: true,
+                    sourceDetail: 'Indexed and embeddable YouTube track.'
                 });
             });
             return Array.from(existing.values());
         })();
         await persistYtIndex(updated);
-        return items;
+        return playableItems;
     };
 
     const queueYouTubePlaylistItems = async (items, singerOverride) => {
@@ -8008,9 +8244,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 };
             } else {
                 const query = `${title} ${artist}`.trim();
-                const data = await callFunction('youtubeSearch', { query: `${query} karaoke`, maxResults: 1 });
+                const data = await callFunction('youtubeSearch', { query: `${query} karaoke`, maxResults: 1, playableOnly: true });
                 const first = (data?.items || [])[0];
-                if (!first) throw new Error('No results found');
+                if (!first) throw new Error('No verified playable results found');
                 item = {
                     id: first.id,
                     title: first.title,
@@ -8027,7 +8263,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     trackName: item.title,
                     artistName: item.channel,
                     artworkUrl100: item.thumbnail,
-                    url: item.url
+                    url: item.url,
+                    playable: true,
+                    sourceDetail: 'Verified YouTube playable track.'
                 });
                 return Array.from(existing.values());
             })();

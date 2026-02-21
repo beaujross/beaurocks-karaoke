@@ -713,6 +713,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const [strobeNow, setStrobeNow] = useState(Date.now());
     const [strobeLocalTaps, setStrobeLocalTaps] = useState(0);
     const [strobeMeter, setStrobeMeter] = useState(0);
+    const [balladSway, setBalladSway] = useState(0);
+    const [balladRaised, setBalladRaised] = useState(false);
     const [doodleNow, setDoodleNow] = useState(Date.now());
     const [doodleSubmissions, setDoodleSubmissions] = useState([]);
     const [doodleVotes, setDoodleVotes] = useState([]);
@@ -739,6 +741,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [localPointOffset, setLocalPointOffset] = useState(0);
     const [readyTimer, setReadyTimer] = useState(0);
     const [activeBrowseList, setActiveBrowseList] = useState(null);
+    const [mobileLayoutMode, setMobileLayoutMode] = useState('native');
     const stormAudioRef = useRef(null);
     const stormAudioCtxRef = useRef(null);
     const stormAnalyserRef = useRef(null);
@@ -751,6 +754,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const stormFlashTimeoutRef = useRef(null);
     const readyCheckStartRef = useRef(null);
     const strobeWinSeenRef = useRef(null);
+    const balladTouchStartXRef = useRef(null);
+    const balladWakeLockRef = useRef(null);
 
     const vipProfileData = profile?.vipProfile || {};
     const vipTosAccepted = !!vipProfileData?.tosAccepted;
@@ -767,9 +772,122 @@ const SingerApp = ({ roomCode, uid }) => {
     const _vipCount = useMemo(() => allUsers.filter(u => u.isVip || (u.vipLevel || 0) > 0).length, [allUsers]);
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !isVipAccount;
     const tipCrates = useMemo(() => (Array.isArray(room?.tipCrates) ? room.tipCrates : []), [room?.tipCrates]);
+    const isNativeMobileLayout = mobileLayoutMode === 'native';
     const showBallad = room?.lightMode === 'ballad';
     const showBanger = room?.lightMode === 'banger';
     const motionSafeFx = !!room?.reduceMotionFx;
+    const balladFlameTransform = `translateX(${(balladSway * 22).toFixed(2)}px) rotate(${(balladSway * 8).toFixed(2)}deg) scale(${balladRaised ? 1.08 : 1})`;
+    const balladFlamePulseOpacity = (0.56 + (Math.min(1, Math.abs(balladSway)) * 0.22)).toFixed(2);
+
+    useEffect(() => {
+        if (!showBallad) {
+            setBalladSway(0);
+            setBalladRaised(false);
+            balladTouchStartXRef.current = null;
+            return;
+        }
+        const timer = setInterval(() => {
+            setBalladSway((prev) => {
+                const next = Number(prev || 0) * 0.9;
+                return Math.abs(next) < 0.02 ? 0 : next;
+            });
+        }, 90);
+        return () => clearInterval(timer);
+    }, [showBallad]);
+
+    useEffect(() => {
+        if (typeof document === 'undefined') return undefined;
+        if (typeof navigator === 'undefined' || !navigator.wakeLock?.request) return undefined;
+        let canceled = false;
+        const releaseWakeLock = async () => {
+            const sentinel = balladWakeLockRef.current;
+            if (!sentinel) return;
+            try {
+                await sentinel.release();
+            } catch {
+                // Ignore wake lock release failures.
+            } finally {
+                balladWakeLockRef.current = null;
+            }
+        };
+        const requestWakeLock = async () => {
+            if (canceled || !showBallad || document.visibilityState !== 'visible') return;
+            if (balladWakeLockRef.current && !balladWakeLockRef.current.released) return;
+            try {
+                const sentinel = await navigator.wakeLock.request('screen');
+                if (canceled) {
+                    try { await sentinel.release(); } catch {
+                        // Ignore late release failures.
+                    }
+                    return;
+                }
+                balladWakeLockRef.current = sentinel;
+                sentinel.addEventListener?.('release', () => {
+                    if (balladWakeLockRef.current === sentinel) {
+                        balladWakeLockRef.current = null;
+                    }
+                });
+            } catch {
+                // Ignore wake lock request failures (unsupported/browser policy).
+            }
+        };
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible' && showBallad) {
+                requestWakeLock();
+            } else {
+                void releaseWakeLock();
+            }
+        };
+        if (showBallad) {
+            requestWakeLock();
+        } else {
+            releaseWakeLock();
+        }
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => {
+            canceled = true;
+            document.removeEventListener('visibilitychange', handleVisibility);
+            void releaseWakeLock();
+        };
+    }, [showBallad]);
+
+    const handleBalladLiftStart = useCallback((e) => {
+        const touch = e?.touches?.[0];
+        const pointX = typeof touch?.clientX === 'number'
+            ? touch.clientX
+            : (typeof e?.clientX === 'number' ? e.clientX : null);
+        balladTouchStartXRef.current = pointX;
+        setBalladRaised(true);
+    }, []);
+
+    const handleBalladLiftMove = useCallback((e) => {
+        if (balladTouchStartXRef.current === null) return;
+        const touch = e?.touches?.[0];
+        const pointX = typeof touch?.clientX === 'number'
+            ? touch.clientX
+            : (typeof e?.clientX === 'number' ? e.clientX : balladTouchStartXRef.current);
+        const delta = pointX - balladTouchStartXRef.current;
+        const normalized = Math.max(-1, Math.min(1, delta / 140));
+        setBalladSway(normalized);
+    }, []);
+
+    const handleBalladLiftEnd = useCallback(() => {
+        balladTouchStartXRef.current = null;
+        setBalladRaised(false);
+    }, []);
+    const toggleMobileLayoutMode = useCallback(() => {
+        setMobileLayoutMode((prev) => {
+            const next = prev === 'native' ? 'legacy' : 'native';
+            if (typeof window !== 'undefined') {
+                try {
+                    localStorage.setItem('beaurocks_mobile_layout_mode', next);
+                } catch {
+                    // Ignore storage failures.
+                }
+            }
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         if (typeof document === 'undefined') return undefined;
@@ -1261,6 +1379,25 @@ const SingerApp = ({ roomCode, uid }) => {
         { left: '74%', bottom: '10%', size: '140px', sway: '8.5s', delay: '1.4s', opacity: '0.75' },
         { left: '86%', bottom: '5%', size: '130px', sway: '7.2s', delay: '0.9s', opacity: '0.7' }
     ];
+    const balladFireParticles = useMemo(
+        () => Array.from({ length: 12 }, (_, idx) => ({
+            id: `ballad-fire-${idx}`,
+            left: `${Math.round(Math.random() * 1000) / 10}%`,
+            animationDelay: `${(Math.random() * 2.4).toFixed(2)}s`,
+            animationDuration: `${(1.6 + Math.random() * 1.4).toFixed(2)}s`,
+            sizeRem: (2 + (Math.random() * 1.6)).toFixed(2),
+            opacity: 0.45 + (Math.random() * 0.45)
+        })),
+        []
+    );
+    const balladAudienceLights = useMemo(
+        () => Array.from({ length: 9 }, (_, idx) => ({
+            id: `ballad-phone-${idx}`,
+            nudge: (-10 + (idx * 2.5)) + (Math.random() * 2.5),
+            delay: `${(Math.random() * 1.6).toFixed(2)}s`
+        })),
+        []
+    );
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -1268,6 +1405,22 @@ const SingerApp = ({ roomCode, uid }) => {
         const isDevHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
         const bypass = isDevHost && (params.has('sms_bypass') || localStorage.getItem('bross_sms_bypass') === '1');
         setSmsBypassEnabled(bypass);
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        const forcedModeRaw = (params.get('mobile_layout') || '').trim().toLowerCase();
+        const forcedMode = forcedModeRaw === 'native' || forcedModeRaw === 'legacy' ? forcedModeRaw : '';
+        let storedMode = '';
+        try {
+            const saved = String(localStorage.getItem('beaurocks_mobile_layout_mode') || '').trim().toLowerCase();
+            if (saved === 'native' || saved === 'legacy') storedMode = saved;
+        } catch {
+            // Ignore storage read failures.
+        }
+        const nextMode = forcedMode || storedMode || 'native';
+        setMobileLayoutMode(nextMode);
     }, []);
 
     useEffect(() => {
@@ -1300,7 +1453,15 @@ const SingerApp = ({ roomCode, uid }) => {
     
     // Vibe State (Guitar)
     const [strings, setStrings] = useState([0,0,0,0,0]);
+    const [guitarNow, setGuitarNow] = useState(Date.now());
+    const [guitarLocalCombo, setGuitarLocalCombo] = useState(0);
+    const [guitarPerfectHits, setGuitarPerfectHits] = useState(0);
+    const [guitarTotalHits, setGuitarTotalHits] = useState(0);
+    const [guitarLastHitAt, setGuitarLastHitAt] = useState(0);
     const lastStrum = useRef(0);
+    const guitarLastHitRef = useRef(0);
+    const guitarComboRef = useRef(0);
+    const guitarStringCooldownRef = useRef([0,0,0,0,0]);
     const stringTimers = useRef([]);
     const lastReactionAt = useRef(0);
     const reactionFlushTimer = useRef(null);
@@ -1467,20 +1628,30 @@ const SingerApp = ({ roomCode, uid }) => {
         pendingReactionCount.current = 0;
         pendingReactionCost.current = 0;
         try {
+            const performanceId = currentSinger?.id || null;
+            const performanceMeta = {
+                performanceId,
+                performanceSongId: currentSinger?.songId || null,
+                performanceSingerUid: currentSinger?.singerUid || null,
+                performanceSingerName: currentSinger?.singerName || null,
+                performanceStartedAtMs: timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || null
+            };
             const entries = Object.entries(batch);
             for (const [type, count] of entries) {
                 await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
                     roomCode,
                     type,
                     count,
+                    uid: uid || null,
                     userName: user.name,
                     avatar: user.avatar,
                     isVip: !!user.isVip,
+                    multiplier: Math.max(1, Number(room?.multiplier || 1)),
+                    ...performanceMeta,
                     timestamp: serverTimestamp()
                 });
             }
             trackEvent('reaction_sent', { room_code: roomCode, count: totalCount });
-            const performanceId = currentSinger?.id || null;
             const boostedPoints = totalCost * (room?.multiplier || 1);
             const isSamePerformance = !!performanceId && user?.lastPerformanceId === performanceId;
             const updates = {
@@ -1524,13 +1695,22 @@ const SingerApp = ({ roomCode, uid }) => {
         const count = pendingStrumHits.current;
         pendingStrumHits.current = 0;
         try {
+            const performanceMeta = {
+                performanceId: currentSinger?.id || null,
+                performanceSongId: currentSinger?.songId || null,
+                performanceSingerUid: currentSinger?.singerUid || null,
+                performanceSingerName: currentSinger?.singerName || null,
+                performanceStartedAtMs: timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || null
+            };
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
                 roomCode,
                 type: 'strum',
                 count,
+                uid,
                 userName: user.name,
                 avatar: user.avatar,
                 isVip: !!user.isVip,
+                ...performanceMeta,
                 timestamp: serverTimestamp()
             });
             const sessionId = room?.guitarSessionId || Date.now();
@@ -1541,7 +1721,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, room?.guitarSessionId, uid]);
+    }, [roomCode, user, room?.guitarSessionId, uid, currentSinger]);
 
     const queueStrumWrite = () => {
         pendingStrumHits.current += 1;
@@ -1557,6 +1737,24 @@ const SingerApp = ({ roomCode, uid }) => {
         const count = pendingStrobeTaps.current;
         pendingStrobeTaps.current = 0;
         try {
+            const performanceMeta = {
+                performanceId: currentSinger?.id || null,
+                performanceSongId: currentSinger?.songId || null,
+                performanceSingerUid: currentSinger?.singerUid || null,
+                performanceSingerName: currentSinger?.singerName || null,
+                performanceStartedAtMs: timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || null
+            };
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
+                roomCode,
+                type: 'strobe_tap',
+                count,
+                uid: uid || null,
+                userName: user.name,
+                avatar: user.avatar,
+                isVip: !!user.isVip,
+                ...performanceMeta,
+                timestamp: serverTimestamp()
+            });
             const sessionId = room?.strobeSessionId || Date.now();
             const isNewSession = user?.strobeSessionId !== sessionId;
             const payload = { strobeSessionId: sessionId, lastVibeAt: serverTimestamp() };
@@ -1565,7 +1763,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, room?.strobeSessionId, uid]);
+    }, [roomCode, user, room?.strobeSessionId, uid, currentSinger]);
 
     const queueStrobeTap = () => {
         pendingStrobeTaps.current += 1;
@@ -1583,6 +1781,13 @@ const SingerApp = ({ roomCode, uid }) => {
         pendingStormLayers.current = {};
         pendingStormLayerCount.current = 0;
         try {
+            const performanceMeta = {
+                performanceId: currentSinger?.id || null,
+                performanceSongId: currentSinger?.songId || null,
+                performanceSingerUid: currentSinger?.singerUid || null,
+                performanceSingerName: currentSinger?.singerName || null,
+                performanceStartedAtMs: timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || null
+            };
             const layerEntries = Object.entries(batch).filter(([, count]) => Number(count) > 0);
             if (!layerEntries.length) return;
             await Promise.all(layerEntries.map(([layer, count]) => addDoc(
@@ -1596,6 +1801,7 @@ const SingerApp = ({ roomCode, uid }) => {
                     userName: user.name,
                     avatar: user.avatar,
                     isVip: !!user.isVip,
+                    ...performanceMeta,
                     timestamp: serverTimestamp()
                 }
             )));
@@ -1609,7 +1815,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, uid]);
+    }, [roomCode, user, uid, currentSinger]);
 
     const queueStormLayerWrite = (layerId) => {
         const key = String(layerId || '').trim().toLowerCase();
@@ -2608,6 +2814,31 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         };
     }, [tight15SearchQ]);
 
+    useEffect(() => {
+        if (room?.lightMode !== 'guitar') {
+            setGuitarNow(Date.now());
+            setGuitarLocalCombo(0);
+            setGuitarPerfectHits(0);
+            setGuitarTotalHits(0);
+            setGuitarLastHitAt(0);
+            guitarLastHitRef.current = 0;
+            guitarComboRef.current = 0;
+            guitarStringCooldownRef.current = [0, 0, 0, 0, 0];
+            return;
+        }
+        const timer = setInterval(() => {
+            const now = Date.now();
+            setGuitarNow(now);
+            const elapsed = now - Number(guitarLastHitRef.current || 0);
+            if (elapsed > 1600 && guitarComboRef.current > 0) {
+                const nextCombo = Math.max(0, guitarComboRef.current - 1);
+                guitarComboRef.current = nextCombo;
+                setGuitarLocalCombo(nextCombo);
+            }
+        }, 160);
+        return () => clearInterval(timer);
+    }, [room?.lightMode]);
+
     // Guitar Handling
     const handleGuitarTouch = (e) => {
         if (!user) return;
@@ -2624,14 +2855,34 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const handleStrum = async (i) => {
         if(!user) return;
+        const now = Date.now();
+        const lastStringHitAt = Number(guitarStringCooldownRef.current?.[i] || 0);
+        if (now - lastStringHitAt < 90) return;
+        guitarStringCooldownRef.current[i] = now;
+
+        const beatMs = 620;
+        const beatMod = ((now % beatMs) + beatMs) % beatMs;
+        const beatOffsetMs = Math.min(beatMod, beatMs - beatMod);
+        const inSyncWindow = beatOffsetMs <= 130;
+        const prevHitAt = Number(guitarLastHitRef.current || 0);
+        const nextCombo = (prevHitAt && (now - prevHitAt) <= 950)
+            ? Math.min(99, Number(guitarComboRef.current || 0) + 1)
+            : 1;
+        guitarLastHitRef.current = now;
+        guitarComboRef.current = nextCombo;
+        setGuitarNow(now);
+        setGuitarLastHitAt(now);
+        setGuitarLocalCombo(nextCombo);
+        setGuitarTotalHits((value) => value + 1);
+        if (inSyncWindow) setGuitarPerfectHits((value) => value + 1);
+
         setStrings(prev => { const next = [...prev]; next[i] = 1; return next; });
         if (stringTimers.current[i]) clearTimeout(stringTimers.current[i]);
         stringTimers.current[i] = setTimeout(() => {
             setStrings(prev => { const next = [...prev]; next[i] = 0; return next; });
         }, 500);
-        try { if(window.navigator && window.navigator.vibrate) window.navigator.vibrate(80); } catch (_err) { /* ignore */ }
+        try { if(window.navigator && window.navigator.vibrate) window.navigator.vibrate(inSyncWindow ? 90 : 65); } catch (_err) { /* ignore */ }
 
-        const now = Date.now();
         if(now - lastStrum.current > 200) {
             // Emit a strum reaction for TV and other clients (throttled)
             queueStrumWrite();
@@ -2639,6 +2890,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             markActive();
 
             queuePointDelta(2);
+            if (inSyncWindow) queuePointDelta(1);
+            if (nextCombo >= 16 && nextCombo % 8 === 0) queuePointDelta(1);
         }
     };
 
@@ -3168,6 +3421,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 val: optionIndex,
                 questionId: popTriviaQuestionId,
                 songId: currentSinger?.id || '',
+                performanceId: currentSinger?.id || null,
+                performanceSongId: currentSinger?.songId || null,
+                performanceSingerUid: currentSinger?.singerUid || null,
+                performanceSingerName: currentSinger?.singerName || null,
+                performanceStartedAtMs: timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || null,
                 userName: user.name || 'Player',
                 avatar: user.avatar || DEFAULT_EMOJI,
                 uid: uid || null,
@@ -4306,13 +4564,50 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }
 
     if (room?.lightMode === 'guitar') {
+        const beatMs = 620;
+        const beatMod = ((guitarNow % beatMs) + beatMs) % beatMs;
+        const beatOffsetMs = Math.min(beatMod, beatMs - beatMod);
+        const syncWindowMs = 130;
+        const syncReady = beatOffsetMs <= syncWindowMs;
+        const syncAccuracy = guitarTotalHits > 0
+            ? Math.round((guitarPerfectHits / Math.max(1, guitarTotalHits)) * 100)
+            : 0;
+        const comboBoost = Math.min(5, 1 + Math.floor(guitarLocalCombo / 8));
+        const comboPct = Math.min(100, guitarLocalCombo * 2.2);
+        const pulseScale = 1 + Math.max(0, ((syncWindowMs - beatOffsetMs) / syncWindowMs) * 0.16);
+        const secondsSinceHit = guitarLastHitAt ? Math.floor((guitarNow - guitarLastHitAt) / 1000) : null;
         return (
             <div className="h-screen bg-black/90 flex flex-col relative overflow-hidden text-white font-saira justify-center">
-                <div className="absolute inset-0 flex justify-around items-center px-8" 
-                     onTouchStart={(e)=>handleGuitarTouch(e)} 
-                     onTouchMove={(e)=>handleGuitarTouch(e)}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(250,204,21,0.16),transparent_52%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.18),transparent_60%)]"></div>
+                <div className="absolute top-6 left-1/2 -translate-x-1/2 w-[min(92vw,460px)] text-center z-30 pointer-events-none">
+                    <div className="text-[10px] uppercase tracking-[0.42em] text-zinc-300">Vibe Sync</div>
+                    <h1 className={`mt-1 text-5xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 drop-shadow-[0_0_20px_rgba(236,72,153,0.45)] ${motionSafeFx ? '' : 'animate-pulse'}`}>GUITAR MODE</h1>
+                    <p className="text-sm text-cyan-100 uppercase tracking-[0.14em]">Strum in rhythm to stack team energy</p>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                        <div className="bg-black/60 border border-yellow-300/40 rounded-xl px-2 py-1.5">
+                            <div className="text-[9px] uppercase tracking-[0.2em] text-zinc-300">Combo</div>
+                            <div className="text-lg font-black text-yellow-200">x{comboBoost}</div>
+                        </div>
+                        <div className="bg-black/60 border border-cyan-300/40 rounded-xl px-2 py-1.5">
+                            <div className="text-[9px] uppercase tracking-[0.2em] text-zinc-300">Accuracy</div>
+                            <div className="text-lg font-black text-cyan-200">{syncAccuracy}%</div>
+                        </div>
+                        <div className="bg-black/60 border border-fuchsia-300/40 rounded-xl px-2 py-1.5">
+                            <div className="text-[9px] uppercase tracking-[0.2em] text-zinc-300">Window</div>
+                            <div className={`text-lg font-black ${syncReady ? 'text-fuchsia-200' : 'text-zinc-300'}`}>{syncReady ? 'LIVE' : 'WAIT'}</div>
+                        </div>
+                    </div>
+                    <div className="mt-3 h-2.5 w-full bg-white/15 rounded-full overflow-hidden border border-white/20">
+                        <div className="h-full bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 transition-all duration-150" style={{ width: `${comboPct}%` }}></div>
+                    </div>
+                </div>
+                <div
+                    className="absolute inset-0 flex justify-around items-center px-6 sm:px-8"
+                    onTouchStart={(e)=>handleGuitarTouch(e)}
+                    onTouchMove={(e)=>handleGuitarTouch(e)}
+                    style={{ touchAction: 'none' }}
                 >
-                     {[0,1,2,3,4].map(i => (
+                    {[0,1,2,3,4].map(i => (
                         <div
                             key={i}
                             onClick={() => handleStrum(i)}
@@ -4320,11 +4615,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         >
                             <div className={`guitar-string ${strings[i] ? 'vibrating' : ''}`}></div>
                         </div>
-                     ))}
+                    ))}
                 </div>
-                <div className="absolute top-10 w-full text-center pointer-events-none">
-                     <h1 className="text-6xl font-bebas text-yellow-500 animate-pulse drop-shadow-lg">GUITAR HERO!</h1>
-                     <p className="text-xl opacity-80">STRUM OR TAP!</p>
+                <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+                    <div className="h-20 w-20 rounded-full border-2 border-cyan-300/60 bg-black/55 shadow-[0_0_24px_rgba(34,211,238,0.4)] flex items-center justify-center transition-transform duration-120" style={{ transform: `scale(${pulseScale})` }}>
+                        <div className={`h-10 w-10 rounded-full ${syncReady ? 'bg-cyan-300/80' : 'bg-zinc-500/40'} transition-colors duration-100`}></div>
+                    </div>
+                </div>
+                <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none text-center">
+                    <div className="text-xs uppercase tracking-[0.3em] text-cyan-100">{syncReady ? 'SYNC WINDOW OPEN' : 'FOLLOW THE PULSE'}</div>
+                    <div className="text-[11px] text-zinc-300 mt-1">
+                        {secondsSinceHit === null ? 'Hit any string to start your combo.' : `Last strum ${secondsSinceHit}s ago`}
+                    </div>
                 </div>
                 <button onClick={() => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { lightMode: 'off' })} className="absolute bottom-10 left-1/2 transform -translate-x-1/2 bg-[#EC4899] text-black px-4 py-2 rounded-full z-50 text-xs font-bold">EXIT MODE</button>
             </div>
@@ -6073,9 +6375,33 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     return (
-        <div data-singer-view="main" className="relative h-[100dvh] min-h-[100dvh] bg-[#090612] text-white font-saira flex flex-col overflow-hidden">
+        <div data-singer-view="main" className={`relative h-[100dvh] min-h-[100dvh] bg-[#090612] text-white font-saira flex flex-col overflow-hidden ${isNativeMobileLayout ? 'mobile-shell-native' : ''}`}>
+            {isNativeMobileLayout && (
+                <>
+                    <div className="mobile-native-top-chrome absolute inset-x-0 top-0 z-[18] pointer-events-none"></div>
+                    <div className="mobile-native-bottom-chrome absolute inset-x-0 bottom-0 z-[18] pointer-events-none"></div>
+                    <div
+                        className="absolute inset-x-0 z-[22] pointer-events-none flex items-center justify-between px-4"
+                        style={{
+                            top: 'max(2px, env(safe-area-inset-top))',
+                            paddingLeft: 'max(16px, env(safe-area-inset-left))',
+                            paddingRight: 'max(16px, env(safe-area-inset-right))'
+                        }}
+                    >
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/85">Native Mobile</div>
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-pink-100/85">{roomCode || 'ROOM'}</div>
+                    </div>
+                </>
+            )}
             {/* Header: Reorganized Layout */}
-              <div className="pt-[calc(env(safe-area-inset-top)+12px)] bg-gradient-to-r from-[#4b1436] via-[#FF67B6] to-[#4b1436] shadow-lg z-20 relative h-24 overflow-visible">
+              <div
+                  className="bg-gradient-to-r from-[#4b1436] via-[#FF67B6] to-[#4b1436] shadow-lg z-20 relative h-24 overflow-visible"
+                  style={{
+                      paddingTop: isNativeMobileLayout
+                          ? 'max(8px, env(safe-area-inset-top))'
+                          : 'calc(env(safe-area-inset-top) + 12px)'
+                  }}
+              >
                   <div className="relative h-full">
                       <button onClick={() => setShowAbout(true)} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-pointer hover:opacity-90 transition-opacity overflow-visible z-[80]">
                           <img src={BRAND_ICON} className="w-[212px] h-[106px] object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.75)] logo-bounce relative z-[60]" alt="Beaurocks Karaoke" />
@@ -6105,27 +6431,64 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             <div className="absolute inset-0 z-[90] pointer-events-none overflow-hidden">{localReactions.map(r => (<div key={r.id} className={`absolute bottom-0 flex flex-col items-center ${getReactionClass(r.type)}`} style={{left: `${r.left}%`}}><div className="text-8xl filter drop-shadow-xl">{getEmojiChar(r.type)}</div></div>))}</div>
             {showBallad && (
                 <div className="absolute inset-0 z-[80] pointer-events-none overflow-hidden">
-                <div className="absolute inset-0 ballad-haze"></div>
-                <div className="absolute inset-x-0 bottom-0 h-[70%] ballad-glow"></div>
-                <div className="absolute inset-0 fire-overlay opacity-90"></div>
-                <div className="absolute inset-0 pointer-events-none">
-                    {[...Array(10)].map((_, i) => (
-                        <div
-                            key={`ballad-fire-${i}`}
-                            className="fire-particle"
-                            style={{
-                                left: `${Math.random() * 100}%`,
-                                animationDelay: `${Math.random() * 2.5}s`,
-                                animationDuration: `${1.6 + Math.random() * 1.4}s`,
-                                fontSize: '2.5rem',
-                                opacity: 0.8
-                            }}
-                        >
-                            {EMOJI.fire}
+                    <div className="absolute inset-0 ballad-haze"></div>
+                    <div className="absolute inset-x-0 bottom-0 h-[74%] ballad-glow"></div>
+                    <div className="absolute inset-0 fire-overlay opacity-85"></div>
+                    <div className="absolute inset-0 pointer-events-none">
+                        {balladFireParticles.map((particle) => (
+                            <div
+                                key={particle.id}
+                                className="fire-particle"
+                                style={{
+                                    left: particle.left,
+                                    animationDelay: particle.animationDelay,
+                                    animationDuration: particle.animationDuration,
+                                    fontSize: `${particle.sizeRem}rem`,
+                                    opacity: particle.opacity
+                                }}
+                            >
+                                {EMOJI.fire}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="absolute inset-x-0 top-24 text-center">
+                        <div className="text-[10px] font-bold tracking-[0.45em] text-white/85 uppercase">Phone Lighter Mode</div>
+                        <div className="mt-1 text-xs uppercase tracking-[0.2em] text-amber-100/90">Raise and sway your phone like a zippo flame</div>
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center px-6 pointer-events-none">
+                        <div className="relative w-full max-w-[340px] h-[48dvh] flex items-end justify-center">
+                            <div className="ballad-lighter-beam" style={{ opacity: balladRaised ? 1 : 0.72 }}></div>
+                            <div className="ballad-lighter-halo" style={{ opacity: balladFlamePulseOpacity }}></div>
+                            <div className={`ballad-lighter-flame-shell ${balladRaised ? 'raised' : ''}`} style={{ transform: balladFlameTransform }}>
+                                <div className="ballad-lighter-flame"></div>
+                                <div className="ballad-lighter-flame-inner"></div>
+                            </div>
+                            <div className="ballad-lighter-phone"></div>
                         </div>
-                    ))}
-                </div>
-                <div className="absolute top-24 left-1/2 -translate-x-1/2 text-[10px] font-bold tracking-[0.45em] text-white/80 uppercase">Lights Up - Sway</div>
+                    </div>
+                    <div className="absolute bottom-44 left-1/2 -translate-x-1/2 w-[min(92vw,360px)] pointer-events-auto">
+                        <button
+                            onTouchStart={handleBalladLiftStart}
+                            onTouchMove={handleBalladLiftMove}
+                            onTouchEnd={handleBalladLiftEnd}
+                            onTouchCancel={handleBalladLiftEnd}
+                            onMouseDown={handleBalladLiftStart}
+                            onMouseMove={handleBalladLiftMove}
+                            onMouseUp={handleBalladLiftEnd}
+                            onMouseLeave={handleBalladLiftEnd}
+                            className="w-full rounded-2xl border border-amber-300/35 bg-black/55 backdrop-blur px-4 py-3 text-center text-xs font-black uppercase tracking-[0.18em] text-amber-100 shadow-[0_0_28px_rgba(255,186,117,0.25)] active:scale-[0.99] transition-transform"
+                            style={{ touchAction: 'none' }}
+                        >
+                            {balladRaised ? 'SWAY TO FEED THE FLAME' : 'PRESS + SWAY YOUR LIGHTER'}
+                        </button>
+                    </div>
+                    <div className="absolute bottom-[8.75rem] left-1/2 -translate-x-1/2 flex items-end gap-1.5 pointer-events-none">
+                        {balladAudienceLights.map((light) => (
+                            <div key={light.id} className="relative w-5 h-8 rounded-md border border-white/20 bg-black/40 overflow-visible" style={{ transform: `translateY(${light.nudge}px)` }}>
+                                <div className="ballad-mini-flame" style={{ animationDelay: light.delay }}></div>
+                            </div>
+                        ))}
+                    </div>
                     {balladLights.map((light, idx) => (
                         <div
                             key={idx}
@@ -6142,8 +6505,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     ))}
                     <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-[min(92vw,420px)] pointer-events-auto">
                         <div className="rounded-2xl border border-pink-300/40 bg-black/65 backdrop-blur px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.24em] text-pink-100">Ballad Mode</div>
-                            <div className="text-xs text-zinc-200 mt-1">Warm up the room with supportive reactions and singalong chat.</div>
+                            <div className="text-[10px] uppercase tracking-[0.24em] text-pink-100">Concert Lighters</div>
+                            <div className="text-xs text-zinc-200 mt-1">Keep your phone raised, sway with the crowd, and send support to the stage.</div>
                             <div className="grid grid-cols-3 gap-2 mt-2">
                                 <button
                                     onClick={() => react('heart', REACTION_COSTS.heart)}
@@ -7647,12 +8010,25 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     Bingo Live
                 </button>
             )}
+            <button
+                onClick={toggleMobileLayoutMode}
+                className={`fixed left-3 z-[96] px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.18em] transition-colors ${isNativeMobileLayout ? 'border-cyan-300/50 bg-cyan-400/20 text-cyan-100' : 'border-white/30 bg-black/45 text-zinc-200'}`}
+                style={{ bottom: 'calc(env(safe-area-inset-bottom) + 80px)' }}
+                title="Toggle between native and classic mobile layout"
+            >
+                {isNativeMobileLayout ? 'UI Native' : 'UI Classic'}
+            </button>
 
             <div
-                className="relative border-t border-pink-400/30 flex-none z-20"
-                style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+                className={`relative border-t border-pink-400/30 flex-none z-20 ${isNativeMobileLayout ? 'backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)]' : ''}`}
+                style={{ paddingBottom: isNativeMobileLayout ? 'max(10px, env(safe-area-inset-bottom))' : 'env(safe-area-inset-bottom)' }}
             >
                 <div className="absolute inset-0" style={{ background: MOBILE_NAV_GRADIENT }}></div>
+                {isNativeMobileLayout && (
+                    <div className="relative px-4 pt-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100/85 text-center">
+                        Edge-to-edge controls
+                    </div>
+                )}
                 <div
                     className="relative py-1.5 flex"
                     style={{ paddingLeft: 'max(8px, env(safe-area-inset-left))', paddingRight: 'max(8px, env(safe-area-inset-right))' }}

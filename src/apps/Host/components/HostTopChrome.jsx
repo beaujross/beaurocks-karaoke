@@ -100,6 +100,8 @@ const HostTopChrome = ({
     const [showOverlaysMenu, setShowOverlaysMenu] = React.useState(false);
     const [showSfxQuickMenu, setShowSfxQuickMenu] = React.useState(false);
     const [showVibeQuickMenu, setShowVibeQuickMenu] = React.useState(false);
+    const launchMenuRef = React.useRef(null);
+    const navMenuRef = React.useRef(null);
     const automationMenuRef = React.useRef(null);
     const tvQuickMenuRef = React.useRef(null);
     const overlaysMenuRef = React.useRef(null);
@@ -179,36 +181,60 @@ const HostTopChrome = ({
                 actions: 'Host actions: keep Lyrics + Viz on TV, reduce noisy overlays/SFX, and prompt hearts + singalong chat.'
             }
             : null;
-    const closeAllDeckMenus = () => {
+    const closeAllDeckMenus = React.useCallback(() => {
         setShowAutomationMenu(false);
         setShowTvQuickMenu(false);
         setShowOverlaysMenu(false);
         setShowSfxQuickMenu(false);
         setShowVibeQuickMenu(false);
-    };
+    }, []);
+    const closeAllTopMenus = React.useCallback(() => {
+        closeAllDeckMenus();
+        setShowLaunchMenu(false);
+        setShowNavMenu(false);
+    }, [closeAllDeckMenus, setShowLaunchMenu, setShowNavMenu]);
 
     React.useEffect(() => {
-        if (!showAutomationMenu && !showTvQuickMenu && !showOverlaysMenu && !showSfxQuickMenu && !showVibeQuickMenu) return undefined;
-        const handleWindowClick = (event) => {
+        if (
+            !showAutomationMenu
+            && !showTvQuickMenu
+            && !showOverlaysMenu
+            && !showSfxQuickMenu
+            && !showVibeQuickMenu
+            && !showLaunchMenu
+            && !showNavMenu
+        ) return undefined;
+        const handleWindowPointerDown = (event) => {
             if (
                 automationMenuRef.current?.contains(event.target)
                 || tvQuickMenuRef.current?.contains(event.target)
                 || overlaysMenuRef.current?.contains(event.target)
                 || sfxQuickMenuRef.current?.contains(event.target)
                 || vibeQuickMenuRef.current?.contains(event.target)
+                || launchMenuRef.current?.contains(event.target)
+                || navMenuRef.current?.contains(event.target)
             ) return;
-            closeAllDeckMenus();
+            closeAllTopMenus();
         };
         const handleEscape = (event) => {
-            if (event.key === 'Escape') closeAllDeckMenus();
+            if (event.key === 'Escape') closeAllTopMenus();
         };
-        window.addEventListener('mousedown', handleWindowClick);
+        window.addEventListener('pointerdown', handleWindowPointerDown, true);
         window.addEventListener('keydown', handleEscape);
         return () => {
-            window.removeEventListener('mousedown', handleWindowClick);
+            window.removeEventListener('pointerdown', handleWindowPointerDown, true);
             window.removeEventListener('keydown', handleEscape);
         };
-    }, [showAutomationMenu, showTvQuickMenu, showOverlaysMenu, showSfxQuickMenu, showVibeQuickMenu]);
+    }, [
+        showAutomationMenu,
+        showTvQuickMenu,
+        showOverlaysMenu,
+        showSfxQuickMenu,
+        showVibeQuickMenu,
+        showLaunchMenu,
+        showNavMenu,
+        closeAllTopMenus
+    ]);
 
     const runLiveEffect = async (effectId) => {
         if (effectId === 'beat_drop') {
@@ -247,7 +273,7 @@ const HostTopChrome = ({
                 });
             }
         }
-        closeAllDeckMenus();
+        closeAllTopMenus();
     };
     const applyTvDisplayMode = async (mode) => {
         if (mode === 'lyrics') {
@@ -259,7 +285,7 @@ const HostTopChrome = ({
         } else {
             await updateRoom({ showLyricsTv: false, showVisualizerTv: false });
         }
-        closeAllDeckMenus();
+        closeAllTopMenus();
     };
     const toggleAutoBg = async () => {
         const next = !autoBgMusic;
@@ -280,17 +306,17 @@ const HostTopChrome = ({
     const toggleOverlayScreen = async (screenId) => {
         const nextScreen = room?.activeScreen === screenId ? 'stage' : screenId;
         await updateRoom({ activeScreen: nextScreen });
-        closeAllDeckMenus();
+        closeAllTopMenus();
     };
     const toggleHowToPlayOverlay = async () => {
         await toggleHowToPlay?.();
-        closeAllDeckMenus();
+        closeAllTopMenus();
     };
     const toggleMarqueeOverlay = async () => {
         const next = !marqueeActive;
         setMarqueeEnabled?.(next);
         await updateRoom({ marqueeEnabled: next });
-        closeAllDeckMenus();
+        closeAllTopMenus();
     };
     const toggleChatTvOverlay = async () => {
         const next = !chatTvActive;
@@ -298,7 +324,7 @@ const HostTopChrome = ({
         const nextMode = next ? (chatTvMode || 'auto') : 'auto';
         setChatTvMode?.(nextMode);
         await updateRoom({ chatShowOnTv: next, chatTvMode: nextMode });
-        closeAllDeckMenus();
+        closeAllTopMenus();
     };
     const toggleChatTvFullscreen = async () => {
         const nextFullscreen = !chatFullscreenActive;
@@ -308,7 +334,7 @@ const HostTopChrome = ({
             chatShowOnTv: true,
             chatTvMode: nextFullscreen ? 'fullscreen' : 'auto'
         });
-        closeAllDeckMenus();
+        closeAllTopMenus();
     };
 
     return (
@@ -321,10 +347,15 @@ const HostTopChrome = ({
                     alt="Beaurocks Karaoke"
                 />
                 <div data-host-room-code className="text-[14px] md:text-[18px] font-mono font-bold text-[#00C4D9] bg-black/40 px-2 py-0.5 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
-                <div className="relative">
+                <div className="relative" ref={launchMenuRef}>
                     <button
-                        onClick={() => setShowLaunchMenu(prev => !prev)}
+                        onClick={() => {
+                            const next = !showLaunchMenu;
+                            closeAllTopMenus();
+                            setShowLaunchMenu(next);
+                        }}
                         className={`${styles.btnStd} ${styles.btnSecondary} px-2.5 text-xs`}
+                        style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-rocket"></i>
                     </button>
@@ -457,10 +488,15 @@ const HostTopChrome = ({
                 >
                     <i className="fa-solid fa-gear text-base md:text-lg"></i>
                 </button>
-                <div className="relative">
+                <div className="relative" ref={navMenuRef}>
                     <button
-                        onClick={() => setShowNavMenu(prev => !prev)}
+                        onClick={() => {
+                            const next = !showNavMenu;
+                            closeAllTopMenus();
+                            setShowNavMenu(next);
+                        }}
                         className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-sm md:hidden`}
+                        style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-bars"></i>
                     </button>
@@ -501,11 +537,12 @@ const HostTopChrome = ({
                         data-feature-id="deck-automation-menu-toggle"
                         onClick={() => {
                             const next = !showAutomationMenu;
-                            closeAllDeckMenus();
+                            closeAllTopMenus();
                             setShowAutomationMenu(next);
                         }}
                         className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[170px]`}
                         title="Automation controls"
+                        style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-gear mr-1"></i>
                         Automation
@@ -582,11 +619,12 @@ const HostTopChrome = ({
                         data-feature-id="deck-tv-menu-toggle"
                         onClick={() => {
                             const next = !showTvQuickMenu;
-                            closeAllDeckMenus();
+                            closeAllTopMenus();
                             setShowTvQuickMenu(next);
                         }}
                         className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[156px]`}
                         title="TV display modes"
+                        style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-tv mr-1"></i>
                         TV: {tvDisplayLabel}
@@ -726,11 +764,12 @@ const HostTopChrome = ({
                         data-feature-id="deck-overlays-menu-toggle"
                         onClick={() => {
                             const next = !showOverlaysMenu;
-                            closeAllDeckMenus();
+                            closeAllTopMenus();
                             setShowOverlaysMenu(next);
                         }}
                         className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[164px]`}
                         title="Overlays and guides"
+                        style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-layer-group mr-1"></i>
                         Overlays
@@ -774,7 +813,7 @@ const HostTopChrome = ({
                                 <button
                                     onClick={async () => {
                                         await startReadyCheck?.();
-                                        closeAllDeckMenus();
+                                        closeAllTopMenus();
                                     }}
                                     className={`${styles.btnStd} ${room?.readyCheck?.active ? styles.btnHighlight : styles.btnNeutral} justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                 >
@@ -824,11 +863,12 @@ const HostTopChrome = ({
                         data-feature-id="deck-sfx-menu-toggle"
                         onClick={() => {
                             const next = !showSfxQuickMenu;
-                            closeAllDeckMenus();
+                            closeAllTopMenus();
                             setShowSfxQuickMenu(next);
                         }}
                         className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[160px]`}
                         title="Sound effects controls"
+                        style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-wave-square mr-1"></i>
                         SFX: {sfxMuted ? 'Muted' : `${Math.round((sfxVolume || 0) * 100)}%`}
@@ -889,11 +929,12 @@ const HostTopChrome = ({
                         data-feature-id="deck-vibe-menu-toggle"
                         onClick={() => {
                             const next = !showVibeQuickMenu;
-                            closeAllDeckMenus();
+                            closeAllTopMenus();
                             setShowVibeQuickMenu(next);
                         }}
                         className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[164px]`}
                         title="Vibe sync modes"
+                        style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-bolt mr-1"></i>
                         Vibe: {activeVibeLabel}
@@ -939,7 +980,10 @@ const HostTopChrome = ({
                 </div>
                 <button
                     data-feature-id="deck-command-palette"
-                    onClick={() => onOpenCommandPalette?.()}
+                    onClick={() => {
+                        closeAllTopMenus();
+                        onOpenCommandPalette?.();
+                    }}
                     className={`${styles.btnStd} ${styles.btnPrimary} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[166px]`}
                     title="Open command palette"
                 >

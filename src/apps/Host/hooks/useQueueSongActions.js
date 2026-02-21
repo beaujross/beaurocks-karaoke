@@ -59,6 +59,33 @@ const normalizeYouTubePlaylistItems = (rawItems = []) => (
         .filter((item) => item.id)
 );
 
+const fetchYouTubeEmbeddableStatusMap = async (videoIds = [], { batchSize = 50, concurrency = 4 } = {}) => {
+    const ids = [...new Set((Array.isArray(videoIds) ? videoIds : []).map((id) => String(id || '').trim()).filter(Boolean))];
+    const statusMap = new Map();
+    if (!ids.length) return statusMap;
+    const safeBatchSize = Math.max(1, Math.min(50, Number(batchSize || 50)));
+    const workerCount = Math.max(1, Math.min(Number(concurrency || 4), Math.ceil(ids.length / safeBatchSize)));
+    let cursor = 0;
+    const workers = Array.from({ length: workerCount }, async () => {
+        while (cursor < ids.length) {
+            const start = cursor;
+            cursor += safeBatchSize;
+            const chunkIds = ids.slice(start, start + safeBatchSize);
+            if (!chunkIds.length) continue;
+            try {
+                const statusData = await callFunction('youtubeStatus', { ids: chunkIds });
+                (statusData?.items || []).forEach((entry) => {
+                    statusMap.set(entry.id, !!entry.embeddable);
+                });
+            } catch (error) {
+                console.warn('youtubeStatus failed for playlist chunk', error);
+            }
+        }
+    });
+    await Promise.all(workers);
+    return statusMap;
+};
+
 const useQueueSongActions = ({
     roomCode,
     room,
@@ -206,9 +233,13 @@ const useQueueSongActions = ({
                     maxTotal: YOUTUBE_PLAYLIST_QUEUE_MAX
                 });
                 const playlistItems = normalizeYouTubePlaylistItems(data?.items || []);
-                const queueItems = playlistItems.filter((item) => item?.id && item?.url);
+                const statusMap = await fetchYouTubeEmbeddableStatusMap(
+                    playlistItems.map((item) => item.id),
+                    { batchSize: 50, concurrency: 4 }
+                );
+                const queueItems = playlistItems.filter((item) => item?.id && item?.url && statusMap.get(item.id) === true);
                 if (!queueItems.length) {
-                    toast('Playlist has no queueable videos.');
+                    toast('Playlist has no verified playable videos.');
                     return;
                 }
                 const songsCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs');

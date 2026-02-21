@@ -91,6 +91,7 @@ const useQueueMediaTools = ({
         if (!q) return [];
         return ytIndex
             .filter(item => {
+                if (item?.playable !== true) return false;
                 const title = (item.trackName || '').toLowerCase();
                 const artist = (item.artistName || '').toLowerCase();
                 return title.includes(q) || artist.includes(q);
@@ -113,7 +114,7 @@ const useQueueMediaTools = ({
         try {
             const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Search timed out.')), 8000));
             const data = await Promise.race([
-                callFunction('youtubeSearch', { query: `${query} karaoke`, maxResults: 10 }),
+                callFunction('youtubeSearch', { query: `${query} karaoke`, maxResults: 10, playableOnly: true }),
                 timeout
             ]);
             const results = (data?.items || []).map(item => ({
@@ -121,9 +122,14 @@ const useQueueMediaTools = ({
                 title: item.title,
                 channel: item.channelTitle,
                 thumbnail: item.thumbnails?.medium?.url || item.thumbnails?.default?.url || '',
-                url: `https://www.youtube.com/watch?v=${item.id}`
+                url: `https://www.youtube.com/watch?v=${item.id}`,
+                playable: item.playable !== false,
+                sourceDetail: 'Verified YouTube playable track.'
             }));
             setYtResults(results);
+            if (!results.length) {
+                setYtSearchError('No verified playable YouTube results found. Try a different keyword.');
+            }
             const updated = (() => {
                 const existing = new Map(ytIndex.map(item => [item.videoId, item]));
                 results.forEach(item => {
@@ -133,7 +139,9 @@ const useQueueMediaTools = ({
                         trackName: item.title,
                         artistName: item.channel,
                         artworkUrl100: item.thumbnail,
-                        url: item.url
+                        url: item.url,
+                        playable: item.playable !== false,
+                        sourceDetail: item.sourceDetail || 'Verified YouTube playable track.'
                     });
                 });
                 return Array.from(existing.values());
