@@ -74,13 +74,37 @@
   - Additional: `npm run qa:overnight:smoke` passed
 - Result: P2.1 validation suite passed.
 
+### [2026-02-21 01:27:31] Commit
+- Commit: `1cdda42`
+- Message: `P2.1: add overnight host/audience/tv smoke coverage`
+- Included tasks: P2.1
+
+### [2026-02-21 01:27:45] Task Started
+- Priority: P2
+- Task ID (ex: P1.1): P2.2
+- Task: Safe modularization extraction (behavior-preserving)
+- Planned scope: extract QA debug/smoke logic out of `HostApp.jsx` into dedicated hook and component.
+
+### [2026-02-21 01:32:11] Progress Update
+- What changed: extracted host QA smoke-test behavior into `useHostSmokeTest` hook and moved QA debug section JSX into `HostQaDebugPanel` component; host app now composes these modules.
+- Files touched: `src/apps/Host/HostApp.jsx`, `src/apps/Host/hooks/useHostSmokeTest.js`, `src/apps/Host/components/HostQaDebugPanel.jsx`
+- Notes: behavior preserved; no flow changes in smoke test UI or actions.
+
+### [2026-02-21 01:32:11] Validation
+- Commands run:
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - Additional: `npm run test:unit` passed
+  - Additional: `npm run qa:overnight:smoke` passed
+- Result: P2.2 validation suite passed.
+
 ---
 
 ## Task Checklist
 - [x] P1.1 Firestore index source-of-truth and query audit
 - [x] P1.2 Listener resilience wrapper for high-risk screens
 - [x] P2.1 Smoke coverage for recent regressions
-- [ ] P2.2 Safe modularization extraction (behavior-preserving)
+- [x] P2.2 Safe modularization extraction (behavior-preserving)
 - [ ] P3.1 Build budget visibility
 
 ## Blockers

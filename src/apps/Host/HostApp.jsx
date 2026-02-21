@@ -15,6 +15,7 @@ import HostLogoManager from './components/HostLogoManager';
 import ChatSettingsPanel from './components/ChatSettingsPanel';
 import HostTopChrome from './components/HostTopChrome';
 import ModerationInboxDrawer from './components/ModerationInboxDrawer';
+import HostQaDebugPanel from './components/HostQaDebugPanel';
 import MissionSetupShell from './components/setup/MissionSetupShell';
 import MissionSetupHeader from './components/setup/MissionSetupHeader';
 import MissionSetupPrimaryPicks from './components/setup/MissionSetupPrimaryPicks';
@@ -29,6 +30,7 @@ import useQueueReorder from './hooks/useQueueReorder';
 import useQueueSongActions from './hooks/useQueueSongActions';
 import useQueueTabState from './hooks/useQueueTabState';
 import useModerationInboxState from './hooks/useModerationInboxState';
+import useHostSmokeTest from './hooks/useHostSmokeTest';
 import HOST_UI_FEATURE_CHECKLIST from './hostUiFeatureChecklist';
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
@@ -4735,9 +4737,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setShowSettings(tab === 'admin');
     }, [tab]);
     const hallOfFameTimerRef = useRef(null);
-    const [smokeRunning, setSmokeRunning] = useState(false);
-    const [smokeResults, setSmokeResults] = useState([]);
-    const [smokeIncludeWrite, setSmokeIncludeWrite] = useState(false);
     const layoutDefaultedRef = useRef(false);
     const [clearingRoom, setClearingRoom] = useState(false);
     const [exportingRoom, setExportingRoom] = useState(false);
@@ -5387,99 +5386,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const hostAuthSessionReady = !!(uid || auth.currentUser?.uid);
     const recentActivities = (activities || []).filter(a => toMs(a.timestamp) > nowMs() - 5 * 60 * 1000);
     const lastActivity = activities?.[0];
-    const copySnapshot = async () => {
-        const payload = {
-            roomCode,
-            room: room || null,
-            users: users?.length || 0,
-            queuedSongs: queuedSongs.length,
-            currentSong: currentSong ? { title: currentSong.songTitle, singer: currentSong.singerName } : null
-        };
-        try {
-            await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-            toast("QA snapshot copied");
-        } catch {
-            toast("Copy failed");
-        }
-    };
-
-    const runSmokeTest = async () => {
-        if (!roomCode) {
-            setSmokeResults([{ label: 'Room code', status: 'fail', detail: 'No room code set' }]);
-            return;
-        }
-        setSmokeRunning(true);
-        setSmokeResults([]);
-        const addResult = (label, status, detail) => ({ label, status, detail });
-        const runCheck = async (label, fn) => {
-            try {
-                const detail = await fn();
-                return addResult(label, 'ok', detail);
-            } catch (err) {
-                return addResult(label, 'fail', err?.message || String(err));
-            }
-        };
-        const checks = [
-            runCheck('Auth (uid)', async () => {
-                if (!uid) throw new Error('No auth uid');
-                return uid;
-            }),
-            runCheck('User profile read (/users/{uid})', async () => {
-                const userRef = doc(db, 'users', uid);
-                const snap = await getDoc(userRef);
-                if (!snap.exists()) return 'Missing profile doc';
-                return 'OK';
-            }),
-            runCheck('Room doc read', async () => {
-                const snap = await getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode));
-                if (!snap.exists()) return 'Room doc missing';
-                return 'OK';
-            }),
-            runCheck('Songs query read', async () => {
-                await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), where('roomCode', '==', roomCode), limit(1)));
-                return 'OK';
-            }),
-            runCheck('Room users query read', async () => {
-                await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode), limit(1)));
-                return 'OK';
-            }),
-            runCheck('Activities query read', async () => {
-                await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), where('roomCode', '==', roomCode), limit(1)));
-                return 'OK';
-            }),
-            runCheck('Chat messages query read', async () => {
-                await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'), where('roomCode', '==', roomCode), limit(1)));
-                return 'OK';
-            }),
-            runCheck('Host library read', async () => {
-                const snap = await getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode));
-                if (!snap.exists()) return 'No host library yet';
-                return 'OK';
-            })
-        ];
-        if (smokeIncludeWrite) {
-            checks.push(runCheck('User profile write (/users/{uid})', async () => {
-                const userRef = doc(db, 'users', uid);
-                await setDoc(userRef, { smokeUpdatedAt: serverTimestamp() }, { merge: true });
-                return 'OK';
-            }));
-            checks.push(runCheck('Write/delete smoke doc', async () => {
-                const smokeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'smoke_tests', `${roomCode}_${uid}`);
-                await setDoc(smokeRef, { roomCode, uid, createdAt: serverTimestamp() }, { merge: true });
-                await deleteDoc(smokeRef);
-                return 'OK';
-            }));
-        }
-        const results = await Promise.all(checks);
-        const normalized = results.map((res) => {
-            if (res.status === 'ok' && res.detail && String(res.detail).includes('missing')) {
-                return addResult(res.label, 'warn', res.detail);
-            }
-            return res;
-        });
-        setSmokeResults(normalized);
-        setSmokeRunning(false);
-    };
+    const {
+        smokeRunning,
+        smokeResults,
+        smokeIncludeWrite,
+        setSmokeIncludeWrite,
+        copySnapshot,
+        runSmokeTest
+    } = useHostSmokeTest({
+        roomCode,
+        room,
+        users,
+        queuedSongs,
+        currentSong,
+        uid,
+        toast
+    });
 
 
     // Audio Init
@@ -14341,101 +14263,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                         )}
                         {settingsTab === 'qa' && (
-                            <div className={`${STYLES.panel} p-4 border-white/10`}>
-                                <div className={STYLES.header}>QA DEBUG</div>
-                                <div className="mb-3 text-xs text-zinc-400">
-                                    Host UI version: <span className="text-cyan-300 font-semibold">v2 workspace</span>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-3">
-                                        <div className="text-sm uppercase tracking-widest text-zinc-500 mb-2">Room Snapshot</div>
-                                        <div className="text-sm text-zinc-300">Room: <span className="text-white font-mono">{roomCode || '--'}</span></div>
-                                        <div className="text-sm text-zinc-300">Mode: <span className="text-white">{room?.activeMode || 'karaoke'}</span></div>
-                                        <div className="text-sm text-zinc-300">Screen: <span className="text-white">{room?.activeScreen || 'stage'}</span></div>
-                                        <div className="text-sm text-zinc-300">On Stage: <span className="text-white">{currentSong?.singerName || 'None'}</span></div>
-                                        <div className="text-sm text-zinc-300">Queue: <span className="text-white">{queuedSongs.length}</span></div>
-                                        <div className="text-sm text-zinc-300">Lobby: <span className="text-white">{users?.length || 0}</span></div>
-                                    </div>
-                                    <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-3">
-                                        <div className="text-sm uppercase tracking-widest text-zinc-500 mb-2">Health</div>
-                                        <div className="text-sm text-zinc-300">BG Music: <span className="text-white">{room?.bgMusicPlaying ? 'On' : 'Off'}</span></div>
-                                        <div className="text-sm text-zinc-300">Mix: <span className="text-white">{Math.round(room?.mixFader ?? 50)}%</span></div>
-                                        <div className="text-sm text-zinc-300">Lyrics TV: <span className="text-white">{room?.showLyricsTv ? 'On' : 'Off'}</span></div>
-                                        <div className="text-sm text-zinc-300">Visualizer TV: <span className="text-white">{room?.showVisualizerTv ? 'On' : 'Off'}</span></div>
-                                        <div className="text-sm text-zinc-300">Lyrics Singer: <span className="text-white">{room?.showLyricsSinger ? 'On' : 'Off'}</span></div>
-                                        <div className="text-sm text-zinc-300">Light Mode: <span className="text-white">{room?.lightMode || 'off'}</span></div>
-                                        <div className="text-sm text-zinc-300">Audience Sync: <span className="text-white">{room?.audienceVideoMode || 'off'}</span></div>
-                                    </div>
-                                    <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-3">
-                                        <div className="text-sm uppercase tracking-widest text-zinc-500 mb-2">Event Pulse</div>
-                                        <div className="text-sm text-zinc-300">Last 5 min: <span className="text-white">{recentActivities.length}</span></div>
-                                        <div className="text-sm text-zinc-300">Last Activity: <span className="text-white">{lastActivity?.text || 'None'}</span></div>
-                                        <button onClick={copySnapshot} className={`${STYLES.btnStd} ${STYLES.btnNeutral} mt-3 w-full`}>
-                                            <i className="fa-solid fa-copy mr-1"></i>Copy Room Snapshot
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="mt-4 border-t border-white/10 pt-3">
-                                    <div className="text-sm uppercase tracking-widest text-zinc-500 mb-2">Recent Activity</div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar">
-                                        {(activities || []).slice(0, 10).map((a, i) => (
-                                            <div key={`${a?.id || a?.timestamp?.seconds || 'activity'}-${i}`} className="text-sm text-zinc-300 bg-zinc-900/60 border border-white/5 rounded-lg px-2 py-1">
-                                                <span className="text-zinc-500 mr-1">{a?.icon || EMOJI.sparkle}</span>
-                                                <span className="text-white">{a?.user || 'Guest'}</span>
-                                                <span className="text-zinc-500"> {a?.text || ''}</span>
-                                            </div>
-                                        ))}
-                                        {(activities || []).length === 0 && (
-                                            <div className="text-sm text-zinc-500 italic">No activity yet.</div>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="mt-4 border-t border-white/10 pt-3">
-                                    <div className="flex items-center justify-between gap-3 mb-2">
-                                        <div className="text-sm uppercase tracking-widest text-zinc-500">Smoke Test</div>
-                                        <label className="flex items-center gap-2 text-sm text-zinc-400">
-                                            <input
-                                                type="checkbox"
-                                                checked={smokeIncludeWrite}
-                                                onChange={(e) => setSmokeIncludeWrite(e.target.checked)}
-                                                className="accent-[#00C4D9]"
-                                            />
-                                            Include write test
-                                        </label>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                            <button
-                                                onClick={runSmokeTest}
-                                                disabled={smokeRunning}
-                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 ${smokeRunning ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                            >
-                                                {smokeRunning ? 'Running...' : 'Run Smoke Test'}
-                                            </button>
-                                        <div className="text-sm text-zinc-500">Checks auth, room reads, user profile read/write, and optional write/delete.</div>
-                                    </div>
-                                    {smokeResults.length > 0 && (
-                                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                            {smokeResults.map((res, idx) => (
-                                                <div key={`${res.label}-${idx}`} className="text-sm text-zinc-300 bg-zinc-900/60 border border-white/5 rounded-lg px-2 py-1 flex items-center justify-between gap-2">
-                                                    <div className="truncate">
-                                                        <span className="text-white">{res.label}</span>
-                                                        {res.detail && <span className="text-zinc-500"> - {res.detail}</span>}
-                                                    </div>
-                                                    <span className={`text-sm uppercase tracking-widest ${
-                                                        res.status === 'ok'
-                                                            ? 'text-emerald-400'
-                                                            : res.status === 'warn'
-                                                                ? 'text-yellow-400'
-                                                                : 'text-rose-400'
-                                                    }`}>
-                                                        {res.status}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                            <HostQaDebugPanel
+                                styles={STYLES}
+                                roomCode={roomCode}
+                                room={room}
+                                currentSong={currentSong}
+                                queuedSongs={queuedSongs}
+                                users={users}
+                                recentActivities={recentActivities}
+                                lastActivity={lastActivity}
+                                activities={activities}
+                                copySnapshot={copySnapshot}
+                                smokeIncludeWrite={smokeIncludeWrite}
+                                setSmokeIncludeWrite={setSmokeIncludeWrite}
+                                runSmokeTest={runSmokeTest}
+                                smokeRunning={smokeRunning}
+                                smokeResults={smokeResults}
+                                sparkleEmoji={EMOJI.sparkle}
+                            />
                         )}
 
                                 </div>
