@@ -11361,17 +11361,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         : (viewScopedSettingsItems.length ? viewScopedSettingsItems : flatSettingsItems);
     const settingsNavigationContent = (
         <div className="space-y-3" data-admin-sections-nav>
-            <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 px-3 py-3">
-                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-400">You Are Here</div>
-                <div className="mt-2 flex items-center gap-2 text-sm text-zinc-100">
-                    <i className={`fa-solid ${activeWorkspaceMeta?.icon || 'fa-sliders'} text-[12px] text-cyan-300`}></i>
-                    <span className="font-semibold">{activeWorkspaceMeta?.label || 'Operations'}</span>
+            {tab !== 'admin' && (
+                <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 px-3 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-400">You Are Here</div>
+                    <div className="mt-2 flex items-center gap-2 text-sm text-zinc-100">
+                        <i className={`fa-solid ${activeWorkspaceMeta?.icon || 'fa-sliders'} text-[12px] text-cyan-300`}></i>
+                        <span className="font-semibold">{activeWorkspaceMeta?.label || 'Operations'}</span>
+                    </div>
+                    <div className="mt-1 text-sm text-cyan-100">{activeSettingsMeta.label || 'Host Settings'}</div>
+                    {!!activeSectionMeta?.label && (
+                        <div className="mt-0.5 text-xs text-zinc-400">Section: {activeSectionMeta.label}</div>
+                    )}
                 </div>
-                <div className="mt-1 text-sm text-cyan-100">{activeSettingsMeta.label || 'Host Settings'}</div>
-                {!!activeSectionMeta?.label && (
-                    <div className="mt-0.5 text-xs text-zinc-400">Section: {activeSectionMeta.label}</div>
-                )}
-            </div>
+            )}
             <div className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
                 <div className="px-3 py-2 text-xs uppercase tracking-[0.18em] text-zinc-400 border-b border-zinc-900">Sections In {activeWorkspaceMeta?.label || 'Workspace'}</div>
                 <div className="divide-y divide-zinc-900">
@@ -12245,28 +12247,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
             )}
             {(showSettings || inAdminWorkspace) && (
-                <div className={inAdminWorkspace ? 'fixed inset-x-0 bottom-0 top-[94px] z-[40] px-3 sm:px-4 md:px-5 lg:px-6 pb-3 sm:pb-4 md:pb-5 lg:pb-6' : 'fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4'}>
+                <div className={inAdminWorkspace ? 'fixed inset-0 z-[80]' : 'fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4'}>
                     <div
                         data-admin-workspace={inAdminWorkspace ? 'true' : 'modal'}
-                        className={`host-admin-workspace bg-zinc-950/95 border border-zinc-700/80 w-full overflow-hidden flex flex-col ${inAdminWorkspace ? 'h-full rounded-2xl shadow-none' : 'rounded-none sm:rounded-2xl max-w-[1400px] shadow-[0_22px_80px_rgba(0,0,0,0.55)] h-[100dvh] sm:h-[90vh]'}`}
+                        className={`host-admin-workspace bg-zinc-950/95 border border-zinc-700/80 w-full overflow-hidden flex flex-col ${inAdminWorkspace ? 'h-[100dvh] rounded-none border-0 shadow-none' : 'rounded-none sm:rounded-2xl max-w-[1400px] shadow-[0_22px_80px_rgba(0,0,0,0.55)] h-[100dvh] sm:h-[90vh]'}`}
                     >
-                        <div className="border-b border-white/10 px-4 py-3 md:px-5 bg-zinc-950">
+                        <div className={`border-b border-white/10 bg-zinc-950 ${inAdminWorkspace ? 'px-3 py-2 md:px-4' : 'px-4 py-3 md:px-5'}`}>
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="min-w-0 flex items-center gap-2 flex-wrap">
                                     <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] text-zinc-300">
                                         Host Admin
                                     </span>
-                                    <div className="text-lg font-bold text-white">Admin Workspace</div>
-                                    <span className="inline-flex items-center rounded-full border border-white/15 bg-zinc-900/80 px-2 py-1 text-xs text-zinc-300">
-                                        Room {roomCode || '--'}
-                                    </span>
-                                    <span className="inline-flex items-center rounded-full border border-white/15 bg-zinc-900/80 px-2 py-1 text-xs text-zinc-300">
-                                        Mode {room?.activeMode || 'karaoke'}
-                                    </span>
-                                    {!!totalSocialUnread && (
-                                        <span className="inline-flex items-center rounded-full border border-pink-400/30 bg-pink-500/10 px-2 py-1 text-xs text-pink-100">
-                                            Social {totalSocialUnread}
-                                        </span>
+                                    <div className={`${inAdminWorkspace ? 'text-base' : 'text-lg'} font-bold text-white`}>Admin Workspace</div>
+                                    {!inAdminWorkspace && (
+                                        <>
+                                            <span className="inline-flex items-center rounded-full border border-white/15 bg-zinc-900/80 px-2 py-1 text-xs text-zinc-300">
+                                                Room {roomCode || '--'}
+                                            </span>
+                                            <span className="inline-flex items-center rounded-full border border-white/15 bg-zinc-900/80 px-2 py-1 text-xs text-zinc-300">
+                                                Mode {room?.activeMode || 'karaoke'}
+                                            </span>
+                                            {!!totalSocialUnread && (
+                                                <span className="inline-flex items-center rounded-full border border-pink-400/30 bg-pink-500/10 px-2 py-1 text-xs text-pink-100">
+                                                    Social {totalSocialUnread}
+                                                </span>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                                 <div className="flex items-center gap-2 text-sm text-zinc-400 flex-wrap">
@@ -12283,38 +12289,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         className={`${STYLES.btnStd} ${showAdminFieldHelp ? STYLES.btnInfo : STYLES.btnSecondary}`}
                                     >
                                         <i className="fa-solid fa-circle-question"></i>
-                                        Help {showAdminFieldHelp ? 'On' : 'Off'}
+                                        {!inAdminWorkspace && <>Help {showAdminFieldHelp ? 'On' : 'Off'}</>}
                                     </button>
-                                    <button
-                                        onClick={() => setAdminContextOpen((prev) => !prev)}
-                                        className={`${STYLES.btnStd} ${adminContextOpen ? STYLES.btnInfo : STYLES.btnSecondary}`}
-                                    >
-                                        <i className="fa-solid fa-layer-group"></i>
-                                        Context {adminContextOpen ? 'On' : 'Off'}
-                                    </button>
+                                    {!inAdminWorkspace && (
+                                        <button
+                                            onClick={() => setAdminContextOpen((prev) => !prev)}
+                                            className={`${STYLES.btnStd} ${adminContextOpen ? STYLES.btnInfo : STYLES.btnSecondary}`}
+                                        >
+                                            <i className="fa-solid fa-layer-group"></i>
+                                            Context {adminContextOpen ? 'On' : 'Off'}
+                                        </button>
+                                    )}
                                     <button onClick={closeSettingsSurface} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>{inAdminWorkspace ? 'Exit Admin' : 'Close'}</button>
                                 </div>
                             </div>
-                            {adminContextOpen && (
+                            {adminContextOpen && !inAdminWorkspace && (
                                 <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/65 p-3 space-y-3">
-                                    {inAdminWorkspace && (
-                                        <div className="inline-flex flex-wrap rounded-xl border border-zinc-800 bg-zinc-950/90 p-1.5 gap-1.5">
-                                            {ADMIN_WORKSPACE_VIEWS.map((view) => (
-                                                <button
-                                                    key={`workspace-view-chip-${view.id}`}
-                                                    onClick={() => selectWorkspaceView(view.id)}
-                                                    className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${
-                                                        activeWorkspaceView === view.id
-                                                            ? 'bg-cyan-500/15 text-cyan-100 border border-cyan-400/30'
-                                                            : 'text-zinc-300 hover:bg-zinc-900 border border-transparent'
-                                                    }`}
-                                                >
-                                                    <i className={`fa-solid ${view.icon} text-[12px]`}></i>
-                                                    {view.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
                                     <div className="max-w-xl md:max-w-2xl">
                                         <label className="relative block">
                                             <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
@@ -12356,30 +12346,47 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             views={ADMIN_WORKSPACE_VIEWS}
                             activeView={activeWorkspaceView}
                             onSelectView={selectWorkspaceView}
-                            context={workspaceContextPanel}
+                            context={inAdminWorkspace ? null : workspaceContextPanel}
+                            showContext={!inAdminWorkspace}
+                            fullBleed={inAdminWorkspace}
                         >
-                            <div className="h-full min-h-0 grid grid-cols-1 xl:grid-cols-[330px_minmax(0,1fr)]">
+                            <div className="h-full min-h-0 grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]">
                                 <aside className={`${settingsNavOpen ? 'block' : 'hidden md:block'} xl:block border-b xl:border-b-0 xl:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar p-3 md:p-4`}>
                                     <div data-admin-sections-rail>
                                     <div className="mb-2 flex items-center justify-between md:hidden">
                                         <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Sections</div>
                                         <button onClick={() => setSettingsNavOpen(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
                                     </div>
+                                    {inAdminWorkspace && (
+                                        <div className="mb-3">
+                                            <label className="relative block">
+                                                <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
+                                                <input
+                                                    value={settingsNavQuery}
+                                                    onChange={(e) => setSettingsNavQuery(e.target.value)}
+                                                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-9 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+                                                    placeholder="Search sections..."
+                                                />
+                                            </label>
+                                        </div>
+                                    )}
                                     {settingsNavigationContent}
                                     </div>
                                 </aside>
                                 <div className="min-h-0 flex flex-col">
-                                <div className="border-b border-white/10 px-4 py-3 md:px-5 bg-zinc-950/70">
-                                    <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-zinc-400">
-                                        <span className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5">
-                                            <i className={`fa-solid ${activeWorkspaceMeta?.icon || 'fa-sliders'} text-[10px] text-cyan-300`}></i>
-                                            {activeWorkspaceMeta?.label || 'Operations'}
-                                        </span>
-                                        <span className="text-zinc-600">/</span>
-                                        <span>{activeSettingsMeta.sectionLabel || 'Host Settings'}</span>
-                                    </div>
-                                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                                        <div data-admin-active-section-title className="text-xl font-bold text-white">{activeSettingsMeta.label || 'Host Settings'}</div>
+                                <div className={`border-b border-white/10 bg-zinc-950/70 ${inAdminWorkspace ? 'px-3 py-2 md:px-4' : 'px-4 py-3 md:px-5'}`}>
+                                    {!inAdminWorkspace && (
+                                        <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-zinc-400">
+                                            <span className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5">
+                                                <i className={`fa-solid ${activeWorkspaceMeta?.icon || 'fa-sliders'} text-[10px] text-cyan-300`}></i>
+                                                {activeWorkspaceMeta?.label || 'Operations'}
+                                            </span>
+                                            <span className="text-zinc-600">/</span>
+                                            <span>{activeSettingsMeta.sectionLabel || 'Host Settings'}</span>
+                                        </div>
+                                    )}
+                                    <div className={`${inAdminWorkspace ? 'mt-0' : 'mt-1'} flex flex-wrap items-center gap-2`}>
+                                        <div data-admin-active-section-title className={`${inAdminWorkspace ? 'text-lg' : 'text-xl'} font-bold text-white`}>{activeSettingsMeta.label || 'Host Settings'}</div>
                                         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] ${activeOwnershipMeta.className}`}>
                                             {activeOwnershipMeta.label}
                                         </span>
@@ -12388,25 +12395,48 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 Unsaved Changes
                                             </span>
                                         )}
+                                        {inAdminWorkspace && (
+                                            <div className="ml-auto flex items-center gap-2 text-xs text-zinc-300">
+                                                <button
+                                                    onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                                                    className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-2.5 py-1 hover:bg-cyan-500/20"
+                                                >
+                                                    <i className="fa-solid fa-tv text-[11px]"></i> TV
+                                                </button>
+                                                <button
+                                                    onClick={() => setAudiencePreviewVisible(prev => !prev)}
+                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
+                                                        audiencePreviewVisible ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-white/15 bg-zinc-900 text-zinc-300'
+                                                    }`}
+                                                >
+                                                    <i className="fa-solid fa-mobile-screen-button text-[11px]"></i>
+                                                    Audience {audiencePreviewVisible ? 'On' : 'Off'}
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="text-sm text-zinc-300 mt-1">{activeSettingsMeta.description || 'Configure room behavior and host controls.'}</div>
-                                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-300">
-                                        <button
-                                            onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
-                                            className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-3 py-1.5 hover:bg-cyan-500/20"
-                                        >
-                                            <i className="fa-solid fa-tv text-[11px]"></i> Open TV
-                                        </button>
-                                        <button
-                                            onClick={() => setAudiencePreviewVisible(prev => !prev)}
-                                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 ${
-                                                audiencePreviewVisible ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-white/15 bg-zinc-900 text-zinc-300'
-                                            }`}
-                                        >
-                                            <i className="fa-solid fa-mobile-screen-button text-[11px]"></i>
-                                            Audience Preview {audiencePreviewVisible ? 'On' : 'Off'}
-                                        </button>
-                                    </div>
+                                    {!inAdminWorkspace && (
+                                        <>
+                                            <div className="text-sm text-zinc-300 mt-1">{activeSettingsMeta.description || 'Configure room behavior and host controls.'}</div>
+                                            <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-300">
+                                                <button
+                                                    onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                                                    className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-3 py-1.5 hover:bg-cyan-500/20"
+                                                >
+                                                    <i className="fa-solid fa-tv text-[11px]"></i> Open TV
+                                                </button>
+                                                <button
+                                                    onClick={() => setAudiencePreviewVisible(prev => !prev)}
+                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 ${
+                                                        audiencePreviewVisible ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-white/15 bg-zinc-900 text-zinc-300'
+                                                    }`}
+                                                >
+                                                    <i className="fa-solid fa-mobile-screen-button text-[11px]"></i>
+                                                    Audience Preview {audiencePreviewVisible ? 'On' : 'Off'}
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                                 <div
                                     data-admin-help={showAdminFieldHelp ? 'on' : 'off'}
