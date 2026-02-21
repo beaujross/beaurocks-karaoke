@@ -1,31 +1,31 @@
 # Overnight Progress Log
 
 ## Session Metadata
-- Date:
-- Branch:
-- Start time:
+- Date: 2026-02-21
+- Branch: overnight/stability-hardening-pass-1
+- Start time: 2026-02-21 01:12:12
 - End time:
 - Operator: Codex
 
 ## Execution Timeline
 
-### [time] Task Started
-- Priority:
-- Task ID (ex: P1.1):
-- Task:
-- Planned scope:
+### [2026-02-21 01:12:12] Task Started
+- Priority: P1
+- Task ID (ex: P1.1): P1.1
+- Task: Firestore index source-of-truth and query audit
+- Planned scope: add repo-managed Firestore index config, wire into firebase config, and document current index coverage.
 
-### [time] Progress Update
-- What changed:
-- Files touched:
-- Notes:
+### [2026-02-21 01:13:21] Progress Update
+- What changed: Added `firestore.indexes.json`, wired Firestore indexes into `firebase.json`, and added operational docs in `docs/firestore-indexes.md`.
+- Files touched: `firestore.indexes.json`, `firebase.json`, `docs/firestore-indexes.md`
+- Notes: Included composites for known runtime query patterns (`reactions`, `chat_messages`, `doodle_*`, `song_hall_of_fame_weeks`).
 
-### [time] Validation
+### [2026-02-21 01:13:21] Validation
 - Commands run:
-  - `npm run lint`:
-  - `npm run build`:
-  - Additional:
-- Result:
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - Additional: `npm run test:unit` passed
+- Result: P1.1 validation suite passed.
 
 ### [time] Commit
 - Commit:
