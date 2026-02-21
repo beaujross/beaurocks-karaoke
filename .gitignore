@@ -34,3 +34,4 @@ GoogleCloudSDKInstaller.exe
 !.env.example
 .firebase/
 functions/.env*
+tmp/
