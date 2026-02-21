@@ -98,6 +98,29 @@
   - Additional: `npm run qa:overnight:smoke` passed
 - Result: P2.2 validation suite passed.
 
+### [2026-02-21 01:32:29] Commit
+- Commit: `63ca72a`
+- Message: `P2.2: extract host QA panel and smoke logic from HostApp`
+- Included tasks: P2.2
+
+### [2026-02-21 01:32:42] Task Started
+- Priority: P3
+- Task ID (ex: P1.1): P3.1
+- Task: Build budget visibility
+- Planned scope: document chunk-size budget targets and build review checklist for Host/Mobile/TV bundles.
+
+### [2026-02-21 01:33:17] Progress Update
+- What changed: added `docs/performance-budget.md` with current bundle snapshot, per-surface targets, and enforcement checklist.
+- Files touched: `docs/performance-budget.md`
+- Notes: codified next split candidates for `HostApp`, `SingerApp`, and `PublicTV`.
+
+### [2026-02-21 01:33:17] Validation
+- Commands run:
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - Additional: `npm run test:unit` passed
+- Result: P3.1 validation suite passed.
+
 ---
 
 ## Task Checklist
@@ -105,7 +128,7 @@
 - [x] P1.2 Listener resilience wrapper for high-risk screens
 - [x] P2.1 Smoke coverage for recent regressions
 - [x] P2.2 Safe modularization extraction (behavior-preserving)
-- [ ] P3.1 Build budget visibility
+- [x] P3.1 Build budget visibility
 
 ## Blockers
 
