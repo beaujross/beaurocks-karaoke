@@ -23,23 +23,74 @@ import {
 
 const mapDocs = (snap) => snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
 
+const isIndexRequiredError = (error) => {
+  const message = String(error?.message || "").toLowerCase();
+  const code = String(error?.code || "").toLowerCase();
+  return (
+    message.includes("requires an index")
+    || (code.includes("failed-precondition") && message.includes("index"))
+  );
+};
+
+const subscribeWithFallback = ({
+  primaryQuery,
+  fallbackQuery = null,
+  onData,
+  onError,
+}) => {
+  let unsub = () => {};
+
+  const start = (queryRef, allowFallback) => {
+    unsub = onSnapshot(
+      queryRef,
+      (snap) => onData?.(snap),
+      (error) => {
+        if (allowFallback && fallbackQuery && isIndexRequiredError(error)) {
+          try {
+            unsub();
+          } catch {
+            // Ignore cleanup errors and continue with fallback.
+          }
+          start(fallbackQuery, false);
+          return;
+        }
+        onError?.(error);
+      }
+    );
+  };
+
+  start(primaryQuery, true);
+  return () => unsub();
+};
+
 export const subscribeApprovedListings = ({ onData, onError }) => {
   const venueQuery = query(
     collection(db, "venues"),
     where("status", "==", "approved"),
     limit(120)
   );
-  const eventQuery = query(
+  const eventQueryPrimary = query(
     collection(db, "karaoke_events"),
     where("status", "==", "approved"),
     orderBy("startsAtMs", "asc"),
     limit(160)
   );
-  const sessionQuery = query(
+  const eventQueryFallback = query(
+    collection(db, "karaoke_events"),
+    where("status", "==", "approved"),
+    limit(160)
+  );
+  const sessionQueryPrimary = query(
     collection(db, "room_sessions"),
     where("status", "==", "approved"),
     where("visibility", "==", "public"),
     orderBy("startsAtMs", "asc"),
+    limit(160)
+  );
+  const sessionQueryFallback = query(
+    collection(db, "room_sessions"),
+    where("status", "==", "approved"),
+    where("visibility", "==", "public"),
     limit(160)
   );
 
@@ -54,22 +105,24 @@ export const subscribeApprovedListings = ({ onData, onError }) => {
     },
     onError
   );
-  const unsubEvent = onSnapshot(
-    eventQuery,
-    (snap) => {
+  const unsubEvent = subscribeWithFallback({
+    primaryQuery: eventQueryPrimary,
+    fallbackQuery: eventQueryFallback,
+    onData: (snap) => {
       state.events = mapDocs(snap);
       emit();
     },
-    onError
-  );
-  const unsubSession = onSnapshot(
-    sessionQuery,
-    (snap) => {
+    onError,
+  });
+  const unsubSession = subscribeWithFallback({
+    primaryQuery: sessionQueryPrimary,
+    fallbackQuery: sessionQueryFallback,
+    onData: (snap) => {
       state.sessions = mapDocs(snap);
       emit();
     },
-    onError
-  );
+    onError,
+  });
 
   return () => {
     unsubVenue();
@@ -186,4 +239,3 @@ export const directoryActions = {
   resolveModerationItem,
   runExternalDirectoryIngestion,
 };
-

@@ -104,6 +104,8 @@ const fitMapToListings = ({ googleMaps, map, listings }) => {
 
 const isPermissionError = (message = "") =>
   /permission|missing or insufficient permissions|permission-denied/i.test(String(message || ""));
+const isIndexError = (message = "") =>
+  /indexing|requires an index|create_composite/i.test(String(message || ""));
 
 const DiscoverPage = ({ navigate, mapsConfig, session }) => {
   const [search, setSearch] = useState("");
@@ -121,6 +123,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session }) => {
 
   const { loading, error, data } = useDirectoryDiscover({ search, region });
   const permissionError = isPermissionError(error);
+  const indexError = isIndexError(error);
   const mapEnabled = !!mapsConfig?.mapEnabled && !!mapsConfig?.apiKey;
   const { loaded: mapsLoaded, error: mapsError } = useGoogleMapsScript({
     enabled: mapEnabled,
@@ -401,7 +404,23 @@ const DiscoverPage = ({ navigate, mapsConfig, session }) => {
 
         <aside className="mk3-feed-column">
           {loading && <div className="mk3-status">Loading approved karaoke listings...</div>}
-          {!loading && !!error && !permissionError && <div className="mk3-status mk3-status-error">{error}</div>}
+          {!loading && !!error && !permissionError && !indexError && (
+            <div className="mk3-status mk3-status-error">{error}</div>
+          )}
+          {!loading && indexError && (
+            <div className="mk3-status mk3-status-warning">
+              <strong>Directory updates are still finishing.</strong>
+              <span>Try again in about a minute while indexes sync.</span>
+              <div className="mk3-actions-inline">
+                <button type="button" onClick={() => window.location.reload()}>
+                  Refresh now
+                </button>
+                <button type="button" onClick={() => { setRegion("nationwide"); setSearch(""); setTypeFilter("all"); }}>
+                  Use broad filters
+                </button>
+              </div>
+            </div>
+          )}
           {!loading && permissionError && (
             <div className="mk3-status mk3-status-warning">
               <strong>Some discovery data is private right now.</strong>

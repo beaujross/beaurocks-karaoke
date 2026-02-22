@@ -2,6 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { subscribeApprovedListings } from "../api/directoryApi";
 
 const normalizeSearch = (value = "") => String(value || "").trim().toLowerCase();
+const isIndexError = (message = "") => /requires an index|create_composite/i.test(String(message || ""));
+
+const toDiscoverErrorMessage = (error) => {
+  const raw = String(error?.message || "Failed to load directory.");
+  if (isIndexError(raw)) {
+    return "Directory data is still indexing. Please retry in about a minute.";
+  }
+  return raw.replace(/https?:\/\/\S+/g, "").trim();
+};
 
 export const useDirectoryDiscover = ({ search = "", region = "" } = {}) => {
   const [loading, setLoading] = useState(true);
@@ -16,10 +25,11 @@ export const useDirectoryDiscover = ({ search = "", region = "" } = {}) => {
     const stop = subscribeApprovedListings({
       onData: (next) => {
         setData(next);
+        setError("");
         setLoading(false);
       },
       onError: (err) => {
-        setError(String(err?.message || "Failed to load directory."));
+        setError(toDiscoverErrorMessage(err));
         setLoading(false);
       },
     });
