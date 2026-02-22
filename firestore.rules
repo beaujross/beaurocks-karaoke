@@ -40,6 +40,33 @@ service cloud.firestore {
       return v is number ? v : 0;
     }
 
+    function directoryRoleDocPath(uid) {
+      return /databases/$(database)/documents/directory_roles/$(uid);
+    }
+
+    function isDirectoryModerator() {
+      return isAuthed()
+        && exists(directoryRoleDocPath(request.auth.uid))
+        && (
+          (
+            get(directoryRoleDocPath(request.auth.uid)).data.roles is list
+            && "directory_editor" in get(directoryRoleDocPath(request.auth.uid)).data.roles
+          )
+          || (
+            get(directoryRoleDocPath(request.auth.uid)).data.roles is list
+            && "directory_admin" in get(directoryRoleDocPath(request.auth.uid)).data.roles
+          )
+        );
+    }
+
+    function isPublicApproved(data) {
+      return data.status == "approved"
+        && (
+          !(data.visibility is string)
+          || data.visibility == "public"
+        );
+    }
+
     function nonHostRoomWritableKeys() {
       return [
         'activeMode',
@@ -63,6 +90,127 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isAuthed();
       allow write: if isAuthed() && request.auth.uid == uid;
+    }
+
+    match /directory_profiles/{uid} {
+      allow read: if isPublicApproved(resource.data)
+        || (isAuthed() && request.auth.uid == uid)
+        || isDirectoryModerator();
+      allow create, update: if isAuthed() && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    match /directory_roles/{uid} {
+      allow read: if isAuthed() && (request.auth.uid == uid || isDirectoryModerator());
+      allow write: if false;
+    }
+
+    match /venues/{venueId} {
+      allow read: if isPublicApproved(resource.data)
+        || isDirectoryModerator()
+        || (isAuthed() && resource.data.ownerUid == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /karaoke_events/{eventId} {
+      allow read: if isPublicApproved(resource.data)
+        || isDirectoryModerator()
+        || (isAuthed() && resource.data.ownerUid == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /room_sessions/{sessionId} {
+      allow read: if (
+        resource.data.status == "approved"
+        && resource.data.visibility == "public"
+      )
+        || isDirectoryModerator()
+        || (isAuthed() && resource.data.ownerUid == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /directory_submissions/{submissionId} {
+      allow read: if isAuthed()
+        && (
+          resource.data.createdBy == request.auth.uid
+          || isDirectoryModerator()
+        );
+      allow write: if false;
+    }
+
+    match /follows/{followId} {
+      allow read: if true;
+      allow create: if isAuthed()
+        && request.resource.data.followerUid == request.auth.uid
+        && request.resource.data.targetType is string
+        && request.resource.data.targetId is string;
+      allow update: if false;
+      allow delete: if isAuthed()
+        && (
+          resource.data.followerUid == request.auth.uid
+          || isDirectoryModerator()
+        );
+    }
+
+    match /checkins/{checkinId} {
+      allow read: if resource.data.isPublic == true
+        || (
+          isAuthed()
+          && (
+            resource.data.uid == request.auth.uid
+            || isDirectoryModerator()
+          )
+        );
+      allow create: if isAuthed()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.targetType is string
+        && request.resource.data.targetId is string;
+      allow update, delete: if isAuthed()
+        && (
+          resource.data.uid == request.auth.uid
+          || isDirectoryModerator()
+        );
+    }
+
+    match /checkin_totals/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isAuthed()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.targetType is string
+        && request.resource.data.targetId is string
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5;
+      allow update, delete: if isAuthed()
+        && (
+          resource.data.uid == request.auth.uid
+          || isDirectoryModerator()
+        );
+    }
+
+    match /review_totals/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /external_source_links/{docId} {
+      allow read: if isDirectoryModerator();
+      allow write: if false;
+    }
+
+    match /directory_sync_jobs/{docId} {
+      allow read: if isDirectoryModerator();
+      allow write: if false;
+    }
+
+    match /directory_regions/{regionId} {
+      allow read: if true;
+      allow write: if false;
     }
 
     // Global catalog + leaderboards (read-only to clients; writes via Admin SDK)
