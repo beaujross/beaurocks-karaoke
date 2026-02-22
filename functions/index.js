@@ -1,5 +1,6 @@
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
@@ -37,6 +38,8 @@ const APPLE_MUSIC_PRIVATE_KEY = defineSecret("APPLE_MUSIC_PRIVATE_KEY");
 const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
 const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 const GOOGLE_MAPS_API_KEY = defineSecret("GOOGLE_MAPS_API_KEY");
+const GOOGLE_MAPS_SERVER_API_KEY = defineSecret("GOOGLE_MAPS_SERVER_API_KEY");
+const YELP_API_KEY = defineSecret("YELP_API_KEY");
 const GEMINI_LYRICS_MODEL = "gemini-2.5-flash-preview-09-2025";
 const GEMINI_LYRICS_INPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_INPUT_USD_PER_1M || "0.3");
 const GEMINI_LYRICS_OUTPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_OUTPUT_USD_PER_1M || "2.5");
@@ -1114,6 +1117,504 @@ const sanitizeWaitlistSource = (value = "") => {
 
 const buildWaitlistDocId = (email = "") =>
   `wl_${email.replace(/[^a-z0-9]/g, "_").replace(/_+/g, "_").slice(0, 140) || "unknown"}`;
+
+const DIRECTORY_MODERATOR_ROLES = new Set(["directory_editor", "directory_admin"]);
+const DIRECTORY_ENTITY_TYPES = new Set(["host", "venue", "performer", "event", "session"]);
+const DIRECTORY_LISTING_TYPES = new Set(["venue", "event", "room_session"]);
+const DIRECTORY_ALLOWED_VISIBILITY = new Set(["public", "private"]);
+const DIRECTORY_ALLOWED_STATUSES = new Set(["pending", "approved", "rejected", "disabled"]);
+const DIRECTORY_ALLOWED_REVIEW_TAGS = new Set([
+  "host_vibe",
+  "rotation_speed",
+  "song_quality",
+  "sound_mix",
+  "crowd_energy",
+  "welcoming",
+  "gear_quality",
+  "karaoke_focus",
+  "value",
+]);
+const DIRECTORY_SYNC_PROVIDER_SET = new Set(["google", "yelp"]);
+const DIRECTORY_SYNC_MAX_BATCH = 80;
+const DIRECTORY_DEFAULT_COUNTRY = "US";
+const DIRECTORY_DEFAULT_REGION = "nationwide";
+const DIRECTORY_MAPS_PUBLIC_ENABLED = String(process.env.DIRECTORY_MAPS_PUBLIC_ENABLED || "false")
+  .trim()
+  .toLowerCase() === "true";
+
+const buildDirectoryNow = () => admin.firestore.FieldValue.serverTimestamp();
+
+const safeDirectoryString = (value = "", maxLen = 180) =>
+  String(value || "").trim().slice(0, maxLen);
+
+const normalizeDirectoryToken = (value = "", maxLen = 120) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, maxLen);
+
+const normalizeDirectoryTextBlock = (value = "", maxLen = 5000) =>
+  String(value || "").trim().replace(/\s+/g, " ").slice(0, maxLen);
+
+const normalizeDirectoryOptionalUrl = (value = "") => {
+  const url = safeDirectoryString(value, 2048);
+  if (!url) return "";
+  if (!/^https?:\/\//i.test(url)) return "";
+  return url;
+};
+
+const normalizeDirectoryLatLng = (input = {}) => {
+  const lat = Number(input?.lat);
+  const lng = Number(input?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return {
+    lat: Number(lat.toFixed(6)),
+    lng: Number(lng.toFixed(6)),
+  };
+};
+
+const normalizeDirectoryRoles = (input = []) => {
+  const source = Array.isArray(input) ? input : [];
+  const roleSet = new Set();
+  source.forEach((entry) => {
+    const token = normalizeDirectoryToken(entry, 40);
+    if (!token) return;
+    if (["host", "venue_owner", "performer", "fan"].includes(token)) {
+      roleSet.add(token);
+    }
+  });
+  if (!roleSet.size) roleSet.add("fan");
+  return Array.from(roleSet);
+};
+
+const normalizeDirectoryStatus = (value = "", fallback = "pending") => {
+  const token = normalizeDirectoryToken(value, 20);
+  if (DIRECTORY_ALLOWED_STATUSES.has(token)) return token;
+  return fallback;
+};
+
+const normalizeDirectoryVisibility = (value = "", fallback = "public") => {
+  const token = normalizeDirectoryToken(value, 20);
+  if (DIRECTORY_ALLOWED_VISIBILITY.has(token)) return token;
+  return fallback;
+};
+
+const normalizeDirectoryProviders = (input = []) => {
+  const values = Array.isArray(input) ? input : [input];
+  const providers = [];
+  values.forEach((provider) => {
+    const token = normalizeDirectoryToken(provider, 20);
+    if (!token || !DIRECTORY_SYNC_PROVIDER_SET.has(token)) return;
+    if (providers.includes(token)) return;
+    providers.push(token);
+  });
+  if (!providers.length) {
+    providers.push("google");
+    providers.push("yelp");
+  }
+  return providers;
+};
+
+const requireDirectoryEntityType = (value = "") => {
+  const type = normalizeDirectoryToken(value, 30);
+  if (!DIRECTORY_ENTITY_TYPES.has(type)) {
+    throw new HttpsError("invalid-argument", "Invalid directory targetType.");
+  }
+  return type;
+};
+
+const requireDirectoryListingType = (value = "") => {
+  const listingType = normalizeDirectoryToken(value, 40);
+  if (!DIRECTORY_LISTING_TYPES.has(listingType)) {
+    throw new HttpsError("invalid-argument", "listingType must be venue, event, or room_session.");
+  }
+  return listingType;
+};
+
+const ensureDirectoryCollectionName = (listingType = "") => {
+  if (listingType === "venue") return "venues";
+  if (listingType === "event") return "karaoke_events";
+  if (listingType === "room_session") return "room_sessions";
+  throw new HttpsError("invalid-argument", "Unknown listingType.");
+};
+
+const buildDirectorySubmissionId = (listingType = "", uid = "") => {
+  const token = normalizeDirectoryToken(`${listingType}_${uid}`, 60) || "submission";
+  const ts = Date.now();
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `sub_${token}_${ts}_${rand}`;
+};
+
+const buildDirectoryCanonicalId = (listingType = "", title = "", city = "", state = "") => {
+  const titleToken = normalizeDirectoryToken(title, 60) || "listing";
+  const cityToken = normalizeDirectoryToken(city, 40) || "city";
+  const stateToken = normalizeDirectoryToken(state, 12) || "st";
+  const ts = Date.now();
+  return `${listingType}_${titleToken}_${cityToken}_${stateToken}_${ts}`;
+};
+
+const buildDirectoryFollowDocId = (followerUid = "", targetType = "", targetId = "") => {
+  const uidToken = normalizeDirectoryToken(followerUid, 80);
+  const typeToken = normalizeDirectoryToken(targetType, 30);
+  const idToken = normalizeDirectoryToken(targetId, 180);
+  return `${uidToken}_${typeToken}_${idToken}`.slice(0, 260);
+};
+
+const buildDirectoryCheckinTotalDocId = (targetType = "", targetId = "") => {
+  const typeToken = normalizeDirectoryToken(targetType, 30);
+  const idToken = normalizeDirectoryToken(targetId, 180);
+  return `${typeToken}_${idToken}`.slice(0, 230);
+};
+
+const buildDirectoryReviewDocId = (uid = "", targetType = "", targetId = "", eventId = "") => {
+  const uidToken = normalizeDirectoryToken(uid, 80);
+  const typeToken = normalizeDirectoryToken(targetType, 30);
+  const idToken = normalizeDirectoryToken(targetId, 120);
+  const eventToken = normalizeDirectoryToken(eventId || "direct", 80);
+  return `${uidToken}_${typeToken}_${idToken}_${eventToken}`.slice(0, 260);
+};
+
+const normalizeDirectoryReviewTags = (input = []) => {
+  const source = Array.isArray(input) ? input : [];
+  const deduped = [];
+  source.forEach((tag) => {
+    const token = normalizeDirectoryToken(tag, 40);
+    if (!token || !DIRECTORY_ALLOWED_REVIEW_TAGS.has(token)) return;
+    if (deduped.includes(token)) return;
+    deduped.push(token);
+  });
+  return deduped.slice(0, 6);
+};
+
+const getDirectoryGoogleApiKey = () =>
+  String(process.env.GOOGLE_MAPS_SERVER_API_KEY || process.env.GOOGLE_MAPS_API_KEY || "").trim();
+
+const directoryRoleDocRef = (uid = "") => admin.firestore().collection("directory_roles").doc(uid);
+
+const getDirectoryModeratorAccess = async (uid = "") => {
+  if (!uid) return { isModerator: false, isAdmin: false, roles: [] };
+  const roleSnap = await directoryRoleDocRef(uid).get();
+  const roles = Array.isArray(roleSnap.data()?.roles)
+    ? roleSnap.data().roles.map((entry) => normalizeDirectoryToken(entry, 40)).filter(Boolean)
+    : [];
+  const isAdmin = roles.includes("directory_admin");
+  const isModerator = isAdmin || roles.includes("directory_editor");
+  return { isModerator, isAdmin, roles };
+};
+
+const requireDirectoryModerator = async (request, options = {}) => {
+  const uid = requireAuth(request, options.authMessage || "Sign in required.");
+  const access = await getDirectoryModeratorAccess(uid);
+  if (!access.isModerator) {
+    throw new HttpsError("permission-denied", options.deniedMessage || "Directory moderator role required.");
+  }
+  return { uid, ...access };
+};
+
+const normalizeDirectoryProfilePayload = (payload = {}) => {
+  const displayName = safeDirectoryString(payload?.displayName || payload?.name || "", 120);
+  if (!displayName) {
+    throw new HttpsError("invalid-argument", "displayName is required.");
+  }
+  return {
+    displayName,
+    handle: normalizeDirectoryToken(payload?.handle || displayName, 40),
+    bio: normalizeDirectoryTextBlock(payload?.bio || "", 500),
+    roles: normalizeDirectoryRoles(payload?.roles || []),
+    city: safeDirectoryString(payload?.city || "", 80),
+    state: safeDirectoryString(payload?.state || "", 40),
+    country: safeDirectoryString(payload?.country || DIRECTORY_DEFAULT_COUNTRY, 2).toUpperCase(),
+    avatarUrl: normalizeDirectoryOptionalUrl(payload?.avatarUrl || payload?.profilePictureUrl || ""),
+    visibility: normalizeDirectoryVisibility(payload?.visibility || "public", "public"),
+    socialLinks: {
+      instagram: normalizeDirectoryOptionalUrl(payload?.socialLinks?.instagram || ""),
+      tiktok: normalizeDirectoryOptionalUrl(payload?.socialLinks?.tiktok || ""),
+      spotify: normalizeDirectoryOptionalUrl(payload?.socialLinks?.spotify || ""),
+      website: normalizeDirectoryOptionalUrl(payload?.socialLinks?.website || ""),
+    },
+  };
+};
+
+const normalizeDirectoryListingPayload = (listingType = "", payload = {}, callerUid = "") => {
+  const title = safeDirectoryString(payload?.title || payload?.name || "", 180);
+  if (!title) {
+    throw new HttpsError("invalid-argument", "Listing title is required.");
+  }
+  const venueId = safeDirectoryString(payload?.venueId || "", 180);
+  const hostUid = safeDirectoryString(payload?.hostUid || callerUid, 180) || callerUid;
+  const performerUid = safeDirectoryString(payload?.performerUid || "", 180);
+  const region = normalizeDirectoryToken(payload?.region || DIRECTORY_DEFAULT_REGION, 80) || DIRECTORY_DEFAULT_REGION;
+  const city = safeDirectoryString(payload?.city || "", 80);
+  const state = safeDirectoryString(payload?.state || "", 40);
+  const timezone = safeDirectoryString(payload?.timezone || "America/Los_Angeles", 80);
+  const country = safeDirectoryString(payload?.country || DIRECTORY_DEFAULT_COUNTRY, 2).toUpperCase();
+  const startsAtMs = Number(payload?.startsAtMs || 0);
+  const endsAtMs = Number(payload?.endsAtMs || 0);
+  const latLng = normalizeDirectoryLatLng(payload?.location || payload?.latLng || {});
+  const startsAtSafe = Number.isFinite(startsAtMs) && startsAtMs > 0 ? Math.floor(startsAtMs) : 0;
+  const endsAtSafe = Number.isFinite(endsAtMs) && endsAtMs > startsAtSafe ? Math.floor(endsAtMs) : 0;
+  const visibility = normalizeDirectoryVisibility(payload?.visibility || "public", "public");
+  const status = normalizeDirectoryStatus(payload?.status || "pending", "pending");
+  const tags = normalizeDirectoryReviewTags(payload?.tags || []);
+
+  const base = {
+    listingType,
+    title,
+    description: normalizeDirectoryTextBlock(payload?.description || "", 3000),
+    region,
+    city,
+    state,
+    country,
+    timezone,
+    address1: safeDirectoryString(payload?.address1 || payload?.address || "", 180),
+    address2: safeDirectoryString(payload?.address2 || "", 180),
+    location: latLng,
+    startsAtMs: startsAtSafe,
+    endsAtMs: endsAtSafe,
+    visibility,
+    status,
+    websiteUrl: normalizeDirectoryOptionalUrl(payload?.websiteUrl || ""),
+    bookingUrl: normalizeDirectoryOptionalUrl(payload?.bookingUrl || ""),
+    imageUrl: normalizeDirectoryOptionalUrl(payload?.imageUrl || ""),
+    tags,
+    venueId: listingType === "event" || listingType === "room_session" ? venueId : "",
+    hostUid,
+    performerUid,
+    ownerUid: safeDirectoryString(payload?.ownerUid || callerUid, 180) || callerUid,
+    ownerOrgId: safeDirectoryString(payload?.ownerOrgId || "", 180),
+    sourceType: normalizeDirectoryToken(payload?.sourceType || "user", 20) || "user",
+    externalSources: payload?.externalSources && typeof payload.externalSources === "object"
+      ? payload.externalSources
+      : {},
+  };
+
+  if (listingType === "venue") {
+    return {
+      ...base,
+      phone: safeDirectoryString(payload?.phone || "", 40),
+      karaokeNightsLabel: safeDirectoryString(payload?.karaokeNightsLabel || "", 160),
+    };
+  }
+  if (listingType === "event") {
+    return {
+      ...base,
+      recurringRule: safeDirectoryString(payload?.recurringRule || "", 120),
+      hostName: safeDirectoryString(payload?.hostName || "", 120),
+      venueName: safeDirectoryString(payload?.venueName || "", 120),
+    };
+  }
+  if (listingType === "room_session") {
+    return {
+      ...base,
+      roomCode: normalizeRoomCode(payload?.roomCode || ""),
+      venueName: safeDirectoryString(payload?.venueName || "", 120),
+      sessionMode: safeDirectoryString(payload?.sessionMode || "karaoke", 40),
+      isPublicRoom: visibility === "public",
+    };
+  }
+  throw new HttpsError("invalid-argument", "Unsupported listingType.");
+};
+
+const buildDirectoryExternalLinks = (payload = {}) => {
+  const external = payload?.externalSources || {};
+  if (!external || typeof external !== "object") return {};
+  const google = external.google || {};
+  const yelp = external.yelp || {};
+  return {
+    google: {
+      placeId: safeDirectoryString(google.placeId || "", 180),
+      mapsUrl: normalizeDirectoryOptionalUrl(google.mapsUrl || ""),
+      rating: Number(google.rating || 0) || 0,
+      reviewCount: Number(google.reviewCount || 0) || 0,
+      refreshedAtMs: Number(google.refreshedAtMs || 0) || 0,
+    },
+    yelp: {
+      businessId: safeDirectoryString(yelp.businessId || "", 180),
+      url: normalizeDirectoryOptionalUrl(yelp.url || ""),
+      rating: Number(yelp.rating || 0) || 0,
+      reviewCount: Number(yelp.reviewCount || 0) || 0,
+      refreshedAtMs: Number(yelp.refreshedAtMs || 0) || 0,
+    },
+  };
+};
+
+const deriveDirectoryProviderHints = (payload = {}) => {
+  const hints = [];
+  const googlePlaceId = safeDirectoryString(payload?.externalSources?.google?.placeId || "", 180);
+  if (googlePlaceId) hints.push("google");
+  const yelpBusinessId = safeDirectoryString(payload?.externalSources?.yelp?.businessId || "", 180);
+  if (yelpBusinessId) hints.push("yelp");
+  return hints;
+};
+
+const buildDirectoryGeocodeQuery = (payload = {}) => {
+  const parts = [
+    safeDirectoryString(payload?.address1 || payload?.address || "", 180),
+    safeDirectoryString(payload?.city || "", 80),
+    safeDirectoryString(payload?.state || "", 40),
+    safeDirectoryString(payload?.country || DIRECTORY_DEFAULT_COUNTRY, 60),
+  ].filter(Boolean);
+  if (parts.length) return safeDirectoryString(parts.join(", "), 260);
+  const fallback = [
+    safeDirectoryString(payload?.title || payload?.name || "", 180),
+    safeDirectoryString(payload?.venueName || "", 120),
+    safeDirectoryString(payload?.city || "", 80),
+    safeDirectoryString(payload?.state || "", 40),
+  ].filter(Boolean).join(" ");
+  return safeDirectoryString(fallback, 260);
+};
+
+const lookupGoogleGeocode = async ({ queryText = "" }) => {
+  const apiKey = getDirectoryGoogleApiKey();
+  const query = safeDirectoryString(queryText, 260);
+  if (!apiKey || !query) return null;
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${encodeURIComponent(apiKey)}`;
+  let res = null;
+  try {
+    res = await fetch(url, { method: "GET" });
+  } catch {
+    return null;
+  }
+  if (!res?.ok) return null;
+  const data = await res.json().catch(() => null);
+  const top = Array.isArray(data?.results) ? data.results[0] : null;
+  if (!top) return null;
+  const lat = Number(top?.geometry?.location?.lat);
+  const lng = Number(top?.geometry?.location?.lng);
+  const loc = Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  if (!loc) return null;
+  const placeId = safeDirectoryString(top.place_id || "", 180);
+  return {
+    provider: "google",
+    placeId,
+    address: safeDirectoryString(top.formatted_address || "", 220),
+    location: loc,
+    mapsUrl: placeId
+      ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(String(placeId))}`
+      : "",
+  };
+};
+
+const maybeEnrichDirectoryLocation = async (payload = {}) => {
+  const normalized = payload && typeof payload === "object" ? { ...payload } : {};
+  const existing = normalizeDirectoryLatLng(normalized.location || normalized.latLng || {});
+  if (existing) {
+    return {
+      payload: {
+        ...normalized,
+        location: existing,
+      },
+      enriched: false,
+    };
+  }
+  const queryText = buildDirectoryGeocodeQuery(normalized);
+  if (!queryText) return { payload: normalized, enriched: false };
+
+  const googleLookup = await lookupGoogleGeocode({ queryText });
+  const geocoded = normalizeDirectoryLatLng(googleLookup?.location || {});
+  if (!geocoded) return { payload: normalized, enriched: false };
+
+  const externalSources = normalized.externalSources && typeof normalized.externalSources === "object"
+    ? normalized.externalSources
+    : {};
+  const googleExternal = externalSources.google && typeof externalSources.google === "object"
+    ? externalSources.google
+    : {};
+  const now = Date.now();
+  return {
+    payload: {
+      ...normalized,
+      address1: safeDirectoryString(normalized.address1 || normalized.address || googleLookup?.address || "", 180),
+      location: geocoded,
+      externalSources: {
+        ...externalSources,
+        google: {
+          ...googleExternal,
+          placeId: safeDirectoryString(googleExternal.placeId || googleLookup?.placeId || "", 180),
+          mapsUrl: normalizeDirectoryOptionalUrl(googleExternal.mapsUrl || googleLookup?.mapsUrl || ""),
+          refreshedAtMs: Number(googleExternal.refreshedAtMs || 0) || now,
+        },
+      },
+    },
+    enriched: true,
+    provider: "google",
+  };
+};
+
+const lookupGoogleVenue = async ({ name = "", locationText = "" }) => {
+  const apiKey = getDirectoryGoogleApiKey();
+  if (!apiKey) return null;
+  const query = safeDirectoryString(`${name} ${locationText}`.trim(), 240);
+  if (!query) return null;
+  const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url, { method: "GET" });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const top = Array.isArray(data?.results) ? data.results[0] : null;
+  if (!top) return null;
+  const lat = Number(top?.geometry?.location?.lat);
+  const lng = Number(top?.geometry?.location?.lng);
+  const loc = Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  return {
+    provider: "google",
+    placeId: safeDirectoryString(top.place_id || "", 180),
+    name: safeDirectoryString(top.name || "", 180),
+    address: safeDirectoryString(top.formatted_address || "", 220),
+    rating: Number(top.rating || 0) || 0,
+    reviewCount: Number(top.user_ratings_total || 0) || 0,
+    location: loc,
+    mapsUrl: top.place_id
+      ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(String(top.place_id))}`
+      : "",
+    raw: {
+      businessStatus: safeDirectoryString(top.business_status || "", 40),
+      types: Array.isArray(top.types) ? top.types.slice(0, 20) : [],
+    },
+  };
+};
+
+const lookupYelpVenue = async ({ name = "", locationText = "" }) => {
+  const apiKey = YELP_API_KEY.value();
+  if (!apiKey) return null;
+  const term = safeDirectoryString(name, 180);
+  const location = safeDirectoryString(locationText, 180) || "United States";
+  if (!term) return null;
+  const url = `https://api.yelp.com/v3/businesses/search?term=${encodeURIComponent(term)}&location=${encodeURIComponent(location)}&limit=1`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const top = Array.isArray(data?.businesses) ? data.businesses[0] : null;
+  if (!top) return null;
+  const lat = Number(top?.coordinates?.latitude);
+  const lng = Number(top?.coordinates?.longitude);
+  const loc = Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  const address = Array.isArray(top?.location?.display_address)
+    ? top.location.display_address.join(", ")
+    : "";
+  return {
+    provider: "yelp",
+    businessId: safeDirectoryString(top.id || "", 180),
+    name: safeDirectoryString(top.name || "", 180),
+    address: safeDirectoryString(address, 220),
+    rating: Number(top.rating || 0) || 0,
+    reviewCount: Number(top.review_count || 0) || 0,
+    location: loc,
+    url: normalizeDirectoryOptionalUrl(top.url || ""),
+    raw: {
+      isClosed: !!top.is_closed,
+      categories: Array.isArray(top.categories) ? top.categories.slice(0, 10) : [],
+    },
+  };
+};
 
 const reserveOrganizationUsageUnits = async ({
   orgId = "",
@@ -3326,19 +3827,287 @@ exports.autoAppleLyrics = onDocumentCreated(
   }
 );
 
-const resolveOrigin = (req, originFromClient) => {
-  const origin = originFromClient || req.get("origin") || "";
-  const isAllowed =
-    origin.includes("beauross.com") ||
-    origin.includes("localhost") ||
-    origin.includes("127.0.0.1");
-  return isAllowed && origin.startsWith("http") ? origin : "https://beauross.com";
+const FIREBASE_HOSTING_SITE_ID = "beaurocks-karaoke-v2";
+const DEFAULT_PUBLIC_ORIGIN = "https://beauross.com";
+
+const parseOriginHostname = (origin = "") => {
+  try {
+    return new URL(String(origin || "")).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
 };
 
-const isAllowedOrigin = (origin = "") =>
-  origin.includes("beauross.com") ||
-  origin.includes("localhost") ||
-  origin.includes("127.0.0.1");
+const isAllowedOriginHostname = (hostname = "") => {
+  const host = String(hostname || "").trim().toLowerCase();
+  if (!host) return false;
+  if (host === "localhost" || host === "127.0.0.1") return true;
+  if (host === "beauross.com" || host.endsWith(".beauross.com")) return true;
+
+  const webAppHost = `${FIREBASE_HOSTING_SITE_ID}.web.app`;
+  if (host === webAppHost) return true;
+  if (host.startsWith(`${FIREBASE_HOSTING_SITE_ID}--`) && host.endsWith(".web.app")) return true;
+
+  const firebaseAppHost = `${FIREBASE_HOSTING_SITE_ID}.firebaseapp.com`;
+  if (host === firebaseAppHost) return true;
+  if (host.startsWith(`${FIREBASE_HOSTING_SITE_ID}--`) && host.endsWith(".firebaseapp.com")) return true;
+
+  return false;
+};
+
+const isAllowedOrigin = (origin = "") => {
+  const host = parseOriginHostname(origin);
+  return isAllowedOriginHostname(host);
+};
+
+const resolveOrigin = (req, originFromClient) => {
+  const origin = originFromClient || req.get("origin") || "";
+  const host = parseOriginHostname(origin);
+  return isAllowedOriginHostname(host) && origin.startsWith("http")
+    ? origin
+    : DEFAULT_PUBLIC_ORIGIN;
+};
+
+const normalizeDirectoryRegionList = (input = []) => {
+  const source = Array.isArray(input) ? input : [input];
+  const regions = [];
+  source.forEach((entry) => {
+    const token = normalizeDirectoryToken(entry, 80);
+    if (!token) return;
+    if (regions.includes(token)) return;
+    regions.push(token);
+  });
+  return regions.slice(0, 40);
+};
+
+const normalizeDirectoryIngestionRecords = (input = []) => {
+  const source = Array.isArray(input) ? input : [];
+  const records = [];
+  source.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    const name = safeDirectoryString(entry.name || entry.title || "", 180);
+    if (!name) return;
+    const city = safeDirectoryString(entry.city || "", 80);
+    const state = safeDirectoryString(entry.state || "", 40);
+    const region = normalizeDirectoryToken(entry.region || `${state}_${city}` || DIRECTORY_DEFAULT_REGION, 80) || DIRECTORY_DEFAULT_REGION;
+    const locationText = safeDirectoryString(
+      entry.locationText || [city, state, "United States"].filter(Boolean).join(", "),
+      220
+    );
+    records.push({
+      name,
+      city,
+      state,
+      region,
+      locationText,
+      address1: safeDirectoryString(entry.address1 || entry.address || "", 180),
+      listingType: requireDirectoryListingType(entry.listingType || "venue"),
+      startsAtMs: Number(entry.startsAtMs || 0) || 0,
+      endsAtMs: Number(entry.endsAtMs || 0) || 0,
+      hostName: safeDirectoryString(entry.hostName || "", 120),
+      venueName: safeDirectoryString(entry.venueName || "", 120),
+      websiteUrl: normalizeDirectoryOptionalUrl(entry.websiteUrl || ""),
+      bookingUrl: normalizeDirectoryOptionalUrl(entry.bookingUrl || ""),
+    });
+  });
+  return records.slice(0, DIRECTORY_SYNC_MAX_BATCH);
+};
+
+const hydrateIngestionRecordsFromRegions = async (regions = []) => {
+  if (!regions.length) return [];
+  const db = admin.firestore();
+  const records = [];
+  for (const regionId of regions.slice(0, 20)) {
+    const snap = await db.collection("directory_regions").doc(regionId).get();
+    if (!snap.exists) continue;
+    const data = snap.data() || {};
+    const city = safeDirectoryString(data.city || "", 80);
+    const state = safeDirectoryString(data.state || "", 40);
+    const seeds = Array.isArray(data.seedListings) ? data.seedListings : [];
+    seeds.slice(0, 20).forEach((seed) => {
+      if (!seed || typeof seed !== "object") return;
+      const name = safeDirectoryString(seed.name || seed.title || "", 180);
+      if (!name) return;
+      records.push({
+        name,
+        city: safeDirectoryString(seed.city || city, 80),
+        state: safeDirectoryString(seed.state || state, 40),
+        region: normalizeDirectoryToken(seed.region || regionId, 80) || regionId,
+        locationText: safeDirectoryString(seed.locationText || [city, state, "United States"].filter(Boolean).join(", "), 220),
+        address1: safeDirectoryString(seed.address1 || seed.address || "", 180),
+        listingType: requireDirectoryListingType(seed.listingType || "venue"),
+        startsAtMs: Number(seed.startsAtMs || 0) || 0,
+        endsAtMs: Number(seed.endsAtMs || 0) || 0,
+        hostName: safeDirectoryString(seed.hostName || "", 120),
+        venueName: safeDirectoryString(seed.venueName || "", 120),
+        websiteUrl: normalizeDirectoryOptionalUrl(seed.websiteUrl || ""),
+        bookingUrl: normalizeDirectoryOptionalUrl(seed.bookingUrl || ""),
+      });
+    });
+  }
+  return records.slice(0, DIRECTORY_SYNC_MAX_BATCH);
+};
+
+const buildDirectoryExternalSources = ({ googleLookup = null, yelpLookup = null }) => {
+  const payload = {};
+  if (googleLookup) {
+    payload.google = {
+      placeId: safeDirectoryString(googleLookup.placeId || "", 180),
+      mapsUrl: normalizeDirectoryOptionalUrl(googleLookup.mapsUrl || ""),
+      rating: Number(googleLookup.rating || 0) || 0,
+      reviewCount: Number(googleLookup.reviewCount || 0) || 0,
+      refreshedAtMs: Date.now(),
+      address: safeDirectoryString(googleLookup.address || "", 220),
+    };
+  }
+  if (yelpLookup) {
+    payload.yelp = {
+      businessId: safeDirectoryString(yelpLookup.businessId || "", 180),
+      url: normalizeDirectoryOptionalUrl(yelpLookup.url || ""),
+      rating: Number(yelpLookup.rating || 0) || 0,
+      reviewCount: Number(yelpLookup.reviewCount || 0) || 0,
+      refreshedAtMs: Date.now(),
+      address: safeDirectoryString(yelpLookup.address || "", 220),
+    };
+  }
+  return payload;
+};
+
+const executeDirectoryIngestion = async ({
+  requestUid = "",
+  providers = [],
+  regions = [],
+  records = [],
+  dryRun = false,
+  trigger = "manual",
+}) => {
+  const db = admin.firestore();
+  const now = buildDirectoryNow();
+  const providerList = normalizeDirectoryProviders(providers);
+  const regionList = normalizeDirectoryRegionList(regions);
+  let sourceRecords = normalizeDirectoryIngestionRecords(records);
+  if (!sourceRecords.length && regionList.length) {
+    sourceRecords = await hydrateIngestionRecordsFromRegions(regionList);
+  }
+  sourceRecords = sourceRecords.slice(0, DIRECTORY_SYNC_MAX_BATCH);
+  const results = [];
+
+  for (const record of sourceRecords) {
+    let googleLookup = null;
+    let yelpLookup = null;
+    if (providerList.includes("google")) {
+      try {
+        googleLookup = await lookupGoogleVenue({
+          name: record.name,
+          locationText: record.locationText,
+        });
+      } catch (error) {
+        console.warn("directory ingest google lookup failed", error?.message || error);
+      }
+    }
+    if (providerList.includes("yelp")) {
+      try {
+        yelpLookup = await lookupYelpVenue({
+          name: record.name,
+          locationText: record.locationText,
+        });
+      } catch (error) {
+        console.warn("directory ingest yelp lookup failed", error?.message || error);
+      }
+    }
+
+    const externalSources = buildDirectoryExternalSources({ googleLookup, yelpLookup });
+    const mappedLatLng = normalizeDirectoryLatLng(googleLookup?.location || yelpLookup?.location || {});
+    const payload = normalizeDirectoryListingPayload(record.listingType, {
+      title: record.name,
+      description: "",
+      city: record.city,
+      state: record.state,
+      region: record.region || DIRECTORY_DEFAULT_REGION,
+      address1: record.address1 || googleLookup?.address || yelpLookup?.address || "",
+      startsAtMs: record.startsAtMs,
+      endsAtMs: record.endsAtMs,
+      hostName: record.hostName,
+      venueName: record.venueName || googleLookup?.name || yelpLookup?.name || "",
+      websiteUrl: record.websiteUrl || yelpLookup?.url || "",
+      bookingUrl: record.bookingUrl || "",
+      location: mappedLatLng,
+      sourceType: "external",
+      externalSources,
+      status: "pending",
+      visibility: "public",
+      ownerUid: requestUid || "system_sync",
+    }, requestUid || "system_sync");
+
+    const submissionId = buildDirectorySubmissionId(payload.listingType, requestUid || "system");
+    const submissionDoc = {
+      submissionId,
+      listingType: payload.listingType,
+      entityId: "",
+      status: "pending",
+      sourceType: "external",
+      providers: providerList,
+      payload,
+      createdBy: requestUid || null,
+      createdAt: now,
+      updatedAt: now,
+      moderation: {
+        action: "pending",
+        notes: "",
+        moderatedBy: null,
+        moderatedAt: null,
+      },
+      syncMeta: {
+        trigger,
+        regions: regionList,
+      },
+    };
+
+    if (!dryRun) {
+      await db.collection("directory_submissions").doc(submissionId).set(submissionDoc, { merge: true });
+      const googlePlaceId = safeDirectoryString(externalSources?.google?.placeId || "", 180);
+      if (googlePlaceId) {
+        await db.collection("external_source_links").doc(`google_${googlePlaceId}`).set({
+          provider: "google",
+          providerEntityId: googlePlaceId,
+          submissionId,
+          listingType: payload.listingType,
+          updatedAt: now,
+        }, { merge: true });
+      }
+      const yelpBusinessId = safeDirectoryString(externalSources?.yelp?.businessId || "", 180);
+      if (yelpBusinessId) {
+        await db.collection("external_source_links").doc(`yelp_${yelpBusinessId}`).set({
+          provider: "yelp",
+          providerEntityId: yelpBusinessId,
+          submissionId,
+          listingType: payload.listingType,
+          updatedAt: now,
+        }, { merge: true });
+      }
+    }
+
+    results.push({
+      submissionId,
+      listingType: payload.listingType,
+      title: payload.title,
+      city: payload.city,
+      state: payload.state,
+      hasGoogle: !!externalSources.google,
+      hasYelp: !!externalSources.yelp,
+    });
+  }
+
+  return {
+    dryRun: !!dryRun,
+    trigger,
+    providers: providerList,
+    regions: regionList,
+    totalRecords: sourceRecords.length,
+    queued: results.length,
+    items: results,
+  };
+};
 
 exports.googleMapsKey = onCall({ cors: true, secrets: [GOOGLE_MAPS_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "google_maps_key");
@@ -3428,6 +4197,648 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
       : `You are already on the list. Current position: #${linePosition}.`,
   };
 });
+
+exports.getDirectoryMapsConfig = onCall(
+  { cors: true, secrets: [GOOGLE_MAPS_API_KEY] },
+  async (request) => {
+    checkRateLimit(request.rawRequest, "directory_maps_config", { perMinute: 60, perHour: 600 });
+    const origin = request.rawRequest?.get?.("origin") || "";
+    if (origin && !isAllowedOrigin(origin)) {
+      throw new HttpsError("permission-denied", "Origin not allowed.");
+    }
+    const key = GOOGLE_MAPS_API_KEY.value();
+    const mapEnabled = DIRECTORY_MAPS_PUBLIC_ENABLED && !!key;
+    return {
+      mapEnabled,
+      apiKey: mapEnabled ? key : "",
+      defaultCountry: DIRECTORY_DEFAULT_COUNTRY,
+      defaultScope: DIRECTORY_DEFAULT_REGION,
+      supportedProviders: ["google", "yelp"],
+      reviewPolicy: "first_party_karaoke",
+    };
+  }
+);
+
+exports.upsertDirectoryProfile = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "upsert_directory_profile", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "upsert_directory_profile");
+  const uid = requireAuth(request);
+  const profileInput = request.data?.profile && typeof request.data.profile === "object"
+    ? request.data.profile
+    : request.data;
+  const normalized = normalizeDirectoryProfilePayload(profileInput || {});
+  const db = admin.firestore();
+  const userSnap = await db.collection("users").doc(uid).get();
+  const userData = userSnap.data() || {};
+  const now = buildDirectoryNow();
+  const payload = {
+    uid,
+    ...normalized,
+    status: "approved",
+    vipLevel: Number(userData.vipLevel || 0) || 0,
+    totalFamePoints: Number(userData.totalFamePoints || 0) || 0,
+    fameLevel: Number(userData.currentLevel || 0) || 0,
+    sourceUserUpdatedAtMs: Date.now(),
+    updatedAt: now,
+    createdAt: now,
+  };
+  await db.collection("directory_profiles").doc(uid).set(payload, { merge: true });
+  return { ok: true, uid, profile: payload };
+});
+
+exports.submitDirectoryListing = onCall(
+  { cors: true, secrets: [GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_SERVER_API_KEY] },
+  async (request) => {
+    checkRateLimit(request.rawRequest, "submit_directory_listing", { perMinute: 20, perHour: 180 });
+    enforceAppCheckIfEnabled(request, "submit_directory_listing");
+    const uid = requireAuth(request);
+    const listingType = requireDirectoryListingType(request.data?.listingType || "");
+    const enrichment = await maybeEnrichDirectoryLocation(request.data?.payload || {});
+    const payload = normalizeDirectoryListingPayload(
+      listingType,
+      enrichment.payload || request.data?.payload || {},
+      uid
+    );
+    const submissionId = buildDirectorySubmissionId(listingType, uid);
+    const now = buildDirectoryNow();
+    const providerHints = deriveDirectoryProviderHints(payload);
+    const docData = {
+      submissionId,
+      listingType,
+      entityId: "",
+      status: "pending",
+      sourceType: "user",
+      providers: providerHints,
+      payload,
+      createdBy: uid,
+      createdAt: now,
+      updatedAt: now,
+      moderation: {
+        action: "pending",
+        notes: "",
+        moderatedBy: null,
+        moderatedAt: null,
+      },
+      enrichment: {
+        geocoded: !!enrichment.enriched,
+        provider: enrichment.provider || "",
+        geocodedAtMs: enrichment.enriched ? Date.now() : 0,
+      },
+    };
+    await admin.firestore().collection("directory_submissions").doc(submissionId).set(docData, { merge: true });
+    return { ok: true, submissionId, status: "pending" };
+  }
+);
+
+exports.updateDirectoryListing = onCall(
+  { cors: true, secrets: [GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_SERVER_API_KEY] },
+  async (request) => {
+    checkRateLimit(request.rawRequest, "update_directory_listing", { perMinute: 20, perHour: 180 });
+    enforceAppCheckIfEnabled(request, "update_directory_listing");
+    const uid = requireAuth(request);
+    const listingType = requireDirectoryListingType(request.data?.listingType || "");
+    const listingId = safeDirectoryString(request.data?.listingId || "", 220);
+    if (!listingId) {
+      throw new HttpsError("invalid-argument", "listingId is required.");
+    }
+    const enrichment = await maybeEnrichDirectoryLocation(request.data?.payload || {});
+    const payload = normalizeDirectoryListingPayload(
+      listingType,
+      enrichment.payload || request.data?.payload || {},
+      uid
+    );
+    const access = await getDirectoryModeratorAccess(uid);
+    const collectionName = ensureDirectoryCollectionName(listingType);
+    const db = admin.firestore();
+    const listingRef = db.collection(collectionName).doc(listingId);
+    const snap = await listingRef.get();
+    if (!snap.exists) {
+      throw new HttpsError("not-found", "Listing not found.");
+    }
+    const existing = snap.data() || {};
+    const ownerUid = safeDirectoryString(existing.ownerUid || "", 180);
+    const hostUid = safeDirectoryString(existing.hostUid || "", 180);
+    const isOwner = uid === ownerUid || uid === hostUid;
+
+    if (access.isModerator) {
+      const now = buildDirectoryNow();
+      await listingRef.set({
+        ...payload,
+        listingType,
+        status: normalizeDirectoryStatus(payload.status || existing.status || "approved", "approved"),
+        ownerUid: ownerUid || payload.ownerUid || uid,
+        updatedAt: now,
+        updatedBy: uid,
+      }, { merge: true });
+      return { ok: true, mode: "direct_update", listingId };
+    }
+
+    if (!isOwner) {
+      throw new HttpsError("permission-denied", "Only listing owners or moderators can update listings.");
+    }
+
+    const submissionId = buildDirectorySubmissionId(listingType, uid);
+    const now = buildDirectoryNow();
+    const providerHints = deriveDirectoryProviderHints(payload);
+    await db.collection("directory_submissions").doc(submissionId).set({
+      submissionId,
+      listingType,
+      entityId: listingId,
+      status: "pending",
+      sourceType: "user_update",
+      providers: providerHints,
+      payload: {
+        ...payload,
+        status: "pending",
+      },
+      createdBy: uid,
+      createdAt: now,
+      updatedAt: now,
+      moderation: {
+        action: "pending",
+        notes: "",
+        moderatedBy: null,
+        moderatedAt: null,
+      },
+      enrichment: {
+        geocoded: !!enrichment.enriched,
+        provider: enrichment.provider || "",
+        geocodedAtMs: enrichment.enriched ? Date.now() : 0,
+      },
+    }, { merge: true });
+    return { ok: true, mode: "queued_for_review", submissionId };
+  }
+);
+
+exports.followDirectoryEntity = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "follow_directory_entity", { perMinute: 60, perHour: 500 });
+  enforceAppCheckIfEnabled(request, "follow_directory_entity");
+  const uid = requireAuth(request);
+  const targetType = requireDirectoryEntityType(request.data?.targetType || "");
+  const targetId = safeDirectoryString(request.data?.targetId || "", 220);
+  if (!targetId) {
+    throw new HttpsError("invalid-argument", "targetId is required.");
+  }
+  const docId = buildDirectoryFollowDocId(uid, targetType, targetId);
+  const now = buildDirectoryNow();
+  await admin.firestore().collection("follows").doc(docId).set({
+    followerUid: uid,
+    targetType,
+    targetId,
+    createdAt: now,
+    updatedAt: now,
+  }, { merge: true });
+  return { ok: true, followId: docId };
+});
+
+exports.unfollowDirectoryEntity = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "unfollow_directory_entity", { perMinute: 60, perHour: 500 });
+  enforceAppCheckIfEnabled(request, "unfollow_directory_entity");
+  const uid = requireAuth(request);
+  const targetType = requireDirectoryEntityType(request.data?.targetType || "");
+  const targetId = safeDirectoryString(request.data?.targetId || "", 220);
+  if (!targetId) {
+    throw new HttpsError("invalid-argument", "targetId is required.");
+  }
+  const docId = buildDirectoryFollowDocId(uid, targetType, targetId);
+  await admin.firestore().collection("follows").doc(docId).delete().catch(() => {});
+  return { ok: true, followId: docId };
+});
+
+exports.createDirectoryCheckin = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "create_directory_checkin", { perMinute: 40, perHour: 260 });
+  enforceAppCheckIfEnabled(request, "create_directory_checkin");
+  const uid = requireAuth(request);
+  const targetType = requireDirectoryEntityType(request.data?.targetType || "");
+  const targetId = safeDirectoryString(request.data?.targetId || "", 220);
+  if (!targetId) {
+    throw new HttpsError("invalid-argument", "targetId is required.");
+  }
+  const isPublic = !!request.data?.isPublic;
+  const note = normalizeDirectoryTextBlock(request.data?.note || "", 280);
+  const db = admin.firestore();
+  const checkinRef = db.collection("checkins").doc();
+  const totalsRef = db.collection("checkin_totals").doc(buildDirectoryCheckinTotalDocId(targetType, targetId));
+  const now = buildDirectoryNow();
+
+  await db.runTransaction(async (tx) => {
+    tx.set(checkinRef, {
+      checkinId: checkinRef.id,
+      uid,
+      targetType,
+      targetId,
+      isPublic,
+      note,
+      createdAt: now,
+      updatedAt: now,
+    }, { merge: true });
+    tx.set(totalsRef, {
+      targetType,
+      targetId,
+      totalCount: admin.firestore.FieldValue.increment(1),
+      publicCount: admin.firestore.FieldValue.increment(isPublic ? 1 : 0),
+      updatedAt: now,
+      createdAt: now,
+    }, { merge: true });
+  });
+
+  return {
+    ok: true,
+    checkinId: checkinRef.id,
+    isPublic,
+  };
+});
+
+exports.submitDirectoryReview = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "submit_directory_review", { perMinute: 25, perHour: 180 });
+  enforceAppCheckIfEnabled(request, "submit_directory_review");
+  const uid = requireAuth(request);
+  const targetType = requireDirectoryEntityType(request.data?.targetType || "");
+  const targetId = safeDirectoryString(request.data?.targetId || "", 220);
+  if (!targetId) {
+    throw new HttpsError("invalid-argument", "targetId is required.");
+  }
+  const eventId = safeDirectoryString(request.data?.eventId || "", 220);
+  const ratingRaw = Number(request.data?.rating || 0);
+  const rating = Math.round(ratingRaw);
+  if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+    throw new HttpsError("invalid-argument", "rating must be an integer between 1 and 5.");
+  }
+  const tags = normalizeDirectoryReviewTags(request.data?.tags || []);
+  const text = normalizeDirectoryTextBlock(request.data?.text || "", 1800);
+  const db = admin.firestore();
+  const reviewId = buildDirectoryReviewDocId(uid, targetType, targetId, eventId);
+  const reviewRef = db.collection("reviews").doc(reviewId);
+  const totalsRef = db.collection("review_totals").doc(buildDirectoryCheckinTotalDocId(targetType, targetId));
+  const now = buildDirectoryNow();
+
+  await db.runTransaction(async (tx) => {
+    const prevSnap = await tx.get(reviewRef);
+    const prev = prevSnap.data() || {};
+    const prevRating = Number(prev.rating || 0);
+    const ratingDelta = rating - prevRating;
+    const isNew = !prevSnap.exists;
+    const prevTags = Array.isArray(prev.tags) ? prev.tags.map((tag) => normalizeDirectoryToken(tag, 40)).filter(Boolean) : [];
+    const nextTags = tags;
+    const totalsPatch = {
+      targetType,
+      targetId,
+      ratingSum: admin.firestore.FieldValue.increment(ratingDelta),
+      reviewCount: admin.firestore.FieldValue.increment(isNew ? 1 : 0),
+      updatedAt: now,
+      createdAt: now,
+    };
+    nextTags.forEach((tag) => {
+      if (!prevTags.includes(tag)) {
+        totalsPatch[`tagCounts.${tag}`] = admin.firestore.FieldValue.increment(1);
+      }
+    });
+    prevTags.forEach((tag) => {
+      if (!nextTags.includes(tag)) {
+        totalsPatch[`tagCounts.${tag}`] = admin.firestore.FieldValue.increment(-1);
+      }
+    });
+
+    tx.set(reviewRef, {
+      reviewId,
+      uid,
+      targetType,
+      targetId,
+      eventId: eventId || null,
+      rating,
+      tags,
+      text,
+      visibility: "public",
+      updatedAt: now,
+      createdAt: now,
+    }, { merge: true });
+    tx.set(totalsRef, totalsPatch, { merge: true });
+  });
+
+  return { ok: true, reviewId };
+});
+
+exports.listModerationQueue = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "list_moderation_queue", { perMinute: 40, perHour: 300 });
+  enforceAppCheckIfEnabled(request, "list_moderation_queue");
+  await requireDirectoryModerator(request, { deniedMessage: "Directory moderator role required." });
+  const requestedStatus = normalizeDirectoryStatus(request.data?.status || "pending", "pending");
+  const sourceType = normalizeDirectoryToken(request.data?.sourceType || "", 30);
+  const entityType = normalizeDirectoryToken(request.data?.entityType || "", 30);
+  const maxItems = clampNumber(request.data?.limit ?? 25, 1, 100, 25);
+  let queueQuery = admin.firestore()
+    .collection("directory_submissions")
+    .orderBy("createdAt", "desc")
+    .limit(maxItems);
+  if (requestedStatus) {
+    queueQuery = queueQuery.where("status", "==", requestedStatus);
+  }
+  if (sourceType) {
+    queueQuery = queueQuery.where("sourceType", "==", sourceType);
+  }
+  if (entityType) {
+    queueQuery = queueQuery.where("listingType", "==", entityType);
+  }
+  const snap = await queueQuery.get();
+  const items = snap.docs.map((docSnap) => {
+    const data = docSnap.data() || {};
+    return {
+      submissionId: docSnap.id,
+      listingType: data.listingType || "",
+      status: data.status || "pending",
+      sourceType: data.sourceType || "user",
+      createdBy: data.createdBy || null,
+      createdAtMs: valueToMillis(data.createdAt),
+      updatedAtMs: valueToMillis(data.updatedAt),
+      moderation: data.moderation || {},
+      payload: data.payload || {},
+      entityId: data.entityId || "",
+      providers: Array.isArray(data.providers) ? data.providers : [],
+    };
+  });
+  return {
+    ok: true,
+    count: items.length,
+    items,
+  };
+});
+
+exports.resolveModerationItem = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "resolve_moderation_item", { perMinute: 40, perHour: 220 });
+  enforceAppCheckIfEnabled(request, "resolve_moderation_item");
+  const { uid } = await requireDirectoryModerator(request, { deniedMessage: "Directory moderator role required." });
+  const submissionId = safeDirectoryString(request.data?.submissionId || "", 240);
+  if (!submissionId) {
+    throw new HttpsError("invalid-argument", "submissionId is required.");
+  }
+  const action = normalizeDirectoryToken(request.data?.action || "", 20);
+  if (!["approve", "reject"].includes(action)) {
+    throw new HttpsError("invalid-argument", "action must be approve or reject.");
+  }
+  const notes = normalizeDirectoryTextBlock(request.data?.notes || "", 800);
+  const db = admin.firestore();
+  const submissionRef = db.collection("directory_submissions").doc(submissionId);
+  const now = buildDirectoryNow();
+
+  const outcome = await db.runTransaction(async (tx) => {
+    const submissionSnap = await tx.get(submissionRef);
+    if (!submissionSnap.exists) {
+      throw new HttpsError("not-found", "Submission not found.");
+    }
+    const submission = submissionSnap.data() || {};
+    if (String(submission.status || "").toLowerCase() !== "pending") {
+      return {
+        mode: "already_resolved",
+        status: submission.status || "unknown",
+        entityId: submission.entityId || "",
+      };
+    }
+    if (action === "reject") {
+      tx.set(submissionRef, {
+        status: "rejected",
+        updatedAt: now,
+        moderation: {
+          action: "rejected",
+          notes,
+          moderatedBy: uid,
+          moderatedAt: now,
+        },
+      }, { merge: true });
+      return {
+        mode: "rejected",
+        status: "rejected",
+        entityId: "",
+      };
+    }
+
+    const listingType = requireDirectoryListingType(submission.listingType || "");
+    const collectionName = ensureDirectoryCollectionName(listingType);
+    const payload = normalizeDirectoryListingPayload(
+      listingType,
+      submission.payload || {},
+      submission.createdBy || uid
+    );
+    const canonicalId = safeDirectoryString(submission.entityId || "", 220)
+      || buildDirectoryCanonicalId(listingType, payload.title, payload.city, payload.state);
+    const canonicalRef = db.collection(collectionName).doc(canonicalId);
+    const canonicalSnap = await tx.get(canonicalRef);
+    tx.set(canonicalRef, {
+      ...payload,
+      listingType,
+      status: "approved",
+      sourceType: payload.sourceType || submission.sourceType || "user",
+      externalSources: buildDirectoryExternalLinks(payload),
+      updatedAt: now,
+      updatedBy: uid,
+      approvedAt: now,
+      approvedBy: uid,
+      createdAt: canonicalSnap.exists ? canonicalSnap.data()?.createdAt || now : now,
+    }, { merge: true });
+    tx.set(submissionRef, {
+      status: "approved",
+      entityId: canonicalId,
+      updatedAt: now,
+      moderation: {
+        action: "approved",
+        notes,
+        moderatedBy: uid,
+        moderatedAt: now,
+      },
+    }, { merge: true });
+    return {
+      mode: "approved",
+      status: "approved",
+      entityId: canonicalId,
+      listingType,
+      collectionName,
+    };
+  });
+
+  return { ok: true, ...outcome };
+});
+
+exports.runExternalDirectoryIngestion = onCall(
+  { cors: true, secrets: [GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_SERVER_API_KEY, YELP_API_KEY] },
+  async (request) => {
+    checkRateLimit(request.rawRequest, "run_external_directory_ingestion", { perMinute: 10, perHour: 60 });
+    enforceAppCheckIfEnabled(request, "run_external_directory_ingestion");
+    const { uid } = await requireDirectoryModerator(request, { deniedMessage: "Directory moderator role required." });
+    const dryRun = !!request.data?.dryRun;
+    const providers = normalizeDirectoryProviders(request.data?.providers || []);
+    const regions = normalizeDirectoryRegionList(request.data?.regions || []);
+    const records = Array.isArray(request.data?.records) ? request.data.records : [];
+    const result = await executeDirectoryIngestion({
+      requestUid: uid,
+      providers,
+      regions,
+      records,
+      dryRun,
+      trigger: "manual",
+    });
+
+    const jobId = `job_manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    if (!dryRun) {
+      await admin.firestore().collection("directory_sync_jobs").doc(jobId).set({
+        jobId,
+        trigger: "manual",
+        requestedBy: uid,
+        providers: result.providers,
+        regions: result.regions,
+        dryRun: false,
+        queued: result.queued,
+        totalRecords: result.totalRecords,
+        createdAt: buildDirectoryNow(),
+      }, { merge: true });
+    }
+    return {
+      ok: true,
+      jobId,
+      ...result,
+    };
+  }
+);
+
+exports.mergeAnonymousAccountData = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "merge_anonymous_account_data", { perMinute: 12, perHour: 60 });
+  enforceAppCheckIfEnabled(request, "merge_anonymous_account_data");
+  const callerUid = requireAuth(request);
+  const sourceUid = safeDirectoryString(request.data?.sourceUid || "", 180);
+  const targetUid = safeDirectoryString(request.data?.targetUid || callerUid, 180);
+  if (!sourceUid) {
+    throw new HttpsError("invalid-argument", "sourceUid is required.");
+  }
+  if (targetUid !== callerUid) {
+    throw new HttpsError("permission-denied", "targetUid must match caller.");
+  }
+  if (sourceUid === targetUid) {
+    return { ok: true, merged: false, reason: "same_uid" };
+  }
+  const db = admin.firestore();
+  const now = buildDirectoryNow();
+  const result = await db.runTransaction(async (tx) => {
+    const sourceUserRef = db.collection("users").doc(sourceUid);
+    const targetUserRef = db.collection("users").doc(targetUid);
+    const sourceProfileRef = db.collection("directory_profiles").doc(sourceUid);
+    const targetProfileRef = db.collection("directory_profiles").doc(targetUid);
+    const [sourceUserSnap, targetUserSnap, sourceProfileSnap, targetProfileSnap] = await Promise.all([
+      tx.get(sourceUserRef),
+      tx.get(targetUserRef),
+      tx.get(sourceProfileRef),
+      tx.get(targetProfileRef),
+    ]);
+    if (!sourceUserSnap.exists) {
+      return { merged: false, reason: "source_missing" };
+    }
+    const sourceUser = sourceUserSnap.data() || {};
+    const targetUser = targetUserSnap.data() || {};
+    const mergeArray = (a, b, limit = 200) => {
+      const seen = new Set();
+      const output = [];
+      [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])].forEach((entry) => {
+        const key = JSON.stringify(entry);
+        if (seen.has(key)) return;
+        seen.add(key);
+        output.push(entry);
+      });
+      return output.slice(0, limit);
+    };
+    tx.set(targetUserRef, {
+      name: safeDirectoryString(targetUser.name || sourceUser.name || "", 120),
+      avatar: safeDirectoryString(targetUser.avatar || sourceUser.avatar || "", 16),
+      tight15: mergeArray(targetUser.tight15, sourceUser.tight15, 30),
+      unlockedEmojis: mergeArray(targetUser.unlockedEmojis, sourceUser.unlockedEmojis, 200),
+      unlockedBadges: mergeArray(targetUser.unlockedBadges, sourceUser.unlockedBadges, 200),
+      totalFamePoints: Math.max(Number(targetUser.totalFamePoints || 0), Number(sourceUser.totalFamePoints || 0)),
+      currentLevel: Math.max(Number(targetUser.currentLevel || 0), Number(sourceUser.currentLevel || 0)),
+      vipLevel: Math.max(Number(targetUser.vipLevel || 0), Number(sourceUser.vipLevel || 0)),
+      mergedFromUids: admin.firestore.FieldValue.arrayUnion(sourceUid),
+      updatedAt: now,
+    }, { merge: true });
+    tx.set(sourceUserRef, {
+      mergedIntoUid: targetUid,
+      mergedAt: now,
+      accountStatus: "merged",
+    }, { merge: true });
+
+    if (sourceProfileSnap.exists || targetProfileSnap.exists) {
+      const sourceProfile = sourceProfileSnap.data() || {};
+      const targetProfile = targetProfileSnap.data() || {};
+      tx.set(targetProfileRef, {
+        uid: targetUid,
+        displayName: safeDirectoryString(targetProfile.displayName || sourceProfile.displayName || targetUser.name || sourceUser.name || "BeauRocks User", 120),
+        handle: normalizeDirectoryToken(targetProfile.handle || sourceProfile.handle || targetUid, 40),
+        bio: normalizeDirectoryTextBlock(targetProfile.bio || sourceProfile.bio || "", 500),
+        roles: normalizeDirectoryRoles([...(Array.isArray(targetProfile.roles) ? targetProfile.roles : []), ...(Array.isArray(sourceProfile.roles) ? sourceProfile.roles : [])]),
+        city: safeDirectoryString(targetProfile.city || sourceProfile.city || "", 80),
+        state: safeDirectoryString(targetProfile.state || sourceProfile.state || "", 40),
+        country: safeDirectoryString(targetProfile.country || sourceProfile.country || DIRECTORY_DEFAULT_COUNTRY, 2).toUpperCase(),
+        avatarUrl: normalizeDirectoryOptionalUrl(targetProfile.avatarUrl || sourceProfile.avatarUrl || ""),
+        visibility: normalizeDirectoryVisibility(targetProfile.visibility || sourceProfile.visibility || "public", "public"),
+        updatedAt: now,
+        createdAt: now,
+      }, { merge: true });
+      tx.set(sourceProfileRef, {
+        mergedIntoUid: targetUid,
+        mergedAt: now,
+        visibility: "private",
+      }, { merge: true });
+    }
+
+    return { merged: true, reason: "ok" };
+  });
+
+  return { ok: true, ...result, sourceUid, targetUid };
+});
+
+exports.nightlyDirectorySync = onSchedule(
+  {
+    schedule: "15 3 * * *",
+    timeZone: "America/Los_Angeles",
+    secrets: [GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_SERVER_API_KEY, YELP_API_KEY],
+  },
+  async () => {
+    const db = admin.firestore();
+    const enabledSnap = await db
+      .collection("directory_regions")
+      .where("enabled", "==", true)
+      .limit(30)
+      .get();
+    const regions = enabledSnap.docs.map((docSnap) => normalizeDirectoryToken(docSnap.id, 80)).filter(Boolean);
+    if (!regions.length) {
+      await db.collection("directory_sync_jobs").doc(`job_nightly_${Date.now()}_empty`).set({
+        trigger: "nightly",
+        providers: ["google", "yelp"],
+        regions: [],
+        queued: 0,
+        totalRecords: 0,
+        status: "skipped_no_regions",
+        createdAt: buildDirectoryNow(),
+      }, { merge: true });
+      return;
+    }
+    const result = await executeDirectoryIngestion({
+      requestUid: "system_nightly",
+      providers: ["google", "yelp"],
+      regions,
+      records: [],
+      dryRun: false,
+      trigger: "nightly",
+    });
+    const jobId = `job_nightly_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await db.collection("directory_sync_jobs").doc(jobId).set({
+      jobId,
+      trigger: "nightly",
+      requestedBy: "system",
+      providers: result.providers,
+      regions: result.regions,
+      dryRun: false,
+      queued: result.queued,
+      totalRecords: result.totalRecords,
+      status: "completed",
+      createdAt: buildDirectoryNow(),
+    }, { merge: true });
+  }
+);
 
 exports.ensureOrganization = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "ensure_organization", { perMinute: 20, perHour: 200 });
