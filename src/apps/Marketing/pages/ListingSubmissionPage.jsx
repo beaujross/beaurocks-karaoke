@@ -10,6 +10,8 @@ const ListingSubmissionPage = ({ session, navigate }) => {
   const [form, setForm] = useState({
     title: "",
     description: "",
+    karaokeNightsLabel: "",
+    recurringRule: "",
     city: "",
     state: "",
     region: "nationwide",
@@ -76,6 +78,16 @@ const ListingSubmissionPage = ({ session, navigate }) => {
             Description
             <textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
           </label>
+          {listingType === "venue" && (
+            <label className="full">
+              Karaoke Nights Label
+              <textarea
+                value={form.karaokeNightsLabel}
+                onChange={(e) => setForm((prev) => ({ ...prev, karaokeNightsLabel: e.target.value }))}
+                placeholder="Mon 8pm-11pm | Thu 9pm-1am"
+              />
+            </label>
+          )}
           <label>
             City
             <input value={form.city} onChange={(e) => setForm((prev) => ({ ...prev, city: e.target.value }))} />
@@ -106,6 +118,14 @@ const ListingSubmissionPage = ({ session, navigate }) => {
           )}
           {listingType === "event" && (
             <>
+              <label className="full">
+                Recurring Rule
+                <input
+                  value={form.recurringRule}
+                  onChange={(e) => setForm((prev) => ({ ...prev, recurringRule: e.target.value }))}
+                  placeholder="Weekly Thu-Sat"
+                />
+              </label>
               <label>
                 Host Name
                 <input value={form.hostName} onChange={(e) => setForm((prev) => ({ ...prev, hostName: e.target.value }))} />
@@ -155,4 +175,3 @@ const ListingSubmissionPage = ({ session, navigate }) => {
 };
 
 export default ListingSubmissionPage;
-

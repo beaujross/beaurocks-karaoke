@@ -1419,6 +1419,96 @@ const normalizeDirectoryListingPayload = (listingType = "", payload = {}, caller
   throw new HttpsError("invalid-argument", "Unsupported listingType.");
 };
 
+const buildDirectoryCadencePatch = (listingType = "", payload = {}) => {
+  const source = payload && typeof payload === "object" ? payload : {};
+  if (listingType === "venue") {
+    return {
+      karaokeNightsLabel: safeDirectoryString(source.karaokeNightsLabel || "", 160),
+      description: normalizeDirectoryTextBlock(source.description || "", 3000),
+    };
+  }
+  if (listingType === "event") {
+    return {
+      startsAtMs: Number(source.startsAtMs || 0) || 0,
+      endsAtMs: Number(source.endsAtMs || 0) || 0,
+      recurringRule: safeDirectoryString(source.recurringRule || "", 120),
+      hostName: safeDirectoryString(source.hostName || "", 120),
+      venueName: safeDirectoryString(source.venueName || "", 120),
+      description: normalizeDirectoryTextBlock(source.description || "", 3000),
+    };
+  }
+  if (listingType === "room_session") {
+    return {
+      startsAtMs: Number(source.startsAtMs || 0) || 0,
+      endsAtMs: Number(source.endsAtMs || 0) || 0,
+      venueName: safeDirectoryString(source.venueName || "", 120),
+      sessionMode: safeDirectoryString(source.sessionMode || "", 40),
+      description: normalizeDirectoryTextBlock(source.description || "", 3000),
+      visibility: normalizeDirectoryVisibility(source.visibility || "", ""),
+    };
+  }
+  return {};
+};
+
+const hasDirectoryCadencePatch = (listingType = "", patch = {}) => {
+  if (!patch || typeof patch !== "object") return false;
+  if (listingType === "venue") {
+    return !!(
+      safeDirectoryString(patch.karaokeNightsLabel || "", 160)
+      || normalizeDirectoryTextBlock(patch.description || "", 3000)
+    );
+  }
+  if (listingType === "event") {
+    return !!(
+      Number(patch.startsAtMs || 0) > 0
+      || Number(patch.endsAtMs || 0) > 0
+      || safeDirectoryString(patch.recurringRule || "", 120)
+      || safeDirectoryString(patch.hostName || "", 120)
+      || safeDirectoryString(patch.venueName || "", 120)
+      || normalizeDirectoryTextBlock(patch.description || "", 3000)
+    );
+  }
+  if (listingType === "room_session") {
+    return !!(
+      Number(patch.startsAtMs || 0) > 0
+      || Number(patch.endsAtMs || 0) > 0
+      || safeDirectoryString(patch.venueName || "", 120)
+      || safeDirectoryString(patch.sessionMode || "", 40)
+      || normalizeDirectoryTextBlock(patch.description || "", 3000)
+      || normalizeDirectoryVisibility(patch.visibility || "", "")
+    );
+  }
+  return false;
+};
+
+const buildDirectoryMergedUpdatePayload = ({
+  listingType = "",
+  existing = {},
+  patch = {},
+  callerUid = "",
+}) => {
+  const safeCallerUid = safeDirectoryString(callerUid || "", 180) || "system";
+  const existingOwnerUid = safeDirectoryString(existing.ownerUid || "", 180) || safeCallerUid;
+  const existingHostUid = safeDirectoryString(existing.hostUid || "", 180) || existingOwnerUid;
+  return normalizeDirectoryListingPayload(
+    listingType,
+    {
+      ...existing,
+      ...patch,
+      listingType,
+      ownerUid: existingOwnerUid,
+      hostUid: existingHostUid,
+      status: normalizeDirectoryStatus(existing.status || "approved", "approved"),
+      visibility: normalizeDirectoryVisibility(existing.visibility || "public", "public"),
+      sourceType: normalizeDirectoryToken(existing.sourceType || "user", 20) || "user",
+      externalSources: existing.externalSources && typeof existing.externalSources === "object"
+        ? existing.externalSources
+        : {},
+    },
+    existingOwnerUid || existingHostUid || safeCallerUid
+  );
+};
+
 const buildDirectoryExternalLinks = (payload = {}) => {
   const external = payload?.externalSources || {};
   if (!external || typeof external !== "object") return {};
@@ -4301,12 +4391,9 @@ exports.updateDirectoryListing = onCall(
     if (!listingId) {
       throw new HttpsError("invalid-argument", "listingId is required.");
     }
+    const updateScope = normalizeDirectoryToken(request.data?.updateScope || "listing", 40) || "listing";
     const enrichment = await maybeEnrichDirectoryLocation(request.data?.payload || {});
-    const payload = normalizeDirectoryListingPayload(
-      listingType,
-      enrichment.payload || request.data?.payload || {},
-      uid
-    );
+    const nextPayloadInput = enrichment.payload || request.data?.payload || {};
     const access = await getDirectoryModeratorAccess(uid);
     const collectionName = ensureDirectoryCollectionName(listingType);
     const db = admin.firestore();
@@ -4319,8 +4406,29 @@ exports.updateDirectoryListing = onCall(
     const ownerUid = safeDirectoryString(existing.ownerUid || "", 180);
     const hostUid = safeDirectoryString(existing.hostUid || "", 180);
     const isOwner = uid === ownerUid || uid === hostUid;
+    const cadencePatch = buildDirectoryCadencePatch(listingType, nextPayloadInput);
+    const hasCadencePatch = hasDirectoryCadencePatch(listingType, cadencePatch);
 
     if (access.isModerator) {
+      let payload = null;
+      const hasListingTitle = !!safeDirectoryString(nextPayloadInput?.title || nextPayloadInput?.name || "", 180);
+      if (updateScope === "cadence" || !hasListingTitle) {
+        if (!hasCadencePatch) {
+          throw new HttpsError("invalid-argument", "Cadence update requires cadence fields.");
+        }
+        payload = buildDirectoryMergedUpdatePayload({
+          listingType,
+          existing,
+          patch: cadencePatch,
+          callerUid: uid,
+        });
+      } else {
+        payload = normalizeDirectoryListingPayload(
+          listingType,
+          nextPayloadInput,
+          uid
+        );
+      }
       const now = buildDirectoryNow();
       await listingRef.set({
         ...payload,
@@ -4333,22 +4441,43 @@ exports.updateDirectoryListing = onCall(
       return { ok: true, mode: "direct_update", listingId };
     }
 
-    if (!isOwner) {
-      throw new HttpsError("permission-denied", "Only listing owners or moderators can update listings.");
+    if (!hasCadencePatch) {
+      throw new HttpsError("invalid-argument", "Cadence update requires schedule fields.");
+    }
+
+    const mergedCadencePayload = buildDirectoryMergedUpdatePayload({
+      listingType,
+      existing,
+      patch: cadencePatch,
+      callerUid: ownerUid || hostUid || uid,
+    });
+    const now = buildDirectoryNow();
+
+    if (isOwner) {
+      await listingRef.set({
+        ...mergedCadencePayload,
+        listingType,
+        status: normalizeDirectoryStatus(existing.status || mergedCadencePayload.status || "approved", "approved"),
+        ownerUid: ownerUid || mergedCadencePayload.ownerUid || uid,
+        updatedAt: now,
+        updatedBy: uid,
+        cadenceUpdatedAt: now,
+        cadenceUpdatedBy: uid,
+      }, { merge: true });
+      return { ok: true, mode: "owner_direct_update", listingId, updateScope: "cadence" };
     }
 
     const submissionId = buildDirectorySubmissionId(listingType, uid);
-    const now = buildDirectoryNow();
-    const providerHints = deriveDirectoryProviderHints(payload);
+    const providerHints = deriveDirectoryProviderHints(mergedCadencePayload);
     await db.collection("directory_submissions").doc(submissionId).set({
       submissionId,
       listingType,
       entityId: listingId,
       status: "pending",
-      sourceType: "user_update",
+      sourceType: "community_update",
       providers: providerHints,
       payload: {
-        ...payload,
+        ...mergedCadencePayload,
         status: "pending",
       },
       createdBy: uid,
@@ -4366,7 +4495,7 @@ exports.updateDirectoryListing = onCall(
         geocodedAtMs: enrichment.enriched ? Date.now() : 0,
       },
     }, { merge: true });
-    return { ok: true, mode: "queued_for_review", submissionId };
+    return { ok: true, mode: "queued_for_review", submissionId, updateScope: "cadence" };
   }
 );
 

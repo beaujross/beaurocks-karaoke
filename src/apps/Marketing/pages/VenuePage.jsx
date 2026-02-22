@@ -9,6 +9,7 @@ import {
   onSnapshot,
 } from "../../../lib/firebase";
 import EntityActionsCard from "./EntityActionsCard";
+import CadenceUpdateCard from "./CadenceUpdateCard";
 import { formatDateTime } from "./shared";
 
 const VenuePage = ({ id, navigate, session }) => {
@@ -59,6 +60,12 @@ const VenuePage = ({ id, navigate, session }) => {
         <div className="mk3-chip">venue</div>
         <h2>{venue.title}</h2>
         <div className="mk3-detail-meta">{[venue.city, venue.state, venue.address1].filter(Boolean).join(" | ")}</div>
+        {venue.karaokeNightsLabel && (
+          <div className="mk3-status">
+            <strong>Karaoke cadence</strong>
+            <span>{venue.karaokeNightsLabel}</span>
+          </div>
+        )}
         <p>{venue.description || "No venue description provided yet."}</p>
         {venue.websiteUrl && (
           <a href={venue.websiteUrl} target="_blank" rel="noreferrer">
@@ -76,7 +83,10 @@ const VenuePage = ({ id, navigate, session }) => {
           ))}
         </div>
       </article>
-      <EntityActionsCard targetType="venue" targetId={venue.id} session={session} />
+      <div className="mk3-side-stack">
+        <CadenceUpdateCard listingType="venue" listing={venue} session={session} />
+        <EntityActionsCard targetType="venue" targetId={venue.id} session={session} />
+      </div>
     </section>
   );
 };

@@ -584,6 +584,12 @@
   gap: 12px;
 }
 
+.mk3-side-stack {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
 .mk3-sub-list {
   display: grid;
   gap: 7px;

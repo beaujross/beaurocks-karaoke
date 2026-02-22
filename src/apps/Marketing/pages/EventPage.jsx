@@ -8,6 +8,7 @@ import {
   onSnapshot,
 } from "../../../lib/firebase";
 import EntityActionsCard from "./EntityActionsCard";
+import CadenceUpdateCard from "./CadenceUpdateCard";
 import { formatDateTime } from "./shared";
 
 const EventPage = ({ id, navigate, session }) => {
@@ -64,13 +65,31 @@ const EventPage = ({ id, navigate, session }) => {
           {formatDateTime(eventItem.startsAtMs)}
           {eventItem.endsAtMs ? ` -> ${formatDateTime(eventItem.endsAtMs)}` : ""}
         </div>
+        {eventItem.recurringRule && (
+          <div className="mk3-status">
+            <strong>Recurring cadence</strong>
+            <span>{eventItem.recurringRule}</span>
+          </div>
+        )}
         <p>{eventItem.description || "No event description yet."}</p>
         <div className="mk3-sub-list">
+          {eventItem.venueName && !venue && (
+            <div className="mk3-list-row static">
+              <span>Venue</span>
+              <span>{eventItem.venueName}</span>
+            </div>
+          )}
           {venue && (
             <button type="button" className="mk3-list-row" onClick={() => navigate("venue", venue.id)}>
               <span>Venue</span>
               <span>{venue.title}</span>
             </button>
+          )}
+          {eventItem.hostName && !hostProfile && (
+            <div className="mk3-list-row static">
+              <span>Host</span>
+              <span>{eventItem.hostName}</span>
+            </div>
           )}
           {hostProfile && (
             <button type="button" className="mk3-list-row" onClick={() => navigate("host", hostProfile.id)}>
@@ -80,7 +99,10 @@ const EventPage = ({ id, navigate, session }) => {
           )}
         </div>
       </article>
-      <EntityActionsCard targetType="event" targetId={eventItem.id} session={session} />
+      <div className="mk3-side-stack">
+        <CadenceUpdateCard listingType="event" listing={eventItem} session={session} />
+        <EntityActionsCard targetType="event" targetId={eventItem.id} session={session} />
+      </div>
     </section>
   );
 };
