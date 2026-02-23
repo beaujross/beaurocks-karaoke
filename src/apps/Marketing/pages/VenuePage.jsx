@@ -15,6 +15,24 @@ import ClaimOwnershipCard from "./ClaimOwnershipCard";
 import EmptyStatePanel from "./EmptyStatePanel";
 import { formatDateTime } from "./shared";
 
+const FALLBACK_VENUE_IMAGES = [
+  "/images/marketing/app-landing-live.png",
+  "/images/marketing/audience-surface-live.png",
+  "/images/marketing/tv-surface-live.png",
+];
+
+const appendImage = (list = [], raw = "") => {
+  if (!Array.isArray(list)) return;
+  if (Array.isArray(raw)) {
+    raw.forEach((entry) => appendImage(list, entry));
+    return;
+  }
+  const value = String(raw || "").trim();
+  if (!value) return;
+  if (!/^https?:\/\//i.test(value) && !value.startsWith("/")) return;
+  if (!list.includes(value)) list.push(value);
+};
+
 const VenuePage = ({ id, route, navigate, session, authFlow }) => {
   const [venue, setVenue] = useState(null);
   const [events, setEvents] = useState([]);
@@ -79,21 +97,72 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
     );
   }
 
+  const eventCount = events.length;
+  const nextEvent = events[0] || null;
+  const venueImages = [];
+  appendImage(venueImages, venue.heroImageUrl);
+  appendImage(venueImages, venue.coverImageUrl);
+  appendImage(venueImages, venue.imageUrl);
+  appendImage(venueImages, venue.photoUrl);
+  appendImage(venueImages, venue.imageUrls);
+  appendImage(venueImages, venue.galleryUrls);
+  appendImage(venueImages, venue.photos);
+  appendImage(venueImages, venue.externalSources?.imageUrl);
+  appendImage(venueImages, venue.externalSources?.photoUrl);
+  appendImage(venueImages, venue.externalSources?.google?.photoUrl);
+  appendImage(venueImages, venue.externalSources?.google?.images);
+  appendImage(venueImages, venue.externalSources?.yelp?.imageUrl);
+
+  const heroImage = venueImages[0] || FALLBACK_VENUE_IMAGES[0];
+  const galleryImages = [...venueImages];
+  FALLBACK_VENUE_IMAGES.forEach((url) => appendImage(galleryImages, url));
+  const listingGallery = galleryImages.slice(0, 3);
+
   return (
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
-        <div className="mk3-chip">venue</div>
-        <h2>{venue.title}</h2>
-        <div className="mk3-detail-meta">{[venue.city, venue.state, venue.address1].filter(Boolean).join(" | ")}</div>
+        <div className="mk3-venue-hero">
+          <img src={heroImage} alt={`${venue.title} listing visual`} loading="lazy" />
+          <div className="mk3-venue-hero-content">
+            <div className="mk3-chip">venue</div>
+            <h2>{venue.title}</h2>
+            <div className="mk3-detail-meta">{[venue.city, venue.state, venue.address1].filter(Boolean).join(" | ")}</div>
+          </div>
+        </div>
+
+        <div className="mk3-venue-stat-grid">
+          <article>
+            <span>Upcoming Events</span>
+            <strong>{eventCount}</strong>
+          </article>
+          <article>
+            <span>Next Karaoke Slot</span>
+            <strong>{nextEvent ? formatDateTime(nextEvent.startsAtMs) : "TBD"}</strong>
+          </article>
+          <article>
+            <span>Region</span>
+            <strong>{[venue.city, venue.state].filter(Boolean).join(", ") || "Unspecified"}</strong>
+          </article>
+        </div>
+
         {venue.karaokeNightsLabel && (
           <div className="mk3-status">
             <strong>Karaoke cadence</strong>
             <span>{venue.karaokeNightsLabel}</span>
           </div>
         )}
+
+        <div className="mk3-venue-gallery" aria-label="Venue gallery">
+          {listingGallery.map((imageUrl, index) => (
+            <figure key={`${imageUrl}-${index}`}>
+              <img src={imageUrl} alt={`${venue.title} visual ${index + 1}`} loading="lazy" />
+            </figure>
+          ))}
+        </div>
+
         <p>{venue.description || "No venue description provided yet."}</p>
         {venue.websiteUrl && (
-          <a href={venue.websiteUrl} target="_blank" rel="noreferrer">
+          <a className="mk3-venue-link" href={venue.websiteUrl} target="_blank" rel="noreferrer">
             Venue Website
           </a>
         )}
