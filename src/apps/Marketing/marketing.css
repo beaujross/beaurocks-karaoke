@@ -101,8 +101,12 @@
 .mk3-links button:hover,
 .mk3-links button.active {
   color: #081317;
-  border-color: rgba(39, 211, 203, 0.35);
-  background: linear-gradient(115deg, var(--mk3-accent-b), #8be7f2 52%, var(--mk3-accent-a));
+  border-color: transparent;
+  background:
+    linear-gradient(115deg, var(--mk3-accent-b), #8be7f2 52%, var(--mk3-accent-a)) padding-box,
+    linear-gradient(rgba(39, 211, 203, 0.35), rgba(39, 211, 203, 0.35)) border-box;
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
 }
 
 .mk3-account {
@@ -279,8 +283,12 @@
 
 .mk3-toggle-row button.active {
   color: #061017;
-  border-color: rgba(39, 211, 203, 0.28);
-  background: linear-gradient(120deg, #27d3cb, #8be7f2 52%, #ec4899);
+  border-color: transparent;
+  background:
+    linear-gradient(120deg, #27d3cb, #8be7f2 52%, #ec4899) padding-box,
+    linear-gradient(rgba(39, 211, 203, 0.28), rgba(39, 211, 203, 0.28)) border-box;
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
   box-shadow: 0 5px 14px rgba(10, 20, 30, 0.24);
 }
 
@@ -333,8 +341,12 @@
 
 .mk3-auth-box form > button[type="submit"] {
   border-radius: 999px;
-  border-color: rgba(83, 211, 221, 0.45);
-  background: linear-gradient(112deg, #2ac6cf 4%, #7ddfe7 48%, #ef6db7 96%);
+  border-color: transparent;
+  background:
+    linear-gradient(112deg, #2ac6cf 4%, #7ddfe7 48%, #ef6db7 96%) padding-box,
+    linear-gradient(rgba(83, 211, 221, 0.45), rgba(83, 211, 221, 0.45)) border-box;
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
   color: #07131c;
   box-shadow:
     inset 0 1px 0 rgba(238, 252, 255, 0.34),
@@ -342,8 +354,12 @@
 }
 
 .mk3-auth-box form > button[type="submit"]:hover {
-  background: linear-gradient(112deg, #33d1da 6%, #8ce6ed 48%, #f37dc2 96%);
-  border-color: rgba(166, 232, 240, 0.72);
+  border-color: transparent;
+  background:
+    linear-gradient(112deg, #33d1da 6%, #8ce6ed 48%, #f37dc2 96%) padding-box,
+    linear-gradient(rgba(166, 232, 240, 0.72), rgba(166, 232, 240, 0.72)) border-box;
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
 }
 
 .mk3-auth-box button:hover,
@@ -368,8 +384,12 @@
 
 .mk3-auth-box .mk3-toggle-row button.active {
   color: #dff3ff;
-  border-color: rgba(206, 136, 204, 0.42);
-  background: linear-gradient(110deg, rgba(23, 39, 57, 0.98), rgba(42, 30, 54, 0.98));
+  border-color: transparent;
+  background:
+    linear-gradient(110deg, rgba(23, 39, 57, 0.98), rgba(42, 30, 54, 0.98)) padding-box,
+    linear-gradient(rgba(206, 136, 204, 0.42), rgba(206, 136, 204, 0.42)) border-box;
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
   box-shadow: inset 0 0 0 1px rgba(159, 220, 239, 0.12);
 }
 
@@ -861,8 +881,12 @@
 }
 
 .mk3-inline-next {
-  border-color: rgba(39, 211, 203, 0.42) !important;
-  background: linear-gradient(112deg, rgba(39, 211, 203, 0.22), rgba(236, 72, 153, 0.26)) !important;
+  border-color: transparent !important;
+  background:
+    linear-gradient(112deg, rgba(39, 211, 203, 0.22), rgba(236, 72, 153, 0.26)) padding-box,
+    linear-gradient(rgba(39, 211, 203, 0.42), rgba(39, 211, 203, 0.42)) border-box !important;
+  background-clip: padding-box, border-box !important;
+  -webkit-background-clip: padding-box, border-box !important;
   color: #f2faff !important;
 }
 
