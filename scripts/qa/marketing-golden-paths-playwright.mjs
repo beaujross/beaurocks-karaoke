@@ -164,15 +164,23 @@ const run = async () => {
           hasQuickStart = await quickStartHeading.isVisible().catch(() => false);
         }
       }
-      if (!hasQuickStart) {
-        const snapshot = await page.evaluate(() =>
-          String(document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 420).trim()
-        );
-        throw new Error(`Private Host Quick Start form not visible at ${page.url()} :: ${snapshot}`);
+      if (hasQuickStart) {
+        const roomCode = page.getByPlaceholder(/VIP123/i).first();
+        await roomCode.fill("QA123");
+        await page.getByRole("button", { name: /Create Private Session/i }).first().click({ force: true });
+      } else {
+        const createAccountHost = page.getByRole("button", {
+          name: /Create Account To Create Private Session/i,
+        }).first();
+        if (await createAccountHost.isVisible().catch(() => false)) {
+          await createAccountHost.click({ force: true });
+        } else {
+          const snapshot = await page.evaluate(() =>
+            String(document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 420).trim()
+          );
+          throw new Error(`Private Host Quick Start entry not visible at ${page.url()} :: ${snapshot}`);
+        }
       }
-      const roomCode = page.getByPlaceholder(/VIP123/i).first();
-      await roomCode.fill("QA123");
-      await page.getByRole("button", { name: /Create Private Session/i }).first().click({ force: true });
       await delay(500);
       const parsed = new URL(page.url());
       const intent = parsed.searchParams.get("intent") || "";
@@ -193,7 +201,21 @@ const run = async () => {
         { path: "/submit", legacyPage: "submit" },
         timeoutMs
       );
-      await page.getByRole("button", { name: /Submit For Review/i }).first().click({ force: true });
+      const submitForReview = page.getByRole("button", { name: /Submit For Review/i }).first();
+      const createAccountToSubmit = page.getByRole("button", { name: /Create Account To Submit/i }).first();
+      await delay(400);
+      if (await submitForReview.isVisible().catch(() => false)) {
+        await submitForReview.click({ force: true });
+      } else {
+        if (!(await createAccountToSubmit.isVisible().catch(() => false))) {
+          await createAccountToSubmit.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+        }
+        if (await createAccountToSubmit.isVisible().catch(() => false)) {
+          await createAccountToSubmit.click({ force: true });
+        } else {
+          throw new Error(`No submit entry CTA visible at ${page.url()}.`);
+        }
+      }
       await delay(500);
       const parsed = new URL(page.url());
       const intent = parsed.searchParams.get("intent") || "";
@@ -208,10 +230,13 @@ const run = async () => {
       await delay(1200);
       const quickRsvp = page.getByRole("button", { name: /Quick RSVP/i }).first();
       const claimVenue = page.getByRole("button", { name: /Claim Venue/i }).first();
+      const createAccountInline = page.locator(".mk3-inline-conversions button", { hasText: /Create Account/i }).first();
       if (await quickRsvp.isVisible().catch(() => false)) {
         await quickRsvp.click({ force: true });
       } else if (await claimVenue.isVisible().catch(() => false)) {
         await claimVenue.click({ force: true });
+      } else if (await createAccountInline.isVisible().catch(() => false)) {
+        await createAccountInline.click({ force: true });
       } else {
         return "No inline conversion buttons visible in current dataset (skipped).";
       }

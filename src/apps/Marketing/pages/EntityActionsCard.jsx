@@ -118,7 +118,7 @@ const EntityActionsCard = ({ targetType, targetId, session, authFlow, navigate }
     );
   }, [canAct, canRsvp, uid, targetType, targetId]);
 
-  const requireAuthMessage = "Sign in with a full BeauRocks account to follow, check in, and review.";
+  const requireAuthMessage = "Create an account to follow, RSVP, check in, and review.";
   const requireAuth = (intent = "continue", target = targetType, id = targetId) => {
     if (canAct) return true;
     return !!authFlow?.requireFullAuth?.({
@@ -131,6 +131,33 @@ const EntityActionsCard = ({ targetType, targetId, session, authFlow, navigate }
       },
     });
   };
+
+  if (!canAct) {
+    return (
+      <aside className="mk3-actions-card">
+        <h4>Social Actions</h4>
+        <p>Create an account to unlock follow, RSVP, check-ins, reviews, and reminders.</p>
+        <button
+          type="button"
+          onClick={() => authFlow?.requireFullAuth?.({
+            intent: canRsvp ? "rsvp" : "follow",
+            targetType,
+            targetId,
+            returnRoute: {
+              ...targetRouteFor(targetType, targetId),
+              params: {
+                intent: canRsvp ? "rsvp" : "follow",
+                targetType,
+                targetId,
+              },
+            },
+          })}
+        >
+          Create Account For Social Actions
+        </button>
+      </aside>
+    );
+  }
 
   const toggleFollow = async () => {
     if (!requireAuth("follow", targetType, targetId)) {

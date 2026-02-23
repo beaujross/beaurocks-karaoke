@@ -30,7 +30,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
           },
         },
       });
-      setStatus("Sign in with a full account to create private sessions.");
+      setStatus("Create an account to create private sessions.");
       return;
     }
     setBusy(true);
@@ -71,15 +71,29 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
         <h2>Run private rooms or public discoverable events.</h2>
         <p>Create sessions, set cadence, and convert discovery into repeat attendance.</p>
         <div className="mk3-actions-inline">
-          <button
-            type="button"
-            onClick={() => {
-              trackEvent("mk_persona_cta_click", { persona: "host", cta: "create_event_session" });
-              navigate("submit");
-            }}
-          >
-            Create Event / Session
-          </button>
+          {canSubmit ? (
+            <button
+              type="button"
+              onClick={() => {
+                trackEvent("mk_persona_cta_click", { persona: "host", cta: "create_event_session" });
+                navigate("submit");
+              }}
+            >
+              Create Event / Session
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => authFlow?.requireFullAuth?.({
+                intent: "listing_submit",
+                targetType: "event",
+                targetId: "",
+                returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "event" } },
+              })}
+            >
+              Create Account To Host
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -90,6 +104,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
             Browse Active Listings
           </button>
         </div>
+        {canSubmit && (
         <form className="mk3-actions-block" onSubmit={submitPrivateSession}>
           <h3>Private Host Quick Start</h3>
           <label>
@@ -135,6 +150,29 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
             </button>
           )}
         </form>
+        )}
+        {!canSubmit && (
+          <div className="mk3-actions-block">
+            <div className="mk3-status">Create an account to access the private host quick start flow.</div>
+            <button
+              type="button"
+              onClick={() => authFlow?.requireFullAuth?.({
+                intent: "private_session_create",
+                targetType: "session",
+                targetId: "",
+                returnRoute: {
+                  page: "for_hosts",
+                  params: {
+                    intent: "private_session_create",
+                    targetType: "session",
+                  },
+                },
+              })}
+            >
+              Create Account To Create Private Session
+            </button>
+          </div>
+        )}
       </article>
       <aside className="mk3-actions-card">
         <h4>Host Path</h4>
@@ -144,7 +182,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
           <li>Track follows, RSVPs, and check-ins from your dashboard.</li>
         </ul>
         {!canSubmit && (
-          <div className="mk3-status">Sign in with a full account to create and manage listings.</div>
+          <div className="mk3-status">Create an account to create and manage listings.</div>
         )}
       </aside>
     </section>

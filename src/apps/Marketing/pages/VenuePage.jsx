@@ -59,8 +59,20 @@ const VenuePage = ({ id, navigate, session, authFlow }) => {
         <EmptyStatePanel
           {...getEmptyStateConfig({ context: EMPTY_STATE_CONTEXT.VENUE_MISSING, session })}
           onAction={(action) => {
-            if (action.intent === "submit_listing") navigate("submit", "", { intent: "listing_submit", targetType: "venue" });
-            else navigate("discover");
+            if (action.intent === "auth") {
+              authFlow?.requireFullAuth?.({
+                intent: "listing_submit",
+                targetType: "venue",
+                targetId: "",
+                returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "venue" } },
+              });
+              return;
+            }
+            if (action.intent === "submit_listing") {
+              navigate("submit", "", { intent: "listing_submit", targetType: "venue" });
+              return;
+            }
+            navigate("discover");
           }}
         />
       </section>

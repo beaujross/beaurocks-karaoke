@@ -42,7 +42,7 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
           },
         },
       });
-      setStatus("Sign in with an upgraded account to submit listings.");
+      setStatus("Create an account to submit listings.");
       return;
     }
     setBusy(true);
@@ -78,6 +78,29 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
         <p>
           All submissions route through moderation. Browsing remains public; posting requires login.
         </p>
+        {!canSubmit && (
+          <div className="mk3-actions-block">
+            <div className="mk3-status">Create an account to submit and manage listings.</div>
+            <button
+              type="button"
+              onClick={() => authFlow?.requireFullAuth?.({
+                intent: "listing_submit",
+                targetType: listingType,
+                targetId: "",
+                returnRoute: {
+                  page: "submit",
+                  params: {
+                    intent: "listing_submit",
+                    targetType: listingType,
+                  },
+                },
+              })}
+            >
+              Create Account To Submit
+            </button>
+          </div>
+        )}
+        {canSubmit && (
         <form className="mk3-form-grid" onSubmit={submit}>
           <label>
             Listing Type
@@ -173,6 +196,7 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
             <button type="button" onClick={() => navigate("profile")}>Back To Dashboard</button>
           </div>
         </form>
+        )}
         {status && <div className="mk3-status">{status}</div>}
       </article>
 

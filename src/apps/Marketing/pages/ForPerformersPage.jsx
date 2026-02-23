@@ -1,7 +1,9 @@
 import React from "react";
 import { trackEvent } from "../../../lib/firebase";
 
-const ForPerformersPage = ({ navigate }) => (
+const ForPerformersPage = ({ navigate, session, authFlow }) => {
+  const canUseDashboard = !!session?.uid && !session?.isAnonymous;
+  return (
   <section className="mk3-page mk3-two-col">
     <article className="mk3-detail-card">
       <div className="mk3-chip">for performers</div>
@@ -17,15 +19,29 @@ const ForPerformersPage = ({ navigate }) => (
         >
           Find Events
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            trackEvent("mk_persona_cta_click", { persona: "performer", cta: "open_dashboard" });
-            navigate("profile");
-          }}
-        >
-          Open Dashboard
-        </button>
+        {canUseDashboard ? (
+          <button
+            type="button"
+            onClick={() => {
+              trackEvent("mk_persona_cta_click", { persona: "performer", cta: "open_dashboard" });
+              navigate("profile");
+            }}
+          >
+            Open Dashboard
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => authFlow?.requireFullAuth?.({
+              intent: "profile",
+              targetType: "profile",
+              targetId: "",
+              returnRoute: { page: "profile" },
+            })}
+          >
+            Create Account To Track History
+          </button>
+        )}
       </div>
     </article>
     <aside className="mk3-actions-card">
@@ -37,6 +53,7 @@ const ForPerformersPage = ({ navigate }) => (
       </ul>
     </aside>
   </section>
-);
+  );
+};
 
 export default ForPerformersPage;

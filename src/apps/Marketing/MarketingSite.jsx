@@ -42,6 +42,8 @@ const PAGE_OPTIONS = [
   { id: MARKETING_ROUTE_PAGES.profile, label: "My Dashboard" },
   { id: MARKETING_ROUTE_PAGES.admin, label: "Marketing Admin" },
 ];
+const KITSAP_SCHEDULE_IMAGE_PATH = "/images/marketing/kitsap-karaoke-schedule.jpg";
+const KITSAP_SCHEDULE_CSV_PATH = "/data/kitsap_karaoke_schedule.csv";
 
 const normalizePage = (value = "") => {
   const safe = String(value || "").trim().toLowerCase();
@@ -322,7 +324,7 @@ const MarketingSite = () => {
           <div className="mk3-account">
             {!session.ready && <span>Initializing account...</span>}
             {session.ready && !session.isAuthed && <span>Guest browsing enabled</span>}
-            {session.ready && session.isAuthed && session.isAnonymous && <span>Anonymous quick-join active</span>}
+            {session.ready && session.isAuthed && session.isAnonymous && <span>Create an account to save activity</span>}
             {session.ready && session.isAuthed && !session.isAnonymous && (
               <span>{session.email || `UID ${session.uid.slice(0, 8)}`}</span>
             )}
@@ -336,7 +338,7 @@ const MarketingSite = () => {
 
           {!!route.params?.intent && (!session?.isAuthed || session?.isAnonymous) && (
             <div className="mk3-status mk3-status-warning">
-              <strong>Sign in to continue your action.</strong>
+              <strong>Create an account or sign in to continue your action.</strong>
               <span>After sign-in, we will return you to your selected CTA.</span>
             </div>
           )}
@@ -345,7 +347,7 @@ const MarketingSite = () => {
             <div>
               <h1>Find karaoke nights fast.</h1>
               <p>
-                Browse public listings without login. Sign in to save favorites, check in, and manage your karaoke history in one place.
+                Browse public listings without login. Create an account to save favorites, check in, and manage your karaoke history in one place.
               </p>
               <div className="mk3-value-points">
                 <span>Live map + synced discovery rail</span>
@@ -379,7 +381,7 @@ const MarketingSite = () => {
                       className={authMode === "signup" ? "active" : ""}
                       onClick={() => setAuthMode("signup")}
                     >
-                      {session.isAnonymous ? "Upgrade Account" : "Create Account"}
+                      Create Account
                     </button>
                   </div>
                   <label>
@@ -405,12 +407,33 @@ const MarketingSite = () => {
                     {session.authLoading
                       ? "Working..."
                       : authMode === "signup"
-                        ? session.isAnonymous ? "Upgrade Anonymous Account" : "Create BeauRocks Account"
+                        ? "Create BeauRocks Account"
                         : "Sign In"}
                   </button>
                   {session.authError && <div className="mk3-status mk3-status-error">{session.authError}</div>}
                 </form>
               )}
+            </div>
+          </section>
+          <section className="mk3-kitsap-resource">
+            <img src={KITSAP_SCHEDULE_IMAGE_PATH} alt="Kitsap karaoke weekly schedule screenshot" />
+            <div className="mk3-kitsap-resource-content">
+              <div className="mk3-chip">kitsap local guide</div>
+              <h3>Local Kitsap Karaoke Schedule</h3>
+              <p>
+                Screenshot and spreadsheet for local karaoke nights across Kitsap regions.
+              </p>
+              <div className="mk3-actions-inline">
+                <a href={KITSAP_SCHEDULE_IMAGE_PATH} target="_blank" rel="noreferrer">
+                  Open Screenshot
+                </a>
+                <a href={KITSAP_SCHEDULE_CSV_PATH} download>
+                  Download Spreadsheet
+                </a>
+                <a href={KITSAP_SCHEDULE_CSV_PATH} target="_blank" rel="noreferrer">
+                  Open Spreadsheet
+                </a>
+              </div>
             </div>
           </section>
 

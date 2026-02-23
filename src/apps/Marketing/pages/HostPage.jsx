@@ -56,8 +56,20 @@ const HostPage = ({ id, navigate, session, authFlow }) => {
         <EmptyStatePanel
           {...getEmptyStateConfig({ context: EMPTY_STATE_CONTEXT.HOST_MISSING, session })}
           onAction={(action) => {
-            if (action.intent === "profile") navigate("profile");
-            else navigate("discover");
+            if (action.intent === "auth") {
+              authFlow?.requireFullAuth?.({
+                intent: "profile",
+                targetType: "profile",
+                targetId: "",
+                returnRoute: { page: "profile" },
+              });
+              return;
+            }
+            if (action.intent === "profile") {
+              navigate("profile");
+              return;
+            }
+            navigate("discover");
           }}
         />
       </section>

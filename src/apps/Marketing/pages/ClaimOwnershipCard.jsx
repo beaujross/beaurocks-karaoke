@@ -43,7 +43,7 @@ const ClaimOwnershipCard = ({ listingType = "venue", listingId = "", session, au
           },
         },
       });
-      setStatus("Sign in with a full account to submit claim requests.");
+      setStatus("Create an account to submit claim requests.");
       return;
     }
     setBusy(true);
@@ -78,6 +78,29 @@ const ClaimOwnershipCard = ({ listingType = "venue", listingId = "", session, au
   };
 
   if (!marketingFlags.claimFlowEnabled) return null;
+
+  if (!canSubmit) {
+    return (
+      <aside className="mk3-actions-card">
+        <h4>Claim This Listing</h4>
+        <p>Create an account to submit ownership claims and unlock publish privileges.</p>
+        <button
+          type="button"
+          onClick={() => authFlow?.requireFullAuth?.({
+            intent: "claim",
+            targetType: listingType,
+            targetId: listingId,
+            returnRoute: {
+              ...routeForListing(listingType, listingId),
+              params: { intent: "claim", targetType: listingType, targetId: listingId },
+            },
+          })}
+        >
+          Create Account To Claim
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside className="mk3-actions-card">

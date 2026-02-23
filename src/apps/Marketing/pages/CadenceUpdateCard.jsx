@@ -90,7 +90,7 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
           },
         },
       });
-      setStatus("Sign in with a full account to suggest or update cadence.");
+      setStatus("Create an account to suggest or update cadence.");
       return;
     }
     setBusy(true);
@@ -139,12 +139,36 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
       <p>
         {isOwner
           ? "You are listed as owner/host. Cadence updates publish immediately."
-          : "Signed-in hosts and community members can submit cadence updates for moderation."}
+          : "Hosts and community members can submit cadence updates for moderation."}
       </p>
       <div className="mk3-status">
         <strong>Current cadence</strong>
         <span>{cadencePreview}</span>
       </div>
+      {!canSubmit && (
+        <div className="mk3-actions-block">
+          <div className="mk3-status">Create an account to submit cadence updates.</div>
+          <button
+            type="button"
+            onClick={() => authFlow?.requireFullAuth?.({
+              intent: "cadence",
+              targetType: listingType,
+              targetId: listing?.id || "",
+              returnRoute: {
+                ...routeForListing(listingType, listing?.id || ""),
+                params: {
+                  intent: "cadence",
+                  targetType: listingType,
+                  targetId: listing?.id || "",
+                },
+              },
+            })}
+          >
+            Create Account To Update
+          </button>
+        </div>
+      )}
+      {canSubmit && (
       <form className="mk3-actions-block" onSubmit={submitCadenceUpdate}>
         {listingType === "venue" ? (
           <label>
@@ -211,6 +235,7 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
           {busy ? "Saving..." : isOwner ? "Save Cadence" : "Submit Cadence Update"}
         </button>
       </form>
+      )}
       {status && <div className="mk3-status">{status}</div>}
     </aside>
   );

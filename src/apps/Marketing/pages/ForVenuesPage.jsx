@@ -1,7 +1,9 @@
 import React from "react";
 import { trackEvent } from "../../../lib/firebase";
 
-const ForVenuesPage = ({ navigate }) => (
+const ForVenuesPage = ({ navigate, session, authFlow }) => {
+  const canSubmit = !!session?.uid && !session?.isAnonymous;
+  return (
   <section className="mk3-page mk3-two-col">
     <article className="mk3-detail-card">
       <div className="mk3-chip">for venues</div>
@@ -17,15 +19,29 @@ const ForVenuesPage = ({ navigate }) => (
         >
           Find Your Venue
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            trackEvent("mk_persona_cta_click", { persona: "venue_owner", cta: "submit_venue" });
-            navigate("submit");
-          }}
-        >
-          Submit New Venue
-        </button>
+        {canSubmit ? (
+          <button
+            type="button"
+            onClick={() => {
+              trackEvent("mk_persona_cta_click", { persona: "venue_owner", cta: "submit_venue" });
+              navigate("submit");
+            }}
+          >
+            Submit New Venue
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => authFlow?.requireFullAuth?.({
+              intent: "listing_submit",
+              targetType: "venue",
+              targetId: "",
+              returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "venue" } },
+            })}
+          >
+            Create Account To Submit
+          </button>
+        )}
       </div>
     </article>
     <aside className="mk3-actions-card">
@@ -37,6 +53,7 @@ const ForVenuesPage = ({ navigate }) => (
       </ul>
     </aside>
   </section>
-);
+  );
+};
 
 export default ForVenuesPage;

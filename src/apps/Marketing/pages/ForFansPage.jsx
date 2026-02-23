@@ -1,7 +1,9 @@
 import React from "react";
 import { trackEvent } from "../../../lib/firebase";
 
-const ForFansPage = ({ navigate }) => (
+const ForFansPage = ({ navigate, session, authFlow }) => {
+  const canUseDashboard = !!session?.uid && !session?.isAnonymous;
+  return (
   <section className="mk3-page mk3-two-col">
     <article className="mk3-detail-card">
       <div className="mk3-chip">for fans</div>
@@ -17,15 +19,29 @@ const ForFansPage = ({ navigate }) => (
         >
           Start Discovering
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            trackEvent("mk_persona_cta_click", { persona: "fan", cta: "open_dashboard" });
-            navigate("profile");
-          }}
-        >
-          Activity Dashboard
-        </button>
+        {canUseDashboard ? (
+          <button
+            type="button"
+            onClick={() => {
+              trackEvent("mk_persona_cta_click", { persona: "fan", cta: "open_dashboard" });
+              navigate("profile");
+            }}
+          >
+            Activity Dashboard
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => authFlow?.requireFullAuth?.({
+              intent: "profile",
+              targetType: "profile",
+              targetId: "",
+              returnRoute: { page: "profile" },
+            })}
+          >
+            Create Account For Activity
+          </button>
+        )}
       </div>
     </article>
     <aside className="mk3-actions-card">
@@ -37,6 +53,7 @@ const ForFansPage = ({ navigate }) => (
       </ul>
     </aside>
   </section>
-);
+  );
+};
 
 export default ForFansPage;

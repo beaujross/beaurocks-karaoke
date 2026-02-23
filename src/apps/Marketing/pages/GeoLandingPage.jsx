@@ -70,6 +70,15 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
 
   const onEmptyAction = (action = {}) => {
     const intent = String(action.intent || "");
+    if (intent === "auth") {
+      authFlow?.requireFullAuth?.({
+        intent: "listing_submit",
+        targetType: "geo",
+        targetId: "",
+        returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "geo" } },
+      });
+      return;
+    }
     if (intent === "submit_listing") {
       navigate("submit", "", { intent: "listing_submit", targetType: "geo" });
       return;

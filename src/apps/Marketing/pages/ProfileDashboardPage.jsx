@@ -9,7 +9,7 @@ const ROLE_OPTIONS = [
   { id: "fan", label: "Fan" },
 ];
 
-const ProfileDashboardPage = ({ session, navigate }) => {
+const ProfileDashboardPage = ({ session, navigate, authFlow }) => {
   const uid = session?.uid || "";
   const canUseDashboard = !!uid && !session?.isAnonymous;
   const [profile, setProfile] = useState(null);
@@ -149,7 +149,7 @@ const ProfileDashboardPage = ({ session, navigate }) => {
 
   const saveProfile = async () => {
     if (!canUseDashboard) {
-      setStatus("Sign in with a full account to edit your profile.");
+      setStatus("Create an account to edit your profile.");
       return;
     }
     setSaving(true);
@@ -179,8 +179,20 @@ const ProfileDashboardPage = ({ session, navigate }) => {
   if (!canUseDashboard) {
     return (
       <section className="mk3-page">
-        <div className="mk3-status">
-          Sign in with an upgraded BeauRocks account to access your full history dashboard.
+        <div className="mk3-actions-card">
+          <h4>Profile Dashboard</h4>
+          <p>Create an account to access your history dashboard and saved activity.</p>
+          <button
+            type="button"
+            onClick={() => authFlow?.requireFullAuth?.({
+              intent: "profile",
+              targetType: "profile",
+              targetId: "",
+              returnRoute: { page: "profile" },
+            })}
+          >
+            Create Account For Dashboard
+          </button>
         </div>
       </section>
     );
