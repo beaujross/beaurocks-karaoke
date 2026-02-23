@@ -7,6 +7,7 @@ import EmptyStatePanel from "./EmptyStatePanel";
 import InlineConversionActions from "./InlineConversionActions";
 import { formatDateTime } from "./shared";
 
+const FINDER_BRAND = "Setlist";
 const MAP_DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
 const MAP_TYPE_META = {
   venue: { label: "venue", routePage: "venue", markerColor: "#27d3cb" },
@@ -355,12 +356,16 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
   return (
     <section className="mk3-page">
+      <div className="mk3-status">
+        <strong>BeauRocks Karaoke {FINDER_BRAND} Finder</strong>
+        <span>Use map + rail together to find your next karaoke night faster.</span>
+      </div>
       <div className="mk3-filter-row mk3-discover-filters">
         <label>
           Search
           <input
             value={search}
-            placeholder="Host, venue, city, vibe"
+            placeholder="Host, venue, city, or vibe"
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
@@ -421,8 +426,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
       <div className="mk3-discover-shell">
         <article className="mk3-map-card">
-          <h2>Live Karaoke Map</h2>
-          <div className="mk3-map-badge">Marker synced discovery rail</div>
+          <h2>{FINDER_BRAND} Live Karaoke Map</h2>
+          <div className="mk3-map-badge">Marker-synced {FINDER_BRAND} rail</div>
           <div className="mk3-map-toolbar">
             <label className="mk3-inline">
               <input

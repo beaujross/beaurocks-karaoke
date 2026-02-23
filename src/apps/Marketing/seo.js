@@ -71,15 +71,15 @@ const buildRouteSeo = (route = {}) => {
 
   if (page === MARKETING_ROUTE_PAGES.discover) {
     return {
-      title: "Discover Karaoke Near You | BeauRocks",
-      description: "Find public karaoke nights by city, host, venue, and time window.",
+      title: "Setlist Karaoke Finder | BeauRocks Karaoke",
+      description: "Use BeauRocks Karaoke Setlist to find public karaoke nights by city, host, venue, and time window.",
       robots: "index,follow",
-      structuredData: { "@context": "https://schema.org", "@type": "CollectionPage", name: "BeauRocks Discover" },
+      structuredData: { "@context": "https://schema.org", "@type": "CollectionPage", name: "BeauRocks Karaoke Setlist Finder" },
     };
   }
   if (page === MARKETING_ROUTE_PAGES.forHosts) {
     return {
-      title: "For Hosts | BeauRocks Karaoke Directory",
+      title: "For Hosts | BeauRocks Karaoke",
       description: "Create private room sessions or public discoverable events and grow repeat attendance.",
       robots: "index,follow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "For Hosts" },
@@ -87,7 +87,7 @@ const buildRouteSeo = (route = {}) => {
   }
   if (page === MARKETING_ROUTE_PAGES.forVenues) {
     return {
-      title: "For Venues | BeauRocks Karaoke Directory",
+      title: "For Venues | BeauRocks Karaoke",
       description: "Claim your venue listing and publish recurring karaoke cadence updates.",
       robots: "index,follow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "For Venues" },
@@ -95,7 +95,7 @@ const buildRouteSeo = (route = {}) => {
   }
   if (page === MARKETING_ROUTE_PAGES.forPerformers) {
     return {
-      title: "For Performers | BeauRocks Karaoke Directory",
+      title: "For Performers | BeauRocks Karaoke",
       description: "Find events, RSVP, and track your karaoke performance history in one profile.",
       robots: "index,follow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "For Performers" },
@@ -103,7 +103,7 @@ const buildRouteSeo = (route = {}) => {
   }
   if (page === MARKETING_ROUTE_PAGES.forFans) {
     return {
-      title: "For Fans | BeauRocks Karaoke Directory",
+      title: "For Fans | BeauRocks Karaoke",
       description: "Browse nearby karaoke events and get reminders before showtime.",
       robots: "index,follow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "For Fans" },
@@ -196,10 +196,10 @@ const buildRouteSeo = (route = {}) => {
     };
   }
   return {
-    title: "BeauRocks Karaoke Directory",
+    title: "BeauRocks Karaoke",
     description: "Discover karaoke events, venues, hosts, and performers.",
     robots: "index,follow",
-    structuredData: { "@context": "https://schema.org", "@type": "WebSite", name: "BeauRocks" },
+    structuredData: { "@context": "https://schema.org", "@type": "WebSite", name: "BeauRocks Karaoke" },
   };
 };
 
@@ -221,4 +221,3 @@ export const applyMarketingSeo = (route = {}) => {
   ensureMetaTag({ name: "twitter:description", content: seo.description });
   ensureStructuredData("marketing-seo", seo.structuredData);
 };
-

@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ASSETS } from "../../lib/assets";
 import { trackEvent } from "../../lib/firebase";
 import { marketingFlags } from "./featureFlags";
 import {
@@ -33,14 +32,26 @@ import GoldenPathRail from "./pages/GoldenPathRail";
 import { formatDateTime } from "./pages/shared";
 import "./marketing.css";
 
-const PAGE_OPTIONS = [
-  { id: MARKETING_ROUTE_PAGES.discover, label: "Discover" },
+const PRODUCT_BRAND = {
+  name: "BeauRocks Karaoke",
+  finder: "Setlist",
+  tv: "Spotlight",
+  audience: "MicLine",
+  host: "StageOps",
+};
+
+const PRIMARY_PAGE_OPTIONS = [
+  { id: MARKETING_ROUTE_PAGES.discover, label: "Setlist Finder" },
   { id: MARKETING_ROUTE_PAGES.forHosts, label: "For Hosts" },
   { id: MARKETING_ROUTE_PAGES.forVenues, label: "For Venues" },
   { id: MARKETING_ROUTE_PAGES.forPerformers, label: "For Performers" },
   { id: MARKETING_ROUTE_PAGES.forFans, label: "For Fans" },
+];
+
+const SECONDARY_PAGE_OPTIONS = [
   { id: MARKETING_ROUTE_PAGES.submit, label: "Submit Listing" },
   { id: MARKETING_ROUTE_PAGES.profile, label: "Dashboard" },
+  { id: MARKETING_ROUTE_PAGES.join, label: "Join By Code" },
   { id: MARKETING_ROUTE_PAGES.admin, label: "Marketing Admin" },
 ];
 
@@ -102,6 +113,7 @@ const MarketingSite = () => {
   const [heroStats, setHeroStats] = useState(null);
   const [authMode, setAuthMode] = useState("signin");
   const [authForm, setAuthForm] = useState({ email: "", password: "" });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const authPanelRef = useRef(null);
   const { session, actions } = useDirectorySession();
   const isAuthed = !!session?.isAuthed;
@@ -110,7 +122,10 @@ const MarketingSite = () => {
 
   useEffect(() => {
     if (typeof window === "undefined") return () => {};
-    const onPopState = () => setRoute(readRouteFromWindow());
+    const onPopState = () => {
+      setRoute(readRouteFromWindow());
+      setMobileMenuOpen(false);
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
@@ -206,6 +221,7 @@ const MarketingSite = () => {
       window.history.pushState({}, "", nextUrl);
     }
     setRoute(nextRoute);
+    setMobileMenuOpen(false);
     trackEvent("marketing_directory_navigate", { page: nextRoute.page || MARKETING_ROUTE_PAGES.discover });
   }, []);
 
@@ -286,14 +302,13 @@ const MarketingSite = () => {
   };
 
   const activePage = useMemo(() => normalizePage(route.page), [route.page]);
-  const visiblePageOptions = useMemo(
-    () => PAGE_OPTIONS
-      .filter((item) => item.id !== MARKETING_ROUTE_PAGES.admin || session.isModerator)
-      .map((item) => {
-        if (item.id !== MARKETING_ROUTE_PAGES.profile || hasFullAccount) return item;
-        return { ...item, label: "Dashboard (Sign in)" };
-      }),
-    [hasFullAccount, session.isModerator]
+  const visibleSecondaryOptions = useMemo(
+    () => SECONDARY_PAGE_OPTIONS.filter((item) => item.id !== MARKETING_ROUTE_PAGES.admin || session.isModerator),
+    [session.isModerator]
+  );
+  const moreMenuActive = useMemo(
+    () => visibleSecondaryOptions.some((item) => item.id === activePage),
+    [activePage, visibleSecondaryOptions]
   );
 
   const postAuthHint = useMemo(() => {
@@ -301,7 +316,7 @@ const MarketingSite = () => {
       return "After sign in, we'll return you to your selected action.";
     }
     if (activePage === MARKETING_ROUTE_PAGES.profile) {
-      return "After sign in, you'll return to Dashboard.";
+      return "After sign in, you'll return to your dashboard.";
     }
     return "Create an account to save favorites, RSVPs, and check-ins.";
   }, [activePage, route.params?.intent]);
@@ -340,43 +355,105 @@ const MarketingSite = () => {
   return (
     <div className="mk3-site">
       <header className="mk3-nav">
-        <div className="mk3-shell mk3-nav-inner">
-          <button type="button" className="mk3-brand" onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}>
-            <img src={ASSETS.logo} alt="BeauRocks" />
-            <div>
-              <strong>BeauRocks Directory</strong>
-              <span>Nationwide Karaoke Discovery</span>
-            </div>
-          </button>
-          <nav className="mk3-links">
-            {visiblePageOptions.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={activePage === item.id ? "active" : ""}
-                onClick={() => navigate(item.id)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-          <div className="mk3-account">
-            {!session.ready && <span>Loading account...</span>}
-            {session.ready && !hasFullAccount && (
+        <div className="mk3-shell">
+          <div className="mk3-nav-inner">
+            <button type="button" className="mk3-brand" onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}>
+              <img src="/images/logo-library/beaurocks-karaoke-logo-2.png" alt="BeauRocks Karaoke logo" />
+              <div>
+                <strong>{PRODUCT_BRAND.name}</strong>
+                <span>{PRODUCT_BRAND.finder} karaoke finder</span>
+              </div>
+            </button>
+            <nav className="mk3-links" aria-label="Primary">
+              {PRIMARY_PAGE_OPTIONS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={activePage === item.id ? "active" : ""}
+                  onClick={() => navigate(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+              <details className={`mk3-more-menu ${moreMenuActive ? "is-active" : ""}`}>
+                <summary>More</summary>
+                <div className="mk3-more-list">
+                  {visibleSecondaryOptions.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={activePage === item.id ? "active" : ""}
+                      onClick={() => navigate(item.id)}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </details>
+            </nav>
+            <div className="mk3-account">
               <button
                 type="button"
                 className="mk3-account-action"
                 onClick={() => {
+                  if (hasFullAccount) {
+                    navigate(MARKETING_ROUTE_PAGES.profile);
+                    return;
+                  }
                   setAuthMode("signup");
                   scrollAuthPanelIntoView();
                 }}
               >
-                Create Account
+                {hasFullAccount ? "Dashboard" : "Create Account"}
               </button>
-            )}
-            {session.ready && hasFullAccount && (
-              <span>{session.email || `UID ${session.uid.slice(0, 8)}`}</span>
-            )}
+              <button
+                type="button"
+                className="mk3-account-link"
+                onClick={() => {
+                  if (hasFullAccount) {
+                    actions.signOutAccount();
+                    return;
+                  }
+                  setAuthMode("signin");
+                  scrollAuthPanelIntoView();
+                }}
+              >
+                {hasFullAccount ? "Sign out" : "Sign in"}
+              </button>
+              <button
+                type="button"
+                className="mk3-mobile-toggle"
+                aria-expanded={mobileMenuOpen}
+                aria-controls="mk3-mobile-menu"
+                onClick={() => setMobileMenuOpen((open) => !open)}
+              >
+                Menu
+              </button>
+            </div>
+          </div>
+          <div id="mk3-mobile-menu" className={mobileMenuOpen ? "mk3-mobile-menu is-open" : "mk3-mobile-menu"}>
+            <div className="mk3-mobile-link-grid">
+              {PRIMARY_PAGE_OPTIONS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={activePage === item.id ? "active" : ""}
+                  onClick={() => navigate(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+              {visibleSecondaryOptions.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={activePage === item.id ? "active" : ""}
+                  onClick={() => navigate(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </header>
@@ -394,10 +471,29 @@ const MarketingSite = () => {
 
           <section className="mk3-auth-panel" ref={authPanelRef}>
             <div>
-              <h1>Find karaoke nights in seconds.</h1>
+              <h1>{PRODUCT_BRAND.name}</h1>
               <p>
-                Browse public listings without login. Create one account to track your karaoke activity and dashboard history.
+                One platform, four surfaces: {PRODUCT_BRAND.finder} finder, {PRODUCT_BRAND.tv} TV,{" "}
+                {PRODUCT_BRAND.audience} for audience and singers, and {PRODUCT_BRAND.host} for hosts.
               </p>
+              <div className="mk3-surface-grid">
+                <article>
+                  <strong>{PRODUCT_BRAND.finder}</strong>
+                  <span>Karaoke Finder</span>
+                </article>
+                <article>
+                  <strong>{PRODUCT_BRAND.tv}</strong>
+                  <span>TV Surface</span>
+                </article>
+                <article>
+                  <strong>{PRODUCT_BRAND.audience}</strong>
+                  <span>Audience + Singer Surface</span>
+                </article>
+                <article>
+                  <strong>{PRODUCT_BRAND.host}</strong>
+                  <span>Host Surface</span>
+                </article>
+              </div>
               {heroStats?.total > 0 && (
                 <div className="mk3-status mk3-hero-proof">
                   <strong>{heroStats.total.toLocaleString()} public listings available now</strong>
@@ -405,13 +501,13 @@ const MarketingSite = () => {
                 </div>
               )}
               <div className="mk3-value-points">
-                <span>Live map with synced discovery rail.</span>
-                <span>Host, venue, and performer profiles.</span>
+                <span>{PRODUCT_BRAND.finder} has a live map with a synced finder rail.</span>
+                <span>Profiles stay linked across host, venue, performer, and session pages.</span>
               </div>
               <div className="mk3-permission-grid">
                 <article>
                   <strong>No account needed</strong>
-                  <span>Browse listings, geo pages, and event details.</span>
+                  <span>Browse the {PRODUCT_BRAND.finder} listings, geo pages, and event details.</span>
                 </article>
                 <article>
                   <strong>With account</strong>
@@ -434,7 +530,7 @@ const MarketingSite = () => {
                       type="button"
                       onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
                     >
-                      Browse Discover
+                      Open Setlist Finder
                     </button>
                   </>
                 ) : (
@@ -443,7 +539,7 @@ const MarketingSite = () => {
                       Open Dashboard
                     </button>
                     <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}>
-                      Browse Discover
+                      Open Setlist Finder
                     </button>
                   </>
                 )}
