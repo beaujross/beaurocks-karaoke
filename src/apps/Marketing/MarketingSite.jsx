@@ -30,6 +30,7 @@ import ForFansPage from "./pages/ForFansPage";
 import JoinPage from "./pages/JoinPage";
 import GeoLandingPage from "./pages/GeoLandingPage";
 import GoldenPathRail from "./pages/GoldenPathRail";
+import { formatDateTime } from "./pages/shared";
 import "./marketing.css";
 
 const PAGE_OPTIONS = [
@@ -39,7 +40,7 @@ const PAGE_OPTIONS = [
   { id: MARKETING_ROUTE_PAGES.forPerformers, label: "For Performers" },
   { id: MARKETING_ROUTE_PAGES.forFans, label: "For Fans" },
   { id: MARKETING_ROUTE_PAGES.submit, label: "Submit Listing" },
-  { id: MARKETING_ROUTE_PAGES.profile, label: "My Dashboard" },
+  { id: MARKETING_ROUTE_PAGES.profile, label: "Dashboard" },
   { id: MARKETING_ROUTE_PAGES.admin, label: "Marketing Admin" },
 ];
 
@@ -98,12 +99,14 @@ const MarketingSite = () => {
   const [route, setRoute] = useState(() => readRouteFromWindow());
   const [mapsConfig, setMapsConfig] = useState(null);
   const [mapsConfigError, setMapsConfigError] = useState("");
+  const [heroStats, setHeroStats] = useState(null);
   const [authMode, setAuthMode] = useState("signin");
   const [authForm, setAuthForm] = useState({ email: "", password: "" });
   const authPanelRef = useRef(null);
   const { session, actions } = useDirectorySession();
   const isAuthed = !!session?.isAuthed;
   const isAnonymous = !!session?.isAnonymous;
+  const hasFullAccount = isAuthed && !isAnonymous;
 
   useEffect(() => {
     if (typeof window === "undefined") return () => {};
@@ -135,6 +138,29 @@ const MarketingSite = () => {
         if (!cancelled) setMapsConfig(config || null);
       } catch (error) {
         if (!cancelled) setMapsConfigError(String(error?.message || "Map config unavailable."));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await directoryActions.listDirectoryGeoLanding({
+          regionToken: "nationwide",
+          dateWindow: "this_week",
+        });
+        if (cancelled) return;
+        setHeroStats({
+          total: Number(result?.counts?.total || 0) || 0,
+          generatedAtMs: Number(result?.generatedAtMs || 0) || 0,
+          token: String(result?.token || "nationwide"),
+        });
+      } catch {
+        if (!cancelled) setHeroStats(null);
       }
     })();
     return () => {
@@ -261,9 +287,24 @@ const MarketingSite = () => {
 
   const activePage = useMemo(() => normalizePage(route.page), [route.page]);
   const visiblePageOptions = useMemo(
-    () => PAGE_OPTIONS.filter((item) => item.id !== MARKETING_ROUTE_PAGES.admin || session.isModerator),
-    [session.isModerator]
+    () => PAGE_OPTIONS
+      .filter((item) => item.id !== MARKETING_ROUTE_PAGES.admin || session.isModerator)
+      .map((item) => {
+        if (item.id !== MARKETING_ROUTE_PAGES.profile || hasFullAccount) return item;
+        return { ...item, label: "Dashboard (Sign in)" };
+      }),
+    [hasFullAccount, session.isModerator]
   );
+
+  const postAuthHint = useMemo(() => {
+    if (route.params?.intent) {
+      return "After sign in, we'll return you to your selected action.";
+    }
+    if (activePage === MARKETING_ROUTE_PAGES.profile) {
+      return "After sign in, you'll return to Dashboard.";
+    }
+    return "Create an account to save favorites, RSVPs, and check-ins.";
+  }, [activePage, route.params?.intent]);
 
   const pageNode = useMemo(() => {
     const pageProps = {
@@ -320,10 +361,20 @@ const MarketingSite = () => {
             ))}
           </nav>
           <div className="mk3-account">
-            {!session.ready && <span>Initializing account...</span>}
-            {session.ready && !session.isAuthed && <span>Guest browsing enabled</span>}
-            {session.ready && session.isAuthed && session.isAnonymous && <span>Create an account to save activity</span>}
-            {session.ready && session.isAuthed && !session.isAnonymous && (
+            {!session.ready && <span>Loading account...</span>}
+            {session.ready && !hasFullAccount && (
+              <button
+                type="button"
+                className="mk3-account-action"
+                onClick={() => {
+                  setAuthMode("signup");
+                  scrollAuthPanelIntoView();
+                }}
+              >
+                Create Account
+              </button>
+            )}
+            {session.ready && hasFullAccount && (
               <span>{session.email || `UID ${session.uid.slice(0, 8)}`}</span>
             )}
           </div>
@@ -343,18 +394,63 @@ const MarketingSite = () => {
 
           <section className="mk3-auth-panel" ref={authPanelRef}>
             <div>
-              <h1>Find karaoke nights fast.</h1>
+              <h1>Find karaoke nights in seconds.</h1>
               <p>
-                Browse public listings without login. Create an account to save favorites, check in, and manage your karaoke history in one place.
+                Browse public listings without login. Create one account to track your karaoke activity and dashboard history.
               </p>
+              {heroStats?.total > 0 && (
+                <div className="mk3-status mk3-hero-proof">
+                  <strong>{heroStats.total.toLocaleString()} public listings available now</strong>
+                  <span>Updated {formatDateTime(heroStats.generatedAtMs)}</span>
+                </div>
+              )}
               <div className="mk3-value-points">
-                <span>Live map + synced discovery rail</span>
-                <span>Host, venue, and performer profiles</span>
-                <span>One account across directory features</span>
+                <span>Live map with synced discovery rail.</span>
+                <span>Host, venue, and performer profiles.</span>
+              </div>
+              <div className="mk3-permission-grid">
+                <article>
+                  <strong>No account needed</strong>
+                  <span>Browse listings, geo pages, and event details.</span>
+                </article>
+                <article>
+                  <strong>With account</strong>
+                  <span>Save follows, RSVP reminders, check-ins, and dashboard history.</span>
+                </article>
+              </div>
+              <div className="mk3-auth-cta-row">
+                {!hasFullAccount ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode("signup");
+                        scrollAuthPanelIntoView();
+                      }}
+                    >
+                      Create Account
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
+                    >
+                      Browse Discover
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.profile)}>
+                      Open Dashboard
+                    </button>
+                    <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}>
+                      Browse Discover
+                    </button>
+                  </>
+                )}
               </div>
             </div>
             <div className="mk3-auth-box">
-              {session.isAuthed && !session.isAnonymous ? (
+              {hasFullAccount ? (
                 <div className="mk3-auth-state">
                   <div>Signed in as {session.email || session.uid}.</div>
                   <div className="mk3-actions-inline">
@@ -405,9 +501,10 @@ const MarketingSite = () => {
                     {session.authLoading
                       ? "Working..."
                       : authMode === "signup"
-                        ? "Create BeauRocks Account"
+                        ? "Create Account"
                         : "Sign In"}
                   </button>
+                  <div className="mk3-auth-hint">{postAuthHint}</div>
                   {session.authError && <div className="mk3-status mk3-status-error">{session.authError}</div>}
                 </form>
               )}
@@ -416,7 +513,10 @@ const MarketingSite = () => {
           {pageNode}
         </div>
       </main>
-      <GoldenPathRail navigate={navigate} />
+      <GoldenPathRail
+        navigate={navigate}
+        muted={activePage === MARKETING_ROUTE_PAGES.profile && !hasFullAccount}
+      />
     </div>
   );
 };

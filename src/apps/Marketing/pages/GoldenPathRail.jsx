@@ -2,8 +2,8 @@ import React from "react";
 import { trackEvent } from "../../../lib/firebase";
 import { MARKETING_ROUTE_PAGES } from "../routing";
 
-const GoldenPathRail = ({ navigate }) => (
-  <aside className="mk3-golden-rail" aria-label="Golden path entry points">
+const GoldenPathRail = ({ navigate, muted = false }) => (
+  <aside className={`mk3-golden-rail${muted ? " is-muted" : ""}`} aria-label="Golden path entry points">
     <button
       type="button"
       onClick={() => {
@@ -53,4 +53,3 @@ const GoldenPathRail = ({ navigate }) => (
 );
 
 export default GoldenPathRail;
-

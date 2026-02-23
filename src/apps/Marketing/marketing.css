@@ -109,11 +109,29 @@
   justify-self: end;
   border: 1px solid var(--mk3-border);
   border-radius: 999px;
-  padding: 0.48rem 0.72rem;
+  padding: 0.32rem 0.38rem;
   color: var(--mk3-muted);
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.mk3-account-action {
+  border-radius: 999px;
+  border: 1px solid rgba(39, 211, 203, 0.36);
+  background: rgba(7, 15, 24, 0.95);
+  color: #e6f7ff;
+  padding: 0.4rem 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mk3-account-action:hover {
+  border-color: rgba(236, 72, 153, 0.4);
+  background: rgba(11, 19, 28, 1);
 }
 
 .mk3-main {
@@ -164,9 +182,54 @@
 
 .mk3-value-points span {
   color: #d8e7f8;
-  font-size: 0.78rem;
-  letter-spacing: 0.04em;
+  font-size: 0.84rem;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+.mk3-permission-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mk3-permission-grid article {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(12, 19, 28, 0.7);
+  padding: 0.52rem 0.62rem;
+  display: grid;
+  gap: 5px;
+}
+
+.mk3-permission-grid strong {
+  font-size: 0.7rem;
   text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mk3-permission-grid span {
+  color: #c9ddf3;
+  font-size: 0.77rem;
+  line-height: 1.35;
+}
+
+.mk3-auth-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mk3-auth-hint {
+  color: #b8cfe8;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.mk3-hero-proof {
+  margin-top: 10px;
 }
 
 .mk3-auth-box {
@@ -762,6 +825,15 @@
   backdrop-filter: blur(10px);
 }
 
+.mk3-golden-rail.is-muted {
+  opacity: 0.56;
+  transform: translateX(-50%) scale(0.95);
+}
+
+.mk3-golden-rail.is-muted:hover {
+  opacity: 0.86;
+}
+
 .mk3-golden-rail button {
   border-radius: 10px;
   border: 1px solid rgba(176, 198, 220, 0.26);
@@ -811,6 +883,10 @@
   .mk3-filter-row,
   .mk3-metric-row,
   .mk3-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mk3-permission-grid {
     grid-template-columns: 1fr;
   }
   .mk3-golden-rail {

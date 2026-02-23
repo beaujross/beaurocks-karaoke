@@ -9,7 +9,7 @@ const ROLE_OPTIONS = [
   { id: "fan", label: "Fan" },
 ];
 
-const ProfileDashboardPage = ({ session, navigate, authFlow }) => {
+const ProfileDashboardPage = ({ session, navigate }) => {
   const uid = session?.uid || "";
   const canUseDashboard = !!uid && !session?.isAnonymous;
   const [profile, setProfile] = useState(null);
@@ -181,18 +181,16 @@ const ProfileDashboardPage = ({ session, navigate, authFlow }) => {
       <section className="mk3-page">
         <div className="mk3-actions-card">
           <h4>Profile Dashboard</h4>
-          <p>Create an account to access your history dashboard and saved activity.</p>
-          <button
-            type="button"
-            onClick={() => authFlow?.requireFullAuth?.({
-              intent: "profile",
-              targetType: "profile",
-              targetId: "",
-              returnRoute: { page: "profile" },
-            })}
-          >
-            Create Account For Dashboard
-          </button>
+          <p>Use the sign-in panel above to access your history dashboard and saved activity.</p>
+          <div className="mk3-status">
+            <strong>Access details</strong>
+            <span>After sign in, you will return here automatically.</span>
+          </div>
+          <div className="mk3-actions-inline">
+            <button type="button" onClick={() => navigate("discover")}>
+              Browse Discover
+            </button>
+          </div>
         </div>
       </section>
     );
