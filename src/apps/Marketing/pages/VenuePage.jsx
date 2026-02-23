@@ -13,25 +13,7 @@ import EntityActionsCard from "./EntityActionsCard";
 import CadenceUpdateCard from "./CadenceUpdateCard";
 import ClaimOwnershipCard from "./ClaimOwnershipCard";
 import EmptyStatePanel from "./EmptyStatePanel";
-import { formatDateTime } from "./shared";
-
-const FALLBACK_VENUE_IMAGES = [
-  "/images/marketing/app-landing-live.png",
-  "/images/marketing/audience-surface-live.png",
-  "/images/marketing/tv-surface-live.png",
-];
-
-const appendImage = (list = [], raw = "") => {
-  if (!Array.isArray(list)) return;
-  if (Array.isArray(raw)) {
-    raw.forEach((entry) => appendImage(list, entry));
-    return;
-  }
-  const value = String(raw || "").trim();
-  if (!value) return;
-  if (!/^https?:\/\//i.test(value) && !value.startsWith("/")) return;
-  if (!list.includes(value)) list.push(value);
-};
+import { formatDateTime, resolveListingImageCandidates } from "./shared";
 
 const VenuePage = ({ id, route, navigate, session, authFlow }) => {
   const [venue, setVenue] = useState(null);
@@ -99,24 +81,9 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
 
   const eventCount = events.length;
   const nextEvent = events[0] || null;
-  const venueImages = [];
-  appendImage(venueImages, venue.heroImageUrl);
-  appendImage(venueImages, venue.coverImageUrl);
-  appendImage(venueImages, venue.imageUrl);
-  appendImage(venueImages, venue.photoUrl);
-  appendImage(venueImages, venue.imageUrls);
-  appendImage(venueImages, venue.galleryUrls);
-  appendImage(venueImages, venue.photos);
-  appendImage(venueImages, venue.externalSources?.imageUrl);
-  appendImage(venueImages, venue.externalSources?.photoUrl);
-  appendImage(venueImages, venue.externalSources?.google?.photoUrl);
-  appendImage(venueImages, venue.externalSources?.google?.images);
-  appendImage(venueImages, venue.externalSources?.yelp?.imageUrl);
-
-  const heroImage = venueImages[0] || FALLBACK_VENUE_IMAGES[0];
-  const galleryImages = [...venueImages];
-  FALLBACK_VENUE_IMAGES.forEach((url) => appendImage(galleryImages, url));
-  const listingGallery = galleryImages.slice(0, 3);
+  const venueImages = resolveListingImageCandidates(venue, "venue");
+  const heroImage = venueImages[0] || "/images/logo-library/beaurocks-karaoke-logo-2.png";
+  const listingGallery = venueImages.slice(0, 3);
 
   return (
     <section className="mk3-page mk3-two-col">

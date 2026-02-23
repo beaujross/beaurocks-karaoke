@@ -844,6 +844,65 @@
     0 10px 28px rgba(4, 15, 25, 0.45);
 }
 
+.mk3-discover-media {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 215, 106, 0.22);
+  min-height: 104px;
+  background: rgba(9, 16, 23, 0.9);
+}
+
+.mk3-discover-media img {
+  width: 100%;
+  height: 100%;
+  min-height: 104px;
+  object-fit: cover;
+  display: block;
+  filter: saturate(1.06) contrast(1.04);
+}
+
+.mk3-discover-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(160deg, rgba(2, 8, 14, 0.16) 0%, rgba(3, 8, 14, 0.72) 82%),
+    radial-gradient(circle at 92% 10%, rgba(255, 214, 106, 0.2), transparent 32%);
+}
+
+.mk3-discover-media-top {
+  position: absolute;
+  inset: 8px 8px auto 8px;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.mk3-discover-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 215, 106, 0.42);
+  background: rgba(8, 14, 20, 0.86);
+  color: #ffeab6;
+  display: grid;
+  place-items: center;
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+}
+
+.mk3-discover-avatar img {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: cover;
+}
+
 .mk3-chip {
   width: fit-content;
   border-radius: 999px;
@@ -867,6 +926,7 @@
   font-size: 0.78rem;
 }
 
+.mk3-listing-hero,
 .mk3-venue-hero {
   position: relative;
   border-radius: 14px;
@@ -876,6 +936,7 @@
   background: linear-gradient(145deg, rgba(19, 30, 43, 0.9), rgba(46, 10, 54, 0.82));
 }
 
+.mk3-listing-hero::after,
 .mk3-venue-hero::after {
   content: "";
   position: absolute;
@@ -886,6 +947,7 @@
     radial-gradient(circle at 88% 12%, rgba(255, 86, 190, 0.2), transparent 44%);
 }
 
+.mk3-listing-hero img,
 .mk3-venue-hero img {
   width: 100%;
   height: 100%;
@@ -895,6 +957,7 @@
   filter: saturate(1.05) contrast(1.04);
 }
 
+.mk3-listing-hero-content,
 .mk3-venue-hero-content {
   position: absolute;
   inset: auto 12px 12px 12px;
@@ -903,17 +966,69 @@
   gap: 6px;
 }
 
+.mk3-listing-hero-content .mk3-chip,
 .mk3-venue-hero-content .mk3-chip {
   background: linear-gradient(110deg, rgba(39, 211, 203, 0.24), rgba(236, 72, 153, 0.3));
   border-color: rgba(255, 215, 106, 0.34);
 }
 
+.mk3-listing-hero-content h2,
 .mk3-venue-hero-content h2 {
   text-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
 }
 
+.mk3-listing-hero-content .mk3-detail-meta,
 .mk3-venue-hero-content .mk3-detail-meta {
   color: #f8e2ff;
+}
+
+.mk3-profile-pill {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 215, 106, 0.22);
+  background: rgba(9, 16, 23, 0.9);
+  padding: 0.58rem 0.66rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mk3-profile-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 215, 106, 0.38);
+  background: rgba(19, 26, 35, 0.92);
+  color: #ffe8b0;
+  display: grid;
+  place-items: center;
+  font-size: 0.77rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+}
+
+.mk3-profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mk3-profile-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.mk3-profile-copy strong {
+  color: #e7b8df;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.mk3-profile-copy span {
+  color: #e6f0ff;
+  font-size: 0.82rem;
 }
 
 .mk3-venue-stat-grid {
@@ -1312,6 +1427,8 @@
     grid-template-columns: 1fr;
   }
 
+  .mk3-listing-hero,
+  .mk3-listing-hero img,
   .mk3-venue-hero,
   .mk3-venue-hero img {
     min-height: 180px;

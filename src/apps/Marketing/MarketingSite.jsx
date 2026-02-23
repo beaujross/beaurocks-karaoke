@@ -120,7 +120,8 @@ const MarketingSite = () => {
   const [mapsConfigError, setMapsConfigError] = useState("");
   const [heroStats, setHeroStats] = useState(null);
   const [authMode, setAuthMode] = useState("signin");
-  const [authForm, setAuthForm] = useState({ email: "", password: "" });
+  const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "" });
+  const [authLocalError, setAuthLocalError] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const authPanelRef = useRef(null);
   const { session, actions } = useDirectorySession();
@@ -293,11 +294,22 @@ const MarketingSite = () => {
     event.preventDefault();
     const email = String(authForm.email || "").trim();
     const password = String(authForm.password || "");
+    const confirmPassword = String(authForm.confirmPassword || "");
+    setAuthLocalError("");
     if (!email || !password) return;
     if (authMode === "signup") {
+      if (password.length < 6) {
+        setAuthLocalError("Use at least 6 characters for your password.");
+        return;
+      }
+      if (password !== confirmPassword) {
+        setAuthLocalError("Password and confirmation do not match.");
+        return;
+      }
       const result = await actions.signUpWithEmail({ email, password });
       if (result?.ok) {
         trackEvent("marketing_account_signup", { source: "marketing_directory" });
+        setAuthForm({ email, password: "", confirmPassword: "" });
         resolvePostAuthReturn();
       }
       return;
@@ -320,6 +332,9 @@ const MarketingSite = () => {
   );
 
   const postAuthHint = useMemo(() => {
+    if (authMode === "signup") {
+      return "Create account uses email + password + confirm password. No duplicate email entry needed.";
+    }
     if (route.params?.intent) {
       return "After sign in, we'll return you to your selected action.";
     }
@@ -327,7 +342,7 @@ const MarketingSite = () => {
       return "After sign in, you'll return to your dashboard.";
     }
     return "Create an account to save favorites, RSVPs, and check-ins.";
-  }, [activePage, route.params?.intent]);
+  }, [activePage, authMode, route.params?.intent]);
 
   const pageNode = useMemo(() => {
     const pageProps = {
@@ -580,14 +595,22 @@ const MarketingSite = () => {
                     <button
                       type="button"
                       className={authMode === "signin" ? "active" : ""}
-                      onClick={() => setAuthMode("signin")}
+                      onClick={() => {
+                        setAuthMode("signin");
+                        setAuthLocalError("");
+                        actions.clearAuthError?.();
+                      }}
                     >
                       Sign In
                     </button>
                     <button
                       type="button"
                       className={authMode === "signup" ? "active" : ""}
-                      onClick={() => setAuthMode("signup")}
+                      onClick={() => {
+                        setAuthMode("signup");
+                        setAuthLocalError("");
+                        actions.clearAuthError?.();
+                      }}
                     >
                       Create Account
                     </button>
@@ -597,7 +620,11 @@ const MarketingSite = () => {
                     <input
                       type="email"
                       value={authForm.email}
-                      onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))}
+                      onChange={(e) => {
+                        setAuthForm((prev) => ({ ...prev, email: e.target.value }));
+                        setAuthLocalError("");
+                        actions.clearAuthError?.();
+                      }}
                       required
                     />
                   </label>
@@ -606,11 +633,31 @@ const MarketingSite = () => {
                     <input
                       type="password"
                       value={authForm.password}
-                      onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))}
+                      onChange={(e) => {
+                        setAuthForm((prev) => ({ ...prev, password: e.target.value }));
+                        setAuthLocalError("");
+                        actions.clearAuthError?.();
+                      }}
                       required
                       minLength={6}
                     />
                   </label>
+                  {authMode === "signup" && (
+                    <label>
+                      Confirm Password
+                      <input
+                        type="password"
+                        value={authForm.confirmPassword}
+                        onChange={(e) => {
+                          setAuthForm((prev) => ({ ...prev, confirmPassword: e.target.value }));
+                          setAuthLocalError("");
+                          actions.clearAuthError?.();
+                        }}
+                        required
+                        minLength={6}
+                      />
+                    </label>
+                  )}
                   <button type="submit" disabled={session.authLoading}>
                     {session.authLoading
                       ? "Working..."
@@ -619,6 +666,7 @@ const MarketingSite = () => {
                         : "Sign In"}
                   </button>
                   <div className="mk3-auth-hint">{postAuthHint}</div>
+                  {authLocalError && <div className="mk3-status mk3-status-error">{authLocalError}</div>}
                   {session.authError && <div className="mk3-status mk3-status-error">{session.authError}</div>}
                 </form>
               )}

@@ -6,7 +6,12 @@ import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestra
 import { trackEvent } from "../lib/marketingAnalytics";
 import EmptyStatePanel from "./EmptyStatePanel";
 import InlineConversionActions from "./InlineConversionActions";
-import { formatDateTime } from "./shared";
+import {
+  formatDateTime,
+  getInitials,
+  resolveListingImageCandidates,
+  resolveProfileAvatarUrl,
+} from "./shared";
 
 const FINDER_BRAND = "Setlist";
 const MAP_DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
@@ -152,6 +157,9 @@ const toListing = (entry = {}, fallbackType = "venue") => {
   const meta = MAP_TYPE_META[listingType] || MAP_TYPE_META.venue;
   const location = normalizeLocation(entry);
   const startsAtMs = Number(entry?.startsAtMs || 0) || 0;
+  const mediaType = listingType === "room_session" ? "session" : listingType;
+  const imageUrl = resolveListingImageCandidates(entry, mediaType)[0] || "/images/logo-library/beaurocks-karaoke-logo-2.png";
+  const avatarUrl = resolveProfileAvatarUrl(entry);
   const locationLabel = [entry?.city, entry?.state, entry?.address1].filter(Boolean).join(", ");
   const subtitle = locationLabel || [entry?.city, entry?.state].filter(Boolean).join(", ") || "Location pending";
   const timeLabel = listingType === "venue"
@@ -165,6 +173,13 @@ const toListing = (entry = {}, fallbackType = "venue") => {
     markerColor: meta.markerColor,
     typeLabel: meta.label,
     title: String(entry?.title || "Untitled listing"),
+    imageUrl,
+    avatarUrl,
+    avatarLabel: listingType === "event"
+      ? String(entry?.hostName || entry?.venueName || entry?.title || "").trim()
+      : listingType === "room_session"
+        ? String(entry?.hostName || entry?.roomCode || entry?.title || "").trim()
+        : String(entry?.title || "").trim(),
     subtitle,
     detailLine: listingType === "event"
       ? [entry?.hostName, entry?.venueName].filter(Boolean).join(" | ")
@@ -804,7 +819,17 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 ref={(node) => registerCardRef(entry.key, node)}
                 className={entry.key === effectiveSelectedKey ? "mk3-discover-card is-selected" : "mk3-discover-card"}
               >
-                <div className="mk3-chip">{entry.typeLabel}</div>
+                <div className="mk3-discover-media">
+                  <img src={entry.imageUrl} alt={`${entry.title} listing visual`} loading="lazy" />
+                  <div className="mk3-discover-media-top">
+                    <div className="mk3-chip">{entry.typeLabel}</div>
+                    <div className="mk3-discover-avatar" aria-hidden="true">
+                      {entry.avatarUrl
+                        ? <img src={entry.avatarUrl} alt={`${entry.avatarLabel} avatar`} loading="lazy" />
+                        : <span>{getInitials(entry.avatarLabel || entry.title)}</span>}
+                    </div>
+                  </div>
+                </div>
                 <h3>{entry.title}</h3>
                 <div className="mk3-card-subtitle">{entry.subtitle}</div>
                 {!!entry.distanceLabel && <div className="mk3-card-subtitle">{entry.distanceLabel}</div>}

@@ -12,7 +12,12 @@ import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestra
 import EntityActionsCard from "./EntityActionsCard";
 import ClaimOwnershipCard from "./ClaimOwnershipCard";
 import EmptyStatePanel from "./EmptyStatePanel";
-import { formatDateTime } from "./shared";
+import {
+  formatDateTime,
+  getInitials,
+  resolveListingImageCandidates,
+  resolveProfileAvatarUrl,
+} from "./shared";
 
 const HostPage = ({ id, route, navigate, session, authFlow }) => {
   const [profile, setProfile] = useState(null);
@@ -76,16 +81,49 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
     );
   }
 
+  const hostName = profile.displayName || profile.handle || profile.id;
+  const hostAvatarUrl = resolveProfileAvatarUrl(profile);
+  const hostImageCandidates = [
+    ...resolveListingImageCandidates(profile, "host"),
+    ...(events[0] ? resolveListingImageCandidates(events[0], "event") : []),
+  ].filter((value, index, arr) => arr.indexOf(value) === index);
+  const heroImage = hostImageCandidates[0] || "/images/logo-library/beaurocks-karaoke-logo-2.png";
+  const listingGallery = hostImageCandidates.slice(0, 3);
+
   return (
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
-        <div className="mk3-chip">host profile</div>
-        <h2>{profile.displayName || profile.handle || profile.id}</h2>
-        <div className="mk3-detail-meta">{[profile.city, profile.state, profile.country].filter(Boolean).join(" | ")}</div>
+        <div className="mk3-listing-hero">
+          <img src={heroImage} alt={`${hostName} host profile visual`} loading="lazy" />
+          <div className="mk3-listing-hero-content">
+            <div className="mk3-chip">host profile</div>
+            <h2>{hostName}</h2>
+            <div className="mk3-detail-meta">{[profile.city, profile.state, profile.country].filter(Boolean).join(" | ")}</div>
+          </div>
+        </div>
+        <div className="mk3-profile-pill">
+          <div className="mk3-profile-avatar" aria-hidden="true">
+            {hostAvatarUrl
+              ? <img src={hostAvatarUrl} alt={`${hostName} avatar`} loading="lazy" />
+              : <span>{getInitials(hostName)}</span>}
+          </div>
+          <div className="mk3-profile-copy">
+            <strong>Host Handle</strong>
+            <span>{profile.handle || hostName}</span>
+          </div>
+        </div>
+        <div className="mk3-venue-gallery" aria-label="Host media gallery">
+          {listingGallery.map((imageUrl, index) => (
+            <figure key={`${imageUrl}-${index}`}>
+              <img src={imageUrl} alt={`${hostName} visual ${index + 1}`} loading="lazy" />
+            </figure>
+          ))}
+        </div>
         <p>{profile.bio || "No host bio yet."}</p>
 
         <div className="mk3-sub-list">
           <h3>Upcoming Events</h3>
+          {events.length === 0 && <div className="mk3-status">No approved host events yet.</div>}
           {events.map((item) => (
             <button type="button" className="mk3-list-row" key={item.id} onClick={() => navigate("event", item.id)}>
               <span>{item.title}</span>
@@ -95,6 +133,7 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
         </div>
         <div className="mk3-sub-list">
           <h3>Public Sessions</h3>
+          {sessions.length === 0 && <div className="mk3-status">No public sessions yet.</div>}
           {sessions.map((item) => (
             <button type="button" className="mk3-list-row" key={item.id} onClick={() => navigate("session", item.id)}>
               <span>{item.title}</span>

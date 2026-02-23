@@ -11,7 +11,12 @@ import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestra
 import EntityActionsCard from "./EntityActionsCard";
 import CadenceUpdateCard from "./CadenceUpdateCard";
 import EmptyStatePanel from "./EmptyStatePanel";
-import { formatDateTime } from "./shared";
+import {
+  formatDateTime,
+  getInitials,
+  resolveListingImageCandidates,
+  resolveProfileAvatarUrl,
+} from "./shared";
 
 const EventPage = ({ id, route, navigate, session, authFlow }) => {
   const [eventItem, setEventItem] = useState(null);
@@ -68,21 +73,58 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
     );
   }
 
+  const hostLabel = hostProfile?.displayName
+    || hostProfile?.handle
+    || eventItem.hostName
+    || "Unassigned Host";
+  const hostAvatarUrl = resolveProfileAvatarUrl(hostProfile || eventItem);
+  const eventImageCandidates = [
+    ...resolveListingImageCandidates(eventItem, "event"),
+    ...resolveListingImageCandidates(venue || {}, "venue"),
+  ].filter((value, index, arr) => arr.indexOf(value) === index);
+  const heroImage = eventImageCandidates[0] || "/images/logo-library/beaurocks-karaoke-logo-2.png";
+  const listingGallery = eventImageCandidates.slice(0, 3);
+
   return (
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
-        <div className="mk3-chip">event</div>
-        <h2>{eventItem.title}</h2>
-        <div className="mk3-detail-meta">
-          {formatDateTime(eventItem.startsAtMs)}
-          {eventItem.endsAtMs ? ` -> ${formatDateTime(eventItem.endsAtMs)}` : ""}
+        <div className="mk3-listing-hero">
+          <img src={heroImage} alt={`${eventItem.title} listing visual`} loading="lazy" />
+          <div className="mk3-listing-hero-content">
+            <div className="mk3-chip">event</div>
+            <h2>{eventItem.title}</h2>
+            <div className="mk3-detail-meta">
+              {formatDateTime(eventItem.startsAtMs)}
+              {eventItem.endsAtMs ? ` -> ${formatDateTime(eventItem.endsAtMs)}` : ""}
+            </div>
+          </div>
         </div>
+
+        <div className="mk3-profile-pill">
+          <div className="mk3-profile-avatar" aria-hidden="true">
+            {hostAvatarUrl
+              ? <img src={hostAvatarUrl} alt={`${hostLabel} avatar`} loading="lazy" />
+              : <span>{getInitials(hostLabel)}</span>}
+          </div>
+          <div className="mk3-profile-copy">
+            <strong>Host</strong>
+            <span>{hostLabel}</span>
+          </div>
+        </div>
+
         {eventItem.recurringRule && (
           <div className="mk3-status">
             <strong>Recurring cadence</strong>
             <span>{eventItem.recurringRule}</span>
           </div>
         )}
+        <div className="mk3-venue-gallery" aria-label="Event media gallery">
+          {listingGallery.map((imageUrl, index) => (
+            <figure key={`${imageUrl}-${index}`}>
+              <img src={imageUrl} alt={`${eventItem.title} visual ${index + 1}`} loading="lazy" />
+            </figure>
+          ))}
+        </div>
         <p>{eventItem.description || "No event description yet."}</p>
         <div className="mk3-sub-list">
           {eventItem.venueName && !venue && (
