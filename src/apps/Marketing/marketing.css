@@ -592,9 +592,10 @@
   border-radius: 20px;
   padding: 15px;
   background:
-    radial-gradient(circle at 10% 10%, rgba(236, 72, 153, 0.18), transparent 42%),
-    radial-gradient(circle at 88% 14%, rgba(39, 211, 203, 0.16), transparent 40%),
-    rgba(9, 15, 22, 0.9);
+    radial-gradient(circle at 12% 10%, rgba(255, 214, 106, 0.22), transparent 40%),
+    radial-gradient(circle at 86% 16%, rgba(255, 86, 190, 0.22), transparent 44%),
+    radial-gradient(circle at 52% 78%, rgba(157, 36, 191, 0.26), transparent 48%),
+    rgba(18, 6, 30, 0.92);
   min-height: 420px;
   display: grid;
   gap: 10px;
@@ -622,22 +623,25 @@
 
 .mk3-map-grid {
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 215, 106, 0.2);
   min-height: 260px;
   display: grid;
   place-items: center;
   background:
-    repeating-linear-gradient(0deg, rgba(135, 161, 187, 0.16), rgba(135, 161, 187, 0.16) 1px, transparent 1px, transparent 38px),
-    repeating-linear-gradient(90deg, rgba(135, 161, 187, 0.16), rgba(135, 161, 187, 0.16) 1px, transparent 1px, transparent 38px),
-    radial-gradient(circle at 24% 36%, rgba(236, 72, 153, 0.45), transparent 18%),
-    radial-gradient(circle at 68% 44%, rgba(39, 211, 203, 0.4), transparent 18%),
-    radial-gradient(circle at 54% 78%, rgba(139, 231, 242, 0.36), transparent 20%);
+    repeating-linear-gradient(0deg, rgba(255, 215, 106, 0.12), rgba(255, 215, 106, 0.12) 1px, transparent 1px, transparent 38px),
+    repeating-linear-gradient(90deg, rgba(255, 215, 106, 0.1), rgba(255, 215, 106, 0.1) 1px, transparent 1px, transparent 38px),
+    radial-gradient(circle at 24% 36%, rgba(255, 86, 190, 0.46), transparent 18%),
+    radial-gradient(circle at 68% 44%, rgba(255, 214, 106, 0.4), transparent 18%),
+    radial-gradient(circle at 54% 78%, rgba(157, 36, 191, 0.38), transparent 20%);
 }
 
 .mk3-map-canvas {
   min-height: 320px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 215, 106, 0.34);
+  box-shadow:
+    0 0 0 1px rgba(255, 86, 190, 0.2),
+    0 16px 28px rgba(8, 2, 12, 0.46);
   overflow: hidden;
 }
 
@@ -660,9 +664,13 @@
 
 .mk3-map-toolbar button {
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(10, 16, 24, 0.78);
-  color: #e4f2ff;
+  border: 1px solid rgba(255, 215, 106, 0.34);
+  background:
+    linear-gradient(112deg, rgba(255, 214, 106, 0.22), rgba(255, 86, 190, 0.24)) padding-box,
+    linear-gradient(rgba(255, 215, 106, 0.38), rgba(255, 86, 190, 0.34)) border-box;
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
+  color: #ffe9bb;
   padding: 0.4rem 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -679,7 +687,7 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  color: #9bb2cb;
+  color: #e8ca93;
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;

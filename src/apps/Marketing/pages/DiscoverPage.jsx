@@ -9,10 +9,29 @@ import { formatDateTime } from "./shared";
 
 const FINDER_BRAND = "Setlist";
 const MAP_DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
+const MAP_BRAND_STYLES = [
+  { elementType: "geometry", stylers: [{ color: "#1d062b" }] },
+  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#f9d58a" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#2a0a3a" }] },
+  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#6c2f84" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#ffd98c" }] },
+  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#2d0d3f" }] },
+  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#3a114f" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#3b1a58" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#4d1a61" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#7b2f8f" }] },
+  { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#643179" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#8340a0" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#f1b85b" }] },
+  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#5a246f" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#2b0f45" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#ffc86a" }] },
+];
 const MAP_TYPE_META = {
-  venue: { label: "venue", routePage: "venue", markerColor: "#27d3cb" },
-  event: { label: "event", routePage: "event", markerColor: "#ec4899" },
-  room_session: { label: "room session", routePage: "session", markerColor: "#ffd166" },
+  venue: { label: "venue", routePage: "venue", markerColor: "#ff68bf" },
+  event: { label: "event", routePage: "event", markerColor: "#ffd668" },
+  room_session: { label: "room session", routePage: "session", markerColor: "#b384ff" },
 };
 
 const normalizeListingType = (value = "") => {
@@ -232,6 +251,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       mapTypeControl: false,
       streetViewControl: false,
       fullscreenControl: false,
+      backgroundColor: "#190827",
+      styles: MAP_BRAND_STYLES,
     });
     mapRef.current = map;
     const idleListener = map.addListener("idle", () => {
