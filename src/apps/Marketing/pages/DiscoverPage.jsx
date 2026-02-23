@@ -259,6 +259,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [typeFilter, setTypeFilter] = useState("all");
   const [timeWindow, setTimeWindow] = useState("all");
   const [sortMode, setSortMode] = useState("smart");
+  const [mapFirst, setMapFirst] = useState(true);
   const [boundsOnly, setBoundsOnly] = useState(false);
   const [selectedKey, setSelectedKey] = useState("");
   const [mapBounds, setMapBounds] = useState(null);
@@ -366,6 +367,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     () => rankedListings.reduce((count, entry) => (entry.startsAtMs > 0 ? count + 1 : count), 0),
     [rankedListings]
   );
+  const listingTypeCounts = useMemo(() => {
+    const counts = { venue: 0, event: 0, room_session: 0 };
+    rankedListings.forEach((entry) => {
+      if (entry.listingType === "event") counts.event += 1;
+      else if (entry.listingType === "room_session") counts.room_session += 1;
+      else counts.venue += 1;
+    });
+    return counts;
+  }, [rankedListings]);
 
   const selectedListing = useMemo(
     () => visibleListings.find((entry) => entry.key === effectiveSelectedKey) || null,
@@ -597,11 +607,11 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
   return (
     <section className="mk3-page">
-      <div className="mk3-status">
+      <div className="mk3-status mk3-zone mk3-zone-finder">
         <strong>BeauRocks Karaoke {FINDER_BRAND} Finder</strong>
-        <span>Use map + rail together to find your next karaoke night faster.</span>
+        <span>Use map + rail together to find your next karaoke night or voice-first party session faster.</span>
       </div>
-      <div className="mk3-filter-row mk3-discover-filters">
+      <div className="mk3-filter-row mk3-discover-filters mk3-zone mk3-zone-filters">
         <label>
           Search
           <input
@@ -646,7 +656,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           </select>
         </label>
       </div>
-      <div className="mk3-filter-chips">
+      <div className="mk3-filter-chips mk3-zone mk3-zone-time">
         {TIME_WINDOW_OPTIONS.map((option) => (
           <button
             key={option.id}
@@ -664,7 +674,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           </button>
         ))}
       </div>
-      <div className="mk3-filter-chips">
+      <div className="mk3-filter-chips mk3-zone mk3-zone-region">
         {dynamicRegionPresets.map((preset) => (
           <button
             key={preset.id}
@@ -692,7 +702,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       </div>
       {geoError && <div className="mk3-status mk3-status-warning">{geoError}</div>}
 
-      <div className="mk3-metric-row">
+      <div className="mk3-metric-row mk3-zone mk3-zone-metrics">
         <div className="mk3-metric">
           <span>matching listings</span>
           <strong>{rankedListings.length}</strong>
@@ -711,8 +721,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         </div>
       </div>
 
-      <div className="mk3-discover-shell">
-        <article className="mk3-map-card">
+      <div className={`mk3-discover-shell ${mapFirst ? "is-map-first" : "is-balanced"}`}>
+        <article className="mk3-map-card mk3-zone mk3-zone-map">
           <h2>{FINDER_BRAND} Live Karaoke Map</h2>
           <div className="mk3-map-badge">Marker-synced {FINDER_BRAND} rail</div>
           <div className="mk3-map-toolbar">
@@ -734,6 +744,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             >
               {geoLoading ? "Locating..." : userLocation ? "Refresh my location" : "Use my location"}
             </button>
+            <button type="button" onClick={() => setMapFirst((prev) => !prev)}>
+              {mapFirst ? "Balanced layout" : "Map-first layout"}
+            </button>
           </div>
 
           {!mapEnabled && (
@@ -743,13 +756,39 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           )}
           {!!mapsError && <div className="mk3-status mk3-status-error">{mapsError}</div>}
 
-          {mapEnabled && mapsLoaded ? (
-            <div ref={mapContainerRef} className="mk3-map-canvas" />
-          ) : (
-            <div className="mk3-map-grid">
-              <div className="mk3-map-placeholder">{mapEnabled ? "Loading live map..." : "Map unavailable."}</div>
+          <div className="mk3-map-stage">
+            {mapEnabled && mapsLoaded ? (
+              <div ref={mapContainerRef} className="mk3-map-canvas" />
+            ) : (
+              <div className="mk3-map-grid">
+                <div className="mk3-map-placeholder">{mapEnabled ? "Loading live map..." : "Map unavailable."}</div>
+              </div>
+            )}
+            <div className="mk3-map-stage-overlay">
+              <div className="mk3-map-legend" aria-label="Map legend">
+                <span className="mk3-map-legend-item is-event">Events {listingTypeCounts.event}</span>
+                <span className="mk3-map-legend-item is-venue">Venues {listingTypeCounts.venue}</span>
+                <span className="mk3-map-legend-item is-session">Sessions {listingTypeCounts.room_session}</span>
+                {userLocation && <span className="mk3-map-legend-item is-you">You are centered</span>}
+              </div>
+              {!!selectedListing && (
+                <button
+                  type="button"
+                  className="mk3-map-selected-card"
+                  onClick={() => navigate(selectedListing.routePage, selectedListing.id, {
+                    src: "discover_map_selected",
+                    src_listing_type: selectedListing.listingType,
+                    src_sort_mode: sortMode,
+                  })}
+                >
+                  <span>{selectedListing.typeLabel}</span>
+                  <strong>{selectedListing.title}</strong>
+                  <small>{selectedListing.subtitle}</small>
+                  {selectedListing.timeLabel && <small>{selectedListing.timeLabel}</small>}
+                </button>
+              )}
             </div>
-          )}
+          </div>
 
           <div className="mk3-map-footer">
               <span>{visibleListings.length} shown in rail</span>
@@ -758,7 +797,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             </div>
           </article>
 
-        <aside className="mk3-feed-column">
+        <aside className="mk3-feed-column mk3-zone mk3-zone-rail">
           {loading && <div className="mk3-status">Loading approved karaoke listings...</div>}
           {!loading && !!error && !permissionError && !indexError && (
             <div className="mk3-status mk3-status-error">{error}</div>

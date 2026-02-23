@@ -35,10 +35,11 @@ const GoldenPathRail = lazy(() => import("./pages/GoldenPathRail"));
 
 const PRODUCT_BRAND = {
   name: "BeauRocks Karaoke",
-  finder: "Setlist",
-  tv: "Spotlight",
-  audience: "MicLine",
-  host: "StageOps",
+  tagline: "Voice-first party game platform",
+  finder: "Setlist Finder",
+  tv: "Spotlight TV",
+  audience: "Party Mic",
+  host: "Host Deck",
 };
 
 const PRIMARY_PAGE_OPTIONS = [
@@ -384,7 +385,7 @@ const MarketingSite = () => {
               <img src="/images/logo-library/beaurocks-karaoke-logo-2.png" alt="BeauRocks Karaoke logo" />
               <div>
                 <strong>{PRODUCT_BRAND.name}</strong>
-                <span>{PRODUCT_BRAND.finder} karaoke finder</span>
+                <span>{PRODUCT_BRAND.tagline}</span>
               </div>
             </button>
             <nav className="mk3-links" aria-label="Primary">
@@ -496,25 +497,25 @@ const MarketingSite = () => {
             <div>
               <h1>{PRODUCT_BRAND.name}</h1>
               <p>
-                One platform, four surfaces: {PRODUCT_BRAND.finder} finder, {PRODUCT_BRAND.tv} TV,{" "}
-                {PRODUCT_BRAND.audience} for audience and singers, and {PRODUCT_BRAND.host} for hosts.
+                One platform for social singing and voice-driven party play: discover live karaoke, run interactive
+                TV moments, join from mobile, and keep the room connected with host controls.
               </p>
               <div className="mk3-surface-grid">
                 <article>
                   <strong>{PRODUCT_BRAND.finder}</strong>
-                  <span>Karaoke Finder</span>
+                  <span>Discover venues and events</span>
                 </article>
                 <article>
                   <strong>{PRODUCT_BRAND.tv}</strong>
-                  <span>TV Surface</span>
+                  <span>Main room display surface</span>
                 </article>
                 <article>
                   <strong>{PRODUCT_BRAND.audience}</strong>
-                  <span>Audience + Singer Surface</span>
+                  <span>Singer + audience mobile app</span>
                 </article>
                 <article>
                   <strong>{PRODUCT_BRAND.host}</strong>
-                  <span>Host Surface</span>
+                  <span>Host control surface</span>
                 </article>
               </div>
               {heroStats?.total > 0 && (
@@ -524,8 +525,8 @@ const MarketingSite = () => {
                 </div>
               )}
               <div className="mk3-value-points">
-                <span>{PRODUCT_BRAND.finder} has a live map with a synced finder rail.</span>
-                <span>Profiles stay linked across host, venue, performer, and session pages.</span>
+                <span>Setlist Finder pairs a live map with a synced listing rail for fast navigation.</span>
+                <span>Profiles stay linked across hosts, venues, singers, sessions, and party moments.</span>
               </div>
               <div className="mk3-permission-grid">
                 <article>
