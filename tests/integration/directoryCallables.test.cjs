@@ -2,6 +2,8 @@ const assert = require("node:assert/strict");
 const admin = require("../../functions/node_modules/firebase-admin");
 process.env.MARKETING_SMS_REMINDERS_ENABLED = process.env.MARKETING_SMS_REMINDERS_ENABLED || "true";
 const {
+  ensureSong,
+  ensureTrack,
   upsertDirectoryProfile,
   submitDirectoryListing,
   listModerationQueue,
@@ -16,6 +18,9 @@ const {
   setDirectoryRsvp,
   setDirectoryReminderPreferences,
   listDirectoryGeoLanding,
+  submitCatalogContribution,
+  listCatalogContributionQueue,
+  resolveCatalogContribution,
   previewDirectoryRoomSessionByCode,
 } = require("../../functions/index.js");
 
@@ -60,6 +65,10 @@ async function resetState() {
     "directory_rsvps",
     "directory_reminders",
     "directory_geo_pages",
+    "catalog_contributions",
+    "songs",
+    "tracks",
+    "users",
   ];
   for (const name of collections) {
     const snap = await db.collection(name).limit(500).get();
@@ -71,6 +80,11 @@ async function resetState() {
   await db.doc(`directory_roles/${MOD_UID}`).set({
     roles: ["directory_editor"],
   });
+  await db.doc(`users/${USER_UID}`).set({
+    uid: USER_UID,
+    name: "Directory User",
+    subscription: { tier: "free" },
+  }, { merge: true });
 }
 
 async function expectHttpsError(run, expectedCode) {
@@ -107,6 +121,109 @@ async function run() {
       const snap = await db.doc(`directory_profiles/${USER_UID}`).get();
       assert.equal(snap.exists, true);
       assert.equal(snap.get("displayName"), "Neon Host");
+    }],
+
+    ["ensureSong denies non-host direct catalog writes", async () => {
+      await expectHttpsError(
+        () => ensureSong.run(requestFor(USER_UID, { title: "My Song", artist: "Me" })),
+        "permission-denied"
+      );
+    }],
+
+    ["ensureSong allows host role direct catalog writes", async () => {
+      await db.doc(`directory_profiles/${USER_UID}`).set({
+        uid: USER_UID,
+        displayName: "Host User",
+        roles: ["host"],
+        status: "approved",
+      });
+      const result = await ensureSong.run(
+        requestFor(USER_UID, { title: "Host Song", artist: "Host Artist" })
+      );
+      assert.ok(result.songId);
+      const snap = await db.doc(`songs/${result.songId}`).get();
+      assert.equal(snap.exists, true);
+      const track = await ensureTrack.run(
+        requestFor(USER_UID, {
+          songId: result.songId,
+          source: "custom",
+          mediaUrl: "https://cdn.example.com/host-song.mp3",
+          label: "Host Version",
+        })
+      );
+      assert.ok(track.trackId);
+      const trackSnap = await db.doc(`tracks/${track.trackId}`).get();
+      assert.equal(trackSnap.exists, true);
+    }],
+
+    ["submitCatalogContribution queues pending request", async () => {
+      const result = await submitCatalogContribution.run(
+        requestFor(USER_UID, {
+          payload: {
+            title: "Queue Song",
+            artist: "Queue Artist",
+            source: "youtube",
+            mediaUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          },
+        })
+      );
+      assert.equal(result.ok, true);
+      assert.equal(result.status, "pending");
+      const snap = await db.doc(`catalog_contributions/${result.contributionId}`).get();
+      assert.equal(snap.exists, true);
+      assert.equal(snap.get("status"), "pending");
+    }],
+
+    ["resolveCatalogContribution approves and applies to songs/tracks", async () => {
+      const queued = await submitCatalogContribution.run(
+        requestFor(USER_UID, {
+          payload: {
+            title: "Moderated Song",
+            artist: "Moderated Artist",
+            source: "custom",
+            mediaUrl: "https://cdn.example.com/moderated.mp3",
+          },
+        })
+      );
+      const resolved = await resolveCatalogContribution.run(
+        requestFor(MOD_UID, {
+          contributionId: queued.contributionId,
+          action: "approve",
+          notes: "approved in test",
+        })
+      );
+      assert.equal(resolved.ok, true);
+      assert.equal(resolved.status, "approved");
+      assert.ok(resolved.songId);
+      assert.ok(resolved.trackId);
+      const queueSnap = await db.doc(`catalog_contributions/${queued.contributionId}`).get();
+      assert.equal(queueSnap.get("status"), "approved");
+      assert.equal(String(queueSnap.get("moderation.action")), "approved");
+      const songSnap = await db.doc(`songs/${resolved.songId}`).get();
+      assert.equal(songSnap.exists, true);
+      const trackSnap = await db.doc(`tracks/${resolved.trackId}`).get();
+      assert.equal(trackSnap.exists, true);
+    }],
+
+    ["listCatalogContributionQueue is moderator-only and returns pending entries", async () => {
+      await submitCatalogContribution.run(
+        requestFor(USER_UID, {
+          payload: {
+            title: "Queue Listing Song",
+            artist: "Queue Listing Artist",
+          },
+        })
+      );
+      await expectHttpsError(
+        () => listCatalogContributionQueue.run(requestFor(USER_UID, { status: "pending", limit: 20 })),
+        "permission-denied"
+      );
+      const result = await listCatalogContributionQueue.run(
+        requestFor(MOD_UID, { status: "pending", limit: 20 })
+      );
+      assert.equal(result.ok, true);
+      assert.ok(Array.isArray(result.items));
+      assert.equal(Number(result.count || 0) >= 1, true);
     }],
 
     ["submitDirectoryListing creates pending submission", async () => {

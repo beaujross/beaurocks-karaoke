@@ -477,6 +477,7 @@ export const buildAwardPayload = (state = createLobbyVolleyState(), nowMs = Date
         teamworkMultiplier: roundToTenths(teamworkMultiplier),
         rewardMultiplier: roundToTenths(rewardMultiplier),
         pointsBudget,
+        maxPointsPerUser,
         awardKey,
         awards,
         nextState
