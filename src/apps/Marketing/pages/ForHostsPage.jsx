@@ -1,13 +1,14 @@
 import React, { useState } from "react";
 import { trackEvent } from "../../../lib/firebase";
 import { directoryActions } from "../api/directoryApi";
+import { fromDateTimeLocalInput } from "./shared";
 
 const ForHostsPage = ({ navigate, session, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
   const [privateForm, setPrivateForm] = useState({
     title: "",
     roomCode: "",
-    startsAtMs: "",
+    startsAtLocal: "",
     description: "",
   });
   const [busy, setBusy] = useState(false);
@@ -39,7 +40,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
       const payload = {
         title: privateForm.title || `Private Session ${privateForm.roomCode}`,
         roomCode: String(privateForm.roomCode || "").trim().toUpperCase(),
-        startsAtMs: Number(privateForm.startsAtMs || 0) || 0,
+        startsAtMs: fromDateTimeLocalInput(privateForm.startsAtLocal),
         description: privateForm.description || "",
         visibility: "private",
       };
@@ -125,11 +126,11 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
             />
           </label>
           <label>
-            Start (epoch ms, optional)
+            Start (optional)
             <input
-              value={privateForm.startsAtMs}
-              onChange={(e) => setPrivateForm((prev) => ({ ...prev, startsAtMs: e.target.value }))}
-              placeholder="1769961600000"
+              type="datetime-local"
+              value={privateForm.startsAtLocal}
+              onChange={(e) => setPrivateForm((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
             />
           </label>
           <label>

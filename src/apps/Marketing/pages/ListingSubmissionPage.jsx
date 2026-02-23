@@ -1,7 +1,14 @@
 import React, { useMemo, useState } from "react";
 import { trackEvent } from "../../../lib/firebase";
 import { directoryActions } from "../api/directoryApi";
-import { formatDateTime } from "./shared";
+import { formatDateTime, fromDateTimeLocalInput, toDateTimeLocalInput } from "./shared";
+import {
+  buildKaraokeNightsLabel,
+  buildNextCadenceWindow,
+  buildRecurringRule,
+  createEmptyCadenceRows,
+} from "./cadenceSchedule";
+import WeeklyScheduleEditor from "./WeeklyScheduleEditor";
 
 const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
@@ -11,21 +18,26 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
   const [form, setForm] = useState({
     title: "",
     description: "",
-    karaokeNightsLabel: "",
-    recurringRule: "",
     city: "",
     state: "",
     region: "nationwide",
     address1: "",
-    startsAtMs: "",
-    endsAtMs: "",
+    startsAtLocal: "",
+    endsAtLocal: "",
+    cadenceRows: createEmptyCadenceRows(),
     hostName: "",
     venueName: "",
     roomCode: "",
     visibility: "public",
   });
 
-  const previewStart = useMemo(() => Number(form.startsAtMs || 0), [form.startsAtMs]);
+  const cadenceLabel = useMemo(() => buildKaraokeNightsLabel(form.cadenceRows), [form.cadenceRows]);
+  const recurringRulePreview = useMemo(() => buildRecurringRule(form.cadenceRows), [form.cadenceRows]);
+  const nextCadenceWindow = useMemo(() => buildNextCadenceWindow(form.cadenceRows), [form.cadenceRows]);
+  const previewStart = useMemo(
+    () => fromDateTimeLocalInput(form.startsAtLocal) || Number(nextCadenceWindow.startsAtMs || 0),
+    [form.startsAtLocal, nextCadenceWindow.startsAtMs]
+  );
 
   const submit = async (event) => {
     event.preventDefault();
@@ -48,10 +60,28 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
     setBusy(true);
     setStatus("");
     try {
+      let startsAtMs = fromDateTimeLocalInput(form.startsAtLocal);
+      let endsAtMs = fromDateTimeLocalInput(form.endsAtLocal);
+      if (listingType === "event" && startsAtMs <= 0 && Number(nextCadenceWindow.startsAtMs || 0) > 0) {
+        startsAtMs = Number(nextCadenceWindow.startsAtMs || 0);
+      }
+      if (listingType === "event" && endsAtMs <= 0 && Number(nextCadenceWindow.endsAtMs || 0) > 0) {
+        endsAtMs = Number(nextCadenceWindow.endsAtMs || 0);
+      }
       const payload = {
-        ...form,
-        startsAtMs: Number(form.startsAtMs || 0) || 0,
-        endsAtMs: Number(form.endsAtMs || 0) || 0,
+        title: form.title,
+        description: form.description,
+        city: form.city,
+        state: form.state,
+        region: form.region,
+        address1: form.address1,
+        startsAtMs: Number(startsAtMs || 0) || 0,
+        endsAtMs: Number(endsAtMs || 0) || 0,
+        karaokeNightsLabel: listingType === "venue" ? cadenceLabel : "",
+        recurringRule: listingType === "event" ? recurringRulePreview : "",
+        hostName: form.hostName,
+        venueName: form.venueName,
+        roomCode: form.roomCode,
         visibility: listingType === "room_session" ? form.visibility : "public",
       };
       const result = await directoryActions.submitDirectoryListing({
@@ -119,14 +149,19 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
             <textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
           </label>
           {listingType === "venue" && (
-            <label className="full">
-              Karaoke Nights Label
-              <textarea
-                value={form.karaokeNightsLabel}
-                onChange={(e) => setForm((prev) => ({ ...prev, karaokeNightsLabel: e.target.value }))}
-                placeholder="Mon 8pm-11pm | Thu 9pm-1am"
+            <div className="full mk3-cadence-field">
+              <span>Weekly Karaoke Schedule</span>
+              <WeeklyScheduleEditor
+                value={form.cadenceRows}
+                onChange={(cadenceRows) => setForm((prev) => ({ ...prev, cadenceRows }))}
               />
-            </label>
+              {cadenceLabel && (
+                <div className="mk3-status">
+                  <strong>Cadence Preview</strong>
+                  <span>{cadenceLabel}</span>
+                </div>
+              )}
+            </div>
           )}
           <label>
             City
@@ -147,25 +182,52 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
           {(listingType === "event" || listingType === "room_session") && (
             <>
               <label>
-                Start (epoch ms)
-                <input value={form.startsAtMs} onChange={(e) => setForm((prev) => ({ ...prev, startsAtMs: e.target.value }))} />
+                Start
+                <input
+                  type="datetime-local"
+                  value={form.startsAtLocal}
+                  onChange={(e) => setForm((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
+                />
               </label>
               <label>
-                End (epoch ms)
-                <input value={form.endsAtMs} onChange={(e) => setForm((prev) => ({ ...prev, endsAtMs: e.target.value }))} />
+                End
+                <input
+                  type="datetime-local"
+                  value={form.endsAtLocal}
+                  onChange={(e) => setForm((prev) => ({ ...prev, endsAtLocal: e.target.value }))}
+                />
               </label>
             </>
           )}
           {listingType === "event" && (
             <>
-              <label className="full">
-                Recurring Rule
-                <input
-                  value={form.recurringRule}
-                  onChange={(e) => setForm((prev) => ({ ...prev, recurringRule: e.target.value }))}
-                  placeholder="Weekly Thu-Sat"
+              <div className="full mk3-cadence-field">
+                <span>Recurring Weekly Schedule</span>
+                <WeeklyScheduleEditor
+                  value={form.cadenceRows}
+                  onChange={(cadenceRows) => setForm((prev) => ({ ...prev, cadenceRows }))}
                 />
-              </label>
+                {recurringRulePreview && (
+                  <div className="mk3-status">
+                    <strong>Recurring Rule Preview</strong>
+                    <span>{recurringRulePreview}</span>
+                  </div>
+                )}
+              </div>
+              {Number(nextCadenceWindow.startsAtMs || 0) > 0 && (
+                <div className="mk3-actions-inline full">
+                  <button
+                    type="button"
+                    onClick={() => setForm((prev) => ({
+                      ...prev,
+                      startsAtLocal: toDateTimeLocalInput(nextCadenceWindow.startsAtMs || 0),
+                      endsAtLocal: toDateTimeLocalInput(nextCadenceWindow.endsAtMs || 0),
+                    }))}
+                  >
+                    Use Next Cadence Slot
+                  </button>
+                </div>
+              )}
               <label>
                 Host Name
                 <input value={form.hostName} onChange={(e) => setForm((prev) => ({ ...prev, hostName: e.target.value }))} />

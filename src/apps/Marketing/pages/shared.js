@@ -14,6 +14,22 @@ export const formatDateTime = (ms = 0) => {
   }
 };
 
+export const toDateTimeLocalInput = (valueMs = 0) => {
+  const ms = Number(valueMs || 0);
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return "";
+  const tzShifted = new Date(ms - (date.getTimezoneOffset() * 60000));
+  return tzShifted.toISOString().slice(0, 16);
+};
+
+export const fromDateTimeLocalInput = (value = "") => {
+  const token = String(value || "").trim();
+  if (!token) return 0;
+  const parsed = new Date(token).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 export const formatCount = (value = 0) => {
   const num = Number(value || 0);
   if (!Number.isFinite(num)) return "0";

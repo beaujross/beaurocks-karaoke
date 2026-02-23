@@ -1,23 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { trackEvent } from "../../../lib/firebase";
 import { directoryActions } from "../api/directoryApi";
-import { formatDateTime } from "./shared";
-
-const toDateTimeLocalInput = (valueMs = 0) => {
-  const ms = Number(valueMs || 0);
-  if (!Number.isFinite(ms) || ms <= 0) return "";
-  const date = new Date(ms);
-  if (Number.isNaN(date.getTime())) return "";
-  const tzShifted = new Date(ms - (date.getTimezoneOffset() * 60000));
-  return tzShifted.toISOString().slice(0, 16);
-};
-
-const fromDateTimeLocalInput = (value = "") => {
-  const token = String(value || "").trim();
-  if (!token) return 0;
-  const parsed = new Date(token).getTime();
-  return Number.isFinite(parsed) ? parsed : 0;
-};
+import { formatDateTime, fromDateTimeLocalInput, toDateTimeLocalInput } from "./shared";
+import {
+  buildKaraokeNightsLabel,
+  buildRecurringRule,
+  createEmptyCadenceRows,
+  hasCadenceRows,
+  parseCadenceTextToRows,
+} from "./cadenceSchedule";
+import WeeklyScheduleEditor from "./WeeklyScheduleEditor";
 
 const routeForListing = (listingType = "", listingId = "") => {
   if (listingType === "venue") return { page: "venue", id: listingId };
@@ -38,6 +30,7 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
     startsAtLocal: "",
     endsAtLocal: "",
     recurringRule: "",
+    cadenceRows: createEmptyCadenceRows(),
     hostName: "",
     venueName: "",
   });
@@ -50,11 +43,16 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
       startsAtLocal: toDateTimeLocalInput(listing.startsAtMs || 0),
       endsAtLocal: toDateTimeLocalInput(listing.endsAtMs || 0),
       recurringRule: String(listing.recurringRule || ""),
+      cadenceRows: parseCadenceTextToRows(
+        listingType === "venue"
+          ? String(listing.karaokeNightsLabel || "")
+          : String(listing.recurringRule || "")
+      ),
       hostName: String(listing.hostName || ""),
       venueName: String(listing.venueName || ""),
     });
     setStatus("");
-  }, [listing]);
+  }, [listing, listingType]);
 
   const cadencePreview = useMemo(() => {
     if (!listing) return "";
@@ -69,6 +67,19 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
     if (recurringRule) parts.push(recurringRule);
     return parts.join(" | ");
   }, [listing, listingType]);
+
+  const cadenceLabelPreview = useMemo(
+    () => buildKaraokeNightsLabel(form.cadenceRows),
+    [form.cadenceRows]
+  );
+  const recurringRulePreview = useMemo(
+    () => buildRecurringRule(form.cadenceRows),
+    [form.cadenceRows]
+  );
+  const hasStructuredCadence = useMemo(
+    () => hasCadenceRows(form.cadenceRows),
+    [form.cadenceRows]
+  );
 
   const submitCadenceUpdate = async (event) => {
     event.preventDefault();
@@ -98,13 +109,13 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
     try {
       const payload = listingType === "venue"
         ? {
-          karaokeNightsLabel: form.karaokeNightsLabel,
+          karaokeNightsLabel: cadenceLabelPreview || form.karaokeNightsLabel,
           description: form.description,
         }
         : {
           startsAtMs: fromDateTimeLocalInput(form.startsAtLocal),
           endsAtMs: fromDateTimeLocalInput(form.endsAtLocal),
-          recurringRule: form.recurringRule,
+          recurringRule: recurringRulePreview || form.recurringRule,
           hostName: form.hostName,
           venueName: form.venueName,
           description: form.description,
@@ -171,14 +182,18 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
       {canSubmit && (
       <form className="mk3-actions-block" onSubmit={submitCadenceUpdate}>
         {listingType === "venue" ? (
-          <label>
-            Karaoke Nights Label
-            <textarea
-              value={form.karaokeNightsLabel}
-              onChange={(e) => setForm((prev) => ({ ...prev, karaokeNightsLabel: e.target.value }))}
-              placeholder="Mon 8pm-11pm | Thu 9pm-1am"
+          <div className="mk3-cadence-field">
+            <span>Weekly Karaoke Schedule</span>
+            <WeeklyScheduleEditor
+              value={form.cadenceRows}
+              onChange={(cadenceRows) => setForm((prev) => ({ ...prev, cadenceRows }))}
             />
-          </label>
+            {!hasStructuredCadence && !!form.karaokeNightsLabel && (
+              <div className="mk3-status mk3-status-warning">
+                Existing cadence text will be preserved unless you set a structured schedule.
+              </div>
+            )}
+          </div>
         ) : (
           <>
             <label>
@@ -197,14 +212,18 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
                 onChange={(e) => setForm((prev) => ({ ...prev, endsAtLocal: e.target.value }))}
               />
             </label>
-            <label>
-              Recurring Rule
-              <input
-                value={form.recurringRule}
-                onChange={(e) => setForm((prev) => ({ ...prev, recurringRule: e.target.value }))}
-                placeholder="Weekly Thu-Sat"
+            <div className="mk3-cadence-field">
+              <span>Recurring Weekly Schedule</span>
+              <WeeklyScheduleEditor
+                value={form.cadenceRows}
+                onChange={(cadenceRows) => setForm((prev) => ({ ...prev, cadenceRows }))}
               />
-            </label>
+              {!hasStructuredCadence && !!form.recurringRule && (
+                <div className="mk3-status mk3-status-warning">
+                  Existing recurring rule will stay unchanged unless you set a structured schedule.
+                </div>
+              )}
+            </div>
             <label>
               Host Name
               <input
@@ -222,6 +241,18 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
               />
             </label>
           </>
+        )}
+        {listingType === "venue" && !!cadenceLabelPreview && (
+          <div className="mk3-status">
+            <strong>Cadence Preview</strong>
+            <span>{cadenceLabelPreview}</span>
+          </div>
+        )}
+        {listingType !== "venue" && !!recurringRulePreview && (
+          <div className="mk3-status">
+            <strong>Recurring Rule Preview</strong>
+            <span>{recurringRulePreview}</span>
+          </div>
         )}
         <label>
           Notes

@@ -622,6 +622,71 @@
   grid-column: 1 / -1;
 }
 
+.mk3-cadence-field {
+  display: grid;
+  gap: 8px;
+}
+
+.mk3-cadence-field > span {
+  color: #d1e0f0;
+  font-size: 0.79rem;
+  letter-spacing: 0.02em;
+}
+
+.mk3-weekly-editor {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(6, 11, 16, 0.5);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.mk3-weekly-head,
+.mk3-weekly-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  gap: 6px;
+  align-items: center;
+}
+
+.mk3-weekly-head {
+  color: #9db4cd;
+  font-size: 0.66rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 0 2px;
+}
+
+.mk3-weekly-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #d8e7f8;
+  font-size: 0.76rem;
+}
+
+.mk3-weekly-day input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.mk3-weekly-row input[type="time"] {
+  min-height: 38px;
+  padding-top: 0.48rem;
+  padding-bottom: 0.48rem;
+}
+
+.mk3-weekly-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mk3-weekly-actions button {
+  padding: 0.45rem 0.66rem;
+  font-size: 0.66rem;
+}
+
 .mk3-actions-inline {
   display: flex;
   flex-wrap: wrap;
@@ -750,6 +815,16 @@
   }
   .mk3-golden-rail {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .mk3-weekly-head,
+  .mk3-weekly-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .mk3-weekly-head {
+    display: none;
   }
 }
 
