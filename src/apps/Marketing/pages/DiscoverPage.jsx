@@ -260,7 +260,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [timeWindow, setTimeWindow] = useState("all");
   const [sortMode, setSortMode] = useState("smart");
   const [mapFirst, setMapFirst] = useState(true);
-  const [boundsOnly, setBoundsOnly] = useState(false);
+  const [boundsOnly, setBoundsOnly] = useState(true);
   const [selectedKey, setSelectedKey] = useState("");
   const [mapBounds, setMapBounds] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
@@ -381,6 +381,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     () => visibleListings.find((entry) => entry.key === effectiveSelectedKey) || null,
     [visibleListings, effectiveSelectedKey]
   );
+  const featuredListing = selectedListing;
 
   const registerCardRef = useCallback((key, node) => {
     if (!key) return;
@@ -533,6 +534,12 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       }
       const selected = entry.key === effectiveSelectedKey;
       marker.setIcon(buildMarkerIcon(googleMaps, entry.markerColor, selected));
+      marker.setLabel(selected ? {
+        text: "★",
+        color: "#0b1119",
+        fontSize: "12px",
+        fontWeight: "700",
+      } : null);
       marker.setZIndex(selected ? 999 : 180);
     });
 
@@ -771,20 +778,27 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 <span className="mk3-map-legend-item is-session">Sessions {listingTypeCounts.room_session}</span>
                 {userLocation && <span className="mk3-map-legend-item is-you">You are centered</span>}
               </div>
-              {!!selectedListing && (
+              {!!featuredListing && (
                 <button
                   type="button"
-                  className="mk3-map-selected-card"
-                  onClick={() => navigate(selectedListing.routePage, selectedListing.id, {
+                  className="mk3-map-featured-card"
+                  onClick={() => navigate(featuredListing.routePage, featuredListing.id, {
                     src: "discover_map_selected",
-                    src_listing_type: selectedListing.listingType,
+                    src_listing_type: featuredListing.listingType,
                     src_sort_mode: sortMode,
                   })}
                 >
-                  <span>{selectedListing.typeLabel}</span>
-                  <strong>{selectedListing.title}</strong>
-                  <small>{selectedListing.subtitle}</small>
-                  {selectedListing.timeLabel && <small>{selectedListing.timeLabel}</small>}
+                  <span className="mk3-map-featured-kicker">Featured in view</span>
+                  <div className="mk3-map-featured-main">
+                    <img src={featuredListing.imageUrl} alt="" loading="lazy" />
+                    <div>
+                      <span>{featuredListing.typeLabel}</span>
+                      <strong>{featuredListing.title}</strong>
+                      <small>{featuredListing.subtitle}</small>
+                      {featuredListing.timeLabel && <small>{featuredListing.timeLabel}</small>}
+                      {!!featuredListing.distanceLabel && <small>{featuredListing.distanceLabel}</small>}
+                    </div>
+                  </div>
                 </button>
               )}
             </div>
@@ -792,7 +806,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
           <div className="mk3-map-footer">
               <span>{visibleListings.length} shown in rail</span>
-              <span>{selectedListing ? `selected: ${selectedListing.title}` : "select a marker or card"}</span>
+              <span>{featuredListing ? `featured: ${featuredListing.title}` : "select a marker or card"}</span>
               <span>{mapBoundsLabel}</span>
             </div>
           </article>

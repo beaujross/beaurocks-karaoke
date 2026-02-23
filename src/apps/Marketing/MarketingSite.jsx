@@ -42,6 +42,57 @@ const PRODUCT_BRAND = {
   host: "Host Deck",
 };
 
+const PUBLIC_CHANGELOG_ENTRIES = [
+  {
+    id: "finder",
+    surfaceLabel: PRODUCT_BRAND.finder,
+    routePage: MARKETING_ROUTE_PAGES.discover,
+    ctaLabel: "Open finder",
+    updatedAt: "2026-02-23",
+    highlights: [
+      "Map now defaults to rail listings inside current map bounds for faster local browsing.",
+      "A featured listing now appears directly on map with image, timing, and distance.",
+      "Finder cards now lead with visuals and profile avatars to reduce text-heavy scanning.",
+    ],
+  },
+  {
+    id: "tv",
+    surfaceLabel: PRODUCT_BRAND.tv,
+    routePage: MARKETING_ROUTE_PAGES.join,
+    ctaLabel: "Open TV entry",
+    updatedAt: "2026-02-22",
+    highlights: [
+      "Join and launch actions now use clearer hierarchy for venue display setup.",
+      "Room entry language now stays consistent with BeauRocks Karaoke branding.",
+      "Display launch paths received reliability and clarity tuning for public use.",
+    ],
+  },
+  {
+    id: "audience",
+    surfaceLabel: PRODUCT_BRAND.audience,
+    routePage: MARKETING_ROUTE_PAGES.forFans,
+    ctaLabel: "Open audience",
+    updatedAt: "2026-02-22",
+    highlights: [
+      "Mobile-first audience and singer paths now use larger tap targets and cleaner flow.",
+      "Tight 15 remains profile-linked so favorites can seed compatible game modes.",
+      "Party join language was simplified to reduce friction for first-time guests.",
+    ],
+  },
+  {
+    id: "host",
+    surfaceLabel: PRODUCT_BRAND.host,
+    routePage: MARKETING_ROUTE_PAGES.forHosts,
+    ctaLabel: "Open host",
+    updatedAt: "2026-02-21",
+    highlights: [
+      "Host control journeys now expose clearer next steps for room and venue operations.",
+      "Cadence update and moderation paths were streamlined for practical weekly use.",
+      "Cross-linked host, venue, performer, and session profile pathways were tightened.",
+    ],
+  },
+];
+
 const PRIMARY_PAGE_OPTIONS = [
   { id: MARKETING_ROUTE_PAGES.discover, label: "Setlist Finder" },
   { id: MARKETING_ROUTE_PAGES.forHosts, label: "For Hosts" },
@@ -113,6 +164,16 @@ const stripIntentParams = (params = {}) => {
   delete next.next;
   delete next.return_to;
   return next;
+};
+
+const formatReleaseDate = (value = "") => {
+  const ms = Date.parse(String(value || ""));
+  if (!Number.isFinite(ms)) return "Recent";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(ms);
 };
 
 const MarketingSite = () => {
@@ -344,6 +405,20 @@ const MarketingSite = () => {
     }
     return "Create an account to save favorites, RSVPs, and check-ins.";
   }, [activePage, authMode, route.params?.intent]);
+  const publicChangelog = useMemo(
+    () => PUBLIC_CHANGELOG_ENTRIES
+      .map((entry) => {
+        const updatedAtMs = Date.parse(String(entry.updatedAt || ""));
+        return {
+          ...entry,
+          updatedAtMs: Number.isFinite(updatedAtMs) ? updatedAtMs : 0,
+          updatedLabel: formatReleaseDate(entry.updatedAt),
+        };
+      })
+      .sort((a, b) => b.updatedAtMs - a.updatedAtMs),
+    []
+  );
+  const latestReleaseMs = publicChangelog[0]?.updatedAtMs || 0;
 
   const pageNode = useMemo(() => {
     const pageProps = {
@@ -671,6 +746,43 @@ const MarketingSite = () => {
                   {session.authError && <div className="mk3-status mk3-status-error">{session.authError}</div>}
                 </form>
               )}
+            </div>
+          </section>
+
+          <section className="mk3-public-changelog mk3-zone mk3-zone-changelog" aria-label="Public changelog">
+            <div className="mk3-public-changelog-head">
+              <h2>Public Changelog</h2>
+              <span>Sanitized updates by surface</span>
+            </div>
+            <div className="mk3-public-changelog-grid">
+              {publicChangelog.map((entry) => (
+                <article key={entry.id} className="mk3-public-changelog-card">
+                  <div className="mk3-public-changelog-meta">
+                    <strong>{entry.surfaceLabel}</strong>
+                    <span>{`Updated ${entry.updatedLabel}`}</span>
+                    {entry.updatedAtMs > 0 && entry.updatedAtMs === latestReleaseMs && (
+                      <em>Latest</em>
+                    )}
+                  </div>
+                  <ul>
+                    {entry.highlights.map((line) => (
+                      <li key={`${entry.id}:${line}`}>{line}</li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      trackEvent("mk_public_changelog_surface_open", {
+                        surface: entry.id,
+                        route: entry.routePage,
+                      });
+                      navigate(entry.routePage);
+                    }}
+                  >
+                    {entry.ctaLabel}
+                  </button>
+                </article>
+              ))}
             </div>
           </section>
           <Suspense fallback={<PageShellLoader />}>

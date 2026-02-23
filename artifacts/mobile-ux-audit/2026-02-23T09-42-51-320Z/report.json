@@ -1,0 +1,232 @@
+[
+  {
+    "route": "/discover",
+    "url": "https://beaurocks-karaoke-v2.web.app/discover",
+    "screenshotPath": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\artifacts\\mobile-ux-audit\\2026-02-23T09-42-51-320Z\\discover.png",
+    "title": "Setlist Karaoke Finder | BeauRocks Karaoke",
+    "overflowX": false,
+    "scrollWidth": 390,
+    "tinyTapTargets": [
+      {
+        "selector": "button.mk3-account-action",
+        "width": 113.6,
+        "height": 32.9,
+        "text": "Create Account"
+      },
+      {
+        "selector": "button.mk3-mobile-toggle",
+        "width": 55.7,
+        "height": 33.7,
+        "text": "Menu"
+      },
+      {
+        "selector": "button",
+        "width": 127.8,
+        "height": 30.6,
+        "text": "Use my location"
+      },
+      {
+        "selector": "button",
+        "width": 122.1,
+        "height": 38.7,
+        "text": "Focus marker"
+      },
+      {
+        "selector": "button",
+        "width": 112.9,
+        "height": 38.7,
+        "text": "Open details"
+      },
+      {
+        "selector": "button",
+        "width": 328.8,
+        "height": 38.7,
+        "text": "Create Account"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Host"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Venue Owner"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Performer"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Fan"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Join by Code"
+      }
+    ],
+    "offscreen": []
+  },
+  {
+    "route": "/for-hosts",
+    "url": "https://beaurocks-karaoke-v2.web.app/for-hosts",
+    "screenshotPath": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\artifacts\\mobile-ux-audit\\2026-02-23T09-42-51-320Z\\for-hosts.png",
+    "title": "For Hosts | BeauRocks Karaoke",
+    "overflowX": false,
+    "scrollWidth": 390,
+    "tinyTapTargets": [
+      {
+        "selector": "button.mk3-account-action",
+        "width": 113.6,
+        "height": 32.9,
+        "text": "Create Account"
+      },
+      {
+        "selector": "button.mk3-mobile-toggle",
+        "width": 55.7,
+        "height": 33.7,
+        "text": "Menu"
+      },
+      {
+        "selector": "button.mk3-auth-cta-primary",
+        "width": 164.9,
+        "height": 24,
+        "text": "Find Karaoke Near Me"
+      },
+      {
+        "selector": "button.mk3-auth-cta-secondary",
+        "width": 120.5,
+        "height": 24,
+        "text": "Create Account"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Host"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Venue Owner"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Performer"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Fan"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Join by Code"
+      }
+    ],
+    "offscreen": []
+  },
+  {
+    "route": "/admin",
+    "url": "https://beaurocks-karaoke-v2.web.app/admin",
+    "screenshotPath": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\artifacts\\mobile-ux-audit\\2026-02-23T09-42-51-320Z\\admin.png",
+    "title": "Bross Karaoke",
+    "overflowX": false,
+    "scrollWidth": 390,
+    "tinyTapTargets": [
+      {
+        "selector": "button.w-full.bg-zinc-700",
+        "width": 276,
+        "height": 36,
+        "text": "HOST CONTROLS"
+      },
+      {
+        "selector": "button.w-full.bg-zinc-800",
+        "width": 276,
+        "height": 38,
+        "text": "VIEW MARKETING SITE"
+      }
+    ],
+    "offscreen": []
+  },
+  {
+    "route": "/admin/moderation",
+    "url": "https://beaurocks-karaoke-v2.web.app/admin/moderation",
+    "screenshotPath": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\artifacts\\mobile-ux-audit\\2026-02-23T09-42-51-320Z\\admin-moderation.png",
+    "title": "Marketing Moderation | BeauRocks",
+    "overflowX": false,
+    "scrollWidth": 390,
+    "tinyTapTargets": [
+      {
+        "selector": "button.mk3-account-action",
+        "width": 113.6,
+        "height": 32.9,
+        "text": "Create Account"
+      },
+      {
+        "selector": "button.mk3-mobile-toggle",
+        "width": 55.7,
+        "height": 33.7,
+        "text": "Menu"
+      },
+      {
+        "selector": "button.mk3-auth-cta-primary",
+        "width": 164.9,
+        "height": 24,
+        "text": "Find Karaoke Near Me"
+      },
+      {
+        "selector": "button.mk3-auth-cta-secondary",
+        "width": 120.5,
+        "height": 24,
+        "text": "Create Account"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Host"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Venue Owner"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Performer"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Fan"
+      },
+      {
+        "selector": "button",
+        "width": 176,
+        "height": 34.6,
+        "text": "Join by Code"
+      }
+    ],
+    "offscreen": []
+  }
+]

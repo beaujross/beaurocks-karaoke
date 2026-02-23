@@ -1,0 +1,54 @@
+[
+  {
+    "route": "/discover",
+    "url": "http://127.0.0.1:4173/discover",
+    "screenshotPath": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\artifacts\\mobile-ux-audit-local\\2026-02-23T09-50-36-978Z\\discover.png",
+    "title": "Setlist Karaoke Finder | BeauRocks Karaoke",
+    "overflowX": false,
+    "scrollWidth": 390,
+    "viewportW": 390,
+    "viewportH": 664,
+    "tinyTapTargets": [],
+    "offscreen": [],
+    "coveredByOverlay": []
+  },
+  {
+    "route": "/for-hosts",
+    "url": "http://127.0.0.1:4173/for-hosts",
+    "screenshotPath": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\artifacts\\mobile-ux-audit-local\\2026-02-23T09-50-36-978Z\\for-hosts.png",
+    "title": "For Hosts | BeauRocks Karaoke",
+    "overflowX": false,
+    "scrollWidth": 390,
+    "viewportW": 390,
+    "viewportH": 664,
+    "tinyTapTargets": [],
+    "offscreen": [],
+    "coveredByOverlay": []
+  },
+  {
+    "route": "/admin",
+    "url": "http://127.0.0.1:4173/admin",
+    "screenshotPath": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\artifacts\\mobile-ux-audit-local\\2026-02-23T09-50-36-978Z\\admin.png",
+    "title": "Marketing Moderation | BeauRocks",
+    "overflowX": false,
+    "scrollWidth": 390,
+    "viewportW": 390,
+    "viewportH": 664,
+    "tinyTapTargets": [],
+    "offscreen": [],
+    "coveredByOverlay": []
+  },
+  {
+    "route": "/admin/moderation",
+    "url": "http://127.0.0.1:4173/admin/moderation",
+    "screenshotPath": "C:\\Users\\beauj\\Desktop\\beaurocks-karaoke\\artifacts\\mobile-ux-audit-local\\2026-02-23T09-50-36-978Z\\admin-moderation.png",
+    "title": "Marketing Moderation | BeauRocks",
+    "overflowX": false,
+    "scrollWidth": 390,
+    "viewportW": 390,
+    "viewportH": 664,
+    "tinyTapTargets": [],
+    "offscreen": [],
+    "coveredByOverlay": []
+  }
+]
