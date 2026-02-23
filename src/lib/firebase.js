@@ -429,6 +429,24 @@ const listDirectoryGeoLanding = async (payload = {}) => {
   return data || null;
 };
 
+const submitCatalogContribution = async (payload = {}) => {
+  await requireAppCheckToken("submitCatalogContribution");
+  const data = await callFunction("submitCatalogContribution", payload || {});
+  return data || null;
+};
+
+const listCatalogContributionQueue = async (payload = {}) => {
+  await requireAppCheckToken("listCatalogContributionQueue");
+  const data = await callFunction("listCatalogContributionQueue", payload || {});
+  return data || null;
+};
+
+const resolveCatalogContribution = async (payload = {}) => {
+  await requireAppCheckToken("resolveCatalogContribution");
+  const data = await callFunction("resolveCatalogContribution", payload || {});
+  return data || null;
+};
+
 const previewDirectoryRoomSessionByCode = async (payload = {}) => {
   await requireAppCheckToken("previewDirectoryRoomSessionByCode");
   const data = await callFunction("previewDirectoryRoomSessionByCode", payload || {});
@@ -715,6 +733,9 @@ export {
   setDirectoryRsvp,
   setDirectoryReminderPreferences,
   listDirectoryGeoLanding,
+  submitCatalogContribution,
+  listCatalogContributionQueue,
+  resolveCatalogContribution,
   previewDirectoryRoomSessionByCode,
   mergeAnonymousAccountData,
   ensureOrganization,

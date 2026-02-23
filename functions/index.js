@@ -1424,6 +1424,49 @@ const requireDirectoryModerator = async (request, options = {}) => {
   return { uid, ...access };
 };
 
+const CATALOG_EDITOR_PROFILE_ROLES = new Set(["host", "venue_owner"]);
+const CATALOG_EDITOR_SUBSCRIPTION_TIERS = new Set(["host", "host_plus"]);
+
+const getCatalogContributorAccess = async (uid = "") => {
+  if (!uid) return { allowed: false, reason: "missing_uid" };
+  const db = admin.firestore();
+  const [moderatorAccess, profileSnap, userSnap] = await Promise.all([
+    getDirectoryModeratorAccess(uid),
+    db.collection("directory_profiles").doc(uid).get(),
+    db.collection("users").doc(uid).get(),
+  ]);
+
+  if (moderatorAccess?.isModerator) {
+    return { allowed: true, mode: "moderator", roles: moderatorAccess.roles || [] };
+  }
+
+  const profileRoles = Array.isArray(profileSnap.data()?.roles)
+    ? profileSnap.data().roles.map((role) => normalizeDirectoryToken(role, 40)).filter(Boolean)
+    : [];
+  if (profileRoles.some((role) => CATALOG_EDITOR_PROFILE_ROLES.has(role))) {
+    return { allowed: true, mode: "profile_role", roles: profileRoles };
+  }
+
+  const subscriptionTier = normalizeDirectoryToken(userSnap.data()?.subscription?.tier || "", 40);
+  if (CATALOG_EDITOR_SUBSCRIPTION_TIERS.has(subscriptionTier)) {
+    return { allowed: true, mode: "subscription_tier", tier: subscriptionTier };
+  }
+
+  return { allowed: false, reason: "insufficient_role_or_tier" };
+};
+
+const requireCatalogContributor = async (request, options = {}) => {
+  const uid = requireAuth(request, options.authMessage || "Sign in required.");
+  const access = await getCatalogContributorAccess(uid);
+  if (!access.allowed) {
+    throw new HttpsError(
+      "permission-denied",
+      options.deniedMessage || "Host-level access required to write global catalog entries."
+    );
+  }
+  return { uid, ...access };
+};
+
 const normalizeDirectoryProfilePayload = (payload = {}) => {
   const displayName = safeDirectoryString(payload?.displayName || payload?.name || "", 120);
   if (!displayName) {
@@ -2713,9 +2756,11 @@ exports.itunesSearch = onCall({ cors: true }, async (request) => {
 });
 
 exports.ensureSong = onCall({ cors: true }, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "Sign in required.");
-  }
+  checkRateLimit(request.rawRequest, "ensure_song", { perMinute: 30, perHour: 180 });
+  enforceAppCheckIfEnabled(request, "ensure_song");
+  await requireCatalogContributor(request, {
+    deniedMessage: "Host or moderator access required to write catalog songs.",
+  });
   const data = request.data || {};
   const title = (data.title || "").trim();
   if (!title) {
@@ -2735,9 +2780,11 @@ exports.ensureSong = onCall({ cors: true }, async (request) => {
 });
 
 exports.ensureTrack = onCall({ cors: true }, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "Sign in required.");
-  }
+  checkRateLimit(request.rawRequest, "ensure_track", { perMinute: 30, perHour: 180 });
+  enforceAppCheckIfEnabled(request, "ensure_track");
+  await requireCatalogContributor(request, {
+    deniedMessage: "Host or moderator access required to write catalog tracks.",
+  });
   const data = request.data || {};
   if (!data.songId) {
     throw new HttpsError("invalid-argument", "songId is required.");
@@ -3601,7 +3648,11 @@ exports.resolveSongCatalog = onCall({ cors: true }, async (request) => {
 });
 
 exports.upsertSongLyrics = onCall({ cors: true }, async (request) => {
-  const uid = requireAuth(request);
+  checkRateLimit(request.rawRequest, "upsert_song_lyrics", { perMinute: 20, perHour: 120 });
+  enforceAppCheckIfEnabled(request, "upsert_song_lyrics");
+  const { uid } = await requireCatalogContributor(request, {
+    deniedMessage: "Host or moderator access required to update song lyrics.",
+  });
   const data = request.data || {};
   const title = (data.title || "").trim();
   const artist = (data.artist || "Unknown").trim() || "Unknown";
@@ -4449,6 +4500,172 @@ exports.upsertDirectoryProfile = onCall({ cors: true }, async (request) => {
   };
   await db.collection("directory_profiles").doc(uid).set(payload, { merge: true });
   return { ok: true, uid, profile: payload };
+});
+
+exports.submitCatalogContribution = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "submit_catalog_contribution", { perMinute: 24, perHour: 160 });
+  enforceAppCheckIfEnabled(request, "submit_catalog_contribution");
+  const uid = requireAuth(request);
+  const payload = request.data?.payload && typeof request.data.payload === "object"
+    ? request.data.payload
+    : request.data || {};
+  const title = safeDirectoryString(payload?.title || payload?.songTitle || "", 180);
+  const artist = safeDirectoryString(payload?.artist || "", 180);
+  if (!title || !artist) {
+    throw new HttpsError("invalid-argument", "title and artist are required.");
+  }
+  const sourceToken = normalizeDirectoryToken(payload?.source || "custom", 20);
+  const source = ["custom", "youtube", "apple"].includes(sourceToken) ? sourceToken : "custom";
+  const mediaUrl = normalizeDirectoryOptionalUrl(payload?.mediaUrl || "");
+  const appleMusicId = safeDirectoryString(payload?.appleMusicId || "", 120);
+  const contributionId = `catalog_${Date.now()}_${uid.slice(0, 8)}_${Math.random().toString(36).slice(2, 8)}`;
+  const now = buildDirectoryNow();
+
+  const contribution = {
+    contributionId,
+    status: "pending",
+    type: "song_track_upsert",
+    dedupeKey: buildSongKey(title, artist),
+    payload: {
+      title,
+      artist,
+      artworkUrl: normalizeDirectoryOptionalUrl(payload?.artworkUrl || ""),
+      source,
+      mediaUrl,
+      appleMusicId,
+      label: safeDirectoryString(payload?.label || "", 120),
+      duration: clampNumber(payload?.duration || 0, 0, 7200, 0),
+      audioOnly: !!payload?.audioOnly,
+      backingOnly: !!payload?.backingOnly,
+    },
+    createdBy: uid,
+    createdAt: now,
+    updatedAt: now,
+    moderation: {
+      action: "pending",
+      notes: "",
+      moderatedBy: null,
+      moderatedAt: null,
+    },
+  };
+
+  await admin.firestore().collection("catalog_contributions").doc(contributionId).set(contribution, { merge: true });
+  return { ok: true, contributionId, status: "pending" };
+});
+
+exports.listCatalogContributionQueue = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "list_catalog_contribution_queue", { perMinute: 60, perHour: 600 });
+  enforceAppCheckIfEnabled(request, "list_catalog_contribution_queue");
+  await requireDirectoryModerator(request);
+  const statusFilter = normalizeDirectoryToken(request.data?.status || "pending", 20) || "pending";
+  const maxEntries = clampNumber(request.data?.limit || 40, 1, 200, 40);
+  const snap = await admin.firestore()
+    .collection("catalog_contributions")
+    .orderBy("createdAt", "desc")
+    .limit(maxEntries)
+    .get();
+  const items = snap.docs
+    .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+    .filter((entry) => !statusFilter || statusFilter === "all" || String(entry.status || "") === statusFilter);
+  return {
+    ok: true,
+    status: statusFilter,
+    count: items.length,
+    items,
+  };
+});
+
+exports.resolveCatalogContribution = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "resolve_catalog_contribution", { perMinute: 30, perHour: 300 });
+  enforceAppCheckIfEnabled(request, "resolve_catalog_contribution");
+  const { uid } = await requireDirectoryModerator(request);
+  const contributionId = safeDirectoryString(request.data?.contributionId || "", 220);
+  const action = normalizeDirectoryToken(request.data?.action || "approve", 20) || "approve";
+  const notes = normalizeDirectoryTextBlock(request.data?.notes || "", 500);
+  if (!contributionId) {
+    throw new HttpsError("invalid-argument", "contributionId is required.");
+  }
+  if (!["approve", "reject"].includes(action)) {
+    throw new HttpsError("invalid-argument", "action must be approve or reject.");
+  }
+
+  const db = admin.firestore();
+  const ref = db.collection("catalog_contributions").doc(contributionId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "Catalog contribution not found.");
+  }
+  const existing = snap.data() || {};
+  if (String(existing.status || "") !== "pending") {
+    return {
+      ok: true,
+      contributionId,
+      status: existing.status || "unknown",
+      songId: existing?.resolution?.songId || "",
+      trackId: existing?.resolution?.trackId || "",
+      mode: "already_resolved",
+    };
+  }
+
+  const now = buildDirectoryNow();
+  let songId = "";
+  let trackId = "";
+  if (action === "approve") {
+    const payload = existing.payload || {};
+    const title = safeDirectoryString(payload?.title || "", 180);
+    const artist = safeDirectoryString(payload?.artist || "", 180) || "Unknown";
+    if (!title) {
+      throw new HttpsError("failed-precondition", "Contribution payload is missing title.");
+    }
+    const songResult = await ensureSongAdmin({
+      title,
+      artist,
+      artworkUrl: normalizeDirectoryOptionalUrl(payload?.artworkUrl || ""),
+      appleMusicId: safeDirectoryString(payload?.appleMusicId || "", 120),
+      verifyMeta: false,
+      verifiedBy: uid,
+    });
+    songId = songResult?.songId || buildSongKey(title, artist);
+
+    const sourceToken = normalizeDirectoryToken(payload?.source || "custom", 20);
+    const source = ["custom", "youtube", "apple"].includes(sourceToken) ? sourceToken : "custom";
+    const mediaUrl = normalizeDirectoryOptionalUrl(payload?.mediaUrl || "");
+    const appleMusicId = safeDirectoryString(payload?.appleMusicId || "", 120);
+    if (mediaUrl || appleMusicId) {
+      const trackResult = await ensureTrackAdmin({
+        songId,
+        source,
+        mediaUrl,
+        appleMusicId,
+        label: safeDirectoryString(payload?.label || "", 120) || null,
+        duration: clampNumber(payload?.duration || 0, 0, 7200, 0) || null,
+        audioOnly: !!payload?.audioOnly,
+        backingOnly: !!payload?.backingOnly,
+        addedBy: uid,
+      });
+      trackId = trackResult?.trackId || "";
+    }
+  }
+
+  const status = action === "approve" ? "approved" : "rejected";
+  await ref.set({
+    status,
+    updatedAt: now,
+    moderation: {
+      action: status,
+      notes,
+      moderatedBy: uid,
+      moderatedAt: now,
+    },
+    resolution: {
+      songId: songId || "",
+      trackId: trackId || "",
+      appliedBy: action === "approve" ? uid : "",
+      appliedAt: action === "approve" ? now : null,
+    },
+  }, { merge: true });
+
+  return { ok: true, contributionId, status, songId, trackId };
 });
 
 exports.submitDirectoryListing = onCall(

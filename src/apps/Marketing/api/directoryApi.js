@@ -24,6 +24,9 @@ import {
   setDirectoryRsvp,
   setDirectoryReminderPreferences,
   listDirectoryGeoLanding,
+  submitCatalogContribution,
+  listCatalogContributionQueue,
+  resolveCatalogContribution,
   previewDirectoryRoomSessionByCode,
 } from "../../../lib/firebase";
 
@@ -286,6 +289,25 @@ export const subscribeOwnDashboard = ({ uid, onData, onError }) => {
   };
 };
 
+export const subscribeSongCatalog = ({ onData, onError, max = 120 } = {}) => {
+  const safeLimit = Math.min(240, Math.max(20, Number(max || 120)));
+  const primaryQuery = query(
+    collection(db, "songs"),
+    orderBy("updatedAt", "desc"),
+    limit(safeLimit)
+  );
+  const fallbackQuery = query(
+    collection(db, "songs"),
+    limit(safeLimit)
+  );
+  return subscribeWithFallback({
+    primaryQuery,
+    fallbackQuery,
+    onData: (snap) => onData?.(mapDocs(snap)),
+    onError,
+  });
+};
+
 export const fetchEntityDoc = async ({ collectionName, id }) => {
   const snap = await getDoc(doc(db, collectionName, id));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
@@ -308,5 +330,8 @@ export const directoryActions = {
   setDirectoryRsvp,
   setDirectoryReminderPreferences,
   listDirectoryGeoLanding,
+  submitCatalogContribution,
+  listCatalogContributionQueue,
+  resolveCatalogContribution,
   previewDirectoryRoomSessionByCode,
 };
