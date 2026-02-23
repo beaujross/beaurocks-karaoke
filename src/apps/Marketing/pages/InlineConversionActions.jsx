@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { trackEvent } from "../../../lib/firebase";
+import { trackEvent } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { marketingFlags } from "../featureFlags";
 
@@ -220,3 +220,4 @@ const InlineConversionActions = ({ entry = {}, session, navigate, authFlow }) =>
 };
 
 export default InlineConversionActions;
+

@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 
 const PROJECT_ID = "beaurocks-karaoke-v2";
+const ALLOW_OUTSIDE_COUNTY_FLAG = "--allow-outside-county";
 const DAY_KEYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY_TO_INDEX = {
   Sun: 0,
@@ -19,9 +20,11 @@ const DAY_TO_INDEX = {
 const usage = `
 Usage:
   node scripts/ingest/seed-kitsap-directory-rest.mjs --file C:\\path\\kitsap_karaoke_schedule.csv [--dry-run]
+  node scripts/ingest/seed-kitsap-directory-rest.mjs --file C:\\path\\kitsap_karaoke_schedule.csv [--dry-run] --allow-outside-county
 
 Notes:
   - Writes approved docs into venues and karaoke_events.
+  - Enforces Kitsap-only cities by default (disable with --allow-outside-county).
   - Uses firebase-tools CLI OAuth token from ~/.config/configstore/firebase-tools.json.
 `;
 
@@ -40,6 +43,7 @@ if (hasFlag("--help")) {
 
 const inputFile = readArg("--file");
 const dryRun = hasFlag("--dry-run");
+const allowOutsideCounty = hasFlag(ALLOW_OUTSIDE_COUNTY_FLAG);
 
 if (!inputFile) {
   console.error("Missing --file argument.");
@@ -57,6 +61,28 @@ const normalize = (value = "") =>
     .replace(/SkÃ¥l/g, "Skal")
     .replace(/\s+/g, " ")
     .trim();
+
+const KITSAP_CITY_ALLOWLIST = new Set([
+  "bainbridge island",
+  "belfair",
+  "bremerton",
+  "burley",
+  "gorst",
+  "hansville",
+  "keyport",
+  "kingston",
+  "olmsted",
+  "port gamble",
+  "port orchard",
+  "poulsbo",
+  "rollingbay",
+  "seabeck",
+  "silverdale",
+  "suquamish",
+  "tracyton",
+]);
+
+const normalizeCityKey = (value = "") => normalize(value).toLowerCase();
 
 const slug = (value = "", fallback = "item") => {
   const token = normalize(value)
@@ -366,9 +392,22 @@ const createWrite = ({ collectionName, docId, data }) => ({
 
 const run = async () => {
   const raw = await fs.readFile(inputFile, "utf8");
-  const rows = parseCsv(raw)
+  const parsedRows = parseCsv(raw)
     .filter((row) => normalize(row.place))
     .filter((row) => normalize(row.city));
+  const skippedOutsideCounty = [];
+  const rows = parsedRows.filter((row) => {
+    if (allowOutsideCounty) return true;
+    const city = normalize(row.city);
+    const cityKey = normalizeCityKey(city);
+    if (KITSAP_CITY_ALLOWLIST.has(cityKey)) return true;
+    skippedOutsideCounty.push({
+      place: normalize(row.place),
+      city,
+      region: normalize(row.region),
+    });
+    return false;
+  });
   if (!rows.length) {
     throw new Error("No valid rows in spreadsheet.");
   }
@@ -406,15 +445,22 @@ const run = async () => {
     JSON.stringify(
       {
         rows: rows.length,
+        skippedOutsideCounty: skippedOutsideCounty.length,
         venues: venueDocs.length,
         events: eventDocs.length,
         writes: writes.length,
         dryRun,
+        allowOutsideCounty,
       },
       null,
       2
     )
   );
+
+  if (skippedOutsideCounty.length) {
+    console.log("Skipped non-Kitsap cities (policy guard):");
+    console.log(JSON.stringify(skippedOutsideCounty, null, 2));
+  }
 
   if (dryRun) return;
   const accessToken = await loadFirebaseCliToken();
@@ -430,4 +476,3 @@ run().catch((error) => {
   console.error(error?.message || error);
   process.exit(1);
 });
-

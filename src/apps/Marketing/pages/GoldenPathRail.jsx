@@ -1,5 +1,5 @@
 import React from "react";
-import { trackEvent } from "../../../lib/firebase";
+import { trackEvent } from "../lib/marketingAnalytics";
 import { MARKETING_ROUTE_PAGES } from "../routing";
 
 const GoldenPathRail = ({ navigate, muted = false }) => (
@@ -53,3 +53,4 @@ const GoldenPathRail = ({ navigate, muted = false }) => (
 );
 
 export default GoldenPathRail;
+

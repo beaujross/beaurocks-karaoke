@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { trackEvent } from "../../../lib/firebase";
+import { trackEvent } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { formatDateTime, fromDateTimeLocalInput, toDateTimeLocalInput } from "./shared";
 import {
@@ -278,3 +278,4 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
 };
 
 export default ListingSubmissionPage;
+

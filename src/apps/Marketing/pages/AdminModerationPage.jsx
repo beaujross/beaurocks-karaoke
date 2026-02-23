@@ -8,7 +8,7 @@ import {
   limit,
   onSnapshot,
 } from "../../../lib/firebase";
-import { trackEvent } from "../../../lib/firebase";
+import { trackEvent } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { marketingFlags } from "../featureFlags";
 import { formatDateTime } from "./shared";
@@ -298,3 +298,4 @@ const AdminModerationPage = ({ session }) => {
 };
 
 export default AdminModerationPage;
+

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { trackEvent } from "../../../lib/firebase";
+import { trackEvent } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { marketingFlags } from "../featureFlags";
 
@@ -136,3 +136,4 @@ const ClaimOwnershipCard = ({ listingType = "venue", listingId = "", session, au
 };
 
 export default ClaimOwnershipCard;
+

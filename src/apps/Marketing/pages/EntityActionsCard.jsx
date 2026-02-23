@@ -7,7 +7,7 @@ import {
   limit,
   onSnapshot,
 } from "../../../lib/firebase";
-import { trackEvent } from "../../../lib/firebase";
+import { trackEvent } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { DIRECTORY_REVIEW_TAGS } from "../types";
 import { marketingFlags } from "../featureFlags";
@@ -21,7 +21,14 @@ const targetRouteFor = (targetType = "", targetId = "") => {
   return { page: "discover", id: "" };
 };
 
-const EntityActionsCard = ({ targetType, targetId, session, authFlow, navigate }) => {
+const EntityActionsCard = ({
+  targetType,
+  targetId,
+  session,
+  authFlow,
+  navigate,
+  conversionSource = "detail_page",
+}) => {
   const uid = session?.uid || "";
   const canAct = !!uid && !session?.isAnonymous;
   const canRsvp = marketingFlags.rsvpEnabled && ["event", "session"].includes(String(targetType || ""));
@@ -170,12 +177,12 @@ const EntityActionsCard = ({ targetType, targetId, session, authFlow, navigate }
       if (following) {
         await directoryActions.unfollowDirectoryEntity({ targetType, targetId });
         setMessage("Unfollowed.");
-        trackEvent("mk_follow_set", { targetType, targetId, mode: "unfollow" });
+        trackEvent("mk_follow_set", { targetType, targetId, mode: "unfollow", source: conversionSource });
         setNextStep(null);
       } else {
         await directoryActions.followDirectoryEntity({ targetType, targetId });
         setMessage("Following.");
-        trackEvent("mk_follow_set", { targetType, targetId, mode: "follow" });
+        trackEvent("mk_follow_set", { targetType, targetId, mode: "follow", source: conversionSource });
         if (targetType === "host" || targetType === "performer") {
           setNextStep({
             label: "Next: RSVP to an event",
@@ -206,7 +213,12 @@ const EntityActionsCard = ({ targetType, targetId, session, authFlow, navigate }
       });
       setCheckinNote("");
       setMessage("Check-in saved.");
-      trackEvent("mk_checkin_create", { targetType, targetId, isPublic: !!checkinPublic });
+      trackEvent("mk_checkin_create", {
+        targetType,
+        targetId,
+        isPublic: !!checkinPublic,
+        source: conversionSource,
+      });
     } catch (error) {
       setMessage(String(error?.message || "Check-in failed."));
     } finally {
@@ -236,6 +248,7 @@ const EntityActionsCard = ({ targetType, targetId, session, authFlow, navigate }
         targetId,
         rating: Number(reviewRating || 5),
         tagsCount: reviewTags.length,
+        source: conversionSource,
       });
     } catch (error) {
       setMessage(String(error?.message || "Review failed."));
@@ -271,7 +284,7 @@ const EntityActionsCard = ({ targetType, targetId, session, authFlow, navigate }
         ],
       });
       setMessage("RSVP saved.");
-      trackEvent("mk_rsvp_set", { targetType, targetId, status: rsvpStatus });
+      trackEvent("mk_rsvp_set", { targetType, targetId, status: rsvpStatus, source: conversionSource });
       setNextStep({
         label: "Next: Enable reminders",
         onClick: () => saveReminderPreferences(),
@@ -300,8 +313,8 @@ const EntityActionsCard = ({ targetType, targetId, session, authFlow, navigate }
         phone: reminderPhone,
       });
       setMessage("Reminder preferences saved.");
-      if (reminderEmailOptIn) trackEvent("mk_reminder_opt_in_email", { targetType, targetId });
-      if (reminderSmsOptIn) trackEvent("mk_reminder_opt_in_sms", { targetType, targetId });
+      if (reminderEmailOptIn) trackEvent("mk_reminder_opt_in_email", { targetType, targetId, source: conversionSource });
+      if (reminderSmsOptIn) trackEvent("mk_reminder_opt_in_sms", { targetType, targetId, source: conversionSource });
       setNextStep(null);
     } catch (error) {
       setMessage(String(error?.message || "Reminder preferences failed."));

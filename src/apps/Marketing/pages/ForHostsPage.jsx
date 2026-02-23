@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { trackEvent } from "../../../lib/firebase";
+import { trackEvent } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { fromDateTimeLocalInput } from "./shared";
 
@@ -191,3 +191,4 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
 };
 
 export default ForHostsPage;
+

@@ -13,7 +13,7 @@ import CadenceUpdateCard from "./CadenceUpdateCard";
 import EmptyStatePanel from "./EmptyStatePanel";
 import { formatDateTime } from "./shared";
 
-const EventPage = ({ id, navigate, session, authFlow }) => {
+const EventPage = ({ id, route, navigate, session, authFlow }) => {
   const [eventItem, setEventItem] = useState(null);
   const [venue, setVenue] = useState(null);
   const [hostProfile, setHostProfile] = useState(null);
@@ -124,6 +124,7 @@ const EventPage = ({ id, navigate, session, authFlow }) => {
           session={session}
           navigate={navigate}
           authFlow={authFlow}
+          conversionSource={String(route?.params?.src || "event_page")}
         />
       </div>
     </section>

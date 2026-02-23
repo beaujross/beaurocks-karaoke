@@ -3,6 +3,7 @@ import { useDirectoryDiscover } from "../hooks/useDirectoryDiscover";
 import { useGoogleMapsScript } from "../hooks/useGoogleMapsScript";
 import { MARKETING_REGION_PRESETS } from "../geoPresets";
 import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
+import { trackEvent } from "../lib/marketingAnalytics";
 import EmptyStatePanel from "./EmptyStatePanel";
 import InlineConversionActions from "./InlineConversionActions";
 import { formatDateTime } from "./shared";
@@ -32,6 +33,102 @@ const MAP_TYPE_META = {
   venue: { label: "venue", routePage: "venue", markerColor: "#ff68bf" },
   event: { label: "event", routePage: "event", markerColor: "#ffd668" },
   room_session: { label: "room session", routePage: "session", markerColor: "#b384ff" },
+};
+const TIME_WINDOW_OPTIONS = [
+  { id: "all", label: "All Times" },
+  { id: "now", label: "Now" },
+  { id: "tonight", label: "Tonight" },
+  { id: "this_week", label: "This Week" },
+];
+const EARTH_RADIUS_MILES = 3958.8;
+const MS_PER_HOUR = 60 * 60 * 1000;
+const MS_PER_DAY = 24 * MS_PER_HOUR;
+const LIVE_LOOKBACK_MS = 2 * MS_PER_HOUR;
+const SOON_LOOKAHEAD_MS = 8 * MS_PER_HOUR;
+
+const toRadians = (value = 0) => (Number(value || 0) * Math.PI) / 180;
+
+const calculateDistanceMiles = (from = null, to = null) => {
+  if (!from || !to) return null;
+  const lat1 = Number(from.lat);
+  const lng1 = Number(from.lng);
+  const lat2 = Number(to.lat);
+  const lng2 = Number(to.lng);
+  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return null;
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Number((EARTH_RADIUS_MILES * c).toFixed(2));
+};
+
+const formatDistanceLabel = (distanceMiles = null) => {
+  const miles = Number(distanceMiles);
+  if (!Number.isFinite(miles) || miles < 0) return "";
+  if (miles < 0.2) {
+    const feet = Math.max(100, Math.round(miles * 5280));
+    return `${feet.toLocaleString()} ft away`;
+  }
+  return `${miles.toFixed(1)} mi away`;
+};
+
+const computeTimePriority = (startsAtMs = 0, nowMs = Date.now()) => {
+  const starts = Number(startsAtMs || 0);
+  if (starts <= 0) return 0;
+  const delta = starts - nowMs;
+  if (delta >= -LIVE_LOOKBACK_MS && delta <= SOON_LOOKAHEAD_MS) return 44;
+  if (delta > SOON_LOOKAHEAD_MS && delta <= 24 * MS_PER_HOUR) return 28;
+  if (delta > 24 * MS_PER_HOUR && delta <= 72 * MS_PER_HOUR) return 16;
+  if (delta < -LIVE_LOOKBACK_MS && delta >= -24 * MS_PER_HOUR) return 12;
+  return 6;
+};
+
+const scoreSearchRelevance = (entry = {}, searchQuery = "") => {
+  const query = String(searchQuery || "").trim().toLowerCase();
+  if (!query) return 0;
+  const title = String(entry?.title || "").toLowerCase();
+  const subtitle = String(entry?.subtitle || "").toLowerCase();
+  const detail = String(entry?.detailLine || "").toLowerCase();
+  if (title.startsWith(query)) return 26;
+  if (title.includes(query)) return 18;
+  if (subtitle.includes(query)) return 12;
+  if (detail.includes(query)) return 8;
+  return 0;
+};
+
+const getTonightWindowMs = (nowMs = Date.now()) => {
+  const now = new Date(nowMs);
+  const start = new Date(now);
+  start.setHours(17, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  end.setHours(2, 0, 0, 0);
+  if (now.getHours() < 2) {
+    start.setDate(start.getDate() - 1);
+    end.setDate(end.getDate() - 1);
+  }
+  return {
+    startMs: start.getTime(),
+    endMs: end.getTime(),
+  };
+};
+
+const matchesTimeWindow = (entry = {}, timeWindow = "all", nowMs = Date.now()) => {
+  const startsAtMs = Number(entry?.startsAtMs || 0);
+  if (timeWindow === "all") return true;
+  if (startsAtMs <= 0) return false;
+  if (timeWindow === "now") {
+    return startsAtMs >= (nowMs - LIVE_LOOKBACK_MS) && startsAtMs <= (nowMs + MS_PER_HOUR);
+  }
+  if (timeWindow === "tonight") {
+    const tonight = getTonightWindowMs(nowMs);
+    return startsAtMs >= tonight.startMs && startsAtMs <= tonight.endMs;
+  }
+  if (timeWindow === "this_week") {
+    return startsAtMs >= (nowMs - LIVE_LOOKBACK_MS) && startsAtMs <= (nowMs + (7 * MS_PER_DAY));
+  }
+  return true;
 };
 
 const normalizeListingType = (value = "") => {
@@ -145,9 +242,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [timeWindow, setTimeWindow] = useState("all");
+  const [sortMode, setSortMode] = useState("smart");
   const [boundsOnly, setBoundsOnly] = useState(false);
   const [selectedKey, setSelectedKey] = useState("");
   const [mapBounds, setMapBounds] = useState(null);
+  const [userLocation, setUserLocation] = useState(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState("");
+  const [rankingNowMs, setRankingNowMs] = useState(() => Date.now());
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -164,12 +267,17 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     apiKey: String(mapsConfig?.apiKey || ""),
   });
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setRankingNowMs(Date.now()), 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const allListings = useMemo(() => {
     const next = [];
     data.events.forEach((entry) => next.push(toListing(entry, "event")));
     data.sessions.forEach((entry) => next.push(toListing(entry, "room_session")));
     data.venues.forEach((entry) => next.push(toListing(entry, "venue")));
-    return next.sort(sortListings);
+    return next;
   }, [data.events, data.sessions, data.venues]);
 
   const filteredByType = useMemo(() => {
@@ -177,17 +285,62 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     return allListings.filter((entry) => entry.listingType === typeFilter);
   }, [allListings, typeFilter]);
 
+  const filteredByTimeWindow = useMemo(
+    () => filteredByType.filter((entry) => matchesTimeWindow(entry, timeWindow, rankingNowMs)),
+    [filteredByType, timeWindow, rankingNowMs]
+  );
+
+  const rankedListings = useMemo(() => {
+    const withSignals = filteredByTimeWindow.map((entry) => {
+      const distanceMiles = calculateDistanceMiles(userLocation, entry.location);
+      const distanceScore = Number.isFinite(distanceMiles)
+        ? Math.max(0, 32 - (distanceMiles * 1.8))
+        : 0;
+      const typeBonus = entry.listingType === "event" ? 12 : entry.listingType === "room_session" ? 8 : 5;
+      const score = computeTimePriority(entry.startsAtMs, rankingNowMs)
+        + distanceScore
+        + typeBonus
+        + scoreSearchRelevance(entry, search);
+      return {
+        ...entry,
+        distanceMiles: Number.isFinite(distanceMiles) ? distanceMiles : null,
+        distanceLabel: formatDistanceLabel(distanceMiles),
+        score,
+      };
+    });
+
+    if (sortMode === "soonest") {
+      return withSignals.slice().sort(sortListings);
+    }
+    if (sortMode === "nearest") {
+      return withSignals.slice().sort((a, b) => {
+        const aDistance = Number(a?.distanceMiles);
+        const bDistance = Number(b?.distanceMiles);
+        const aHasDistance = Number.isFinite(aDistance);
+        const bHasDistance = Number.isFinite(bDistance);
+        if (aHasDistance && bHasDistance && aDistance !== bDistance) return aDistance - bDistance;
+        if (aHasDistance && !bHasDistance) return -1;
+        if (!aHasDistance && bHasDistance) return 1;
+        return sortListings(a, b);
+      });
+    }
+    return withSignals.slice().sort((a, b) => {
+      if (a.score !== b.score) return b.score - a.score;
+      return sortListings(a, b);
+    });
+  }, [filteredByTimeWindow, sortMode, userLocation, search, rankingNowMs]);
+
   const mappableListings = useMemo(
-    () => filteredByType.filter((entry) => !!entry.location),
-    [filteredByType]
+    () => rankedListings.filter((entry) => !!entry.location),
+    [rankedListings]
   );
   const listingsInBounds = useMemo(() => {
     if (!mapBounds) return mappableListings;
     return mappableListings.filter((entry) => pointInBounds(entry.location, mapBounds));
   }, [mappableListings, mapBounds]);
   const visibleListings = useMemo(
-    () => (boundsOnly ? listingsInBounds : filteredByType),
-    [boundsOnly, listingsInBounds, filteredByType]
+    () => (boundsOnly ? listingsInBounds : rankedListings),
+    [boundsOnly, listingsInBounds, rankedListings]
   );
   const effectiveSelectedKey = useMemo(() => {
     if (visibleListings.some((entry) => entry.key === selectedKey)) return selectedKey;
@@ -195,8 +348,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   }, [visibleListings, selectedKey]);
 
   const scheduledCount = useMemo(
-    () => filteredByType.reduce((count, entry) => (entry.startsAtMs > 0 ? count + 1 : count), 0),
-    [filteredByType]
+    () => rankedListings.reduce((count, entry) => (entry.startsAtMs > 0 ? count + 1 : count), 0),
+    [rankedListings]
   );
 
   const selectedListing = useMemo(
@@ -228,6 +381,53 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (!googleMaps || !map) return;
     fitMapToListings({ googleMaps, map, listings: mappableListings });
   }, [mappableListings]);
+
+  const requestUserLocation = useCallback(() => {
+    if (typeof window === "undefined" || !window.navigator?.geolocation) {
+      setGeoError("Location services are unavailable in this browser.");
+      return;
+    }
+    setGeoLoading(true);
+    setGeoError("");
+    window.navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nextLocation = {
+          lat: Number(position?.coords?.latitude || 0),
+          lng: Number(position?.coords?.longitude || 0),
+        };
+        if (!Number.isFinite(nextLocation.lat) || !Number.isFinite(nextLocation.lng)) {
+          setGeoError("Could not read your location coordinates.");
+          setGeoLoading(false);
+          return;
+        }
+        setUserLocation(nextLocation);
+        trackEvent("mk_discover_geolocate_success", {
+          source: "discover_map",
+          sortMode,
+        });
+        setSortMode((prev) => (prev === "soonest" ? prev : "nearest"));
+        setGeoLoading(false);
+        const map = mapRef.current;
+        if (map) {
+          map.panTo(nextLocation);
+          if ((map.getZoom() || 0) < 10) map.setZoom(10);
+        }
+      },
+      (err) => {
+        setGeoLoading(false);
+        setGeoError(String(err?.message || "Location permission was denied."));
+        trackEvent("mk_discover_geolocate_error", {
+          source: "discover_map",
+          reason: String(err?.code || err?.message || "denied"),
+        });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 120000,
+      }
+    );
+  }, [sortMode]);
 
   useEffect(() => {
     if (!selectedListing) return;
@@ -325,12 +525,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   }, [mappableListings, effectiveSelectedKey, focusListing]);
 
   const hiddenWithoutCoords = boundsOnly
-    ? filteredByType.length - mappableListings.length
+    ? rankedListings.length - mappableListings.length
     : 0;
   const mapBoundsLabel = mapBounds
     ? `${mapBounds.south.toFixed(2)} to ${mapBounds.north.toFixed(2)} lat`
     : "Move map to define bounds";
-  const hasSearchFilters = !!String(search || "").trim() || !!String(region || "").trim();
+  const hasSearchFilters = !!String(search || "").trim()
+    || !!String(region || "").trim()
+    || sortMode !== "smart"
+    || timeWindow !== "all";
   const dynamicRegionPresets = useMemo(() => {
     const source = [
       ...(Array.isArray(rawData?.venues) ? rawData.venues : []),
@@ -366,6 +569,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       setRegion("nationwide");
       setSearch("");
       setTypeFilter("all");
+      setTimeWindow("all");
+      setSortMode("smart");
       return;
     }
     if (intent === "submit_listing") {
@@ -407,6 +612,42 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             <option value="room_session">Room Sessions</option>
           </select>
         </label>
+        <label>
+          Rank
+          <select
+            value={sortMode}
+            onChange={(event) => {
+              const nextMode = event.target.value;
+              setSortMode(nextMode);
+              trackEvent("mk_discover_sort_change", {
+                source: "discover_filters",
+                sortMode: nextMode,
+              });
+            }}
+          >
+            <option value="smart">Smart (live + near)</option>
+            <option value="soonest">Soonest start time</option>
+            <option value="nearest">Nearest to me</option>
+          </select>
+        </label>
+      </div>
+      <div className="mk3-filter-chips">
+        {TIME_WINDOW_OPTIONS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            className={timeWindow === option.id ? "active" : ""}
+            onClick={() => {
+              setTimeWindow(option.id);
+              trackEvent("mk_discover_time_filter_change", {
+                source: "discover_filters",
+                timeWindow: option.id,
+              });
+            }}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
       <div className="mk3-filter-chips">
         {dynamicRegionPresets.map((preset) => (
@@ -420,16 +661,26 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           </button>
         ))}
         {hasSearchFilters && (
-          <button type="button" onClick={() => { setSearch(""); setRegion(""); setTypeFilter("all"); }}>
+          <button
+            type="button"
+            onClick={() => {
+              setSearch("");
+              setRegion("");
+              setTypeFilter("all");
+              setTimeWindow("all");
+              setSortMode("smart");
+            }}
+          >
             Clear filters
           </button>
         )}
       </div>
+      {geoError && <div className="mk3-status mk3-status-warning">{geoError}</div>}
 
       <div className="mk3-metric-row">
         <div className="mk3-metric">
           <span>matching listings</span>
-          <strong>{filteredByType.length}</strong>
+          <strong>{rankedListings.length}</strong>
         </div>
         <div className="mk3-metric">
           <span>with map coords</span>
@@ -461,6 +712,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             <button type="button" onClick={recenterMap} disabled={!mappableListings.length || !mapsLoaded}>
               Recenter to markers
             </button>
+            <button
+              type="button"
+              onClick={requestUserLocation}
+              disabled={geoLoading}
+            >
+              {geoLoading ? "Locating..." : userLocation ? "Refresh my location" : "Use my location"}
+            </button>
           </div>
 
           {!mapEnabled && (
@@ -479,11 +737,11 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           )}
 
           <div className="mk3-map-footer">
-            <span>{visibleListings.length} shown in rail</span>
-            <span>{selectedListing ? `selected: ${selectedListing.title}` : "select a marker or card"}</span>
-            <span>{mapBoundsLabel}</span>
-          </div>
-        </article>
+              <span>{visibleListings.length} shown in rail</span>
+              <span>{selectedListing ? `selected: ${selectedListing.title}` : "select a marker or card"}</span>
+              <span>{mapBoundsLabel}</span>
+            </div>
+          </article>
 
         <aside className="mk3-feed-column">
           {loading && <div className="mk3-status">Loading approved karaoke listings...</div>}
@@ -498,7 +756,16 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 <button type="button" onClick={() => window.location.reload()}>
                   Refresh now
                 </button>
-                <button type="button" onClick={() => { setRegion("nationwide"); setSearch(""); setTypeFilter("all"); }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegion("nationwide");
+                    setSearch("");
+                    setTypeFilter("all");
+                    setTimeWindow("all");
+                    setSortMode("smart");
+                  }}
+                >
                   Use broad filters
                 </button>
               </div>
@@ -540,17 +807,41 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 <div className="mk3-chip">{entry.typeLabel}</div>
                 <h3>{entry.title}</h3>
                 <div className="mk3-card-subtitle">{entry.subtitle}</div>
+                {!!entry.distanceLabel && <div className="mk3-card-subtitle">{entry.distanceLabel}</div>}
                 {entry.timeLabel && <div className="mk3-card-time">{entry.timeLabel}</div>}
                 {entry.detailLine && <div className="mk3-card-subtitle">{entry.detailLine}</div>}
                 <div className="mk3-actions-inline">
                   <button
                     type="button"
-                    onClick={() => focusListing(entry, { pan: true, zoom: true })}
+                    onClick={() => {
+                      focusListing(entry, { pan: true, zoom: true });
+                      trackEvent("mk_discover_focus_marker", {
+                        source: "discover_rail",
+                        listingType: entry.listingType,
+                        listingId: entry.id,
+                        sortMode,
+                      });
+                    }}
                     disabled={!entry.location || !mapsLoaded}
                   >
                     Focus marker
                   </button>
-                  <button type="button" onClick={() => navigate(entry.routePage, entry.id)}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      trackEvent("mk_discover_open_details", {
+                        source: "discover_rail",
+                        listingType: entry.listingType,
+                        listingId: entry.id,
+                        sortMode,
+                      });
+                      navigate(entry.routePage, entry.id, {
+                        src: "discover",
+                        src_listing_type: entry.listingType,
+                        src_sort_mode: sortMode,
+                      });
+                    }}
+                  >
                     Open details
                   </button>
                 </div>

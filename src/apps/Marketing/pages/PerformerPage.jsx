@@ -13,7 +13,7 @@ import EntityActionsCard from "./EntityActionsCard";
 import EmptyStatePanel from "./EmptyStatePanel";
 import { readStars } from "./shared";
 
-const PerformerPage = ({ id, session, navigate, authFlow }) => {
+const PerformerPage = ({ id, route, session, navigate, authFlow }) => {
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
 
@@ -85,6 +85,7 @@ const PerformerPage = ({ id, session, navigate, authFlow }) => {
         session={session}
         navigate={navigate}
         authFlow={authFlow}
+        conversionSource={String(route?.params?.src || "performer_page")}
       />
     </section>
   );

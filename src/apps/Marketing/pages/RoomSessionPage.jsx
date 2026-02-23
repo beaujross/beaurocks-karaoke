@@ -12,7 +12,7 @@ import EntityActionsCard from "./EntityActionsCard";
 import EmptyStatePanel from "./EmptyStatePanel";
 import { formatDateTime } from "./shared";
 
-const RoomSessionPage = ({ id, navigate, session, authFlow }) => {
+const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
   const [sessionItem, setSessionItem] = useState(null);
   const [hostProfile, setHostProfile] = useState(null);
   const [error, setError] = useState("");
@@ -86,6 +86,7 @@ const RoomSessionPage = ({ id, navigate, session, authFlow }) => {
         session={session}
         navigate={navigate}
         authFlow={authFlow}
+        conversionSource={String(route?.params?.src || "session_page")}
       />
     </section>
   );

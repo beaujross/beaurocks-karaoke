@@ -1,5 +1,5 @@
 import React from "react";
-import { trackEvent } from "../../../lib/firebase";
+import { trackEvent } from "../lib/marketingAnalytics";
 
 const ForVenuesPage = ({ navigate, session, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
@@ -57,3 +57,4 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
 };
 
 export default ForVenuesPage;
+

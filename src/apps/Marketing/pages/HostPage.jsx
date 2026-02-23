@@ -14,7 +14,7 @@ import ClaimOwnershipCard from "./ClaimOwnershipCard";
 import EmptyStatePanel from "./EmptyStatePanel";
 import { formatDateTime } from "./shared";
 
-const HostPage = ({ id, navigate, session, authFlow }) => {
+const HostPage = ({ id, route, navigate, session, authFlow }) => {
   const [profile, setProfile] = useState(null);
   const [events, setEvents] = useState([]);
   const [sessions, setSessions] = useState([]);
@@ -117,6 +117,7 @@ const HostPage = ({ id, navigate, session, authFlow }) => {
           session={session}
           navigate={navigate}
           authFlow={authFlow}
+          conversionSource={String(route?.params?.src || "host_page")}
         />
       </div>
     </section>

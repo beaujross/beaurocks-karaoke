@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { trackEvent } from "../../lib/firebase";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { trackEvent } from "./lib/marketingAnalytics";
 import { marketingFlags } from "./featureFlags";
 import {
   MARKETING_ROUTE_PAGES,
@@ -13,24 +13,25 @@ import {
 import { applyMarketingSeo } from "./seo";
 import { directoryActions } from "./api/directoryApi";
 import { useDirectorySession } from "./hooks/useDirectorySession";
-import DiscoverPage from "./pages/DiscoverPage";
-import VenuePage from "./pages/VenuePage";
-import EventPage from "./pages/EventPage";
-import HostPage from "./pages/HostPage";
-import PerformerPage from "./pages/PerformerPage";
-import RoomSessionPage from "./pages/RoomSessionPage";
-import ProfileDashboardPage from "./pages/ProfileDashboardPage";
-import ListingSubmissionPage from "./pages/ListingSubmissionPage";
-import AdminModerationPage from "./pages/AdminModerationPage";
-import ForHostsPage from "./pages/ForHostsPage";
-import ForVenuesPage from "./pages/ForVenuesPage";
-import ForPerformersPage from "./pages/ForPerformersPage";
-import ForFansPage from "./pages/ForFansPage";
-import JoinPage from "./pages/JoinPage";
-import GeoLandingPage from "./pages/GeoLandingPage";
-import GoldenPathRail from "./pages/GoldenPathRail";
 import { formatDateTime } from "./pages/shared";
 import "./marketing.css";
+
+const DiscoverPage = lazy(() => import("./pages/DiscoverPage"));
+const VenuePage = lazy(() => import("./pages/VenuePage"));
+const EventPage = lazy(() => import("./pages/EventPage"));
+const HostPage = lazy(() => import("./pages/HostPage"));
+const PerformerPage = lazy(() => import("./pages/PerformerPage"));
+const RoomSessionPage = lazy(() => import("./pages/RoomSessionPage"));
+const ProfileDashboardPage = lazy(() => import("./pages/ProfileDashboardPage"));
+const ListingSubmissionPage = lazy(() => import("./pages/ListingSubmissionPage"));
+const AdminModerationPage = lazy(() => import("./pages/AdminModerationPage"));
+const ForHostsPage = lazy(() => import("./pages/ForHostsPage"));
+const ForVenuesPage = lazy(() => import("./pages/ForVenuesPage"));
+const ForPerformersPage = lazy(() => import("./pages/ForPerformersPage"));
+const ForFansPage = lazy(() => import("./pages/ForFansPage"));
+const JoinPage = lazy(() => import("./pages/JoinPage"));
+const GeoLandingPage = lazy(() => import("./pages/GeoLandingPage"));
+const GoldenPathRail = lazy(() => import("./pages/GoldenPathRail"));
 
 const PRODUCT_BRAND = {
   name: "BeauRocks Karaoke",
@@ -44,16 +45,23 @@ const PRIMARY_PAGE_OPTIONS = [
   { id: MARKETING_ROUTE_PAGES.discover, label: "Setlist Finder" },
   { id: MARKETING_ROUTE_PAGES.forHosts, label: "For Hosts" },
   { id: MARKETING_ROUTE_PAGES.forVenues, label: "For Venues" },
-  { id: MARKETING_ROUTE_PAGES.forPerformers, label: "For Performers" },
-  { id: MARKETING_ROUTE_PAGES.forFans, label: "For Fans" },
 ];
 
 const SECONDARY_PAGE_OPTIONS = [
+  { id: MARKETING_ROUTE_PAGES.forPerformers, label: "For Performers" },
+  { id: MARKETING_ROUTE_PAGES.forFans, label: "For Fans" },
   { id: MARKETING_ROUTE_PAGES.submit, label: "Submit Listing" },
   { id: MARKETING_ROUTE_PAGES.profile, label: "Dashboard" },
   { id: MARKETING_ROUTE_PAGES.join, label: "Join By Code" },
   { id: MARKETING_ROUTE_PAGES.admin, label: "Marketing Admin" },
 ];
+
+const PageShellLoader = () => (
+  <div className="mk3-status">
+    <strong>Loading page...</strong>
+    <span>Preparing the next surface.</span>
+  </div>
+);
 
 const normalizePage = (value = "") => {
   const safe = String(value || "").trim().toLowerCase();
@@ -519,6 +527,14 @@ const MarketingSite = () => {
                   <>
                     <button
                       type="button"
+                      className="mk3-auth-cta-primary"
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
+                    >
+                      Find Karaoke Near Me
+                    </button>
+                    <button
+                      type="button"
+                      className="mk3-auth-cta-secondary"
                       onClick={() => {
                         setAuthMode("signup");
                         scrollAuthPanelIntoView();
@@ -526,19 +542,21 @@ const MarketingSite = () => {
                     >
                       Create Account
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
-                    >
-                      Open Setlist Finder
-                    </button>
                   </>
                 ) : (
                   <>
-                    <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.profile)}>
+                    <button
+                      type="button"
+                      className="mk3-auth-cta-primary"
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.profile)}
+                    >
                       Open Dashboard
                     </button>
-                    <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}>
+                    <button
+                      type="button"
+                      className="mk3-auth-cta-secondary"
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
+                    >
                       Open Setlist Finder
                     </button>
                   </>
@@ -606,15 +624,20 @@ const MarketingSite = () => {
               )}
             </div>
           </section>
-          {pageNode}
+          <Suspense fallback={<PageShellLoader />}>
+            {pageNode}
+          </Suspense>
         </div>
       </main>
-      <GoldenPathRail
-        navigate={navigate}
-        muted={activePage === MARKETING_ROUTE_PAGES.profile && !hasFullAccount}
-      />
+      <Suspense fallback={null}>
+        <GoldenPathRail
+          navigate={navigate}
+          muted={activePage === MARKETING_ROUTE_PAGES.profile && !hasFullAccount}
+        />
+      </Suspense>
     </div>
   );
 };
 
 export default MarketingSite;
+

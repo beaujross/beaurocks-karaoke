@@ -8,17 +8,26 @@ const PROJECT_ID = "beaurocks-karaoke-v2";
 const REGION = "wa_kitsap";
 const GEOCODER_USER_AGENT = "beaurocks-karaoke-geocoder/1.0 (directory cleanup)";
 const APPLY_FLAG = "--apply";
+const ALLOW_OUTSIDE_COUNTY_FLAG = "--allow-outside-county";
 const WRITE_BATCH_SIZE = 200;
+const REGION_POLICY = {
+  wa_kitsap: {
+    stateAbbr: "WA",
+    countyName: "Kitsap County",
+  },
+};
 
 const usage = `
 Usage:
   node scripts/ingest/geocode-kitsap-venues.mjs
   node scripts/ingest/geocode-kitsap-venues.mjs --apply
+  node scripts/ingest/geocode-kitsap-venues.mjs --apply --allow-outside-county
 
 Behavior:
   - Reads approved+public venues in region "${REGION}" from Firestore.
   - Resolves addresses and coordinates.
   - Writes address1 + lat/lng + location when --apply is provided.
+  - Enforces region county policy by default (can be bypassed with ${ALLOW_OUTSIDE_COUNTY_FLAG}).
 `;
 
 const args = process.argv.slice(2);
@@ -27,6 +36,7 @@ if (args.includes("--help")) {
   process.exit(0);
 }
 const apply = args.includes(APPLY_FLAG);
+const allowOutsideCounty = args.includes(ALLOW_OUTSIDE_COUNTY_FLAG);
 
 const MANUAL_OVERRIDES = {
   venue_kitsap_belfair_the_woodshed: { address1: "23698 NE State Route 3, Belfair, WA 98528" },
@@ -180,6 +190,8 @@ const geocodeArcgis = async ({ query = "" }) => {
     matchAddr: String(attr?.Match_addr || "").trim(),
     placeAddr: String(attr?.Place_addr || "").trim(),
     type: String(attr?.Type || "").trim(),
+    county: String(attr?.Subregion || "").trim(),
+    stateAbbr: String(attr?.RegionAbbr || "").trim(),
   };
 };
 
@@ -193,6 +205,25 @@ const isGeocodeAcceptable = (result = null, city = "") => {
   if (score >= 98) return true;
   if (score >= 94 && cityToken && label.includes(cityToken) && type !== "city") return true;
   return false;
+};
+
+const checkRegionPolicy = (result = null) => {
+  const policy = REGION_POLICY[REGION];
+  if (!policy) {
+    return { ok: true, reason: "" };
+  }
+  const county = String(result?.county || "").trim();
+  const stateAbbr = String(result?.stateAbbr || "").trim().toUpperCase();
+  if (!county || !stateAbbr) {
+    return { ok: false, reason: "missing_county_or_state" };
+  }
+  if (stateAbbr !== String(policy.stateAbbr || "").toUpperCase()) {
+    return { ok: false, reason: `wrong_state_${stateAbbr}` };
+  }
+  if (county.toLowerCase() !== String(policy.countyName || "").toLowerCase()) {
+    return { ok: false, reason: `outside_county_${county}` };
+  }
+  return { ok: true, reason: "" };
 };
 
 const loadKitsapVenues = async (accessToken) => {
@@ -293,6 +324,20 @@ const run = async () => {
         await sleep(280);
         continue;
       }
+      const policyCheck = checkRegionPolicy(manualGeo);
+      if (!allowOutsideCounty && !policyCheck.ok) {
+        unresolved.push({
+          id: venue.id,
+          title: venue.title,
+          city: venue.city,
+          reason: `policy_block_${policyCheck.reason}`,
+          county: manualGeo.county || "",
+          stateAbbr: manualGeo.stateAbbr || "",
+          attempted: override.address1,
+        });
+        await sleep(280);
+        continue;
+      }
       resolved.push({
         ...venue,
         address1: override.address1,
@@ -301,6 +346,8 @@ const run = async () => {
         score: manualGeo.score,
         method: "manual_override",
         longLabel: manualGeo.longLabel,
+        county: manualGeo.county || "",
+        stateAbbr: manualGeo.stateAbbr || "",
       });
       await sleep(280);
       continue;
@@ -322,6 +369,21 @@ const run = async () => {
       await sleep(280);
       continue;
     }
+    const policyCheck = checkRegionPolicy(auto);
+    if (!allowOutsideCounty && !policyCheck.ok) {
+      unresolved.push({
+        id: venue.id,
+        title: venue.title,
+        city: venue.city,
+        reason: `policy_block_${policyCheck.reason}`,
+        score: auto?.score || 0,
+        county: auto?.county || "",
+        stateAbbr: auto?.stateAbbr || "",
+        longLabel: auto?.longLabel || "",
+      });
+      await sleep(280);
+      continue;
+    }
     resolved.push({
       ...venue,
       address1: auto.address1,
@@ -330,6 +392,8 @@ const run = async () => {
       score: auto.score,
       method: "auto_arcgis",
       longLabel: auto.longLabel,
+      county: auto.county || "",
+      stateAbbr: auto.stateAbbr || "",
     });
     await sleep(280);
   }
@@ -354,6 +418,7 @@ const run = async () => {
   const summary = {
     region: REGION,
     apply,
+    allowOutsideCounty,
     venues: venues.length,
     resolved: resolved.length,
     unresolved: unresolved.length,
@@ -377,6 +442,7 @@ const run = async () => {
         lng: entry.lng,
         method: entry.method,
         score: entry.score,
+        county: entry.county || "",
       })),
       null,
       2

@@ -1,5 +1,5 @@
 import React from "react";
-import { trackEvent } from "../../../lib/firebase";
+import { trackEvent } from "../lib/marketingAnalytics";
 
 const ForPerformersPage = ({ navigate, session, authFlow }) => {
   const canUseDashboard = !!session?.uid && !session?.isAnonymous;
@@ -57,3 +57,4 @@ const ForPerformersPage = ({ navigate, session, authFlow }) => {
 };
 
 export default ForPerformersPage;
+

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { trackEvent } from "../../../lib/firebase";
+import { trackEvent } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { formatDateTime, fromDateTimeLocalInput, toDateTimeLocalInput } from "./shared";
 import {
@@ -273,3 +273,4 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
 };
 
 export default CadenceUpdateCard;
+

@@ -370,6 +370,22 @@
   margin-top: 10px;
 }
 
+.mk3-auth-cta-row .mk3-auth-cta-primary {
+  border-color: transparent;
+  color: #2b0532;
+  background:
+    linear-gradient(112deg, #ffd66a 8%, #ffe8b0 48%, #ff6ac9 98%) padding-box,
+    linear-gradient(rgba(255, 215, 106, 0.5), rgba(255, 215, 106, 0.5)) border-box;
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
+}
+
+.mk3-auth-cta-row .mk3-auth-cta-secondary {
+  border-color: rgba(255, 215, 106, 0.35);
+  background: rgba(35, 6, 48, 0.74);
+  color: #ffe8b0;
+}
+
 .mk3-auth-hint {
   color: #b8cfe8;
   font-size: 0.74rem;
@@ -700,7 +716,7 @@
 }
 
 .mk3-discover-filters {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .mk3-filter-chips {

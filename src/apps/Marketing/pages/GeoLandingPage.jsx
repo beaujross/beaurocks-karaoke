@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { trackEvent } from "../../../lib/firebase";
+import { trackEvent } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
 import { marketingFlags } from "../featureFlags";
@@ -165,3 +165,4 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
 };
 
 export default GeoLandingPage;
+
