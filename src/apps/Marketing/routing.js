@@ -87,7 +87,9 @@ const routeForPathTokens = (parts = []) => {
   if (parts[0] === "performers" && parts[1]) return { page: MARKETING_ROUTE_PAGES.performer, id: parts[1], params: {} };
   if (parts[0] === "profile") return { page: MARKETING_ROUTE_PAGES.profile, id: "", params: {} };
   if (parts[0] === "submit") return { page: MARKETING_ROUTE_PAGES.submit, id: "", params: {} };
-  if (parts[0] === "admin" && parts[1] === "moderation") return { page: MARKETING_ROUTE_PAGES.admin, id: "", params: {} };
+  if (parts[0] === "admin" && (!parts[1] || parts[1] === "moderation")) {
+    return { page: MARKETING_ROUTE_PAGES.admin, id: "", params: {} };
+  }
   if (parts[0] === "join") {
     const roomCode = String(parts[1] || "").trim().toUpperCase();
     return { page: MARKETING_ROUTE_PAGES.join, id: roomCode, params: { roomCode } };

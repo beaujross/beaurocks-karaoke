@@ -10,6 +10,8 @@
   --mk3-accent-b: #ffd76a;
   --mk3-accent-c: #9d24bf;
   --mk3-border: rgba(255, 215, 106, 0.22);
+  --mk3-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --mk3-rail-space: 96px;
   height: 100%;
   min-height: 100%;
   overflow-y: auto;
@@ -89,6 +91,7 @@
 .mk3-links button {
   border: 1px solid rgba(255, 215, 106, 0.14);
   border-radius: 10px;
+  min-height: 44px;
   padding: 0.46rem 0.74rem;
   background: transparent;
   color: #f9e6ff;
@@ -126,11 +129,14 @@
   list-style: none;
   border: 1px solid rgba(255, 215, 106, 0.14);
   border-radius: 10px;
+  min-height: 44px;
   padding: 0.46rem 0.74rem;
   color: #f9e6ff;
   font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
 }
 
 .mk3-more-menu summary::-webkit-details-marker {
@@ -175,6 +181,9 @@
 }
 
 .mk3-account-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 999px;
   border: 1px solid rgba(255, 215, 106, 0.42);
   background:
@@ -183,6 +192,7 @@
   background-clip: padding-box, border-box;
   -webkit-background-clip: padding-box, border-box;
   color: #2a0432;
+  min-height: 44px;
   padding: 0.48rem 0.92rem;
   letter-spacing: 0.03em;
   font-size: 0.74rem;
@@ -210,10 +220,13 @@
 
 .mk3-mobile-toggle {
   display: none;
+  align-items: center;
+  justify-content: center;
   border-radius: 10px;
   border: 1px solid rgba(255, 215, 106, 0.3);
   background: rgba(28, 4, 38, 0.85);
   color: #ffe9c0;
+  min-height: 44px;
   padding: 0.42rem 0.66rem;
   font-size: 0.76rem;
   font-weight: 700;
@@ -237,6 +250,7 @@
 .mk3-mobile-link-grid button {
   border: 1px solid rgba(255, 215, 106, 0.24);
   border-radius: 10px;
+  min-height: 44px;
   padding: 0.52rem 0.6rem;
   background: rgba(35, 3, 46, 0.82);
   color: #f8e8ff;
@@ -255,7 +269,8 @@
 }
 
 .mk3-main {
-  padding: 16px 0 56px;
+  padding: 16px 0 calc(var(--mk3-rail-space) + var(--mk3-safe-bottom));
+  scroll-padding-bottom: calc(var(--mk3-rail-space) + var(--mk3-safe-bottom));
 }
 
 .mk3-auth-panel {
@@ -371,6 +386,8 @@
 }
 
 .mk3-auth-cta-row .mk3-auth-cta-primary {
+  min-height: 44px;
+  padding: 0.62rem 1.02rem;
   border-color: transparent;
   color: #2b0532;
   background:
@@ -381,6 +398,8 @@
 }
 
 .mk3-auth-cta-row .mk3-auth-cta-secondary {
+  min-height: 44px;
+  padding: 0.62rem 1rem;
   border-color: rgba(255, 215, 106, 0.35);
   background: rgba(35, 6, 48, 0.74);
   color: #ffe8b0;
@@ -494,6 +513,7 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  min-height: 44px;
   padding: 0.6rem 0.9rem;
   cursor: pointer;
   transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
@@ -680,6 +700,7 @@
 
 .mk3-map-toolbar button {
   border-radius: 999px;
+  min-height: 44px;
   border: 1px solid rgba(255, 215, 106, 0.34);
   background:
     linear-gradient(112deg, rgba(255, 214, 106, 0.22), rgba(255, 86, 190, 0.24)) padding-box,
@@ -999,7 +1020,7 @@
 .mk3-golden-rail {
   position: fixed;
   left: 50%;
-  bottom: 12px;
+  bottom: calc(12px + var(--mk3-safe-bottom));
   transform: translateX(-50%);
   z-index: 90;
   width: min(980px, calc(100vw - 18px));
@@ -1023,6 +1044,7 @@
 }
 
 .mk3-golden-rail button {
+  min-height: 44px;
   border-radius: 10px;
   border: 1px solid rgba(176, 198, 220, 0.26);
   background: rgba(11, 20, 29, 0.88);
@@ -1059,6 +1081,10 @@
 }
 
 @media (max-width: 1120px) {
+  .mk3-site {
+    --mk3-rail-space: 176px;
+  }
+
   .mk3-nav-inner {
     grid-template-columns: 1fr auto;
     min-height: 84px;
@@ -1138,6 +1164,7 @@
   .mk3-account-action {
     padding: 0.44rem 0.72rem;
     font-size: 0.7rem;
+    min-height: 44px;
   }
 
   .mk3-mobile-link-grid {
@@ -1145,10 +1172,10 @@
   }
 
   .mk3-main {
-    padding: 14px 0 76px;
+    padding: 14px 0 calc(var(--mk3-rail-space) + var(--mk3-safe-bottom));
   }
 
   .mk3-golden-rail {
-    bottom: 8px;
+    bottom: calc(8px + var(--mk3-safe-bottom));
   }
 }

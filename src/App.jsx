@@ -82,7 +82,7 @@ const Landing = ({ onJoin }) => {
         <div className="h-full w-full overflow-y-auto bg-black relative font-saira text-white">
             <div className="min-h-full flex flex-col items-center justify-center p-6 text-center">
                 <div className="bg-zinc-900/90 p-8 rounded-3xl border border-zinc-700 backdrop-blur-md max-w-md w-full shadow-2xl relative z-10">
-                    <img src={ASSETS.logo} className="w-96 mx-auto mb-6 drop-shadow-xl rounded-3xl" alt="Bross Karaoke"/>
+                    <img src={ASSETS.logo} className="w-96 mx-auto mb-6 drop-shadow-xl rounded-3xl" alt="BeauRocks Karaoke"/>
                     <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="ROOM CODE" className="w-full bg-zinc-800 border-2 border-zinc-600 p-4 text-center text-3xl font-mono tracking-widest rounded-xl text-white uppercase mb-4 focus:border-pink-500 outline-none transition-colors"/>
                     
                     <button onClick={()=>code && onJoin(code)} className="w-full bg-pink-600 py-4 rounded-xl font-bold text-xl mb-4 text-white shadow-lg hover:bg-pink-500 transition-colors">
@@ -93,12 +93,12 @@ const Landing = ({ onJoin }) => {
                         LAUNCH TV DISPLAY
                     </button>
                     
-                    <button onClick={handleOpenHostControls} className="w-full bg-zinc-700 py-2 rounded-xl font-bold text-sm text-zinc-300 hover:bg-zinc-600 hover:text-white transition-colors mt-2">
+                    <button onClick={handleOpenHostControls} className="w-full bg-zinc-700 py-3 rounded-xl font-bold text-base text-zinc-300 hover:bg-zinc-600 hover:text-white transition-colors mt-2">
                         HOST CONTROLS
                     </button>
                     <button
                         onClick={() => { window.location.href = marketingHref; }}
-                        className="w-full bg-zinc-800 py-2 rounded-xl font-bold text-sm text-cyan-200 hover:bg-zinc-700 transition-colors mt-2 border border-cyan-500/30"
+                        className="w-full bg-zinc-800 py-3 rounded-xl font-bold text-base text-cyan-200 hover:bg-zinc-700 transition-colors mt-2 border border-cyan-500/30"
                     >
                         VIEW MARKETING SITE
                     </button>
@@ -159,9 +159,9 @@ const KaraokeTerms = () => (
     <div className="min-h-screen w-full bg-black text-white font-saira flex items-center justify-center p-6">
         <div className="w-full max-w-3xl bg-zinc-900/90 border border-zinc-700 rounded-3xl p-8 shadow-2xl">
             <div className="flex items-center gap-4 mb-6">
-                <img src={ASSETS.logo} className="h-16 w-auto drop-shadow-[0_0_18px_rgba(255,103,182,0.7)]" alt="BROSS Karaoke" />
+                <img src={ASSETS.logo} className="h-16 w-auto drop-shadow-[0_0_18px_rgba(255,103,182,0.7)]" alt="BeauRocks Karaoke" />
                 <div>
-                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">BROSS Karaoke</div>
+                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">BeauRocks Karaoke</div>
                     <h1 className="text-3xl font-bebas text-pink-300">Party Rules + Terms</h1>
                 </div>
             </div>
@@ -170,7 +170,7 @@ const KaraokeTerms = () => (
                 <ul className="space-y-3">
                     <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>No harassment, hate speech, threats, or illegal content. Keep it fun.</li>
                     <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>Only share content you own or have permission to use.</li>
-                    <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>BROSS can remove content or users to keep the room safe and on-beat.</li>
+                    <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>BeauRocks can remove content or users to keep the room safe and on-beat.</li>
                     <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>You're responsible for your content and conduct.</li>
                 </ul>
                 <p className="text-sm text-zinc-400">Questions? Reach out to support for the full legal terms and policies.</p>
