@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const admin = require("../../functions/node_modules/firebase-admin");
+process.env.MARKETING_SMS_REMINDERS_ENABLED = process.env.MARKETING_SMS_REMINDERS_ENABLED || "true";
 const {
   upsertDirectoryProfile,
   submitDirectoryListing,
@@ -10,6 +11,12 @@ const {
   createDirectoryCheckin,
   submitDirectoryReview,
   runExternalDirectoryIngestion,
+  submitDirectoryClaimRequest,
+  resolveDirectoryClaimRequest,
+  setDirectoryRsvp,
+  setDirectoryReminderPreferences,
+  listDirectoryGeoLanding,
+  previewDirectoryRoomSessionByCode,
 } = require("../../functions/index.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
@@ -49,6 +56,10 @@ async function resetState() {
     "review_totals",
     "directory_sync_jobs",
     "external_source_links",
+    "directory_claim_requests",
+    "directory_rsvps",
+    "directory_reminders",
+    "directory_geo_pages",
   ];
   for (const name of collections) {
     const snap = await db.collection(name).limit(500).get();
@@ -263,6 +274,163 @@ async function run() {
       assert.equal(result.ok, true);
       assert.equal(result.dryRun, true);
       assert.equal(Number(result.queued || 0), 1);
+    }],
+
+    ["submitDirectoryClaimRequest creates pending claim", async () => {
+      await db.doc("venues/venue_claim_test").set({
+        title: "Claimable Venue",
+        status: "approved",
+        visibility: "public",
+      });
+      const result = await submitDirectoryClaimRequest.run(
+        requestFor(USER_UID, {
+          listingType: "venue",
+          listingId: "venue_claim_test",
+          role: "owner",
+          evidence: "Business license on file.",
+        })
+      );
+      assert.equal(result.ok, true);
+      const snap = await db.doc(`directory_claim_requests/${result.claimId}`).get();
+      assert.equal(snap.exists, true);
+      assert.equal(snap.get("status"), "pending");
+    }],
+
+    ["resolveDirectoryClaimRequest approves ownership for moderators only", async () => {
+      await db.doc("venues/venue_claim_test").set({
+        title: "Claimable Venue",
+        status: "approved",
+        visibility: "public",
+      });
+      const claim = await submitDirectoryClaimRequest.run(
+        requestFor(USER_UID, {
+          listingType: "venue",
+          listingId: "venue_claim_test",
+          role: "owner",
+          evidence: "I run this venue.",
+        })
+      );
+      await expectHttpsError(
+        () => resolveDirectoryClaimRequest.run(
+          requestFor(USER_UID, { claimId: claim.claimId, action: "approve", notes: "nope" })
+        ),
+        "permission-denied"
+      );
+      const resolved = await resolveDirectoryClaimRequest.run(
+        requestFor(MOD_UID, { claimId: claim.claimId, action: "approve", notes: "verified" })
+      );
+      assert.equal(resolved.ok, true);
+      assert.equal(resolved.status, "approved");
+      const venueSnap = await db.doc("venues/venue_claim_test").get();
+      assert.equal(venueSnap.exists, true);
+      assert.equal(venueSnap.get("ownerUid"), USER_UID);
+    }],
+
+    ["setDirectoryRsvp create update cancel lifecycle", async () => {
+      const created = await setDirectoryRsvp.run(
+        requestFor(USER_UID, {
+          targetType: "event",
+          targetId: "event_demo",
+          status: "going",
+          reminderChannels: ["email"],
+        })
+      );
+      assert.equal(created.ok, true);
+      const updated = await setDirectoryRsvp.run(
+        requestFor(USER_UID, {
+          targetType: "event",
+          targetId: "event_demo",
+          status: "interested",
+          reminderChannels: ["email", "sms"],
+        })
+      );
+      assert.equal(updated.ok, true);
+      assert.equal(updated.status, "interested");
+      const canceled = await setDirectoryRsvp.run(
+        requestFor(USER_UID, {
+          targetType: "event",
+          targetId: "event_demo",
+          status: "cancelled",
+        })
+      );
+      assert.equal(canceled.ok, true);
+      assert.equal(canceled.removed, true);
+    }],
+
+    ["setDirectoryReminderPreferences stores email and sms opts", async () => {
+      const result = await setDirectoryReminderPreferences.run(
+        requestFor(USER_UID, {
+          targetType: "event",
+          targetId: "event_demo",
+          emailOptIn: true,
+          smsOptIn: true,
+          phone: "+1 (206) 555-0101",
+        })
+      );
+      assert.equal(result.ok, true);
+      const snap = await db.doc(`directory_reminders/${USER_UID}_event_event_demo`).get();
+      assert.equal(snap.exists, true);
+      assert.equal(!!snap.get("emailOptIn"), true);
+      assert.equal(!!snap.get("smsOptIn"), true);
+    }],
+
+    ["listDirectoryGeoLanding returns public listings only", async () => {
+      const now = Date.now() + 3600000;
+      await db.doc("venues/geo_venue").set({
+        title: "Geo Venue",
+        status: "approved",
+        visibility: "public",
+        region: "wa_seattle",
+        city: "Seattle",
+        state: "WA",
+      });
+      await db.doc("karaoke_events/geo_event").set({
+        title: "Geo Event",
+        status: "approved",
+        region: "wa_seattle",
+        city: "Seattle",
+        state: "WA",
+        startsAtMs: now,
+      });
+      await db.doc("room_sessions/geo_session_public").set({
+        title: "Geo Session Public",
+        status: "approved",
+        visibility: "public",
+        region: "wa_seattle",
+        startsAtMs: now,
+      });
+      await db.doc("room_sessions/geo_session_private").set({
+        title: "Geo Session Private",
+        status: "approved",
+        visibility: "private",
+        region: "wa_seattle",
+        startsAtMs: now,
+      });
+      const result = await listDirectoryGeoLanding.run(
+        requestFor("", {
+          regionToken: "wa_seattle",
+          dateWindow: "14d",
+        })
+      );
+      assert.equal(result.ok, true);
+      assert.equal(Number(result.counts?.venues || 0), 1);
+      assert.equal(Number(result.counts?.events || 0), 1);
+      assert.equal(Number(result.counts?.sessions || 0), 1);
+    }],
+
+    ["previewDirectoryRoomSessionByCode resolves approved room session", async () => {
+      await db.doc("room_sessions/session_by_code").set({
+        title: "Invite-only Room",
+        status: "approved",
+        visibility: "private",
+        roomCode: "VIP123",
+      });
+      const result = await previewDirectoryRoomSessionByCode.run(
+        requestFor("", { roomCode: "vip123" })
+      );
+      assert.equal(result.ok, true);
+      assert.equal(result.roomCode, "VIP123");
+      assert.equal(result.session?.id, "session_by_code");
     }],
   ];
 

@@ -8,10 +8,13 @@ import {
   limit,
   onSnapshot,
 } from "../../../lib/firebase";
+import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
 import EntityActionsCard from "./EntityActionsCard";
+import ClaimOwnershipCard from "./ClaimOwnershipCard";
+import EmptyStatePanel from "./EmptyStatePanel";
 import { formatDateTime } from "./shared";
 
-const HostPage = ({ id, navigate, session }) => {
+const HostPage = ({ id, navigate, session, authFlow }) => {
   const [profile, setProfile] = useState(null);
   const [events, setEvents] = useState([]);
   const [sessions, setSessions] = useState([]);
@@ -48,7 +51,17 @@ const HostPage = ({ id, navigate, session }) => {
   }, [id]);
 
   if (!profile) {
-    return <section className="mk3-page"><div className="mk3-status">Host profile not found.</div></section>;
+    return (
+      <section className="mk3-page">
+        <EmptyStatePanel
+          {...getEmptyStateConfig({ context: EMPTY_STATE_CONTEXT.HOST_MISSING, session })}
+          onAction={(action) => {
+            if (action.intent === "profile") navigate("profile");
+            else navigate("discover");
+          }}
+        />
+      </section>
+    );
   }
 
   return (
@@ -78,7 +91,22 @@ const HostPage = ({ id, navigate, session }) => {
           ))}
         </div>
       </article>
-      <EntityActionsCard targetType="host" targetId={profile.id} session={session} />
+      <div className="mk3-side-stack">
+        <ClaimOwnershipCard
+          listingType="host"
+          listingId={profile.id}
+          session={session}
+          navigate={navigate}
+          authFlow={authFlow}
+        />
+        <EntityActionsCard
+          targetType="host"
+          targetId={profile.id}
+          session={session}
+          navigate={navigate}
+          authFlow={authFlow}
+        />
+      </div>
     </section>
   );
 };

@@ -7,11 +7,13 @@ import {
   limit,
   onSnapshot,
 } from "../../../lib/firebase";
+import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
 import EntityActionsCard from "./EntityActionsCard";
 import CadenceUpdateCard from "./CadenceUpdateCard";
+import EmptyStatePanel from "./EmptyStatePanel";
 import { formatDateTime } from "./shared";
 
-const EventPage = ({ id, navigate, session }) => {
+const EventPage = ({ id, navigate, session, authFlow }) => {
   const [eventItem, setEventItem] = useState(null);
   const [venue, setVenue] = useState(null);
   const [hostProfile, setHostProfile] = useState(null);
@@ -53,7 +55,17 @@ const EventPage = ({ id, navigate, session }) => {
     return <section className="mk3-page"><div className="mk3-status mk3-status-error">{error}</div></section>;
   }
   if (!eventItem) {
-    return <section className="mk3-page"><div className="mk3-status">Event not found.</div></section>;
+    return (
+      <section className="mk3-page">
+        <EmptyStatePanel
+          {...getEmptyStateConfig({ context: EMPTY_STATE_CONTEXT.EVENT_MISSING, session })}
+          onAction={(action) => {
+            if (action.intent === "for_hosts") navigate("for_hosts");
+            else navigate("discover");
+          }}
+        />
+      </section>
+    );
   }
 
   return (
@@ -100,8 +112,19 @@ const EventPage = ({ id, navigate, session }) => {
         </div>
       </article>
       <div className="mk3-side-stack">
-        <CadenceUpdateCard listingType="event" listing={eventItem} session={session} />
-        <EntityActionsCard targetType="event" targetId={eventItem.id} session={session} />
+        <CadenceUpdateCard
+          listingType="event"
+          listing={eventItem}
+          session={session}
+          authFlow={authFlow}
+        />
+        <EntityActionsCard
+          targetType="event"
+          targetId={eventItem.id}
+          session={session}
+          navigate={navigate}
+          authFlow={authFlow}
+        />
       </div>
     </section>
   );

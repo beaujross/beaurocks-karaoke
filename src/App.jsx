@@ -2,6 +2,8 @@ import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { ToastProvider } from './context/ToastContext';
 import { auth, onAuthStateChanged, initAuth } from './lib/firebase';
 import { ASSETS } from './lib/assets';
+import { marketingFlags } from './apps/Marketing/featureFlags';
+import { isMarketingPath } from './apps/Marketing/routing';
 
 // App Views
 const PublicTV = lazy(() => import('./apps/TV/PublicTV'));
@@ -30,7 +32,13 @@ const getInitialRouteState = () => {
     if (m === 'recap') {
         return { view: 'recap', roomCode: r ? r.toUpperCase() : '' };
     }
-    if (m === 'marketing' || /\/marketing(\/.*)?$/.test(pathname)) {
+    if (m === 'marketing') {
+        return { view: 'marketing', roomCode: '' };
+    }
+    if (marketingFlags.routePathsEnabled && isMarketingPath(pathname)) {
+        return { view: 'marketing', roomCode: '' };
+    }
+    if (/\/marketing(\/.*)?$/.test(pathname)) {
         return { view: 'marketing', roomCode: '' };
     }
     if (r) {
@@ -45,6 +53,13 @@ const Landing = ({ onJoin }) => {
     const [hostPasscode, setHostPasscode] = useState('');
     const [hostPasscodeError, setHostPasscodeError] = useState('');
     const appBase = typeof window !== 'undefined' ? `${window.location.origin}${import.meta.env.BASE_URL || '/'}` : '';
+    const marketingHref = typeof window !== 'undefined'
+        ? (
+            marketingFlags.routePathsEnabled
+                ? new URL('discover', appBase || window.location.origin).toString()
+                : `${appBase}?mode=marketing`
+        )
+        : `${appBase}?mode=marketing`;
     const hostGateCode = import.meta.env.VITE_HOST_PASSCODE || '';
     const handleOpenHostControls = () => {
         if (hostGateCode) {
@@ -82,7 +97,7 @@ const Landing = ({ onJoin }) => {
                         HOST CONTROLS
                     </button>
                     <button
-                        onClick={() => { window.location.href = `${appBase}?mode=marketing`; }}
+                        onClick={() => { window.location.href = marketingHref; }}
                         className="w-full bg-zinc-800 py-2 rounded-xl font-bold text-sm text-cyan-200 hover:bg-zinc-700 transition-colors mt-2 border border-cyan-500/30"
                     >
                         VIEW MARKETING SITE
@@ -240,4 +255,3 @@ const App = () => {
 };
 
 export default App;
-

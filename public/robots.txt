@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://beaurocks.com/sitemap.xml

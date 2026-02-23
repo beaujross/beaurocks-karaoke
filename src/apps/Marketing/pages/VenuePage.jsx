@@ -8,11 +8,14 @@ import {
   limit,
   onSnapshot,
 } from "../../../lib/firebase";
+import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
 import EntityActionsCard from "./EntityActionsCard";
 import CadenceUpdateCard from "./CadenceUpdateCard";
+import ClaimOwnershipCard from "./ClaimOwnershipCard";
+import EmptyStatePanel from "./EmptyStatePanel";
 import { formatDateTime } from "./shared";
 
-const VenuePage = ({ id, navigate, session }) => {
+const VenuePage = ({ id, navigate, session, authFlow }) => {
   const [venue, setVenue] = useState(null);
   const [events, setEvents] = useState([]);
   const [error, setError] = useState("");
@@ -51,7 +54,17 @@ const VenuePage = ({ id, navigate, session }) => {
     return <section className="mk3-page"><div className="mk3-status mk3-status-error">{error}</div></section>;
   }
   if (!venue) {
-    return <section className="mk3-page"><div className="mk3-status">Venue not found.</div></section>;
+    return (
+      <section className="mk3-page">
+        <EmptyStatePanel
+          {...getEmptyStateConfig({ context: EMPTY_STATE_CONTEXT.VENUE_MISSING, session })}
+          onAction={(action) => {
+            if (action.intent === "submit_listing") navigate("submit", "", { intent: "listing_submit", targetType: "venue" });
+            else navigate("discover");
+          }}
+        />
+      </section>
+    );
   }
 
   return (
@@ -84,8 +97,26 @@ const VenuePage = ({ id, navigate, session }) => {
         </div>
       </article>
       <div className="mk3-side-stack">
-        <CadenceUpdateCard listingType="venue" listing={venue} session={session} />
-        <EntityActionsCard targetType="venue" targetId={venue.id} session={session} />
+        <ClaimOwnershipCard
+          listingType="venue"
+          listingId={venue.id}
+          session={session}
+          navigate={navigate}
+          authFlow={authFlow}
+        />
+        <CadenceUpdateCard
+          listingType="venue"
+          listing={venue}
+          session={session}
+          authFlow={authFlow}
+        />
+        <EntityActionsCard
+          targetType="venue"
+          targetId={venue.id}
+          session={session}
+          navigate={navigate}
+          authFlow={authFlow}
+        />
       </div>
     </section>
   );

@@ -1,16 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDirectoryDiscover } from "../hooks/useDirectoryDiscover";
 import { useGoogleMapsScript } from "../hooks/useGoogleMapsScript";
+import { MARKETING_REGION_PRESETS } from "../geoPresets";
+import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
+import EmptyStatePanel from "./EmptyStatePanel";
+import InlineConversionActions from "./InlineConversionActions";
 import { formatDateTime } from "./shared";
 
 const MAP_DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
-const REGION_PRESETS = [
-  { id: "nationwide", label: "Nationwide" },
-  { id: "wa_kitsap", label: "Kitsap, WA" },
-  { id: "wa_seattle", label: "Seattle, WA" },
-  { id: "ca_los_angeles", label: "Los Angeles, CA" },
-  { id: "ny_new_york", label: "New York, NY" },
-];
 const MAP_TYPE_META = {
   venue: { label: "venue", routePage: "venue", markerColor: "#27d3cb" },
   event: { label: "event", routePage: "event", markerColor: "#ec4899" },
@@ -57,6 +54,8 @@ const toListing = (entry = {}, fallbackType = "venue") => {
       : listingType === "room_session"
         ? [entry?.venueName, entry?.roomCode].filter(Boolean).join(" | ")
         : String(entry?.description || "").trim().slice(0, 120),
+    hostUid: String(entry?.hostUid || "").trim(),
+    performerUid: String(entry?.performerUid || "").trim(),
     timeLabel,
     startsAtMs,
     location,
@@ -107,7 +106,22 @@ const isPermissionError = (message = "") =>
 const isIndexError = (message = "") =>
   /indexing|requires an index|create_composite/i.test(String(message || ""));
 
-const DiscoverPage = ({ navigate, mapsConfig, session }) => {
+const humanizeRegion = (token = "") => {
+  const safe = String(token || "").trim().toLowerCase();
+  if (!safe) return "";
+  const parts = safe.split("_").filter(Boolean);
+  if (!parts.length) return "";
+  if (parts[0] === "nationwide") return "Nationwide";
+  const state = (parts[0] || "").toUpperCase();
+  const city = parts.slice(1).join(" ");
+  const cityLabel = city
+    .split("-")
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ");
+  return cityLabel ? `${cityLabel}, ${state}` : state;
+};
+
+const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -121,7 +135,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session }) => {
   const cardRefs = useRef(new Map());
   const hasAutoFitRef = useRef(false);
 
-  const { loading, error, data } = useDirectoryDiscover({ search, region });
+  const { loading, error, data, rawData } = useDirectoryDiscover({ search, region });
   const permissionError = isPermissionError(error);
   const indexError = isIndexError(error);
   const mapEnabled = !!mapsConfig?.mapEnabled && !!mapsConfig?.apiKey;
@@ -295,6 +309,49 @@ const DiscoverPage = ({ navigate, mapsConfig, session }) => {
     ? `${mapBounds.south.toFixed(2)} to ${mapBounds.north.toFixed(2)} lat`
     : "Move map to define bounds";
   const hasSearchFilters = !!String(search || "").trim() || !!String(region || "").trim();
+  const dynamicRegionPresets = useMemo(() => {
+    const source = [
+      ...(Array.isArray(rawData?.venues) ? rawData.venues : []),
+      ...(Array.isArray(rawData?.events) ? rawData.events : []),
+      ...(Array.isArray(rawData?.sessions) ? rawData.sessions : []),
+    ];
+    const counts = new Map();
+    source.forEach((item) => {
+      const token = String(item?.region || "").trim().toLowerCase();
+      if (!token || token === "nationwide") return;
+      counts.set(token, (counts.get(token) || 0) + 1);
+    });
+    const ranked = Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 14)
+      .map(([id]) => ({ id, label: humanizeRegion(id) || id }));
+    if (!ranked.length) return MARKETING_REGION_PRESETS;
+    return [{ id: "nationwide", label: "Nationwide" }, ...ranked];
+  }, [rawData]);
+
+  const handleEmptyAction = (action = {}) => {
+    const intent = String(action.intent || "");
+    if (intent === "auth") {
+      authFlow?.requireFullAuth?.({
+        intent: "discover",
+        targetType: "discover",
+        targetId: "",
+        returnRoute: { page: "discover" },
+      });
+      return;
+    }
+    if (intent === "discover_reset") {
+      setRegion("nationwide");
+      setSearch("");
+      setTypeFilter("all");
+      return;
+    }
+    if (intent === "submit_listing") {
+      navigate("submit", "", { intent: "listing_submit" });
+      return;
+    }
+    navigate("discover");
+  };
 
   return (
     <section className="mk3-page">
@@ -326,7 +383,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session }) => {
         </label>
       </div>
       <div className="mk3-filter-chips">
-        {REGION_PRESETS.map((preset) => (
+        {dynamicRegionPresets.map((preset) => (
           <button
             key={preset.id}
             type="button"
@@ -422,23 +479,14 @@ const DiscoverPage = ({ navigate, mapsConfig, session }) => {
             </div>
           )}
           {!loading && permissionError && (
-            <div className="mk3-status mk3-status-warning">
-              <strong>Some discovery data is private right now.</strong>
-              <span>Sign in or upgrade your account, then refresh to see more listings.</span>
-              <div className="mk3-actions-inline">
-                <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-                  Go to sign in
-                </button>
-                {!session?.isAuthed && (
-                  <button type="button" onClick={() => navigate("profile")}>
-                    Open dashboard
-                  </button>
-                )}
-                <button type="button" onClick={() => { setRegion("nationwide"); setSearch(""); }}>
-                  Retry with public scope
-                </button>
-              </div>
-            </div>
+            <EmptyStatePanel
+              {...getEmptyStateConfig({
+                context: EMPTY_STATE_CONTEXT.DISCOVER_PERMISSION,
+                session,
+                hasFilters: hasSearchFilters,
+              })}
+              onAction={handleEmptyAction}
+            />
           )}
           {!loading && !error && boundsOnly && hiddenWithoutCoords > 0 && (
             <div className="mk3-status">
@@ -446,18 +494,14 @@ const DiscoverPage = ({ navigate, mapsConfig, session }) => {
             </div>
           )}
           {!loading && !error && visibleListings.length === 0 && (
-            <div className="mk3-status">
-              <strong>No listings match yet.</strong>
-              <span>Try a broader region or clear filters to expand results.</span>
-              <div className="mk3-actions-inline">
-                <button type="button" onClick={() => { setRegion("nationwide"); setSearch(""); setTypeFilter("all"); }}>
-                  Show all listings
-                </button>
-                <button type="button" onClick={() => setRegion("wa_kitsap")}>
-                  Try Kitsap, WA
-                </button>
-              </div>
-            </div>
+            <EmptyStatePanel
+              {...getEmptyStateConfig({
+                context: EMPTY_STATE_CONTEXT.DISCOVER_NO_RESULTS,
+                session,
+                hasFilters: hasSearchFilters,
+              })}
+              onAction={handleEmptyAction}
+            />
           )}
 
           <div className="mk3-card-list mk3-card-rail">
@@ -484,6 +528,12 @@ const DiscoverPage = ({ navigate, mapsConfig, session }) => {
                     Open details
                   </button>
                 </div>
+                <InlineConversionActions
+                  entry={entry}
+                  session={session}
+                  navigate={navigate}
+                  authFlow={authFlow}
+                />
               </article>
             ))}
           </div>

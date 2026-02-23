@@ -40,6 +40,8 @@ const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 const GOOGLE_MAPS_API_KEY = defineSecret("GOOGLE_MAPS_API_KEY");
 const GOOGLE_MAPS_SERVER_API_KEY = defineSecret("GOOGLE_MAPS_SERVER_API_KEY");
 const YELP_API_KEY = defineSecret("YELP_API_KEY");
+const REMINDER_EMAIL_WEBHOOK_URL = defineSecret("REMINDER_EMAIL_WEBHOOK_URL");
+const REMINDER_SMS_WEBHOOK_URL = defineSecret("REMINDER_SMS_WEBHOOK_URL");
 const GEMINI_LYRICS_MODEL = "gemini-2.5-flash-preview-09-2025";
 const GEMINI_LYRICS_INPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_INPUT_USD_PER_1M || "0.3");
 const GEMINI_LYRICS_OUTPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_OUTPUT_USD_PER_1M || "2.5");
@@ -1141,6 +1143,27 @@ const DIRECTORY_DEFAULT_REGION = "nationwide";
 const DIRECTORY_MAPS_PUBLIC_ENABLED = String(process.env.DIRECTORY_MAPS_PUBLIC_ENABLED || "false")
   .trim()
   .toLowerCase() === "true";
+const MARKETING_CLAIM_FLOW_ENABLED = String(process.env.MARKETING_CLAIM_FLOW_ENABLED || "true")
+  .trim()
+  .toLowerCase() === "true";
+const MARKETING_RSVP_ENABLED = String(process.env.MARKETING_RSVP_ENABLED || "true")
+  .trim()
+  .toLowerCase() === "true";
+const MARKETING_SMS_REMINDERS_ENABLED = String(process.env.MARKETING_SMS_REMINDERS_ENABLED || "false")
+  .trim()
+  .toLowerCase() === "true";
+const MARKETING_GEO_PAGES_ENABLED = String(process.env.MARKETING_GEO_PAGES_ENABLED || "true")
+  .trim()
+  .toLowerCase() === "true";
+const DIRECTORY_CLAIM_LISTING_TYPES = new Set(["host", "venue", "performer", "event", "room_session"]);
+const DIRECTORY_RSVP_STATUSES = new Set(["going", "interested", "not_going", "cancelled"]);
+const DIRECTORY_REMINDER_CHANNELS = new Set(["email", "sms"]);
+const DIRECTORY_REMINDER_ELIGIBLE_STATUSES = new Set(["going", "interested"]);
+const DIRECTORY_REMINDER_SLOTS = [
+  { id: "24h", maxMs: 24 * 60 * 60 * 1000, minMsExclusive: 2 * 60 * 60 * 1000 },
+  { id: "2h", maxMs: 2 * 60 * 60 * 1000, minMsExclusive: 0 },
+];
+const DIRECTORY_REMINDER_MAX_BATCH = 250;
 
 const buildDirectoryNow = () => admin.firestore.FieldValue.serverTimestamp();
 
@@ -1219,6 +1242,16 @@ const normalizeDirectoryProviders = (input = []) => {
   return providers;
 };
 
+const normalizeDirectoryDateWindowDays = (value = "14d") => {
+  const token = normalizeDirectoryToken(value || "14d", 20);
+  if (token === "today") return 1;
+  if (token === "this_week" || token === "week") return 7;
+  if (token === "this_month" || token === "month") return 30;
+  const rawNum = Number(String(token || "").replace(/[^\d]/g, ""));
+  if (!Number.isFinite(rawNum)) return 14;
+  return Math.max(1, Math.min(60, Math.floor(rawNum)));
+};
+
 const requireDirectoryEntityType = (value = "") => {
   const type = normalizeDirectoryToken(value, 30);
   if (!DIRECTORY_ENTITY_TYPES.has(type)) {
@@ -1235,11 +1268,48 @@ const requireDirectoryListingType = (value = "") => {
   return listingType;
 };
 
+const requireDirectoryClaimListingType = (value = "") => {
+  const listingType = normalizeDirectoryToken(value, 40);
+  if (!DIRECTORY_CLAIM_LISTING_TYPES.has(listingType)) {
+    throw new HttpsError("invalid-argument", "Invalid claim listingType.");
+  }
+  return listingType;
+};
+
 const ensureDirectoryCollectionName = (listingType = "") => {
   if (listingType === "venue") return "venues";
   if (listingType === "event") return "karaoke_events";
   if (listingType === "room_session") return "room_sessions";
   throw new HttpsError("invalid-argument", "Unknown listingType.");
+};
+
+const ensureDirectoryClaimCollectionName = (listingType = "") => {
+  if (listingType === "host" || listingType === "performer") return "directory_profiles";
+  return ensureDirectoryCollectionName(listingType);
+};
+
+const ensureDirectoryReminderTargetCollection = (targetType = "") => {
+  const token = normalizeDirectoryToken(targetType, 30);
+  if (token === "event") return "karaoke_events";
+  if (token === "session" || token === "room_session") return "room_sessions";
+  throw new HttpsError("invalid-argument", "Reminder targetType must be event or session.");
+};
+
+const buildDirectoryReminderDispatchId = (docId = "", slotId = "", channel = "") => {
+  const d = normalizeDirectoryToken(docId, 140);
+  const s = normalizeDirectoryToken(slotId, 20);
+  const c = normalizeDirectoryToken(channel, 20);
+  return `${d}_${s}_${c}`.slice(0, 240);
+};
+
+const pickDirectoryReminderSlot = (timeUntilMs = 0) => {
+  const value = Number(timeUntilMs || 0);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return (
+    DIRECTORY_REMINDER_SLOTS.find(
+      (slot) => value <= slot.maxMs && value > slot.minMsExclusive
+    ) || null
+  );
 };
 
 const buildDirectorySubmissionId = (listingType = "", uid = "") => {
@@ -1276,6 +1346,45 @@ const buildDirectoryReviewDocId = (uid = "", targetType = "", targetId = "", eve
   const idToken = normalizeDirectoryToken(targetId, 120);
   const eventToken = normalizeDirectoryToken(eventId || "direct", 80);
   return `${uidToken}_${typeToken}_${idToken}_${eventToken}`.slice(0, 260);
+};
+
+const buildDirectoryClaimDocId = (uid = "", listingType = "", listingId = "") => {
+  const uidToken = normalizeDirectoryToken(uid, 80);
+  const typeToken = normalizeDirectoryToken(listingType, 30);
+  const idToken = normalizeDirectoryToken(listingId, 160);
+  return `${uidToken}_${typeToken}_${idToken}`.slice(0, 260);
+};
+
+const buildDirectoryRsvpDocId = (uid = "", targetType = "", targetId = "") =>
+  buildDirectoryFollowDocId(uid, targetType, targetId);
+
+const normalizeDirectoryRsvpStatus = (value = "") => {
+  const token = normalizeDirectoryToken(value || "going", 20) || "going";
+  if (DIRECTORY_RSVP_STATUSES.has(token)) return token;
+  return "going";
+};
+
+const normalizeDirectoryReminderChannels = (input = []) => {
+  const source = Array.isArray(input) ? input : [input];
+  const channels = [];
+  source.forEach((entry) => {
+    const token = normalizeDirectoryToken(entry, 20);
+    if (!token || !DIRECTORY_REMINDER_CHANNELS.has(token)) return;
+    if (channels.includes(token)) return;
+    channels.push(token);
+  });
+  return channels;
+};
+
+const normalizeDirectoryPhone = (value = "") => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const cleaned = raw.replace(/[^\d+]/g, "");
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 15) return "";
+  if (cleaned.startsWith("+")) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  return `+${digits}`;
 };
 
 const normalizeDirectoryReviewTags = (input = []) => {
@@ -4305,6 +4414,12 @@ exports.getDirectoryMapsConfig = onCall(
       defaultScope: DIRECTORY_DEFAULT_REGION,
       supportedProviders: ["google", "yelp"],
       reviewPolicy: "first_party_karaoke",
+      featureFlags: {
+        marketing_claim_flow_enabled: MARKETING_CLAIM_FLOW_ENABLED,
+        marketing_rsvp_enabled: MARKETING_RSVP_ENABLED,
+        marketing_sms_reminders_enabled: MARKETING_SMS_REMINDERS_ENABLED,
+        marketing_geo_pages_enabled: MARKETING_GEO_PAGES_ENABLED,
+      },
     };
   }
 );
@@ -4827,6 +4942,379 @@ exports.runExternalDirectoryIngestion = onCall(
   }
 );
 
+exports.submitDirectoryClaimRequest = onCall({ cors: true }, async (request) => {
+  if (!MARKETING_CLAIM_FLOW_ENABLED) {
+    throw new HttpsError("failed-precondition", "Claim flow is disabled.");
+  }
+  checkRateLimit(request.rawRequest, "submit_directory_claim_request", { perMinute: 20, perHour: 160 });
+  enforceAppCheckIfEnabled(request, "submit_directory_claim_request");
+  const uid = requireAuth(request);
+  const listingType = requireDirectoryClaimListingType(request.data?.listingType || "");
+  const listingId = safeDirectoryString(request.data?.listingId || "", 220);
+  if (!listingId) {
+    throw new HttpsError("invalid-argument", "listingId is required.");
+  }
+  const role = normalizeDirectoryToken(request.data?.role || "owner", 40) || "owner";
+  const evidenceInput = request.data?.evidence;
+  const evidence = normalizeDirectoryTextBlock(
+    typeof evidenceInput === "string"
+      ? evidenceInput
+      : JSON.stringify(evidenceInput || {}),
+    3000
+  );
+  const claimId = buildDirectoryClaimDocId(uid, listingType, listingId);
+  const now = buildDirectoryNow();
+  await admin.firestore().collection("directory_claim_requests").doc(claimId).set({
+    claimId,
+    listingType,
+    listingId,
+    role,
+    evidence,
+    status: "pending",
+    createdBy: uid,
+    createdAt: now,
+    updatedAt: now,
+    moderation: {
+      action: "pending",
+      notes: "",
+      moderatedBy: null,
+      moderatedAt: null,
+    },
+  }, { merge: true });
+  return { ok: true, claimId, status: "pending" };
+});
+
+exports.resolveDirectoryClaimRequest = onCall({ cors: true }, async (request) => {
+  if (!MARKETING_CLAIM_FLOW_ENABLED) {
+    throw new HttpsError("failed-precondition", "Claim flow is disabled.");
+  }
+  checkRateLimit(request.rawRequest, "resolve_directory_claim_request", { perMinute: 30, perHour: 200 });
+  enforceAppCheckIfEnabled(request, "resolve_directory_claim_request");
+  const { uid } = await requireDirectoryModerator(request, { deniedMessage: "Directory moderator role required." });
+  const claimId = safeDirectoryString(request.data?.claimId || "", 260);
+  if (!claimId) {
+    throw new HttpsError("invalid-argument", "claimId is required.");
+  }
+  const action = normalizeDirectoryToken(request.data?.action || "", 20);
+  if (!["approve", "reject"].includes(action)) {
+    throw new HttpsError("invalid-argument", "action must be approve or reject.");
+  }
+  const notes = normalizeDirectoryTextBlock(request.data?.notes || "", 800);
+  const db = admin.firestore();
+  const claimRef = db.collection("directory_claim_requests").doc(claimId);
+  const now = buildDirectoryNow();
+
+  const result = await db.runTransaction(async (tx) => {
+    const claimSnap = await tx.get(claimRef);
+    if (!claimSnap.exists) {
+      throw new HttpsError("not-found", "Claim request not found.");
+    }
+    const claim = claimSnap.data() || {};
+    const status = normalizeDirectoryToken(claim.status || "pending", 20);
+    if (status !== "pending") {
+      return {
+        mode: "already_resolved",
+        status,
+      };
+    }
+    if (action === "reject") {
+      tx.set(claimRef, {
+        status: "rejected",
+        updatedAt: now,
+        moderation: {
+          action: "rejected",
+          notes,
+          moderatedBy: uid,
+          moderatedAt: now,
+        },
+      }, { merge: true });
+      return {
+        mode: "rejected",
+        status: "rejected",
+      };
+    }
+
+    const listingType = requireDirectoryClaimListingType(claim.listingType || "");
+    const listingId = safeDirectoryString(claim.listingId || "", 220);
+    if (!listingId) {
+      throw new HttpsError("failed-precondition", "Claim request is missing listingId.");
+    }
+    const claimantUid = safeDirectoryString(claim.createdBy || "", 180);
+    if (!claimantUid) {
+      throw new HttpsError("failed-precondition", "Claim request is missing createdBy.");
+    }
+    const collectionName = ensureDirectoryClaimCollectionName(listingType);
+    const listingRef = db.collection(collectionName).doc(listingId);
+    const listingSnap = await tx.get(listingRef);
+    if (!listingSnap.exists) {
+      throw new HttpsError("not-found", "Listing for claim request was not found.");
+    }
+    const roleToken = normalizeDirectoryToken(claim.role || "owner", 40) || "owner";
+    const listingPatch = {
+      ownerUid: claimantUid,
+      claimStatus: "verified",
+      claimVerifiedAt: now,
+      claimVerifiedBy: uid,
+      updatedAt: now,
+      updatedBy: uid,
+    };
+    if ((listingType === "event" || listingType === "room_session") && roleToken.includes("host")) {
+      listingPatch.hostUid = claimantUid;
+    }
+    tx.set(listingRef, listingPatch, { merge: true });
+    tx.set(claimRef, {
+      status: "approved",
+      updatedAt: now,
+      moderation: {
+        action: "approved",
+        notes,
+        moderatedBy: uid,
+        moderatedAt: now,
+      },
+    }, { merge: true });
+    return {
+      mode: "approved",
+      status: "approved",
+      listingType,
+      listingId,
+      ownerUid: claimantUid,
+    };
+  });
+
+  return { ok: true, claimId, ...result };
+});
+
+exports.setDirectoryRsvp = onCall({ cors: true }, async (request) => {
+  if (!MARKETING_RSVP_ENABLED) {
+    throw new HttpsError("failed-precondition", "RSVP flow is disabled.");
+  }
+  checkRateLimit(request.rawRequest, "set_directory_rsvp", { perMinute: 45, perHour: 320 });
+  enforceAppCheckIfEnabled(request, "set_directory_rsvp");
+  const uid = requireAuth(request);
+  const targetType = requireDirectoryEntityType(request.data?.targetType || "");
+  const targetId = safeDirectoryString(request.data?.targetId || "", 220);
+  if (!targetId) {
+    throw new HttpsError("invalid-argument", "targetId is required.");
+  }
+  const status = normalizeDirectoryRsvpStatus(request.data?.status || "going");
+  const reminderChannels = normalizeDirectoryReminderChannels(request.data?.reminderChannels || []);
+  const docId = buildDirectoryRsvpDocId(uid, targetType, targetId);
+  const ref = admin.firestore().collection("directory_rsvps").doc(docId);
+
+  if (status === "cancelled") {
+    await ref.delete().catch(() => {});
+    return { ok: true, docId, status: "cancelled", removed: true };
+  }
+
+  const now = buildDirectoryNow();
+  await ref.set({
+    docId,
+    uid,
+    targetType,
+    targetId,
+    status,
+    reminderChannels,
+    createdAt: now,
+    updatedAt: now,
+  }, { merge: true });
+  return { ok: true, docId, status, reminderChannels };
+});
+
+exports.setDirectoryReminderPreferences = onCall({ cors: true }, async (request) => {
+  if (!MARKETING_RSVP_ENABLED) {
+    throw new HttpsError("failed-precondition", "Reminders are disabled.");
+  }
+  checkRateLimit(request.rawRequest, "set_directory_reminder_preferences", { perMinute: 35, perHour: 260 });
+  enforceAppCheckIfEnabled(request, "set_directory_reminder_preferences");
+  const uid = requireAuth(request);
+  const targetType = requireDirectoryEntityType(request.data?.targetType || "");
+  const targetId = safeDirectoryString(request.data?.targetId || "", 220);
+  if (!targetId) {
+    throw new HttpsError("invalid-argument", "targetId is required.");
+  }
+  const emailOptIn = !!request.data?.emailOptIn;
+  const smsOptIn = !!request.data?.smsOptIn;
+  if (smsOptIn && !MARKETING_SMS_REMINDERS_ENABLED) {
+    throw new HttpsError("failed-precondition", "SMS reminders are disabled.");
+  }
+  const phone = normalizeDirectoryPhone(request.data?.phone || "");
+  if (smsOptIn && !phone) {
+    throw new HttpsError("invalid-argument", "Valid phone is required for smsOptIn.");
+  }
+
+  const docId = buildDirectoryRsvpDocId(uid, targetType, targetId);
+  const ref = admin.firestore().collection("directory_reminders").doc(docId);
+  if (!emailOptIn && !smsOptIn) {
+    await ref.delete().catch(() => {});
+    return { ok: true, docId, removed: true };
+  }
+  const channels = [];
+  if (emailOptIn) channels.push("email");
+  if (smsOptIn) channels.push("sms");
+  const now = buildDirectoryNow();
+  await ref.set({
+    docId,
+    uid,
+    targetType,
+    targetId,
+    emailOptIn,
+    smsOptIn,
+    phone: smsOptIn ? phone : "",
+    channels,
+    status: "active",
+    createdAt: now,
+    updatedAt: now,
+  }, { merge: true });
+  return {
+    ok: true,
+    docId,
+    emailOptIn,
+    smsOptIn,
+    phone: smsOptIn ? phone : "",
+    channels,
+  };
+});
+
+exports.listDirectoryGeoLanding = onCall({ cors: true }, async (request) => {
+  if (!MARKETING_GEO_PAGES_ENABLED) {
+    throw new HttpsError("failed-precondition", "Geo pages are disabled.");
+  }
+  checkRateLimit(request.rawRequest, "list_directory_geo_landing", { perMinute: 80, perHour: 900 });
+  const state = normalizeDirectoryToken(request.data?.state || "", 20);
+  const city = normalizeDirectoryToken(request.data?.city || "", 80);
+  const regionTokenInput = normalizeDirectoryToken(request.data?.regionToken || "", 80);
+  const regionToken = regionTokenInput || (state && city ? `${state}_${city}` : "");
+  const dateWindowDays = normalizeDirectoryDateWindowDays(request.data?.dateWindow || "14d");
+  const nowMsValue = Date.now();
+  const maxStartMs = nowMsValue + (dateWindowDays * 86400000);
+  const db = admin.firestore();
+
+  let venueQuery = db.collection("venues").where("status", "==", "approved").limit(180);
+  let eventQuery = db.collection("karaoke_events").where("status", "==", "approved").limit(260);
+  let sessionQuery = db.collection("room_sessions")
+    .where("status", "==", "approved")
+    .where("visibility", "==", "public")
+    .limit(260);
+  if (regionToken) {
+    venueQuery = venueQuery.where("region", "==", regionToken);
+    eventQuery = eventQuery.where("region", "==", regionToken);
+    sessionQuery = sessionQuery.where("region", "==", regionToken);
+  }
+
+  const [venueSnap, eventSnap, sessionSnap, cacheSnap] = await Promise.all([
+    venueQuery.get(),
+    eventQuery.get(),
+    sessionQuery.get(),
+    db.collection("directory_geo_pages").doc(regionToken || "nationwide").get().catch(() => null),
+  ]);
+
+  const toPublicListing = (docSnap) => {
+    const data = docSnap.data() || {};
+    return {
+      id: docSnap.id,
+      listingType: data.listingType || "",
+      title: safeDirectoryString(data.title || "", 200),
+      description: normalizeDirectoryTextBlock(data.description || "", 400),
+      city: safeDirectoryString(data.city || "", 80),
+      state: safeDirectoryString(data.state || "", 40),
+      region: normalizeDirectoryToken(data.region || "", 80),
+      startsAtMs: Number(data.startsAtMs || 0) || 0,
+      endsAtMs: Number(data.endsAtMs || 0) || 0,
+      venueId: safeDirectoryString(data.venueId || "", 180),
+      venueName: safeDirectoryString(data.venueName || "", 180),
+      hostUid: safeDirectoryString(data.hostUid || "", 180),
+      hostName: safeDirectoryString(data.hostName || "", 180),
+      roomCode: safeDirectoryString(data.roomCode || "", 40),
+      karaokeNightsLabel: safeDirectoryString(data.karaokeNightsLabel || "", 200),
+      location: normalizeDirectoryLatLng(data.location || {}),
+      status: normalizeDirectoryStatus(data.status || "approved", "approved"),
+      visibility: normalizeDirectoryVisibility(data.visibility || "public", "public"),
+    };
+  };
+
+  const events = eventSnap.docs
+    .map((docSnap) => ({ ...toPublicListing(docSnap), listingType: "event" }))
+    .filter((item) => {
+      const startsAtMs = Number(item.startsAtMs || 0);
+      if (!startsAtMs) return true;
+      return startsAtMs >= nowMsValue && startsAtMs <= maxStartMs;
+    })
+    .sort((a, b) => Number(a.startsAtMs || 0) - Number(b.startsAtMs || 0));
+  const sessions = sessionSnap.docs
+    .map((docSnap) => ({ ...toPublicListing(docSnap), listingType: "room_session" }))
+    .filter((item) => {
+      const startsAtMs = Number(item.startsAtMs || 0);
+      if (!startsAtMs) return true;
+      return startsAtMs >= nowMsValue && startsAtMs <= maxStartMs;
+    })
+    .sort((a, b) => Number(a.startsAtMs || 0) - Number(b.startsAtMs || 0));
+  const venues = venueSnap.docs
+    .map((docSnap) => ({ ...toPublicListing(docSnap), listingType: "venue" }))
+    .sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+
+  const cacheMeta = cacheSnap && cacheSnap.exists ? (cacheSnap.data() || {}) : null;
+  return {
+    ok: true,
+    token: regionToken || "nationwide",
+    state,
+    city,
+    dateWindowDays,
+    generatedAtMs: nowMsValue,
+    counts: {
+      venues: venues.length,
+      events: events.length,
+      sessions: sessions.length,
+      total: venues.length + events.length + sessions.length,
+    },
+    venues,
+    events,
+    sessions,
+    cacheMeta: cacheMeta ? {
+      token: safeDirectoryString(cacheMeta.token || "", 120),
+      updatedAtMs: valueToMillis(cacheMeta.updatedAt),
+      title: safeDirectoryString(cacheMeta.title || "", 180),
+      description: normalizeDirectoryTextBlock(cacheMeta.description || "", 400),
+    } : null,
+  };
+});
+
+exports.previewDirectoryRoomSessionByCode = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "preview_directory_room_session_by_code", { perMinute: 80, perHour: 700 });
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  const db = admin.firestore();
+  const snap = await db.collection("room_sessions").where("roomCode", "==", roomCode).limit(8).get();
+  if (snap.empty) {
+    throw new HttpsError("not-found", "Room code not found.");
+  }
+  const approved = snap.docs
+    .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }))
+    .filter((entry) => normalizeDirectoryStatus(entry.status || "pending", "pending") === "approved")
+    .sort((a, b) => Number(b.startsAtMs || 0) - Number(a.startsAtMs || 0));
+  if (!approved.length) {
+    throw new HttpsError("not-found", "Room code not found.");
+  }
+  const top = approved[0] || {};
+  return {
+    ok: true,
+    roomCode,
+    session: {
+      id: safeDirectoryString(top.id || "", 220),
+      title: safeDirectoryString(top.title || "", 180),
+      description: normalizeDirectoryTextBlock(top.description || "", 400),
+      startsAtMs: Number(top.startsAtMs || 0) || 0,
+      endsAtMs: Number(top.endsAtMs || 0) || 0,
+      hostUid: safeDirectoryString(top.hostUid || "", 180),
+      hostName: safeDirectoryString(top.hostName || "", 180),
+      venueId: safeDirectoryString(top.venueId || "", 220),
+      venueName: safeDirectoryString(top.venueName || "", 220),
+      visibility: normalizeDirectoryVisibility(top.visibility || "private", "private"),
+    },
+  };
+});
+
 exports.mergeAnonymousAccountData = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "merge_anonymous_account_data", { perMinute: 12, perHour: 60 });
   enforceAppCheckIfEnabled(request, "merge_anonymous_account_data");
@@ -4965,6 +5453,203 @@ exports.nightlyDirectorySync = onSchedule(
       totalRecords: result.totalRecords,
       status: "completed",
       createdAt: buildDirectoryNow(),
+    }, { merge: true });
+  }
+);
+
+const dispatchDirectoryReminderHook = async ({ channel = "", payload = {} }) => {
+  const token = normalizeDirectoryToken(channel, 20);
+  const url = token === "sms"
+    ? String(REMINDER_SMS_WEBHOOK_URL.value() || "").trim()
+    : String(REMINDER_EMAIL_WEBHOOK_URL.value() || "").trim();
+  if (!url) {
+    return {
+      sent: false,
+      status: "provider_not_configured",
+      httpStatus: 0,
+      responseText: "",
+      url: "",
+    };
+  }
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload || {}),
+    });
+    const text = await response.text().catch(() => "");
+    if (!response.ok) {
+      return {
+        sent: false,
+        status: "provider_error",
+        httpStatus: Number(response.status || 0),
+        responseText: text.slice(0, 600),
+        url,
+      };
+    }
+    return {
+      sent: true,
+      status: "sent",
+      httpStatus: Number(response.status || 0),
+      responseText: text.slice(0, 600),
+      url,
+    };
+  } catch (error) {
+    return {
+      sent: false,
+      status: "provider_error",
+      httpStatus: 0,
+      responseText: safeDirectoryString(error?.message || "dispatch failed", 600),
+      url,
+    };
+  }
+};
+
+exports.dispatchDirectoryReminders = onSchedule(
+  {
+    schedule: "*/10 * * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "512MiB",
+    secrets: [REMINDER_EMAIL_WEBHOOK_URL, REMINDER_SMS_WEBHOOK_URL],
+  },
+  async () => {
+    if (!MARKETING_RSVP_ENABLED) return;
+    const db = admin.firestore();
+    const nowMsValue = Date.now();
+    const jobId = `reminder_job_${nowMsValue}_${Math.random().toString(36).slice(2, 8)}`;
+    const remindersSnap = await db
+      .collection("directory_reminders")
+      .where("status", "==", "active")
+      .limit(DIRECTORY_REMINDER_MAX_BATCH)
+      .get();
+
+    const counters = {
+      remindersScanned: remindersSnap.size,
+      channelsAttempted: 0,
+      sent: 0,
+      skipped: 0,
+      failed: 0,
+      providerNotConfigured: 0,
+    };
+
+    for (const reminderDoc of remindersSnap.docs) {
+      const reminder = reminderDoc.data() || {};
+      const uid = safeDirectoryString(reminder.uid || "", 180);
+      const targetType = normalizeDirectoryToken(reminder.targetType || "", 30);
+      const targetId = safeDirectoryString(reminder.targetId || "", 220);
+      if (!uid || !targetType || !targetId) {
+        counters.skipped += 1;
+        continue;
+      }
+      let targetCollection = "";
+      try {
+        targetCollection = ensureDirectoryReminderTargetCollection(targetType);
+      } catch {
+        counters.skipped += 1;
+        continue;
+      }
+      const rsvpDocId = buildDirectoryRsvpDocId(uid, targetType, targetId);
+      const rsvpRef = db.collection("directory_rsvps").doc(rsvpDocId);
+      const targetRef = db.collection(targetCollection).doc(targetId);
+      const [rsvpSnap, targetSnap] = await Promise.all([rsvpRef.get(), targetRef.get()]);
+      if (!rsvpSnap.exists || !targetSnap.exists) {
+        counters.skipped += 1;
+        continue;
+      }
+      const rsvp = rsvpSnap.data() || {};
+      const rsvpStatus = normalizeDirectoryToken(rsvp.status || "", 20);
+      if (!DIRECTORY_REMINDER_ELIGIBLE_STATUSES.has(rsvpStatus)) {
+        counters.skipped += 1;
+        continue;
+      }
+      const target = targetSnap.data() || {};
+      const startsAtMs = Number(target.startsAtMs || 0);
+      if (!Number.isFinite(startsAtMs) || startsAtMs <= nowMsValue) {
+        counters.skipped += 1;
+        continue;
+      }
+      const slot = pickDirectoryReminderSlot(startsAtMs - nowMsValue);
+      if (!slot) {
+        counters.skipped += 1;
+        continue;
+      }
+      const channels = normalizeDirectoryReminderChannels(
+        reminder.channels
+          || [
+            ...(reminder.emailOptIn ? ["email"] : []),
+            ...(reminder.smsOptIn ? ["sms"] : []),
+          ]
+      );
+      if (!channels.length) {
+        counters.skipped += 1;
+        continue;
+      }
+      for (const channel of channels) {
+        if (channel === "sms" && !MARKETING_SMS_REMINDERS_ENABLED) {
+          counters.skipped += 1;
+          continue;
+        }
+        const dispatchId = buildDirectoryReminderDispatchId(reminderDoc.id, slot.id, channel);
+        const dispatchRef = db.collection("directory_reminder_dispatch").doc(dispatchId);
+        const dispatchSnap = await dispatchRef.get();
+        if (dispatchSnap.exists) {
+          counters.skipped += 1;
+          continue;
+        }
+        counters.channelsAttempted += 1;
+        const payload = {
+          reminderId: reminderDoc.id,
+          uid,
+          channel,
+          slotId: slot.id,
+          targetType,
+          targetId,
+          startsAtMs,
+          title: safeDirectoryString(target.title || "", 180),
+          venueName: safeDirectoryString(target.venueName || "", 180),
+          hostName: safeDirectoryString(target.hostName || "", 180),
+          roomCode: safeDirectoryString(target.roomCode || "", 40),
+          phone: channel === "sms" ? normalizeDirectoryPhone(reminder.phone || "") : "",
+          requestedAtMs: nowMsValue,
+        };
+        const hookResult = await dispatchDirectoryReminderHook({ channel, payload });
+        if (hookResult.sent) counters.sent += 1;
+        else if (hookResult.status === "provider_not_configured") counters.providerNotConfigured += 1;
+        else counters.failed += 1;
+        await dispatchRef.set({
+          dispatchId,
+          reminderId: reminderDoc.id,
+          uid,
+          channel,
+          slotId: slot.id,
+          targetType,
+          targetId,
+          startsAtMs,
+          status: hookResult.status,
+          sent: hookResult.sent,
+          providerUrl: hookResult.url || "",
+          providerHttpStatus: hookResult.httpStatus || 0,
+          providerResponse: hookResult.responseText || "",
+          jobId,
+          createdAt: buildDirectoryNow(),
+        }, { merge: true });
+        await reminderDoc.ref.set({
+          lastDispatchAt: buildDirectoryNow(),
+          lastDispatchSlot: slot.id,
+          updatedAt: buildDirectoryNow(),
+        }, { merge: true });
+      }
+    }
+
+    await db.collection("directory_reminder_jobs").doc(jobId).set({
+      jobId,
+      status: "completed",
+      counters,
+      createdAt: buildDirectoryNow(),
+      scheduledAtMs: nowMsValue,
     }, { merge: true });
   }
 );

@@ -7,10 +7,12 @@ import {
   limit,
   onSnapshot,
 } from "../../../lib/firebase";
+import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
 import EntityActionsCard from "./EntityActionsCard";
+import EmptyStatePanel from "./EmptyStatePanel";
 import { formatDateTime } from "./shared";
 
-const RoomSessionPage = ({ id, navigate, session }) => {
+const RoomSessionPage = ({ id, navigate, session, authFlow }) => {
   const [sessionItem, setSessionItem] = useState(null);
   const [hostProfile, setHostProfile] = useState(null);
   const [error, setError] = useState("");
@@ -39,7 +41,17 @@ const RoomSessionPage = ({ id, navigate, session }) => {
     return <section className="mk3-page"><div className="mk3-status mk3-status-error">{error}</div></section>;
   }
   if (!sessionItem) {
-    return <section className="mk3-page"><div className="mk3-status">Session not found.</div></section>;
+    return (
+      <section className="mk3-page">
+        <EmptyStatePanel
+          {...getEmptyStateConfig({ context: EMPTY_STATE_CONTEXT.SESSION_MISSING, session })}
+          onAction={(action) => {
+            if (action.intent === "join") navigate("join");
+            else navigate("discover");
+          }}
+        />
+      </section>
+    );
   }
 
   return (
@@ -68,7 +80,13 @@ const RoomSessionPage = ({ id, navigate, session }) => {
           )}
         </div>
       </article>
-      <EntityActionsCard targetType="session" targetId={sessionItem.id} session={session} />
+      <EntityActionsCard
+        targetType="session"
+        targetId={sessionItem.id}
+        session={session}
+        navigate={navigate}
+        authFlow={authFlow}
+      />
     </section>
   );
 };

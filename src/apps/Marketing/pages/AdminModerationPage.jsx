@@ -1,5 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
+import {
+  db,
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  onSnapshot,
+} from "../../../lib/firebase";
+import { trackEvent } from "../../../lib/firebase";
 import { directoryActions } from "../api/directoryApi";
+import { marketingFlags } from "../featureFlags";
 import { formatDateTime } from "./shared";
 
 const defaultRecordJson = JSON.stringify([
@@ -26,6 +37,7 @@ const AdminModerationPage = ({ session }) => {
   const [ingestProviders, setIngestProviders] = useState("google,yelp");
   const [ingestDryRun, setIngestDryRun] = useState(true);
   const [recordsInput, setRecordsInput] = useState(defaultRecordJson);
+  const [claimQueue, setClaimQueue] = useState([]);
 
   const refreshQueue = async () => {
     if (!canModerate) return;
@@ -50,6 +62,39 @@ const AdminModerationPage = ({ session }) => {
     refreshQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canModerate, statusFilter, sourceType, entityType]);
+
+  useEffect(() => {
+    if (!canModerate || !marketingFlags.claimFlowEnabled) {
+      setClaimQueue([]);
+      return () => {};
+    }
+    const baseRef = collection(db, "directory_claim_requests");
+    let stoppedFallback = () => {};
+    let startedFallback = false;
+    const stopPrimary = onSnapshot(
+      query(baseRef, where("status", "==", "pending"), orderBy("createdAt", "desc"), limit(80)),
+      (snap) => {
+        const claims = snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }));
+        setClaimQueue(claims);
+      },
+      () => {
+        if (startedFallback) return;
+        startedFallback = true;
+        stoppedFallback = onSnapshot(
+          query(baseRef, where("status", "==", "pending"), limit(80)),
+          (snap) => {
+            const claims = snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }));
+            setClaimQueue(claims);
+          },
+          () => setClaimQueue([])
+        );
+      }
+    );
+    return () => {
+      stopPrimary();
+      stoppedFallback();
+    };
+  }, [canModerate]);
 
   const reviewQueueLabel = useMemo(
     () => `${queue.length} item${queue.length === 1 ? "" : "s"} loaded`,
@@ -95,6 +140,25 @@ const AdminModerationPage = ({ session }) => {
       setStatus(String(error?.message || "Ingestion failed."));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const resolveClaim = async (claimId, action) => {
+    if (!canModerate || !claimId) return;
+    setActionBusyId(claimId);
+    setStatus("");
+    try {
+      await directoryActions.resolveDirectoryClaimRequest({
+        claimId,
+        action,
+        notes: notesById[claimId] || "",
+      });
+      setStatus(`Claim ${claimId} ${action}d.`);
+      trackEvent("mk_listing_claim_resolved", { claimId, action });
+    } catch (error) {
+      setStatus(String(error?.message || "Claim resolution failed."));
+    } finally {
+      setActionBusyId("");
     }
   };
 
@@ -192,6 +256,41 @@ const AdminModerationPage = ({ session }) => {
         <button type="button" onClick={runIngest} disabled={loading}>
           {loading ? "Running..." : "Run Ingestion"}
         </button>
+        {marketingFlags.claimFlowEnabled && (
+          <div className="mk3-sub-list compact">
+            <h3>Pending Claims ({claimQueue.length})</h3>
+            {claimQueue.map((claim) => (
+              <article key={claim.id} className="mk3-review-card">
+                <div className="mk3-review-head">
+                  <strong>{claim.listingType} | {claim.listingId}</strong>
+                  <div className="mk3-chip">{claim.status || "pending"}</div>
+                </div>
+                <p>{claim.evidence || "No evidence provided."}</p>
+                <textarea
+                  value={notesById[claim.id] || ""}
+                  onChange={(e) => setNotesById((prev) => ({ ...prev, [claim.id]: e.target.value }))}
+                  placeholder="Claim moderation notes"
+                />
+                <div className="mk3-actions-inline">
+                  <button
+                    type="button"
+                    disabled={actionBusyId === claim.id}
+                    onClick={() => resolveClaim(claim.id, "approve")}
+                  >
+                    Approve Claim
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionBusyId === claim.id}
+                    onClick={() => resolveClaim(claim.id, "reject")}
+                  >
+                    Reject Claim
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </aside>
       {status && <div className="mk3-status full">{status}</div>}
     </section>

@@ -138,6 +138,68 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /directory_claim_requests/{claimId} {
+      allow read: if isAuthed()
+        && (
+          resource.data.createdBy == request.auth.uid
+          || isDirectoryModerator()
+        );
+      allow create: if isAuthed()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.listingType is string
+        && request.resource.data.listingId is string;
+      allow update, delete: if false;
+    }
+
+    match /directory_rsvps/{docId} {
+      allow read: if isAuthed()
+        && (
+          resource.data.uid == request.auth.uid
+          || isDirectoryModerator()
+        );
+      allow create: if isAuthed()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.targetType is string
+        && request.resource.data.targetId is string;
+      allow update, delete: if isAuthed()
+        && (
+          resource.data.uid == request.auth.uid
+          || isDirectoryModerator()
+        );
+    }
+
+    match /directory_reminders/{docId} {
+      allow read: if isAuthed()
+        && (
+          resource.data.uid == request.auth.uid
+          || isDirectoryModerator()
+        );
+      allow create: if isAuthed()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.targetType is string
+        && request.resource.data.targetId is string;
+      allow update, delete: if isAuthed()
+        && (
+          resource.data.uid == request.auth.uid
+          || isDirectoryModerator()
+        );
+    }
+
+    match /directory_geo_pages/{token} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /directory_reminder_dispatch/{docId} {
+      allow read: if isDirectoryModerator();
+      allow write: if false;
+    }
+
+    match /directory_reminder_jobs/{docId} {
+      allow read: if isDirectoryModerator();
+      allow write: if false;
+    }
+
     match /follows/{followId} {
       allow read: if true;
       allow create: if isAuthed()

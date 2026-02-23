@@ -19,6 +19,12 @@ import {
   listModerationQueue,
   resolveModerationItem,
   runExternalDirectoryIngestion,
+  submitDirectoryClaimRequest,
+  resolveDirectoryClaimRequest,
+  setDirectoryRsvp,
+  setDirectoryReminderPreferences,
+  listDirectoryGeoLanding,
+  previewDirectoryRoomSessionByCode,
 } from "../../../lib/firebase";
 
 const mapDocs = (snap) => snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
@@ -165,7 +171,15 @@ export const subscribeModeratorAccess = ({ uid, onData, onError }) => {
 
 export const subscribeOwnDashboard = ({ uid, onData, onError }) => {
   if (!uid) {
-    onData?.({ follows: [], checkins: [], reviews: [], submissions: [] });
+    onData?.({
+      follows: [],
+      checkins: [],
+      reviews: [],
+      submissions: [],
+      rsvps: [],
+      reminders: [],
+      performanceHistory: [],
+    });
     return () => {};
   }
 
@@ -193,8 +207,39 @@ export const subscribeOwnDashboard = ({ uid, onData, onError }) => {
     orderBy("createdAt", "desc"),
     limit(80)
   );
+  const rsvpQuery = query(
+    collection(db, "directory_rsvps"),
+    where("uid", "==", uid),
+    orderBy("updatedAt", "desc"),
+    limit(80)
+  );
+  const reminderQuery = query(
+    collection(db, "directory_reminders"),
+    where("uid", "==", uid),
+    orderBy("updatedAt", "desc"),
+    limit(80)
+  );
+  const performanceQueryPrimary = query(
+    collection(db, "performances"),
+    where("singerUid", "==", uid),
+    orderBy("timestamp", "desc"),
+    limit(120)
+  );
+  const performanceQueryFallback = query(
+    collection(db, "performances"),
+    where("singerUid", "==", uid),
+    limit(120)
+  );
 
-  const state = { follows: [], checkins: [], reviews: [], submissions: [] };
+  const state = {
+    follows: [],
+    checkins: [],
+    reviews: [],
+    submissions: [],
+    rsvps: [],
+    reminders: [],
+    performanceHistory: [],
+  };
   const emit = () => onData?.({ ...state });
 
   const unsubs = [
@@ -214,6 +259,23 @@ export const subscribeOwnDashboard = ({ uid, onData, onError }) => {
       state.submissions = mapDocs(snap);
       emit();
     }, onError),
+    onSnapshot(rsvpQuery, (snap) => {
+      state.rsvps = mapDocs(snap);
+      emit();
+    }, onError),
+    onSnapshot(reminderQuery, (snap) => {
+      state.reminders = mapDocs(snap);
+      emit();
+    }, onError),
+    subscribeWithFallback({
+      primaryQuery: performanceQueryPrimary,
+      fallbackQuery: performanceQueryFallback,
+      onData: (snap) => {
+        state.performanceHistory = mapDocs(snap);
+        emit();
+      },
+      onError,
+    }),
   ];
 
   return () => {
@@ -238,4 +300,10 @@ export const directoryActions = {
   listModerationQueue,
   resolveModerationItem,
   runExternalDirectoryIngestion,
+  submitDirectoryClaimRequest,
+  resolveDirectoryClaimRequest,
+  setDirectoryRsvp,
+  setDirectoryReminderPreferences,
+  listDirectoryGeoLanding,
+  previewDirectoryRoomSessionByCode,
 };

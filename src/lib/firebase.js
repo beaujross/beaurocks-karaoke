@@ -399,6 +399,42 @@ const runExternalDirectoryIngestion = async (payload = {}) => {
   return data || null;
 };
 
+const submitDirectoryClaimRequest = async (payload = {}) => {
+  await requireAppCheckToken("submitDirectoryClaimRequest");
+  const data = await callFunction("submitDirectoryClaimRequest", payload || {});
+  return data || null;
+};
+
+const resolveDirectoryClaimRequest = async (payload = {}) => {
+  await requireAppCheckToken("resolveDirectoryClaimRequest");
+  const data = await callFunction("resolveDirectoryClaimRequest", payload || {});
+  return data || null;
+};
+
+const setDirectoryRsvp = async (payload = {}) => {
+  await requireAppCheckToken("setDirectoryRsvp");
+  const data = await callFunction("setDirectoryRsvp", payload || {});
+  return data || null;
+};
+
+const setDirectoryReminderPreferences = async (payload = {}) => {
+  await requireAppCheckToken("setDirectoryReminderPreferences");
+  const data = await callFunction("setDirectoryReminderPreferences", payload || {});
+  return data || null;
+};
+
+const listDirectoryGeoLanding = async (payload = {}) => {
+  await requireAppCheckToken("listDirectoryGeoLanding");
+  const data = await callFunction("listDirectoryGeoLanding", payload || {});
+  return data || null;
+};
+
+const previewDirectoryRoomSessionByCode = async (payload = {}) => {
+  await requireAppCheckToken("previewDirectoryRoomSessionByCode");
+  const data = await callFunction("previewDirectoryRoomSessionByCode", payload || {});
+  return data || null;
+};
+
 const mergeAnonymousAccountData = async (payload = {}) => {
   await requireAppCheckToken("mergeAnonymousAccountData");
   const data = await callFunction("mergeAnonymousAccountData", payload || {});
@@ -674,6 +710,12 @@ export {
   listModerationQueue,
   resolveModerationItem,
   runExternalDirectoryIngestion,
+  submitDirectoryClaimRequest,
+  resolveDirectoryClaimRequest,
+  setDirectoryRsvp,
+  setDirectoryReminderPreferences,
+  listDirectoryGeoLanding,
+  previewDirectoryRoomSessionByCode,
   mergeAnonymousAccountData,
   ensureOrganization,
   bootstrapOnboardingWorkspace,

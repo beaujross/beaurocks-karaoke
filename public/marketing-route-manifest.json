@@ -1,0 +1,31 @@
+{
+  "source": "static_cached_cached_cached",
+  "generatedAt": "2026-02-23T03:01:02.186Z",
+  "counts": {},
+  "geoRegionTokens": [
+    "nationwide",
+    "wa_kitsap",
+    "wa_seattle",
+    "ca_los_angeles",
+    "ny_new_york"
+  ],
+  "geoCityPairs": [
+    {
+      "state": "wa",
+      "city": "seattle"
+    },
+    {
+      "state": "wa",
+      "city": "silverdale"
+    },
+    {
+      "state": "ca",
+      "city": "los-angeles"
+    },
+    {
+      "state": "ny",
+      "city": "new-york"
+    }
+  ],
+  "detailRoutes": []
+}

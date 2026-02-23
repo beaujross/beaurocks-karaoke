@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { trackEvent } from "../../../lib/firebase";
 import { directoryActions } from "../api/directoryApi";
 import { formatDateTime } from "./shared";
 
@@ -18,7 +19,14 @@ const fromDateTimeLocalInput = (value = "") => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const CadenceUpdateCard = ({ listingType = "venue", listing = null, session }) => {
+const routeForListing = (listingType = "", listingId = "") => {
+  if (listingType === "venue") return { page: "venue", id: listingId };
+  if (listingType === "event") return { page: "event", id: listingId };
+  if (listingType === "room_session") return { page: "session", id: listingId };
+  return { page: "discover", id: "" };
+};
+
+const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
   const uid = session?.uid || "";
   const isOwner = !!listing && !!uid && (uid === listing.ownerUid || uid === listing.hostUid);
@@ -69,6 +77,19 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session }) =
       return;
     }
     if (!canSubmit) {
+      authFlow?.requireFullAuth?.({
+        intent: "cadence",
+        targetType: listingType,
+        targetId: listing?.id || "",
+        returnRoute: {
+          ...routeForListing(listingType, listing?.id || ""),
+          params: {
+            intent: "cadence",
+            targetType: listingType,
+            targetId: listing?.id || "",
+          },
+        },
+      });
       setStatus("Sign in with a full account to suggest or update cadence.");
       return;
     }
@@ -96,8 +117,14 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session }) =
       });
       if (result?.mode === "owner_direct_update" || result?.mode === "direct_update") {
         setStatus("Cadence updated live.");
+        trackEvent("mk_cadence_update_owner_direct_update", { listingType, listingId: listing.id });
       } else {
         setStatus(`Cadence update submitted for moderation (${result?.submissionId || "pending"}).`);
+        trackEvent("mk_cadence_update_queued_for_review", {
+          listingType,
+          listingId: listing.id,
+          submissionId: result?.submissionId || "",
+        });
       }
     } catch (error) {
       setStatus(String(error?.message || "Could not update cadence."));

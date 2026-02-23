@@ -8,10 +8,12 @@ import {
   limit,
   onSnapshot,
 } from "../../../lib/firebase";
+import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
 import EntityActionsCard from "./EntityActionsCard";
+import EmptyStatePanel from "./EmptyStatePanel";
 import { readStars } from "./shared";
 
-const PerformerPage = ({ id, session }) => {
+const PerformerPage = ({ id, session, navigate, authFlow }) => {
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
 
@@ -34,7 +36,17 @@ const PerformerPage = ({ id, session }) => {
   }, [id]);
 
   if (!profile) {
-    return <section className="mk3-page"><div className="mk3-status">Performer profile not found.</div></section>;
+    return (
+      <section className="mk3-page">
+        <EmptyStatePanel
+          {...getEmptyStateConfig({ context: EMPTY_STATE_CONTEXT.PERFORMER_MISSING, session })}
+          onAction={(action) => {
+            if (action.intent === "profile") navigate("profile");
+            else navigate("discover");
+          }}
+        />
+      </section>
+    );
   }
 
   return (
@@ -55,7 +67,13 @@ const PerformerPage = ({ id, session }) => {
           ))}
         </div>
       </article>
-      <EntityActionsCard targetType="performer" targetId={profile.id} session={session} />
+      <EntityActionsCard
+        targetType="performer"
+        targetId={profile.id}
+        session={session}
+        navigate={navigate}
+        authFlow={authFlow}
+      />
     </section>
   );
 };

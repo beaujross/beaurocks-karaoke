@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from "react";
+import { trackEvent } from "../../../lib/firebase";
 import { directoryActions } from "../api/directoryApi";
 import { formatDateTime } from "./shared";
 
-const ListingSubmissionPage = ({ session, navigate }) => {
+const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
   const [listingType, setListingType] = useState("venue");
   const [busy, setBusy] = useState(false);
@@ -29,6 +30,18 @@ const ListingSubmissionPage = ({ session, navigate }) => {
   const submit = async (event) => {
     event.preventDefault();
     if (!canSubmit) {
+      authFlow?.requireFullAuth?.({
+        intent: "listing_submit",
+        targetType: listingType,
+        targetId: "",
+        returnRoute: {
+          page: "submit",
+          params: {
+            intent: "listing_submit",
+            targetType: listingType,
+          },
+        },
+      });
       setStatus("Sign in with an upgraded account to submit listings.");
       return;
     }
@@ -46,6 +59,10 @@ const ListingSubmissionPage = ({ session, navigate }) => {
         payload,
       });
       setStatus(`Submitted for moderation. Submission ID: ${result?.submissionId || "pending"}`);
+      trackEvent(`mk_listing_created_${listingType}`, {
+        listingType,
+        submissionId: result?.submissionId || "",
+      });
     } catch (error) {
       setStatus(String(error?.message || "Submission failed."));
     } finally {

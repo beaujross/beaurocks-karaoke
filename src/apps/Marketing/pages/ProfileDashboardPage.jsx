@@ -18,9 +18,13 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     checkins: [],
     reviews: [],
     submissions: [],
+    rsvps: [],
+    reminders: [],
+    performanceHistory: [],
   });
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
+  const [nextSteps, setNextSteps] = useState([]);
   const [form, setForm] = useState({
     displayName: "",
     handle: "",
@@ -48,13 +52,29 @@ const ProfileDashboardPage = ({ session, navigate }) => {
 
   useEffect(() => {
     if (!canUseDashboard) {
-      setHistory({ follows: [], checkins: [], reviews: [], submissions: [] });
+      setHistory({
+        follows: [],
+        checkins: [],
+        reviews: [],
+        submissions: [],
+        rsvps: [],
+        reminders: [],
+        performanceHistory: [],
+      });
       return () => {};
     }
     return subscribeOwnDashboard({
       uid,
       onData: setHistory,
-      onError: () => setHistory({ follows: [], checkins: [], reviews: [], submissions: [] }),
+      onError: () => setHistory({
+        follows: [],
+        checkins: [],
+        reviews: [],
+        submissions: [],
+        rsvps: [],
+        reminders: [],
+        performanceHistory: [],
+      }),
     });
   }, [canUseDashboard, uid]);
 
@@ -88,7 +108,44 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     checkins: history.checkins.length,
     reviews: history.reviews.length,
     submissions: history.submissions.length,
+    rsvps: history.rsvps.length,
+    performances: history.performanceHistory.length,
   }), [history]);
+
+  const performanceStats = useMemo(() => {
+    const source = Array.isArray(history.performanceHistory) ? history.performanceHistory : [];
+    const songCounts = new Map();
+    const roomCounts = new Map();
+    const hostCounts = new Map();
+    source.forEach((entry) => {
+      const songTitle = String(entry.songTitle || "").trim();
+      if (songTitle) songCounts.set(songTitle, (songCounts.get(songTitle) || 0) + 1);
+      const roomCode = String(entry.roomCode || "").trim().toUpperCase();
+      if (roomCode) roomCounts.set(roomCode, (roomCounts.get(roomCode) || 0) + 1);
+    });
+    (Array.isArray(history.follows) ? history.follows : []).forEach((entry) => {
+      if (String(entry.targetType || "") !== "host") return;
+      const token = String(entry.targetId || "").trim();
+      if (!token) return;
+      hostCounts.set(token, (hostCounts.get(token) || 0) + 1);
+    });
+    const topSongs = Array.from(songCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    const topRooms = Array.from(roomCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    const topHosts = Array.from(hostCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    return {
+      total: source.length,
+      topSongs,
+      topRooms,
+      topHosts,
+      recent: source.slice(0, 10),
+    };
+  }, [history.performanceHistory, history.follows]);
 
   const saveProfile = async () => {
     if (!canUseDashboard) {
@@ -100,6 +157,18 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     try {
       await directoryActions.upsertDirectoryProfile({ profile: form });
       setStatus("Profile updated.");
+      setNextSteps([
+        {
+          id: "follow_hosts",
+          label: "Next: Follow 3 hosts",
+          onClick: () => navigate("discover", "", { intent: "follow", targetType: "host" }),
+        },
+        {
+          id: "rsvp_first",
+          label: "Next: RSVP to first event",
+          onClick: () => navigate("discover", "", { intent: "rsvp", targetType: "event" }),
+        },
+      ]);
     } catch (error) {
       setStatus(String(error?.message || "Could not save profile."));
     } finally {
@@ -180,6 +249,15 @@ const ProfileDashboardPage = ({ session, navigate }) => {
           </button>
         </div>
         {status && <div className="mk3-status">{status}</div>}
+        {nextSteps.length > 0 && (
+          <div className="mk3-actions-inline">
+            {nextSteps.map((step) => (
+              <button key={step.id} type="button" className="mk3-inline-next" onClick={step.onClick}>
+                {step.label}
+              </button>
+            ))}
+          </div>
+        )}
       </article>
 
       <aside className="mk3-actions-card">
@@ -189,6 +267,17 @@ const ProfileDashboardPage = ({ session, navigate }) => {
           <article className="mk3-metric"><span>Check-ins</span><strong>{summary.checkins}</strong></article>
           <article className="mk3-metric"><span>Reviews</span><strong>{summary.reviews}</strong></article>
           <article className="mk3-metric"><span>Listings</span><strong>{summary.submissions}</strong></article>
+          <article className="mk3-metric"><span>RSVPs</span><strong>{summary.rsvps}</strong></article>
+          <article className="mk3-metric"><span>Performances</span><strong>{summary.performances}</strong></article>
+        </div>
+        <div className="mk3-sub-list compact">
+          <h3>Recent RSVPs</h3>
+          {history.rsvps.slice(0, 8).map((item) => (
+            <div key={item.id || item.docId} className="mk3-list-row static">
+              <span>{item.targetType}: {item.targetId}</span>
+              <span>{item.status || "going"}</span>
+            </div>
+          ))}
         </div>
         <div className="mk3-sub-list compact">
           <h3>Recent Check-ins</h3>
@@ -208,10 +297,40 @@ const ProfileDashboardPage = ({ session, navigate }) => {
             </div>
           ))}
         </div>
+        <div className="mk3-sub-list compact">
+          <h3>Performance History</h3>
+          <div className="mk3-list-row static">
+            <span>Total performances</span>
+            <span>{performanceStats.total}</span>
+          </div>
+          {performanceStats.topSongs.map(([songTitle, count]) => (
+            <div key={songTitle} className="mk3-list-row static">
+              <span>{songTitle}</span>
+              <span>{count}</span>
+            </div>
+          ))}
+          {performanceStats.topRooms.map(([roomCode, count]) => (
+            <div key={roomCode} className="mk3-list-row static">
+              <span>Room {roomCode}</span>
+              <span>{count}</span>
+            </div>
+          ))}
+          {performanceStats.topHosts.map(([hostId, count]) => (
+            <div key={hostId} className="mk3-list-row static">
+              <span>Host {hostId}</span>
+              <span>{count}</span>
+            </div>
+          ))}
+          {performanceStats.recent.slice(0, 6).map((entry) => (
+            <div key={entry.id || `${entry.songId}_${entry.timestamp?.seconds || 0}`} className="mk3-list-row static">
+              <span>{entry.songTitle || "Untitled song"}</span>
+              <span>{entry.artist || "Unknown artist"}</span>
+            </div>
+          ))}
+        </div>
       </aside>
     </section>
   );
 };
 
 export default ProfileDashboardPage;
-

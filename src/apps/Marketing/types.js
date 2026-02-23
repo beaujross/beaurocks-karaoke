@@ -60,6 +60,16 @@
  */
 
 /**
+ * @typedef {Object} DirectoryClaimRequest
+ * @property {string} claimId
+ * @property {"host"|"venue"|"performer"|"event"|"room_session"} listingType
+ * @property {string} listingId
+ * @property {"pending"|"approved"|"rejected"} status
+ * @property {string} role
+ * @property {string} evidence
+ */
+
+/**
  * @typedef {Object} FollowRecord
  * @property {string} id
  * @property {string} followerUid
@@ -75,6 +85,27 @@
  * @property {string} targetId
  * @property {boolean} isPublic
  * @property {string} note
+ */
+
+/**
+ * @typedef {Object} RsvpRecord
+ * @property {string} docId
+ * @property {string} uid
+ * @property {"event"|"session"} targetType
+ * @property {string} targetId
+ * @property {"going"|"interested"|"not_going"|"cancelled"} status
+ * @property {string[]} reminderChannels
+ */
+
+/**
+ * @typedef {Object} ReminderPreference
+ * @property {string} docId
+ * @property {string} uid
+ * @property {"event"|"session"} targetType
+ * @property {string} targetId
+ * @property {boolean} emailOptIn
+ * @property {boolean} smsOptIn
+ * @property {string} phone
  */
 
 /**
@@ -115,4 +146,3 @@ export const DIRECTORY_REVIEW_TAGS = [
   "karaoke_focus",
   "value",
 ];
-
