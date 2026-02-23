@@ -73,17 +73,20 @@ export const subscribeApprovedListings = ({ onData, onError }) => {
   const venueQuery = query(
     collection(db, "venues"),
     where("status", "==", "approved"),
+    where("visibility", "==", "public"),
     limit(120)
   );
   const eventQueryPrimary = query(
     collection(db, "karaoke_events"),
     where("status", "==", "approved"),
+    where("visibility", "==", "public"),
     orderBy("startsAtMs", "asc"),
     limit(160)
   );
   const eventQueryFallback = query(
     collection(db, "karaoke_events"),
     where("status", "==", "approved"),
+    where("visibility", "==", "public"),
     limit(160)
   );
   const sessionQueryPrimary = query(

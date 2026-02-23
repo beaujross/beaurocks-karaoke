@@ -38,6 +38,7 @@
     "qa:p0": "npm run qa:p0:firebase-safety && npm run qa:p0:host-join && npm run qa:p0:vip-readiness && npm run qa:p0:users",
     "qa:overnight:smoke": "node scripts/qa/overnight-audience-tv-host-smoke.mjs",
     "seed:directory:import": "node scripts/ingest/import-kitsap-seed.mjs --help",
+    "seed:directory:kitsap:rest": "node scripts/ingest/seed-kitsap-directory-rest.mjs --help",
     "seed:directory:bootstrap": "node scripts/ingest/bootstrap-directory-profiles.mjs --dry-run",
     "preview": "vite preview",
     "deploy:hosting": "npm run build && npx firebase-tools deploy --only hosting",

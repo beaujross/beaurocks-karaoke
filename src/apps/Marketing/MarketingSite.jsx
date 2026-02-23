@@ -42,8 +42,6 @@ const PAGE_OPTIONS = [
   { id: MARKETING_ROUTE_PAGES.profile, label: "My Dashboard" },
   { id: MARKETING_ROUTE_PAGES.admin, label: "Marketing Admin" },
 ];
-const KITSAP_SCHEDULE_IMAGE_PATH = "/images/marketing/kitsap-karaoke-schedule.jpg";
-const KITSAP_SCHEDULE_CSV_PATH = "/data/kitsap_karaoke_schedule.csv";
 
 const normalizePage = (value = "") => {
   const safe = String(value || "").trim().toLowerCase();
@@ -415,28 +413,6 @@ const MarketingSite = () => {
               )}
             </div>
           </section>
-          <section className="mk3-kitsap-resource">
-            <img src={KITSAP_SCHEDULE_IMAGE_PATH} alt="Kitsap karaoke weekly schedule screenshot" />
-            <div className="mk3-kitsap-resource-content">
-              <div className="mk3-chip">kitsap local guide</div>
-              <h3>Local Kitsap Karaoke Schedule</h3>
-              <p>
-                Screenshot and spreadsheet for local karaoke nights across Kitsap regions.
-              </p>
-              <div className="mk3-actions-inline">
-                <a href={KITSAP_SCHEDULE_IMAGE_PATH} target="_blank" rel="noreferrer">
-                  Open Screenshot
-                </a>
-                <a href={KITSAP_SCHEDULE_CSV_PATH} download>
-                  Download Spreadsheet
-                </a>
-                <a href={KITSAP_SCHEDULE_CSV_PATH} target="_blank" rel="noreferrer">
-                  Open Spreadsheet
-                </a>
-              </div>
-            </div>
-          </section>
-
           {pageNode}
         </div>
       </main>
