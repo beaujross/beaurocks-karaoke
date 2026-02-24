@@ -44,6 +44,24 @@ service cloud.firestore {
       return /databases/$(database)/documents/directory_roles/$(uid);
     }
 
+    function marketingPrivateAccessDocPath(uid) {
+      return /databases/$(database)/documents/marketing_private_access/$(uid);
+    }
+
+    function hasMarketingPrivateHostAccess(uid) {
+      return uid is string
+        && exists(marketingPrivateAccessDocPath(uid))
+        && get(marketingPrivateAccessDocPath(uid)).data.privateHostAccessEnabled == true;
+    }
+
+    function requestsPrivateHostRole(data) {
+      return data.roles is list
+        && (
+          "host" in data.roles
+          || "venue_owner" in data.roles
+        );
+    }
+
     function isDirectoryModerator() {
       return isAuthed()
         && exists(directoryRoleDocPath(request.auth.uid))
@@ -96,12 +114,23 @@ service cloud.firestore {
       allow read: if isPublicApproved(resource.data)
         || (isAuthed() && request.auth.uid == uid)
         || isDirectoryModerator();
-      allow create, update: if isAuthed() && request.auth.uid == uid;
+      allow create, update: if isAuthed()
+        && request.auth.uid == uid
+        && (
+          !requestsPrivateHostRole(request.resource.data)
+          || hasMarketingPrivateHostAccess(uid)
+          || isDirectoryModerator()
+        );
       allow delete: if false;
     }
 
     match /directory_roles/{uid} {
       allow read: if isAuthed() && (request.auth.uid == uid || isDirectoryModerator());
+      allow write: if false;
+    }
+
+    match /marketing_private_access/{uid} {
+      allow read: if isAuthed() && request.auth.uid == uid;
       allow write: if false;
     }
 

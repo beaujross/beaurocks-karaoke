@@ -442,6 +442,84 @@
   gap: 8px;
 }
 
+.mk3-private-pin-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #8fdfff;
+  font-weight: 700;
+}
+
+.mk3-private-pin-slots {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mk3-private-pin-slots span {
+  min-height: 38px;
+  border-radius: 9px;
+  border: 1px solid rgba(100, 194, 255, 0.32);
+  background: rgba(6, 21, 58, 0.82);
+  color: #79ddff;
+  display: grid;
+  place-items: center;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.mk3-private-pin-slots span.is-filled {
+  border-color: rgba(255, 134, 200, 0.54);
+  color: #ffe0f2;
+  background: linear-gradient(120deg, rgba(11, 36, 77, 0.88), rgba(80, 19, 74, 0.84));
+}
+
+.mk3-private-pin-pad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mk3-private-pin-input-row {
+  display: grid;
+  gap: 6px;
+  color: #d4e4f3;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mk3-private-pin-input-row input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(101, 194, 255, 0.36);
+  background: rgba(8, 28, 70, 0.78);
+  color: #f2f8ff;
+  padding: 0.58rem 0.66rem;
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mk3-private-pin-pad button {
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(101, 194, 255, 0.34);
+  background: rgba(8, 28, 70, 0.82);
+  color: #e3f6ff;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mk3-private-pin-pad button.is-control {
+  border-color: rgba(255, 178, 118, 0.42);
+  background: rgba(33, 30, 56, 0.84);
+  color: #ffe3bc;
+}
+
 .mk3-private-invite-form label {
   display: grid;
   gap: 6px;
@@ -766,6 +844,12 @@
 .mk3-toggle-row button:hover {
   border-color: rgba(236, 72, 153, 0.3);
   color: #d8eef8;
+}
+
+.mk3-toggle-row button:disabled {
+  opacity: 0.44;
+  cursor: not-allowed;
+  border-color: transparent;
 }
 
 .mk3-toggle-row button.active {

@@ -198,18 +198,46 @@ const PRIVATE_TEST_USE_CASE_OPTIONS = [
   "Venue / KJ Operator",
 ];
 
-const readPrivateInviteCode = () => {
-  const envCode = typeof import.meta !== "undefined" && import.meta?.env
-    ? String(import.meta.env.VITE_MARKETING_PRIVATE_INVITE_CODE || "")
+const parsePrivateInviteCodes = (value = "") => {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[,\n;|]/g);
+  const seen = new Set();
+  const list = [];
+  source.forEach((entry) => {
+    const code = String(entry || "").trim();
+    if (!code) return;
+    const normalized = normalizePrivateInviteToken(code);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    list.push(normalized);
+  });
+  return list;
+};
+
+const readPrivateInviteCodes = () => {
+  const envCodes = typeof import.meta !== "undefined" && import.meta?.env
+    ? String(
+      import.meta.env.VITE_MARKETING_PRIVATE_INVITE_CODES
+      || import.meta.env.VITE_MARKETING_PRIVATE_INVITE_CODE
+      || ""
+    )
     : "";
-  const overrideCode = typeof window !== "undefined"
-    ? String(window?.__marketingFlags?.privateInviteCode || "")
+  const overrideRaw = typeof window !== "undefined"
+    ? (
+      window?.__marketingFlags?.privateInviteCodes
+      || window?.__marketingFlags?.privateInviteCode
+      || ""
+    )
     : "";
-  return String(overrideCode || envCode || "").trim();
+  return parsePrivateInviteCodes(overrideRaw || envCodes || "");
 };
 
 const normalizePrivateInviteToken = (value = "") =>
-  String(value || "").trim().toLowerCase();
+  String(value || "").trim().toUpperCase().replace(/[^A-Z0-9@]/g, "");
+
+const PRIVATE_UNLOCK_PAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "X"];
+const PRIVATE_UNLOCK_MAX_LENGTH = 12;
 
 const MarketingSite = () => {
   const [route, setRoute] = useState(() => readRouteFromWindow());
@@ -230,9 +258,10 @@ const MarketingSite = () => {
     error: "",
     linePosition: 0,
   });
-  const [privateAccessCode, setPrivateAccessCode] = useState("");
   const [privateAccessError, setPrivateAccessError] = useState("");
-  const [privateInviteCode] = useState(() => readPrivateInviteCode());
+  const [privateAccessNotice, setPrivateAccessNotice] = useState("");
+  const [privateInviteCodes] = useState(() => readPrivateInviteCodes());
+  const [privateCodeEntry, setPrivateCodeEntry] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const authPanelRef = useRef(null);
   const { session, actions } = useDirectorySession();
@@ -240,11 +269,16 @@ const MarketingSite = () => {
   const isAnonymous = !!session?.isAnonymous;
   const hasFullAccount = isAuthed && !isAnonymous;
   const privateTestModeEnabled = !!marketingFlags.privateTestModeEnabled;
-  const privateInviteRequired = privateTestModeEnabled && !!String(privateInviteCode || "").trim();
-  const privateInviteStorageKey = useMemo(
-    () => (session?.uid ? `mk3_private_test_invite:${session.uid}` : ""),
-    [session?.uid]
+  const privateInviteRequired = privateTestModeEnabled && privateInviteCodes.length > 0;
+  const privateInviteStorageKey = "mk3_private_test_invite:global_unlock";
+  const normalizedPrivateInviteCodes = useMemo(
+    () => parsePrivateInviteCodes(privateInviteCodes),
+    [privateInviteCodes]
   );
+  const privateUnlockLength = useMemo(() => {
+    const longest = normalizedPrivateInviteCodes.reduce((max, code) => Math.max(max, code.length), 0);
+    return Math.max(4, Math.min(PRIVATE_UNLOCK_MAX_LENGTH, longest || 6));
+  }, [normalizedPrivateInviteCodes]);
 
   useEffect(() => {
     if (typeof window === "undefined") return () => {};
@@ -417,6 +451,10 @@ const MarketingSite = () => {
     setAuthLocalError("");
     if (!email || !password) return;
     if (authMode === "signup") {
+      if (!canCreatePrivateHostAccount) {
+        setAuthLocalError("Unlock private host access first using the Backstage PIN.");
+        return;
+      }
       if (password.length < 6) {
         setAuthLocalError("Use at least 6 characters for your password.");
         return;
@@ -427,6 +465,16 @@ const MarketingSite = () => {
       }
       const result = await actions.signUpWithEmail({ email, password });
       if (result?.ok) {
+        if (
+          privateTestModeEnabled
+          && canCreatePrivateHostAccount
+          && (!privateInviteRequired || !!String(privateCodeEntry || "").trim())
+        ) {
+          await redeemPrivateHostAccess({
+            code: privateInviteRequired ? privateCodeEntry : "",
+            source: "marketing_signup",
+          });
+        }
         trackEvent("marketing_account_signup", { source: "marketing_directory" });
         setAuthForm({ email, password: "", confirmPassword: "" });
         resolvePostAuthReturn();
@@ -461,6 +509,25 @@ const MarketingSite = () => {
       return false;
     }
   }, [privateInviteStorageKey]);
+  const privateCodeUnlocked = !privateTestModeEnabled || storedPrivateInviteAccess;
+  const canCreatePrivateHostAccount = !privateTestModeEnabled || privateCodeUnlocked;
+
+  const redeemPrivateHostAccess = useCallback(async ({ code = "", source = "marketing_site" } = {}) => {
+    try {
+      await directoryActions.redeemMarketingPrivateHostAccess({
+        code: String(code || "").trim(),
+        source: String(source || "marketing_site"),
+      });
+      setPrivateAccessError("");
+      setPrivateAccessNotice("Server access granted. Host onboarding is now authorized for this account.");
+      return { ok: true };
+    } catch (error) {
+      const message = String(error?.message || "Could not complete server unlock.");
+      setPrivateAccessError(message);
+      setPrivateAccessNotice("");
+      return { ok: false, error: message };
+    }
+  }, []);
 
   const onPrivateApplySubmit = async (event) => {
     event.preventDefault();
@@ -512,42 +579,69 @@ const MarketingSite = () => {
     }
   };
 
-  const onPrivateAccessSubmit = (event) => {
+  const onPrivateAccessSubmit = async (event) => {
     event.preventDefault();
-    if (!hasFullAccount) {
-      setPrivateAccessError("Sign in with your invited account first.");
-      setAuthMode("signin");
-      scrollAuthPanelIntoView();
-      return;
-    }
-
+    setPrivateAccessNotice("");
     if (!privateInviteRequired) {
       setPrivateAccessError("");
-      storePrivateInviteAccess(true);
-      trackEvent("mk_private_test_unlock", { ok: true, method: "account_only" });
+      if (hasFullAccount) {
+        const redeemed = await redeemPrivateHostAccess({ code: "", source: "marketing_unlock_open" });
+        if (!redeemed?.ok) return;
+        storePrivateInviteAccess(true);
+      } else {
+        storePrivateInviteAccess(true);
+        setPrivateAccessNotice("Unlock staged. Create or sign in to finalize server access.");
+      }
+      trackEvent("mk_private_test_unlock", { ok: true, method: "no_pin_required" });
       return;
     }
 
-    const expected = normalizePrivateInviteToken(privateInviteCode);
-    const supplied = normalizePrivateInviteToken(privateAccessCode);
+    const supplied = normalizePrivateInviteToken(privateCodeEntry);
     if (!supplied) {
-      setPrivateAccessError("Enter your invite code.");
+      setPrivateAccessError("Enter your unlock code.");
       return;
     }
-    if (supplied !== expected) {
-      setPrivateAccessError("Invite code is incorrect.");
-      trackEvent("mk_private_test_unlock", { ok: false, method: "invite_code" });
+    if (!normalizedPrivateInviteCodes.includes(supplied)) {
+      setPrivateAccessError("That code did not match. Try again.");
+      trackEvent("mk_private_test_unlock", { ok: false, method: "pin_code" });
       return;
     }
 
-    setPrivateAccessCode("");
-    setPrivateAccessError("");
-    storePrivateInviteAccess(true);
-    trackEvent("mk_private_test_unlock", { ok: true, method: "invite_code" });
+    if (hasFullAccount) {
+      const redeemed = await redeemPrivateHostAccess({ code: supplied, source: "marketing_unlock_pin" });
+      if (!redeemed?.ok) return;
+      storePrivateInviteAccess(true);
+      setPrivateCodeEntry("");
+      setPrivateAccessError("");
+    } else {
+      storePrivateInviteAccess(true);
+      setPrivateAccessNotice("Code accepted. Create or sign in to finalize server access.");
+    }
+    trackEvent("mk_private_test_unlock", { ok: true, method: "pin_code" });
   };
 
+  const onPrivatePadPress = useCallback((token = "") => {
+    const key = String(token || "").trim().toUpperCase();
+    setPrivateAccessError("");
+    setPrivateAccessNotice("");
+    if (!key) return;
+    if (key === "C") {
+      setPrivateCodeEntry("");
+      return;
+    }
+    if (key === "X") {
+      setPrivateCodeEntry((prev) => prev.slice(0, -1));
+      return;
+    }
+    if (!/^[0-9A-Z@]$/.test(key)) return;
+    setPrivateCodeEntry((prev) => {
+      if (prev.length >= privateUnlockLength) return prev;
+      return `${prev}${key}`;
+    });
+  }, [privateUnlockLength]);
+
   const privateAccessUnlocked = !privateTestModeEnabled
-    || (hasFullAccount && (!privateInviteRequired || storedPrivateInviteAccess));
+    || (hasFullAccount && privateCodeUnlocked);
   const privateAccessLocked = privateTestModeEnabled && !privateAccessUnlocked;
   const visibleSecondaryOptions = useMemo(
     () => SECONDARY_PAGE_OPTIONS.filter((item) => item.id !== MARKETING_ROUTE_PAGES.admin || session.isModerator),
@@ -571,8 +665,8 @@ const MarketingSite = () => {
   const postAuthHint = useMemo(() => {
     if (privateAccessLocked) {
       return privateInviteRequired
-        ? "Sign in with your invited account, then enter your invite code to unlock access."
-        : "Sign in with your invited account to unlock private test access.";
+        ? "Enter the Backstage PIN to unlock host onboarding, then create your account."
+        : "Unlock private host onboarding to create new testing accounts.";
     }
     if (authMode === "signup") {
       return "Create account uses email + password + confirm password. No duplicate email entry needed.";
@@ -679,7 +773,10 @@ const MarketingSite = () => {
                 className="mk3-account-action"
                 onClick={() => {
                   if (privateAccessLocked) {
-                    setAuthMode(hasFullAccount ? "signin" : "signup");
+                    setAuthMode(hasFullAccount || !canCreatePrivateHostAccount ? "signin" : "signup");
+                    if (!hasFullAccount && !canCreatePrivateHostAccount) {
+                      setAuthLocalError("Use the Backstage PIN below before creating a new host account.");
+                    }
                     scrollAuthPanelIntoView();
                     return;
                   }
@@ -765,7 +862,8 @@ const MarketingSite = () => {
                   <h1>Private Test Program</h1>
                   <p>
                     BeauRocks Karaoke is currently invite-only while we tune live social experiences across TV,
-                    audience, and host surfaces. Apply for access below, or unlock with your invited account.
+                    audience, and host surfaces. Apply for access below, or unlock host onboarding with the Backstage
+                    Buzz Code.
                   </p>
                   <div className="mk3-private-pill-row">
                     <span className="mk3-private-pill">Invite-only</span>
@@ -959,7 +1057,13 @@ const MarketingSite = () => {
                     <button
                       type="button"
                       className={authMode === "signup" ? "active" : ""}
+                      disabled={!canCreatePrivateHostAccount}
                       onClick={() => {
+                        if (!canCreatePrivateHostAccount) {
+                          setAuthMode("signin");
+                          setAuthLocalError("Unlock private host access with the Backstage PIN first.");
+                          return;
+                        }
                         setAuthMode("signup");
                         setAuthLocalError("");
                         actions.clearAuthError?.();
@@ -1011,7 +1115,10 @@ const MarketingSite = () => {
                       />
                     </label>
                   )}
-                  <button type="submit" disabled={session.authLoading}>
+                  <button
+                    type="submit"
+                    disabled={session.authLoading || (authMode === "signup" && !canCreatePrivateHostAccount)}
+                  >
                     {session.authLoading
                       ? "Working..."
                       : authMode === "signup"
@@ -1025,37 +1132,78 @@ const MarketingSite = () => {
               )}
               {privateTestModeEnabled && (
                 <div className="mk3-private-invite-box">
-                  <h3>Invited Tester Access</h3>
+                  <h3>Backstage Buzz Code</h3>
                   <p>
                     {privateInviteRequired
-                      ? "Sign in with your invited account and enter your invite code."
-                      : "Sign in with your invited account to unlock private surfaces."}
+                      ? "Enter the branded host PIN to unlock private test onboarding."
+                      : "Private onboarding unlock is currently active for invited users."}
                   </p>
-                  {privateAccessUnlocked ? (
+                  {canCreatePrivateHostAccount ? (
                     <div className="mk3-status">
-                      <strong>Private test access unlocked.</strong>
-                      <span>You can now open the private product surfaces.</span>
+                      <strong>Backstage unlocked.</strong>
+                      <span>Create account is now enabled for friendly host onboarding.</span>
                     </div>
                   ) : (
                     <form className="mk3-private-invite-form" onSubmit={onPrivateAccessSubmit}>
                       {privateInviteRequired && (
-                        <label>
-                          Invite Code
-                          <input
-                            type="password"
-                            value={privateAccessCode}
-                            onChange={(event) => {
-                              setPrivateAccessCode(event.target.value);
-                              setPrivateAccessError("");
-                            }}
-                            placeholder="Enter invite code"
-                            autoComplete="off"
-                          />
-                        </label>
+                        <>
+                          <div className="mk3-private-pin-label">Enter PIN</div>
+                          <div
+                            className="mk3-private-pin-slots"
+                            aria-hidden="true"
+                            style={{ gridTemplateColumns: `repeat(${privateUnlockLength}, minmax(0, 1fr))` }}
+                          >
+                            {Array.from({ length: privateUnlockLength }).map((_, idx) => {
+                              const char = privateCodeEntry[idx] || "";
+                              return (
+                                <span key={`pin_slot_${idx}`} className={char ? "is-filled" : ""}>
+                                  {char || "•"}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <label className="mk3-private-pin-input-row">
+                            Unlock Code
+                            <input
+                              type="text"
+                              value={privateCodeEntry}
+                              onChange={(event) => {
+                                const normalized = normalizePrivateInviteToken(event.target.value || "");
+                                setPrivateCodeEntry(normalized.slice(0, privateUnlockLength));
+                                setPrivateAccessError("");
+                                setPrivateAccessNotice("");
+                              }}
+                              placeholder="BE@UROCKS"
+                              autoComplete="off"
+                              autoCapitalize="characters"
+                              spellCheck={false}
+                            />
+                          </label>
+                          <div className="mk3-private-pin-pad">
+                            {PRIVATE_UNLOCK_PAD_KEYS.map((token) => (
+                              <button
+                                key={`pin_key_${token}`}
+                                type="button"
+                                className={token === "C" || token === "X" ? "is-control" : ""}
+                                onClick={() => onPrivatePadPress(token)}
+                                aria-label={
+                                  token === "C"
+                                    ? "Clear code"
+                                    : token === "X"
+                                      ? "Remove last character"
+                                      : `Add ${token}`
+                                }
+                              >
+                                {token === "C" ? "Clear" : token === "X" ? "Back" : token}
+                              </button>
+                            ))}
+                          </div>
+                        </>
                       )}
                       <button type="submit">
-                        {privateInviteRequired ? "Unlock With Invite" : "Unlock Access"}
+                        {privateInviteRequired ? "Unlock Host Onboarding" : "Unlock Access"}
                       </button>
+                      {privateAccessNotice && <div className="mk3-status">{privateAccessNotice}</div>}
                       {privateAccessError && <div className="mk3-status mk3-status-error">{privateAccessError}</div>}
                     </form>
                   )}
@@ -1068,8 +1216,8 @@ const MarketingSite = () => {
             <section className="mk3-private-locked-panel mk3-zone" aria-label="Private test locked">
               <h2>Private surfaces are currently invite-only.</h2>
               <p>
-                Apply above to join the private test queue. If you already have an invitation, sign in and unlock
-                access to continue.
+                Apply above to join the private test queue. If you were invited, enter the Backstage Buzz Code and
+                create your host account to continue.
               </p>
               <div className="mk3-private-locked-grid">
                 <article>
@@ -1077,8 +1225,8 @@ const MarketingSite = () => {
                   <span>Submit the short application and we will review your use case for rollout.</span>
                 </article>
                 <article>
-                  <strong>Invited users</strong>
-                  <span>Sign in with your invited account, then unlock private access in the panel above.</span>
+                  <strong>Invited hosts</strong>
+                  <span>Use the Backstage Buzz Code above, then create your host account.</span>
                 </article>
               </div>
             </section>

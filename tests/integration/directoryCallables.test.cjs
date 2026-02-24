@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const admin = require("../../functions/node_modules/firebase-admin");
 process.env.MARKETING_SMS_REMINDERS_ENABLED = process.env.MARKETING_SMS_REMINDERS_ENABLED || "true";
+process.env.MARKETING_PRIVATE_INVITE_CODE = process.env.MARKETING_PRIVATE_INVITE_CODE || "TEST123";
 const {
   ensureSong,
   ensureTrack,
@@ -18,6 +19,7 @@ const {
   setDirectoryRsvp,
   setDirectoryReminderPreferences,
   listDirectoryGeoLanding,
+  redeemMarketingPrivateHostAccess,
   submitCatalogContribution,
   listCatalogContributionQueue,
   resolveCatalogContribution,
@@ -69,6 +71,7 @@ async function resetState() {
     "songs",
     "tracks",
     "users",
+    "marketing_private_access",
   ];
   for (const name of collections) {
     const snap = await db.collection(name).limit(500).get();
@@ -113,7 +116,31 @@ async function runCase(name, fn) {
 
 async function run() {
   const checks = [
+    ["redeemMarketingPrivateHostAccess grants host onboarding access", async () => {
+      const result = await redeemMarketingPrivateHostAccess.run(
+        requestFor(USER_UID, { code: "TEST123", source: "integration_test" })
+      );
+      assert.equal(result.ok, true);
+      assert.equal(result.privateHostAccessEnabled, true);
+      const snap = await db.doc(`marketing_private_access/${USER_UID}`).get();
+      assert.equal(snap.exists, true);
+      assert.equal(!!snap.get("privateHostAccessEnabled"), true);
+    }],
+
+    ["upsertDirectoryProfile denies host role without private access grant", async () => {
+      await expectHttpsError(
+        () => upsertDirectoryProfile.run(
+          requestFor(USER_UID, { profile: { displayName: "Neon Host", roles: ["host"] } })
+        ),
+        "permission-denied"
+      );
+    }],
+
     ["upsertDirectoryProfile writes profile for caller", async () => {
+      await db.doc(`marketing_private_access/${USER_UID}`).set({
+        uid: USER_UID,
+        privateHostAccessEnabled: true,
+      });
       const result = await upsertDirectoryProfile.run(
         requestFor(USER_UID, { profile: { displayName: "Neon Host", roles: ["host"] } })
       );

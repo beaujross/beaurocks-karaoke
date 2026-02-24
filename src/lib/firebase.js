@@ -334,6 +334,12 @@ const submitMarketingWaitlist = async (payload = {}) => {
   return data || null;
 };
 
+const redeemMarketingPrivateHostAccess = async (payload = {}) => {
+  await requireAppCheckToken("redeemMarketingPrivateHostAccess");
+  const data = await callFunction("redeemMarketingPrivateHostAccess", payload || {});
+  return data || null;
+};
+
 const getDirectoryMapsConfig = async () => {
   const data = await callFunction("getDirectoryMapsConfig", {});
   return data || null;
@@ -735,6 +741,7 @@ export {
   callFunction,
   getGoogleMapsApiKey,
   submitMarketingWaitlist,
+  redeemMarketingPrivateHostAccess,
   getDirectoryMapsConfig,
   upsertDirectoryProfile,
   submitDirectoryListing,

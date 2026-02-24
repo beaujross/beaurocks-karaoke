@@ -1195,6 +1195,28 @@ const sanitizeWaitlistSource = (value = "") => {
 const buildWaitlistDocId = (email = "") =>
   `wl_${email.replace(/[^a-z0-9]/g, "_").replace(/_+/g, "_").slice(0, 140) || "unknown"}`;
 
+const normalizeMarketingPrivateInviteCode = (value = "", maxLen = 24) =>
+  String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9@]/g, "")
+    .slice(0, Math.max(4, Number(maxLen || 24)));
+
+const parseMarketingPrivateInviteCodes = (value = "") => {
+  const raw = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[,\n;|]/g);
+  const out = [];
+  const seen = new Set();
+  raw.forEach((entry) => {
+    const code = normalizeMarketingPrivateInviteCode(entry, 24);
+    if (!code || seen.has(code)) return;
+    seen.add(code);
+    out.push(code);
+  });
+  return out;
+};
+
 const DIRECTORY_MODERATOR_ROLES = new Set(["directory_editor", "directory_admin"]);
 const DIRECTORY_ENTITY_TYPES = new Set(["host", "venue", "performer", "event", "session"]);
 const DIRECTORY_LISTING_TYPES = new Set(["venue", "event", "room_session"]);
@@ -1230,6 +1252,12 @@ const MARKETING_SMS_REMINDERS_ENABLED = String(process.env.MARKETING_SMS_REMINDE
 const MARKETING_GEO_PAGES_ENABLED = String(process.env.MARKETING_GEO_PAGES_ENABLED || "true")
   .trim()
   .toLowerCase() === "true";
+const MARKETING_PRIVATE_HOST_ACCESS_ENFORCED = String(process.env.MARKETING_PRIVATE_HOST_ACCESS_ENFORCED || "true")
+  .trim()
+  .toLowerCase() === "true";
+const MARKETING_PRIVATE_INVITE_CODES = parseMarketingPrivateInviteCodes(
+  process.env.MARKETING_PRIVATE_INVITE_CODES || process.env.MARKETING_PRIVATE_INVITE_CODE || ""
+);
 const DIRECTORY_CLAIM_LISTING_TYPES = new Set(["host", "venue", "performer", "event", "room_session"]);
 const DIRECTORY_RSVP_STATUSES = new Set(["going", "interested", "not_going", "cancelled"]);
 const DIRECTORY_REMINDER_CHANNELS = new Set(["email", "sms"]);
@@ -1743,6 +1771,42 @@ const getDirectoryModeratorAccess = async (uid = "") => {
   const isAdmin = roles.includes("directory_admin");
   const isModerator = isAdmin || roles.includes("directory_editor");
   return { isModerator, isAdmin, roles };
+};
+
+const marketingPrivateAccessDocRef = (uid = "") =>
+  admin.firestore().collection("marketing_private_access").doc(uid);
+
+const hasMarketingPrivateHostAccess = async (uid = "") => {
+  if (!uid || !MARKETING_PRIVATE_HOST_ACCESS_ENFORCED) {
+    return { allowed: true, mode: MARKETING_PRIVATE_HOST_ACCESS_ENFORCED ? "missing_uid" : "disabled" };
+  }
+  const snap = await marketingPrivateAccessDocRef(uid).get();
+  const enabled = !!snap.data()?.privateHostAccessEnabled;
+  return {
+    allowed: enabled,
+    mode: enabled ? "granted" : "missing_grant",
+  };
+};
+
+const requireMarketingPrivateHostAccess = async (uid = "", options = {}) => {
+  if (!uid) {
+    throw new HttpsError("unauthenticated", options.authMessage || "Sign in required.");
+  }
+  if (!MARKETING_PRIVATE_HOST_ACCESS_ENFORCED) {
+    return { allowed: true, mode: "disabled" };
+  }
+  if (options.allowModerator) {
+    const modAccess = await getDirectoryModeratorAccess(uid);
+    if (modAccess.isModerator) {
+      return { allowed: true, mode: "moderator", roles: modAccess.roles || [] };
+    }
+  }
+  const access = await hasMarketingPrivateHostAccess(uid);
+  if (access.allowed) return access;
+  throw new HttpsError(
+    "permission-denied",
+    options.deniedMessage || "Private host onboarding access required."
+  );
 };
 
 const requireDirectoryModerator = async (request, options = {}) => {
@@ -5139,6 +5203,62 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.redeemMarketingPrivateHostAccess = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "redeem_marketing_private_host_access", { perMinute: 18, perHour: 120 });
+  enforceAppCheckIfEnabled(request, "redeem_marketing_private_host_access");
+  const uid = requireAuth(request, "Sign in required.");
+  const source = sanitizeWaitlistSource(request.data?.source || "marketing_site");
+  const submittedCode = normalizeMarketingPrivateInviteCode(request.data?.code || "");
+
+  if (MARKETING_PRIVATE_HOST_ACCESS_ENFORCED && !MARKETING_PRIVATE_INVITE_CODES.length) {
+    throw new HttpsError("failed-precondition", "Private host invite code list is not configured.");
+  }
+
+  if (MARKETING_PRIVATE_HOST_ACCESS_ENFORCED && MARKETING_PRIVATE_INVITE_CODES.length) {
+    if (!submittedCode) {
+      throw new HttpsError("invalid-argument", "code is required.");
+    }
+    if (!MARKETING_PRIVATE_INVITE_CODES.includes(submittedCode)) {
+      throw new HttpsError("permission-denied", "Invalid private host access code.");
+    }
+  }
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const db = admin.firestore();
+  const unlockMode = MARKETING_PRIVATE_HOST_ACCESS_ENFORCED
+    ? (MARKETING_PRIVATE_INVITE_CODES.length > 1 ? "pin_multi" : "pin")
+    : "disabled";
+  const codeFingerprint = submittedCode
+    ? `${submittedCode.length}_${submittedCode.slice(0, 2)}_${submittedCode.slice(-1)}`
+    : "";
+
+  await Promise.all([
+    marketingPrivateAccessDocRef(uid).set({
+      uid,
+      privateHostAccessEnabled: true,
+      unlockedVia: unlockMode,
+      source,
+      codeFingerprint,
+      createdAt: now,
+      updatedAt: now,
+    }, { merge: true }),
+    db.collection("users").doc(uid).set({
+      marketing: {
+        privateHostAccessEnabled: true,
+        privateHostAccessUpdatedAt: now,
+        privateHostAccessSource: source,
+      },
+      updatedAt: now,
+    }, { merge: true }),
+  ]);
+
+  return {
+    ok: true,
+    privateHostAccessEnabled: true,
+    mode: unlockMode,
+  };
+});
+
 exports.getDirectoryMapsConfig = onCall(
   { cors: true, secrets: [GOOGLE_MAPS_API_KEY] },
   async (request) => {
@@ -5174,6 +5294,14 @@ exports.upsertDirectoryProfile = onCall({ cors: true }, async (request) => {
     ? request.data.profile
     : request.data;
   const normalized = normalizeDirectoryProfilePayload(profileInput || {});
+  const requestsHostOnboardingRole = Array.isArray(normalized.roles)
+    && normalized.roles.some((role) => role === "host" || role === "venue_owner");
+  if (requestsHostOnboardingRole) {
+    await requireMarketingPrivateHostAccess(uid, {
+      allowModerator: true,
+      deniedMessage: "Private host onboarding access required before assigning host roles.",
+    });
+  }
   const db = admin.firestore();
   const userSnap = await db.collection("users").doc(uid).get();
   const userData = userSnap.data() || {};
