@@ -2044,6 +2044,19 @@
   color: #ffe2b4;
 }
 
+.mk3-demo-surface header a {
+  border-radius: 999px;
+  border: 1px solid rgba(116, 197, 255, 0.4);
+  background: rgba(13, 27, 42, 0.72);
+  color: #d8f0ff;
+  text-decoration: none;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  padding: 0.3rem 0.55rem;
+}
+
 .mk3-demo-tv {
   grid-area: tv;
 }
@@ -2054,6 +2067,54 @@
 
 .mk3-demo-host {
   grid-area: host;
+}
+
+.mk3-demo-frame-wrap {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(4, 9, 15, 0.92);
+  min-height: 280px;
+}
+
+.mk3-demo-tv .mk3-demo-frame-wrap {
+  min-height: 520px;
+}
+
+.mk3-demo-audience .mk3-demo-frame-wrap,
+.mk3-demo-host .mk3-demo-frame-wrap {
+  min-height: 290px;
+}
+
+.mk3-demo-iframe {
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  border: 0;
+  background: #05070c;
+}
+
+.mk3-demo-surface-status {
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 18, 30, 0.74);
+  padding: 0.45rem 0.55rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.68rem;
+}
+
+.mk3-demo-surface-status span {
+  color: #b7ceea;
+}
+
+.mk3-demo-surface-status strong {
+  color: #ffe2b4;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .mk3-demo-tv-stage {
@@ -2413,6 +2474,17 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .mk3-demo-tv .mk3-demo-frame-wrap,
+  .mk3-demo-audience .mk3-demo-frame-wrap,
+  .mk3-demo-host .mk3-demo-frame-wrap {
+    min-height: 420px;
+  }
+
+  .mk3-demo-surface-status {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .mk3-demo-audience-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -2519,6 +2591,12 @@
 
   .mk3-demo-host-stats {
     grid-template-columns: 1fr;
+  }
+
+  .mk3-demo-tv .mk3-demo-frame-wrap,
+  .mk3-demo-audience .mk3-demo-frame-wrap,
+  .mk3-demo-host .mk3-demo-frame-wrap {
+    min-height: 360px;
   }
 
   .mk3-report-row {
