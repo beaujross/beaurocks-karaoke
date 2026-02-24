@@ -52,8 +52,9 @@ const appendMediaCandidate = (list = [], raw = "") => {
   if (!list.includes(value)) list.push(value);
 };
 
-export const resolveListingImageCandidates = (entity = {}, listingType = "default") => {
+export const resolveListingImageCandidates = (entity = {}, listingType = "default", options = {}) => {
   const safe = entity && typeof entity === "object" ? entity : {};
+  const includeFallback = options?.includeFallback !== false;
   const next = [];
   appendMediaCandidate(next, safe.heroImageUrl);
   appendMediaCandidate(next, safe.coverImageUrl);
@@ -69,9 +70,11 @@ export const resolveListingImageCandidates = (entity = {}, listingType = "defaul
   appendMediaCandidate(next, safe.externalSources?.google?.images);
   appendMediaCandidate(next, safe.externalSources?.yelp?.imageUrl);
 
-  const fallbackKey = String(listingType || "default").trim().toLowerCase();
-  const fallbacks = MARKETING_IMAGE_FALLBACKS[fallbackKey] || MARKETING_IMAGE_FALLBACKS.default;
-  fallbacks.forEach((url) => appendMediaCandidate(next, url));
+  if (includeFallback) {
+    const fallbackKey = String(listingType || "default").trim().toLowerCase();
+    const fallbacks = MARKETING_IMAGE_FALLBACKS[fallbackKey] || MARKETING_IMAGE_FALLBACKS.default;
+    fallbacks.forEach((url) => appendMediaCandidate(next, url));
+  }
   return next;
 };
 

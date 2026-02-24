@@ -7,7 +7,7 @@ import {
   limit,
   onSnapshot,
 } from "../../../lib/firebase";
-import { trackEvent } from "../lib/marketingAnalytics";
+import { trackEvent, trackGoldenPathMilestone } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { DIRECTORY_REVIEW_TAGS } from "../types";
 import { marketingFlags } from "../featureFlags";
@@ -183,6 +183,7 @@ const EntityActionsCard = ({
         await directoryActions.followDirectoryEntity({ targetType, targetId });
         setMessage("Following.");
         trackEvent("mk_follow_set", { targetType, targetId, mode: "follow", source: conversionSource });
+        trackGoldenPathMilestone({ pathId: "fan_follow", workstream: "fan_growth", source: conversionSource });
         if (targetType === "host" || targetType === "performer") {
           setNextStep({
             label: "Next: RSVP to an event",
@@ -285,6 +286,9 @@ const EntityActionsCard = ({
       });
       setMessage("RSVP saved.");
       trackEvent("mk_rsvp_set", { targetType, targetId, status: rsvpStatus, source: conversionSource });
+      if (["going", "interested"].includes(String(rsvpStatus || "").toLowerCase())) {
+        trackGoldenPathMilestone({ pathId: "fan_rsvp", workstream: "fan_growth", source: conversionSource });
+      }
       setNextStep({
         label: "Next: Enable reminders",
         onClick: () => saveReminderPreferences(),

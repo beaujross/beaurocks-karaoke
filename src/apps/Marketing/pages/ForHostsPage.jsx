@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { trackEvent } from "../lib/marketingAnalytics";
+import { trackEvent, trackGoldenPathMilestone } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { fromDateTimeLocalInput } from "./shared";
 
@@ -57,6 +57,11 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
         listingType: "room_session",
         mode: "private",
         roomCode: payload.roomCode,
+      });
+      trackGoldenPathMilestone({
+        pathId: "host_create_session",
+        workstream: "host_growth",
+        source: "for_hosts_private_quick_start",
       });
     } catch (error) {
       setStatus(String(error?.message || "Private session creation failed."));

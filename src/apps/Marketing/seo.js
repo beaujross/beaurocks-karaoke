@@ -77,6 +77,14 @@ const buildRouteSeo = (route = {}) => {
       structuredData: { "@context": "https://schema.org", "@type": "CollectionPage", name: "BeauRocks Karaoke Setlist Finder" },
     };
   }
+  if (page === MARKETING_ROUTE_PAGES.demo) {
+    return {
+      title: "Live Demo Arena | BeauRocks Karaoke",
+      description: "Watch a scripted TV, audience, and host walkthrough with reactions, vibe-sync guitar mode, and trivia.",
+      robots: "index,follow",
+      structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Live Demo Arena" },
+    };
+  }
   if (page === MARKETING_ROUTE_PAGES.forHosts) {
     return {
       title: "For Hosts | BeauRocks Karaoke",

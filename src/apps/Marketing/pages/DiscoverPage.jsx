@@ -152,13 +152,83 @@ const normalizeLocation = (entry = {}) => {
   return { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
 };
 
-const toListing = (entry = {}, fallbackType = "venue") => {
+const toAddressLine = (entry = {}) =>
+  [entry?.address1, entry?.city, entry?.state, entry?.postalCode, entry?.country]
+    .filter(Boolean)
+    .join(", ");
+
+const buildStreetViewImageUrl = ({ location = null, addressLine = "", mapsApiKey = "" } = {}) => {
+  const key = String(mapsApiKey || "").trim();
+  if (!key) return "";
+  const locationToken = location
+    ? `${Number(location.lat).toFixed(6)},${Number(location.lng).toFixed(6)}`
+    : String(addressLine || "").trim();
+  if (!locationToken) return "";
+  return `https://maps.googleapis.com/maps/api/streetview?size=960x540&location=${encodeURIComponent(locationToken)}&source=outdoor&fov=95&pitch=4&key=${encodeURIComponent(key)}`;
+};
+
+const buildStaticMapImageUrl = ({ location = null, mapsApiKey = "" } = {}) => {
+  const key = String(mapsApiKey || "").trim();
+  if (!key || !location) return "";
+  const marker = `${Number(location.lat).toFixed(6)},${Number(location.lng).toFixed(6)}`;
+  return `https://maps.googleapis.com/maps/api/staticmap?size=960x540&maptype=roadmap&markers=color:0xff68bf%7C${encodeURIComponent(marker)}&style=feature:all%7Csaturation:-60&style=feature:all%7Clightness:-20&key=${encodeURIComponent(key)}`;
+};
+
+const getHostToken = ({ hostUid = "", hostName = "" } = {}) => {
+  const uid = String(hostUid || "").trim();
+  if (uid) return `uid:${uid.toLowerCase()}`;
+  const name = String(hostName || "").trim().toLowerCase();
+  return name ? `name:${name}` : "";
+};
+
+const PLACEHOLDER_SCREEN_IMAGE_TOKENS = [
+  "/images/marketing/app-landing-live.png",
+  "/images/marketing/audience-surface-live.png",
+  "/images/marketing/tv-surface-live.png",
+  "/images/marketing/beaurocks-hostpanel.png",
+  "/images/marketing/beaurocks-audienceapp.png",
+];
+
+const isScreenPlaceholderImage = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  if (!token) return false;
+  return PLACEHOLDER_SCREEN_IMAGE_TOKENS.some((entry) => token.includes(entry));
+};
+
+const applyFallbackImage = (event, fallbackUrl = "") => {
+  const target = event?.currentTarget;
+  if (!target) return;
+  if (target.dataset.fallbackApplied === "1") return;
+  const safeFallback = String(fallbackUrl || "").trim();
+  if (!safeFallback) return;
+  target.dataset.fallbackApplied = "1";
+  target.src = safeFallback;
+};
+
+const escapeHtml = (value = "") =>
+  String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
+  const mapsApiKey = String(options?.mapsApiKey || "").trim();
   const listingType = normalizeListingType(entry?.listingType || fallbackType);
   const meta = MAP_TYPE_META[listingType] || MAP_TYPE_META.venue;
   const location = normalizeLocation(entry);
   const startsAtMs = Number(entry?.startsAtMs || 0) || 0;
   const mediaType = listingType === "room_session" ? "session" : listingType;
-  const imageUrl = resolveListingImageCandidates(entry, mediaType)[0] || "/images/logo-library/beaurocks-karaoke-logo-2.png";
+  const explicitImageUrl = resolveListingImageCandidates(entry, mediaType, { includeFallback: false })
+    .find((url) => !isScreenPlaceholderImage(url)) || "";
+  const addressLine = toAddressLine(entry);
+  const venueImageUrl = buildStreetViewImageUrl({ location, addressLine, mapsApiKey });
+  const mapFallbackImageUrl = buildStaticMapImageUrl({ location, mapsApiKey });
+  const hardFallbackImageUrl = mapFallbackImageUrl || "/images/logo-library/beaurocks-karaoke-logo-2.png";
+  const imageUrl = explicitImageUrl || venueImageUrl || hardFallbackImageUrl;
+  const hostUid = String(entry?.hostUid || "").trim();
+  const hostName = String(entry?.hostName || "").trim();
   const avatarUrl = resolveProfileAvatarUrl(entry);
   const locationLabel = [entry?.city, entry?.state, entry?.address1].filter(Boolean).join(", ");
   const subtitle = locationLabel || [entry?.city, entry?.state].filter(Boolean).join(", ") || "Location pending";
@@ -174,6 +244,7 @@ const toListing = (entry = {}, fallbackType = "venue") => {
     typeLabel: meta.label,
     title: String(entry?.title || "Untitled listing"),
     imageUrl,
+    imageFallbackUrl: hardFallbackImageUrl,
     avatarUrl,
     avatarLabel: listingType === "event"
       ? String(entry?.hostName || entry?.venueName || entry?.title || "").trim()
@@ -186,7 +257,9 @@ const toListing = (entry = {}, fallbackType = "venue") => {
       : listingType === "room_session"
         ? [entry?.venueName, entry?.roomCode].filter(Boolean).join(" | ")
         : String(entry?.description || "").trim().slice(0, 120),
-    hostUid: String(entry?.hostUid || "").trim(),
+    hostUid,
+    hostName,
+    hostToken: getHostToken({ hostUid, hostName }),
     performerUid: String(entry?.performerUid || "").trim(),
     timeLabel,
     startsAtMs,
@@ -262,6 +335,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [mapFirst, setMapFirst] = useState(true);
   const [boundsOnly, setBoundsOnly] = useState(true);
   const [selectedKey, setSelectedKey] = useState("");
+  const [hostFilter, setHostFilter] = useState("all");
   const [mapBounds, setMapBounds] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -270,6 +344,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
+  const selectedInfoWindowRef = useRef(null);
   const markerMapRef = useRef(new Map());
   const cardRefs = useRef(new Map());
   const hasAutoFitRef = useRef(false);
@@ -278,6 +353,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const permissionError = isPermissionError(error);
   const indexError = isIndexError(error);
   const mapEnabled = !!mapsConfig?.mapEnabled && !!mapsConfig?.apiKey;
+  const mapsApiKey = mapEnabled ? String(mapsConfig?.apiKey || "") : "";
   const { loaded: mapsLoaded, error: mapsError } = useGoogleMapsScript({
     enabled: mapEnabled,
     apiKey: String(mapsConfig?.apiKey || ""),
@@ -290,11 +366,11 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
   const allListings = useMemo(() => {
     const next = [];
-    data.events.forEach((entry) => next.push(toListing(entry, "event")));
-    data.sessions.forEach((entry) => next.push(toListing(entry, "room_session")));
-    data.venues.forEach((entry) => next.push(toListing(entry, "venue")));
+    data.events.forEach((entry) => next.push(toListing(entry, "event", { mapsApiKey })));
+    data.sessions.forEach((entry) => next.push(toListing(entry, "room_session", { mapsApiKey })));
+    data.venues.forEach((entry) => next.push(toListing(entry, "venue", { mapsApiKey })));
     return next;
-  }, [data.events, data.sessions, data.venues]);
+  }, [data.events, data.sessions, data.venues, mapsApiKey]);
 
   const filteredByType = useMemo(() => {
     if (typeFilter === "all") return allListings;
@@ -305,9 +381,38 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     () => filteredByType.filter((entry) => matchesTimeWindow(entry, timeWindow, rankingNowMs)),
     [filteredByType, timeWindow, rankingNowMs]
   );
+  const hostFacetOptions = useMemo(() => {
+    const byHost = new Map();
+    filteredByTimeWindow.forEach((entry) => {
+      const hostToken = String(entry?.hostToken || "").trim();
+      if (!hostToken) return;
+      const existing = byHost.get(hostToken) || {
+        id: hostToken,
+        hostUid: String(entry?.hostUid || "").trim(),
+        hostName: String(entry?.hostName || "").trim() || "Host",
+        count: 0,
+      };
+      existing.count += 1;
+      byHost.set(hostToken, existing);
+    });
+    return Array.from(byHost.values())
+      .sort((a, b) => {
+        if (a.count !== b.count) return b.count - a.count;
+        return String(a.hostName || "").localeCompare(String(b.hostName || ""));
+      })
+      .slice(0, 16);
+  }, [filteredByTimeWindow]);
+  const effectiveHostFilter = useMemo(() => {
+    if (hostFilter === "all") return "all";
+    return hostFacetOptions.some((entry) => entry.id === hostFilter) ? hostFilter : "all";
+  }, [hostFacetOptions, hostFilter]);
+  const filteredByHost = useMemo(() => {
+    if (effectiveHostFilter === "all") return filteredByTimeWindow;
+    return filteredByTimeWindow.filter((entry) => entry.hostToken === effectiveHostFilter);
+  }, [filteredByTimeWindow, effectiveHostFilter]);
 
   const rankedListings = useMemo(() => {
-    const withSignals = filteredByTimeWindow.map((entry) => {
+    const withSignals = filteredByHost.map((entry) => {
       const distanceMiles = calculateDistanceMiles(userLocation, entry.location);
       const distanceScore = Number.isFinite(distanceMiles)
         ? Math.max(0, 32 - (distanceMiles * 1.8))
@@ -340,11 +445,66 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         return sortListings(a, b);
       });
     }
+    if (sortMode === "host_first") {
+      const hostRanks = new Map();
+      withSignals.forEach((entry) => {
+        const token = String(entry?.hostToken || "").trim();
+        if (!token) return;
+        const existing = hostRanks.get(token) || {
+          bestScore: Number.NEGATIVE_INFINITY,
+          soonestMs: Number.POSITIVE_INFINITY,
+          count: 0,
+        };
+        existing.bestScore = Math.max(existing.bestScore, Number(entry?.score || 0));
+        const startsAtMs = Number(entry?.startsAtMs || 0);
+        if (startsAtMs > 0) existing.soonestMs = Math.min(existing.soonestMs, startsAtMs);
+        existing.count += 1;
+        hostRanks.set(token, existing);
+      });
+
+      return withSignals.slice().sort((a, b) => {
+        const aToken = String(a?.hostToken || "").trim();
+        const bToken = String(b?.hostToken || "").trim();
+        const aHasHost = !!aToken;
+        const bHasHost = !!bToken;
+        if (aHasHost !== bHasHost) return aHasHost ? -1 : 1;
+
+        if (aHasHost && bHasHost && aToken !== bToken) {
+          const aRank = hostRanks.get(aToken) || {
+            bestScore: Number.NEGATIVE_INFINITY,
+            soonestMs: Number.POSITIVE_INFINITY,
+            count: 0,
+          };
+          const bRank = hostRanks.get(bToken) || {
+            bestScore: Number.NEGATIVE_INFINITY,
+            soonestMs: Number.POSITIVE_INFINITY,
+            count: 0,
+          };
+          if (aRank.bestScore !== bRank.bestScore) return bRank.bestScore - aRank.bestScore;
+          if (aRank.soonestMs !== bRank.soonestMs) return aRank.soonestMs - bRank.soonestMs;
+          if (aRank.count !== bRank.count) return bRank.count - aRank.count;
+          const aHostName = String(a?.hostName || "");
+          const bHostName = String(b?.hostName || "");
+          const hostNameCompare = aHostName.localeCompare(bHostName);
+          if (hostNameCompare !== 0) return hostNameCompare;
+        }
+
+        if (aHasHost && bHasHost && aToken === bToken) {
+          const withinHost = sortListings(a, b);
+          if (withinHost !== 0) return withinHost;
+          if (a.score !== b.score) return b.score - a.score;
+          return String(a?.title || "").localeCompare(String(b?.title || ""));
+        }
+
+        if (a.score !== b.score) return b.score - a.score;
+        return sortListings(a, b);
+      });
+    }
     return withSignals.slice().sort((a, b) => {
       if (a.score !== b.score) return b.score - a.score;
       return sortListings(a, b);
     });
-  }, [filteredByTimeWindow, sortMode, userLocation, search, rankingNowMs]);
+  }, [filteredByHost, sortMode, userLocation, search, rankingNowMs]);
 
   const mappableListings = useMemo(
     () => rankedListings.filter((entry) => !!entry.location),
@@ -431,7 +591,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           source: "discover_map",
           sortMode,
         });
-        setSortMode((prev) => (prev === "soonest" ? prev : "nearest"));
+        setSortMode((prev) => (prev === "smart" ? "nearest" : prev));
         setGeoLoading(false);
         const map = mapRef.current;
         if (map) {
@@ -500,6 +660,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
   useEffect(() => () => {
     const googleMaps = window.google?.maps;
+    if (selectedInfoWindowRef.current) {
+      selectedInfoWindowRef.current.close();
+      selectedInfoWindowRef.current = null;
+    }
     markerMapRef.current.forEach((marker) => {
       googleMaps?.event?.clearInstanceListeners(marker);
       marker.setMap(null);
@@ -534,12 +698,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       }
       const selected = entry.key === effectiveSelectedKey;
       marker.setIcon(buildMarkerIcon(googleMaps, entry.markerColor, selected));
-      marker.setLabel(selected ? {
-        text: "★",
-        color: "#0b1119",
-        fontSize: "12px",
-        fontWeight: "700",
-      } : null);
+      marker.setLabel(null);
       marker.setZIndex(selected ? 999 : 180);
     });
 
@@ -554,6 +713,35 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       fitMapToListings({ googleMaps, map, listings: mappableListings });
       hasAutoFitRef.current = true;
     }
+    const selectedListingInMap = mappableListings.find((entry) => entry.key === effectiveSelectedKey);
+    if (!selectedInfoWindowRef.current) {
+      selectedInfoWindowRef.current = new googleMaps.InfoWindow({
+        disableAutoPan: true,
+        maxWidth: 240,
+      });
+    }
+    const infoWindow = selectedInfoWindowRef.current;
+    if (!selectedListingInMap) {
+      infoWindow.close();
+      return;
+    }
+    const marker = markerMap.get(selectedListingInMap.key);
+    if (!marker) {
+      infoWindow.close();
+      return;
+    }
+    const detailLine = selectedListingInMap.timeLabel
+      || selectedListingInMap.distanceLabel
+      || selectedListingInMap.subtitle
+      || selectedListingInMap.typeLabel;
+    infoWindow.setContent(
+      `<div class="mk3-map-marker-selected">
+        <div class="mk3-map-marker-selected-kicker">Selected</div>
+        <strong>${escapeHtml(selectedListingInMap.title)}</strong>
+        <small>${escapeHtml(detailLine)}</small>
+      </div>`
+    );
+    infoWindow.open({ map, anchor: marker });
   }, [mappableListings, effectiveSelectedKey, focusListing]);
 
   const hiddenWithoutCoords = boundsOnly
@@ -564,6 +752,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     : "Move map to define bounds";
   const hasSearchFilters = !!String(search || "").trim()
     || !!String(region || "").trim()
+    || effectiveHostFilter !== "all"
     || sortMode !== "smart"
     || timeWindow !== "all";
   const dynamicRegionPresets = useMemo(() => {
@@ -603,6 +792,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       setTypeFilter("all");
       setTimeWindow("all");
       setSortMode("smart");
+      setHostFilter("all");
       return;
     }
     if (intent === "submit_listing") {
@@ -660,6 +850,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             <option value="smart">Smart (live + near)</option>
             <option value="soonest">Soonest start time</option>
             <option value="nearest">Nearest to me</option>
+            <option value="host_first">Host-first (follow hosts)</option>
           </select>
         </label>
       </div>
@@ -701,12 +892,42 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
               setTypeFilter("all");
               setTimeWindow("all");
               setSortMode("smart");
+              setHostFilter("all");
             }}
           >
             Clear filters
           </button>
         )}
       </div>
+      {hostFacetOptions.length > 0 && (
+        <div className="mk3-filter-chips mk3-zone mk3-zone-host">
+          <span className="mk3-filter-chip-label">Browse by host</span>
+          <button
+            type="button"
+            className={effectiveHostFilter === "all" ? "active" : ""}
+            onClick={() => setHostFilter("all")}
+          >
+            All hosts
+          </button>
+          {hostFacetOptions.map((host) => (
+            <button
+              key={host.id}
+              type="button"
+              className={effectiveHostFilter === host.id ? "active" : ""}
+              onClick={() => {
+                setHostFilter(host.id);
+                trackEvent("mk_discover_host_filter_change", {
+                  source: "discover_filters",
+                  hostToken: host.id,
+                  hostUid: host.hostUid || "",
+                });
+              }}
+            >
+              {host.hostName} ({host.count})
+            </button>
+          ))}
+        </div>
+      )}
       {geoError && <div className="mk3-status mk3-status-warning">{geoError}</div>}
 
       <div className="mk3-metric-row mk3-zone mk3-zone-metrics">
@@ -778,35 +999,12 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 <span className="mk3-map-legend-item is-session">Sessions {listingTypeCounts.room_session}</span>
                 {userLocation && <span className="mk3-map-legend-item is-you">You are centered</span>}
               </div>
-              {!!featuredListing && (
-                <button
-                  type="button"
-                  className="mk3-map-featured-card"
-                  onClick={() => navigate(featuredListing.routePage, featuredListing.id, {
-                    src: "discover_map_selected",
-                    src_listing_type: featuredListing.listingType,
-                    src_sort_mode: sortMode,
-                  })}
-                >
-                  <span className="mk3-map-featured-kicker">Featured in view</span>
-                  <div className="mk3-map-featured-main">
-                    <img src={featuredListing.imageUrl} alt="" loading="lazy" />
-                    <div>
-                      <span>{featuredListing.typeLabel}</span>
-                      <strong>{featuredListing.title}</strong>
-                      <small>{featuredListing.subtitle}</small>
-                      {featuredListing.timeLabel && <small>{featuredListing.timeLabel}</small>}
-                      {!!featuredListing.distanceLabel && <small>{featuredListing.distanceLabel}</small>}
-                    </div>
-                  </div>
-                </button>
-              )}
             </div>
           </div>
 
           <div className="mk3-map-footer">
               <span>{visibleListings.length} shown in rail</span>
-              <span>{featuredListing ? `featured: ${featuredListing.title}` : "select a marker or card"}</span>
+              <span>{featuredListing ? `selected: ${featuredListing.title}` : "select a marker or card"}</span>
               <span>{mapBoundsLabel}</span>
             </div>
           </article>
@@ -832,6 +1030,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                     setTypeFilter("all");
                     setTimeWindow("all");
                     setSortMode("smart");
+                    setHostFilter("all");
                   }}
                 >
                   Use broad filters
@@ -873,7 +1072,12 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 className={entry.key === effectiveSelectedKey ? "mk3-discover-card is-selected" : "mk3-discover-card"}
               >
                 <div className="mk3-discover-media">
-                  <img src={entry.imageUrl} alt={`${entry.title} listing visual`} loading="lazy" />
+                  <img
+                    src={entry.imageUrl}
+                    alt={`${entry.title} venue visual`}
+                    loading="lazy"
+                    onError={(event) => applyFallbackImage(event, entry.imageFallbackUrl)}
+                  />
                   <div className="mk3-discover-media-top">
                     <div className="mk3-chip">{entry.typeLabel}</div>
                     <div className="mk3-discover-avatar" aria-hidden="true">
@@ -888,6 +1092,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 {!!entry.distanceLabel && <div className="mk3-card-subtitle">{entry.distanceLabel}</div>}
                 {entry.timeLabel && <div className="mk3-card-time">{entry.timeLabel}</div>}
                 {entry.detailLine && <div className="mk3-card-subtitle">{entry.detailLine}</div>}
+                {!!entry.hostName && <div className="mk3-card-subtitle">Host: {entry.hostName}</div>}
                 <div className="mk3-actions-inline">
                   <button
                     type="button"
@@ -922,6 +1127,25 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                   >
                     Open details
                   </button>
+                  {!!entry.hostUid && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        trackEvent("mk_discover_open_host", {
+                          source: "discover_rail",
+                          hostUid: entry.hostUid,
+                          listingType: entry.listingType,
+                        });
+                        navigate("host", entry.hostUid, {
+                          src: "discover_host",
+                          src_listing_type: entry.listingType,
+                          src_sort_mode: sortMode,
+                        });
+                      }}
+                    >
+                      Host profile
+                    </button>
+                  )}
                 </div>
                 <InlineConversionActions
                   entry={entry}
@@ -939,3 +1163,4 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 };
 
 export default DiscoverPage;
+

@@ -17,6 +17,7 @@ import { formatDateTime } from "./pages/shared";
 import "./marketing.css";
 
 const DiscoverPage = lazy(() => import("./pages/DiscoverPage"));
+const DemoExperiencePage = lazy(() => import("./pages/DemoExperiencePage"));
 const VenuePage = lazy(() => import("./pages/VenuePage"));
 const EventPage = lazy(() => import("./pages/EventPage"));
 const HostPage = lazy(() => import("./pages/HostPage"));
@@ -43,6 +44,18 @@ const PRODUCT_BRAND = {
 };
 
 const PUBLIC_CHANGELOG_ENTRIES = [
+  {
+    id: "demo",
+    surfaceLabel: "Demo Arena",
+    routePage: MARKETING_ROUTE_PAGES.demo,
+    ctaLabel: "Open demo",
+    updatedAt: "2026-02-23",
+    highlights: [
+      "New scripted multi-surface walkthrough now stages TV, audience, and host moments in one timeline.",
+      "Reaction bursts, guitar vibe-sync, and trivia scenes run in sequence for clearer product storytelling.",
+      "Demo view includes direct launch links for real audience, TV, and host surfaces.",
+    ],
+  },
   {
     id: "finder",
     surfaceLabel: PRODUCT_BRAND.finder,
@@ -100,6 +113,7 @@ const PRIMARY_PAGE_OPTIONS = [
 ];
 
 const SECONDARY_PAGE_OPTIONS = [
+  { id: MARKETING_ROUTE_PAGES.demo, label: "Try Live Demo" },
   { id: MARKETING_ROUTE_PAGES.forPerformers, label: "For Performers" },
   { id: MARKETING_ROUTE_PAGES.forFans, label: "For Fans" },
   { id: MARKETING_ROUTE_PAGES.submit, label: "Submit Listing" },
@@ -118,6 +132,7 @@ const PageShellLoader = () => (
 const normalizePage = (value = "") => {
   const safe = String(value || "").trim().toLowerCase();
   if (safe === "discover") return MARKETING_ROUTE_PAGES.discover;
+  if (safe === "demo") return MARKETING_ROUTE_PAGES.demo;
   if (safe === "venue") return MARKETING_ROUTE_PAGES.venue;
   if (safe === "event") return MARKETING_ROUTE_PAGES.event;
   if (safe === "host") return MARKETING_ROUTE_PAGES.host;
@@ -176,6 +191,26 @@ const formatReleaseDate = (value = "") => {
   }).format(ms);
 };
 
+const PRIVATE_TEST_USE_CASE_OPTIONS = [
+  "Home Party Host",
+  "Fundraiser Organizer",
+  "Community Event Host",
+  "Venue / KJ Operator",
+];
+
+const readPrivateInviteCode = () => {
+  const envCode = typeof import.meta !== "undefined" && import.meta?.env
+    ? String(import.meta.env.VITE_MARKETING_PRIVATE_INVITE_CODE || "")
+    : "";
+  const overrideCode = typeof window !== "undefined"
+    ? String(window?.__marketingFlags?.privateInviteCode || "")
+    : "";
+  return String(overrideCode || envCode || "").trim();
+};
+
+const normalizePrivateInviteToken = (value = "") =>
+  String(value || "").trim().toLowerCase();
+
 const MarketingSite = () => {
   const [route, setRoute] = useState(() => readRouteFromWindow());
   const [mapsConfig, setMapsConfig] = useState(null);
@@ -184,12 +219,32 @@ const MarketingSite = () => {
   const [authMode, setAuthMode] = useState("signin");
   const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "" });
   const [authLocalError, setAuthLocalError] = useState("");
+  const [privateApplyForm, setPrivateApplyForm] = useState({
+    name: "",
+    email: "",
+    useCase: PRIVATE_TEST_USE_CASE_OPTIONS[0],
+  });
+  const [privateApplyState, setPrivateApplyState] = useState({
+    submitting: false,
+    success: "",
+    error: "",
+    linePosition: 0,
+  });
+  const [privateAccessCode, setPrivateAccessCode] = useState("");
+  const [privateAccessError, setPrivateAccessError] = useState("");
+  const [privateInviteCode] = useState(() => readPrivateInviteCode());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const authPanelRef = useRef(null);
   const { session, actions } = useDirectorySession();
   const isAuthed = !!session?.isAuthed;
   const isAnonymous = !!session?.isAnonymous;
   const hasFullAccount = isAuthed && !isAnonymous;
+  const privateTestModeEnabled = !!marketingFlags.privateTestModeEnabled;
+  const privateInviteRequired = privateTestModeEnabled && !!String(privateInviteCode || "").trim();
+  const privateInviteStorageKey = useMemo(
+    () => (session?.uid ? `mk3_private_test_invite:${session.uid}` : ""),
+    [session?.uid]
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return () => {};
@@ -352,6 +407,8 @@ const MarketingSite = () => {
     navigate(nextRoute, "", {}, { replace: true });
   }, [navigate]);
 
+  const activePage = useMemo(() => normalizePage(route.page), [route.page]);
+
   const onAuthSubmit = async (event) => {
     event.preventDefault();
     const email = String(authForm.email || "").trim();
@@ -383,17 +440,140 @@ const MarketingSite = () => {
     }
   };
 
-  const activePage = useMemo(() => normalizePage(route.page), [route.page]);
+  const storePrivateInviteAccess = useCallback((granted = false) => {
+    if (typeof window === "undefined" || !privateInviteStorageKey) return;
+    try {
+      if (granted) {
+        window.localStorage.setItem(privateInviteStorageKey, "1");
+      } else {
+        window.localStorage.removeItem(privateInviteStorageKey);
+      }
+    } catch {
+      // Ignore storage failures for private invite persistence.
+    }
+  }, [privateInviteStorageKey]);
+
+  const storedPrivateInviteAccess = useMemo(() => {
+    if (typeof window === "undefined" || !privateInviteStorageKey) return false;
+    try {
+      return window.localStorage.getItem(privateInviteStorageKey) === "1";
+    } catch {
+      return false;
+    }
+  }, [privateInviteStorageKey]);
+
+  const onPrivateApplySubmit = async (event) => {
+    event.preventDefault();
+    const name = String(privateApplyForm.name || "").trim();
+    const email = String(privateApplyForm.email || "").trim().toLowerCase();
+    const useCase = String(privateApplyForm.useCase || PRIVATE_TEST_USE_CASE_OPTIONS[0]).trim();
+    if (!name || !email) {
+      setPrivateApplyState((prev) => ({
+        ...prev,
+        error: "Name and email are required.",
+        success: "",
+      }));
+      return;
+    }
+    setPrivateApplyState({ submitting: true, success: "", error: "", linePosition: 0 });
+    try {
+      const result = await directoryActions.submitMarketingWaitlist({
+        name,
+        email,
+        useCase,
+        source: `marketing_private_test:${String(activePage || "discover")}`,
+      });
+      const linePosition = Number(result?.linePosition || 0) || 0;
+      const message = String(result?.message || "Thanks. Your private test application was received.");
+      setPrivateApplyState({
+        submitting: false,
+        success: message,
+        error: "",
+        linePosition,
+      });
+      trackEvent("mk_private_test_apply_submit", {
+        ok: true,
+        isNewSignup: !!result?.isNewSignup,
+        linePosition,
+        useCase,
+      });
+    } catch (error) {
+      const message = String(error?.message || "Unable to submit your application right now.");
+      setPrivateApplyState({
+        submitting: false,
+        success: "",
+        error: message,
+        linePosition: 0,
+      });
+      trackEvent("mk_private_test_apply_submit", {
+        ok: false,
+        error: message.slice(0, 80),
+      });
+    }
+  };
+
+  const onPrivateAccessSubmit = (event) => {
+    event.preventDefault();
+    if (!hasFullAccount) {
+      setPrivateAccessError("Sign in with your invited account first.");
+      setAuthMode("signin");
+      scrollAuthPanelIntoView();
+      return;
+    }
+
+    if (!privateInviteRequired) {
+      setPrivateAccessError("");
+      storePrivateInviteAccess(true);
+      trackEvent("mk_private_test_unlock", { ok: true, method: "account_only" });
+      return;
+    }
+
+    const expected = normalizePrivateInviteToken(privateInviteCode);
+    const supplied = normalizePrivateInviteToken(privateAccessCode);
+    if (!supplied) {
+      setPrivateAccessError("Enter your invite code.");
+      return;
+    }
+    if (supplied !== expected) {
+      setPrivateAccessError("Invite code is incorrect.");
+      trackEvent("mk_private_test_unlock", { ok: false, method: "invite_code" });
+      return;
+    }
+
+    setPrivateAccessCode("");
+    setPrivateAccessError("");
+    storePrivateInviteAccess(true);
+    trackEvent("mk_private_test_unlock", { ok: true, method: "invite_code" });
+  };
+
+  const privateAccessUnlocked = !privateTestModeEnabled
+    || (hasFullAccount && (!privateInviteRequired || storedPrivateInviteAccess));
+  const privateAccessLocked = privateTestModeEnabled && !privateAccessUnlocked;
   const visibleSecondaryOptions = useMemo(
     () => SECONDARY_PAGE_OPTIONS.filter((item) => item.id !== MARKETING_ROUTE_PAGES.admin || session.isModerator),
     [session.isModerator]
   );
+  const visiblePrimaryOptions = useMemo(
+    () => (privateAccessLocked
+      ? [{ id: MARKETING_ROUTE_PAGES.discover, label: "Private Test" }]
+      : PRIMARY_PAGE_OPTIONS),
+    [privateAccessLocked]
+  );
+  const gatedSecondaryOptions = useMemo(
+    () => (privateAccessLocked ? [] : visibleSecondaryOptions),
+    [privateAccessLocked, visibleSecondaryOptions]
+  );
   const moreMenuActive = useMemo(
-    () => visibleSecondaryOptions.some((item) => item.id === activePage),
-    [activePage, visibleSecondaryOptions]
+    () => gatedSecondaryOptions.some((item) => item.id === activePage),
+    [activePage, gatedSecondaryOptions]
   );
 
   const postAuthHint = useMemo(() => {
+    if (privateAccessLocked) {
+      return privateInviteRequired
+        ? "Sign in with your invited account, then enter your invite code to unlock access."
+        : "Sign in with your invited account to unlock private test access.";
+    }
     if (authMode === "signup") {
       return "Create account uses email + password + confirm password. No duplicate email entry needed.";
     }
@@ -404,7 +584,7 @@ const MarketingSite = () => {
       return "After sign in, you'll return to your dashboard.";
     }
     return "Create an account to save favorites, RSVPs, and check-ins.";
-  }, [activePage, authMode, route.params?.intent]);
+  }, [activePage, authMode, privateAccessLocked, privateInviteRequired, route.params?.intent]);
   const publicChangelog = useMemo(
     () => PUBLIC_CHANGELOG_ENTRIES
       .map((entry) => {
@@ -432,6 +612,7 @@ const MarketingSite = () => {
       },
     };
     if (activePage === MARKETING_ROUTE_PAGES.discover) return <DiscoverPage {...pageProps} />;
+    if (activePage === MARKETING_ROUTE_PAGES.demo) return <DemoExperiencePage {...pageProps} />;
     if (activePage === MARKETING_ROUTE_PAGES.venue) return <VenuePage {...pageProps} />;
     if (activePage === MARKETING_ROUTE_PAGES.event) return <EventPage {...pageProps} />;
     if (activePage === MARKETING_ROUTE_PAGES.host) return <HostPage {...pageProps} />;
@@ -464,7 +645,7 @@ const MarketingSite = () => {
               </div>
             </button>
             <nav className="mk3-links" aria-label="Primary">
-              {PRIMARY_PAGE_OPTIONS.map((item) => (
+              {visiblePrimaryOptions.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -474,27 +655,34 @@ const MarketingSite = () => {
                   {item.label}
                 </button>
               ))}
-              <details className={`mk3-more-menu ${moreMenuActive ? "is-active" : ""}`}>
-                <summary>More</summary>
-                <div className="mk3-more-list">
-                  {visibleSecondaryOptions.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={activePage === item.id ? "active" : ""}
-                      onClick={() => navigate(item.id)}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </details>
+              {gatedSecondaryOptions.length > 0 && (
+                <details className={`mk3-more-menu ${moreMenuActive ? "is-active" : ""}`}>
+                  <summary>More</summary>
+                  <div className="mk3-more-list">
+                    {gatedSecondaryOptions.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={activePage === item.id ? "active" : ""}
+                        onClick={() => navigate(item.id)}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              )}
             </nav>
             <div className="mk3-account">
               <button
                 type="button"
                 className="mk3-account-action"
                 onClick={() => {
+                  if (privateAccessLocked) {
+                    setAuthMode(hasFullAccount ? "signin" : "signup");
+                    scrollAuthPanelIntoView();
+                    return;
+                  }
                   if (hasFullAccount) {
                     navigate(MARKETING_ROUTE_PAGES.profile);
                     return;
@@ -503,7 +691,9 @@ const MarketingSite = () => {
                   scrollAuthPanelIntoView();
                 }}
               >
-                {hasFullAccount ? "Dashboard" : "Create Account"}
+                {privateAccessLocked
+                  ? (hasFullAccount ? "Unlock Access" : "Apply For Access")
+                  : (hasFullAccount ? "Dashboard" : "Create Account")}
               </button>
               <button
                 type="button"
@@ -532,7 +722,7 @@ const MarketingSite = () => {
           </div>
           <div id="mk3-mobile-menu" className={mobileMenuOpen ? "mk3-mobile-menu is-open" : "mk3-mobile-menu"}>
             <div className="mk3-mobile-link-grid">
-              {PRIMARY_PAGE_OPTIONS.map((item) => (
+              {visiblePrimaryOptions.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -542,7 +732,7 @@ const MarketingSite = () => {
                   {item.label}
                 </button>
               ))}
-              {visibleSecondaryOptions.map((item) => (
+              {gatedSecondaryOptions.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -570,89 +760,176 @@ const MarketingSite = () => {
 
           <section className="mk3-auth-panel" ref={authPanelRef}>
             <div>
-              <h1>{PRODUCT_BRAND.name}</h1>
-              <p>
-                One platform for social singing and voice-driven party play: discover live karaoke, run interactive
-                TV moments, join from mobile, and keep the room connected with host controls.
-              </p>
-              <div className="mk3-surface-grid">
-                <article>
-                  <strong>{PRODUCT_BRAND.finder}</strong>
-                  <span>Discover venues and events</span>
-                </article>
-                <article>
-                  <strong>{PRODUCT_BRAND.tv}</strong>
-                  <span>Main room display surface</span>
-                </article>
-                <article>
-                  <strong>{PRODUCT_BRAND.audience}</strong>
-                  <span>Singer + audience mobile app</span>
-                </article>
-                <article>
-                  <strong>{PRODUCT_BRAND.host}</strong>
-                  <span>Host control surface</span>
-                </article>
-              </div>
-              {heroStats?.total > 0 && (
-                <div className="mk3-status mk3-hero-proof">
-                  <strong>{heroStats.total.toLocaleString()} public listings available now</strong>
-                  <span>Updated {formatDateTime(heroStats.generatedAtMs)}</span>
-                </div>
+              {privateAccessLocked ? (
+                <>
+                  <h1>Private Test Program</h1>
+                  <p>
+                    BeauRocks Karaoke is currently invite-only while we tune live social experiences across TV,
+                    audience, and host surfaces. Apply for access below, or unlock with your invited account.
+                  </p>
+                  <div className="mk3-private-pill-row">
+                    <span className="mk3-private-pill">Invite-only</span>
+                    <span className="mk3-private-pill">Weekly rollout</span>
+                    <span className="mk3-private-pill">Host + venue focus</span>
+                  </div>
+                  <form className="mk3-private-apply-form" onSubmit={onPrivateApplySubmit}>
+                    <h2>Apply to private test</h2>
+                    <div className="mk3-private-apply-grid">
+                      <label>
+                        Name
+                        <input
+                          type="text"
+                          value={privateApplyForm.name}
+                          onChange={(event) => {
+                            const next = event.target.value;
+                            setPrivateApplyForm((prev) => ({ ...prev, name: next }));
+                            setPrivateApplyState((prev) => ({ ...prev, error: "", success: "" }));
+                          }}
+                          required
+                          maxLength={80}
+                        />
+                      </label>
+                      <label>
+                        Email
+                        <input
+                          type="email"
+                          value={privateApplyForm.email}
+                          onChange={(event) => {
+                            const next = event.target.value;
+                            setPrivateApplyForm((prev) => ({ ...prev, email: next }));
+                            setPrivateApplyState((prev) => ({ ...prev, error: "", success: "" }));
+                          }}
+                          required
+                        />
+                      </label>
+                      <label>
+                        Use case
+                        <select
+                          value={privateApplyForm.useCase}
+                          onChange={(event) => {
+                            const next = event.target.value;
+                            setPrivateApplyForm((prev) => ({ ...prev, useCase: next }));
+                          }}
+                        >
+                          {PRIVATE_TEST_USE_CASE_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <div className="mk3-private-apply-actions">
+                      <button type="submit" disabled={privateApplyState.submitting}>
+                        {privateApplyState.submitting ? "Submitting..." : "Apply Now"}
+                      </button>
+                      <button
+                        type="button"
+                        className="mk3-auth-cta-secondary"
+                        onClick={() => {
+                          setAuthMode("signin");
+                          scrollAuthPanelIntoView();
+                        }}
+                      >
+                        I Have An Invite
+                      </button>
+                    </div>
+                    {privateApplyState.success && (
+                      <div className="mk3-status">
+                        <strong>{privateApplyState.success}</strong>
+                        {privateApplyState.linePosition > 0 && (
+                          <span>{`Current line position: #${privateApplyState.linePosition}`}</span>
+                        )}
+                      </div>
+                    )}
+                    {privateApplyState.error && <div className="mk3-status mk3-status-error">{privateApplyState.error}</div>}
+                  </form>
+                </>
+              ) : (
+                <>
+                  <h1>{PRODUCT_BRAND.name}</h1>
+                  <p>
+                    One platform for social singing and voice-driven party play: discover live karaoke, run interactive
+                    TV moments, join from mobile, and keep the room connected with host controls.
+                  </p>
+                  <div className="mk3-surface-grid">
+                    <article>
+                      <strong>{PRODUCT_BRAND.finder}</strong>
+                      <span>Discover venues and events</span>
+                    </article>
+                    <article>
+                      <strong>{PRODUCT_BRAND.tv}</strong>
+                      <span>Main room display surface</span>
+                    </article>
+                    <article>
+                      <strong>{PRODUCT_BRAND.audience}</strong>
+                      <span>Singer + audience mobile app</span>
+                    </article>
+                    <article>
+                      <strong>{PRODUCT_BRAND.host}</strong>
+                      <span>Host control surface</span>
+                    </article>
+                  </div>
+                  {heroStats?.total > 0 && (
+                    <div className="mk3-status mk3-hero-proof">
+                      <strong>{heroStats.total.toLocaleString()} public listings available now</strong>
+                      <span>Updated {formatDateTime(heroStats.generatedAtMs)}</span>
+                    </div>
+                  )}
+                  <div className="mk3-value-points">
+                    <span>Setlist Finder pairs a live map with a synced listing rail for fast navigation.</span>
+                    <span>Profiles stay linked across hosts, venues, singers, sessions, and party moments.</span>
+                  </div>
+                  <div className="mk3-permission-grid">
+                    <article>
+                      <strong>No account needed</strong>
+                      <span>Browse the {PRODUCT_BRAND.finder} listings, geo pages, and event details.</span>
+                    </article>
+                    <article>
+                      <strong>With account</strong>
+                      <span>Save follows, RSVP reminders, check-ins, and dashboard history.</span>
+                    </article>
+                  </div>
+                  <div className="mk3-auth-cta-row">
+                    {!hasFullAccount ? (
+                      <>
+                        <button
+                          type="button"
+                          className="mk3-auth-cta-primary"
+                          onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
+                        >
+                          Find Karaoke Near Me
+                        </button>
+                        <button
+                          type="button"
+                          className="mk3-auth-cta-secondary"
+                          onClick={() => {
+                            setAuthMode("signup");
+                            scrollAuthPanelIntoView();
+                          }}
+                        >
+                          Create Account
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="mk3-auth-cta-primary"
+                          onClick={() => navigate(MARKETING_ROUTE_PAGES.profile)}
+                        >
+                          Open Dashboard
+                        </button>
+                        <button
+                          type="button"
+                          className="mk3-auth-cta-secondary"
+                          onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
+                        >
+                          Open Setlist Finder
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </>
               )}
-              <div className="mk3-value-points">
-                <span>Setlist Finder pairs a live map with a synced listing rail for fast navigation.</span>
-                <span>Profiles stay linked across hosts, venues, singers, sessions, and party moments.</span>
-              </div>
-              <div className="mk3-permission-grid">
-                <article>
-                  <strong>No account needed</strong>
-                  <span>Browse the {PRODUCT_BRAND.finder} listings, geo pages, and event details.</span>
-                </article>
-                <article>
-                  <strong>With account</strong>
-                  <span>Save follows, RSVP reminders, check-ins, and dashboard history.</span>
-                </article>
-              </div>
-              <div className="mk3-auth-cta-row">
-                {!hasFullAccount ? (
-                  <>
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-primary"
-                      onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
-                    >
-                      Find Karaoke Near Me
-                    </button>
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-secondary"
-                      onClick={() => {
-                        setAuthMode("signup");
-                        scrollAuthPanelIntoView();
-                      }}
-                    >
-                      Create Account
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-primary"
-                      onClick={() => navigate(MARKETING_ROUTE_PAGES.profile)}
-                    >
-                      Open Dashboard
-                    </button>
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-secondary"
-                      onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
-                    >
-                      Open Setlist Finder
-                    </button>
-                  </>
-                )}
-              </div>
             </div>
             <div className="mk3-auth-box">
               {hasFullAccount ? (
@@ -746,56 +1023,118 @@ const MarketingSite = () => {
                   {session.authError && <div className="mk3-status mk3-status-error">{session.authError}</div>}
                 </form>
               )}
+              {privateTestModeEnabled && (
+                <div className="mk3-private-invite-box">
+                  <h3>Invited Tester Access</h3>
+                  <p>
+                    {privateInviteRequired
+                      ? "Sign in with your invited account and enter your invite code."
+                      : "Sign in with your invited account to unlock private surfaces."}
+                  </p>
+                  {privateAccessUnlocked ? (
+                    <div className="mk3-status">
+                      <strong>Private test access unlocked.</strong>
+                      <span>You can now open the private product surfaces.</span>
+                    </div>
+                  ) : (
+                    <form className="mk3-private-invite-form" onSubmit={onPrivateAccessSubmit}>
+                      {privateInviteRequired && (
+                        <label>
+                          Invite Code
+                          <input
+                            type="password"
+                            value={privateAccessCode}
+                            onChange={(event) => {
+                              setPrivateAccessCode(event.target.value);
+                              setPrivateAccessError("");
+                            }}
+                            placeholder="Enter invite code"
+                            autoComplete="off"
+                          />
+                        </label>
+                      )}
+                      <button type="submit">
+                        {privateInviteRequired ? "Unlock With Invite" : "Unlock Access"}
+                      </button>
+                      {privateAccessError && <div className="mk3-status mk3-status-error">{privateAccessError}</div>}
+                    </form>
+                  )}
+                </div>
+              )}
             </div>
           </section>
 
-          <section className="mk3-public-changelog mk3-zone mk3-zone-changelog" aria-label="Public changelog">
-            <div className="mk3-public-changelog-head">
-              <h2>Public Changelog</h2>
-              <span>Sanitized updates by surface</span>
-            </div>
-            <div className="mk3-public-changelog-grid">
-              {publicChangelog.map((entry) => (
-                <article key={entry.id} className="mk3-public-changelog-card">
-                  <div className="mk3-public-changelog-meta">
-                    <strong>{entry.surfaceLabel}</strong>
-                    <span>{`Updated ${entry.updatedLabel}`}</span>
-                    {entry.updatedAtMs > 0 && entry.updatedAtMs === latestReleaseMs && (
-                      <em>Latest</em>
-                    )}
-                  </div>
-                  <ul>
-                    {entry.highlights.map((line) => (
-                      <li key={`${entry.id}:${line}`}>{line}</li>
-                    ))}
-                  </ul>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      trackEvent("mk_public_changelog_surface_open", {
-                        surface: entry.id,
-                        route: entry.routePage,
-                      });
-                      navigate(entry.routePage);
-                    }}
-                  >
-                    {entry.ctaLabel}
-                  </button>
+          {privateAccessLocked ? (
+            <section className="mk3-private-locked-panel mk3-zone" aria-label="Private test locked">
+              <h2>Private surfaces are currently invite-only.</h2>
+              <p>
+                Apply above to join the private test queue. If you already have an invitation, sign in and unlock
+                access to continue.
+              </p>
+              <div className="mk3-private-locked-grid">
+                <article>
+                  <strong>New applicants</strong>
+                  <span>Submit the short application and we will review your use case for rollout.</span>
                 </article>
-              ))}
-            </div>
-          </section>
-          <Suspense fallback={<PageShellLoader />}>
-            {pageNode}
-          </Suspense>
+                <article>
+                  <strong>Invited users</strong>
+                  <span>Sign in with your invited account, then unlock private access in the panel above.</span>
+                </article>
+              </div>
+            </section>
+          ) : (
+            <>
+              <section className="mk3-public-changelog mk3-zone mk3-zone-changelog" aria-label="Public changelog">
+                <div className="mk3-public-changelog-head">
+                  <h2>Public Changelog</h2>
+                  <span>Sanitized updates by surface</span>
+                </div>
+                <div className="mk3-public-changelog-grid">
+                  {publicChangelog.map((entry) => (
+                    <article key={entry.id} className="mk3-public-changelog-card">
+                      <div className="mk3-public-changelog-meta">
+                        <strong>{entry.surfaceLabel}</strong>
+                        <span>{`Updated ${entry.updatedLabel}`}</span>
+                        {entry.updatedAtMs > 0 && entry.updatedAtMs === latestReleaseMs && (
+                          <em>Latest</em>
+                        )}
+                      </div>
+                      <ul>
+                        {entry.highlights.map((line) => (
+                          <li key={`${entry.id}:${line}`}>{line}</li>
+                        ))}
+                      </ul>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          trackEvent("mk_public_changelog_surface_open", {
+                            surface: entry.id,
+                            route: entry.routePage,
+                          });
+                          navigate(entry.routePage);
+                        }}
+                      >
+                        {entry.ctaLabel}
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </section>
+              <Suspense fallback={<PageShellLoader />}>
+                {pageNode}
+              </Suspense>
+            </>
+          )}
         </div>
       </main>
-      <Suspense fallback={null}>
-        <GoldenPathRail
-          navigate={navigate}
-          muted={activePage === MARKETING_ROUTE_PAGES.profile && !hasFullAccount}
-        />
-      </Suspense>
+      {!privateAccessLocked && (
+        <Suspense fallback={null}>
+          <GoldenPathRail
+            navigate={navigate}
+            muted={activePage === MARKETING_ROUTE_PAGES.profile && !hasFullAccount}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

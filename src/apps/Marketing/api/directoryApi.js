@@ -28,6 +28,10 @@ import {
   listCatalogContributionQueue,
   resolveCatalogContribution,
   previewDirectoryRoomSessionByCode,
+  submitMarketingWaitlist,
+  runDemoDirectorAction,
+  recordMarketingTelemetry,
+  getMarketingReportingSummary,
 } from "../../../lib/firebase";
 
 const mapDocs = (snap) => snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
@@ -334,4 +338,8 @@ export const directoryActions = {
   listCatalogContributionQueue,
   resolveCatalogContribution,
   previewDirectoryRoomSessionByCode,
+  submitMarketingWaitlist,
+  runDemoDirectorAction,
+  recordMarketingTelemetry,
+  getMarketingReportingSummary,
 };

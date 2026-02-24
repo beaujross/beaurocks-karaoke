@@ -517,6 +517,24 @@ const updateRoomAsHost = async (roomCode = "", updates = {}) => {
   return data || null;
 };
 
+const runDemoDirectorAction = async (payload = {}) => {
+  await requireAppCheckToken("runDemoDirectorAction");
+  const data = await callFunction("runDemoDirectorAction", payload || {});
+  return data || null;
+};
+
+const recordMarketingTelemetry = async (payload = {}) => {
+  await requireAppCheckToken("recordMarketingTelemetry");
+  const data = await callFunction("recordMarketingTelemetry", payload || {});
+  return data || null;
+};
+
+const getMarketingReportingSummary = async (payload = {}) => {
+  await requireAppCheckToken("getMarketingReportingSummary");
+  const data = await callFunction("getMarketingReportingSummary", payload || {});
+  return data || null;
+};
+
 // Helper for Auth
 const initAuth = async (customToken) => {
   try {
@@ -747,6 +765,9 @@ export {
   listMyUsageInvoices,
   assertRoomHostAccess,
   updateRoomAsHost,
+  runDemoDirectorAction,
+  recordMarketingTelemetry,
+  getMarketingReportingSummary,
   auth, 
   db, 
   rtdb, 

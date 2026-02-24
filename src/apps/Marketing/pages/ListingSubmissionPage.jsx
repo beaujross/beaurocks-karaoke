@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { trackEvent } from "../lib/marketingAnalytics";
+import { trackEvent, trackGoldenPathMilestone } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { formatDateTime, fromDateTimeLocalInput, toDateTimeLocalInput } from "./shared";
 import {
@@ -93,6 +93,13 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
         listingType,
         submissionId: result?.submissionId || "",
       });
+      if (listingType === "venue") {
+        trackGoldenPathMilestone({ pathId: "venue_submit_listing", workstream: "venue_growth", source: "listing_submit" });
+      } else if (listingType === "event") {
+        trackGoldenPathMilestone({ pathId: "host_publish_event", workstream: "host_growth", source: "listing_submit" });
+      } else if (listingType === "room_session") {
+        trackGoldenPathMilestone({ pathId: "host_create_session", workstream: "host_growth", source: "listing_submit" });
+      }
     } catch (error) {
       setStatus(String(error?.message || "Submission failed."));
     } finally {

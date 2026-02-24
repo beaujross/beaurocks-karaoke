@@ -84,6 +84,39 @@ const getLobbyReactionLabel = (type = '') => {
         .join(' ');
 };
 
+const TV_EXPLORE_STORAGE_KEY = 'bross.tv.exploreProfile';
+
+const normalizeTvExploreProfile = (value = '') => {
+    const key = String(value || '').trim().toLowerCase();
+    if (key === 'simple') return 'simple';
+    if (key === 'cinema') return 'cinema';
+    if (key === 'room' || key === 'default' || key === 'current' || key === 'host') return 'room';
+    if (key === 'minimal') return 'simple';
+    return '';
+};
+
+const parseTvExploreEnabled = (value = '') => {
+    const key = String(value || '').trim().toLowerCase();
+    return key === '1' || key === 'true' || key === 'yes' || key === 'on';
+};
+
+const getInitialTvExploreConfig = () => {
+    if (typeof window === 'undefined') return { enabled: false, profile: 'room' };
+    const params = new URLSearchParams(window.location.search || '');
+    const enabled = parseTvExploreEnabled(params.get('tvExplore'));
+    const queryProfile = normalizeTvExploreProfile(params.get('tvProfile') || params.get('tvLayout'));
+    let storedProfile = '';
+    try {
+        storedProfile = normalizeTvExploreProfile(window.localStorage.getItem(TV_EXPLORE_STORAGE_KEY) || '');
+    } catch (_) {
+        storedProfile = '';
+    }
+    return {
+        enabled,
+        profile: queryProfile || storedProfile || 'room'
+    };
+};
+
 const STORM_CROWD_LAYERS = [
     { id: 'snap', label: 'Snap', icon: emoji(0x1F90F), accent: 'from-cyan-300 to-sky-200' },
     { id: 'tap', label: 'Thigh Tap', icon: emoji(0x1F941), accent: 'from-blue-300 to-cyan-200' },
@@ -650,6 +683,9 @@ const MiniVideoPane = ({ room, current }) => {
 // --- MAIN TV COMPONENT ---
 
 const PublicTV = ({ roomCode }) => {
+    const initialTvExploreConfig = useMemo(() => getInitialTvExploreConfig(), []);
+    const tvExploreEnabled = initialTvExploreConfig.enabled;
+    const [tvExploreProfile, setTvExploreProfile] = useState(initialTvExploreConfig.profile);
     const [room, setRoom] = useState(null);
     const [songs, setSongs] = useState([]);
     const [reactions, setReactions] = useState([]);
@@ -769,6 +805,14 @@ const PublicTV = ({ roomCode }) => {
         () => groupChatMessages(chatMessages, { mergeWindowMs: 12 * 60 * 1000 }),
         [chatMessages]
     );
+    useEffect(() => {
+        if (!tvExploreEnabled || typeof window === 'undefined') return;
+        try {
+            window.localStorage.setItem(TV_EXPLORE_STORAGE_KEY, tvExploreProfile);
+        } catch (_) {
+            // Ignore storage failures in locked-down TV browsers.
+        }
+    }, [tvExploreEnabled, tvExploreProfile]);
     useEffect(() => {
         lobbyVolleyStateRef.current = lobbyVolleyState;
         lobbyAwardAuthLockedRef.current = !!lobbyVolleyState?.authFailureLocked;
@@ -3387,8 +3431,16 @@ const PublicTV = ({ roomCode }) => {
     }
     
     // 4. Main Stage Layout
-    const isCinema = room?.layoutMode === 'cinema';
-    const isMinimal = room?.layoutMode === 'minimal';
+    const roomLayoutMode = String(room?.layoutMode || '').trim().toLowerCase();
+    const roomTvPresentationProfile = normalizeTvExploreProfile(room?.tvPresentationProfile || '') || 'room';
+    const tvPresentationProfile = tvExploreEnabled
+        ? (tvExploreProfile === 'room' ? roomTvPresentationProfile : tvExploreProfile)
+        : roomTvPresentationProfile;
+    const exploreSimple = tvPresentationProfile === 'simple';
+    const exploreCinema = tvPresentationProfile === 'cinema';
+    const isCinema = exploreSimple || exploreCinema || roomLayoutMode === 'cinema';
+    const isMinimal = !exploreSimple && !exploreCinema && roomLayoutMode === 'minimal';
+    const showAmbientFx = !exploreSimple;
     const showVisualizerTv = !!room?.showVisualizerTv;
     const visualizerBaseMode = room?.visualizerMode || 'ribbon';
     const visualizerDynamicModeEnabled = room?.visualizerDynamicMode !== false;
@@ -3425,7 +3477,7 @@ const PublicTV = ({ roomCode }) => {
                 aria-hidden="true"
                 crossOrigin="anonymous"
             />
-            {!showVisualizerTv && (
+            {!showVisualizerTv && showAmbientFx && (
                 <div className={`absolute inset-0 z-0 mix-blend-screen pointer-events-none ${waveformOpacity} ${room?.hideWaveform ? 'hidden' : ''}`}>
                     <AudioVisualizer
                         isActive={visualizerActive}
@@ -3488,13 +3540,13 @@ const PublicTV = ({ roomCode }) => {
                 </div>
             )}
 
-            {tipPulse && (room?.tipUrl || room?.tipQrUrl) && (
+            {showAmbientFx && tipPulse && (room?.tipUrl || room?.tipQrUrl) && (
                 <div className="absolute bottom-3 right-3 md:bottom-6 md:right-6 z-[120] bg-emerald-500/90 text-black px-3 py-2 md:px-6 md:py-4 rounded-2xl border-2 border-white shadow-[0_0_30px_rgba(16,185,129,0.6)] animate-pulse backdrop-blur">
                     <div className="text-xs md:text-sm font-bold uppercase tracking-[0.12em] md:tracking-widest">Show some love</div>
                     <div className="text-sm md:text-2xl font-black">Tip the host {EMOJI.tip}</div>
                 </div>
             )}
-            {bonusDropBurst && (
+            {showAmbientFx && bonusDropBurst && (
                 <div className="absolute inset-0 z-[210] pointer-events-none flex items-center justify-center">
                     <div className="bonus-drop-burst">
                         <div className="bonus-drop-title">{bonusDropBurst.by || 'Host'} made it rain</div>
@@ -3518,7 +3570,7 @@ const PublicTV = ({ roomCode }) => {
 
             {/* --- VIBE MODE OVERLAYS --- */}
             
-            {room?.lightMode === 'strobe' && (
+            {showAmbientFx && room?.lightMode === 'strobe' && (
                 <div className="absolute inset-0 z-[160] pointer-events-none">
                     <div className={`absolute inset-0 ${motionSafeFx ? '' : 'vibe-strobe'} ${motionSafeFx ? 'opacity-30' : 'opacity-45'} mix-blend-screen bg-white`}></div>
                     <div className={`absolute inset-0 ${motionSafeFx ? 'bg-gradient-to-b from-pink-500/10 via-transparent to-cyan-400/5' : 'bg-gradient-to-b from-pink-500/15 via-transparent to-cyan-400/10'}`}></div>
@@ -3569,7 +3621,7 @@ const PublicTV = ({ roomCode }) => {
                 </div>
             )}
             
-            {room?.lightMode === 'storm' && (
+            {showAmbientFx && room?.lightMode === 'storm' && (
                 <div className={`absolute inset-0 z-[140] pointer-events-none storm-overlay storm-phase-${stormPhase}`}>
                     <div className="absolute inset-0 storm-clouds mix-blend-multiply"></div>
                     <div className="absolute inset-0 vibe-lightning mix-blend-screen"></div>
@@ -3627,7 +3679,7 @@ const PublicTV = ({ roomCode }) => {
                 </div>
             )}
             
-            {room?.lightMode === 'banger' && (
+            {showAmbientFx && room?.lightMode === 'banger' && (
                 <>
                     <div
                         className="absolute inset-0 z-[140] pointer-events-none vibe-banger mix-blend-overlay bg-red-500/20"
@@ -3653,7 +3705,7 @@ const PublicTV = ({ roomCode }) => {
                 </>
             )}
 
-            {room?.lightMode === 'ballad' && (
+            {showAmbientFx && room?.lightMode === 'ballad' && (
                 <div className="absolute inset-0 z-[140] pointer-events-none overflow-hidden">
                     <div className="absolute inset-0 ballad-haze opacity-30"></div>
                     <div className="absolute inset-x-0 bottom-0 h-[40%] ballad-glow opacity-60"></div>
@@ -3719,7 +3771,7 @@ const PublicTV = ({ roomCode }) => {
                 </div>
             )}
 
-            {room?.lightMode === 'guitar' && (
+            {showAmbientFx && room?.lightMode === 'guitar' && (
                 <>
                     <div className="absolute inset-0 z-[80] pointer-events-none bg-gradient-to-b from-black/60 via-black/70 to-red-900/50"></div>
                     <div className="absolute inset-0 z-[81] pointer-events-none">
@@ -4348,7 +4400,7 @@ const PublicTV = ({ roomCode }) => {
                 </div>
             )}
 
-            {showLobbyPlaygroundFx && (
+            {showAmbientFx && showLobbyPlaygroundFx && (
             <>
             {/* Lobby Playground Full-Screen FX */}
             <div className={`absolute inset-0 z-[197] pointer-events-none overflow-hidden transition-opacity duration-700 ${lobbyTransitionPhase === 'exiting' ? 'opacity-0' : 'opacity-100'}`}>
@@ -4785,7 +4837,7 @@ const PublicTV = ({ roomCode }) => {
 
             {/* Reactions */}
             <div className="absolute inset-0 z-[200] pointer-events-none overflow-hidden">
-                {reactions.map(r => (
+                {showAmbientFx && reactions.map(r => (
                     <div key={r.id} className="absolute bottom-0 flex flex-col items-center reaction-stack" style={{left: `${r.left}%`}}>
                         {r.isVip && (
                             <div className="absolute -inset-10 rounded-full bg-gradient-to-tr from-yellow-400/30 via-pink-400/30 to-cyan-400/30 blur-xl animate-vip-glow"></div>
@@ -4813,6 +4865,36 @@ const PublicTV = ({ roomCode }) => {
                     </div>
                 ))}
             </div>
+
+            {tvExploreEnabled && (
+                <div className="absolute left-3 bottom-3 md:left-5 md:bottom-5 z-[245] pointer-events-auto">
+                    <div className="rounded-2xl border border-cyan-300/45 bg-black/70 px-3 py-2 md:px-4 md:py-3 shadow-[0_0_24px_rgba(34,211,238,0.2)] backdrop-blur">
+                        <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] text-cyan-200">TV Explore</div>
+                        <div className="mt-1 text-[11px] md:text-xs text-zinc-300">
+                            Active: <span className="font-bold text-white uppercase">{tvPresentationProfile}</span>
+                        </div>
+                        <div className="mt-2 flex items-center gap-1.5 md:gap-2">
+                            {[
+                                { id: 'room', label: 'Room' },
+                                { id: 'simple', label: 'Simple' },
+                                { id: 'cinema', label: 'Cinema' }
+                            ].map((option) => {
+                                const active = tvPresentationProfile === option.id;
+                                return (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        onClick={() => setTvExploreProfile(option.id)}
+                                        className={`px-2.5 py-1.5 md:px-3 md:py-2 rounded-lg border text-[10px] md:text-xs font-black uppercase tracking-[0.12em] transition-colors ${active ? 'bg-cyan-300 text-black border-cyan-100' : 'bg-black/35 text-zinc-200 border-white/20 hover:border-cyan-200/50'}`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {previewActive && (
                 <div className="absolute inset-0 z-[120] flex items-center justify-center pointer-events-none">

@@ -38,6 +38,10 @@ const AdminModerationPage = ({ session }) => {
   const [ingestDryRun, setIngestDryRun] = useState(true);
   const [recordsInput, setRecordsInput] = useState(defaultRecordJson);
   const [claimQueue, setClaimQueue] = useState([]);
+  const [reportWindowDays, setReportWindowDays] = useState(30);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportStatus, setReportStatus] = useState("");
+  const [reportSummary, setReportSummary] = useState(null);
 
   const refreshQueue = async () => {
     if (!canModerate) return;
@@ -58,10 +62,32 @@ const AdminModerationPage = ({ session }) => {
     }
   };
 
+  const refreshReporting = async () => {
+    if (!canModerate) return;
+    setReportLoading(true);
+    setReportStatus("");
+    try {
+      const payload = await directoryActions.getMarketingReportingSummary({
+        windowDays: reportWindowDays,
+      });
+      setReportSummary(payload || null);
+      trackEvent("mk_admin_reporting_refresh", { windowDays: reportWindowDays });
+    } catch (error) {
+      setReportStatus(String(error?.message || "Could not load reporting summary."));
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   useEffect(() => {
     refreshQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canModerate, statusFilter, sourceType, entityType]);
+
+  useEffect(() => {
+    refreshReporting();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canModerate, reportWindowDays]);
 
   useEffect(() => {
     if (!canModerate || !marketingFlags.claimFlowEnabled) {
@@ -99,6 +125,18 @@ const AdminModerationPage = ({ session }) => {
   const reviewQueueLabel = useMemo(
     () => `${queue.length} item${queue.length === 1 ? "" : "s"} loaded`,
     [queue.length]
+  );
+  const numberFmt = useMemo(
+    () => new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }),
+    []
+  );
+  const workstreamRows = useMemo(
+    () => Array.isArray(reportSummary?.workstreams) ? reportSummary.workstreams : [],
+    [reportSummary?.workstreams]
+  );
+  const goldenPathRows = useMemo(
+    () => Array.isArray(reportSummary?.goldenPaths) ? reportSummary.goldenPaths.slice(0, 12) : [],
+    [reportSummary?.goldenPaths]
   );
 
   const resolveItem = async (submissionId, action) => {
@@ -176,6 +214,72 @@ const AdminModerationPage = ({ session }) => {
         <div className="mk3-chip">marketing admin</div>
         <h2>Moderation Queue</h2>
         <p>Site-safe moderation surface for listing approvals and external ingestion review.</p>
+        <div className="mk3-actions-block">
+          <h3>Reporting Snapshot</h3>
+          <div className="mk3-filter-row">
+            <select value={reportWindowDays} onChange={(e) => setReportWindowDays(Number(e.target.value) || 30)}>
+              <option value={7}>Last 7 days</option>
+              <option value={14}>Last 14 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={60}>Last 60 days</option>
+              <option value={90}>Last 90 days</option>
+            </select>
+            <button type="button" onClick={refreshReporting} disabled={reportLoading}>
+              {reportLoading ? "Refreshing..." : "Refresh Reporting"}
+            </button>
+          </div>
+          {!!reportSummary && (
+            <>
+              <div className="mk3-metric-row">
+                <article className="mk3-metric">
+                  <span>Total Events</span>
+                  <strong>{numberFmt.format(Number(reportSummary?.totals?.events || 0))}</strong>
+                </article>
+                <article className="mk3-metric">
+                  <span>Golden Path Events</span>
+                  <strong>{numberFmt.format(Number(reportSummary?.totals?.goldenPathEvents || 0))}</strong>
+                </article>
+                <article className="mk3-metric">
+                  <span>Entries</span>
+                  <strong>{numberFmt.format(Number(reportSummary?.totals?.entries || 0))}</strong>
+                </article>
+                <article className="mk3-metric">
+                  <span>Milestones</span>
+                  <strong>{numberFmt.format(Number(reportSummary?.totals?.milestones || 0))}</strong>
+                </article>
+              </div>
+              <div className="mk3-sub-list compact">
+                <h3>Workstream Topline</h3>
+                {workstreamRows.map((stream) => (
+                  <article key={stream.id} className="mk3-review-card">
+                    <div className="mk3-review-head">
+                      <strong>{stream.id.replace(/_/g, " ")}</strong>
+                      <span className="mk3-chip">{numberFmt.format(Number(stream.sharePct || 0))}% of events</span>
+                    </div>
+                    <div className="mk3-report-grid">
+                      <div><span>Events</span><strong>{numberFmt.format(Number(stream.events || 0))}</strong></div>
+                      <div><span>Entries</span><strong>{numberFmt.format(Number(stream.entries || 0))}</strong></div>
+                      <div><span>Milestones</span><strong>{numberFmt.format(Number(stream.milestones || 0))}</strong></div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <div className="mk3-sub-list compact">
+                <h3>Golden Path Aggregate</h3>
+                {goldenPathRows.map((row) => (
+                  <div key={row.id} className="mk3-report-row">
+                    <span>{row.id.replace(/_/g, " ")}</span>
+                    <strong>{numberFmt.format(Number(row.count || 0))}</strong>
+                  </div>
+                ))}
+                {!goldenPathRows.length && (
+                  <div className="mk3-status">No golden path activity for selected window.</div>
+                )}
+              </div>
+            </>
+          )}
+          {reportStatus && <div className="mk3-status">{reportStatus}</div>}
+        </div>
         <div className="mk3-filter-row">
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="pending">pending</option>

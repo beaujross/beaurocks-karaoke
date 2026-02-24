@@ -49,6 +49,8 @@ const GEMINI_LYRICS_OUTPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_OUTPUT_
 const rateState = new Map();
 const GLOBAL_LIMITS = { perMinute: 120, perHour: 1000 };
 const DEFAULT_LIMITS = { perMinute: 30, perHour: 300 };
+const securitySignalState = new Map();
+const SECURITY_ALERT_WINDOW_MS = 15 * 60 * 1000;
 const youtubeSearchCache = new Map();
 const YOUTUBE_SEARCH_CACHE_TTL_MS = 30000;
 const YOUTUBE_SEARCH_CACHE_MAX_KEYS = 120;
@@ -81,6 +83,77 @@ const getClientIp = (req) => {
   const forwarded = req.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0].trim();
   return req.ip || "unknown";
+};
+
+const sanitizeSecurityToken = (value = "", maxLen = 64) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, Math.max(1, Number(maxLen || 64)));
+
+const trackSuspiciousPattern = ({
+  type = "unknown",
+  actor = "anon",
+  windowMs = 120000,
+  threshold = 5,
+}) => {
+  const safeType = sanitizeSecurityToken(type, 48) || "unknown";
+  const safeActor = sanitizeSecurityToken(actor, 120) || "anon";
+  const key = `${safeType}:${safeActor}`;
+  const now = nowMs();
+  const prev = Array.isArray(securitySignalState.get(key)) ? securitySignalState.get(key) : [];
+  const retained = prev.filter((ts) => now - ts <= Math.max(5000, Number(windowMs || 120000)));
+  retained.push(now);
+  securitySignalState.set(key, retained);
+  const count = retained.length;
+  const minThreshold = Math.max(1, Number(threshold || 1));
+  const shouldAlert = count === minThreshold || (count > minThreshold && count % minThreshold === 0);
+  return { count, shouldAlert };
+};
+
+const emitSecurityAlert = async ({
+  rootRef = getRootRef(),
+  type = "security_event",
+  severity = "warning",
+  roomCode = "",
+  uid = "",
+  request = null,
+  details = {},
+}) => {
+  try {
+    const safeType = sanitizeSecurityToken(type, 48) || "security_event";
+    const safeRoom = sanitizeSecurityToken(roomCode || "na", 32) || "na";
+    const safeUid = sanitizeSecurityToken(uid || "anon", 48) || "anon";
+    const now = nowMs();
+    const windowStartMs = Math.floor(now / SECURITY_ALERT_WINDOW_MS) * SECURITY_ALERT_WINDOW_MS;
+    const alertId = `${safeType}_${safeRoom}_${safeUid}_${windowStartMs}`;
+    const req = request?.rawRequest || request || null;
+    const ip = req ? getClientIp(req) : "unknown";
+    const userAgent = typeof req?.get === "function"
+      ? String(req.get("user-agent") || "").slice(0, 180)
+      : "";
+
+    await rootRef.collection("security_alerts").doc(alertId).set({
+      type: safeType,
+      severity: String(severity || "warning").slice(0, 24),
+      roomCode: normalizeRoomCode(roomCode || ""),
+      uid: uid || "",
+      ip,
+      userAgent,
+      count: admin.firestore.FieldValue.increment(1),
+      windowStartMs,
+      lastSeenAtMs: now,
+      details: isPlainObject(details) ? details : {},
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    console.warn(`[security-alert] type=${safeType} severity=${severity} uid=${uid || "anon"} room=${roomCode || "na"} ip=${ip}`);
+  } catch (error) {
+    console.warn("emitSecurityAlert failed", error?.message || error);
+  }
 };
 
 const limitKey = (scope, ip) => `${scope}:${ip}`;
@@ -351,6 +424,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "tipQrUrl",
   "tipUrl",
   "triviaQuestion",
+  "tvPresentationProfile",
   "videoPlaying",
   "videoStartTimestamp",
   "videoVolume",
@@ -448,6 +522,7 @@ const HOST_ROOM_STRING_ROOT_KEYS = new Set([
   "stormPhase",
   "tipQrUrl",
   "tipUrl",
+  "tvPresentationProfile",
   "visualizerMode",
   "visualizerPreset",
   "visualizerSource",
@@ -1164,6 +1239,18 @@ const DIRECTORY_REMINDER_SLOTS = [
   { id: "2h", maxMs: 2 * 60 * 60 * 1000, minMsExclusive: 0 },
 ];
 const DIRECTORY_REMINDER_MAX_BATCH = 250;
+const MARKETING_REPORTING_WORKSTREAMS = new Set([
+  "discover",
+  "host_growth",
+  "venue_growth",
+  "performer_growth",
+  "fan_growth",
+  "demo",
+  "acquisition",
+  "admin_ops",
+  "core",
+]);
+const MARKETING_REPORTING_MAX_BATCH = 25;
 
 const buildDirectoryNow = () => admin.firestore.FieldValue.serverTimestamp();
 
@@ -1397,6 +1484,249 @@ const normalizeDirectoryReviewTags = (input = []) => {
     deduped.push(token);
   });
   return deduped.slice(0, 6);
+};
+
+const buildUtcDayKey = (ms = Date.now()) => {
+  const date = new Date(Number(ms || Date.now()));
+  if (Number.isNaN(date.getTime())) return 0;
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return Number(`${year}${month}${day}`);
+};
+
+const normalizeMarketingEventName = (value = "") =>
+  normalizeDirectoryToken(value, 64);
+
+const normalizeMarketingParamValue = (value = "") =>
+  String(value ?? "")
+    .trim()
+    .slice(0, 260);
+
+const toNumberRecord = (input = {}) => {
+  if (!isPlainObject(input)) return {};
+  const out = {};
+  Object.entries(input).forEach(([key, value]) => {
+    const token = normalizeDirectoryToken(key, 64);
+    const num = Number(value);
+    if (!token || !Number.isFinite(num) || num === 0) return;
+    out[token] = num;
+  });
+  return out;
+};
+
+const incrementPatchField = (patch = {}, key = "", amount = 1) => {
+  const safeKey = String(key || "").trim();
+  if (!safeKey) return;
+  const safeAmount = Number(amount || 0);
+  if (!Number.isFinite(safeAmount) || safeAmount === 0) return;
+  patch[safeKey] = admin.firestore.FieldValue.increment(safeAmount);
+};
+
+const resolveMarketingWorkstream = (eventName = "", params = {}) => {
+  const name = normalizeMarketingEventName(eventName);
+  const workstreamHint = normalizeDirectoryToken(params.workstream || "", 40);
+  const persona = normalizeDirectoryToken(params.persona || "", 40);
+  const listingType = normalizeDirectoryToken(params.listingType || "", 40);
+  const targetType = normalizeDirectoryToken(params.targetType || "", 40);
+
+  if (MARKETING_REPORTING_WORKSTREAMS.has(workstreamHint)) return workstreamHint;
+
+  if (name.startsWith("mk_demo_")) return "demo";
+  if (name.startsWith("mk_discover_") || name.startsWith("mk_geo_")) return "discover";
+  if (name.startsWith("mk_admin_") || name.includes("moderation")) return "admin_ops";
+  if (name.startsWith("marketing_account_")) return "acquisition";
+  if (persona === "host" || name.includes("cadence_update") || name.includes("room_session")) return "host_growth";
+  if (persona === "venue_owner" || listingType === "venue" || name.includes("listing_claim")) return "venue_growth";
+  if (persona === "performer" || targetType === "performer" || name.includes("performer")) return "performer_growth";
+  if (
+    persona === "fan"
+    || name.startsWith("mk_rsvp_")
+    || name.startsWith("mk_follow_")
+    || name.startsWith("mk_checkin_")
+    || name.startsWith("mk_review_")
+    || name.startsWith("mk_reminder_")
+  ) {
+    return "fan_growth";
+  }
+  if (name.startsWith("mk_page_view_") || name.startsWith("mk_persona_cta_")) return "discover";
+  return "core";
+};
+
+const resolveGoldenPathSignal = (eventName = "", params = {}) => {
+  const name = normalizeMarketingEventName(eventName);
+  const cta = normalizeDirectoryToken(params.cta || "", 80);
+  const listingType = normalizeDirectoryToken(params.listingType || "", 40);
+  const status = normalizeDirectoryToken(params.status || "", 40);
+  const mode = normalizeDirectoryToken(params.mode || "", 40);
+  const enabled = Number(params.enabled || 0) === 1;
+
+  if (name === "mk_golden_path_entry") {
+    const pathId = normalizeDirectoryToken(params.pathId || "", 80);
+    if (!pathId) return null;
+    return { pathId, signalType: "entry" };
+  }
+  if (name === "mk_golden_path_milestone") {
+    const pathId = normalizeDirectoryToken(params.pathId || "", 80);
+    if (!pathId) return null;
+    return { pathId, signalType: "milestone" };
+  }
+
+  if (name === "mk_persona_cta_click" && cta.startsWith("rail_")) {
+    const pathByCta = {
+      rail_for_hosts: "host_entry",
+      rail_for_venues: "venue_entry",
+      rail_for_performers: "performer_entry",
+      rail_for_fans: "fan_entry",
+      rail_try_demo: "demo_entry",
+      rail_join_room_code: "host_join_entry",
+    };
+    const pathId = normalizeDirectoryToken(pathByCta[cta] || "", 80);
+    if (!pathId) return null;
+    return { pathId, signalType: "entry" };
+  }
+
+  if (name === "mk_listing_created_room_session") return { pathId: "host_create_session", signalType: "milestone" };
+  if (name === "mk_listing_created_event") return { pathId: "host_publish_event", signalType: "milestone" };
+  if (name === "mk_listing_created_venue") return { pathId: "venue_submit_listing", signalType: "milestone" };
+  if (name === "mk_listing_claim_submit" && listingType === "venue") {
+    return { pathId: "venue_claim_listing", signalType: "milestone" };
+  }
+  if (name === "mk_rsvp_set" && ["going", "interested"].includes(status)) {
+    return { pathId: "fan_rsvp", signalType: "milestone" };
+  }
+  if (name === "mk_follow_set" && mode === "follow") {
+    return { pathId: "fan_follow", signalType: "milestone" };
+  }
+  if (name === "mk_demo_live_sync_toggle" && enabled) {
+    return { pathId: "demo_live_sync", signalType: "milestone" };
+  }
+
+  return null;
+};
+
+const normalizeMarketingTelemetryEvent = (raw = {}, fallback = {}) => {
+  if (!isPlainObject(raw)) return null;
+  const name = normalizeMarketingEventName(raw.name || raw.eventName || "");
+  if (!name) return null;
+  if (!name.startsWith("mk_") && !name.startsWith("marketing_")) return null;
+  const params = isPlainObject(raw.params) ? raw.params : {};
+  const atMs = clampNumber(raw.atMs ?? fallback.atMs ?? Date.now(), 0, Date.now() + 300000, Date.now());
+  const sessionId = normalizeDirectoryToken(raw.sessionId || fallback.sessionId || "", 120);
+  const routePage = normalizeDirectoryToken(
+    raw.routePage || raw.page || params.route || params.page || fallback.routePage || "",
+    80
+  );
+  const workstream = resolveMarketingWorkstream(name, params);
+  const goldenPath = resolveGoldenPathSignal(name, params);
+  return {
+    name,
+    atMs,
+    sessionId,
+    routePage,
+    workstream: MARKETING_REPORTING_WORKSTREAMS.has(workstream) ? workstream : "core",
+    goldenPathId: goldenPath?.pathId || "",
+    goldenPathSignalType: goldenPath?.signalType || "",
+    params: {
+      persona: normalizeDirectoryToken(params.persona || "", 40),
+      cta: normalizeDirectoryToken(params.cta || "", 80),
+      status: normalizeDirectoryToken(params.status || "", 40),
+      mode: normalizeDirectoryToken(params.mode || "", 40),
+      targetType: normalizeDirectoryToken(params.targetType || "", 40),
+      listingType: normalizeDirectoryToken(params.listingType || "", 40),
+      source: normalizeDirectoryToken(params.source || "", 60),
+      route: normalizeDirectoryToken(params.route || "", 40),
+      submissionId: normalizeMarketingParamValue(params.submissionId || ""),
+    },
+  };
+};
+
+const reduceMarketingReportData = (docs = [], windowDays = 30) => {
+  const totals = {
+    events: 0,
+    goldenPathEvents: 0,
+    entries: 0,
+    milestones: 0,
+  };
+  const workstreamRollup = {};
+  const goldenPathRollup = {};
+  const routePageRollup = {};
+  const eventRollup = {};
+
+  MARKETING_REPORTING_WORKSTREAMS.forEach((key) => {
+    workstreamRollup[key] = {
+      events: 0,
+      goldenPathEvents: 0,
+      entries: 0,
+      milestones: 0,
+    };
+  });
+
+  docs.forEach((docSnap) => {
+    const data = isPlainObject(docSnap?.data?.()) ? docSnap.data() : {};
+    totals.events += Number(data.totalEvents || 0);
+    totals.goldenPathEvents += Number(data.goldenPathEvents || 0);
+    totals.entries += Number(data.goldenPathEntries || 0);
+    totals.milestones += Number(data.goldenPathMilestones || 0);
+
+    const streamObject = isPlainObject(data.workstreams) ? data.workstreams : {};
+    Object.entries(streamObject).forEach(([workstreamRaw, metricsRaw]) => {
+      const workstream = normalizeDirectoryToken(workstreamRaw, 40);
+      if (!MARKETING_REPORTING_WORKSTREAMS.has(workstream)) return;
+      const metrics = toNumberRecord(metricsRaw || {});
+      ["events", "goldenpathevents", "entries", "milestones"].forEach((metric) => {
+        const amount = Number(metrics[metric] || 0);
+        if (!amount) return;
+        const canonicalMetric = metric === "goldenpathevents" ? "goldenPathEvents" : metric;
+        workstreamRollup[workstream][canonicalMetric] += amount;
+      });
+    });
+
+    Object.entries(toNumberRecord(data.goldenPaths || {})).forEach(([key, amount]) => {
+      goldenPathRollup[key] = (goldenPathRollup[key] || 0) + amount;
+    });
+    Object.entries(toNumberRecord(data.routePages || {})).forEach(([key, amount]) => {
+      routePageRollup[key] = (routePageRollup[key] || 0) + amount;
+    });
+    Object.entries(toNumberRecord(data.events || {})).forEach(([key, amount]) => {
+      eventRollup[key] = (eventRollup[key] || 0) + amount;
+    });
+  });
+
+  const workstreams = Object.entries(workstreamRollup)
+    .map(([id, value]) => ({
+      id,
+      events: Number(value.events || 0),
+      goldenPathEvents: Number(value.goldenPathEvents || 0),
+      entries: Number(value.entries || 0),
+      milestones: Number(value.milestones || 0),
+      sharePct: totals.events > 0 ? Math.round((Number(value.events || 0) / totals.events) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.events - a.events);
+
+  const goldenPaths = Object.entries(goldenPathRollup)
+    .map(([id, count]) => ({ id, count: Number(count || 0) }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20);
+
+  const routePages = Object.entries(routePageRollup)
+    .map(([id, count]) => ({ id, count: Number(count || 0) }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20);
+
+  const topEvents = Object.entries(eventRollup)
+    .map(([id, count]) => ({ id, count: Number(count || 0) }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 25);
+
+  return {
+    windowDays,
+    totals,
+    workstreams,
+    goldenPaths,
+    routePages,
+    topEvents,
+  };
 };
 
 const getDirectoryGoogleApiKey = () =>
@@ -2259,6 +2589,367 @@ const normalizePointAwards = (awards = []) => {
     normalized.push({ uid, points });
   }
   return normalized;
+};
+
+const DEMO_ROOM_CODE_PATTERN = /^DEMO[A-Z0-9_-]{0,20}$/;
+const DEMO_ALLOWED_ACTIONS = new Set([
+  "bootstrap",
+  "scene",
+  "tick",
+  "pause",
+  "seek",
+]);
+const DEMO_DEFAULT_CROWD = 14;
+const DEMO_MAX_CROWD = 32;
+const DEMO_MAX_REACTION_EVENTS = 12;
+const DEMO_MAX_VOTES_PER_OPTION = 12;
+const DEMO_MAX_SEQUENCE = 4102444800000;
+const DEMO_USER_LIBRARY = [
+  { name: "Alex", avatar: ":)" },
+  { name: "Jordan", avatar: ":D" },
+  { name: "Taylor", avatar: "<3" },
+  { name: "Casey", avatar: ":P" },
+  { name: "Riley", avatar: ":]" },
+  { name: "Quinn", avatar: ":}" },
+  { name: "Parker", avatar: "8)" },
+  { name: "Morgan", avatar: ":O" },
+  { name: "Avery", avatar: ":|" },
+  { name: "Harper", avatar: "^_^" },
+  { name: "Reese", avatar: "\\o/" },
+  { name: "Kai", avatar: "(*)" },
+];
+
+const sanitizeDemoToken = (value = "", maxLen = 64) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, Math.max(1, Number(maxLen || 64)));
+
+const resolveDemoSceneMode = (sceneId = "") => {
+  const token = sanitizeDemoToken(sceneId, 80);
+  if (!token) return "karaoke";
+  if (token.includes("guitar")) return "guitar";
+  if (token.includes("trivia")) return "trivia";
+  if (token.includes("finale")) return "finale";
+  return "karaoke";
+};
+
+const normalizeDemoDirectorPayload = (rawData = {}) => {
+  if (!isPlainObject(rawData)) {
+    throw new HttpsError("invalid-argument", "Demo payload must be an object.");
+  }
+
+  const roomCode = normalizeRoomCode(rawData.roomCode || "");
+  ensureString(roomCode, "roomCode");
+  if (!DEMO_ROOM_CODE_PATTERN.test(roomCode)) {
+    throw new HttpsError("invalid-argument", "roomCode must start with DEMO and use simple tokens.");
+  }
+
+  const actionToken = sanitizeDemoToken(rawData.action || "tick", 24) || "tick";
+  const action = DEMO_ALLOWED_ACTIONS.has(actionToken) ? actionToken : "tick";
+  const actionId = sanitizeDemoToken(rawData.actionId || "", 96);
+  const sequence = clampNumber(rawData.sequence ?? 0, 0, DEMO_MAX_SEQUENCE, 0);
+  const sceneId = sanitizeDemoToken(rawData.sceneId || "karaoke_intro", 80) || "karaoke_intro";
+  const timelineMs = clampNumber(rawData.timelineMs ?? 0, 0, 4 * 60 * 1000, 0);
+  const progress = clampNumber(rawData.progress ?? 0, 0, 1, 0);
+  const playing = rawData.playing !== false;
+  const crowdSize = clampNumber(rawData.crowdSize ?? DEMO_DEFAULT_CROWD, 4, DEMO_MAX_CROWD, DEMO_DEFAULT_CROWD);
+
+  const rawEvents = Array.isArray(rawData.reactionEvents) ? rawData.reactionEvents : [];
+  const reactionEvents = rawEvents
+    .slice(0, DEMO_MAX_REACTION_EVENTS)
+    .map((entry, index) => {
+      if (!isPlainObject(entry)) return null;
+      const type = sanitizeDemoToken(entry.type || entry.emoji || "clap", 40) || "clap";
+      const count = clampNumber(entry.count ?? 1, 1, 6, 1);
+      const uid = sanitizeDemoToken(entry.uid || `demo_reactor_${index + 1}`, 48) || `demo_reactor_${index + 1}`;
+      const userName = typeof entry.userName === "string"
+        ? entry.userName.trim().slice(0, 80)
+        : `Fan ${index + 1}`;
+      const avatar = typeof entry.avatar === "string"
+        ? entry.avatar.trim().slice(0, 16)
+        : ":)";
+      return {
+        type,
+        count,
+        uid,
+        userName: userName || `Fan ${index + 1}`,
+        avatar: avatar || ":)",
+      };
+    })
+    .filter(Boolean);
+
+  let trivia = null;
+  const rawTrivia = isPlainObject(rawData.trivia) ? rawData.trivia : null;
+  if (rawTrivia) {
+    const question = typeof rawTrivia.question === "string"
+      ? rawTrivia.question.trim().slice(0, 240)
+      : "";
+    const options = Array.isArray(rawTrivia.options)
+      ? rawTrivia.options
+        .map((option) => String(option || "").trim().slice(0, 120))
+        .filter(Boolean)
+        .slice(0, 4)
+      : [];
+    if (question && options.length >= 2) {
+      const correctIndex = clampNumber(rawTrivia.correctIndex ?? 0, 0, options.length - 1, 0);
+      const statusToken = sanitizeDemoToken(rawTrivia.status || "live", 24);
+      const status = statusToken === "reveal" ? "reveal" : "live";
+      const questionId = sanitizeDemoToken(rawTrivia.questionId || `q_${Math.floor(timelineMs / 1000)}`, 64)
+        || `q_${Math.floor(timelineMs / 1000)}`;
+      const votesRaw = Array.isArray(rawTrivia.votes) ? rawTrivia.votes : [];
+      const votes = options.map((_, index) => clampNumber(votesRaw[index] ?? 0, 0, 200, 0));
+      trivia = {
+        question,
+        options,
+        correctIndex,
+        status,
+        questionId,
+        votes,
+        points: clampNumber(rawTrivia.points ?? 100, 10, 500, 100),
+        durationSec: clampNumber(rawTrivia.durationSec ?? 22, 8, 90, 22),
+      };
+    }
+  }
+
+  return {
+    roomCode,
+    action,
+    actionId,
+    sequence,
+    sceneId,
+    timelineMs,
+    progress,
+    playing,
+    crowdSize,
+    reactionEvents,
+    trivia,
+  };
+};
+
+const buildDemoRoomUpdates = (payload = {}) => {
+  const mode = resolveDemoSceneMode(payload.sceneId || "");
+  const applauseLevel = clampNumber(Math.round(Number(payload.progress || 0) * 100), 0, 100, 0);
+  const sceneLabel = String(payload.sceneId || "karaoke").replace(/[_-]+/g, " ").slice(0, 64);
+  const now = Date.now();
+
+  const updates = {
+    activeMode: "karaoke",
+    lightMode: "ballad",
+    showLyricsTv: true,
+    showLyricsSinger: true,
+    popTriviaEnabled: true,
+    tvPresentationProfile: "simple",
+    hostName: "Demo Director",
+    currentApplauseLevel: applauseLevel,
+    announcement: {
+      active: true,
+      title: "Live Demo",
+      message: `Scene: ${sceneLabel || "karaoke"}`,
+      atMs: Number(payload.timelineMs || 0),
+    },
+  };
+
+  if (mode === "guitar") {
+    updates.lightMode = "guitar";
+    updates.showLyricsTv = false;
+    updates.showLyricsSinger = false;
+    updates.guitarSessionId = Math.max(1, Math.floor(Number(payload.timelineMs || 0) / 1000) || 1);
+  }
+
+  if (mode === "trivia") {
+    const trivia = payload.trivia || {
+      question: "Which control surface keeps everyone in sync?",
+      options: ["Public TV", "Host Deck", "Audience App", "All three"],
+      correctIndex: 3,
+      status: "live",
+      questionId: `q_${Math.floor(Number(payload.timelineMs || 0) / 1000)}`,
+      votes: [8, 3, 6, 9],
+      points: 100,
+      durationSec: 22,
+    };
+    const isReveal = trivia.status === "reveal";
+    updates.activeMode = isReveal ? "trivia_reveal" : "trivia_pop";
+    updates.lightMode = "banger";
+    updates.showLyricsTv = false;
+    updates.showLyricsSinger = false;
+    updates.triviaQuestion = {
+      q: trivia.question,
+      options: trivia.options,
+      correct: trivia.correctIndex,
+      id: trivia.questionId,
+      status: isReveal ? "reveal" : "live",
+      points: trivia.points,
+      autoReveal: true,
+      durationSec: trivia.durationSec,
+      startedAt: now,
+      revealAt: now + (Math.max(1, Number(trivia.durationSec || 22)) * 1000),
+      rewarded: false,
+    };
+  } else {
+    updates.triviaQuestion = null;
+  }
+
+  if (mode === "finale") {
+    updates.lightMode = "strobe";
+    updates.bonusDrop = {
+      id: `demo_bonus_${Math.floor(Number(payload.timelineMs || 0) / 1000)}`,
+      points: 150,
+      by: "Demo Crowd",
+    };
+  }
+
+  return updates;
+};
+
+const seedDemoAudienceSnapshot = async ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  payload = {},
+}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  if (!safeRoomCode) return { crowdSize: 0 };
+
+  const crowdSize = clampNumber(payload.crowdSize ?? DEMO_DEFAULT_CROWD, 4, DEMO_MAX_CROWD, DEMO_DEFAULT_CROWD);
+  const mode = resolveDemoSceneMode(payload.sceneId || "");
+  const timelineMs = Number(payload.timelineMs || 0);
+  const sceneProgress = clampNumber(payload.progress ?? 0, 0, 1, 0);
+  const performanceId = `demo_perf_${Math.floor(timelineMs / 30000)}`;
+  const sessionId = Math.max(1, Math.floor(timelineMs / 1000) || 1);
+
+  const db = admin.firestore();
+  const batch = db.batch();
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+  for (let index = 0; index < crowdSize; index += 1) {
+    const profile = DEMO_USER_LIBRARY[index % DEMO_USER_LIBRARY.length];
+    const uid = `demo_user_${String(index + 1).padStart(2, "0")}`;
+    const points = 120 + (index * 17) + Math.round(sceneProgress * 120);
+    const reactionScore = Math.max(1, Math.round(2 + sceneProgress * 12 + (index % 5)));
+    const payloadDoc = {
+      roomCode: safeRoomCode,
+      uid,
+      name: `${profile.name} ${index + 1}`,
+      avatar: profile.avatar,
+      isVip: index % 6 === 0,
+      points,
+      totalEmojis: reactionScore,
+      lastPerformanceId: performanceId,
+      lastActiveAt: serverNow,
+      joinedAt: serverNow,
+    };
+    if (mode === "guitar") {
+      payloadDoc.guitarSessionId = sessionId;
+      payloadDoc.guitarHits = 6 + Math.round(sceneProgress * 24) + ((index % 7) * 2);
+      payloadDoc.lastVibeAt = serverNow;
+    } else {
+      payloadDoc.guitarSessionId = null;
+      payloadDoc.guitarHits = 0;
+    }
+    if (mode === "finale") {
+      payloadDoc.strobeSessionId = sessionId;
+      payloadDoc.strobeTaps = 8 + ((index % 6) * 3);
+    } else {
+      payloadDoc.strobeSessionId = null;
+      payloadDoc.strobeTaps = 0;
+    }
+    batch.set(rootRef.collection("room_users").doc(`${safeRoomCode}_${uid}`), payloadDoc, { merge: true });
+  }
+
+  await batch.commit();
+  return { crowdSize };
+};
+
+const writeDemoReactionEvents = async ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  payload = {},
+}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  if (!safeRoomCode) return 0;
+  const events = Array.isArray(payload.reactionEvents)
+    ? payload.reactionEvents.slice(0, DEMO_MAX_REACTION_EVENTS)
+    : [];
+  if (!events.length) return 0;
+
+  const db = admin.firestore();
+  const batch = db.batch();
+  const sceneId = sanitizeDemoToken(payload.sceneId || "karaoke_intro", 80) || "karaoke_intro";
+  const performanceId = `demo_perf_${Math.floor(Number(payload.timelineMs || 0) / 30000)}`;
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+  events.forEach((entry, index) => {
+    const ref = rootRef.collection("reactions").doc();
+    const fallback = DEMO_USER_LIBRARY[index % DEMO_USER_LIBRARY.length];
+    batch.set(ref, {
+      roomCode: safeRoomCode,
+      type: sanitizeDemoToken(entry.type || "clap", 40) || "clap",
+      count: clampNumber(entry.count ?? 1, 1, 6, 1),
+      uid: sanitizeDemoToken(entry.uid || `demo_reactor_${index + 1}`, 48) || `demo_reactor_${index + 1}`,
+      userName: typeof entry.userName === "string" ? entry.userName : fallback.name,
+      avatar: typeof entry.avatar === "string" ? entry.avatar : fallback.avatar,
+      isVip: index % 6 === 0,
+      isDemo: true,
+      sceneId,
+      performanceId,
+      timestamp: serverNow,
+    });
+  });
+
+  await batch.commit();
+  return events.length;
+};
+
+const writeDemoTriviaVotes = async ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  payload = {},
+}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  if (!safeRoomCode) return 0;
+  const mode = resolveDemoSceneMode(payload.sceneId || "");
+  if (mode !== "trivia") return 0;
+  const trivia = payload.trivia;
+  if (!trivia || !Array.isArray(trivia.options) || !Array.isArray(trivia.votes)) return 0;
+  if (!trivia.options.length || !trivia.votes.length) return 0;
+
+  const db = admin.firestore();
+  const batch = db.batch();
+  const questionId = sanitizeDemoToken(trivia.questionId || "q_demo", 64) || "q_demo";
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+  let cursor = 0;
+  let written = 0;
+  for (let optionIndex = 0; optionIndex < trivia.options.length; optionIndex += 1) {
+    const requestedVotes = clampNumber(trivia.votes[optionIndex] ?? 0, 0, 200, 0);
+    const count = Math.min(DEMO_MAX_VOTES_PER_OPTION, requestedVotes);
+    for (let i = 0; i < count; i += 1) {
+      const profile = DEMO_USER_LIBRARY[cursor % DEMO_USER_LIBRARY.length];
+      const uid = `demo_vote_${optionIndex + 1}_${i + 1}`;
+      const voteDocId = `demo_vote_${safeRoomCode}_${questionId}_${uid}`;
+      batch.set(rootRef.collection("reactions").doc(voteDocId), {
+        roomCode: safeRoomCode,
+        type: "vote_trivia",
+        val: optionIndex,
+        questionId,
+        uid,
+        userName: profile.name,
+        avatar: profile.avatar,
+        isVote: true,
+        isDemo: true,
+        timestamp: serverNow,
+      }, { merge: true });
+      cursor += 1;
+      written += 1;
+    }
+  }
+
+  if (!written) return 0;
+  await batch.commit();
+  return written;
 };
 
 const applyRoomAwardsOnce = async ({
@@ -5495,6 +6186,99 @@ exports.listDirectoryGeoLanding = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.recordMarketingTelemetry = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "record_marketing_telemetry", { perMinute: 220, perHour: 3000 });
+  enforceAppCheckIfEnabled(request, "record_marketing_telemetry");
+
+  const rawEvents = Array.isArray(request.data?.events)
+    ? request.data.events
+    : (request.data?.event ? [request.data.event] : []);
+  if (!rawEvents.length) {
+    throw new HttpsError("invalid-argument", "events is required.");
+  }
+
+  const sessionId = normalizeDirectoryToken(request.data?.sessionId || "", 120);
+  const routePage = normalizeDirectoryToken(request.data?.routePage || "", 80);
+  const maxItems = Math.min(MARKETING_REPORTING_MAX_BATCH, rawEvents.length);
+  const normalizedEvents = rawEvents
+    .slice(0, maxItems)
+    .map((entry) => normalizeMarketingTelemetryEvent(entry, { sessionId, routePage, atMs: Date.now() }))
+    .filter(Boolean);
+  if (!normalizedEvents.length) {
+    return { ok: true, accepted: 0, ignored: rawEvents.length };
+  }
+
+  const dayKey = buildUtcDayKey(Date.now());
+  const docId = `d_${dayKey}`;
+  const ref = admin.firestore().collection("marketing_reporting_daily").doc(docId);
+  const patch = {
+    dayKey,
+    updatedAt: buildDirectoryNow(),
+  };
+  incrementPatchField(patch, "totalEvents", normalizedEvents.length);
+
+  normalizedEvents.forEach((entry) => {
+    incrementPatchField(patch, `events.${entry.name}`, 1);
+    if (entry.routePage) {
+      incrementPatchField(patch, `routePages.${entry.routePage}`, 1);
+    }
+    const workstream = MARKETING_REPORTING_WORKSTREAMS.has(entry.workstream)
+      ? entry.workstream
+      : "core";
+    incrementPatchField(patch, `workstreams.${workstream}.events`, 1);
+    if (entry.goldenPathId) {
+      incrementPatchField(patch, "goldenPathEvents", 1);
+      incrementPatchField(patch, `goldenPaths.${entry.goldenPathId}`, 1);
+      incrementPatchField(patch, `workstreams.${workstream}.goldenPathEvents`, 1);
+      if (entry.goldenPathSignalType === "entry") {
+        incrementPatchField(patch, "goldenPathEntries", 1);
+        incrementPatchField(patch, `workstreams.${workstream}.entries`, 1);
+      }
+      if (entry.goldenPathSignalType === "milestone") {
+        incrementPatchField(patch, "goldenPathMilestones", 1);
+        incrementPatchField(patch, `workstreams.${workstream}.milestones`, 1);
+      }
+    }
+  });
+
+  await ref.set(patch, { merge: true });
+  return {
+    ok: true,
+    accepted: normalizedEvents.length,
+    ignored: Math.max(0, rawEvents.length - normalizedEvents.length),
+    dayKey,
+  };
+});
+
+exports.getMarketingReportingSummary = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "get_marketing_reporting_summary", { perMinute: 40, perHour: 400 });
+  enforceAppCheckIfEnabled(request, "get_marketing_reporting_summary");
+  await requireDirectoryModerator(request, { deniedMessage: "Directory moderator role required." });
+  const windowDays = clampNumber(request.data?.windowDays ?? 30, 1, 90, 30);
+  const now = Date.now();
+  const endDayKey = buildUtcDayKey(now);
+  const startMs = now - ((windowDays - 1) * 24 * 60 * 60 * 1000);
+  const startDayKey = buildUtcDayKey(startMs);
+
+  const snap = await admin.firestore()
+    .collection("marketing_reporting_daily")
+    .where("dayKey", ">=", startDayKey)
+    .where("dayKey", "<=", endDayKey)
+    .orderBy("dayKey", "asc")
+    .limit(120)
+    .get();
+
+  const report = reduceMarketingReportData(snap.docs, windowDays);
+  return {
+    ok: true,
+    ...report,
+    startDayKey,
+    endDayKey,
+    dayCount: snap.size,
+    generatedAtMs: now,
+  };
+});
+
 exports.previewDirectoryRoomSessionByCode = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "preview_directory_room_session_by_code", { perMinute: 80, perHour: 700 });
   const roomCode = normalizeRoomCode(request.data?.roomCode || "");
@@ -6176,6 +6960,262 @@ exports.updateRoomAsHost = onCall({ cors: true }, async (request) => {
     roomCode: result.roomCode,
     updatedKeys: Object.keys(updates),
   };
+});
+
+exports.runDemoDirectorAction = onCall({ cors: true }, async (request) => {
+  const rootRef = getRootRef();
+  const callerUid = String(request.auth?.uid || "");
+  const callerIp = getClientIp(request.rawRequest);
+  let payload = null;
+  let safeRoomCode = "";
+
+  try {
+    checkRateLimit(request.rawRequest, "run_demo_director_action", { perMinute: 120, perHour: 1200 });
+    enforceAppCheckIfEnabled(request, "run_demo_director_action");
+    const authedUid = requireAuth(request);
+    payload = normalizeDemoDirectorPayload(request.data || {});
+    safeRoomCode = payload.roomCode;
+
+    const roomUpdates = normalizeHostRoomUpdates(buildDemoRoomUpdates(payload));
+    const actorKey = sanitizeDemoToken(authedUid, 64) || "actor";
+
+    const db = admin.firestore();
+    const txResult = await db.runTransaction(async (tx) => {
+      const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
+      const stateRef = rootRef.collection("demo_director_state").doc(safeRoomCode);
+      const roomSnap = await tx.get(roomRef);
+      const stateSnap = await tx.get(stateRef);
+
+      let createdRoom = false;
+      let stale = false;
+      let duplicate = false;
+      let lastSequence = -1;
+
+      if (!roomSnap.exists) {
+        createdRoom = true;
+        tx.set(roomRef, {
+          roomCode: safeRoomCode,
+          hostUid: authedUid,
+          hostUids: [authedUid],
+          activeMode: "karaoke",
+          lightMode: "ballad",
+          showLyricsTv: true,
+          showLyricsSinger: true,
+          popTriviaEnabled: true,
+          isDemoRoom: true,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } else {
+        const roomData = roomSnap.data() || {};
+        const hostUid = typeof roomData.hostUid === "string" ? roomData.hostUid : "";
+        const hostUids = Array.isArray(roomData.hostUids)
+          ? roomData.hostUids.filter((uid) => typeof uid === "string")
+          : [];
+        const isHost = authedUid === hostUid || hostUids.includes(authedUid);
+        if (!isHost) {
+          throw new HttpsError("permission-denied", "Only demo room hosts can drive demo director sync.");
+        }
+      }
+
+      const stateData = stateSnap.exists ? (stateSnap.data() || {}) : {};
+      const lastSequenceByActor = isPlainObject(stateData.lastSequenceByActor)
+        ? stateData.lastSequenceByActor
+        : {};
+      const lastActionIdByActor = isPlainObject(stateData.lastActionIdByActor)
+        ? stateData.lastActionIdByActor
+        : {};
+      lastSequence = Number(lastSequenceByActor[actorKey] ?? -1);
+      const lastActionId = String(lastActionIdByActor[actorKey] || "");
+      duplicate = !!payload.actionId && payload.sequence === lastSequence && payload.actionId === lastActionId;
+      stale = payload.sequence > 0 && (payload.sequence < lastSequence || duplicate);
+      if (stale) {
+        return {
+          createdRoom,
+          stale,
+          duplicate,
+          lastSequence,
+        };
+      }
+
+      tx.set(roomRef, {
+        ...roomUpdates,
+        isDemoRoom: true,
+        demoLastAction: payload.action,
+        demoLastActionId: payload.actionId || "",
+        demoLastSequence: payload.sequence,
+        demoLastScene: payload.sceneId,
+        demoTimelineMs: payload.timelineMs,
+        demoProgress: payload.progress,
+        demoPlaying: !!payload.playing,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      tx.set(stateRef, {
+        roomCode: safeRoomCode,
+        lastAction: payload.action,
+        lastActionId: payload.actionId || "",
+        lastScene: payload.sceneId,
+        lastSequence: payload.sequence,
+        lastSequenceByActor: {
+          ...lastSequenceByActor,
+          [actorKey]: payload.sequence,
+        },
+        lastActionIdByActor: {
+          ...lastActionIdByActor,
+          [actorKey]: payload.actionId || "",
+        },
+        timelineMs: payload.timelineMs,
+        progress: payload.progress,
+        playing: !!payload.playing,
+        crowdSize: payload.crowdSize,
+        updatedBy: authedUid,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      return { createdRoom, stale, duplicate, lastSequence };
+    });
+
+    if (txResult.stale) {
+      const staleSignal = trackSuspiciousPattern({
+        type: "demo_director_stale_sequence",
+        actor: `${authedUid}_${callerIp}_${safeRoomCode}`,
+        windowMs: 2 * 60 * 1000,
+        threshold: 6,
+      });
+      if (staleSignal.shouldAlert) {
+        await emitSecurityAlert({
+          rootRef,
+          type: "demo_director_stale_sequence",
+          severity: "warning",
+          roomCode: safeRoomCode,
+          uid: authedUid,
+          request,
+          details: {
+            staleCountWindow: staleSignal.count,
+            duplicate: !!txResult.duplicate,
+            action: payload.action,
+            sequence: payload.sequence,
+            lastSequence: Number(txResult.lastSequence || 0),
+          },
+        });
+      }
+      return {
+        ok: true,
+        roomCode: safeRoomCode,
+        action: payload.action,
+        sceneId: payload.sceneId,
+        createdRoom: !!txResult.createdRoom,
+        stale: true,
+        duplicate: !!txResult.duplicate,
+        sequence: payload.sequence,
+        lastSequence: Number(txResult.lastSequence || 0),
+        seededUsers: 0,
+        reactionsWritten: 0,
+        votesWritten: 0,
+      };
+    }
+
+    let seededUsers = 0;
+    const shouldSeedUsers = payload.action === "bootstrap" || payload.action === "scene" || payload.action === "seek";
+    if (shouldSeedUsers) {
+      const seedResult = await seedDemoAudienceSnapshot({
+        rootRef,
+        roomCode: safeRoomCode,
+        payload,
+      });
+      seededUsers = Number(seedResult?.crowdSize || 0);
+    }
+
+    let reactionsWritten = 0;
+    const shouldWriteReactions = payload.action === "bootstrap" || payload.action === "scene" || payload.action === "seek";
+    if (shouldWriteReactions) {
+      reactionsWritten = await writeDemoReactionEvents({
+        rootRef,
+        roomCode: safeRoomCode,
+        payload,
+      });
+    }
+
+    let votesWritten = 0;
+    if (payload.action === "bootstrap" || payload.action === "scene" || payload.action === "seek") {
+      votesWritten = await writeDemoTriviaVotes({
+        rootRef,
+        roomCode: safeRoomCode,
+        payload,
+      });
+    }
+
+    return {
+      ok: true,
+      roomCode: safeRoomCode,
+      action: payload.action,
+      sceneId: payload.sceneId,
+      createdRoom: !!txResult.createdRoom,
+      stale: false,
+      duplicate: false,
+      sequence: payload.sequence,
+      seededUsers,
+      reactionsWritten,
+      votesWritten,
+    };
+  } catch (error) {
+    const code = String(error?.code || "").toLowerCase();
+    const message = String(error?.message || "").toLowerCase();
+    const actor = `${callerUid || "anon"}_${callerIp}_${safeRoomCode || "na"}`;
+
+    if (code.includes("permission-denied") || message.includes("only demo room hosts")) {
+      await emitSecurityAlert({
+        rootRef,
+        type: "demo_director_permission_denied",
+        severity: "high",
+        roomCode: safeRoomCode,
+        uid: callerUid,
+        request,
+        details: {
+          code,
+          action: payload?.action || "",
+          sceneId: payload?.sceneId || "",
+        },
+      });
+    } else if (code.includes("invalid-argument")) {
+      const invalidSignal = trackSuspiciousPattern({
+        type: "demo_director_invalid_argument",
+        actor,
+        windowMs: 10 * 60 * 1000,
+        threshold: 4,
+      });
+      if (invalidSignal.shouldAlert) {
+        await emitSecurityAlert({
+          rootRef,
+          type: "demo_director_invalid_argument",
+          severity: "warning",
+          roomCode: safeRoomCode,
+          uid: callerUid,
+          request,
+          details: {
+            invalidCountWindow: invalidSignal.count,
+            code,
+            message: message.slice(0, 160),
+          },
+        });
+      }
+    } else if (code.includes("resource-exhausted")) {
+      await emitSecurityAlert({
+        rootRef,
+        type: "demo_director_rate_limit",
+        severity: "warning",
+        roomCode: safeRoomCode,
+        uid: callerUid,
+        request,
+        details: {
+          code,
+          scope: "run_demo_director_action",
+        },
+      });
+    }
+
+    throw error;
+  }
 });
 
 exports.awardRoomPoints = onCall({ cors: true }, async (request) => {

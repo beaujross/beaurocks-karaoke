@@ -5,6 +5,7 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 ## Architecture and Assessment
 
 - Architecture overview: `docs/ARCHITECTURE_OVERVIEW.md`
+- Multi-surface expansion strategy (Discord, Apple TV, Vision Pro): `docs/MULTI_SURFACE_EXPANSION_STRATEGY.md`
 - Technical risks and priorities: `docs/TECH_RISKS_PRIORITIES.md`
 - Billing notes (web Stripe + iOS IAP foundation): `docs/billing-iap.md`
 - VIP SMS auth runbook: `docs/VIP_SMS_AUTH_RUNBOOK.md`

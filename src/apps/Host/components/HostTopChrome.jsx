@@ -126,6 +126,12 @@ const HostTopChrome = ({
             : room?.showVisualizerTv
                 ? 'visualizer'
                 : 'video';
+    const tvPresentationProfile = (() => {
+        const key = String(room?.tvPresentationProfile || '').trim().toLowerCase();
+        if (key === 'simple') return 'simple';
+        if (key === 'cinema') return 'cinema';
+        return 'room';
+    })();
     const permissionTone = normalizedPermission === 'owner'
         ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100'
         : normalizedPermission === 'admin'
@@ -302,6 +308,11 @@ const HostTopChrome = ({
         } else {
             await updateRoom({ showLyricsTv: false, showVisualizerTv: false });
         }
+        closeAllTopMenus();
+    };
+    const applyTvPresentationProfile = async (profile) => {
+        const nextProfile = profile === 'simple' || profile === 'cinema' ? profile : 'room';
+        await updateRoom({ tvPresentationProfile: nextProfile });
         closeAllTopMenus();
     };
     const toggleAutoBg = async () => {
@@ -696,6 +707,35 @@ const HostTopChrome = ({
                             </div>
                             <div className="mt-2.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
                                 Tip: Lyrics and visualizer can run together.
+                            </div>
+                            <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-200">TV Presentation</div>
+                            <div className={`${quickMenuCardClass} mt-2`}>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        onClick={() => applyTvPresentationProfile('room')}
+                                        className={`${styles.btnStd} ${tvPresentationProfile === 'room' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Use room-defined TV behavior"
+                                    >
+                                        Room
+                                    </button>
+                                    <button
+                                        onClick={() => applyTvPresentationProfile('simple')}
+                                        className={`${styles.btnStd} ${tvPresentationProfile === 'simple' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Cleaner shared-screen style with fewer ambient effects"
+                                    >
+                                        Simple
+                                    </button>
+                                    <button
+                                        onClick={() => applyTvPresentationProfile('cinema')}
+                                        className={`${styles.btnStd} ${tvPresentationProfile === 'cinema' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Stage-forward cinematic framing"
+                                    >
+                                        Cinema
+                                    </button>
+                                </div>
+                                <div className="mt-2 text-[10px] text-zinc-400">
+                                    Active profile: <span className="text-zinc-100 uppercase font-semibold">{tvPresentationProfile}</span>
+                                </div>
                             </div>
                             <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-200">Visualizer Engine</div>
                             <div className={`${quickMenuCardClass} mt-2 space-y-2.5`}>
