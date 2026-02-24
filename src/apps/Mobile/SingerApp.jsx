@@ -7168,13 +7168,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 {tab === 'home' && (
                     <div className="space-y-5">
                          {lobbyVolleySceneActive && lobbyVolleyEnabled ? (
-                             <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-3 space-y-2 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
+                             <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-2.5 space-y-2 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
                                  <div className="flex items-center justify-between gap-2">
                                      <div className="min-w-0">
                                          <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Lobby Playground</div>
-                                         <div className="text-sm font-black text-white leading-none truncate">
-                                             {lobbyObjectiveLabel}: {lobbyObjectiveMobileGoal}
-                                         </div>
+                                         <div className="text-[11px] font-bold text-white/90 leading-none truncate">{lobbyObjectiveMobileGoal}</div>
                                      </div>
                                      <div className="flex items-center gap-1">
                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] bg-cyan-400/20 border border-cyan-300/45 text-cyan-100">FREE</span>
@@ -7190,70 +7188,64 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          )}
                                      </div>
                                  </div>
-                                     <div className="rounded-xl border border-cyan-300/30 bg-black/35 px-2.5 py-2">
-                                         <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-zinc-100">
-                                             <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                             {lobbyObjectiveStreakLabel} {lobbyVolleyPreview?.streakCount || 0}
-                                             </span>
-                                         <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                             Tier {lobbyVolleyPreview?.currentTier || 0}
-                                         </span>
-                                         <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                             {lobbyVolleyParticipants.length} active
-                                         </span>
-                                         <span className={`px-2 py-0.5 rounded-full border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/45 border-white/20 text-zinc-100'}`}>
-                                             {lobbyPlayRemaining}/{lobbyPlayMaxPerMinute}
-                                         </span>
-                                     </div>
-                                     <div className="mt-2 h-1.5 rounded-full bg-black/60 border border-white/10 overflow-hidden">
-                                         <div className="h-full bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-yellow-300 transition-all duration-200" style={{ width: `${lobbyVolleyEnergyLive}%` }}></div>
-                                     </div>
-                                  <div className="mt-1 h-1 rounded-full bg-black/60 overflow-hidden">
-                                      <div className="h-full bg-white/70 transition-all duration-200" style={{ width: `${lobbyVolleyStreakDecayPct}%` }}></div>
-                                  </div>
-                              </div>
-                                  <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-200/90 px-0.5">
-                                      Four actions, four roles: stability, power, relay, momentum.
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-2.5">
-                                      {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction) => {
+                                 <div className="flex flex-wrap items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-zinc-100">
+                                     <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
+                                         {lobbyObjectiveStreakLabel} {lobbyVolleyPreview?.streakCount || 0}
+                                     </span>
+                                     <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
+                                         Tier {lobbyVolleyPreview?.currentTier || 0}
+                                     </span>
+                                     <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
+                                         {lobbyVolleyParticipants.length} active
+                                     </span>
+                                     <span className={`px-2 py-0.5 rounded-full border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/45 border-white/20 text-zinc-100'}`}>
+                                         {lobbyPlayRemaining}/{lobbyPlayMaxPerMinute}
+                                     </span>
+                                 </div>
+                                 <div className="grid grid-cols-2 gap-2">
+                                      {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction, idx) => {
                                           const impactLabel = formatLobbyInteractionImpact(interaction.id);
+                                          const isRelayTarget = lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType;
+                                          const interactionStatusLabel = lobbyPlaygroundPaused
+                                              ? 'Paused by host'
+                                              : lobbyPlayRateLimited
+                                                  ? 'Cooling down...'
+                                                  : isRelayTarget
+                                                      ? 'Pass target: teammate tap now'
+                                                      : interaction.hint;
                                           return (
                                               <button
                                                   key={interaction.id}
                                                   onClick={() => triggerLobbyPlayInteraction(interaction.id)}
                                                   disabled={lobbyPlayInteractionDisabled}
-                                                  className={`relative overflow-hidden bg-gradient-to-b ${interaction.accentCard} border-2 ${interaction.accentBorder} rounded-2xl p-2.5 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${
-                                                      lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType
-                                                          ? 'ring-2 ring-emerald-300/75 shadow-[0_0_18px_rgba(52,211,153,0.5)]'
-                                                          : ''
-                                                  } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
+                                                  className={`rounded-xl border px-3 py-2 text-left transition-all ${
+                                                      isRelayTarget
+                                                          ? 'border-emerald-300 bg-emerald-500/15 shadow-[0_0_18px_rgba(52,211,153,0.28)]'
+                                                          : `${interaction.accentBorder} bg-gradient-to-b ${interaction.accentCard}`
+                                                  } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95 hover:border-cyan-400/60'}`}
                                               >
-                                                  <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[10px] font-black tracking-[0.14em] border border-white/25 bg-black/40 text-white">FREE</span>
-                                                  <span className="text-4xl mb-1.5">{interaction.emoji}</span>
-                                                  <span className={`font-bold text-[15px] ${interaction.accentText}`}>{interaction.label}</span>
-                                                  <div className={`mt-1 px-2 py-0.5 rounded-full border text-[11px] font-black ${interaction.accentPill}`}>
-                                                      {interaction.boost}
+                                                  <div className="flex items-center justify-between gap-2">
+                                                      <span className={`text-[10px] font-bold tracking-[0.22em] ${interaction.accentText}`}>{String.fromCharCode(65 + idx)}</span>
+                                                      <span className="text-[10px] font-mono text-zinc-300">FREE</span>
                                                   </div>
-                                                  {!!impactLabel && (
-                                                      <div className="mt-1 px-2 py-0.5 rounded-full border border-white/18 bg-black/45 text-[11px] font-black text-white/95">
-                                                          {impactLabel}
-                                                      </div>
-                                                  )}
-                                                  <div className={`mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/45 border-white/20 text-zinc-100'}`}>
-                                                      {lobbyPlaygroundPaused
-                                                          ? 'Paused by host'
-                                                          : lobbyPlayRateLimited
-                                                              ? 'Cooling down...'
-                                                              : (lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType)
-                                                                  ? 'Pass target: teammate tap now'
-                                                                  : interaction.hint}
+                                                  <div className="mt-1 flex items-center gap-2">
+                                                      <span className="text-2xl leading-none">{interaction.emoji}</span>
+                                                      <span className={`text-[13px] font-semibold leading-none ${interaction.accentText}`}>{interaction.label}</span>
+                                                  </div>
+                                                  <div className={`mt-1 inline-flex w-fit px-1.5 py-0.5 rounded-md border text-[10px] font-black ${interaction.accentPill}`}>
+                                                      {interaction.boost.replace('Role: ', '')}
+                                                  </div>
+                                                  <div className="mt-1 text-[11px] font-semibold text-white/90 truncate">
+                                                      {impactLabel || interaction.hint}
+                                                  </div>
+                                                  <div className="mt-0.5 text-[10px] text-zinc-300 truncate">
+                                                      {interactionStatusLabel}
                                                   </div>
                                               </button>
                                           );
                                       })}
                                   </div>
-                                 <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-zinc-200">
+                                 <div className="flex flex-wrap items-center gap-1 text-[10px] text-zinc-200">
                                      <span className={`px-2 py-0.5 rounded-full border ${
                                          lobbyRelayObjective.active
                                              ? 'border-emerald-300/45 bg-emerald-500/12 text-emerald-100'
@@ -7267,7 +7259,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          Cooldown {lobbyPlayCooldownMs}ms
                                      </span>
                                  </div>
-                                 <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#27d3f7] to-[#26D7E8] text-black py-3 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
+                                 <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#27d3f7] to-[#26D7E8] text-black py-2.5 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
                                      Add first song to start karaoke
                                  </button>
                              </div>

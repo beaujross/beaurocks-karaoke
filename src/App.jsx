@@ -56,7 +56,7 @@ const Landing = ({ onJoin }) => {
     const marketingHref = typeof window !== 'undefined'
         ? (
             marketingFlags.routePathsEnabled
-                ? new URL('discover', appBase || window.location.origin).toString()
+                ? new URL('for-fans', appBase || window.location.origin).toString()
                 : `${appBase}?mode=marketing`
         )
         : `${appBase}?mode=marketing`;

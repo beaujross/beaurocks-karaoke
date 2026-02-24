@@ -500,6 +500,64 @@
   margin-top: 10px;
 }
 
+.mk3-home-path-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.mk3-home-path-card {
+  border: 1px solid rgba(113, 202, 247, 0.3);
+  border-radius: 12px;
+  background: linear-gradient(132deg, rgba(12, 22, 40, 0.88), rgba(26, 12, 44, 0.76));
+  padding: 0.72rem;
+  display: grid;
+  gap: 8px;
+}
+
+.mk3-home-path-card h3 {
+  margin: 0;
+  color: #ffe8b8;
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+}
+
+.mk3-home-path-card p {
+  margin: 0;
+  color: #d3e7f9;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.mk3-home-path-card button {
+  width: fit-content;
+  border: 1px solid var(--mk3-btn-border-muted);
+  border-radius: 10px;
+  min-height: 38px;
+  padding: 0.42rem 0.7rem;
+  background: var(--mk3-btn-bg-muted);
+  color: var(--mk3-btn-ink-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.mk3-home-path-finder button {
+  border-color: var(--mk3-btn-border-primary);
+  color: var(--mk3-btn-ink-primary);
+  background: var(--mk3-btn-gradient-primary);
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
+}
+
+.mk3-home-path-host button:hover,
+.mk3-home-path-finder button:hover {
+  filter: brightness(1.04);
+}
+
 .mk3-surface-grid {
   margin-top: 12px;
   display: grid;
@@ -603,6 +661,10 @@
   color: #b8cfe8;
   font-size: 0.74rem;
   line-height: 1.35;
+}
+
+.mk3-private-apply-form-compact {
+  margin-top: 12px;
 }
 
 .mk3-hero-proof {
@@ -2742,6 +2804,10 @@
 
   .mk3-surface-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .mk3-home-path-grid {
+    grid-template-columns: 1fr;
   }
 
   .mk3-public-changelog-grid {

@@ -2241,6 +2241,7 @@ const lookupYelpVenue = async ({ name = "", locationText = "" }) => {
     businessId: safeDirectoryString(top.id || "", 180),
     name: safeDirectoryString(top.name || "", 180),
     address: safeDirectoryString(address, 220),
+    imageUrl: normalizeDirectoryOptionalUrl(top.image_url || ""),
     rating: Number(top.rating || 0) || 0,
     reviewCount: Number(top.review_count || 0) || 0,
     location: loc,
@@ -4969,6 +4970,7 @@ const buildDirectoryExternalSources = ({ googleLookup = null, yelpLookup = null 
     payload.yelp = {
       businessId: safeDirectoryString(yelpLookup.businessId || "", 180),
       url: normalizeDirectoryOptionalUrl(yelpLookup.url || ""),
+      imageUrl: normalizeDirectoryOptionalUrl(yelpLookup.imageUrl || ""),
       rating: Number(yelpLookup.rating || 0) || 0,
       reviewCount: Number(yelpLookup.reviewCount || 0) || 0,
       refreshedAtMs: Date.now(),
@@ -8016,3 +8018,4 @@ exports.verifyAppleReceipt = onCall(
     );
   }
 );
+

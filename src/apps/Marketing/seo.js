@@ -65,7 +65,7 @@ const buildGeoLabel = (params = {}) => {
 };
 
 const buildRouteSeo = (route = {}) => {
-  const page = String(route?.page || MARKETING_ROUTE_PAGES.discover);
+  const page = String(route?.page || MARKETING_ROUTE_PAGES.forFans);
   const id = String(route?.id || "");
   const params = route?.params || {};
 

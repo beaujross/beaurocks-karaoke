@@ -54,7 +54,7 @@ const safeToken = (value = "") =>
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-const defaultRoute = () => ({ page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} });
+const defaultRoute = () => ({ page: MARKETING_ROUTE_PAGES.forFans, id: "", params: {} });
 
 const stripBasePath = (pathname = "") => {
   const clean = `/${trimSlashes(pathname)}`;
@@ -77,7 +77,7 @@ const applyBasePath = (pathname = "") => {
 const routeForPathTokens = (parts = []) => {
   if (!Array.isArray(parts) || !parts.length) return defaultRoute();
 
-  if (parts[0] === "discover") return defaultRoute();
+  if (parts[0] === "discover") return { page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} };
   if (parts[0] === "demo") return { page: MARKETING_ROUTE_PAGES.demo, id: "", params: {} };
   if (parts[0] === "for-hosts") return { page: MARKETING_ROUTE_PAGES.forHosts, id: "", params: {} };
   if (parts[0] === "for-venues") return { page: MARKETING_ROUTE_PAGES.forVenues, id: "", params: {} };
@@ -174,7 +174,7 @@ export const parseMarketingRouteFromHref = (href = "") => {
   }
 };
 
-export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.discover, id = "", params = {} } = {}) => {
+export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.forFans, id = "", params = {} } = {}) => {
   const safeId = String(id || "").trim();
   if (page === MARKETING_ROUTE_PAGES.discover) return applyBasePath("/discover");
   if (page === MARKETING_ROUTE_PAGES.demo) return applyBasePath("/demo");
@@ -204,7 +204,7 @@ export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.discover, id =
     const token = safeToken(params.regionToken || safeId || "");
     if (token) return applyBasePath(`/karaoke/${encodeURIComponent(token)}`);
   }
-  return applyBasePath("/discover");
+  return applyBasePath("/for-fans");
 };
 
 export const buildMarketingSearch = ({ params = {} } = {}) => {

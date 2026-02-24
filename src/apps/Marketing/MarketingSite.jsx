@@ -107,15 +107,21 @@ const PUBLIC_CHANGELOG_ENTRIES = [
 ];
 
 const PRIMARY_PAGE_OPTIONS = [
-  { id: MARKETING_ROUTE_PAGES.discover, label: "Setlist Finder" },
+  { id: MARKETING_ROUTE_PAGES.forFans, label: "Home" },
+  { id: MARKETING_ROUTE_PAGES.discover, label: "Find Karaoke" },
   { id: MARKETING_ROUTE_PAGES.forHosts, label: "For Hosts" },
-  { id: MARKETING_ROUTE_PAGES.forVenues, label: "For Venues" },
+];
+
+const LOCKED_PRIMARY_PAGE_OPTIONS = [
+  { id: MARKETING_ROUTE_PAGES.forFans, label: "Home" },
+  { id: MARKETING_ROUTE_PAGES.discover, label: "Find Karaoke" },
+  { id: MARKETING_ROUTE_PAGES.forHosts, label: "For Hosts" },
 ];
 
 const SECONDARY_PAGE_OPTIONS = [
   { id: MARKETING_ROUTE_PAGES.demo, label: "Try Live Demo" },
+  { id: MARKETING_ROUTE_PAGES.forVenues, label: "For Venues" },
   { id: MARKETING_ROUTE_PAGES.forPerformers, label: "For Performers" },
-  { id: MARKETING_ROUTE_PAGES.forFans, label: "For Fans" },
   { id: MARKETING_ROUTE_PAGES.submit, label: "Submit Listing" },
   { id: MARKETING_ROUTE_PAGES.profile, label: "Dashboard" },
   { id: MARKETING_ROUTE_PAGES.join, label: "Join By Code" },
@@ -131,6 +137,7 @@ const PageShellLoader = () => (
 
 const normalizePage = (value = "") => {
   const safe = String(value || "").trim().toLowerCase();
+  if (safe === "home") return MARKETING_ROUTE_PAGES.forFans;
   if (safe === "discover") return MARKETING_ROUTE_PAGES.discover;
   if (safe === "demo") return MARKETING_ROUTE_PAGES.demo;
   if (safe === "venue") return MARKETING_ROUTE_PAGES.venue;
@@ -148,13 +155,13 @@ const normalizePage = (value = "") => {
   if (safe === "join") return MARKETING_ROUTE_PAGES.join;
   if (safe === "geo_city") return MARKETING_ROUTE_PAGES.geoCity;
   if (safe === "geo_region") return MARKETING_ROUTE_PAGES.geoRegion;
-  return MARKETING_ROUTE_PAGES.discover;
+  return MARKETING_ROUTE_PAGES.forFans;
 };
 
-const normalizeRouteInput = (pageOrRoute = MARKETING_ROUTE_PAGES.discover, id = "", params = {}) => {
+const normalizeRouteInput = (pageOrRoute = MARKETING_ROUTE_PAGES.forFans, id = "", params = {}) => {
   if (typeof pageOrRoute === "object" && pageOrRoute) {
     return {
-      page: normalizePage(pageOrRoute.page || MARKETING_ROUTE_PAGES.discover),
+      page: normalizePage(pageOrRoute.page || MARKETING_ROUTE_PAGES.forFans),
       id: String(pageOrRoute.id || "").trim(),
       params: pageOrRoute.params && typeof pageOrRoute.params === "object" ? pageOrRoute.params : {},
     };
@@ -343,11 +350,11 @@ const MarketingSite = () => {
   }, []);
 
   useEffect(() => {
-    const routeToken = String(route.page || MARKETING_ROUTE_PAGES.discover)
+    const routeToken = String(route.page || MARKETING_ROUTE_PAGES.forFans)
       .toLowerCase()
       .replace(/[^a-z0-9_]/g, "_");
     trackEvent(`mk_page_view_${routeToken}`, {
-      route: route.page || MARKETING_ROUTE_PAGES.discover,
+      route: route.page || MARKETING_ROUTE_PAGES.forFans,
       id: route.id || "",
     });
   }, [route.page, route.id]);
@@ -360,7 +367,7 @@ const MarketingSite = () => {
     });
   }, [route.page, route.id, route.params]);
 
-  const navigate = useCallback((pageOrRoute = MARKETING_ROUTE_PAGES.discover, id = "", params = {}, options = {}) => {
+  const navigate = useCallback((pageOrRoute = MARKETING_ROUTE_PAGES.forFans, id = "", params = {}, options = {}) => {
     if (typeof window === "undefined") return;
     const nextRoute = normalizeRouteInput(pageOrRoute, id, params);
 
@@ -381,7 +388,7 @@ const MarketingSite = () => {
     }
     setRoute(nextRoute);
     setMobileMenuOpen(false);
-    trackEvent("marketing_directory_navigate", { page: nextRoute.page || MARKETING_ROUTE_PAGES.discover });
+    trackEvent("marketing_directory_navigate", { page: nextRoute.page || MARKETING_ROUTE_PAGES.forFans });
   }, []);
 
   const scrollAuthPanelIntoView = useCallback(() => {
@@ -628,7 +635,7 @@ const MarketingSite = () => {
   );
   const visiblePrimaryOptions = useMemo(
     () => (privateAccessLocked
-      ? [{ id: MARKETING_ROUTE_PAGES.discover, label: "Find Karaoke" }]
+      ? LOCKED_PRIMARY_PAGE_OPTIONS
       : PRIMARY_PAGE_OPTIONS),
     [privateAccessLocked]
   );
@@ -702,7 +709,7 @@ const MarketingSite = () => {
     if (activePage === MARKETING_ROUTE_PAGES.geoCity || activePage === MARKETING_ROUTE_PAGES.geoRegion) {
       return <GeoLandingPage {...pageProps} />;
     }
-    return <DiscoverPage {...pageProps} />;
+    return <ForFansPage {...pageProps} />;
   }, [activePage, requireFullAuth, route, navigate, mapsConfig, session]);
 
   return (
@@ -710,7 +717,7 @@ const MarketingSite = () => {
       <header className="mk3-nav">
         <div className="mk3-shell">
           <div className="mk3-nav-inner">
-            <button type="button" className="mk3-brand" onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}>
+            <button type="button" className="mk3-brand" onClick={() => navigate(MARKETING_ROUTE_PAGES.forFans)}>
               <img src="/images/logo-library/beaurocks-karaoke-logo-2.png" alt="BeauRocks Karaoke logo" />
               <div>
                 <strong>{PRODUCT_BRAND.name}</strong>
@@ -764,7 +771,7 @@ const MarketingSite = () => {
                 }}
               >
                 {privateAccessLocked
-                  ? "View Listings"
+                  ? "Find Karaoke"
                   : (hasFullAccount ? "Dashboard" : "Create Account")}
               </button>
               <button
@@ -838,184 +845,158 @@ const MarketingSite = () => {
 
           <section className={`mk3-auth-panel${privateAccessLocked ? " is-private-focus" : ""}`} ref={authPanelRef}>
             <div>
-              {privateAccessLocked ? (
-                <>
-                  <h1>Public Listings + Private Host Beta</h1>
+              <h1>Karaoke Nights That Build Real Connection</h1>
+              <p>
+                BeauRocks helps turn standard karaoke nights into meaningful moments. Whether it is a home party,
+                community event, fundraiser, or venue night, the goal is the same: get people off passive scroll and
+                into real shared experience.
+              </p>
+              <div className="mk3-private-pill-row">
+                <span className="mk3-private-pill">Home parties</span>
+                <span className="mk3-private-pill">Fundraisers + events</span>
+                <span className="mk3-private-pill">Human connection first</span>
+              </div>
+              <div className="mk3-home-path-grid">
+                <article className="mk3-home-path-card mk3-home-path-finder">
+                  <h3>Karaoke Finder Mode</h3>
                   <p>
-                    Explore live karaoke listings now. Host account creation stays invite-only while we run private
-                    pilot groups.
+                    Looking for a night out? Use finder mode to browse by city, host, venue, timing, and vibe.
                   </p>
-                  <div className="mk3-private-pill-row">
-                    <span className="mk3-private-pill">Invite-only</span>
-                    <span className="mk3-private-pill">Friendly host pilots</span>
-                    <span className="mk3-private-pill">Human connection first</span>
-                  </div>
-                  <div className="mk3-auth-cta-row">
+                  <button
+                    type="button"
+                    onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
+                  >
+                    Open Finder
+                  </button>
+                </article>
+                <article className="mk3-home-path-card mk3-home-path-host">
+                  <h3>Host + Venue Growth Mode</h3>
+                  <p>
+                    Running nights? Build repeat attendance, host better rooms, and turn one-off events into stronger communities.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts)}
+                  >
+                    Explore Host Path
+                  </button>
+                </article>
+              </div>
+              {heroStats?.total > 0 && (
+                <div className="mk3-status mk3-hero-proof">
+                  <strong>{heroStats.total.toLocaleString()} live listings and counting</strong>
+                  <span>Updated {formatDateTime(heroStats.generatedAtMs)}</span>
+                </div>
+              )}
+              <div className="mk3-value-points">
+                <span>Technology got us here. Now we use it to bring people back together in the real world.</span>
+                <span>Your phone still matters, but now it helps you interact with the room you are actually in.</span>
+              </div>
+              <div className="mk3-auth-cta-row">
+                {!hasFullAccount ? (
+                  <>
                     <button
                       type="button"
                       className="mk3-auth-cta-primary"
                       onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
                     >
-                      Explore Live Listings
+                      Find Karaoke Near Me
                     </button>
-                  </div>
-                  <form className="mk3-private-apply-form" onSubmit={onPrivateApplySubmit}>
-                    <h2>Apply for private test access</h2>
-                    <div className="mk3-private-apply-grid">
-                      <label>
-                        Name
-                        <input
-                          type="text"
-                          value={privateApplyForm.name}
-                          onChange={(event) => {
-                            const next = event.target.value;
-                            setPrivateApplyForm((prev) => ({ ...prev, name: next }));
-                            setPrivateApplyState((prev) => ({ ...prev, error: "", success: "" }));
-                          }}
-                          required
-                          maxLength={80}
-                        />
-                      </label>
-                      <label>
-                        Email
-                        <input
-                          type="email"
-                          value={privateApplyForm.email}
-                          onChange={(event) => {
-                            const next = event.target.value;
-                            setPrivateApplyForm((prev) => ({ ...prev, email: next }));
-                            setPrivateApplyState((prev) => ({ ...prev, error: "", success: "" }));
-                          }}
-                          required
-                        />
-                      </label>
-                      <label>
-                        Use case
-                        <select
-                          value={privateApplyForm.useCase}
-                          onChange={(event) => {
-                            const next = event.target.value;
-                            setPrivateApplyForm((prev) => ({ ...prev, useCase: next }));
-                          }}
-                        >
-                          {PRIVATE_TEST_USE_CASE_OPTIONS.map((option) => (
-                            <option key={option} value={option}>{option}</option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    <div className="mk3-private-apply-actions">
-                      <button type="submit" disabled={privateApplyState.submitting}>
-                        {privateApplyState.submitting ? "Sending..." : "Apply"}
-                      </button>
-                      <button
-                        type="button"
-                        className="mk3-auth-cta-secondary"
-                        onClick={() => {
-                          setAuthMode("signin");
-                          scrollAuthPanelIntoView();
+                    <button
+                      type="button"
+                      className="mk3-auth-cta-secondary"
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts)}
+                    >
+                      For Hosts + Venues
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="mk3-auth-cta-primary"
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.profile)}
+                    >
+                      Open My Dashboard
+                    </button>
+                    <button
+                      type="button"
+                      className="mk3-auth-cta-secondary"
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
+                    >
+                      Open Finder
+                    </button>
+                  </>
+                )}
+              </div>
+              {privateAccessLocked && (
+                <form className="mk3-private-apply-form mk3-private-apply-form-compact" onSubmit={onPrivateApplySubmit}>
+                  <h2>Apply for private host pilot</h2>
+                  <div className="mk3-private-apply-grid">
+                    <label>
+                      Name
+                      <input
+                        type="text"
+                        value={privateApplyForm.name}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setPrivateApplyForm((prev) => ({ ...prev, name: next }));
+                          setPrivateApplyState((prev) => ({ ...prev, error: "", success: "" }));
+                        }}
+                        required
+                        maxLength={80}
+                      />
+                    </label>
+                    <label>
+                      Email
+                      <input
+                        type="email"
+                        value={privateApplyForm.email}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setPrivateApplyForm((prev) => ({ ...prev, email: next }));
+                          setPrivateApplyState((prev) => ({ ...prev, error: "", success: "" }));
+                        }}
+                        required
+                      />
+                    </label>
+                    <label>
+                      Use case
+                      <select
+                        value={privateApplyForm.useCase}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setPrivateApplyForm((prev) => ({ ...prev, useCase: next }));
                         }}
                       >
-                        I Have A Code
-                      </button>
-                    </div>
-                    {privateApplyState.success && (
-                      <div className="mk3-status">
-                        <strong>{privateApplyState.success}</strong>
-                        {privateApplyState.linePosition > 0 && (
-                          <span>{`You are in line at #${privateApplyState.linePosition}`}</span>
-                        )}
-                      </div>
-                    )}
-                    {privateApplyState.error && <div className="mk3-status mk3-status-error">{privateApplyState.error}</div>}
-                  </form>
-                </>
-              ) : (
-                <>
-                  <h1>{PRODUCT_BRAND.name}</h1>
-                  <p>
-                    We believe people are what we are missing most right now. BeauRocks helps you find karaoke nights,
-                    then turns your phone from passive scrolling into real in-room interaction.
-                  </p>
-                  <div className="mk3-surface-grid">
-                    <article>
-                      <strong>{PRODUCT_BRAND.finder}</strong>
-                      <span>Find nights by location, host, or vibe</span>
-                    </article>
-                    <article>
-                      <strong>{PRODUCT_BRAND.tv}</strong>
-                      <span>Shared room screen for everyone</span>
-                    </article>
-                    <article>
-                      <strong>{PRODUCT_BRAND.audience}</strong>
-                      <span>Audience phone controls and reactions</span>
-                    </article>
-                    <article>
-                      <strong>{PRODUCT_BRAND.host}</strong>
-                      <span>Host controls without touching TV</span>
-                    </article>
+                        {PRIVATE_TEST_USE_CASE_OPTIONS.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
-                  {heroStats?.total > 0 && (
-                    <div className="mk3-status mk3-hero-proof">
-                      <strong>{heroStats.total.toLocaleString()} live listings and counting</strong>
-                      <span>Updated {formatDateTime(heroStats.generatedAtMs)}</span>
+                  <div className="mk3-private-apply-actions">
+                    <button type="submit" disabled={privateApplyState.submitting}>
+                      {privateApplyState.submitting ? "Sending..." : "Apply"}
+                    </button>
+                    <button
+                      type="button"
+                      className="mk3-auth-cta-secondary"
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts)}
+                    >
+                      Host Pilot Details
+                    </button>
+                  </div>
+                  {privateApplyState.success && (
+                    <div className="mk3-status">
+                      <strong>{privateApplyState.success}</strong>
+                      {privateApplyState.linePosition > 0 && (
+                        <span>{`You are in line at #${privateApplyState.linePosition}`}</span>
+                      )}
                     </div>
                   )}
-                  <div className="mk3-value-points">
-                    <span>Yes, your phone is still your pacifier, but now it helps you meet people around you.</span>
-                    <span>Profiles link hosts, venues, performers, and sessions so finding your people gets easier each night.</span>
-                  </div>
-                  <div className="mk3-permission-grid">
-                    <article>
-                      <strong>No account needed</strong>
-                      <span>Browse listings, host pages, and event details right away.</span>
-                    </article>
-                    <article>
-                      <strong>With account</strong>
-                      <span>Save follows, RSVP reminders, check-ins, and your activity history.</span>
-                    </article>
-                  </div>
-                  <div className="mk3-auth-cta-row">
-                    {!hasFullAccount ? (
-                      <>
-                        <button
-                          type="button"
-                          className="mk3-auth-cta-primary"
-                          onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
-                        >
-                          Find A Karaoke Night
-                        </button>
-                        <button
-                          type="button"
-                          className="mk3-auth-cta-secondary"
-                          onClick={() => {
-                            setAuthMode("signup");
-                            scrollAuthPanelIntoView();
-                          }}
-                        >
-                          Create Free Account
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          className="mk3-auth-cta-primary"
-                          onClick={() => navigate(MARKETING_ROUTE_PAGES.profile)}
-                        >
-                          Open My Dashboard
-                        </button>
-                        <button
-                          type="button"
-                          className="mk3-auth-cta-secondary"
-                          onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
-                        >
-                          Back To Finder
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </>
+                  {privateApplyState.error && <div className="mk3-status mk3-status-error">{privateApplyState.error}</div>}
+                </form>
               )}
             </div>
             <div className="mk3-auth-box">
@@ -1184,18 +1165,18 @@ const MarketingSite = () => {
                 {pageNode}
               </Suspense>
               <section className="mk3-private-locked-panel mk3-zone" aria-label="Private test locked">
-                <h2>Browse public listings now. Host onboarding stays invite-only.</h2>
+                <h2>Use Finder freely. Host onboarding stays invite-only.</h2>
                 <p>
-                  You can explore the map and listings freely. Host account creation is unlocked by invite code.
+                  Finder mode is open for everyone. Host account creation unlocks through pilot invites and code access.
                 </p>
                 <div className="mk3-private-locked-grid">
                   <article>
-                    <strong>New applicants</strong>
-                    <span>Send the short form and we will review your use case.</span>
+                    <strong>Find karaoke</strong>
+                    <span>Search live listings by host, venue, location, and timing.</span>
                   </article>
                   <article>
-                    <strong>Invited hosts</strong>
-                    <span>Use your host code above, then create your account.</span>
+                    <strong>Host pilots</strong>
+                    <span>Use a host code above, then create your host account.</span>
                   </article>
                 </div>
               </section>

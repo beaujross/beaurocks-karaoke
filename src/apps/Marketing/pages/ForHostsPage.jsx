@@ -74,8 +74,11 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-chip">for hosts</div>
-        <h2>Run nights people actually talk about later.</h2>
-        <p>Classic karaoke tools have been clunky forever. This gives hosts faster setup, better crowd flow, and fewer awkward pauses.</p>
+        <h2>Turn karaoke nights into meaningful moments.</h2>
+        <p>
+          Home parties, venue nights, fundraisers, and community events all need the same thing: real connection.
+          BeauRocks helps hosts run smoother rooms and create nights people remember.
+        </p>
         <div className="mk3-actions-inline">
           {canSubmit ? (
             <button
@@ -107,7 +110,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
               navigate("discover");
             }}
           >
-            Browse Active Nights
+            Open Finder Mode
           </button>
         </div>
         {canSubmit && (
@@ -181,11 +184,11 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
         )}
       </article>
       <aside className="mk3-actions-card">
-        <h4>Host Path</h4>
+        <h4>Host Growth Path</h4>
         <ul className="mk3-plain-list">
-          <li>Pick private-room flow or public listing flow.</li>
-          <li>Publish schedule updates once owner/host verification is done.</li>
-          <li>Track follows, RSVPs, and check-ins from one dashboard.</li>
+          <li>Pick private-room pilots or public listing flow.</li>
+          <li>Run nights with less dead air and clearer crowd participation.</li>
+          <li>Turn one-off events into repeat community nights.</li>
         </ul>
         {!canSubmit && (
           <div className="mk3-status">Create an account to create and manage your nights.</div>

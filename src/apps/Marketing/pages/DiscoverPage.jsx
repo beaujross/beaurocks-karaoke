@@ -7,6 +7,7 @@ import { trackEvent } from "../lib/marketingAnalytics";
 import EmptyStatePanel from "./EmptyStatePanel";
 import InlineConversionActions from "./InlineConversionActions";
 import {
+  buildPublicLocationImageUrl,
   formatDateTime,
   getInitials,
   resolveListingImageCandidates,
@@ -187,6 +188,8 @@ const PLACEHOLDER_SCREEN_IMAGE_TOKENS = [
   "/images/marketing/tv-surface-live.png",
   "/images/marketing/beaurocks-hostpanel.png",
   "/images/marketing/beaurocks-audienceapp.png",
+  "/images/logo-library/beaurocks-karaoke-logo-2.png",
+  "/images/logo-library/bross-entertainment",
 ];
 
 const isScreenPlaceholderImage = (value = "") => {
@@ -195,14 +198,27 @@ const isScreenPlaceholderImage = (value = "") => {
   return PLACEHOLDER_SCREEN_IMAGE_TOKENS.some((entry) => token.includes(entry));
 };
 
-const applyFallbackImage = (event, fallbackUrl = "") => {
+const dedupeUrls = (entries = []) =>
+  entries.filter((value, index, array) => String(value || "").trim() && array.indexOf(value) === index);
+
+const applyFallbackImage = (event, fallbackUrls = []) => {
   const target = event?.currentTarget;
   if (!target) return;
-  if (target.dataset.fallbackApplied === "1") return;
-  const safeFallback = String(fallbackUrl || "").trim();
-  if (!safeFallback) return;
-  target.dataset.fallbackApplied = "1";
-  target.src = safeFallback;
+  const chain = dedupeUrls(Array.isArray(fallbackUrls) ? fallbackUrls : [fallbackUrls]);
+  if (!chain.length) return;
+
+  let nextIndex = Number(target.dataset.fallbackIndex || 0);
+  if (!Number.isFinite(nextIndex) || nextIndex < 0) nextIndex = 0;
+
+  while (nextIndex < chain.length) {
+    const candidate = String(chain[nextIndex] || "").trim();
+    nextIndex += 1;
+    if (!candidate) continue;
+    target.dataset.fallbackIndex = String(nextIndex);
+    target.src = candidate;
+    return;
+  }
+  target.onerror = null;
 };
 
 const escapeHtml = (value = "") =>
@@ -220,13 +236,22 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const location = normalizeLocation(entry);
   const startsAtMs = Number(entry?.startsAtMs || 0) || 0;
   const mediaType = listingType === "room_session" ? "session" : listingType;
-  const explicitImageUrl = resolveListingImageCandidates(entry, mediaType, { includeFallback: false })
-    .find((url) => !isScreenPlaceholderImage(url)) || "";
+  const explicitImageCandidates = resolveListingImageCandidates(entry, mediaType, { includeFallback: false })
+    .filter((url) => !isScreenPlaceholderImage(url));
   const addressLine = toAddressLine(entry);
   const venueImageUrl = buildStreetViewImageUrl({ location, addressLine, mapsApiKey });
   const mapFallbackImageUrl = buildStaticMapImageUrl({ location, mapsApiKey });
-  const hardFallbackImageUrl = mapFallbackImageUrl || "/images/logo-library/beaurocks-karaoke-logo-2.png";
-  const imageUrl = explicitImageUrl || venueImageUrl || hardFallbackImageUrl;
+  const publicLocationFallbackUrl = buildPublicLocationImageUrl({ location });
+  const hardFallbackImageUrl = "/images/marketing/venue-location-fallback.svg";
+  const imageCandidates = dedupeUrls([
+    ...explicitImageCandidates,
+    venueImageUrl,
+    mapFallbackImageUrl,
+    publicLocationFallbackUrl,
+    hardFallbackImageUrl,
+  ]).filter((url) => !isScreenPlaceholderImage(url) || url === hardFallbackImageUrl);
+  const imageUrl = imageCandidates[0] || hardFallbackImageUrl;
+  const imageFallbackUrls = imageCandidates.slice(1);
   const hostUid = String(entry?.hostUid || "").trim();
   const hostName = String(entry?.hostName || "").trim();
   const avatarUrl = resolveProfileAvatarUrl(entry);
@@ -245,6 +270,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     title: String(entry?.title || "Untitled listing"),
     imageUrl,
     imageFallbackUrl: hardFallbackImageUrl,
+    imageFallbackUrls,
     avatarUrl,
     avatarLabel: listingType === "event"
       ? String(entry?.hostName || entry?.venueName || entry?.title || "").trim()
@@ -1076,7 +1102,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                     src={entry.imageUrl}
                     alt={`${entry.title} venue visual`}
                     loading="lazy"
-                    onError={(event) => applyFallbackImage(event, entry.imageFallbackUrl)}
+                    onError={(event) => applyFallbackImage(event, entry.imageFallbackUrls)}
                   />
                   <div className="mk3-discover-media-top">
                     <div className="mk3-chip">{entry.typeLabel}</div>

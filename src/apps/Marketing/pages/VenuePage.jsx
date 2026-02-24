@@ -13,7 +13,14 @@ import EntityActionsCard from "./EntityActionsCard";
 import CadenceUpdateCard from "./CadenceUpdateCard";
 import ClaimOwnershipCard from "./ClaimOwnershipCard";
 import EmptyStatePanel from "./EmptyStatePanel";
-import { formatDateTime, resolveListingImageCandidates } from "./shared";
+import { buildPublicLocationImageUrl, formatDateTime, resolveListingImageCandidates } from "./shared";
+
+const applyImageFallback = (event, fallbackUrl = "/images/marketing/venue-location-fallback.svg") => {
+  const target = event?.currentTarget;
+  if (!target) return;
+  target.onerror = null;
+  target.src = fallbackUrl;
+};
 
 const VenuePage = ({ id, route, navigate, session, authFlow }) => {
   const [venue, setVenue] = useState(null);
@@ -82,14 +89,22 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
   const eventCount = events.length;
   const nextEvent = events[0] || null;
   const venueImages = resolveListingImageCandidates(venue, "venue");
-  const heroImage = venueImages[0] || "/images/logo-library/beaurocks-karaoke-logo-2.png";
-  const listingGallery = venueImages.slice(0, 3);
+  const fallbackVenueImage = buildPublicLocationImageUrl(venue) || "/images/marketing/venue-location-fallback.svg";
+  const allImages = [...venueImages, fallbackVenueImage]
+    .filter((value, index, array) => String(value || "").trim() && array.indexOf(value) === index);
+  const heroImage = allImages[0] || "/images/marketing/venue-location-fallback.svg";
+  const listingGallery = allImages.slice(0, 3);
 
   return (
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-venue-hero">
-          <img src={heroImage} alt={`${venue.title} listing visual`} loading="lazy" />
+          <img
+            src={heroImage}
+            alt={`${venue.title} listing visual`}
+            loading="lazy"
+            onError={(event) => applyImageFallback(event, fallbackVenueImage)}
+          />
           <div className="mk3-venue-hero-content">
             <div className="mk3-chip">venue</div>
             <h2>{venue.title}</h2>
@@ -122,7 +137,12 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
         <div className="mk3-venue-gallery" aria-label="Venue gallery">
           {listingGallery.map((imageUrl, index) => (
             <figure key={`${imageUrl}-${index}`}>
-              <img src={imageUrl} alt={`${venue.title} visual ${index + 1}`} loading="lazy" />
+              <img
+                src={imageUrl}
+                alt={`${venue.title} visual ${index + 1}`}
+                loading="lazy"
+                onError={(event) => applyImageFallback(event, fallbackVenueImage)}
+              />
             </figure>
           ))}
         </div>
