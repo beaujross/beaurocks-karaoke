@@ -259,9 +259,9 @@ const LOBBY_ASSIST_CAP = 10;
 const LOBBY_TIER_CHIP_CAP = 8;
 const LOBBY_ORB_EVENT_CAP = 14;
 const LOBBY_PARTICLE_MAX = 24;
-const LOBBY_ORB_MIN_TOP_PCT = 32;
-const LOBBY_ORB_IDLE_TOP_PCT = 74;
-const LOBBY_GROUND_LINE_TOP_PCT = 84;
+const LOBBY_ORB_MIN_TOP_PCT = 24;
+const LOBBY_ORB_IDLE_TOP_PCT = 66;
+const LOBBY_GROUND_LINE_TOP_PCT = 78;
 const GUITAR_SYNC_DECAY_PER_SECOND = 14;
 const GUITAR_SYNC_GAIN_PER_HIT = 11;
 const GUITAR_SYNC_GROUND_THRESHOLD = 12;
@@ -2497,7 +2497,6 @@ const PublicTV = ({ roomCode }) => {
     const lobbyObjectiveMode = lobbyForcedObjectiveMode || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
     const lobbyObjectiveIsTeamPong = lobbyObjectiveMode?.id === 'team_pong';
     const lobbyObjectiveLabel = lobbyObjectiveMode?.label || 'Volley Orb';
-    const lobbyObjectiveGoalLine = lobbyObjectiveMode?.tvGoal || 'Keep the Volley Orb in the air. Do not let it touch the ground line at the bottom.';
     const lobbyObjectiveBannerGoal = lobbyObjectiveMode?.tvBannerGoal || 'Keep Orb Above Ground';
     const lobbyPromptPool = Array.isArray(lobbyObjectiveMode?.prompts) && lobbyObjectiveMode.prompts.length
         ? lobbyObjectiveMode.prompts
@@ -2509,7 +2508,7 @@ const PublicTV = ({ roomCode }) => {
     const lobbyPrompt = lobbyPromptPool[lobbyPromptIndex % lobbyPromptPool.length];
     const lobbyMembers = [...roomUsers]
         .sort((a, b) => getTimestampMs(b?.lastActiveAt) - getTimestampMs(a?.lastActiveAt))
-        .slice(0, 10);
+        .slice(0, 8);
     const lobbyJoinEvents = activities
         .filter((entry) => /joined the party/i.test(String(entry?.text || '')))
         .map((entry, idx) => ({
@@ -2522,7 +2521,7 @@ const PublicTV = ({ roomCode }) => {
     const lobbyEventFeed = [...lobbyLiveEvents, ...lobbyJoinEvents]
         .filter((entry) => (nowMs() - Number(entry?.timestampMs || 0)) < 90000)
         .sort((a, b) => Number(b?.timestampMs || 0) - Number(a?.timestampMs || 0))
-        .slice(0, 8);
+        .slice(0, 5);
     const lobbyNow = nowMs();
     const lobbyOrbEnergy = getLobbyOrbMeterValue(lobbyVolleyState, lobbyNow);
     const lobbyActiveParticipants = getActiveParticipants(lobbyVolleyState, lobbyNow).slice(0, LOBBY_ORB_EVENT_CAP);
@@ -3038,6 +3037,7 @@ const PublicTV = ({ roomCode }) => {
     const gridSpacingClass = isShortViewport
         ? 'gap-2 md:gap-3 2xl:gap-4 p-2 md:p-3 2xl:p-4'
         : 'gap-3 md:gap-4 2xl:gap-6 p-3 md:p-4 2xl:p-6';
+    const lobbyCompactHudMode = lobbyVolleySceneActive && lobbyVolleyEnabled;
     const gridTopPaddingClass = isVeryShortViewport
         ? 'pt-10'
         : isShortViewport
@@ -3051,6 +3051,12 @@ const PublicTV = ({ roomCode }) => {
         : isShortViewport
             ? 'min-h-[38vh] md:min-h-[44vh]'
             : 'min-h-[42vh] md:min-h-[50vh]';
+    const effectiveGridTopPaddingClass = lobbyCompactHudMode
+        ? (isVeryShortViewport ? 'pt-5' : isShortViewport ? 'pt-6 md:pt-8' : 'pt-8 md:pt-10 2xl:pt-12')
+        : gridTopPaddingClass;
+    const effectiveStageMinHeightClass = lobbyCompactHudMode
+        ? (isVeryShortViewport ? 'min-h-[48vh] md:min-h-[56vh]' : isShortViewport ? 'min-h-[52vh] md:min-h-[60vh]' : 'min-h-[58vh] md:min-h-[66vh]')
+        : stageMinHeightClass;
     const sidebarGapClass = isShortViewport ? 'gap-1.5 pb-1' : 'gap-2 pb-2';
     const joinQrSize = isVeryShortViewport ? 132 : isShortViewport ? 152 : 176;
     const joinQrClass = isVeryShortViewport
@@ -3070,7 +3076,7 @@ const PublicTV = ({ roomCode }) => {
             ? 'clamp(1.05rem, 2vw, 2.3rem)'
             : 'clamp(1.2rem, 2.4vw, 3rem)';
     const isDistanceConstrained = viewportSize.width <= 1680 || viewportSize.height <= 900;
-    const showVerboseJoinUrl = viewportSize.width >= 1900 && !isShortViewport;
+    const showVerboseJoinUrl = viewportSize.width >= 2100 && !isShortViewport && !lobbyCompactHudMode;
     const showExtendedSpotlightMeta = viewportSize.width >= 1760 && !isShortViewport;
     const chatTvFullscreenActive = !!room?.chatShowOnTv && room?.chatTvMode === 'fullscreen';
 
@@ -3495,7 +3501,11 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             {!room?.hideLogo && (
-                <img src={room?.logoUrl || ASSETS.logo} className={`tv-logo absolute top-3 left-3 md:top-5 md:left-5 2xl:top-8 2xl:left-8 ${logoSizeClass} z-50 drop-shadow-xl opacity-90`} alt="Logo" />
+                <img
+                    src={room?.logoUrl || ASSETS.logo}
+                    className={`tv-logo absolute top-3 left-3 md:top-5 md:left-5 2xl:top-8 2xl:left-8 ${lobbyCompactHudMode ? 'w-20 sm:w-28 md:w-36 lg:w-40 2xl:w-52' : logoSizeClass} z-50 drop-shadow-xl opacity-90`}
+                    alt="Logo"
+                />
             )}
             {isExperienceActive && (
                 <div data-tv-live-pill={experienceLabel} className="absolute top-3 right-3 md:top-5 md:right-5 2xl:top-8 2xl:right-8 z-[240] flex items-center gap-2 md:gap-3 bg-red-600/90 border border-red-200/40 px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-[0_0_30px_rgba(239,68,68,0.5)]">
@@ -3850,10 +3860,10 @@ const PublicTV = ({ roomCode }) => {
             
             {multiplier >= 4 && <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_20%,#000_120%)] opacity-50 mix-blend-overlay pointer-events-none"></div>}
 
-            <div className={`relative z-10 h-full grid grid-cols-1 lg:grid-cols-12 ${gridSpacingClass} ${isCinema ? 'pt-0 pb-0' : `${gridTopPaddingClass} ${gridBottomPaddingClass}`}`}>
+            <div className={`relative z-10 h-full grid grid-cols-1 lg:grid-cols-12 ${gridSpacingClass} ${isCinema ? 'pt-0 pb-0' : `${effectiveGridTopPaddingClass} ${gridBottomPaddingClass}`}`}>
                 {/* STAGE AREA */}
-                <div className={`${isCinema ? 'col-span-12' : 'col-span-12 lg:col-span-8'} flex flex-col transition-all duration-500`}>
-                    <div className={`flex-1 ${isMinimal || isCinema ? 'bg-black' : 'bg-black/30 backdrop-blur-md border border-white/10'} rounded-2xl md:rounded-3xl relative shadow-2xl overflow-hidden ${stageMinHeightClass}`}>
+                <div className={`${isCinema ? 'col-span-12' : `col-span-12 ${lobbyCompactHudMode ? 'lg:col-span-9' : 'lg:col-span-8'}`} flex flex-col transition-all duration-500`}>
+                    <div className={`flex-1 ${isMinimal || isCinema ? 'bg-black' : 'bg-black/30 backdrop-blur-md border border-white/10'} rounded-2xl md:rounded-3xl relative shadow-2xl overflow-hidden ${effectiveStageMinHeightClass}`}>
                         <div className="absolute inset-0 pointer-events-none tv-light-sweep"></div>
                           {current && showScoring && (
                               <div className="absolute top-8 right-3 md:top-10 md:right-4 2xl:top-12 2xl:right-6 z-[80] text-right">
@@ -3949,7 +3959,7 @@ const PublicTV = ({ roomCode }) => {
                 
                 {/* SIDEBAR: Hidden in Cinema Mode */}
                 {!isCinema && (
-                    <div className={`col-span-12 lg:col-span-4 flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden`}>
+                    <div className={`col-span-12 ${lobbyCompactHudMode ? 'lg:col-span-3' : 'lg:col-span-4'} flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden`}>
                          <div className="p-3 md:p-4 rounded-2xl md:rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20">
                             <div className="text-xl md:text-2xl 2xl:text-3xl font-black text-cyan-100 mb-1 uppercase tracking-[0.14em] md:tracking-[0.18em]">JOIN</div>
                             <div className="bg-white p-2 md:p-3 rounded-2xl md:rounded-3xl inline-block shadow-[0_0_45px_rgba(255,255,255,0.2)]">
@@ -3962,7 +3972,16 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                             <div className="text-2xl md:text-3xl 2xl:text-4xl font-bebas text-white mt-2 tracking-[0.1em] md:tracking-[0.14em]">{roomCode}</div>
                             <div className="mt-1">
-                                {showVerboseJoinUrl ? (
+                                {lobbyCompactHudMode ? (
+                                    <>
+                                        <div className="text-sm md:text-base text-zinc-100 font-semibold uppercase tracking-[0.08em] leading-tight">
+                                            Scan to join on your phone
+                                        </div>
+                                        <div className="text-xs md:text-sm text-cyan-100 tracking-[0.05em] break-all leading-tight mt-1">
+                                            {joinUrlBaseDisplay}
+                                        </div>
+                                    </>
+                                ) : showVerboseJoinUrl ? (
                                     <>
                                         <div className="text-sm md:text-base text-zinc-100 font-semibold uppercase tracking-[0.08em] md:tracking-[0.1em] break-all leading-tight">Go to {joinUrlBaseDisplay}</div>
                                         <div className="text-base md:text-xl font-black text-cyan-100 tracking-[0.02em] md:tracking-[0.04em] break-all leading-tight">{joinUrlQueryDisplay}</div>
@@ -4050,18 +4069,18 @@ const PublicTV = ({ roomCode }) => {
                                         <div className="flex items-center justify-between mb-2 border-b border-white/10 pb-2">
                                             <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-cyan-300">LOBBY PLAYGROUND</h3>
                                         </div>
-                                        <div className="text-sm md:text-base text-zinc-100 mb-3">
-                                            As guests join, use phones to trigger live reactions, chat, and identity updates on this TV.
+                                        <div className="text-xs md:text-sm text-zinc-200/90 mb-3 uppercase tracking-[0.12em]">
+                                            Phones drive the room. Keep the orb alive.
                                         </div>
                                         <div className="rounded-2xl border border-emerald-300/35 bg-emerald-500/10 px-3 py-3 mb-3">
                                             <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-100 mb-1">{lobbyObjectiveLabel} Goal</div>
-                                            <div className="text-base md:text-xl font-bebas text-white leading-tight">
-                                                {lobbyObjectiveGoalLine}
+                                            <div className="text-sm md:text-lg font-semibold text-white leading-tight">
+                                                {lobbyObjectiveBannerGoal}
                                             </div>
                                         </div>
                                         <div className="rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-3 mb-3">
-                                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200 mb-1">Try This Now</div>
-                                            <div className="text-lg md:text-2xl font-bebas text-white leading-tight">{lobbyPrompt}</div>
+                                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200 mb-1">Try This</div>
+                                            <div className="text-sm md:text-lg font-semibold text-white leading-tight">{lobbyPrompt}</div>
                                         </div>
                                         <div className="rounded-2xl border border-fuchsia-300/35 bg-gradient-to-r from-cyan-500/14 via-indigo-500/14 to-fuchsia-500/16 px-3 py-3 mb-3">
                                             <div className="flex items-center justify-between gap-2">
@@ -4119,15 +4138,15 @@ const PublicTV = ({ roomCode }) => {
                                                 <span>Relay Objective</span>
                                                 <span>{lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s` : 'idle'}</span>
                                             </div>
-                                            <div className="mt-1 text-base md:text-lg font-bebas text-white leading-tight">
+                                            <div className="mt-1 text-sm md:text-base font-semibold text-white leading-tight">
                                                 {lobbyRelayObjective.active
                                                     ? `Different teammate: ${lobbyRelayEffect?.label || (lobbyRelayObjective?.targetType || 'wave')}`
                                                     : 'Start a volley to unlock relay passes'}
                                             </div>
                                             <div className="mt-1 text-[11px] text-emerald-100/90">
                                                 {lobbyRelayObjective.active
-                                                    ? `${lobbyRelayEffect?.icon || EMOJI.sparkle} Keep passing before timer runs out. Chain x${lobbyRelayObjective.chainCount || 0}`
-                                                    : 'Passes only count when a different player catches the next target in time.'}
+                                                    ? `${lobbyRelayEffect?.icon || EMOJI.sparkle} Chain x${lobbyRelayObjective.chainCount || 0}`
+                                                    : 'Passes count only when a different teammate catches next.'}
                                             </div>
                                             <div className="mt-2 h-1.5 rounded-full overflow-hidden bg-black/50 border border-white/15">
                                                 <div
@@ -4143,16 +4162,16 @@ const PublicTV = ({ roomCode }) => {
                                             </div>
                                         </div>
                                         <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-300 mb-1">In Room ({roomUsers.length})</div>
-                                        <div className="grid grid-cols-2 gap-2 mb-3 max-h-[20vh] overflow-y-auto custom-scrollbar pr-1">
+                                        <div className="grid grid-cols-2 gap-2 mb-3 max-h-[16vh] overflow-y-auto custom-scrollbar pr-1">
                                             {lobbyMembers.length === 0 && (
                                                 <div className="col-span-2 rounded-xl border border-white/10 bg-black/35 px-3 py-3 text-zinc-200 text-sm md:text-base">
                                                     Scan the QR to join. First person in unlocks live interaction.
                                                 </div>
                                             )}
                                             {lobbyMembers.map((member, idx) => (
-                                                <div key={`${member.uid || member.name || 'guest'}-${idx}`} className="rounded-xl border border-white/10 bg-black/35 px-2.5 py-2 flex items-center gap-2">
-                                                    <span className="text-lg md:text-xl">{member.avatar || EMOJI.sparkle}</span>
-                                                    <span className="truncate text-sm md:text-base font-semibold text-zinc-100">{member.name || 'Guest'}</span>
+                                                <div key={`${member.uid || member.name || 'guest'}-${idx}`} className="rounded-xl border border-white/10 bg-black/35 px-2 py-1.5 flex items-center gap-1.5">
+                                                    <span className="text-base md:text-lg">{member.avatar || EMOJI.sparkle}</span>
+                                                    <span className="truncate text-xs md:text-sm font-semibold text-zinc-100">{member.name || 'Guest'}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -4552,17 +4571,17 @@ const PublicTV = ({ roomCode }) => {
                     <>
                         {lobbyObjectiveIsTeamPong ? (
                             <>
-                                <div className="absolute left-[8%] right-[8%] top-[21%] bottom-[13%] rounded-[26px] border border-cyan-300/35 bg-black/25 shadow-[inset_0_0_30px_rgba(34,211,238,0.12)]">
+                                <div className="absolute left-[8%] right-[8%] top-[16%] bottom-[10%] rounded-[26px] border border-cyan-300/35 bg-black/25 shadow-[inset_0_0_30px_rgba(34,211,238,0.12)]">
                                     <div className="absolute inset-y-[8%] left-1/2 -translate-x-1/2 w-[2px] bg-cyan-200/35"></div>
                                     <div className="absolute inset-x-[9%] top-[8%] h-[1px] bg-cyan-100/20"></div>
                                     <div className="absolute inset-x-[9%] bottom-[8%] h-[1px] bg-cyan-100/20"></div>
                                 </div>
                                 <div
-                                    className="absolute left-[9.5%] w-[1.2%] min-w-[10px] h-[18%] min-h-[88px] -translate-y-1/2 rounded-full border border-cyan-200/45 bg-cyan-400/25 shadow-[0_0_20px_rgba(34,211,238,0.35)] transition-[top] duration-180"
+                                    className="absolute left-[9.5%] w-[1.2%] min-w-[10px] h-[22%] min-h-[110px] -translate-y-1/2 rounded-full border border-cyan-200/45 bg-cyan-400/25 shadow-[0_0_20px_rgba(34,211,238,0.35)] transition-[top] duration-180"
                                     style={{ top: `${lobbyPongState.leftPaddleTopPct}%` }}
                                 />
                                 <div
-                                    className="absolute right-[9.5%] w-[1.2%] min-w-[10px] h-[18%] min-h-[88px] -translate-y-1/2 rounded-full border border-fuchsia-200/45 bg-fuchsia-400/25 shadow-[0_0_20px_rgba(217,70,239,0.35)] transition-[top] duration-180"
+                                    className="absolute right-[9.5%] w-[1.2%] min-w-[10px] h-[22%] min-h-[110px] -translate-y-1/2 rounded-full border border-fuchsia-200/45 bg-fuchsia-400/25 shadow-[0_0_20px_rgba(217,70,239,0.35)] transition-[top] duration-180"
                                     style={{ top: `${lobbyPongState.rightPaddleTopPct}%` }}
                                 />
                                 <div
@@ -4575,7 +4594,7 @@ const PublicTV = ({ roomCode }) => {
                                         <div className="text-[10px] uppercase tracking-[0.12em] text-white/75">{lobbyObjectiveStreakLabel}</div>
                                     </div>
                                 </div>
-                                <div className="absolute top-[18%] left-[7.5%] rounded-xl border border-cyan-200/35 bg-black/45 px-2 py-1.5 text-[10px] uppercase tracking-[0.14em] text-cyan-100 min-w-[86px]">
+                                <div className="absolute top-[12%] left-[7.5%] rounded-xl border border-cyan-200/35 bg-black/45 px-2 py-1.5 text-[10px] uppercase tracking-[0.14em] text-cyan-100 min-w-[86px]">
                                     <div className="font-black mb-1">Left Team</div>
                                     <div className="flex items-center gap-1">
                                         {(lobbyPongTeams.left.length ? lobbyPongTeams.left : [{ uid: 'left-empty', avatar: EMOJI.wave }]).map((participant, idx) => (
@@ -4585,7 +4604,7 @@ const PublicTV = ({ roomCode }) => {
                                         ))}
                                     </div>
                                 </div>
-                                <div className="absolute top-[18%] right-[7.5%] rounded-xl border border-fuchsia-200/35 bg-black/45 px-2 py-1.5 text-[10px] uppercase tracking-[0.14em] text-fuchsia-100 min-w-[86px]">
+                                <div className="absolute top-[12%] right-[7.5%] rounded-xl border border-fuchsia-200/35 bg-black/45 px-2 py-1.5 text-[10px] uppercase tracking-[0.14em] text-fuchsia-100 min-w-[86px]">
                                     <div className="font-black mb-1">Right Team</div>
                                     <div className="flex items-center justify-end gap-1">
                                         {(lobbyPongTeams.right.length ? lobbyPongTeams.right : [{ uid: 'right-empty', avatar: EMOJI.sparkle }]).map((participant, idx) => (
@@ -4648,45 +4667,47 @@ const PublicTV = ({ roomCode }) => {
                         )}
                     </>
                 )}
-                <div className="absolute top-5 left-1/2 -translate-x-1/2 w-[min(72vw,620px)]">
-                    <div className="rounded-2xl border border-white/20 bg-black/45 px-4 py-2.5 backdrop-blur-sm">
-                        <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-cyan-100">
-                            <span>Goal: {lobbyObjectiveBannerGoal}</span>
-                            <span>x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)} teamwork</span>
-                        </div>
-                        <div className="mt-2 h-2 rounded-full overflow-hidden bg-black/55 border border-white/20">
-                            <div className="h-full bg-gradient-to-r from-red-300 via-amber-300 to-emerald-300 transition-all duration-200" style={{ width: `${lobbyStreakDecayPct}%` }} />
-                        </div>
-                        <div className="mt-1 h-1 rounded-full overflow-hidden bg-black/45">
-                            <div className="h-full bg-cyan-300/80 transition-all duration-150" style={{ width: `${lobbyOrbEnergy}%` }} />
-                        </div>
-                        <div className="mt-1 flex items-center justify-between text-[10px] uppercase tracking-[0.13em] text-cyan-100/90">
-                            <span>{lobbyObjectiveProgressLabel}</span>
-                            <span>{lobbyObjectiveStreakLabel}</span>
-                        </div>
-                        {lobbyObjectiveIsTeamPong && (
-                            <div className="mt-1 flex items-center justify-between text-[10px] uppercase tracking-[0.13em] text-cyan-100/90">
-                                <span>Left Team {lobbyPongTeams.left.length}</span>
-                                <span>Right Team {lobbyPongTeams.right.length}</span>
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 w-[min(88vw,960px)]">
+                    <div className="rounded-2xl border border-white/20 bg-black/58 px-3 py-2.5 backdrop-blur-md shadow-[0_0_24px_rgba(0,0,0,0.42)]">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <div className="rounded-lg border border-white/15 bg-black/35 px-2 py-1.5">
+                                <div className="text-[9px] uppercase tracking-[0.18em] text-cyan-200">Goal</div>
+                                <div className="text-[11px] md:text-xs font-semibold text-white truncate">{lobbyObjectiveBannerGoal}</div>
                             </div>
-                        )}
-                        <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-emerald-100">
-                            <span>
-                                Relay: different teammate + {lobbyRelayEffect?.label || (lobbyRelayObjective?.targetType || 'wave')}
-                            </span>
-                            <span>{lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s` : 'idle'}</span>
+                            <div className="rounded-lg border border-white/15 bg-black/35 px-2 py-1.5">
+                                <div className="text-[9px] uppercase tracking-[0.18em] text-cyan-200">Teamwork</div>
+                                <div className="text-[11px] md:text-xs font-semibold text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
+                            </div>
+                            <div className="rounded-lg border border-white/15 bg-black/35 px-2 py-1.5">
+                                <div className="text-[9px] uppercase tracking-[0.18em] text-cyan-200">Status</div>
+                                <div className="text-[11px] md:text-xs font-semibold text-white">{lobbyObjectiveProgressLabel}</div>
+                            </div>
+                            <div className="rounded-lg border border-white/15 bg-black/35 px-2 py-1.5">
+                                <div className="text-[9px] uppercase tracking-[0.18em] text-cyan-200">Relay</div>
+                                <div className="text-[11px] md:text-xs font-semibold text-white">
+                                    {lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s • Chain x${lobbyRelayObjective.chainCount || 0}` : 'Idle'}
+                                </div>
+                            </div>
                         </div>
-                        <div className="mt-1 h-1.5 rounded-full overflow-hidden bg-black/45 border border-white/15">
-                            <div
-                                className={`h-full transition-all duration-150 ${
-                                    lobbyRelayObjective?.urgency === 'danger'
-                                        ? 'bg-gradient-to-r from-red-300 to-amber-300'
-                                        : lobbyRelayObjective?.urgency === 'warning'
-                                            ? 'bg-gradient-to-r from-amber-300 to-yellow-200'
-                                            : 'bg-gradient-to-r from-emerald-300 to-cyan-300'
-                                }`}
-                                style={{ width: `${Math.max(0, Number(lobbyRelayObjective?.progressPct || 0))}%` }}
-                            />
+                        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div className="rounded-lg border border-white/15 bg-black/35 px-2 py-1.5">
+                                <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.16em] text-cyan-100/90 mb-1">
+                                    <span>Momentum</span>
+                                    <span>{lobbyObjectiveStreakLabel}</span>
+                                </div>
+                                <div className="h-2 rounded-full overflow-hidden bg-black/55 border border-white/20">
+                                    <div className="h-full bg-gradient-to-r from-red-300 via-amber-300 to-emerald-300 transition-all duration-200" style={{ width: `${lobbyStreakDecayPct}%` }} />
+                                </div>
+                            </div>
+                            <div className="rounded-lg border border-white/15 bg-black/35 px-2 py-1.5">
+                                <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.16em] text-cyan-100/90 mb-1">
+                                    <span>Orb Energy</span>
+                                    <span>{Math.round(lobbyOrbEnergy)}%</span>
+                                </div>
+                                <div className="h-2 rounded-full overflow-hidden bg-black/55 border border-white/20">
+                                    <div className="h-full bg-cyan-300/85 transition-all duration-150" style={{ width: `${lobbyOrbEnergy}%` }} />
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

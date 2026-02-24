@@ -7,7 +7,8 @@ import {
     updateDoc,
     serverTimestamp,
     increment,
-    callFunction
+    callFunction,
+    ensureAppCheckToken
 } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
 import { EMOJI } from '../../../lib/emoji';
@@ -40,6 +41,55 @@ const logCatalogPermissionSkip = (scope) => {
     if (catalogPermissionSkipLogged) return;
     catalogPermissionSkipLogged = true;
     console.info(`[HostQueue] ${scope} skipped: catalog write access is not available for this account.`);
+};
+
+const isQueuePermissionDeniedError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('permission-denied')
+        || code.includes('forbidden')
+        || message.includes('permission-denied')
+        || message.includes('missing or insufficient permissions')
+    );
+};
+
+const isQueueUnauthenticatedError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('unauthenticated')
+        || message.includes('auth')
+        || message.includes('sign in')
+    );
+};
+
+const isQueueAppCheckError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('failed-precondition')
+        && (message.includes('app check') || message.includes('appcheck') || message.includes('token required'))
+    );
+};
+
+const isQueueNetworkError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('unavailable')
+        || code.includes('deadline-exceeded')
+        || message.includes('network')
+        || message.includes('timed out')
+    );
+};
+
+const getQueueWriteErrorMessage = (error, fallback = 'Could not add song right now.') => {
+    if (isQueueAppCheckError(error)) return 'Security token expired. Refresh and try again.';
+    if (isQueueUnauthenticatedError(error)) return 'Session expired. Sign in again and retry.';
+    if (isQueuePermissionDeniedError(error)) return 'Queue write is blocked for this account or room.';
+    if (isQueueNetworkError(error)) return 'Network issue while writing queue. Try again.';
+    return fallback;
 };
 
 const parseYouTubePlaylistId = (input = '') => {
@@ -247,6 +297,7 @@ const useQueueSongActions = ({
             }
             toast('Loading YouTube playlist...');
             try {
+                await ensureAppCheckToken(false).catch(() => false);
                 const data = await callFunction('youtubePlaylist', {
                     playlistId,
                     maxTotal: YOUTUBE_PLAYLIST_QUEUE_MAX
@@ -315,105 +366,129 @@ const useQueueSongActions = ({
                 toast(`Queued ${queuedCount} songs from YouTube playlist`);
             } catch (err) {
                 console.warn('YouTube playlist queue failed', err);
-                toast('Could not queue playlist. Check playlist visibility and API setup.');
+                toast(getQueueWriteErrorMessage(err, 'Could not queue playlist. Check playlist visibility and API setup.'));
             }
             return;
         }
 
         if (!manual.song) return;
-        const manualTitle = manual.song;
-        const manualArtist = manual.artist || 'Unknown';
-        const manualBacking = normalizeBackingChoice({
-            mediaUrl: manual.url,
-            appleMusicId: manual.appleMusicId
-        });
-        const manualUrl = manualBacking.mediaUrl;
-        const resolvedAppleMusicId = manualBacking.appleMusicId;
-        const songRecord = await ensureSong({
-            title: manualTitle,
-            artist: manualArtist,
-            artworkUrl: manual.art || '',
-            appleMusicId: resolvedAppleMusicId,
-            verifyMeta: manual.art ? {} : false,
-            verifiedBy: hostName || 'host'
-        });
-        const songId = songRecord?.songId || buildSongKey(manualTitle, manualArtist);
-        const youtubeId = extractYouTubeId(manualUrl);
-        const trackSource = resolvedAppleMusicId
-            ? 'apple'
-            : youtubeId
-                ? 'youtube'
-                : manualUrl
-                    ? 'custom'
-                    : '';
-        const trackRecord = trackSource
-            ? await ensureTrack({
+        try {
+            await ensureAppCheckToken(false).catch(() => false);
+            const manualTitle = manual.song;
+            const manualArtist = manual.artist || 'Unknown';
+            const manualBacking = normalizeBackingChoice({
+                mediaUrl: manual.url,
+                appleMusicId: manual.appleMusicId
+            });
+            const manualUrl = manualBacking.mediaUrl;
+            const resolvedAppleMusicId = manualBacking.appleMusicId;
+            let songId = buildSongKey(manualTitle, manualArtist);
+            try {
+                const songRecord = await ensureSong({
+                    title: manualTitle,
+                    artist: manualArtist,
+                    artworkUrl: manual.art || '',
+                    appleMusicId: resolvedAppleMusicId,
+                    verifyMeta: manual.art ? {} : false,
+                    verifiedBy: hostName || 'host'
+                });
+                songId = songRecord?.songId || songId;
+            } catch (err) {
+                if (isCatalogPermissionDeniedError(err)) {
+                    logCatalogPermissionSkip('manual.ensureSong');
+                } else {
+                    console.warn('manual ensureSong failed', err);
+                }
+            }
+            const youtubeId = extractYouTubeId(manualUrl);
+            const trackSource = resolvedAppleMusicId
+                ? 'apple'
+                : youtubeId
+                    ? 'youtube'
+                    : manualUrl
+                        ? 'custom'
+                        : '';
+            let trackRecord = null;
+            if (trackSource) {
+                try {
+                    trackRecord = await ensureTrack({
+                        songId,
+                        source: trackSource,
+                        mediaUrl: manualUrl || '',
+                        appleMusicId: resolvedAppleMusicId,
+                        duration: manual.duration ? Math.round(manual.duration) : null,
+                        audioOnly: manual.audioOnly || isAudioUrl(manualUrl),
+                        backingOnly: !!manual.backingAudioOnly,
+                        addedBy: hostName || 'Host'
+                    });
+                } catch (err) {
+                    if (isCatalogPermissionDeniedError(err)) {
+                        logCatalogPermissionSkip('manual.ensureTrack');
+                    } else {
+                        console.warn('manual ensureTrack failed', err);
+                    }
+                }
+            }
+            let resolvedLyrics = manual.lyrics || '';
+            let resolvedTimedLyrics = manual.lyricsTimed || null;
+            let resolvedLyricsSource = manual.lyricsTimed ? 'apple' : (manual.lyrics ? 'manual' : '');
+            if (!resolvedLyrics && !resolvedTimedLyrics && resolvedAppleMusicId) {
+                const fetched = await fetchAppleTimedLyrics(manualTitle, manualArtist);
+                if (fetched) {
+                    resolvedLyrics = fetched.lyrics || '';
+                    resolvedTimedLyrics = fetched.lyricsTimed || null;
+                    resolvedLyricsSource = fetched.lyricsSource || '';
+                }
+            }
+            if (!resolvedLyrics && !resolvedTimedLyrics) {
+                const generated = await fetchAiLyricsFallback(manualTitle, manualArtist);
+                if (generated) {
+                    resolvedLyrics = generated.lyrics || '';
+                    resolvedLyricsSource = generated.lyricsSource || 'ai';
+                }
+            }
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
+                roomCode,
                 songId,
-                source: trackSource,
-                mediaUrl: manualUrl || '',
+                trackId: trackRecord?.trackId || null,
+                trackSource: trackSource || null,
+                songTitle: manualTitle,
+                artist: manualArtist,
+                singerName: manual.singer,
+                mediaUrl: manualUrl,
+                albumArtUrl: manual.art || '',
+                lyrics: resolvedLyrics,
+                lyricsTimed: resolvedTimedLyrics,
                 appleMusicId: resolvedAppleMusicId,
-                duration: manual.duration ? Math.round(manual.duration) : null,
-                audioOnly: manual.audioOnly || isAudioUrl(manualUrl),
-                backingOnly: !!manual.backingAudioOnly,
-                addedBy: hostName || 'Host'
-            })
-            : null;
-        let resolvedLyrics = manual.lyrics || '';
-        let resolvedTimedLyrics = manual.lyricsTimed || null;
-        let resolvedLyricsSource = manual.lyricsTimed ? 'apple' : (manual.lyrics ? 'manual' : '');
-        if (!resolvedLyrics && !resolvedTimedLyrics && resolvedAppleMusicId) {
-            const fetched = await fetchAppleTimedLyrics(manualTitle, manualArtist);
-            if (fetched) {
-                resolvedLyrics = fetched.lyrics || '';
-                resolvedTimedLyrics = fetched.lyricsTimed || null;
-                resolvedLyricsSource = fetched.lyricsSource || '';
-            }
+                musicSource: resolvedAppleMusicId ? 'apple' : '',
+                lyricsSource: resolvedLyricsSource,
+                duration: manual.duration ? Math.round(manual.duration) : 180,
+                status: 'requested',
+                timestamp: serverTimestamp(),
+                priorityScore: Date.now(),
+                emoji: EMOJI.mic,
+                backingAudioOnly: manual.backingAudioOnly || false,
+                audioOnly: manual.audioOnly || isAudioUrl(manualUrl)
+            });
+            setManual({
+                song: '',
+                artist: '',
+                singer: hostName || 'Host',
+                url: '',
+                art: '',
+                lyrics: '',
+                lyricsTimed: null,
+                appleMusicId: '',
+                duration: 180,
+                backingAudioOnly: false,
+                audioOnly: false
+            });
+            setSearchQ('');
+            toast('Song Added!');
+        } catch (err) {
+            console.warn('Failed to add manual song', err);
+            toast(getQueueWriteErrorMessage(err, 'Could not add song right now.'));
         }
-        if (!resolvedLyrics && !resolvedTimedLyrics) {
-            const generated = await fetchAiLyricsFallback(manualTitle, manualArtist);
-            if (generated) {
-                resolvedLyrics = generated.lyrics || '';
-                resolvedLyricsSource = generated.lyricsSource || 'ai';
-            }
-        }
-        await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
-            roomCode,
-            songId,
-            trackId: trackRecord?.trackId || null,
-            trackSource: trackSource || null,
-            songTitle: manualTitle,
-            artist: manualArtist,
-            singerName: manual.singer,
-            mediaUrl: manualUrl,
-            albumArtUrl: manual.art || '',
-            lyrics: resolvedLyrics,
-            lyricsTimed: resolvedTimedLyrics,
-            appleMusicId: resolvedAppleMusicId,
-            musicSource: resolvedAppleMusicId ? 'apple' : '',
-            lyricsSource: resolvedLyricsSource,
-            duration: manual.duration ? Math.round(manual.duration) : 180,
-            status: 'requested',
-            timestamp: serverTimestamp(),
-            priorityScore: Date.now(),
-            emoji: EMOJI.mic,
-            backingAudioOnly: manual.backingAudioOnly || false,
-            audioOnly: manual.audioOnly || isAudioUrl(manualUrl)
-        });
-        setManual({
-            song: '',
-            artist: '',
-            singer: hostName || 'Host',
-            url: '',
-            art: '',
-            lyrics: '',
-            lyricsTimed: null,
-            appleMusicId: '',
-            duration: 180,
-            backingAudioOnly: false,
-            audioOnly: false
-        });
-        setSearchQ('');
-        toast('Song Added!');
     };
 
     const addSongFromResult = async (r, options = {}) => {
@@ -442,6 +517,7 @@ const useQueueSongActions = ({
         const initialSongId = buildSongKey(r.trackName, r.artistName || 'Unknown');
 
         try {
+            await ensureAppCheckToken(false).catch(() => false);
             const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
                 roomCode,
                 songId: initialSongId,
@@ -541,7 +617,7 @@ const useQueueSongActions = ({
             };
         } catch (err) {
             console.warn('Failed to queue song', err);
-            toast('Could not add song (permissions)');
+            toast(getQueueWriteErrorMessage(err, 'Could not add song right now.'));
         }
     };
 

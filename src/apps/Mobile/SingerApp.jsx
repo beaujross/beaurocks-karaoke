@@ -7,7 +7,8 @@ import {
     auth, ensureUserProfile, EmailAuthProvider, linkWithCredential, onAuthStateChanged,
     RecaptchaVerifier, signInWithPhoneNumber, PhoneAuthProvider,
     trackEvent,
-    callFunction
+    callFunction,
+    ensureAppCheckToken
 } from '../../lib/firebase';
 import { APP_ID, ASSETS, STORM_SFX } from '../../lib/assets';
 import { emoji, EMOJI } from '../../lib/emoji';
@@ -18,7 +19,7 @@ import { averageBand } from '../../lib/utils';
 import { PARTY_LIGHTS_STYLE, SINGER_APP_CONFIG } from '../../lib/uiConstants';
 import { POINTS_PACKS, SUBSCRIPTIONS } from '../../billing/catalog';
 import { BILLING_PLATFORMS, createBillingProvider, detectBillingPlatform } from '../../billing/provider';
-import { ensureSong, ensureTrack, extractYouTubeId } from '../../lib/songCatalog';
+import { ensureSong, ensureTrack, extractYouTubeId, buildSongKey } from '../../lib/songCatalog';
 import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
 import GameContainer from '../../components/GameContainer';
 import AppleLyricsRenderer from '../../components/AppleLyricsRenderer';
@@ -143,6 +144,7 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
 ];
 const LOBBY_PLAYGROUND_WINDOW_MS = 60 * 1000;
 const LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE = 12;
+let singerCatalogPermissionSkipLogged = false;
 
 const timestampToMs = (value) => {
     if (!value) return 0;
@@ -153,6 +155,73 @@ const timestampToMs = (value) => {
         return (value.seconds * 1000) + Math.floor(nanos / 1000000);
     }
     return 0;
+};
+
+const isCatalogPermissionDeniedError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('permission-denied')
+        || message.includes('permission-denied')
+        || message.includes('host or moderator access required')
+        || message.includes('catalog song')
+        || message.includes('catalog track')
+    );
+};
+
+const logSingerCatalogPermissionSkip = (scope = 'ensureSong/ensureTrack') => {
+    if (singerCatalogPermissionSkipLogged) return;
+    singerCatalogPermissionSkipLogged = true;
+    console.info(`[SingerApp] ${scope} skipped: catalog write access unavailable, queueing with fallback metadata.`);
+};
+
+const isQueuePermissionDeniedError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('permission-denied')
+        || code.includes('forbidden')
+        || message.includes('permission-denied')
+        || message.includes('missing or insufficient permissions')
+    );
+};
+
+const isQueueUnauthenticatedError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('unauthenticated')
+        || message.includes('auth')
+        || message.includes('sign in')
+    );
+};
+
+const isQueueAppCheckError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('failed-precondition')
+        && (message.includes('app check') || message.includes('appcheck') || message.includes('token required'))
+    );
+};
+
+const isQueueNetworkError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('unavailable')
+        || code.includes('deadline-exceeded')
+        || message.includes('network')
+        || message.includes('timed out')
+    );
+};
+
+const getQueueSubmitErrorMessage = (error, fallback = 'Could not send request.') => {
+    if (isQueueAppCheckError(error)) return 'Security token expired. Refresh and try again.';
+    if (isQueueUnauthenticatedError(error)) return 'Session expired. Sign in again and retry.';
+    if (isQueuePermissionDeniedError(error)) return 'Queue request is blocked for this room/account.';
+    if (isQueueNetworkError(error)) return 'Network issue while sending request. Try again.';
+    return fallback;
 };
 
 const normalizeTight15Text = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -3635,6 +3704,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             const song = s || form.song; const artist = a || form.artist; const artwork = art || form.art; 
             if(!song) return; 
             markActive();
+            await ensureAppCheckToken(false).catch(() => false);
             const rotation = queueSettings.rotation || 'first_come';
             const firstTimeBoost = !!queueSettings.firstTimeBoost;
             const queuedCount = songs.filter(songItem => (songItem.singerUid === uid || songItem.singerName === user.name) && (songItem.status === 'requested' || songItem.status === 'pending' || songItem.status === 'performing')).length;
@@ -3655,20 +3725,41 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 return;
             }
 
-            const songRecord = await ensureSong({
-                title: song,
-                artist: artist || 'Unknown',
-                artworkUrl: artwork || '',
-                itunesId: options.itunesId || ''
-            });
+            let songId = buildSongKey(song, artist || 'Unknown');
+            try {
+                const songRecord = await ensureSong({
+                    title: song,
+                    artist: artist || 'Unknown',
+                    artworkUrl: artwork || '',
+                    itunesId: options.itunesId || ''
+                });
+                songId = songRecord?.songId || songId;
+            } catch (catalogError) {
+                if (isCatalogPermissionDeniedError(catalogError)) {
+                    logSingerCatalogPermissionSkip('ensureSong');
+                } else {
+                    console.warn('Singer ensureSong failed', catalogError);
+                }
+            }
 
-            const trackRecord = backingUrl ? await ensureTrack({
-                songId: songRecord?.songId || '',
-                source: trackSource,
-                mediaUrl: backingUrl,
-                label: options.trackLabel || (options.mediaUrl ? 'Host index' : 'Singer selected'),
-                addedBy: uid
-            }) : null;
+            let trackRecord = null;
+            if (backingUrl) {
+                try {
+                    trackRecord = await ensureTrack({
+                        songId: songId || '',
+                        source: trackSource,
+                        mediaUrl: backingUrl,
+                        label: options.trackLabel || (options.mediaUrl ? 'Host index' : 'Singer selected'),
+                        addedBy: uid
+                    });
+                } catch (catalogError) {
+                    if (isCatalogPermissionDeniedError(catalogError)) {
+                        logSingerCatalogPermissionSkip('ensureTrack');
+                    } else {
+                        console.warn('Singer ensureTrack failed', catalogError);
+                    }
+                }
+            }
 
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
                 roomCode,
@@ -3681,7 +3772,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 status: (room?.bouncerMode || enforcePending) ? 'pending' : 'requested',
                 timestamp: serverTimestamp(),
                 priorityScore,
-                songId: songRecord?.songId || null,
+                songId: songId || null,
                 trackId: trackRecord?.trackId || null,
                 trackSource: backingUrl ? trackSource : null,
                 mediaUrl: backingUrl || ''
@@ -3691,7 +3782,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setSearchQ(''); setResults([]); toast("Request Sent!"); 
             logActivity(`requested ${song}`, EMOJI.musicNotes);
             syncPoints(true);
-        } catch (_err) { toast("Error sending request"); }
+        } catch (err) {
+            console.warn('Singer queue submit failed', err);
+            toast(getQueueSubmitErrorMessage(err, 'Error sending request'));
+        }
     };
     
     const deleteMyRequest = async (id) => { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id)); toast("Request Deleted"); };

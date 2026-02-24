@@ -116,7 +116,7 @@ const HostTopChrome = ({
     const bangerActive = room?.lightMode === 'banger';
     const balladActive = room?.lightMode === 'ballad';
     const activeCrowdObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
-    const volleyActive = activeCrowdObjectiveMode?.id === 'volley_orb';
+    const volleyActive = !!activeCrowdObjectiveMode;
     const selfieCamActive = room?.activeMode === 'selfie_cam';
     const normalizedPermission = String(permissionLevel || 'unknown').toLowerCase();
     const tvDisplayMode = room?.showLyricsTv && room?.showVisualizerTv
@@ -308,6 +308,14 @@ const HostTopChrome = ({
         } else {
             await updateRoom({ showLyricsTv: false, showVisualizerTv: false });
         }
+        closeAllTopMenus();
+    };
+    const toggleCrowdObjectiveMode = async (modeLightMode) => {
+        if (!modeLightMode) return;
+        await updateRoom({
+            lightMode: room?.lightMode === modeLightMode ? 'off' : modeLightMode,
+            lobbyVolleyEnabled: true
+        });
         closeAllTopMenus();
     };
     const applyTvPresentationProfile = async (profile) => {
@@ -1088,9 +1096,8 @@ const HostTopChrome = ({
                                     </button>
                                     {CROWD_OBJECTIVE_MODES.map((mode) => {
                                         const isActive = room?.lightMode === mode.lightMode;
-                                        const effectId = 'volley';
                                         return (
-                                            <button key={`vibe-objective-${mode.id}`} onClick={() => runLiveEffect(effectId)} className={`${styles.btnStd} ${isActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
+                                            <button key={`vibe-objective-${mode.id}`} onClick={() => toggleCrowdObjectiveMode(mode.lightMode)} className={`${styles.btnStd} ${isActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                                 <i className={`fa-solid ${mode.icon}`}></i>
                                                 {isActive ? `${mode.shortLabel} ON` : mode.label}
                                             </button>
