@@ -85,6 +85,7 @@ const DEMO_SCENES = [
 ];
 
 const DEMO_TOTAL_MS = DEMO_SCENES.reduce((sum, scene) => sum + scene.durationMs, 0);
+const DEMO_ROOM_STORAGE_KEY = "mk_demo_room_code_v2";
 const REACTION_TOKENS = {
   clap: "CLAP",
   fire: "FIRE",
@@ -113,12 +114,42 @@ const formatClock = (ms = 0) => {
 };
 
 const normalizeRoomCode = (value = "") => {
-  const token = String(value || "")
+  let token = String(value || "")
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9_-]/g, "")
     .slice(0, 24);
-  return token || "DEMO001";
+  if (!token) return "DEMO001";
+  if (!token.startsWith("DEMO")) {
+    token = `DEMO${token}`.slice(0, 24);
+  }
+  return token;
+};
+
+const createDemoRoomCode = () => {
+  const stamp = Date.now().toString(36).slice(-4).toUpperCase();
+  const random = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return normalizeRoomCode(`DEMO${stamp}${random}`);
+};
+
+const getInitialDemoRoomCode = () => {
+  if (typeof window === "undefined") return "DEMO001";
+  try {
+    const stored = window.sessionStorage.getItem(DEMO_ROOM_STORAGE_KEY);
+    if (stored) {
+      const existing = normalizeRoomCode(stored);
+      if (existing.startsWith("DEMO")) return existing;
+    }
+  } catch {
+    // Ignore storage failures and generate a fresh code.
+  }
+  const generated = createDemoRoomCode();
+  try {
+    window.sessionStorage.setItem(DEMO_ROOM_STORAGE_KEY, generated);
+  } catch {
+    // Ignore storage failures in private mode.
+  }
+  return generated;
 };
 
 const TIMELINE = (() => {
@@ -157,16 +188,17 @@ const DemoExperiencePage = () => {
   const [timelineMs, setTimelineMs] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [loopPlayback, setLoopPlayback] = useState(true);
-  const [roomCode, setRoomCode] = useState("DEMO001");
-  const [liveSync, setLiveSync] = useState(false);
+  const [roomCode, setRoomCode] = useState(() => getInitialDemoRoomCode());
+  const [liveSync, setLiveSync] = useState(true);
   const [surfaceReloadToken, setSurfaceReloadToken] = useState(0);
-  const [syncState, setSyncState] = useState({ tone: "muted", message: "Live sync is off." });
+  const [syncState, setSyncState] = useState({ tone: "muted", message: "Scripted sync warming up." });
 
   const latestStateRef = useRef(null);
   const inFlightRef = useRef(false);
   const lastTickBucketRef = useRef(-1);
   const lastSceneIdRef = useRef("");
   const lastSequenceRef = useRef(0);
+  const autoRoomRetryRef = useRef(false);
 
   useEffect(() => {
     if (!playing) return () => {};
@@ -246,6 +278,18 @@ const DemoExperiencePage = () => {
     host: buildSurfaceUrl("?mode=host&tab=stage"),
   }), [buildSurfaceUrl]);
 
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(DEMO_ROOM_STORAGE_KEY, sanitizedRoomCode);
+    } catch {
+      // Ignore storage failures in private mode.
+    }
+  }, [sanitizedRoomCode]);
+
+  useEffect(() => {
+    autoRoomRetryRef.current = false;
+  }, [sanitizedRoomCode]);
+
   latestStateRef.current = {
     timelineMs,
     activeScene,
@@ -313,9 +357,21 @@ const DemoExperiencePage = () => {
         setSyncState({ tone: "muted", message: `Skipped stale ${action} action.` });
         return;
       }
+      autoRoomRetryRef.current = false;
       setSyncState({ tone: "ok", message: `Synced ${action} at ${formatClock(snapshot.timelineMs)}.` });
     } catch (error) {
-      setSyncState({ tone: "error", message: String(error?.message || "Live sync failed.") });
+      const message = String(error?.message || "Live sync failed.");
+      const lowerMessage = message.toLowerCase();
+      if (lowerMessage.includes("only demo room hosts can drive demo director sync")) {
+        if (!autoRoomRetryRef.current) {
+          autoRoomRetryRef.current = true;
+          const replacement = createDemoRoomCode();
+          setRoomCode(replacement);
+          setSyncState({ tone: "muted", message: `Switched to ${replacement} to avoid room lock. Retrying sync...` });
+          return;
+        }
+      }
+      setSyncState({ tone: "error", message });
     } finally {
       inFlightRef.current = false;
     }
@@ -394,10 +450,10 @@ const DemoExperiencePage = () => {
               const next = !liveSync;
               setLiveSync(next);
               trackEvent("mk_demo_live_sync_toggle", { enabled: next ? 1 : 0 });
-              if (!next) setSyncState({ tone: "muted", message: "Live sync is off." });
+              if (!next) setSyncState({ tone: "muted", message: "Scripted sync is paused." });
             }}
           >
-            Live Sync: {liveSync ? "On" : "Off"}
+            Scripted Sync: {liveSync ? "On" : "Off"}
           </button>
           <button
             type="button"
@@ -511,7 +567,7 @@ const DemoExperiencePage = () => {
 
       <article className="mk3-demo-launch">
         <h3>Launch Real Surfaces From This Room Code</h3>
-        <p>Use a `DEMO*` room code, then open each surface on separate tabs or devices.</p>
+        <p>Runs a preset multi-surface flow automatically using your per-session `DEMO*` room code.</p>
         <div className={`mk3-inline-status ${syncState.tone === "error" ? "mk3-status-error" : syncState.tone === "ok" ? "mk3-inline-next" : ""}`}>
           {syncState.message}
         </div>
