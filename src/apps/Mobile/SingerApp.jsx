@@ -39,6 +39,7 @@ import {
     applyLobbyInteraction,
     getActiveParticipants,
     deriveRelayObjective,
+    getLobbyInteractionProfile,
     LOBBY_PLAYGROUND_ENGINE_CONSTANTS
 } from '../TV/lobbyPlaygroundEngine';
 import { watchQuerySnapshot } from '../../lib/firestoreWatch';
@@ -101,47 +102,65 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
         id: 'wave',
         label: 'Wave Tunnel',
         emoji: emoji(0x1F44B),
-        hint: 'Send a friendly room wave.',
+        hint: 'Best for saving a falling orb.',
         accentCard: 'from-cyan-500/22 via-sky-500/12 to-black/55',
         accentBorder: 'border-cyan-300/80',
         accentText: 'text-cyan-100',
         accentPill: 'bg-cyan-400/25 text-cyan-100 border-cyan-300/45',
-        boost: 'Streak Boost: Flow'
+        boost: 'Role: Stability'
     },
     {
         id: 'laser',
         label: 'Laser Pop',
         emoji: emoji(0x2728),
-        hint: 'Paint the TV with neon pops.',
+        hint: 'Best for quick power jumps.',
         accentCard: 'from-fuchsia-500/24 via-cyan-500/10 to-black/55',
         accentBorder: 'border-fuchsia-300/80',
         accentText: 'text-fuchsia-100',
         accentPill: 'bg-fuchsia-400/25 text-fuchsia-100 border-fuchsia-300/45',
-        boost: 'Streak Boost: Prism'
+        boost: 'Role: Power'
     },
     {
         id: 'echo',
         label: 'Echo Ring',
         emoji: emoji(0x1F30A),
-        hint: 'Pulse a ripple through the room.',
+        hint: 'Best when relay timer is low.',
         accentCard: 'from-indigo-500/22 via-blue-500/14 to-black/55',
         accentBorder: 'border-indigo-300/80',
         accentText: 'text-indigo-100',
         accentPill: 'bg-indigo-400/25 text-indigo-100 border-indigo-300/45',
-        boost: 'Streak Boost: Ripple'
+        boost: 'Role: Relay'
     },
     {
         id: 'confetti',
         label: 'Confetti',
         emoji: emoji(0x1F389),
-        hint: 'Trigger a celebration burst.',
+        hint: 'Best for climbing tiers fast.',
         accentCard: 'from-pink-500/24 via-yellow-400/15 to-black/55',
         accentBorder: 'border-pink-300/80',
         accentText: 'text-pink-100',
         accentPill: 'bg-pink-400/25 text-pink-100 border-pink-300/45',
-        boost: 'Streak Boost: Party'
+        boost: 'Role: Momentum'
     }
 ];
+const formatLobbyInteractionImpact = (interactionId = '') => {
+    const profile = getLobbyInteractionProfile(interactionId);
+    if (!profile) return '';
+    const interactionKey = String(interactionId || '').trim().toLowerCase();
+    if (interactionKey === 'wave') {
+        return `Decay -${Math.max(0, Math.round((1 - Number(profile.decayMultiplier || 1)) * 100))}%`;
+    }
+    if (interactionKey === 'laser') {
+        return `Energy +${Math.max(0, Math.round((Number(profile.energyGainMultiplier || 1) - 1) * 100))}%`;
+    }
+    if (interactionKey === 'echo') {
+        return `Relay +${(Math.max(0, Number(profile.relayWindowBonusMs || 0)) / 1000).toFixed(1)}s`;
+    }
+    if (interactionKey === 'confetti') {
+        return `Streak +${Math.max(1, Math.round(Number(profile.streakStep || 1)))}`;
+    }
+    return profile.roleLabel || '';
+};
 const LOBBY_PLAYGROUND_WINDOW_MS = 60 * 1000;
 const LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE = 12;
 let singerCatalogPermissionSkipLogged = false;
@@ -7189,40 +7208,51 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                      <div className="mt-2 h-1.5 rounded-full bg-black/60 border border-white/10 overflow-hidden">
                                          <div className="h-full bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-yellow-300 transition-all duration-200" style={{ width: `${lobbyVolleyEnergyLive}%` }}></div>
                                      </div>
-                                     <div className="mt-1 h-1 rounded-full bg-black/60 overflow-hidden">
-                                         <div className="h-full bg-white/70 transition-all duration-200" style={{ width: `${lobbyVolleyStreakDecayPct}%` }}></div>
-                                     </div>
-                                 </div>
-                                 <div className="grid grid-cols-2 gap-2.5">
-                                     {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction) => (
-                                         <button
-                                             key={interaction.id}
-                                             onClick={() => triggerLobbyPlayInteraction(interaction.id)}
-                                             disabled={lobbyPlayInteractionDisabled}
-                                             className={`relative overflow-hidden bg-gradient-to-b ${interaction.accentCard} border-2 ${interaction.accentBorder} rounded-2xl p-2.5 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${
-                                                 lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType
-                                                     ? 'ring-2 ring-emerald-300/75 shadow-[0_0_18px_rgba(52,211,153,0.5)]'
-                                                     : ''
-                                             } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
-                                         >
-                                             <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[10px] font-black tracking-[0.14em] border border-white/25 bg-black/40 text-white">FREE</span>
-                                             <span className="text-4xl mb-1.5">{interaction.emoji}</span>
-                                             <span className={`font-bold text-[15px] ${interaction.accentText}`}>{interaction.label}</span>
-                                             <div className={`mt-1 px-2 py-0.5 rounded-full border text-[11px] font-black ${interaction.accentPill}`}>
-                                                 {interaction.boost}
-                                             </div>
-                                             <div className={`mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/45 border-white/20 text-zinc-100'}`}>
-                                                 {lobbyPlaygroundPaused
-                                                     ? 'Paused by host'
-                                                     : lobbyPlayRateLimited
-                                                         ? 'Cooling down...'
-                                                         : (lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType)
-                                                             ? 'Pass target: teammate tap now'
-                                                             : interaction.hint}
-                                             </div>
-                                         </button>
-                                     ))}
-                                 </div>
+                                  <div className="mt-1 h-1 rounded-full bg-black/60 overflow-hidden">
+                                      <div className="h-full bg-white/70 transition-all duration-200" style={{ width: `${lobbyVolleyStreakDecayPct}%` }}></div>
+                                  </div>
+                              </div>
+                                  <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-200/90 px-0.5">
+                                      Four actions, four roles: stability, power, relay, momentum.
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2.5">
+                                      {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction) => {
+                                          const impactLabel = formatLobbyInteractionImpact(interaction.id);
+                                          return (
+                                              <button
+                                                  key={interaction.id}
+                                                  onClick={() => triggerLobbyPlayInteraction(interaction.id)}
+                                                  disabled={lobbyPlayInteractionDisabled}
+                                                  className={`relative overflow-hidden bg-gradient-to-b ${interaction.accentCard} border-2 ${interaction.accentBorder} rounded-2xl p-2.5 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${
+                                                      lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType
+                                                          ? 'ring-2 ring-emerald-300/75 shadow-[0_0_18px_rgba(52,211,153,0.5)]'
+                                                          : ''
+                                                  } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
+                                              >
+                                                  <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[10px] font-black tracking-[0.14em] border border-white/25 bg-black/40 text-white">FREE</span>
+                                                  <span className="text-4xl mb-1.5">{interaction.emoji}</span>
+                                                  <span className={`font-bold text-[15px] ${interaction.accentText}`}>{interaction.label}</span>
+                                                  <div className={`mt-1 px-2 py-0.5 rounded-full border text-[11px] font-black ${interaction.accentPill}`}>
+                                                      {interaction.boost}
+                                                  </div>
+                                                  {!!impactLabel && (
+                                                      <div className="mt-1 px-2 py-0.5 rounded-full border border-white/18 bg-black/45 text-[11px] font-black text-white/95">
+                                                          {impactLabel}
+                                                      </div>
+                                                  )}
+                                                  <div className={`mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/45 border-white/20 text-zinc-100'}`}>
+                                                      {lobbyPlaygroundPaused
+                                                          ? 'Paused by host'
+                                                          : lobbyPlayRateLimited
+                                                              ? 'Cooling down...'
+                                                              : (lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType)
+                                                                  ? 'Pass target: teammate tap now'
+                                                                  : interaction.hint}
+                                                  </div>
+                                              </button>
+                                          );
+                                      })}
+                                  </div>
                                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-zinc-200">
                                      <span className={`px-2 py-0.5 rounded-full border ${
                                          lobbyRelayObjective.active

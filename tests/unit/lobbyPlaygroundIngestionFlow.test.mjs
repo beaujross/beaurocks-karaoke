@@ -65,7 +65,7 @@ const run = () => {
         { type: 'lobby_play_confetti', uid: 'd', userName: 'D', timestampMs: 3000 }
     ];
     const coordinated = ingestLobbyReactionEvents({ events });
-    assert.equal(coordinated.state.streakCount, 4);
+    assert.equal(coordinated.state.streakCount, 5);
     assert.ok(coordinated.combos.some((combo) => combo.key === 'wave_laser'));
     assert.ok(coordinated.combos.some((combo) => combo.key === 'echo_confetti'));
     assert.ok(coordinated.transitions.some((transition) => transition.tier === 1));

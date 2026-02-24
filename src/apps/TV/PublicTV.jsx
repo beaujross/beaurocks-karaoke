@@ -4625,7 +4625,10 @@ const PublicTV = ({ roomCode }) => {
                                     className="absolute -translate-x-1/2 -translate-y-1/2 transition-[top,left] duration-200 ease-out"
                                     style={{ top: `${lobbyOrbRenderTopPct}%`, left: `${lobbyOrbRenderLeftPct}%` }}
                                 >
-                                    <div className={`lobby-volley-orb-shell ${motionSafeFx ? 'lobby-volley-orb-shell-safe' : ''}`}>
+                                    <div
+                                        className={`lobby-volley-orb-shell ${motionSafeFx ? 'lobby-volley-orb-shell-safe' : ''}`}
+                                        style={{ '--orb-energy-norm': `${Math.max(0, Math.min(1, lobbyOrbEnergy / 100))}` }}
+                                    >
                                         <div className="lobby-volley-orb-slat-overlay" aria-hidden="true">
                                             <span className="lobby-volley-orb-seam lobby-volley-orb-seam-main" />
                                             <span className="lobby-volley-orb-seam lobby-volley-orb-seam-left" />
@@ -5098,29 +5101,44 @@ const PublicTV = ({ roomCode }) => {
                 text-transform: uppercase;
               }
               .lobby-volley-orb-shell {
-                width: clamp(180px, 18vw, 260px);
-                height: clamp(180px, 18vw, 260px);
+                --orb-energy-norm: 0.4;
+                width: clamp(198px, 20vw, 292px);
+                height: clamp(198px, 20vw, 292px);
                 border-radius: 9999px;
                 background:
-                  radial-gradient(circle at 28% 23%, rgba(255,255,255,0.94), rgba(236,245,255,0.9) 38%, rgba(203,213,225,0.8) 61%, rgba(15,23,42,0.28) 100%),
-                  linear-gradient(135deg, rgba(45,212,191,0.2), rgba(236,72,153,0.2));
-                border: 1px solid rgba(255,255,255,0.56);
+                  radial-gradient(circle at 27% 20%, rgba(255,255,255,0.97), rgba(233,248,255,0.92) 28%, rgba(148,239,255,0.8) 46%, rgba(119,44,188,0.7) 74%, rgba(17,14,48,0.9) 100%),
+                  conic-gradient(from 40deg, rgba(34,211,238,0.55), rgba(236,72,153,0.62), rgba(250,204,21,0.5), rgba(56,189,248,0.58), rgba(34,211,238,0.55));
+                border: 2px solid rgba(255,255,255,0.7);
                 position: relative;
                 overflow: hidden;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 backdrop-filter: blur(6px);
-                box-shadow: inset 0 0 24px rgba(255,255,255,0.3), 0 0 28px rgba(45,212,191,0.35), 0 0 42px rgba(236,72,153,0.25);
+                box-shadow:
+                  inset 0 0 28px rgba(255,255,255,0.34),
+                  0 0 calc(34px + (48px * var(--orb-energy-norm))) rgba(45,212,191,0.48),
+                  0 0 calc(44px + (54px * var(--orb-energy-norm))) rgba(236,72,153,0.38);
                 animation: lobby-orb-float 2.8s ease-in-out infinite, lobby-orb-glow 2.8s ease-in-out infinite;
+              }
+              .lobby-volley-orb-shell::before {
+                content: '';
+                position: absolute;
+                inset: -13%;
+                border-radius: 9999px;
+                background: radial-gradient(circle, rgba(59,130,246,0.3) 0%, rgba(236,72,153,0.2) 44%, rgba(251,191,36,0.16) 63%, rgba(0,0,0,0) 75%);
+                filter: blur(7px);
+                opacity: calc(0.65 + (var(--orb-energy-norm) * 0.35));
+                pointer-events: none;
+                z-index: 0;
               }
               .lobby-volley-orb-shell::after {
                 content: '';
                 position: absolute;
                 inset: 8% 12% 43% 16%;
                 border-radius: 9999px;
-                background: radial-gradient(circle at top left, rgba(255,255,255,0.85), rgba(255,255,255,0) 72%);
-                opacity: 0.72;
+                background: radial-gradient(circle at top left, rgba(255,255,255,0.88), rgba(255,255,255,0) 72%);
+                opacity: 0.78;
                 pointer-events: none;
               }
               .lobby-volley-orb-shell-safe {
@@ -5150,9 +5168,9 @@ const PublicTV = ({ roomCode }) => {
               .lobby-volley-orb-seam {
                 position: absolute;
                 border-radius: 9999px;
-                border: 3px solid rgba(15,23,42,0.38);
-                box-shadow: 0 0 0 1px rgba(255,255,255,0.5);
-                opacity: 0.78;
+                border: 4px solid rgba(15,23,42,0.45);
+                box-shadow: 0 0 0 1px rgba(255,255,255,0.56);
+                opacity: 0.85;
               }
               .lobby-volley-orb-seam-main {
                 width: 70%;
@@ -5185,17 +5203,17 @@ const PublicTV = ({ roomCode }) => {
               .lobby-volley-orb-core {
                 --orb-glow: 0.4;
                 --orb-scale: 1;
-                width: 62%;
-                height: 62%;
+                width: 60%;
+                height: 60%;
                 border-radius: 9999px;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
                 text-align: center;
-                background: radial-gradient(circle, rgba(15,23,42,0.76), rgba(2,6,23,0.9));
-                border: 1px solid rgba(244,114,182,0.3);
-                box-shadow: 0 0 calc(30px * var(--orb-glow)) rgba(45,212,191,0.42), inset 0 0 18px rgba(236,72,153,0.18);
+                background: radial-gradient(circle, rgba(25,20,52,0.83), rgba(8,10,30,0.93));
+                border: 1px solid rgba(244,114,182,0.5);
+                box-shadow: 0 0 calc(40px * var(--orb-glow)) rgba(45,212,191,0.56), inset 0 0 24px rgba(236,72,153,0.24);
                 transform: scale(var(--orb-scale));
                 z-index: 2;
               }
@@ -5214,7 +5232,7 @@ const PublicTV = ({ roomCode }) => {
                 right: 0;
                 bottom: 0;
                 height: var(--orb-fill);
-                background: linear-gradient(180deg, rgba(45,212,191,0.6), rgba(236,72,153,0.58));
+                background: linear-gradient(180deg, rgba(45,212,191,0.78), rgba(236,72,153,0.75));
                 transition: height 180ms ease;
               }
               .lobby-volley-orb-activity {
