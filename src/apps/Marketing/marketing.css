@@ -1,38 +1,40 @@
 @import url("https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;700&display=swap");
 
 .mk3-site {
-  --mk3-bg-a: #030d2f;
-  --mk3-bg-b: #08205a;
-  --mk3-bg-c: #113a80;
-  --mk3-ink: #f3f8ff;
-  --mk3-muted: #b9ccea;
-  --mk3-accent-a: #ff2e9d;
-  --mk3-accent-b: #ffbf73;
-  --mk3-accent-c: #43dcff;
-  --mk3-border: rgba(90, 174, 239, 0.28);
+  --mk3-bg-a: #09051a;
+  --mk3-bg-b: #1b0f3f;
+  --mk3-bg-c: #30165d;
+  --mk3-ink: #f7f4ff;
+  --mk3-muted: #c9bee3;
+  --mk3-accent-a: #ff2ca0;
+  --mk3-accent-b: #ffc46c;
+  --mk3-accent-c: #3de4ff;
+  --mk3-border: rgba(138, 119, 224, 0.34);
   --mk3-btn-radius: 12px;
   --mk3-btn-pill-radius: 999px;
-  --mk3-btn-border-muted: rgba(86, 156, 224, 0.34);
-  --mk3-btn-bg-muted: rgba(6, 23, 64, 0.9);
-  --mk3-btn-ink-muted: #e6f3ff;
-  --mk3-btn-border-primary: rgba(255, 124, 194, 0.54);
-  --mk3-btn-ink-primary: #05153f;
+  --mk3-btn-border-muted: rgba(99, 169, 255, 0.36);
+  --mk3-btn-bg-muted: rgba(13, 11, 37, 0.9);
+  --mk3-btn-ink-muted: #ece8ff;
+  --mk3-btn-border-primary: rgba(255, 91, 187, 0.54);
+  --mk3-btn-ink-primary: #180a2c;
   --mk3-btn-gradient-primary:
-    linear-gradient(114deg, #ffd78b 6%, #ff7bc4 54%, #56dbff 98%) padding-box,
-    linear-gradient(rgba(255, 124, 194, 0.56), rgba(255, 124, 194, 0.56)) border-box;
+    linear-gradient(112deg, #ffc96e 4%, #ff5db8 54%, #4de9ff 98%) padding-box,
+    linear-gradient(rgba(255, 93, 184, 0.6), rgba(255, 93, 184, 0.6)) border-box;
   --mk3-safe-bottom: env(safe-area-inset-bottom, 0px);
   --mk3-rail-space: 96px;
+  position: relative;
+  isolation: isolate;
   height: 100%;
   min-height: 100%;
   overflow-y: auto;
   overscroll-behavior-y: contain;
   color: var(--mk3-ink);
   background:
-    radial-gradient(circle at 9% 0%, rgba(255, 193, 116, 0.28), transparent 32%),
-    radial-gradient(circle at 90% 8%, rgba(255, 46, 157, 0.24), transparent 34%),
-    radial-gradient(circle at 46% 22%, rgba(86, 219, 255, 0.16), transparent 46%),
-    radial-gradient(circle at 52% 62%, rgba(255, 132, 198, 0.12), transparent 52%),
-    linear-gradient(180deg, var(--mk3-bg-c), var(--mk3-bg-b) 42%, var(--mk3-bg-a));
+    radial-gradient(circle at 50% -18%, rgba(255, 197, 107, 0.52), transparent 28%),
+    radial-gradient(circle at 50% -10%, rgba(255, 76, 170, 0.42), transparent 46%),
+    radial-gradient(circle at 78% 64%, rgba(53, 220, 255, 0.2), transparent 40%),
+    radial-gradient(circle at 18% 74%, rgba(190, 52, 255, 0.16), transparent 36%),
+    linear-gradient(180deg, var(--mk3-bg-c) 0%, var(--mk3-bg-b) 44%, var(--mk3-bg-a) 100%);
   font-family: "Space Grotesk", "Segoe UI", sans-serif;
 }
 
@@ -45,8 +47,8 @@
   position: sticky;
   top: 0;
   z-index: 80;
-  border-bottom: 1px solid rgba(95, 190, 255, 0.32);
-  background: rgba(3, 16, 52, 0.84);
+  border-bottom: 1px solid rgba(93, 201, 246, 0.34);
+  background: rgba(12, 8, 33, 0.84);
   backdrop-filter: blur(12px);
 }
 
@@ -86,7 +88,7 @@
 }
 
 .mk3-brand span {
-  color: #8fe1ff;
+  color: #73d9ff;
   font-size: 0.76rem;
   letter-spacing: 0.03em;
 }
@@ -292,9 +294,9 @@
   border-radius: 20px;
   padding: 14px;
   background:
-    radial-gradient(circle at 18% 4%, rgba(255, 61, 168, 0.22), transparent 48%),
-    radial-gradient(circle at 88% 10%, rgba(67, 220, 255, 0.2), transparent 44%),
-    linear-gradient(135deg, rgba(6, 23, 67, 0.74), rgba(3, 14, 43, 0.86));
+    radial-gradient(circle at 14% 2%, rgba(255, 70, 169, 0.25), transparent 42%),
+    radial-gradient(circle at 84% 8%, rgba(79, 231, 255, 0.2), transparent 44%),
+    linear-gradient(136deg, rgba(36, 16, 66, 0.82), rgba(12, 9, 34, 0.9));
   margin-bottom: 14px;
 }
 
@@ -305,7 +307,7 @@
   letter-spacing: 0.015em;
   font-size: clamp(1.36rem, 2.4vw, 2.05rem);
   line-height: 1.02;
-  background: linear-gradient(105deg, #f7fbff 8%, #9beaff 42%, #ff8fcc 92%);
+  background: linear-gradient(106deg, #fff2ce 6%, #ff7ec8 52%, #84ecff 96%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -315,7 +317,7 @@
   margin: 10px 0 0;
   max-width: 760px;
   line-height: 1.5;
-  color: #d8e7f8;
+  color: #e3dcf4;
   font-size: 0.96rem;
 }
 
@@ -327,11 +329,11 @@
 }
 
 .mk3-private-pill {
-  border: 1px solid rgba(255, 188, 114, 0.38);
+  border: 1px solid rgba(255, 183, 102, 0.46);
   border-radius: 999px;
   padding: 0.3rem 0.62rem;
-  background: rgba(8, 24, 62, 0.74);
-  color: #ffe4b8;
+  background: rgba(21, 12, 43, 0.78);
+  color: #ffe8ba;
   font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -340,9 +342,9 @@
 
 .mk3-private-apply-form {
   margin-top: 12px;
-  border: 1px solid rgba(122, 205, 239, 0.24);
+  border: 1px solid rgba(98, 206, 248, 0.3);
   border-radius: 12px;
-  background: rgba(8, 16, 24, 0.76);
+  background: linear-gradient(126deg, rgba(13, 10, 35, 0.88), rgba(19, 11, 40, 0.76));
   padding: 0.7rem;
   display: grid;
   gap: 9px;
@@ -416,115 +418,80 @@
 
 .mk3-private-invite-box {
   margin-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.14);
-  padding-top: 12px;
+  border: 1px solid rgba(89, 211, 246, 0.3);
+  border-radius: 12px;
+  padding: 0.72rem;
+  background: linear-gradient(132deg, rgba(14, 11, 36, 0.86), rgba(26, 10, 42, 0.72));
   display: grid;
-  gap: 8px;
+  gap: 9px;
 }
 
 .mk3-private-invite-box h3 {
   margin: 0;
-  color: #ffe8c5;
-  font-size: 0.76rem;
+  color: #ffe7be;
+  font-size: 0.74rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
 
 .mk3-private-invite-box p {
   margin: 0;
-  color: #c3d8eb;
-  font-size: 0.78rem;
-  line-height: 1.4;
+  color: #d8cfee;
+  font-size: 0.79rem;
+  line-height: 1.45;
 }
 
 .mk3-private-invite-form {
   display: grid;
-  gap: 8px;
-}
-
-.mk3-private-pin-label {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: #8fdfff;
-  font-weight: 700;
-}
-
-.mk3-private-pin-slots {
-  display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.mk3-private-pin-slots span {
-  min-height: 38px;
-  border-radius: 9px;
-  border: 1px solid rgba(100, 194, 255, 0.32);
-  background: rgba(6, 21, 58, 0.82);
-  color: #79ddff;
-  display: grid;
-  place-items: center;
-  font-size: 0.92rem;
-  font-weight: 700;
-}
-
-.mk3-private-pin-slots span.is-filled {
-  border-color: rgba(255, 134, 200, 0.54);
-  color: #ffe0f2;
-  background: linear-gradient(120deg, rgba(11, 36, 77, 0.88), rgba(80, 19, 74, 0.84));
-}
-
-.mk3-private-pin-pad {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  padding-top: 0.65rem;
 }
 
 .mk3-private-pin-input-row {
   display: grid;
   gap: 6px;
-  color: #d4e4f3;
-  font-size: 0.72rem;
-  letter-spacing: 0.06em;
+  color: #d8d2ea;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+  font-weight: 700;
 }
 
 .mk3-private-pin-input-row input {
   width: 100%;
-  border-radius: 10px;
-  border: 1px solid rgba(101, 194, 255, 0.36);
-  background: rgba(8, 28, 70, 0.78);
+  border-radius: 12px;
+  border: 1px solid rgba(83, 211, 247, 0.44);
+  background: rgba(9, 12, 35, 0.92);
   color: #f2f8ff;
-  padding: 0.58rem 0.66rem;
+  padding: 0.68rem 0.78rem;
   font: inherit;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.13em;
 }
 
-.mk3-private-pin-pad button {
-  min-height: 40px;
+.mk3-private-invite-caption {
+  border: 1px dashed rgba(255, 187, 114, 0.42);
   border-radius: 10px;
-  border: 1px solid rgba(101, 194, 255, 0.34);
-  background: rgba(8, 28, 70, 0.82);
-  color: #e3f6ff;
-  font-size: 0.8rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-weight: 700;
-  cursor: pointer;
+  background: rgba(30, 17, 47, 0.62);
+  color: #ffe1b2;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  padding: 0.5rem 0.58rem;
 }
 
-.mk3-private-pin-pad button.is-control {
-  border-color: rgba(255, 178, 118, 0.42);
-  background: rgba(33, 30, 56, 0.84);
-  color: #ffe3bc;
+.mk3-private-invite-submit {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  letter-spacing: 0.09em;
 }
 
-.mk3-private-invite-form label {
-  display: grid;
-  gap: 6px;
-  font-size: 0.75rem;
-  color: #d4e4f3;
+.mk3-private-unlocked {
+  border-color: rgba(116, 239, 178, 0.48);
+  background: rgba(45, 113, 74, 0.16);
+  color: #d6ffe6;
 }
 
 .mk3-value-points {
@@ -803,12 +770,13 @@
 
 .mk3-auth-box {
   align-self: start;
-  border: 1px solid rgba(232, 125, 202, 0.26);
+  border: 1px solid rgba(255, 107, 193, 0.3);
   border-radius: 16px;
   background:
-    linear-gradient(140deg, rgba(27, 12, 34, 0.52), rgba(10, 18, 28, 0.84)),
+    radial-gradient(circle at 80% 14%, rgba(60, 227, 255, 0.16), transparent 38%),
+    linear-gradient(142deg, rgba(40, 13, 58, 0.72), rgba(11, 10, 31, 0.92)),
     rgba(8, 14, 19, 0.78);
-  box-shadow: 0 10px 34px rgba(6, 14, 24, 0.42);
+  box-shadow: 0 14px 34px rgba(10, 6, 22, 0.45);
   padding: 15px;
 }
 
@@ -823,8 +791,8 @@
   gap: 6px;
   padding: 4px;
   border-radius: 999px;
-  border: 1px solid rgba(150, 199, 219, 0.28);
-  background: rgba(7, 14, 22, 0.94);
+  border: 1px solid rgba(117, 204, 243, 0.3);
+  background: rgba(10, 10, 30, 0.94);
   overflow: hidden;
 }
 
@@ -885,8 +853,8 @@
 .mk3-actions-card select {
   width: 100%;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(6, 11, 16, 0.86);
+  border: 1px solid rgba(119, 197, 235, 0.32);
+  background: rgba(7, 9, 28, 0.92);
   color: #f2f8ff;
   padding: 0.64rem 0.72rem;
   font: inherit;
@@ -953,14 +921,14 @@
 }
 
 .mk3-auth-box .mk3-toggle-row button.active {
-  color: #dff3ff;
+  color: #180a2c;
   border-color: transparent;
   background:
-    linear-gradient(110deg, rgba(8, 31, 70, 0.98), rgba(12, 54, 104, 0.98)) padding-box,
-    linear-gradient(rgba(88, 214, 255, 0.46), rgba(255, 124, 194, 0.4)) border-box;
+    linear-gradient(112deg, #ffc66a 6%, #ff64ba 56%, #6ce7ff 98%) padding-box,
+    linear-gradient(rgba(255, 100, 186, 0.56), rgba(255, 100, 186, 0.56)) border-box;
   background-clip: padding-box, border-box;
   -webkit-background-clip: padding-box, border-box;
-  box-shadow: inset 0 0 0 1px rgba(159, 220, 239, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 241, 204, 0.34);
 }
 
 .mk3-auth-box button:focus-visible,
@@ -973,11 +941,11 @@
 }
 
 .mk3-status {
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(122, 205, 245, 0.28);
   border-radius: 12px;
-  background: rgba(13, 21, 31, 0.86);
+  background: rgba(14, 12, 34, 0.86);
   padding: 0.62rem 0.72rem;
-  color: #c4d8ef;
+  color: #ddd3f1;
   font-size: 0.82rem;
   display: grid;
   gap: 7px;

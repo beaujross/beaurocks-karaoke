@@ -36,7 +36,7 @@ const GoldenPathRail = lazy(() => import("./pages/GoldenPathRail"));
 
 const PRODUCT_BRAND = {
   name: "BeauRocks Karaoke",
-  tagline: "Voice-first party game platform",
+  tagline: "Karaoke, but finally built for actual humans",
   finder: "Setlist Finder",
   tv: "Spotlight TV",
   audience: "Party Mic",
@@ -51,9 +51,9 @@ const PUBLIC_CHANGELOG_ENTRIES = [
     ctaLabel: "Open demo",
     updatedAt: "2026-02-23",
     highlights: [
-      "New scripted multi-surface walkthrough now stages TV, audience, and host moments in one timeline.",
-      "Reaction bursts, guitar vibe-sync, and trivia scenes run in sequence for clearer product storytelling.",
-      "Demo view includes direct launch links for real audience, TV, and host surfaces.",
+      "One scripted flow now shows TV, audience, and host working together in real time.",
+      "Reaction waves, guitar vibe-sync, and trivia now play in one clean sequence.",
+      "Each scene has direct launch links so you can jump into real surfaces fast.",
     ],
   },
   {
@@ -63,9 +63,9 @@ const PUBLIC_CHANGELOG_ENTRIES = [
     ctaLabel: "Open finder",
     updatedAt: "2026-02-23",
     highlights: [
-      "Map now defaults to rail listings inside current map bounds for faster local browsing.",
-      "A featured listing now appears directly on map with image, timing, and distance.",
-      "Finder cards now lead with visuals and profile avatars to reduce text-heavy scanning.",
+      "Map + rail now stay tighter so nearby karaoke is faster to scan.",
+      "Selected listing gets featured with image, timing, and distance at a glance.",
+      "Cards lead with visuals and hosts first, not walls of text.",
     ],
   },
   {
@@ -75,9 +75,9 @@ const PUBLIC_CHANGELOG_ENTRIES = [
     ctaLabel: "Open TV entry",
     updatedAt: "2026-02-22",
     highlights: [
-      "Join and launch actions now use clearer hierarchy for venue display setup.",
-      "Room entry language now stays consistent with BeauRocks Karaoke branding.",
-      "Display launch paths received reliability and clarity tuning for public use.",
+      "TV launch steps are cleaner, so setup takes less host brainpower.",
+      "Join flow language is now consistent across the full experience.",
+      "Public display routing got a reliability pass for live rooms.",
     ],
   },
   {
@@ -87,9 +87,9 @@ const PUBLIC_CHANGELOG_ENTRIES = [
     ctaLabel: "Open audience",
     updatedAt: "2026-02-22",
     highlights: [
-      "Mobile-first audience and singer paths now use larger tap targets and cleaner flow.",
-      "Tight 15 remains profile-linked so favorites can seed compatible game modes.",
-      "Party join language was simplified to reduce friction for first-time guests.",
+      "Audience flow now feels lighter on mobile with bigger taps and fewer dead ends.",
+      "Profiles still carry favorites into compatible game modes like Tight 15.",
+      "New guests can join faster without needing a full tutorial.",
     ],
   },
   {
@@ -99,9 +99,9 @@ const PUBLIC_CHANGELOG_ENTRIES = [
     ctaLabel: "Open host",
     updatedAt: "2026-02-21",
     highlights: [
-      "Host control journeys now expose clearer next steps for room and venue operations.",
-      "Cadence update and moderation paths were streamlined for practical weekly use.",
-      "Cross-linked host, venue, performer, and session profile pathways were tightened.",
+      "Host actions now have clearer next steps mid-show, not just in setup.",
+      "Cadence and moderation flows were trimmed for real weekly workflows.",
+      "Host, venue, performer, and session profiles now connect more naturally.",
     ],
   },
 ];
@@ -125,7 +125,7 @@ const SECONDARY_PAGE_OPTIONS = [
 const PageShellLoader = () => (
   <div className="mk3-status">
     <strong>Loading page...</strong>
-    <span>Preparing the next surface.</span>
+    <span>Warming up the next scene.</span>
   </div>
 );
 
@@ -236,7 +236,6 @@ const readPrivateInviteCodes = () => {
 const normalizePrivateInviteToken = (value = "") =>
   String(value || "").trim().toUpperCase().replace(/[^A-Z0-9@]/g, "");
 
-const PRIVATE_UNLOCK_PAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "X"];
 const PRIVATE_UNLOCK_MAX_LENGTH = 12;
 
 const MarketingSite = () => {
@@ -452,7 +451,7 @@ const MarketingSite = () => {
     if (!email || !password) return;
     if (authMode === "signup") {
       if (!canCreatePrivateHostAccount) {
-        setAuthLocalError("Unlock private host access first using the Backstage PIN.");
+        setAuthLocalError("Unlock private host access first using your access code.");
         return;
       }
       if (password.length < 6) {
@@ -620,26 +619,6 @@ const MarketingSite = () => {
     trackEvent("mk_private_test_unlock", { ok: true, method: "pin_code" });
   };
 
-  const onPrivatePadPress = useCallback((token = "") => {
-    const key = String(token || "").trim().toUpperCase();
-    setPrivateAccessError("");
-    setPrivateAccessNotice("");
-    if (!key) return;
-    if (key === "C") {
-      setPrivateCodeEntry("");
-      return;
-    }
-    if (key === "X") {
-      setPrivateCodeEntry((prev) => prev.slice(0, -1));
-      return;
-    }
-    if (!/^[0-9A-Z@]$/.test(key)) return;
-    setPrivateCodeEntry((prev) => {
-      if (prev.length >= privateUnlockLength) return prev;
-      return `${prev}${key}`;
-    });
-  }, [privateUnlockLength]);
-
   const privateAccessUnlocked = !privateTestModeEnabled
     || (hasFullAccount && privateCodeUnlocked);
   const privateAccessLocked = privateTestModeEnabled && !privateAccessUnlocked;
@@ -665,19 +644,19 @@ const MarketingSite = () => {
   const postAuthHint = useMemo(() => {
     if (privateAccessLocked) {
       return privateInviteRequired
-        ? "Enter the Backstage PIN to unlock host onboarding, then create your account."
-        : "Unlock private host onboarding to create new testing accounts.";
+        ? "Got a host code? Enter it, then create your account."
+        : "Unlock host onboarding to create new private-test accounts.";
     }
     if (authMode === "signup") {
-      return "Create account uses email + password + confirm password. No duplicate email entry needed.";
+      return "Quick signup: email, password, confirm, done.";
     }
     if (route.params?.intent) {
-      return "After sign in, we'll return you to your selected action.";
+      return "Sign in and we will drop you right back to what you were doing.";
     }
     if (activePage === MARKETING_ROUTE_PAGES.profile) {
-      return "After sign in, you'll return to your dashboard.";
+      return "After sign in, you will land back on your dashboard.";
     }
-    return "Create an account to save favorites, RSVPs, and check-ins.";
+    return "Create an account to save follows, RSVPs, and check-ins.";
   }, [activePage, authMode, privateAccessLocked, privateInviteRequired, route.params?.intent]);
   const publicChangelog = useMemo(
     () => PUBLIC_CHANGELOG_ENTRIES
@@ -775,7 +754,7 @@ const MarketingSite = () => {
                   if (privateAccessLocked) {
                     setAuthMode(hasFullAccount || !canCreatePrivateHostAccount ? "signin" : "signup");
                     if (!hasFullAccount && !canCreatePrivateHostAccount) {
-                      setAuthLocalError("Use the Backstage PIN below before creating a new host account.");
+                      setAuthLocalError("Use the host access code below before creating a new host account.");
                     }
                     scrollAuthPanelIntoView();
                     return;
@@ -850,8 +829,8 @@ const MarketingSite = () => {
 
           {!!route.params?.intent && (!session?.isAuthed || session?.isAnonymous) && (
             <div className="mk3-status mk3-status-warning">
-              <strong>Create an account or sign in to continue your action.</strong>
-              <span>After sign-in, we will return you to your selected CTA.</span>
+              <strong>Sign in to keep going.</strong>
+              <span>We will bounce you right back to the action you picked.</span>
             </div>
           )}
 
@@ -861,17 +840,16 @@ const MarketingSite = () => {
                 <>
                   <h1>Private Test Program</h1>
                   <p>
-                    BeauRocks Karaoke is currently invite-only while we tune live social experiences across TV,
-                    audience, and host surfaces. Apply for access below, or unlock host onboarding with the Backstage
-                    Buzz Code.
+                    Karaoke software has been awkward for way too long. BeauRocks is our attempt to fix that:
+                    use tech to help people find each other, then make in-room interaction easier, safer, and more fun.
                   </p>
                   <div className="mk3-private-pill-row">
                     <span className="mk3-private-pill">Invite-only</span>
-                    <span className="mk3-private-pill">Weekly rollout</span>
-                    <span className="mk3-private-pill">Host + venue focus</span>
+                    <span className="mk3-private-pill">Friendly host pilots</span>
+                    <span className="mk3-private-pill">Human connection first</span>
                   </div>
                   <form className="mk3-private-apply-form" onSubmit={onPrivateApplySubmit}>
-                    <h2>Apply to private test</h2>
+                    <h2>Apply for private test access</h2>
                     <div className="mk3-private-apply-grid">
                       <label>
                         Name
@@ -917,7 +895,7 @@ const MarketingSite = () => {
                     </div>
                     <div className="mk3-private-apply-actions">
                       <button type="submit" disabled={privateApplyState.submitting}>
-                        {privateApplyState.submitting ? "Submitting..." : "Apply Now"}
+                        {privateApplyState.submitting ? "Sending..." : "Apply"}
                       </button>
                       <button
                         type="button"
@@ -927,14 +905,14 @@ const MarketingSite = () => {
                           scrollAuthPanelIntoView();
                         }}
                       >
-                        I Have An Invite
+                        I Have A Code
                       </button>
                     </div>
                     {privateApplyState.success && (
                       <div className="mk3-status">
                         <strong>{privateApplyState.success}</strong>
                         {privateApplyState.linePosition > 0 && (
-                          <span>{`Current line position: #${privateApplyState.linePosition}`}</span>
+                          <span>{`You are in line at #${privateApplyState.linePosition}`}</span>
                         )}
                       </div>
                     )}
@@ -945,45 +923,45 @@ const MarketingSite = () => {
                 <>
                   <h1>{PRODUCT_BRAND.name}</h1>
                   <p>
-                    One platform for social singing and voice-driven party play: discover live karaoke, run interactive
-                    TV moments, join from mobile, and keep the room connected with host controls.
+                    We believe people are what we are missing most right now. BeauRocks helps you find karaoke nights,
+                    then turns your phone from passive scrolling into real in-room interaction.
                   </p>
                   <div className="mk3-surface-grid">
                     <article>
                       <strong>{PRODUCT_BRAND.finder}</strong>
-                      <span>Discover venues and events</span>
+                      <span>Find nights by location, host, or vibe</span>
                     </article>
                     <article>
                       <strong>{PRODUCT_BRAND.tv}</strong>
-                      <span>Main room display surface</span>
+                      <span>Shared room screen for everyone</span>
                     </article>
                     <article>
                       <strong>{PRODUCT_BRAND.audience}</strong>
-                      <span>Singer + audience mobile app</span>
+                      <span>Audience phone controls and reactions</span>
                     </article>
                     <article>
                       <strong>{PRODUCT_BRAND.host}</strong>
-                      <span>Host control surface</span>
+                      <span>Host controls without touching TV</span>
                     </article>
                   </div>
                   {heroStats?.total > 0 && (
                     <div className="mk3-status mk3-hero-proof">
-                      <strong>{heroStats.total.toLocaleString()} public listings available now</strong>
+                      <strong>{heroStats.total.toLocaleString()} live listings and counting</strong>
                       <span>Updated {formatDateTime(heroStats.generatedAtMs)}</span>
                     </div>
                   )}
                   <div className="mk3-value-points">
-                    <span>Setlist Finder pairs a live map with a synced listing rail for fast navigation.</span>
-                    <span>Profiles stay linked across hosts, venues, singers, sessions, and party moments.</span>
+                    <span>Yes, your phone is still your pacifier, but now it helps you meet people around you.</span>
+                    <span>Profiles link hosts, venues, performers, and sessions so finding your people gets easier each night.</span>
                   </div>
                   <div className="mk3-permission-grid">
                     <article>
                       <strong>No account needed</strong>
-                      <span>Browse the {PRODUCT_BRAND.finder} listings, geo pages, and event details.</span>
+                      <span>Browse listings, host pages, and event details right away.</span>
                     </article>
                     <article>
                       <strong>With account</strong>
-                      <span>Save follows, RSVP reminders, check-ins, and dashboard history.</span>
+                      <span>Save follows, RSVP reminders, check-ins, and your activity history.</span>
                     </article>
                   </div>
                   <div className="mk3-auth-cta-row">
@@ -994,7 +972,7 @@ const MarketingSite = () => {
                           className="mk3-auth-cta-primary"
                           onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
                         >
-                          Find Karaoke Near Me
+                          Find A Karaoke Night
                         </button>
                         <button
                           type="button"
@@ -1004,7 +982,7 @@ const MarketingSite = () => {
                             scrollAuthPanelIntoView();
                           }}
                         >
-                          Create Account
+                          Create Free Account
                         </button>
                       </>
                     ) : (
@@ -1014,14 +992,14 @@ const MarketingSite = () => {
                           className="mk3-auth-cta-primary"
                           onClick={() => navigate(MARKETING_ROUTE_PAGES.profile)}
                         >
-                          Open Dashboard
+                          Open My Dashboard
                         </button>
                         <button
                           type="button"
                           className="mk3-auth-cta-secondary"
                           onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
                         >
-                          Open Setlist Finder
+                          Back To Finder
                         </button>
                       </>
                     )}
@@ -1061,7 +1039,7 @@ const MarketingSite = () => {
                       onClick={() => {
                         if (!canCreatePrivateHostAccount) {
                           setAuthMode("signin");
-                          setAuthLocalError("Unlock private host access with the Backstage PIN first.");
+                          setAuthLocalError("Unlock private host access with your access code first.");
                           return;
                         }
                         setAuthMode("signup");
@@ -1132,38 +1110,23 @@ const MarketingSite = () => {
               )}
               {privateTestModeEnabled && (
                 <div className="mk3-private-invite-box">
-                  <h3>Backstage Buzz Code</h3>
+                  <h3>Host Access Code</h3>
                   <p>
                     {privateInviteRequired
-                      ? "Enter the branded host PIN to unlock private test onboarding."
-                      : "Private onboarding unlock is currently active for invited users."}
+                      ? "Got invited? Drop your code below to unlock host onboarding."
+                      : "Host onboarding is currently open for invited testers."}
                   </p>
                   {canCreatePrivateHostAccount ? (
-                    <div className="mk3-status">
-                      <strong>Backstage unlocked.</strong>
-                      <span>Create account is now enabled for friendly host onboarding.</span>
+                    <div className="mk3-status mk3-private-unlocked">
+                      <strong>Access unlocked.</strong>
+                      <span>You are clear to create a host account.</span>
                     </div>
                   ) : (
                     <form className="mk3-private-invite-form" onSubmit={onPrivateAccessSubmit}>
                       {privateInviteRequired && (
                         <>
-                          <div className="mk3-private-pin-label">Enter PIN</div>
-                          <div
-                            className="mk3-private-pin-slots"
-                            aria-hidden="true"
-                            style={{ gridTemplateColumns: `repeat(${privateUnlockLength}, minmax(0, 1fr))` }}
-                          >
-                            {Array.from({ length: privateUnlockLength }).map((_, idx) => {
-                              const char = privateCodeEntry[idx] || "";
-                              return (
-                                <span key={`pin_slot_${idx}`} className={char ? "is-filled" : ""}>
-                                  {char || "•"}
-                                </span>
-                              );
-                            })}
-                          </div>
                           <label className="mk3-private-pin-input-row">
-                            Unlock Code
+                            Enter access code
                             <input
                               type="text"
                               value={privateCodeEntry}
@@ -1173,34 +1136,19 @@ const MarketingSite = () => {
                                 setPrivateAccessError("");
                                 setPrivateAccessNotice("");
                               }}
+                              maxLength={privateUnlockLength}
                               placeholder="BE@UROCKS"
                               autoComplete="off"
                               autoCapitalize="characters"
                               spellCheck={false}
                             />
                           </label>
-                          <div className="mk3-private-pin-pad">
-                            {PRIVATE_UNLOCK_PAD_KEYS.map((token) => (
-                              <button
-                                key={`pin_key_${token}`}
-                                type="button"
-                                className={token === "C" || token === "X" ? "is-control" : ""}
-                                onClick={() => onPrivatePadPress(token)}
-                                aria-label={
-                                  token === "C"
-                                    ? "Clear code"
-                                    : token === "X"
-                                      ? "Remove last character"
-                                      : `Add ${token}`
-                                }
-                              >
-                                {token === "C" ? "Clear" : token === "X" ? "Back" : token}
-                              </button>
-                            ))}
+                          <div className="mk3-private-invite-caption">
+                            Codes are not case-sensitive. If yours is stale, ask us for a fresh one.
                           </div>
                         </>
                       )}
-                      <button type="submit">
+                      <button type="submit" className="mk3-private-invite-submit">
                         {privateInviteRequired ? "Unlock Host Onboarding" : "Unlock Access"}
                       </button>
                       {privateAccessNotice && <div className="mk3-status">{privateAccessNotice}</div>}
@@ -1214,19 +1162,18 @@ const MarketingSite = () => {
 
           {privateAccessLocked ? (
             <section className="mk3-private-locked-panel mk3-zone" aria-label="Private test locked">
-              <h2>Private surfaces are currently invite-only.</h2>
+              <h2>Private surfaces are invite-only right now.</h2>
               <p>
-                Apply above to join the private test queue. If you were invited, enter the Backstage Buzz Code and
-                create your host account to continue.
+                Apply above to join the test queue. If you have a host code, unlock onboarding and create your account.
               </p>
               <div className="mk3-private-locked-grid">
                 <article>
                   <strong>New applicants</strong>
-                  <span>Submit the short application and we will review your use case for rollout.</span>
+                  <span>Send the short form and we will review your use case.</span>
                 </article>
                 <article>
                   <strong>Invited hosts</strong>
-                  <span>Use the Backstage Buzz Code above, then create your host account.</span>
+                  <span>Use your host code above, then create your account.</span>
                 </article>
               </div>
             </section>
@@ -1234,8 +1181,8 @@ const MarketingSite = () => {
             <>
               <section className="mk3-public-changelog mk3-zone mk3-zone-changelog" aria-label="Public changelog">
                 <div className="mk3-public-changelog-head">
-                  <h2>Public Changelog</h2>
-                  <span>Sanitized updates by surface</span>
+                  <h2>What We Shipped</h2>
+                  <span>Short notes by surface</span>
                 </div>
                 <div className="mk3-public-changelog-grid">
                   {publicChangelog.map((entry) => (

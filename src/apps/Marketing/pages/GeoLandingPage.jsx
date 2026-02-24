@@ -93,7 +93,7 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
   if (!marketingFlags.geoPagesEnabled) {
     return (
       <section className="mk3-page">
-        <div className="mk3-status">Geo pages are currently disabled.</div>
+        <div className="mk3-status">Geo pages are off right now.</div>
       </section>
     );
   }
@@ -103,7 +103,7 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
       <article className="mk3-detail-card">
         <div className="mk3-chip">geo landing</div>
         <h2>{label}</h2>
-        <p>Active public karaoke listings and upcoming nights in this region.</p>
+        <p>Public karaoke nights and upcoming sessions in this area.</p>
         <div className="mk3-filter-row">
           <label>
             Date Window
@@ -114,7 +114,7 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
             </select>
           </label>
         </div>
-        {loading && <div className="mk3-status">Loading geo listings...</div>}
+        {loading && <div className="mk3-status">Loading local listings...</div>}
         {error && <div className="mk3-status mk3-status-error">{error}</div>}
         {!loading && !error && (
           <div className="mk3-status">
@@ -155,7 +155,7 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
       </article>
       <aside className="mk3-actions-card">
         <h4>Explore</h4>
-        <p>Use Discover for maps and deeper filtering.</p>
+        <p>Need map view and deeper filters? Jump to Discover.</p>
         <button type="button" onClick={() => navigate("discover")}>
           Open Discover
         </button>

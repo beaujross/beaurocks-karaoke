@@ -9,7 +9,7 @@ const DEMO_SCENES = [
     mode: "karaoke",
     durationMs: 24000,
     title: "Warm open with lyrics + crowd energy",
-    description: "Audience reactions build while the TV keeps lyrics centered for the room.",
+    description: "Reactions climb while TV keeps the room synced on lyrics.",
     lyrics: ["Lights up, mic check, crowd in motion", "Hands up now, set the room in motion"],
     reactions: [
       { type: "clap", label: "Clap", seed: 2 },
@@ -24,7 +24,7 @@ const DEMO_SCENES = [
     mode: "karaoke",
     durationMs: 22000,
     title: "Burst reactions across audience + TV",
-    description: "Multiple reactions land in waves instead of a single pulse.",
+    description: "Reaction bursts stack in waves instead of one lonely pulse.",
     lyrics: ["Call and response, side to side", "Energy climbs, no one stays quiet"],
     reactions: [
       { type: "clap", label: "Clap", seed: 2 },
@@ -39,7 +39,7 @@ const DEMO_SCENES = [
     mode: "guitar",
     durationMs: 25000,
     title: "Lyrics drop, crowd drives guitar mode",
-    description: "The room shifts into rhythm mode while taps and strums take over.",
+    description: "Lyrics drop out and the crowd takes over rhythm with taps and strums.",
     reactions: [
       { type: "strum", label: "Strum", seed: 2 },
       { type: "fire", label: "Fire", seed: 1 },
@@ -53,7 +53,7 @@ const DEMO_SCENES = [
     mode: "trivia",
     durationMs: 26000,
     title: "Switch from music to crowd trivia",
-    description: "Audience votes stack in real time, then reveal the answer.",
+    description: "Audience votes pile up live, then the answer reveal lands.",
     trivia: {
       question: "Which surface keeps host, TV, and audience in sync?",
       options: ["Public TV", "Host Deck", "Audience App", "All three"],
@@ -73,7 +73,7 @@ const DEMO_SCENES = [
     mode: "finale",
     durationMs: 23000,
     title: "Finale handoff + call to launch real room",
-    description: "Close with synchronized hype so users can jump into a real session.",
+    description: "Close with synchronized hype, then jump into a real session.",
     lyrics: ["Final round, whole room together", "Host, TV, audience locked in forever"],
     reactions: [
       { type: "fire", label: "Fire", seed: 3 },
@@ -399,9 +399,9 @@ const DemoExperiencePage = () => {
     <section className="mk3-page mk3-demo-page">
       <article className="mk3-demo-hero">
         <div className="mk3-chip">live demo arena</div>
-        <h2>Scripted multi-surface room demo</h2>
+        <h2>Scripted Multi-Surface Demo</h2>
         <p>
-          This timeline simulates Public TV, audience mobile, and host controls in one coordinated sequence.
+          Karaoke has felt dated for a long time. This demo shows a better formula: TV, audience, and host in one synced flow.
         </p>
         <div className="mk3-demo-toolbar">
           <button type="button" onClick={onTogglePlayback}>
@@ -539,7 +539,7 @@ const DemoExperiencePage = () => {
           </header>
           <div className="mk3-demo-surface-body">
             <h4>Mobile audience feed</h4>
-            <p>Audience members react, vote, and join vibe-sync without touching TV controls.</p>
+            <p>Phones stay useful, but now they help people react together instead of scroll alone.</p>
             <div className="mk3-demo-audience-grid">
               {audienceCards.map((entry) => (
                 <div key={entry.id} className={entry.online ? "online" : ""}>
@@ -562,7 +562,7 @@ const DemoExperiencePage = () => {
           </header>
           <div className="mk3-demo-surface-body">
             <h4>Host-led sequence</h4>
-            <p>Host can run this flow remotely even when they cannot physically touch the public TV.</p>
+            <p>Host can steer the full flow remotely, even when they cannot physically touch the public TV.</p>
             <div className="mk3-demo-host-stats">
               <div>
                 <span>Current Scene</span>
@@ -582,8 +582,8 @@ const DemoExperiencePage = () => {
       </div>
 
       <article className="mk3-demo-launch">
-        <h3>Launch real surfaces from this room code</h3>
-        <p>Use a `DEMO*` room code, then open each surface in separate tabs or devices.</p>
+        <h3>Launch Real Surfaces From This Room Code</h3>
+        <p>Use a `DEMO*` room code, then open each surface on separate tabs or devices.</p>
         <div className={`mk3-inline-status ${syncState.tone === "error" ? "mk3-status-error" : syncState.tone === "ok" ? "mk3-inline-next" : ""}`}>
           {syncState.message}
         </div>

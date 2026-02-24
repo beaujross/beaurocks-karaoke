@@ -7,8 +7,8 @@ const ForFansPage = ({ navigate, session, authFlow }) => {
   <section className="mk3-page mk3-two-col">
     <article className="mk3-detail-card">
       <div className="mk3-chip">for fans</div>
-      <h2>Browse nearby karaoke and lock in your next night out.</h2>
-      <p>Discover public events, follow favorites, and get reminders before start time.</p>
+      <h2>Find karaoke near you without the chaos.</h2>
+      <p>Discover nearby nights, follow your favorite hosts, and get reminders before doors open.</p>
       <div className="mk3-actions-inline">
         <button
           type="button"
@@ -49,7 +49,7 @@ const ForFansPage = ({ navigate, session, authFlow }) => {
       <ul className="mk3-plain-list">
         <li>Follow venues and hosts to build your feed.</li>
         <li>RSVP to events and enroll in reminders.</li>
-        <li>Check in and leave karaoke-first reviews after attendance.</li>
+        <li>Check in and leave post-night reviews after attendance.</li>
       </ul>
     </aside>
   </section>

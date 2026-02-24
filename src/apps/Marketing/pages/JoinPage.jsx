@@ -51,8 +51,8 @@ const JoinPage = ({ navigate, id = "" }) => {
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-chip">join private room</div>
-        <h2>Enter room code</h2>
-        <p>Private room sessions stay out of public index pages and require a valid room code.</p>
+        <h2>Enter Room Code</h2>
+        <p>Private rooms stay off public pages. If you have the code, you are in.</p>
         <form className="mk3-actions-block" onSubmit={onSubmit}>
           <label>
             Room Code
@@ -62,9 +62,9 @@ const JoinPage = ({ navigate, id = "" }) => {
               placeholder="ABC123"
             />
           </label>
-          <button type="submit">Open Join Route</button>
+          <button type="submit">Open Join Page</button>
         </form>
-        {loading && <div className="mk3-status">Looking up room code...</div>}
+        {loading && <div className="mk3-status">Checking that room code...</div>}
         {status && <div className="mk3-status mk3-status-error">{status}</div>}
         {!!preview && (
           <div className="mk3-status">
@@ -73,20 +73,20 @@ const JoinPage = ({ navigate, id = "" }) => {
             <span>{preview.venueName || preview.hostName || preview.visibility || "Private session"}</span>
             <div className="mk3-actions-inline">
               <button type="button" onClick={() => navigate("session", preview.id)}>
-                Open Session Profile
+                Open Session Details
               </button>
               <button type="button" onClick={() => { window.location.href = `/?room=${encodeURIComponent(String(roomCode || id).trim().toUpperCase())}`; }}>
-                Join Mobile Room
+                Join On Mobile
               </button>
             </div>
           </div>
         )}
       </article>
       <aside className="mk3-actions-card">
-        <h4>Need Public Listings?</h4>
-        <p>Use Discover for public events, hosts, and venues.</p>
+        <h4>Looking For Public Nights?</h4>
+        <p>Use Discover to browse public events, hosts, and venues nearby.</p>
         <button type="button" onClick={() => navigate("discover")}>
-          Go to Discover
+          Open Discover
         </button>
       </aside>
     </section>

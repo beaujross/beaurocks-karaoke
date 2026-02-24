@@ -31,7 +31,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
           },
         },
       });
-      setStatus("Create an account to create private sessions.");
+      setStatus("Create an account to spin up private sessions.");
       return;
     }
     setBusy(true);
@@ -48,9 +48,9 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
         listingType: "room_session",
         payload,
       });
-      setStatus(`Private room-session submitted (${result?.submissionId || "pending"}).`);
+      setStatus(`Private session submitted (${result?.submissionId || "pending"}).`);
       setNextStep({
-        label: "Next: Open Join by Code",
+        label: "Next: Open Join By Code",
         onClick: () => navigate("join", "", { intent: "join_private", targetType: "session", targetId: payload.roomCode }),
       });
       trackEvent("mk_listing_created_room_session", {
@@ -64,7 +64,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
         source: "for_hosts_private_quick_start",
       });
     } catch (error) {
-      setStatus(String(error?.message || "Private session creation failed."));
+      setStatus(String(error?.message || "Could not create that private session."));
     } finally {
       setBusy(false);
     }
@@ -74,8 +74,8 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-chip">for hosts</div>
-        <h2>Run private rooms or public discoverable events.</h2>
-        <p>Create sessions, set cadence, and convert discovery into repeat attendance.</p>
+        <h2>Run nights people actually talk about later.</h2>
+        <p>Classic karaoke tools have been clunky forever. This gives hosts faster setup, better crowd flow, and fewer awkward pauses.</p>
         <div className="mk3-actions-inline">
           {canSubmit ? (
             <button
@@ -85,7 +85,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
                 navigate("submit");
               }}
             >
-              Create Event / Session
+              Create Event Or Session
             </button>
           ) : (
             <button
@@ -107,12 +107,12 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
               navigate("discover");
             }}
           >
-            Browse Active Listings
+            Browse Active Nights
           </button>
         </div>
         {canSubmit && (
         <form className="mk3-actions-block" onSubmit={submitPrivateSession}>
-          <h3>Private Host Quick Start</h3>
+          <h3>Host Quick Start</h3>
           <label>
             Room Code
             <input
@@ -143,11 +143,11 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
             <textarea
               value={privateForm.description}
               onChange={(e) => setPrivateForm((prev) => ({ ...prev, description: e.target.value }))}
-              placeholder="Private invite-only room."
+              placeholder="Invite-only room. Bring your loud friends."
             />
           </label>
           <button type="submit" disabled={busy}>
-            {busy ? "Submitting..." : "Create Private Session"}
+            {busy ? "Creating..." : "Create Private Session"}
           </button>
           {!!status && <div className="mk3-status">{status}</div>}
           {!!nextStep && (
@@ -159,7 +159,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
         )}
         {!canSubmit && (
           <div className="mk3-actions-block">
-            <div className="mk3-status">Create an account to access the private host quick start flow.</div>
+            <div className="mk3-status">Create an account to unlock host quick start.</div>
             <button
               type="button"
               onClick={() => authFlow?.requireFullAuth?.({
@@ -175,7 +175,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
                 },
               })}
             >
-              Create Account To Create Private Session
+              Create Account To Start A Private Session
             </button>
           </div>
         )}
@@ -183,12 +183,12 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
       <aside className="mk3-actions-card">
         <h4>Host Path</h4>
         <ul className="mk3-plain-list">
-          <li>Choose private room code flow or public listing flow.</li>
-          <li>Publish cadence directly when owner/host verified.</li>
-          <li>Track follows, RSVPs, and check-ins from your dashboard.</li>
+          <li>Pick private-room flow or public listing flow.</li>
+          <li>Publish schedule updates once owner/host verification is done.</li>
+          <li>Track follows, RSVPs, and check-ins from one dashboard.</li>
         </ul>
         {!canSubmit && (
-          <div className="mk3-status">Create an account to create and manage listings.</div>
+          <div className="mk3-status">Create an account to create and manage your nights.</div>
         )}
       </aside>
     </section>

@@ -806,7 +806,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     <section className="mk3-page">
       <div className="mk3-status mk3-zone mk3-zone-finder">
         <strong>BeauRocks Karaoke {FINDER_BRAND} Finder</strong>
-        <span>Use map + rail together to find your next karaoke night or voice-first party session faster.</span>
+        <span>Find your next karaoke night fast, then meet actual humans when you get there.</span>
       </div>
       <div className="mk3-filter-row mk3-discover-filters mk3-zone mk3-zone-filters">
         <label>
@@ -821,7 +821,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           Region
           <input
             value={region}
-            placeholder="Nationwide or pick a preset below"
+            placeholder="Nationwide, or pick a preset below"
             onChange={(event) => setRegion(event.target.value)}
           />
         </label>
@@ -850,7 +850,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             <option value="smart">Smart (live + near)</option>
             <option value="soonest">Soonest start time</option>
             <option value="nearest">Nearest to me</option>
-            <option value="host_first">Host-first (follow hosts)</option>
+            <option value="host_first">Host-first</option>
           </select>
         </label>
       </div>
@@ -952,7 +952,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       <div className={`mk3-discover-shell ${mapFirst ? "is-map-first" : "is-balanced"}`}>
         <article className="mk3-map-card mk3-zone mk3-zone-map">
           <h2>{FINDER_BRAND} Live Karaoke Map</h2>
-          <div className="mk3-map-badge">Marker-synced {FINDER_BRAND} rail</div>
+          <div className="mk3-map-badge">Map and rail stay in sync</div>
           <div className="mk3-map-toolbar">
             <label className="mk3-inline">
               <input
@@ -960,7 +960,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 checked={boundsOnly}
                 onChange={(event) => setBoundsOnly(event.target.checked)}
               />
-              Bounds-only rail
+              Bounds-only list
             </label>
             <button type="button" onClick={recenterMap} disabled={!mappableListings.length || !mapsLoaded}>
               Recenter to markers
@@ -979,7 +979,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
           {!mapEnabled && (
             <div className="mk3-status">
-              Google Maps is disabled in `getDirectoryMapsConfig`, but directory browse still works.
+              Live map is off in config right now, but browsing still works.
             </div>
           )}
           {!!mapsError && <div className="mk3-status mk3-status-error">{mapsError}</div>}
@@ -1010,14 +1010,14 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           </article>
 
         <aside className="mk3-feed-column mk3-zone mk3-zone-rail">
-          {loading && <div className="mk3-status">Loading approved karaoke listings...</div>}
+          {loading && <div className="mk3-status">Loading listings...</div>}
           {!loading && !!error && !permissionError && !indexError && (
             <div className="mk3-status mk3-status-error">{error}</div>
           )}
           {!loading && indexError && (
             <div className="mk3-status mk3-status-warning">
-              <strong>Directory updates are still finishing.</strong>
-              <span>Try again in about a minute while indexes sync.</span>
+              <strong>The directory is still warming up.</strong>
+              <span>Give it about a minute while indexes finish syncing.</span>
               <div className="mk3-actions-inline">
                 <button type="button" onClick={() => window.location.reload()}>
                   Refresh now

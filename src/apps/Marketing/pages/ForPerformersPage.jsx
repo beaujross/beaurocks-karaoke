@@ -7,8 +7,8 @@ const ForPerformersPage = ({ navigate, session, authFlow }) => {
   <section className="mk3-page mk3-two-col">
     <article className="mk3-detail-card">
       <div className="mk3-chip">for performers</div>
-      <h2>Find nights worth singing and track your history.</h2>
-      <p>Follow hosts, RSVP to events, and keep your performance record in one profile.</p>
+      <h2>Find better nights, sing more, track the fun.</h2>
+      <p>Follow hosts, RSVP fast, and keep your performance history in one place without spreadsheet energy.</p>
       <div className="mk3-actions-inline">
         <button
           type="button"
@@ -17,7 +17,7 @@ const ForPerformersPage = ({ navigate, session, authFlow }) => {
             navigate("discover");
           }}
         >
-          Find Events
+          Find Nights
         </button>
         {canUseDashboard ? (
           <button
@@ -47,9 +47,9 @@ const ForPerformersPage = ({ navigate, session, authFlow }) => {
     <aside className="mk3-actions-card">
       <h4>Performer Path</h4>
       <ul className="mk3-plain-list">
-        <li>Discover by city, date window, and vibe.</li>
+        <li>Discover by city, timing, and vibe.</li>
         <li>RSVP and reminder flow for upcoming sessions.</li>
-        <li>View recent songs and top venues/hosts by count.</li>
+        <li>See recent songs plus your top venues and hosts.</li>
       </ul>
     </aside>
   </section>

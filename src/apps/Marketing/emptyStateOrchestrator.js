@@ -13,8 +13,8 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
   const canUseRestrictedActions = !!session?.isAuthed && !session?.isAnonymous;
   if (context === EMPTY_STATE_CONTEXT.DISCOVER_PERMISSION) {
     return {
-      title: "Some discovery data is private right now.",
-      description: "Create an account and continue your path, or retry with broad public filters.",
+      title: "Some listings are private right now.",
+      description: "Sign in to keep going, or switch to broad public filters.",
       actions: [
         { id: "auth", label: canUseRestrictedActions ? "Open Dashboard" : "Create account to continue", intent: "auth" },
         { id: "discover_reset", label: "Retry with public scope", intent: "discover_reset" },
@@ -23,10 +23,10 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
   }
   if (context === EMPTY_STATE_CONTEXT.DISCOVER_NO_RESULTS) {
     return {
-      title: "No listings match yet.",
+      title: "No listings match this filter set.",
       description: hasFilters
-        ? "Try broader filters, then continue to submit or claim flow."
-        : "No approved listings yet in this scope. Start with submit or claim paths.",
+        ? "Try wider filters, then take the next step."
+        : "Nothing public here yet. You can submit or claim a listing.",
       actions: [
         { id: "discover_reset", label: "Show all listings", intent: "discover_reset" },
         canUseRestrictedActions
@@ -37,8 +37,8 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
   }
   if (context === EMPTY_STATE_CONTEXT.GEO_NO_RESULTS) {
     return {
-      title: "No public listings in this geo route yet.",
-      description: "Switch to discover, or start supply-side flow by submitting/claiming listings.",
+      title: "No public listings in this area yet.",
+      description: "Open Discover or submit a listing to get this area moving.",
       actions: [
         { id: "discover", label: "Open discover", intent: "discover" },
         canUseRestrictedActions
@@ -50,7 +50,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
   if (context === EMPTY_STATE_CONTEXT.VENUE_MISSING) {
     return {
       title: "Venue not found.",
-      description: "Open discover to find another listing or submit a new venue.",
+      description: "Open Discover to find another listing or add a new venue.",
       actions: [
         { id: "discover", label: "Open discover", intent: "discover" },
         canUseRestrictedActions
@@ -62,7 +62,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
   if (context === EMPTY_STATE_CONTEXT.EVENT_MISSING) {
     return {
       title: "Event not found.",
-      description: "Browse discover or create a new public/private event path.",
+      description: "Browse Discover or create a new event.",
       actions: [
         { id: "discover", label: "Open discover", intent: "discover" },
         { id: "for_hosts", label: "Host quick start", intent: "for_hosts" },
@@ -72,7 +72,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
   if (context === EMPTY_STATE_CONTEXT.HOST_MISSING) {
     return {
       title: "Host profile not found.",
-      description: "Use discover to follow active hosts or create your host profile.",
+      description: "Use Discover to follow active hosts, or set up your own host profile.",
       actions: [
         { id: "discover", label: "Open discover", intent: "discover" },
         canUseRestrictedActions
@@ -84,7 +84,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
   if (context === EMPTY_STATE_CONTEXT.SESSION_MISSING) {
     return {
       title: "Session not found.",
-      description: "Use join by room code or discover public sessions.",
+      description: "Try Join By Code, or browse public sessions in Discover.",
       actions: [
         { id: "join", label: "Join by code", intent: "join" },
         { id: "discover", label: "Open discover", intent: "discover" },
@@ -94,7 +94,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
   if (context === EMPTY_STATE_CONTEXT.PERFORMER_MISSING) {
     return {
       title: "Performer profile not found.",
-      description: "Use discover to find performers, or complete your own profile path.",
+      description: "Use Discover to find performers, or complete your own profile.",
       actions: [
         { id: "discover", label: "Open discover", intent: "discover" },
         canUseRestrictedActions
@@ -105,7 +105,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
   }
   return {
     title: "Nothing here yet.",
-    description: "Start from discover or one of the persona entry paths.",
+    description: "Start from Discover or one of the persona paths.",
     actions: [
       { id: "discover", label: "Open discover", intent: "discover" },
       { id: "for_fans", label: "For fans", intent: "for_fans" },
