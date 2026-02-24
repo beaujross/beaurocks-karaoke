@@ -189,6 +189,18 @@ const isHostUpdateCallableUnavailableError = (error) => {
     );
 };
 
+const normalizePercent = (value, fallback = 50) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.max(0, Math.min(100, numeric));
+};
+
+const normalizeUnitVolume = (value, fallback = 0.3) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.max(0, Math.min(1, numeric));
+};
+
 // Background tracks and sounds imported from gameDataConstants.js
 // (BG_TRACKS, SOUNDS)
 
@@ -5813,7 +5825,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         });
                     }
                 } catch (error) {
-                    hostLogger.warn('Pop trivia generation failed', { songId: song.id, error });
+                    if (isPermissionDeniedError(error)) {
+                        hostLogger.info('Pop trivia generation skipped (permission)', { songId: song.id });
+                    } else {
+                        hostLogger.warn('Pop trivia generation failed', { songId: song.id, error });
+                    }
                     await updateDoc(songRef, {
                         popTriviaStatus: 'failed',
                         popTriviaError: String(error?.message || error?.code || 'Generation failed').slice(0, 180)
@@ -5833,10 +5849,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     useEffect(() => { if(bgAudio.current) bgAudio.current.volume = bgVolume; }, [bgVolume]);
     useEffect(() => {
         if (room?.bgMusicVolume !== undefined && room?.bgMusicVolume !== null) {
-            setBgVolume(room.bgMusicVolume);
+            setBgVolume(normalizeUnitVolume(room.bgMusicVolume, 0.3));
         }
         if (room?.mixFader !== undefined && room?.mixFader !== null) {
-            setMixFader(room.mixFader);
+            const nextMix = normalizePercent(room.mixFader, 50);
+            setMixFader(nextMix);
+            mixFadeTargetRef.current = nextMix;
         }
     }, [room?.bgMusicVolume, room?.mixFader]);
     useEffect(() => {
@@ -7540,17 +7558,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (mixFadeRef.current) {
             clearInterval(mixFadeRef.current);
         }
-        const start = mixFader;
-        const diff = targetPercent - start;
+        const start = normalizePercent(mixFader, normalizePercent(mixFadeTargetRef.current, 50));
+        const target = normalizePercent(targetPercent, start);
+        const diff = target - start;
         const steps = Math.max(1, Math.round(durationMs / 120));
         let tick = 0;
-        mixFadeTargetRef.current = targetPercent;
+        mixFadeTargetRef.current = target;
         mixFadeRef.current = setInterval(() => {
             tick += 1;
             const t = Math.min(1, tick / steps);
             const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
             const next = Math.round(start + diff * eased);
-            const clamped = Math.max(0, Math.min(100, next));
+            const clamped = normalizePercent(next, target);
             const bg = clamped / 100;
             const song = 1 - bg;
             setMixFader(clamped);
@@ -7574,17 +7593,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         prevSongStateRef.current = isPlayingSong;
         const fadeOutMs = Math.max(200, Number(autoBgFadeOutMs || 900));
         const fadeInMs = Math.max(200, Number(autoBgFadeInMs || 900));
-        const targetMix = Math.max(0, Math.min(100, Number(autoBgMixDuringSong ?? 0)));
+        const targetMix = normalizePercent(autoBgMixDuringSong, 0);
         if (isPlayingSong) {
-            mixBeforeSongRef.current = mixFader;
+            mixBeforeSongRef.current = normalizePercent(mixFader, 50);
             fadeMixFader(targetMix, fadeOutMs);
         } else {
-            const restore = Math.max(0, Math.min(100, mixBeforeSongRef.current ?? mixFadeTargetRef.current ?? 50));
+            const restore = normalizePercent(mixBeforeSongRef.current, normalizePercent(mixFadeTargetRef.current, 50));
             fadeMixFader(restore, fadeInMs);
         }
     }, [autoBgMusic, currentSong, autoBgFadeOutMs, autoBgFadeInMs, autoBgMixDuringSong, fadeMixFader, mixFader]);
     const handleMixFaderChange = (val) => {
-        let clamped = Math.max(0, Math.min(100, val));
+        let clamped = normalizePercent(val, normalizePercent(mixFader, 50));
         if (Math.abs(clamped - 50) <= 3) {
             clamped = 50;
         }

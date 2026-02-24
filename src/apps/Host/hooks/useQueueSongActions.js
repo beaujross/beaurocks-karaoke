@@ -22,6 +22,25 @@ import {
 import { normalizeBackingChoice } from '../../../lib/playbackSource';
 
 const YOUTUBE_PLAYLIST_QUEUE_MAX = 1000;
+let catalogPermissionSkipLogged = false;
+
+const isCatalogPermissionDeniedError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('permission-denied')
+        || message.includes('permission-denied')
+        || message.includes('host or moderator access required')
+        || message.includes('catalog song')
+        || message.includes('catalog track')
+    );
+};
+
+const logCatalogPermissionSkip = (scope) => {
+    if (catalogPermissionSkipLogged) return;
+    catalogPermissionSkipLogged = true;
+    console.info(`[HostQueue] ${scope} skipped: catalog write access is not available for this account.`);
+};
 
 const parseYouTubePlaylistId = (input = '') => {
     if (!input) return '';
@@ -466,7 +485,11 @@ const useQueueSongActions = ({
                     });
                     songId = songRecord?.songId || songId;
                 } catch (err) {
-                    console.warn('ensureSong failed', err);
+                    if (isCatalogPermissionDeniedError(err)) {
+                        logCatalogPermissionSkip('ensureSong');
+                    } else {
+                        console.warn('ensureSong failed', err);
+                    }
                 }
 
                 let trackRecord = null;
@@ -483,7 +506,11 @@ const useQueueSongActions = ({
                             addedBy: hostName || 'Host'
                         });
                     } catch (err) {
-                        console.warn('ensureTrack failed', err);
+                        if (isCatalogPermissionDeniedError(err)) {
+                            logCatalogPermissionSkip('ensureTrack');
+                        } else {
+                            console.warn('ensureTrack failed', err);
+                        }
                     }
                 }
 
