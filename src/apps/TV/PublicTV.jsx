@@ -4588,7 +4588,7 @@ const PublicTV = ({ roomCode }) => {
                                     className="absolute -translate-x-1/2 -translate-y-1/2 transition-[top,left] duration-160 ease-out"
                                     style={{ top: `${lobbyPongState.ballTopPct}%`, left: `${lobbyPongState.ballLeftPct}%` }}
                                 >
-                                    <div className="w-[86px] h-[86px] rounded-full border border-cyan-200/45 bg-gradient-to-br from-cyan-300/35 via-blue-400/30 to-fuchsia-400/35 shadow-[0_0_32px_rgba(34,211,238,0.45)] flex flex-col items-center justify-center">
+                                    <div className="w-[86px] h-[86px] rounded-full border border-cyan-200/55 bg-gradient-to-br from-teal-300/45 via-cyan-300/42 to-pink-400/46 shadow-[0_0_32px_rgba(45,212,191,0.5),0_0_28px_rgba(236,72,153,0.42)] flex flex-col items-center justify-center">
                                         <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100">{lobbyObjectiveLabel}</div>
                                         <div className="text-2xl font-bebas text-white leading-none">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
                                         <div className="text-[10px] uppercase tracking-[0.12em] text-white/75">{lobbyObjectiveStreakLabel}</div>
@@ -4634,6 +4634,8 @@ const PublicTV = ({ roomCode }) => {
                                             <span className="lobby-volley-orb-seam lobby-volley-orb-seam-left" />
                                             <span className="lobby-volley-orb-seam lobby-volley-orb-seam-right" />
                                             <span className="lobby-volley-orb-seam lobby-volley-orb-seam-band" />
+                                            <span className="lobby-volley-orb-seam lobby-volley-orb-seam-top" />
+                                            <span className="lobby-volley-orb-seam lobby-volley-orb-seam-bottom" />
                                         </div>
                                         <div
                                             className="lobby-volley-orb-core"
@@ -4988,7 +4990,7 @@ const PublicTV = ({ roomCode }) => {
               @keyframes lobby-screen-confetti-fall { 0% { opacity: 0; transform: translate3d(0, -12vh, 0) rotate(0deg) scale(0.8); } 12% { opacity: 0.95; } 100% { opacity: 0; transform: translate3d(var(--fall-sway, 0px), 108vh, 0) rotate(var(--fall-rot, 80deg)) scale(1.04); } }
               @keyframes lobby-link-pulse { 0% { stroke-dashoffset: 22; } 100% { stroke-dashoffset: 0; } }
               @keyframes lobby-orb-float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-6px); } }
-              @keyframes lobby-orb-glow { 0%, 100% { filter: drop-shadow(0 0 16px rgba(56,189,248,0.35)); } 50% { filter: drop-shadow(0 0 34px rgba(244,114,182,0.42)); } }
+              @keyframes lobby-orb-glow { 0%, 100% { filter: drop-shadow(0 0 18px rgba(45,212,191,0.56)); } 50% { filter: drop-shadow(0 0 38px rgba(236,72,153,0.64)); } }
               @keyframes lobby-combo-chip-pop { 0% { transform: translateY(8px) scale(0.92); opacity: 0; } 20% { transform: translateY(0) scale(1.02); opacity: 1; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
               .bonus-drop-burst { 
                 min-width: min(80vw, 980px);
@@ -5106,9 +5108,23 @@ const PublicTV = ({ roomCode }) => {
                 height: clamp(198px, 20vw, 292px);
                 border-radius: 9999px;
                 background:
-                  radial-gradient(circle at 27% 20%, rgba(255,255,255,0.97), rgba(233,248,255,0.92) 28%, rgba(148,239,255,0.8) 46%, rgba(119,44,188,0.7) 74%, rgba(17,14,48,0.9) 100%),
-                  conic-gradient(from 40deg, rgba(34,211,238,0.55), rgba(236,72,153,0.62), rgba(250,204,21,0.5), rgba(56,189,248,0.58), rgba(34,211,238,0.55));
-                border: 2px solid rgba(255,255,255,0.7);
+                  radial-gradient(circle at 24% 16%, rgba(255,255,255,0.95), rgba(255,255,255,0.14) 36%, rgba(0,0,0,0) 56%),
+                  radial-gradient(circle at 70% 78%, rgba(7,10,26,0.26), rgba(7,10,26,0.04) 48%, rgba(0,0,0,0) 74%),
+                  conic-gradient(
+                    from -18deg,
+                    rgba(45,212,191,0.98) 0deg 54deg,
+                    rgba(226,232,240,0.96) 54deg 63deg,
+                    rgba(236,72,153,0.98) 63deg 117deg,
+                    rgba(226,232,240,0.96) 117deg 126deg,
+                    rgba(45,212,191,0.98) 126deg 180deg,
+                    rgba(226,232,240,0.96) 180deg 189deg,
+                    rgba(236,72,153,0.98) 189deg 243deg,
+                    rgba(226,232,240,0.96) 243deg 252deg,
+                    rgba(45,212,191,0.98) 252deg 306deg,
+                    rgba(226,232,240,0.96) 306deg 315deg,
+                    rgba(236,72,153,0.98) 315deg 360deg
+                  );
+                border: 2px solid rgba(240,249,255,0.84);
                 position: relative;
                 overflow: hidden;
                 display: flex;
@@ -5116,9 +5132,10 @@ const PublicTV = ({ roomCode }) => {
                 justify-content: center;
                 backdrop-filter: blur(6px);
                 box-shadow:
-                  inset 0 0 28px rgba(255,255,255,0.34),
-                  0 0 calc(34px + (48px * var(--orb-energy-norm))) rgba(45,212,191,0.48),
-                  0 0 calc(44px + (54px * var(--orb-energy-norm))) rgba(236,72,153,0.38);
+                  inset 0 0 30px rgba(255,255,255,0.28),
+                  inset 0 -14px 28px rgba(10,15,32,0.34),
+                  0 0 calc(36px + (48px * var(--orb-energy-norm))) rgba(45,212,191,0.58),
+                  0 0 calc(48px + (54px * var(--orb-energy-norm))) rgba(236,72,153,0.5);
                 animation: lobby-orb-float 2.8s ease-in-out infinite, lobby-orb-glow 2.8s ease-in-out infinite;
               }
               .lobby-volley-orb-shell::before {
@@ -5126,7 +5143,7 @@ const PublicTV = ({ roomCode }) => {
                 position: absolute;
                 inset: -13%;
                 border-radius: 9999px;
-                background: radial-gradient(circle, rgba(59,130,246,0.3) 0%, rgba(236,72,153,0.2) 44%, rgba(251,191,36,0.16) 63%, rgba(0,0,0,0) 75%);
+                background: radial-gradient(circle, rgba(45,212,191,0.34) 0%, rgba(236,72,153,0.28) 44%, rgba(226,232,240,0.16) 63%, rgba(0,0,0,0) 75%);
                 filter: blur(7px);
                 opacity: calc(0.65 + (var(--orb-energy-norm) * 0.35));
                 pointer-events: none;
@@ -5154,51 +5171,79 @@ const PublicTV = ({ roomCode }) => {
               .lobby-volley-orb-slat-overlay::before {
                 content: '';
                 position: absolute;
-                inset: -26%;
+                inset: -20%;
                 background:
-                  repeating-linear-gradient(
-                    142deg,
-                    rgba(45,212,191,0.14) 0 14px,
-                    rgba(236,72,153,0.12) 14px 28px,
-                    rgba(255,255,255,0.1) 28px 42px
+                  radial-gradient(circle at 50% 50%, rgba(255,255,255,0) 54%, rgba(255,255,255,0.14) 60%, rgba(255,255,255,0) 68%),
+                  conic-gradient(
+                    from -10deg,
+                    rgba(0,0,0,0) 0deg 56deg,
+                    rgba(255,255,255,0.16) 56deg 62deg,
+                    rgba(0,0,0,0) 62deg 118deg,
+                    rgba(255,255,255,0.16) 118deg 124deg,
+                    rgba(0,0,0,0) 124deg 180deg,
+                    rgba(255,255,255,0.16) 180deg 186deg,
+                    rgba(0,0,0,0) 186deg 242deg,
+                    rgba(255,255,255,0.16) 242deg 248deg,
+                    rgba(0,0,0,0) 248deg 304deg,
+                    rgba(255,255,255,0.16) 304deg 310deg,
+                    rgba(0,0,0,0) 310deg 360deg
                   );
-                mix-blend-mode: soft-light;
-                transform: rotate(-8deg);
+                mix-blend-mode: screen;
+                transform: rotate(-4deg);
               }
               .lobby-volley-orb-seam {
                 position: absolute;
                 border-radius: 9999px;
-                border: 4px solid rgba(15,23,42,0.45);
-                box-shadow: 0 0 0 1px rgba(255,255,255,0.56);
-                opacity: 0.85;
+                border: 2.5px solid rgba(241,245,249,0.9);
+                box-shadow:
+                  0 0 0 1px rgba(8,10,26,0.24),
+                  0 0 12px rgba(34,211,238,0.18),
+                  0 0 12px rgba(236,72,153,0.18);
+                opacity: 0.94;
               }
               .lobby-volley-orb-seam-main {
-                width: 70%;
-                height: 122%;
-                top: -12%;
-                left: 15%;
-                transform: rotate(6deg);
+                width: 66%;
+                height: 132%;
+                top: -16%;
+                left: 17%;
+                transform: rotate(9deg);
               }
               .lobby-volley-orb-seam-left {
-                width: 88%;
-                height: 128%;
-                top: -12%;
-                left: -56%;
-                transform: rotate(-18deg);
+                width: 90%;
+                height: 138%;
+                top: -16%;
+                left: -60%;
+                transform: rotate(-24deg);
               }
               .lobby-volley-orb-seam-right {
-                width: 88%;
-                height: 128%;
-                top: -12%;
-                right: -56%;
-                transform: rotate(18deg);
+                width: 90%;
+                height: 138%;
+                top: -16%;
+                right: -60%;
+                transform: rotate(24deg);
               }
               .lobby-volley-orb-seam-band {
-                width: 134%;
-                height: 76%;
-                top: 12%;
-                left: -17%;
-                transform: rotate(-13deg);
+                width: 138%;
+                height: 68%;
+                top: 16%;
+                left: -19%;
+                transform: rotate(-12deg);
+              }
+              .lobby-volley-orb-seam-top {
+                width: 110%;
+                height: 56%;
+                top: -28%;
+                left: -4%;
+                transform: rotate(8deg);
+                opacity: 0.7;
+              }
+              .lobby-volley-orb-seam-bottom {
+                width: 112%;
+                height: 58%;
+                bottom: -30%;
+                right: -6%;
+                transform: rotate(8deg);
+                opacity: 0.66;
               }
               .lobby-volley-orb-core {
                 --orb-glow: 0.4;
@@ -5212,8 +5257,10 @@ const PublicTV = ({ roomCode }) => {
                 justify-content: center;
                 text-align: center;
                 background: radial-gradient(circle, rgba(25,20,52,0.83), rgba(8,10,30,0.93));
-                border: 1px solid rgba(244,114,182,0.5);
-                box-shadow: 0 0 calc(40px * var(--orb-glow)) rgba(45,212,191,0.56), inset 0 0 24px rgba(236,72,153,0.24);
+                border: 1px solid rgba(244,114,182,0.62);
+                box-shadow:
+                  0 0 calc(44px * var(--orb-glow)) rgba(45,212,191,0.62),
+                  inset 0 0 24px rgba(236,72,153,0.3);
                 transform: scale(var(--orb-scale));
                 z-index: 2;
               }
@@ -5232,7 +5279,7 @@ const PublicTV = ({ roomCode }) => {
                 right: 0;
                 bottom: 0;
                 height: var(--orb-fill);
-                background: linear-gradient(180deg, rgba(45,212,191,0.78), rgba(236,72,153,0.75));
+                background: linear-gradient(180deg, rgba(45,212,191,0.92), rgba(236,72,153,0.9));
                 transition: height 180ms ease;
               }
               .lobby-volley-orb-activity {

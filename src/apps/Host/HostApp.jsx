@@ -11093,9 +11093,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         );
     };
 
-    if(view === 'landing') return ( 
+    if(view === 'landing') {
+        const hasWorkspaceIdentity = Boolean(String(orgContext?.orgId || '').trim());
+        const hasHostIdentity = Boolean(String(hostName || '').trim());
+        const quickStartRoleAllowed = new Set(['owner', 'moderator', 'captain']).has(String(hostPermissionLevel || '').toLowerCase());
+        const canQuickStartRoom = hasWorkspaceIdentity && hasHostIdentity && quickStartRoleAllowed;
+        return ( 
         <div
-            className="relative min-h-screen overflow-hidden flex flex-col items-center justify-center p-4 md:p-8 text-center"
+            className="relative min-h-screen overflow-hidden flex flex-col items-center justify-start md:justify-center p-4 pt-6 md:p-8 text-center"
             style={{
                 background:
                     'radial-gradient(circle at 12% 8%, rgba(0,196,217,0.35), transparent 34%), radial-gradient(circle at 86% 10%, rgba(236,72,153,0.3), transparent 32%), radial-gradient(circle at 52% 92%, rgba(251,191,36,0.14), transparent 34%), linear-gradient(160deg, #050612 0%, #0b1020 48%, #130a1c 100%)'
@@ -11107,7 +11112,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <div className="absolute bottom-[-5rem] left-1/3 h-56 w-56 rounded-full bg-fuchsia-400/16 blur-3xl"></div>
             </div>
             <div className="relative z-10 w-full max-w-2xl">
-                <div className="bg-gradient-to-br from-[#151125]/90 via-[#10182a]/90 to-[#0b111b]/95 p-6 md:p-8 rounded-[2rem] border border-cyan-300/35 backdrop-blur-xl w-full shadow-[0_30px_90px_rgba(0,0,0,0.5),0_0_60px_rgba(236,72,153,0.18)] relative overflow-hidden">
+                <div className="bg-gradient-to-br from-[#151125]/90 via-[#10182a]/90 to-[#0b111b]/95 p-5 md:p-6 rounded-[2rem] border border-cyan-300/35 backdrop-blur-xl w-full shadow-[0_30px_90px_rgba(0,0,0,0.5),0_0_60px_rgba(236,72,153,0.18)] relative overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100">
                         <span className="h-2 w-2 rounded-full bg-cyan-300 animate-pulse"></span>
@@ -11120,10 +11125,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         Role: {hostPermissionLevel}
                     </div>
                 </div>
-                <img src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png" className="w-56 mx-auto mb-5 drop-shadow-[0_0_36px_rgba(0,196,217,0.38)]"/> 
-                <h1 className="text-[2.1rem] md:text-5xl font-black mb-3 text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] via-[#84e7f4] to-[#EC4899] leading-tight">Open Your Karaoke Room In Seconds</h1>
-                <div className="text-sm text-cyan-100/85 mb-2 max-w-xl mx-auto">This screen is for hosts and captains. Singers and audience join with a room code from their own app view.</div>
-                <div className="text-[11px] uppercase tracking-[0.2em] text-fuchsia-100/60 mb-6">Launch flow only. No super-admin bypass required.</div>
+                <div className="mb-4 flex flex-col items-center gap-3 md:flex-row md:items-center md:text-left">
+                    <img
+                        src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png"
+                        className="w-36 md:w-40 shrink-0 drop-shadow-[0_0_30px_rgba(0,196,217,0.34)]"
+                        alt="Bross Entertainment"
+                    />
+                    <div className="max-w-xl">
+                        <h1 className="text-[1.85rem] md:text-[2.65rem] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] via-[#84e7f4] to-[#EC4899] leading-tight">Open Your Karaoke Room In Seconds</h1>
+                        <div className="text-sm text-cyan-100/85 mt-2">Hosts and captains run setup here. Singers and audience join from their own mobile view using the room code.</div>
+                    </div>
+                </div>
+                <div className="text-[11px] uppercase tracking-[0.2em] text-fuchsia-100/60 mb-4">Recommended path: guided setup first, then launch.</div>
                 <button
                     onClick={() => {
                         if (!canUseWorkspaceOnboarding) {
@@ -11137,14 +11150,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 >
                     Guided Setup Wizard
                 </button>
-                <button
-                    data-host-quick-start
-                    onClick={() => createRoom()}
-                    disabled={creatingRoom}
-                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-5 shadow-[0_0_34px_rgba(236,72,153,0.35)] ${creatingRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                >
-                    {creatingRoom ? 'Creating Room...' : 'Quick Start New Room'}
-                </button> 
+                <div className="text-xs text-cyan-100/75 mb-4 text-left">
+                    Use this to set host identity, workspace details, branding, and launch defaults in one pass.
+                </div>
                 {!uid && authError && (
                     <div className="mb-3 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 text-left">
                         Auth failed: {authError.code || authError.message || 'Unknown error'}
@@ -11195,6 +11203,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         Cleanup + Archive Tools
                     </button>
                 </div>
+                <details className="mt-4 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
+                    <summary className="cursor-pointer list-none flex items-center justify-between text-xs uppercase tracking-[0.18em] text-cyan-100">
+                        <span>Advanced Launch (QA / Returning Hosts)</span>
+                        <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
+                    </summary>
+                    <div className="mt-3 text-xs text-cyan-100/70">
+                        Quick start skips the guided checklist. It is best for hosts who already have identity/workspace configured.
+                    </div>
+                    <button
+                        data-host-quick-start
+                        onClick={() => createRoom()}
+                        disabled={creatingRoom || !canQuickStartRoom}
+                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 w-full py-2.5 text-xs uppercase tracking-[0.2em] shadow-[0_0_28px_rgba(236,72,153,0.25)] ${creatingRoom || !canQuickStartRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                        {creatingRoom ? 'Creating Room...' : 'Quick Start New Room'}
+                    </button>
+                    {!canQuickStartRoom && (
+                        <div className="mt-2 text-[11px] text-amber-200/85">
+                            Complete guided setup first to unlock quick start on this account.
+                        </div>
+                    )}
+                </details>
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-left">
                     <div className="rounded-xl border border-cyan-400/28 bg-cyan-500/8 px-3 py-2">
                         <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/65">Workspace</div>
@@ -11284,7 +11314,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             })}
                         </div>
                     ) : (
-                        <div className="text-xs text-cyan-100/70 mt-3">No recent hosted rooms yet. Create one with Quick Start and it will appear here.</div>
+                        <div className="text-xs text-cyan-100/70 mt-3">No recent hosted rooms yet. Launch your first room from Guided Setup and it will appear here.</div>
                     )}
                     {roomManagerError && (
                         <div className="mt-2 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-2 py-1.5">
@@ -11303,9 +11333,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 )}
                 <div className="mt-5 rounded-xl border border-pink-400/22 bg-gradient-to-r from-[#141028]/90 via-[#121726]/90 to-[#0f1d27]/90 px-3 py-2 text-left text-xs text-cyan-100/75">
-                    <div className="font-semibold text-white mb-1">Three Launch Paths</div>
-                    <div className="mb-1"><span className="text-cyan-200"><i className="fa-solid fa-wand-magic-sparkles mr-2"></i></span>Wizard: identity, billing, branding, then launch.</div>
-                    <div className="mb-1"><span className="text-pink-200"><i className="fa-solid fa-bolt mr-2"></i></span>Quick Start: create room now, fine-tune in Night Setup.</div>
+                    <div className="font-semibold text-white mb-1">Launch Flow</div>
+                    <div className="mb-1"><span className="text-cyan-200"><i className="fa-solid fa-wand-magic-sparkles mr-2"></i></span>Primary: Guided Setup for identity, billing, branding, then launch.</div>
+                    <div className="mb-1"><span className="text-pink-200"><i className="fa-solid fa-bolt mr-2"></i></span>Advanced: Quick Start (inside Advanced Launch) for QA or returning hosts.</div>
                     <div><span className="text-emerald-200"><i className="fa-solid fa-layer-group mr-2"></i></span>Room Manager: reopen, cleanup, archive, and restore existing rooms.</div>
                 </div> 
             </div>
@@ -11692,6 +11722,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             </div>
         </div>
     );
+    }
 
     const settingsNavigationSections = (() => {
         const q = settingsNavQuery.trim().toLowerCase();
