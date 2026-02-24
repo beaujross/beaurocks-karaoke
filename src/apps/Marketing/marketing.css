@@ -1290,6 +1290,35 @@
   color: #f5e7ff;
 }
 
+.mk3-map-card .gm-style .gm-style-iw-c {
+  background: linear-gradient(140deg, rgba(17, 11, 40, 0.96), rgba(31, 13, 46, 0.94)) !important;
+  border: 1px solid rgba(94, 211, 246, 0.54) !important;
+  border-radius: 12px !important;
+  box-shadow:
+    0 10px 26px rgba(7, 4, 19, 0.55),
+    inset 0 0 0 1px rgba(255, 132, 206, 0.18) !important;
+  padding: 10px 12px !important;
+}
+
+.mk3-map-card .gm-style .gm-style-iw-d {
+  overflow: hidden !important;
+}
+
+.mk3-map-card .gm-style .gm-style-iw-t::after {
+  background: rgba(24, 11, 43, 0.96) !important;
+  box-shadow: -1px -1px 0 rgba(94, 211, 246, 0.44) !important;
+}
+
+.mk3-map-card .gm-style .gm-ui-hover-effect {
+  top: 2px !important;
+  right: 2px !important;
+  opacity: 0.92 !important;
+}
+
+.mk3-map-card .gm-style .gm-ui-hover-effect span {
+  filter: invert(1) brightness(1.35) saturate(0.05);
+}
+
 .mk3-map-marker-selected-kicker {
   color: #ffdba4;
   font-size: 0.58rem;
