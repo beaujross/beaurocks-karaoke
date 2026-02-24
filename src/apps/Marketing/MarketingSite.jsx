@@ -628,7 +628,7 @@ const MarketingSite = () => {
   );
   const visiblePrimaryOptions = useMemo(
     () => (privateAccessLocked
-      ? [{ id: MARKETING_ROUTE_PAGES.discover, label: "Private Test" }]
+      ? [{ id: MARKETING_ROUTE_PAGES.discover, label: "Find Karaoke" }]
       : PRIMARY_PAGE_OPTIONS),
     [privateAccessLocked]
   );
@@ -752,11 +752,7 @@ const MarketingSite = () => {
                 className="mk3-account-action"
                 onClick={() => {
                   if (privateAccessLocked) {
-                    setAuthMode(hasFullAccount || !canCreatePrivateHostAccount ? "signin" : "signup");
-                    if (!hasFullAccount && !canCreatePrivateHostAccount) {
-                      setAuthLocalError("Use the host access code below before creating a new host account.");
-                    }
-                    scrollAuthPanelIntoView();
+                    navigate(MARKETING_ROUTE_PAGES.discover);
                     return;
                   }
                   if (hasFullAccount) {
@@ -768,7 +764,7 @@ const MarketingSite = () => {
                 }}
               >
                 {privateAccessLocked
-                  ? (hasFullAccount ? "Unlock Access" : "Apply For Access")
+                  ? "View Listings"
                   : (hasFullAccount ? "Dashboard" : "Create Account")}
               </button>
               <button
@@ -779,11 +775,17 @@ const MarketingSite = () => {
                     actions.signOutAccount();
                     return;
                   }
+                  if (privateAccessLocked && !canCreatePrivateHostAccount) {
+                    setPrivateAccessNotice("");
+                    setPrivateAccessError("Enter a valid host access code first.");
+                    scrollAuthPanelIntoView();
+                    return;
+                  }
                   setAuthMode("signin");
                   scrollAuthPanelIntoView();
                 }}
               >
-                {hasFullAccount ? "Sign out" : "Sign in"}
+                {hasFullAccount ? "Sign out" : (privateAccessLocked ? "Host sign in" : "Sign in")}
               </button>
               <button
                 type="button"
@@ -834,19 +836,28 @@ const MarketingSite = () => {
             </div>
           )}
 
-          <section className="mk3-auth-panel" ref={authPanelRef}>
+          <section className={`mk3-auth-panel${privateAccessLocked ? " is-private-focus" : ""}`} ref={authPanelRef}>
             <div>
               {privateAccessLocked ? (
                 <>
-                  <h1>Private Test Program</h1>
+                  <h1>Public Listings + Private Host Beta</h1>
                   <p>
-                    Karaoke software has been awkward for way too long. BeauRocks is our attempt to fix that:
-                    use tech to help people find each other, then make in-room interaction easier, safer, and more fun.
+                    Explore live karaoke listings now. Host account creation stays invite-only while we run private
+                    pilot groups.
                   </p>
                   <div className="mk3-private-pill-row">
                     <span className="mk3-private-pill">Invite-only</span>
                     <span className="mk3-private-pill">Friendly host pilots</span>
                     <span className="mk3-private-pill">Human connection first</span>
+                  </div>
+                  <div className="mk3-auth-cta-row">
+                    <button
+                      type="button"
+                      className="mk3-auth-cta-primary"
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
+                    >
+                      Explore Live Listings
+                    </button>
                   </div>
                   <form className="mk3-private-apply-form" onSubmit={onPrivateApplySubmit}>
                     <h2>Apply for private test access</h2>
@@ -1019,72 +1030,63 @@ const MarketingSite = () => {
                   </div>
                 </div>
               ) : (
-                <form onSubmit={onAuthSubmit}>
-                  <div className="mk3-toggle-row">
-                    <button
-                      type="button"
-                      className={authMode === "signin" ? "active" : ""}
-                      onClick={() => {
-                        setAuthMode("signin");
-                        setAuthLocalError("");
-                        actions.clearAuthError?.();
-                      }}
-                    >
-                      Sign In
-                    </button>
-                    <button
-                      type="button"
-                      className={authMode === "signup" ? "active" : ""}
-                      disabled={!canCreatePrivateHostAccount}
-                      onClick={() => {
-                        if (!canCreatePrivateHostAccount) {
-                          setAuthMode("signin");
-                          setAuthLocalError("Unlock private host access with your access code first.");
-                          return;
-                        }
-                        setAuthMode("signup");
-                        setAuthLocalError("");
-                        actions.clearAuthError?.();
-                      }}
-                    >
-                      Create Account
-                    </button>
+                privateAccessLocked && !canCreatePrivateHostAccount ? (
+                  <div className="mk3-status mk3-status-warning">
+                    <strong>Host login is hidden until invite unlock.</strong>
+                    <span>Enter a valid host code below to enable sign in and account creation.</span>
                   </div>
-                  <label>
-                    Email
-                    <input
-                      type="email"
-                      value={authForm.email}
-                      onChange={(e) => {
-                        setAuthForm((prev) => ({ ...prev, email: e.target.value }));
-                        setAuthLocalError("");
-                        actions.clearAuthError?.();
-                      }}
-                      required
-                    />
-                  </label>
-                  <label>
-                    Password
-                    <input
-                      type="password"
-                      value={authForm.password}
-                      onChange={(e) => {
-                        setAuthForm((prev) => ({ ...prev, password: e.target.value }));
-                        setAuthLocalError("");
-                        actions.clearAuthError?.();
-                      }}
-                      required
-                      minLength={6}
-                    />
-                  </label>
-                  {authMode === "signup" && (
+                ) : (
+                  <form onSubmit={onAuthSubmit}>
+                    <div className="mk3-toggle-row">
+                      <button
+                        type="button"
+                        className={authMode === "signin" ? "active" : ""}
+                        onClick={() => {
+                          setAuthMode("signin");
+                          setAuthLocalError("");
+                          actions.clearAuthError?.();
+                        }}
+                      >
+                        Sign In
+                      </button>
+                      <button
+                        type="button"
+                        className={authMode === "signup" ? "active" : ""}
+                        disabled={!canCreatePrivateHostAccount}
+                        onClick={() => {
+                          if (!canCreatePrivateHostAccount) {
+                            setAuthMode("signin");
+                            setAuthLocalError("Unlock private host access with your access code first.");
+                            return;
+                          }
+                          setAuthMode("signup");
+                          setAuthLocalError("");
+                          actions.clearAuthError?.();
+                        }}
+                      >
+                        Create Account
+                      </button>
+                    </div>
                     <label>
-                      Confirm Password
+                      Email
+                      <input
+                        type="email"
+                        value={authForm.email}
+                        onChange={(e) => {
+                          setAuthForm((prev) => ({ ...prev, email: e.target.value }));
+                          setAuthLocalError("");
+                          actions.clearAuthError?.();
+                        }}
+                        required
+                      />
+                    </label>
+                    <label>
+                      Password
                       <input
                         type="password"
-                        value={authForm.confirmPassword}
+                        value={authForm.password}
                         onChange={(e) => {
-                          setAuthForm((prev) => ({ ...prev, confirmPassword: e.target.value }));
+                          setAuthForm((prev) => ({ ...prev, password: e.target.value }));
                           setAuthLocalError("");
                           actions.clearAuthError?.();
                         }}
@@ -1092,21 +1094,37 @@ const MarketingSite = () => {
                         minLength={6}
                       />
                     </label>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={session.authLoading || (authMode === "signup" && !canCreatePrivateHostAccount)}
-                  >
-                    {session.authLoading
-                      ? "Working..."
-                      : authMode === "signup"
-                        ? "Create Account"
-                        : "Sign In"}
-                  </button>
-                  <div className="mk3-auth-hint">{postAuthHint}</div>
-                  {authLocalError && <div className="mk3-status mk3-status-error">{authLocalError}</div>}
-                  {session.authError && <div className="mk3-status mk3-status-error">{session.authError}</div>}
-                </form>
+                    {authMode === "signup" && (
+                      <label>
+                        Confirm Password
+                        <input
+                          type="password"
+                          value={authForm.confirmPassword}
+                          onChange={(e) => {
+                            setAuthForm((prev) => ({ ...prev, confirmPassword: e.target.value }));
+                            setAuthLocalError("");
+                            actions.clearAuthError?.();
+                          }}
+                          required
+                          minLength={6}
+                        />
+                      </label>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={session.authLoading || (authMode === "signup" && !canCreatePrivateHostAccount)}
+                    >
+                      {session.authLoading
+                        ? "Working..."
+                        : authMode === "signup"
+                          ? "Create Account"
+                          : "Sign In"}
+                    </button>
+                    <div className="mk3-auth-hint">{postAuthHint}</div>
+                    {authLocalError && <div className="mk3-status mk3-status-error">{authLocalError}</div>}
+                    {session.authError && <div className="mk3-status mk3-status-error">{session.authError}</div>}
+                  </form>
+                )
               )}
               {privateTestModeEnabled && (
                 <div className="mk3-private-invite-box">
@@ -1137,7 +1155,7 @@ const MarketingSite = () => {
                                 setPrivateAccessNotice("");
                               }}
                               maxLength={privateUnlockLength}
-                              placeholder="BE@UROCKS"
+                              placeholder="ENTER CODE"
                               autoComplete="off"
                               autoCapitalize="characters"
                               spellCheck={false}
@@ -1161,22 +1179,27 @@ const MarketingSite = () => {
           </section>
 
           {privateAccessLocked ? (
-            <section className="mk3-private-locked-panel mk3-zone" aria-label="Private test locked">
-              <h2>Private surfaces are invite-only right now.</h2>
-              <p>
-                Apply above to join the test queue. If you have a host code, unlock onboarding and create your account.
-              </p>
-              <div className="mk3-private-locked-grid">
-                <article>
-                  <strong>New applicants</strong>
-                  <span>Send the short form and we will review your use case.</span>
-                </article>
-                <article>
-                  <strong>Invited hosts</strong>
-                  <span>Use your host code above, then create your account.</span>
-                </article>
-              </div>
-            </section>
+            <>
+              <Suspense fallback={<PageShellLoader />}>
+                {pageNode}
+              </Suspense>
+              <section className="mk3-private-locked-panel mk3-zone" aria-label="Private test locked">
+                <h2>Browse public listings now. Host onboarding stays invite-only.</h2>
+                <p>
+                  You can explore the map and listings freely. Host account creation is unlocked by invite code.
+                </p>
+                <div className="mk3-private-locked-grid">
+                  <article>
+                    <strong>New applicants</strong>
+                    <span>Send the short form and we will review your use case.</span>
+                  </article>
+                  <article>
+                    <strong>Invited hosts</strong>
+                    <span>Use your host code above, then create your account.</span>
+                  </article>
+                </div>
+              </section>
+            </>
           ) : (
             <>
               <section className="mk3-public-changelog mk3-zone mk3-zone-changelog" aria-label="Public changelog">
