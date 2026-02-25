@@ -26,6 +26,14 @@ const GAME_RULES = {
             'Three strikes and the round ends.'
         ]
     },
+    team_pong: {
+        title: 'Team Pong',
+        lines: [
+            'You are assigned to left or right team.',
+            'Tap to return the ball and keep the rally alive.',
+            'Longer rallies increase teamwork multiplier.'
+        ]
+    },
     bingo: {
         title: 'Bingo',
         lines: [

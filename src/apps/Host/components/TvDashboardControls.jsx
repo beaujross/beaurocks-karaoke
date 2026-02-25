@@ -9,6 +9,12 @@ const TvDashboardControls = ({
 }) => {
     const ToggleSwitch = toggleSwitch;
     const reduceMotionFx = !!room?.reduceMotionFx;
+    const tvPresentationProfile = (() => {
+        const key = String(room?.tvPresentationProfile || '').trim().toLowerCase();
+        if (key === 'simple') return 'simple';
+        if (key === 'cinema') return 'cinema';
+        return 'room';
+    })();
     return (
     <div className={tvControlsOpen ? 'block' : 'hidden'}>
         <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">PUBLIC TV LAYOUT</div>
@@ -33,6 +39,30 @@ const TvDashboardControls = ({
                 title="Video-first layout with minimal UI"
             >
                 <i className="fa-solid fa-film mr-2"></i> Cinema
+            </button>
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">TV presentation profile</div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-zinc-900/60 p-2 rounded-xl border border-white/10">
+            <button
+                onClick={() => updateRoom({ tvPresentationProfile: 'room' })}
+                className={`${styles.btnStd} ${tvPresentationProfile === 'room' ? styles.btnHighlight : styles.btnNeutral} justify-center px-2`}
+                title="Use room-defined TV behavior"
+            >
+                <i className="fa-solid fa-sliders mr-2"></i> Room
+            </button>
+            <button
+                onClick={() => updateRoom({ tvPresentationProfile: 'simple' })}
+                className={`${styles.btnStd} ${tvPresentationProfile === 'simple' ? styles.btnHighlight : styles.btnNeutral} justify-center px-2`}
+                title="Cleaner shared-screen style with fewer ambient effects"
+            >
+                <i className="fa-solid fa-sparkles mr-2"></i> Simple
+            </button>
+            <button
+                onClick={() => updateRoom({ tvPresentationProfile: 'cinema' })}
+                className={`${styles.btnStd} ${tvPresentationProfile === 'cinema' ? styles.btnHighlight : styles.btnNeutral} justify-center px-2`}
+                title="Stage-forward cinematic framing"
+            >
+                <i className="fa-solid fa-clapperboard mr-2"></i> Cinema
             </button>
         </div>
         <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Screen elements</div>

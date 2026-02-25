@@ -71,9 +71,10 @@ const run = () => {
     const maxParticipants = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS.MAX_PARTICIPANTS_PER_PAYOUT || 6);
     assert.ok((payout.awards || []).length <= maxParticipants);
     const tierDef = (LOBBY_PLAYGROUND_ENGINE_CONSTANTS.TIER_DEFINITIONS || []).find((entry) => entry.tier === payout.tier);
+    const effectiveMaxPointsPerUser = Number(payout.maxPointsPerUser || tierDef?.maxPointsPerUser || 0);
     if (tierDef && !tierDef.visualOnly) {
         (payout.awards || []).forEach((entry) => {
-            assert.ok(Number(entry.points) <= Number(tierDef.maxPointsPerUser || entry.points));
+            assert.ok(Number(entry.points) <= Number(effectiveMaxPointsPerUser || entry.points));
             assert.ok(Number(entry.points) > 0);
         });
     }

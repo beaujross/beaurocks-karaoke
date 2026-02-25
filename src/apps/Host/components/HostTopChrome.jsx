@@ -1,5 +1,6 @@
 import React from 'react';
 import ModerationInboxChip from './ModerationInboxChip';
+import { CROWD_OBJECTIVE_MODES, getCrowdObjectiveModeFromLightMode } from '../../../lib/crowdObjectiveModes';
 
 const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', onClick, title = '' }) => {
     const Comp = typeof onClick === 'function' ? 'button' : 'div';
@@ -59,6 +60,8 @@ const HostTopChrome = ({
     setMarqueeEnabled,
     chatShowOnTv = false,
     setChatShowOnTv,
+    popTriviaEnabled = true,
+    setPopTriviaEnabled,
     chatTvMode = 'auto',
     setChatTvMode,
     chatUnread = 0,
@@ -94,6 +97,11 @@ const HostTopChrome = ({
     onOpenAiSettings,
     onOpenAccessSettings
 }) => {
+    const clampNumber = (value, min, max, fallback = min) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return fallback;
+        return Math.max(min, Math.min(max, numeric));
+    };
     const SmallWaveform = smallWaveform;
     const [showAutomationMenu, setShowAutomationMenu] = React.useState(false);
     const [showTvQuickMenu, setShowTvQuickMenu] = React.useState(false);
@@ -112,6 +120,8 @@ const HostTopChrome = ({
     const guitarActive = room?.lightMode === 'guitar';
     const bangerActive = room?.lightMode === 'banger';
     const balladActive = room?.lightMode === 'ballad';
+    const activeCrowdObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
+    const volleyActive = !!activeCrowdObjectiveMode;
     const selfieCamActive = room?.activeMode === 'selfie_cam';
     const normalizedPermission = String(permissionLevel || 'unknown').toLowerCase();
     const tvDisplayMode = room?.showLyricsTv && room?.showVisualizerTv
@@ -121,6 +131,12 @@ const HostTopChrome = ({
             : room?.showVisualizerTv
                 ? 'visualizer'
                 : 'video';
+    const tvPresentationProfile = (() => {
+        const key = String(room?.tvPresentationProfile || '').trim().toLowerCase();
+        if (key === 'simple') return 'simple';
+        if (key === 'cinema') return 'cinema';
+        return 'room';
+    })();
     const permissionTone = normalizedPermission === 'owner'
         ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100'
         : normalizedPermission === 'admin'
@@ -140,12 +156,12 @@ const HostTopChrome = ({
     const visualizerMode = room?.visualizerMode || 'ribbon';
     const visualizerPreset = room?.visualizerPreset || 'neon';
     const visualizerSyncLightMode = !!room?.visualizerSyncLightMode;
-    const visualizerSensitivity = Number.isFinite(Number(room?.visualizerSensitivity))
-        ? Math.max(0.5, Math.min(2.5, Number(room.visualizerSensitivity)))
-        : 1;
-    const visualizerSmoothing = Number.isFinite(Number(room?.visualizerSmoothing))
-        ? Math.max(0, Math.min(0.95, Number(room.visualizerSmoothing)))
-        : 0.35;
+    const roomVisualizerSensitivity = clampNumber(room?.visualizerSensitivity, 0.5, 2.5, 1);
+    const roomVisualizerSmoothing = clampNumber(room?.visualizerSmoothing, 0, 0.95, 0.35);
+    const [visualizerSensitivityDraft, setVisualizerSensitivityDraft] = React.useState(roomVisualizerSensitivity);
+    const [visualizerSmoothingDraft, setVisualizerSmoothingDraft] = React.useState(roomVisualizerSmoothing);
+    const visualizerSliderTimerRef = React.useRef({ sensitivity: null, smoothing: null });
+    const visualizerSliderDraggingRef = React.useRef({ sensitivity: false, smoothing: false });
     const activeVibeLabel = selfieCamActive
         ? 'Selfie Cam'
         : stormActive
@@ -158,15 +174,17 @@ const HostTopChrome = ({
                         ? 'Banger'
                         : balladActive
                             ? 'Ballad'
-                            : 'Off';
+                            : activeCrowdObjectiveMode?.label || 'Off';
     const marqueeActive = !!marqueeEnabled;
     const chatTvActive = !!chatShowOnTv;
+    const popTriviaActive = popTriviaEnabled !== false;
     const chatFullscreenActive = chatTvActive && chatTvMode === 'fullscreen';
     const leaderboardActive = room?.activeScreen === 'leaderboard';
     const tipCtaActive = room?.activeScreen === 'tipping';
     const howToPlayActive = !!room?.howToPlay?.active;
+    const lobbyVolleyEnabled = room?.lobbyVolleyEnabled !== false;
     const activeAutomationCount = Number(!!autoPlayMedia) + Number(!!autoBgMusic) + Number(!!autoDj) + Number(!!room?.bouncerMode);
-    const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive);
+    const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive) + Number(popTriviaActive);
     const quickMenuPanelClass = 'absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[80]';
     const quickMenuScrollClass = 'overflow-y-auto custom-scrollbar overscroll-contain';
     const quickMenuSectionTitleClass = 'text-xs uppercase tracking-[0.22em] text-zinc-100';
@@ -201,6 +219,70 @@ const HostTopChrome = ({
         setShowLaunchMenu(false);
         setShowNavMenu(false);
     }, [closeAllDeckMenus, setShowLaunchMenu, setShowNavMenu]);
+
+    React.useEffect(() => {
+        if (!visualizerSliderDraggingRef.current.sensitivity) {
+            setVisualizerSensitivityDraft(roomVisualizerSensitivity);
+        }
+    }, [roomVisualizerSensitivity]);
+
+    React.useEffect(() => {
+        if (!visualizerSliderDraggingRef.current.smoothing) {
+            setVisualizerSmoothingDraft(roomVisualizerSmoothing);
+        }
+    }, [roomVisualizerSmoothing]);
+
+    React.useEffect(() => {
+        const timerMap = visualizerSliderTimerRef.current;
+        return () => {
+            Object.values(timerMap).forEach((timerId) => {
+                if (timerId) clearTimeout(timerId);
+            });
+        };
+    }, []);
+
+    const queueVisualizerRoomUpdate = React.useCallback((field, value, { flush = false } = {}) => {
+        const timerKey = field === 'visualizerSensitivity' ? 'sensitivity' : 'smoothing';
+        const timerMap = visualizerSliderTimerRef.current;
+        if (timerMap[timerKey]) {
+            clearTimeout(timerMap[timerKey]);
+            timerMap[timerKey] = null;
+        }
+        if (flush) {
+            updateRoom({ [field]: value });
+            return;
+        }
+        timerMap[timerKey] = setTimeout(() => {
+            timerMap[timerKey] = null;
+            updateRoom({ [field]: value });
+        }, 120);
+    }, [updateRoom]);
+
+    const handleVisualizerSliderDraftChange = React.useCallback((field, rawValue) => {
+        if (field === 'visualizerSensitivity') {
+            const next = clampNumber(rawValue, 0.5, 2.5, visualizerSensitivityDraft);
+            setVisualizerSensitivityDraft(next);
+            queueVisualizerRoomUpdate('visualizerSensitivity', next);
+            return;
+        }
+        const next = clampNumber(rawValue, 0, 0.95, visualizerSmoothingDraft);
+        setVisualizerSmoothingDraft(next);
+        queueVisualizerRoomUpdate('visualizerSmoothing', next);
+    }, [queueVisualizerRoomUpdate, visualizerSensitivityDraft, visualizerSmoothingDraft]);
+
+    const commitVisualizerSliderChange = React.useCallback((field, rawValue) => {
+        if (field === 'visualizerSensitivity') {
+            visualizerSliderDraggingRef.current.sensitivity = false;
+            const next = clampNumber(rawValue, 0.5, 2.5, visualizerSensitivityDraft);
+            setVisualizerSensitivityDraft(next);
+            queueVisualizerRoomUpdate('visualizerSensitivity', next, { flush: true });
+            return;
+        }
+        visualizerSliderDraggingRef.current.smoothing = false;
+        const next = clampNumber(rawValue, 0, 0.95, visualizerSmoothingDraft);
+        setVisualizerSmoothingDraft(next);
+        queueVisualizerRoomUpdate('visualizerSmoothing', next, { flush: true });
+    }, [queueVisualizerRoomUpdate, visualizerSensitivityDraft, visualizerSmoothingDraft]);
 
     React.useEffect(() => {
         if (
@@ -268,6 +350,8 @@ const HostTopChrome = ({
             await updateRoom({ lightMode: bangerActive ? 'off' : 'banger' });
         } else if (effectId === 'ballad') {
             await updateRoom({ lightMode: balladActive ? 'off' : 'ballad' });
+        } else if (effectId === 'volley') {
+            await updateRoom({ lightMode: volleyActive ? 'off' : 'volley', lobbyVolleyEnabled: true });
         } else if (effectId === 'selfie_cam') {
             await updateRoom({ activeMode: selfieCamActive ? 'karaoke' : 'selfie_cam' });
         } else if (effectId === 'clear') {
@@ -293,6 +377,19 @@ const HostTopChrome = ({
         } else {
             await updateRoom({ showLyricsTv: false, showVisualizerTv: false });
         }
+        closeAllTopMenus();
+    };
+    const toggleCrowdObjectiveMode = async (modeLightMode) => {
+        if (!modeLightMode) return;
+        await updateRoom({
+            lightMode: room?.lightMode === modeLightMode ? 'off' : modeLightMode,
+            lobbyVolleyEnabled: true
+        });
+        closeAllTopMenus();
+    };
+    const applyTvPresentationProfile = async (profile) => {
+        const nextProfile = profile === 'simple' || profile === 'cinema' ? profile : 'room';
+        await updateRoom({ tvPresentationProfile: nextProfile });
         closeAllTopMenus();
     };
     const toggleAutoBg = async () => {
@@ -342,6 +439,16 @@ const HostTopChrome = ({
             chatShowOnTv: true,
             chatTvMode: nextFullscreen ? 'fullscreen' : 'auto'
         });
+        closeAllTopMenus();
+    };
+    const togglePopTriviaOverlay = async () => {
+        const next = !popTriviaActive;
+        setPopTriviaEnabled?.(next);
+        await updateRoom({ popTriviaEnabled: next });
+        closeAllTopMenus();
+    };
+    const toggleLobbyVolleyMiniGame = async () => {
+        await updateRoom({ lobbyVolleyEnabled: !lobbyVolleyEnabled });
         closeAllTopMenus();
     };
 
@@ -678,6 +785,35 @@ const HostTopChrome = ({
                             <div className="mt-2.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
                                 Tip: Lyrics and visualizer can run together.
                             </div>
+                            <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-200">TV Presentation</div>
+                            <div className={`${quickMenuCardClass} mt-2`}>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        onClick={() => applyTvPresentationProfile('room')}
+                                        className={`${styles.btnStd} ${tvPresentationProfile === 'room' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Use room-defined TV behavior"
+                                    >
+                                        Room
+                                    </button>
+                                    <button
+                                        onClick={() => applyTvPresentationProfile('simple')}
+                                        className={`${styles.btnStd} ${tvPresentationProfile === 'simple' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Cleaner shared-screen style with fewer ambient effects"
+                                    >
+                                        Simple
+                                    </button>
+                                    <button
+                                        onClick={() => applyTvPresentationProfile('cinema')}
+                                        className={`${styles.btnStd} ${tvPresentationProfile === 'cinema' ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Stage-forward cinematic framing"
+                                    >
+                                        Cinema
+                                    </button>
+                                </div>
+                                <div className="mt-2 text-[10px] text-zinc-400">
+                                    Active profile: <span className="text-zinc-100 uppercase font-semibold">{tvPresentationProfile}</span>
+                                </div>
+                            </div>
                             <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-200">Visualizer Engine</div>
                             <div className={`${quickMenuCardClass} mt-2 space-y-2.5`}>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -711,6 +847,12 @@ const HostTopChrome = ({
                                             <option value="hex">Hex tunnel</option>
                                             <option value="orbit">Orbit arcs</option>
                                             <option value="comet">Comet sweep</option>
+                                            <option value="laserline">Laser line</option>
+                                            <option value="sidelines">Side rails</option>
+                                            <option value="lightning">Lightning strike</option>
+                                            <option value="arcdrive">Arc drive</option>
+                                            <option value="disco">Disco sphere</option>
+                                            <option value="tilestorm">Tile storm</option>
                                             <option value="waveform">Waveform</option>
                                         </select>
                                     </label>
@@ -741,26 +883,32 @@ const HostTopChrome = ({
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     <label className="text-xs text-zinc-300">
-                                        Sensitivity: <span className="text-white">{visualizerSensitivity.toFixed(2)}x</span>
+                                        Sensitivity: <span className="text-white">{visualizerSensitivityDraft.toFixed(2)}x</span>
                                         <input
                                             type="range"
                                             min="0.5"
                                             max="2.5"
                                             step="0.05"
-                                            value={visualizerSensitivity}
-                                            onChange={(e) => updateRoom({ visualizerSensitivity: Number(e.target.value) })}
+                                            value={visualizerSensitivityDraft}
+                                            onPointerDown={() => { visualizerSliderDraggingRef.current.sensitivity = true; }}
+                                            onChange={(e) => handleVisualizerSliderDraftChange('visualizerSensitivity', e.target.value)}
+                                            onPointerUp={(e) => commitVisualizerSliderChange('visualizerSensitivity', e.target.value)}
+                                            onBlur={(e) => commitVisualizerSliderChange('visualizerSensitivity', e.target.value)}
                                             className="w-full accent-[#00C4D9] mt-1 h-2.5"
                                         />
                                     </label>
                                     <label className="text-xs text-zinc-300">
-                                        Smoothing: <span className="text-white">{visualizerSmoothing.toFixed(2)}</span>
+                                        Smoothing: <span className="text-white">{visualizerSmoothingDraft.toFixed(2)}</span>
                                         <input
                                             type="range"
                                             min="0"
                                             max="0.95"
                                             step="0.05"
-                                            value={visualizerSmoothing}
-                                            onChange={(e) => updateRoom({ visualizerSmoothing: Number(e.target.value) })}
+                                            value={visualizerSmoothingDraft}
+                                            onPointerDown={() => { visualizerSliderDraggingRef.current.smoothing = true; }}
+                                            onChange={(e) => handleVisualizerSliderDraftChange('visualizerSmoothing', e.target.value)}
+                                            onPointerUp={(e) => commitVisualizerSliderChange('visualizerSmoothing', e.target.value)}
+                                            onBlur={(e) => commitVisualizerSliderChange('visualizerSmoothing', e.target.value)}
                                             className="w-full accent-[#00C4D9] mt-1 h-2.5"
                                         />
                                     </label>
@@ -860,6 +1008,32 @@ const HostTopChrome = ({
                                         </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{marqueeActive ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={toggleLobbyVolleyMiniGame}
+                                    className={`${styles.btnStd} ${lobbyVolleyEnabled ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2 text-left">
+                                        <i className="fa-solid fa-gamepad"></i>
+                                        <span className="flex flex-col">
+                                            <span>Idle Crowd Objective</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Interactive mode while stage is empty</span>
+                                        </span>
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{lobbyVolleyEnabled ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={togglePopTriviaOverlay}
+                                    className={`${styles.btnStd} ${popTriviaActive ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2 text-left">
+                                        <i className="fa-solid fa-brain"></i>
+                                        <span className="flex flex-col">
+                                            <span>Pop Trivia (AI)</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Song trivia for audience phones + TV</span>
+                                        </span>
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{popTriviaActive ? 'On' : 'Off'}</span>
                                 </button>
                                 <button
                                     onClick={toggleChatTvOverlay}
@@ -1001,6 +1175,15 @@ const HostTopChrome = ({
                                         <i className="fa-solid fa-music"></i>
                                         {balladActive ? 'Ballad ON' : 'Ballad'}
                                     </button>
+                                    {CROWD_OBJECTIVE_MODES.map((mode) => {
+                                        const isActive = room?.lightMode === mode.lightMode;
+                                        return (
+                                            <button key={`vibe-objective-${mode.id}`} onClick={() => toggleCrowdObjectiveMode(mode.lightMode)} className={`${styles.btnStd} ${isActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
+                                                <i className={`fa-solid ${mode.icon}`}></i>
+                                                {isActive ? `${mode.shortLabel} ON` : mode.label}
+                                            </button>
+                                        );
+                                    })}
                                     <button onClick={() => runLiveEffect('selfie_cam')} className={`${styles.btnStd} ${selfieCamActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                         <i className="fa-solid fa-camera"></i>
                                         {selfieCamActive ? 'Selfie Cam ON' : 'Selfie Cam'}

@@ -15,6 +15,7 @@ import HostLogoManager from './components/HostLogoManager';
 import ChatSettingsPanel from './components/ChatSettingsPanel';
 import HostTopChrome from './components/HostTopChrome';
 import ModerationInboxDrawer from './components/ModerationInboxDrawer';
+import HostQaDebugPanel from './components/HostQaDebugPanel';
 import MissionSetupShell from './components/setup/MissionSetupShell';
 import MissionSetupHeader from './components/setup/MissionSetupHeader';
 import MissionSetupPrimaryPicks from './components/setup/MissionSetupPrimaryPicks';
@@ -29,6 +30,7 @@ import useQueueReorder from './hooks/useQueueReorder';
 import useQueueSongActions from './hooks/useQueueSongActions';
 import useQueueTabState from './hooks/useQueueTabState';
 import useModerationInboxState from './hooks/useModerationInboxState';
+import useHostSmokeTest from './hooks/useHostSmokeTest';
 import HOST_UI_FEATURE_CHECKLIST from './hostUiFeatureChecklist';
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
@@ -60,7 +62,12 @@ import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabi
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
 import { buildSongKey, ensureSong, ensureTrack } from '../../lib/songCatalog';
 import { createLogger } from '../../lib/logger';
-import { DEFAULT_POP_TRIVIA_MAX_QUESTIONS, normalizePopTriviaQuestions } from '../../lib/popTrivia';
+import {
+    DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+    POP_TRIVIA_VOTE_TYPE,
+    normalizePopTriviaQuestions,
+    normalizePopTriviaSeedRows
+} from '../../lib/popTrivia';
 import {
     DEFAULT_LOGO_PRESETS,
     DEFAULT_MARQUEE_ITEMS,
@@ -125,6 +132,7 @@ const hostLogger = createLogger('HostApp');
 const HOST_UPDATE_DEPLOYMENT_WARNING = "Host control updates are unavailable because the backend callable `updateRoomAsHost` is not deployed. Deploy functions and reload Host.";
 const HOST_UPDATE_OP_FIELD = '__hostOp';
 const HOST_UPDATE_SERVER_TIMESTAMP = 'serverTimestamp';
+const POP_TRIVIA_CACHE_FIELD = 'popTriviaSongCache';
 
 const isPlainObject = (value) =>
     !!value && Object.prototype.toString.call(value) === '[object Object]';
@@ -179,6 +187,18 @@ const isHostUpdateCallableUnavailableError = (error) => {
             || message.includes('no function')
         )
     );
+};
+
+const normalizePercent = (value, fallback = 50) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.max(0, Math.min(100, numeric));
+};
+
+const normalizeUnitVolume = (value, fallback = 0.3) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.max(0, Math.min(1, numeric));
 };
 
 // Background tracks and sounds imported from gameDataConstants.js
@@ -477,6 +497,13 @@ const NIGHT_SETUP_PRIMARY_MODES = [
         description: 'Queue plus crowd bingo participation throughout the night.',
         icon: 'fa-table-cells-large',
         accent: 'from-emerald-500/25 via-emerald-500/10 to-transparent'
+    },
+    {
+        id: 'team_pong',
+        label: 'Team Pong',
+        description: 'Left vs right crowd rally mode between performances.',
+        icon: 'fa-table-tennis-paddle-ball',
+        accent: 'from-cyan-500/25 via-indigo-500/10 to-transparent'
     },
     {
         id: 'trivia_pop',
@@ -950,6 +977,90 @@ const getTimestampMs = (value) => {
     if (typeof value?.toMillis === 'function') return value.toMillis();
     if (typeof value?.seconds === 'number') return value.seconds * 1000;
     return 0;
+};
+
+const sanitizePopTriviaCacheKey = (value = '') => String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120);
+
+const buildPopTriviaCacheKey = (song = {}) => {
+    const title = String(song?.songTitle || song?.title || '').trim();
+    const artist = String(song?.artist || 'Unknown').trim() || 'Unknown';
+    if (!title) return '';
+    return sanitizePopTriviaCacheKey(buildSongKey(title, artist));
+};
+
+const buildPopTriviaSongContext = (song = {}) => {
+    const safeTitle = String(song?.songTitle || song?.title || '').trim();
+    const safeArtist = String(song?.artist || 'Unknown').trim() || 'Unknown';
+    const safeSinger = String(song?.singerName || '').trim();
+    const metadata = {};
+    const metadataPairs = [
+        ['album', song?.album || song?.albumName || ''],
+        ['releaseYear', song?.releaseYear || song?.year || ''],
+        ['genre', song?.genre || song?.primaryGenre || song?.primaryGenreName || ''],
+        ['language', song?.language || ''],
+        ['decade', song?.decade || ''],
+        ['source', song?.source || song?.trackSource || ''],
+        ['songId', song?.songId || ''],
+        ['appleMusicId', song?.appleMusicId || '']
+    ];
+    metadataPairs.forEach(([key, value]) => {
+        const clean = String(value || '').trim();
+        if (clean) metadata[key] = clean;
+    });
+    return {
+        songTitle: safeTitle,
+        artist: safeArtist,
+        singerName: safeSinger,
+        metadata,
+        style: 'funny_insightful'
+    };
+};
+
+const normalizePopTriviaSongCache = (value = {}) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const next = {};
+    Object.entries(value).forEach(([key, entry]) => {
+        const safeKey = sanitizePopTriviaCacheKey(key);
+        if (!safeKey || !entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+        const seedRows = normalizePopTriviaSeedRows(entry?.seedRows || entry?.rows || entry?.questions || [], {
+            limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS
+        });
+        if (!seedRows.length) return;
+        next[safeKey] = {
+            seedRows,
+            songTitle: String(entry?.songTitle || '').trim(),
+            artist: String(entry?.artist || '').trim(),
+            source: String(entry?.source || 'ai').trim() || 'ai',
+            updatedAtMs: Math.max(0, Number(entry?.updatedAtMs || toMs(entry?.updatedAt) || 0))
+        };
+    });
+    return next;
+};
+
+const summarizePopTriviaVotes = (entries = []) => {
+    const participantKeys = new Set();
+    const answerKeys = new Set();
+    entries.forEach((entry) => {
+        if (!entry || entry.type !== POP_TRIVIA_VOTE_TYPE) return;
+        const questionId = String(entry?.questionId || '').trim();
+        if (!questionId) return;
+        const voterKey = entry?.uid
+            ? `uid:${entry.uid}`
+            : `guest:${String(entry?.userName || 'Guest').trim().toLowerCase()}|${String(entry?.avatar || '').trim()}`;
+        if (!voterKey) return;
+        participantKeys.add(voterKey);
+        answerKeys.add(`${questionId}::${voterKey}`);
+    });
+    return {
+        participantCount: participantKeys.size,
+        answerCount: answerKeys.size
+    };
 };
 
 const isPermissionDeniedError = (error) => {
@@ -1833,6 +1944,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, appBase }) => 
         doodle_oke: 'Doodle-oke',
         selfie_challenge: 'Selfie Challenge',
         karaoke_bracket: 'Karaoke Bracket',
+        team_pong: 'Team Pong',
         bingo: 'Bingo',
         trivia_pop: 'Trivia Pop',
         wyr: 'Would You Rather',
@@ -2142,6 +2254,11 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, appBase }) => 
             label: 'Scale Storm',
             description: 'Trigger storm lighting during the round.'
         },
+        team_pong: {
+            icon: 'fa-table-tennis-paddle-ball',
+            label: 'Rally Boost',
+            description: 'Inject a host paddle hit to keep momentum up.'
+        },
         applause: {
             icon: 'fa-hands-clapping',
             label: 'Crowd Surge',
@@ -2334,6 +2451,24 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, appBase }) => 
                 });
                 toast('Scale Storm triggered.');
                 await logHostInteraction('triggered Scale Storm FX.');
+                return;
+            }
+
+            if (activeMode === 'team_pong') {
+                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
+                    roomCode,
+                    type: 'team_pong_hit',
+                    count: 2,
+                    team: 'left',
+                    sessionId: room?.gameData?.sessionId || null,
+                    userName: room?.hostName || 'Host',
+                    avatar: room?.hostAvatar || EMOJI.sparkle,
+                    uid: room?.hostUid || null,
+                    isFree: true,
+                    timestamp: serverTimestamp()
+                });
+                toast('Team Pong rally boost sent.');
+                await logHostInteraction('sent a Team Pong rally boost.');
                 return;
             }
 
@@ -2585,6 +2720,7 @@ const AudienceMiniPreview = ({
     const modeLabelMap = {
         karaoke: 'Karaoke',
         bingo: `Bingo${room?.bingoMode === 'mystery' ? ' (Mystery)' : ''}`,
+        team_pong: 'Team Pong',
         trivia_pop: 'Trivia',
         trivia_reveal: 'Trivia Reveal',
         wyr: 'Would You Rather',
@@ -2691,7 +2827,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
+const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3550,6 +3686,35 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                         // Ignore score sync failures; recap payload still carries resolved values.
                     }
                 }
+                let popTriviaSummary = null;
+                const popTriviaQuestions = Array.isArray(latestSong?.popTrivia)
+                    ? latestSong.popTrivia.filter(Boolean)
+                    : [];
+                const popTriviaQuestionIds = popTriviaQuestions
+                    .map((entry) => String(entry?.id || '').trim())
+                    .filter(Boolean)
+                    .slice(0, 10);
+                if (popTriviaQuestionIds.length) {
+                    popTriviaSummary = {
+                        questionCount: popTriviaQuestionIds.length,
+                        participantCount: 0,
+                        answerCount: 0,
+                        source: String(latestSong?.popTriviaSource || s?.popTriviaSource || 'ai').trim() || 'ai'
+                    };
+                    try {
+                        const popTriviaVotesSnap = await getDocs(query(
+                            collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
+                            where('roomCode', '==', roomCode),
+                            where('type', '==', POP_TRIVIA_VOTE_TYPE),
+                            where('questionId', 'in', popTriviaQuestionIds)
+                        ));
+                        const voteSummary = summarizePopTriviaVotes(popTriviaVotesSnap.docs.map((docSnap) => docSnap.data()));
+                        popTriviaSummary.participantCount = voteSummary.participantCount;
+                        popTriviaSummary.answerCount = voteSummary.answerCount;
+                    } catch (error) {
+                        hostLogger.warn('Pop trivia recap summary failed', { songId: id, error });
+                    }
+                }
                 const recapPayload = {
                     ...s,
                     ...latestSong,
@@ -3561,6 +3726,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                     albumArtUrl: latestSong?.albumArtUrl || s.albumArtUrl || '',
                     topFan: resolvedTopFan,
                     vibeStats: resolvedVibeStats,
+                    popTriviaSummary,
                     recapLedgerSource: reconciled?.source || null,
                     recapEventCount: Number(reconciled?.eventCount || 0)
                 };
@@ -3998,33 +4164,11 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                 <div className={`${STYLES.panel} overflow-hidden`}>
                     <section className="px-4 py-4 border-b border-white/10 bg-zinc-950/90 sticky top-0 z-20 backdrop-blur-md">
                         <div className="rounded-xl border border-cyan-400/25 bg-gradient-to-r from-cyan-500/12 via-black/45 to-pink-500/10 p-3">
-                            <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                    <div className="text-[10px] uppercase tracking-[0.25em] text-cyan-200">Stage Deck</div>
-                                    <div className="text-sm font-bold text-white truncate">
-                                        {current ? (current.singerName || 'Singer') : 'Stage Empty'}
-                                    </div>
-                                    <div className="text-[12px] text-zinc-300 truncate">
-                                        {current ? (current.songTitle || 'Current performance') : 'Start the next singer to begin'}
-                                    </div>
-                                </div>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="text-[10px] uppercase tracking-[0.25em] text-cyan-200">Stage Quick Actions</div>
                                 <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.15em] border ${current ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100' : 'border-zinc-600 bg-zinc-900/70 text-zinc-300'}`}>
                                     {current ? 'Live' : 'Idle'}
                                 </span>
-                            </div>
-                            <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] uppercase tracking-[0.14em] text-zinc-300">
-                                <div className="rounded-lg border border-white/10 bg-black/30 px-2 py-1">
-                                    Lobby <span className="text-white font-bold ml-1 normal-case tracking-normal">{lobbyCount}</span>
-                                </div>
-                                <div className="rounded-lg border border-white/10 bg-black/30 px-2 py-1">
-                                    Queue <span className="text-white font-bold ml-1 normal-case tracking-normal">{queueCount}</span>
-                                </div>
-                                <div className="rounded-lg border border-white/10 bg-black/30 px-2 py-1">
-                                    Wait <span className="text-white font-bold ml-1 normal-case tracking-normal">{formatWaitTime(waitTimeSec)}</span>
-                                </div>
-                            </div>
-                            <div className="mt-2 text-[11px] text-zinc-300 truncate">
-                                Next: <span className="text-white font-semibold">{nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued'}</span>
                             </div>
                             {autoDj && (
                                 <div className="mt-2 rounded-lg border border-cyan-400/25 bg-black/35 px-2.5 py-2">
@@ -4115,6 +4259,8 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                                 queueCount={queueCount}
                                 waitTimeSec={waitTimeSec}
                                 formatWaitTime={formatWaitTime}
+                                nextQueueSong={nextQueueSong}
+                                roomCode={roomCode}
                                 currentSourcePlaying={currentSourcePlaying}
                                 currentUsesAppleBacking={currentUsesAppleBacking}
                                 currentMediaUrl={currentMediaUrl}
@@ -4265,6 +4411,8 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                                     setMarqueeEnabled={setMarqueeEnabled}
                                     chatShowOnTv={chatShowOnTv}
                                     setChatShowOnTv={setChatShowOnTv}
+                                    popTriviaEnabled={popTriviaEnabled}
+                                    setPopTriviaEnabled={setPopTriviaEnabled}
                                     chatUnread={chatUnread}
                                     vibeSyncOpen={vibeSyncOpen}
                                     setVibeSyncOpen={setVibeSyncOpen}
@@ -4735,9 +4883,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setShowSettings(tab === 'admin');
     }, [tab]);
     const hallOfFameTimerRef = useRef(null);
-    const [smokeRunning, setSmokeRunning] = useState(false);
-    const [smokeResults, setSmokeResults] = useState([]);
-    const [smokeIncludeWrite, setSmokeIncludeWrite] = useState(false);
     const layoutDefaultedRef = useRef(false);
     const [clearingRoom, setClearingRoom] = useState(false);
     const [exportingRoom, setExportingRoom] = useState(false);
@@ -4748,6 +4893,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [hostName, setHostName] = useState(localStorage.getItem('bross_host_name') || 'Host');
     const [logoUrl, setLogoUrl] = useState('');
     const [logoLibrary, setLogoLibrary] = useState([]);
+    const [popTriviaSongCache, setPopTriviaSongCache] = useState({});
     const [logoUploading, setLogoUploading] = useState(false);
     const [logoUploadProgress, setLogoUploadProgress] = useState(0);
     const logoInputRef = useRef(null);
@@ -5387,99 +5533,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const hostAuthSessionReady = !!(uid || auth.currentUser?.uid);
     const recentActivities = (activities || []).filter(a => toMs(a.timestamp) > nowMs() - 5 * 60 * 1000);
     const lastActivity = activities?.[0];
-    const copySnapshot = async () => {
-        const payload = {
-            roomCode,
-            room: room || null,
-            users: users?.length || 0,
-            queuedSongs: queuedSongs.length,
-            currentSong: currentSong ? { title: currentSong.songTitle, singer: currentSong.singerName } : null
-        };
-        try {
-            await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-            toast("QA snapshot copied");
-        } catch {
-            toast("Copy failed");
-        }
-    };
-
-    const runSmokeTest = async () => {
-        if (!roomCode) {
-            setSmokeResults([{ label: 'Room code', status: 'fail', detail: 'No room code set' }]);
-            return;
-        }
-        setSmokeRunning(true);
-        setSmokeResults([]);
-        const addResult = (label, status, detail) => ({ label, status, detail });
-        const runCheck = async (label, fn) => {
-            try {
-                const detail = await fn();
-                return addResult(label, 'ok', detail);
-            } catch (err) {
-                return addResult(label, 'fail', err?.message || String(err));
-            }
-        };
-        const checks = [
-            runCheck('Auth (uid)', async () => {
-                if (!uid) throw new Error('No auth uid');
-                return uid;
-            }),
-            runCheck('User profile read (/users/{uid})', async () => {
-                const userRef = doc(db, 'users', uid);
-                const snap = await getDoc(userRef);
-                if (!snap.exists()) return 'Missing profile doc';
-                return 'OK';
-            }),
-            runCheck('Room doc read', async () => {
-                const snap = await getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode));
-                if (!snap.exists()) return 'Room doc missing';
-                return 'OK';
-            }),
-            runCheck('Songs query read', async () => {
-                await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), where('roomCode', '==', roomCode), limit(1)));
-                return 'OK';
-            }),
-            runCheck('Room users query read', async () => {
-                await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode), limit(1)));
-                return 'OK';
-            }),
-            runCheck('Activities query read', async () => {
-                await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), where('roomCode', '==', roomCode), limit(1)));
-                return 'OK';
-            }),
-            runCheck('Chat messages query read', async () => {
-                await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'), where('roomCode', '==', roomCode), limit(1)));
-                return 'OK';
-            }),
-            runCheck('Host library read', async () => {
-                const snap = await getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode));
-                if (!snap.exists()) return 'No host library yet';
-                return 'OK';
-            })
-        ];
-        if (smokeIncludeWrite) {
-            checks.push(runCheck('User profile write (/users/{uid})', async () => {
-                const userRef = doc(db, 'users', uid);
-                await setDoc(userRef, { smokeUpdatedAt: serverTimestamp() }, { merge: true });
-                return 'OK';
-            }));
-            checks.push(runCheck('Write/delete smoke doc', async () => {
-                const smokeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'smoke_tests', `${roomCode}_${uid}`);
-                await setDoc(smokeRef, { roomCode, uid, createdAt: serverTimestamp() }, { merge: true });
-                await deleteDoc(smokeRef);
-                return 'OK';
-            }));
-        }
-        const results = await Promise.all(checks);
-        const normalized = results.map((res) => {
-            if (res.status === 'ok' && res.detail && String(res.detail).includes('missing')) {
-                return addResult(res.label, 'warn', res.detail);
-            }
-            return res;
-        });
-        setSmokeResults(normalized);
-        setSmokeRunning(false);
-    };
+    const {
+        smokeRunning,
+        smokeResults,
+        smokeIncludeWrite,
+        setSmokeIncludeWrite,
+        copySnapshot,
+        runSmokeTest
+    } = useHostSmokeTest({
+        roomCode,
+        room,
+        users,
+        queuedSongs,
+        currentSong,
+        uid,
+        toast
+    });
 
 
     // Audio Init
@@ -5640,7 +5709,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     useEffect(() => {
         if (!roomCode) return;
         if (room?.popTriviaEnabled === false) return;
-        if (!canUseAiTools) return;
+        if (!canUseAiTools && Object.keys(popTriviaSongCache || {}).length === 0) return;
 
         const eligibleSongs = songs
             .filter((song) => ['requested', 'pending', 'performing'].includes(song?.status))
@@ -5659,23 +5728,49 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             popTriviaGeneratingRef.current.add(song.id);
 
             const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id);
+            const cacheKey = buildPopTriviaCacheKey(song);
+            const cacheEntry = cacheKey ? popTriviaSongCache?.[cacheKey] : null;
             (async () => {
                 try {
+                    const cachedSeedRows = normalizePopTriviaSeedRows(cacheEntry?.seedRows || [], {
+                        limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS
+                    });
+                    if (cachedSeedRows.length) {
+                        const cachedQuestions = normalizePopTriviaQuestions(cachedSeedRows, {
+                            limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+                            idPrefix: `${roomCode}_${song.id}`
+                        });
+                        if (cachedQuestions.length) {
+                            await updateDoc(songRef, {
+                                popTrivia: cachedQuestions,
+                                popTriviaStatus: 'ready',
+                                popTriviaSource: cacheEntry?.source || 'cache',
+                                popTriviaCacheKey: cacheKey,
+                                popTriviaGeneratedAt: serverTimestamp(),
+                                popTriviaError: null
+                            });
+                            return;
+                        }
+                    }
+
+                    if (!canUseAiTools) {
+                        return;
+                    }
+
                     await updateDoc(songRef, {
                         popTriviaStatus: 'pending',
                         popTriviaError: null
                     });
-                    const context = [{
-                        songTitle: song.songTitle,
-                        artist: song.artist || '',
-                        singerName: song.singerName || ''
-                    }];
-                    const result = await callFunction('geminiGenerate', { type: 'trivia', context });
-                    const triviaQuestions = normalizePopTriviaQuestions(result?.result || result || [], {
+                    const context = buildPopTriviaSongContext(song);
+                    const result = await callFunction('geminiGenerate', { type: 'pop_trivia_song', context });
+                    const seedRows = normalizePopTriviaSeedRows(result?.result || result || [], {
+                        limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS
+                    });
+                    const triviaQuestions = normalizePopTriviaQuestions(seedRows, {
                         limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
                         idPrefix: `${roomCode}_${song.id}`
                     });
-                    if (!triviaQuestions.length) {
+                    if (!triviaQuestions.length || !seedRows.length) {
                         await updateDoc(songRef, {
                             popTriviaStatus: 'failed',
                             popTriviaError: 'AI returned no trivia questions.'
@@ -5686,11 +5781,35 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         popTrivia: triviaQuestions,
                         popTriviaStatus: 'ready',
                         popTriviaSource: 'ai',
+                        popTriviaCacheKey: cacheKey || null,
                         popTriviaGeneratedAt: serverTimestamp(),
                         popTriviaError: null
                     });
+                    if (cacheKey) {
+                        const nextCacheEntry = {
+                            seedRows,
+                            songTitle: String(song?.songTitle || '').trim(),
+                            artist: String(song?.artist || '').trim(),
+                            source: 'ai',
+                            updatedAtMs: nowMs()
+                        };
+                        setPopTriviaSongCache((prev) => ({ ...prev, [cacheKey]: nextCacheEntry }));
+                        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), {
+                            [`${POP_TRIVIA_CACHE_FIELD}.${cacheKey}`]: nextCacheEntry
+                        }).catch(async () => {
+                            await setDoc(
+                                doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode),
+                                { [POP_TRIVIA_CACHE_FIELD]: { [cacheKey]: nextCacheEntry } },
+                                { merge: true }
+                            ).catch(() => {});
+                        });
+                    }
                 } catch (error) {
-                    hostLogger.warn('Pop trivia generation failed', { songId: song.id, error });
+                    if (isPermissionDeniedError(error)) {
+                        hostLogger.info('Pop trivia generation skipped (permission)', { songId: song.id });
+                    } else {
+                        hostLogger.warn('Pop trivia generation failed', { songId: song.id, error });
+                    }
                     await updateDoc(songRef, {
                         popTriviaStatus: 'failed',
                         popTriviaError: String(error?.message || error?.code || 'Generation failed').slice(0, 180)
@@ -5700,7 +5819,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
             })();
         });
-    }, [roomCode, room?.popTriviaEnabled, songs, canUseAiTools]);
+    }, [roomCode, room?.popTriviaEnabled, songs, canUseAiTools, popTriviaSongCache]);
     useEffect(() => {
         const ctx = bgCtxRef.current;
         if (ctx && ctx.state === 'suspended' && playingBg) {
@@ -5710,10 +5829,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     useEffect(() => { if(bgAudio.current) bgAudio.current.volume = bgVolume; }, [bgVolume]);
     useEffect(() => {
         if (room?.bgMusicVolume !== undefined && room?.bgMusicVolume !== null) {
-            setBgVolume(room.bgMusicVolume);
+            setBgVolume(normalizeUnitVolume(room.bgMusicVolume, 0.3));
         }
         if (room?.mixFader !== undefined && room?.mixFader !== null) {
-            setMixFader(room.mixFader);
+            const nextMix = normalizePercent(room.mixFader, 50);
+            setMixFader(nextMix);
+            mixFadeTargetRef.current = nextMix;
         }
     }, [room?.bgMusicVolume, room?.mixFader]);
     useEffect(() => {
@@ -7417,17 +7538,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (mixFadeRef.current) {
             clearInterval(mixFadeRef.current);
         }
-        const start = mixFader;
-        const diff = targetPercent - start;
+        const start = normalizePercent(mixFader, normalizePercent(mixFadeTargetRef.current, 50));
+        const target = normalizePercent(targetPercent, start);
+        const diff = target - start;
         const steps = Math.max(1, Math.round(durationMs / 120));
         let tick = 0;
-        mixFadeTargetRef.current = targetPercent;
+        mixFadeTargetRef.current = target;
         mixFadeRef.current = setInterval(() => {
             tick += 1;
             const t = Math.min(1, tick / steps);
             const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
             const next = Math.round(start + diff * eased);
-            const clamped = Math.max(0, Math.min(100, next));
+            const clamped = normalizePercent(next, target);
             const bg = clamped / 100;
             const song = 1 - bg;
             setMixFader(clamped);
@@ -7451,17 +7573,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         prevSongStateRef.current = isPlayingSong;
         const fadeOutMs = Math.max(200, Number(autoBgFadeOutMs || 900));
         const fadeInMs = Math.max(200, Number(autoBgFadeInMs || 900));
-        const targetMix = Math.max(0, Math.min(100, Number(autoBgMixDuringSong ?? 0)));
+        const targetMix = normalizePercent(autoBgMixDuringSong, 0);
         if (isPlayingSong) {
-            mixBeforeSongRef.current = mixFader;
+            mixBeforeSongRef.current = normalizePercent(mixFader, 50);
             fadeMixFader(targetMix, fadeOutMs);
         } else {
-            const restore = Math.max(0, Math.min(100, mixBeforeSongRef.current ?? mixFadeTargetRef.current ?? 50));
+            const restore = normalizePercent(mixBeforeSongRef.current, normalizePercent(mixFadeTargetRef.current, 50));
             fadeMixFader(restore, fadeInMs);
         }
     }, [autoBgMusic, currentSong, autoBgFadeOutMs, autoBgFadeInMs, autoBgMixDuringSong, fadeMixFader, mixFader]);
     const handleMixFaderChange = (val) => {
-        let clamped = Math.max(0, Math.min(100, val));
+        let clamped = normalizePercent(val, normalizePercent(mixFader, 50));
         if (Math.abs(clamped - 50) <= 3) {
             clamped = 50;
         }
@@ -7940,6 +8062,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             } else {
                 setLogoLibrary([]);
             }
+            setPopTriviaSongCache(normalizePopTriviaSongCache(data?.[POP_TRIVIA_CACHE_FIELD]));
         });
         return () => unsub();
     }, [roomCode]);
@@ -8594,6 +8717,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
             return (stats.guitar || stats.strobe) ? stats : null;
         })();
+        const popTriviaSummary = (() => {
+            if (baseSong?.popTriviaSummary && typeof baseSong.popTriviaSummary === 'object') {
+                return baseSong.popTriviaSummary;
+            }
+            const questionCount = Array.isArray(baseSong?.popTrivia) ? baseSong.popTrivia.length : 0;
+            if (!questionCount) return null;
+            return {
+                questionCount,
+                participantCount: Math.max(0, Number(baseSong?.popTriviaSummary?.participantCount || 0)),
+                answerCount: Math.max(0, Number(baseSong?.popTriviaSummary?.answerCount || 0)),
+                source: String(baseSong?.popTriviaSource || 'ai').trim() || 'ai'
+            };
+        })();
         const recapPreview = {
             songTitle: baseSong.songTitle || 'Featured Performance',
             singerName: baseSong.singerName || room?.hostName || 'Guest',
@@ -8603,6 +8739,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             albumArtUrl: baseSong.albumArtUrl || '',
             topFan,
             vibeStats,
+            popTriviaSummary,
             timestamp: nowMs(),
             preview: true
         };
@@ -10347,7 +10484,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 missionPartyPreview.maxConsecutiveNonKaraokeModes !== missionPartyBaseline.maxConsecutiveNonKaraokeModes
             ].filter(Boolean).length;
             const missionOverrideCount = Object.keys(missionAdvancedOverrides || {}).length + missionPartyOverrideCount;
-            const featuredSpotlightModeIds = ['karaoke', 'bingo', 'trivia_pop', 'karaoke_bracket'];
+            const featuredSpotlightModeIds = ['karaoke', 'bingo', 'team_pong', 'trivia_pop', 'karaoke_bracket'];
             const missionVisibleSpotlightModes = missionShowAllSpotlightModes
                 ? NIGHT_SETUP_PRIMARY_MODES
                 : NIGHT_SETUP_PRIMARY_MODES.filter((mode) => featuredSpotlightModeIds.includes(mode.id) || mode.id === missionDraft?.spotlightMode);
@@ -10599,6 +10736,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 </div>
                                 <button
+                                    data-host-setup-skip-intro
                                     onClick={closeNightSetupWizard}
                                     disabled={nightSetupApplying}
                                     className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${nightSetupApplying ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -10614,12 +10752,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">
                                         Step {activeStep.id + 1}: {activeStep.label}
                                     </div>
-                                    {recommendation.presetId && recommendation.presetId !== nightSetupPresetId && (
+                                    {nightSetupStep === 0 && recommendation.presetId && recommendation.presetId !== nightSetupPresetId && (
                                         <button
                                             onClick={() => seedNightSetupFromPreset(recommendation.presetId, { keepQueueDraft: false })}
                                             className={`${STYLES.btnStd} ${STYLES.btnInfo}`}
                                         >
-                                            Use {HOST_NIGHT_PRESETS[recommendation.presetId]?.label || 'Recommended'}
+                                            Apply {HOST_NIGHT_PRESETS[recommendation.presetId]?.label || 'Recommended'} Preset
                                         </button>
                                     )}
                                 </div>
@@ -10639,15 +10777,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         onClick={() => seedNightSetupFromPreset(preset.id, { keepQueueDraft: false })}
                                                         className={`relative overflow-hidden text-left rounded-2xl border transform-gpu transition-all duration-200 ease-out h-[238px] md:h-[246px] ${
                                                             active
-                                                                ? 'scale-[1.02] border-2 border-cyan-300/85 shadow-[0_0_0_1px_rgba(34,211,238,0.55),0_0_34px_rgba(34,211,238,0.22)]'
-                                                                : 'border-zinc-700 hover:border-zinc-500 hover:scale-[1.01]'
+                                                                ? 'border-cyan-300/85 ring-1 ring-cyan-300/55 shadow-[0_0_34px_rgba(34,211,238,0.22)]'
+                                                                : 'border-zinc-700 hover:border-zinc-500'
                                                         }`}
                                                     >
                                                         <div className={`absolute inset-0 bg-gradient-to-br ${meta.accent}`}></div>
                                                         <div className="relative h-full px-4 py-4 flex flex-col">
                                                             <div className="flex items-start justify-between gap-2">
                                                                 <div className="text-lg text-cyan-100"><i className={`fa-solid ${meta.icon}`}></i></div>
-                                                                {active && <span className="text-[10px] uppercase tracking-[0.25em] px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/20 text-cyan-100">Locked In</span>}
+                                                                <span
+                                                                    className={`text-[10px] uppercase tracking-[0.25em] px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/20 text-cyan-100 min-w-[102px] text-center ${
+                                                                        active ? '' : 'opacity-0'
+                                                                    }`}
+                                                                    aria-hidden={!active}
+                                                                >
+                                                                    Locked In
+                                                                </span>
                                                             </div>
                                                             <div className="text-lg font-bold text-white mt-2">{preset.label}</div>
                                                             <div className="text-sm text-zinc-300 mt-1" style={clampTwoLines}>{preset.description}</div>
@@ -10771,7 +10916,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                             <i className={`fa-solid ${mode.icon} text-fuchsia-200`}></i>
                                                             <div className="text-sm font-bold text-white">{mode.label}</div>
                                                         </div>
-                                                        {nightSetupPrimaryMode === mode.id && <span className="text-[10px] uppercase tracking-[0.25em] text-fuchsia-100">Primary</span>}
+                                                        <span
+                                                            className={`text-[10px] uppercase tracking-[0.25em] text-fuchsia-100 min-w-[70px] text-right ${
+                                                                nightSetupPrimaryMode === mode.id ? '' : 'opacity-0'
+                                                            }`}
+                                                            aria-hidden={nightSetupPrimaryMode !== mode.id}
+                                                        >
+                                                            Primary
+                                                        </span>
                                                     </div>
                                                     <div className="relative text-xs text-zinc-300 mt-2" style={clampTwoLines}>{mode.description}</div>
                                                 </button>
@@ -10840,7 +10992,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             >
                                 Open Full Admin
                             </button>
-                                <div className="min-w-0 flex-1 overflow-x-auto custom-scrollbar">
+                                <div className="min-w-0 flex-1 overflow-x-auto custom-scrollbar touch-scroll-x">
                                     <div className="inline-flex min-w-max items-center gap-2">
                                         <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 pr-1">Tonight&apos;s Plan</div>
                                         {tonightPlanFields.map((field) => {
@@ -10921,9 +11073,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         );
     };
 
-    if(view === 'landing') return ( 
+    if(view === 'landing') {
+        const hasWorkspaceIdentity = Boolean(String(orgContext?.orgId || '').trim());
+        const hasHostIdentity = Boolean(String(hostName || '').trim());
+        const quickStartRoleAllowed = new Set(['owner', 'moderator', 'captain']).has(String(hostPermissionLevel || '').toLowerCase());
+        const canQuickStartRoom = hasWorkspaceIdentity && hasHostIdentity && quickStartRoleAllowed;
+        return ( 
         <div
-            className="relative min-h-screen overflow-hidden flex flex-col items-center justify-center p-4 md:p-8 text-center"
+            className="relative min-h-screen overflow-hidden flex flex-col items-center justify-start md:justify-center p-4 pt-6 md:p-8 text-center"
             style={{
                 background:
                     'radial-gradient(circle at 12% 8%, rgba(0,196,217,0.35), transparent 34%), radial-gradient(circle at 86% 10%, rgba(236,72,153,0.3), transparent 32%), radial-gradient(circle at 52% 92%, rgba(251,191,36,0.14), transparent 34%), linear-gradient(160deg, #050612 0%, #0b1020 48%, #130a1c 100%)'
@@ -10935,7 +11092,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <div className="absolute bottom-[-5rem] left-1/3 h-56 w-56 rounded-full bg-fuchsia-400/16 blur-3xl"></div>
             </div>
             <div className="relative z-10 w-full max-w-2xl">
-                <div className="bg-gradient-to-br from-[#151125]/90 via-[#10182a]/90 to-[#0b111b]/95 p-6 md:p-8 rounded-[2rem] border border-cyan-300/35 backdrop-blur-xl w-full shadow-[0_30px_90px_rgba(0,0,0,0.5),0_0_60px_rgba(236,72,153,0.18)] relative overflow-hidden">
+                <div className="bg-gradient-to-br from-[#151125]/90 via-[#10182a]/90 to-[#0b111b]/95 p-5 md:p-6 rounded-[2rem] border border-cyan-300/35 backdrop-blur-xl w-full shadow-[0_30px_90px_rgba(0,0,0,0.5),0_0_60px_rgba(236,72,153,0.18)] relative overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100">
                         <span className="h-2 w-2 rounded-full bg-cyan-300 animate-pulse"></span>
@@ -10948,10 +11105,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         Role: {hostPermissionLevel}
                     </div>
                 </div>
-                <img src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png" className="w-56 mx-auto mb-5 drop-shadow-[0_0_36px_rgba(0,196,217,0.38)]"/> 
-                <h1 className="text-[2.1rem] md:text-5xl font-black mb-3 text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] via-[#84e7f4] to-[#EC4899] leading-tight">Open Your Karaoke Room In Seconds</h1>
-                <div className="text-sm text-cyan-100/85 mb-2 max-w-xl mx-auto">This screen is for hosts and captains. Singers and audience join with a room code from their own app view.</div>
-                <div className="text-[11px] uppercase tracking-[0.2em] text-fuchsia-100/60 mb-6">Launch flow only. No super-admin bypass required.</div>
+                <div className="mb-4 flex flex-col items-center gap-3 md:flex-row md:items-center md:text-left">
+                    <img
+                        src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png"
+                        className="w-36 md:w-40 shrink-0 drop-shadow-[0_0_30px_rgba(0,196,217,0.34)]"
+                        alt="Bross Entertainment"
+                    />
+                    <div className="max-w-xl">
+                        <h1 className="text-[1.85rem] md:text-[2.65rem] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] via-[#84e7f4] to-[#EC4899] leading-tight">Open Your Karaoke Room In Seconds</h1>
+                        <div className="text-sm text-cyan-100/85 mt-2">Hosts and captains run setup here. Singers and audience join from their own mobile view using the room code.</div>
+                    </div>
+                </div>
+                <div className="text-[11px] uppercase tracking-[0.2em] text-fuchsia-100/60 mb-4">Recommended path: guided setup first, then launch.</div>
                 <button
                     onClick={() => {
                         if (!canUseWorkspaceOnboarding) {
@@ -10965,14 +11130,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 >
                     Guided Setup Wizard
                 </button>
-                <button
-                    data-host-quick-start
-                    onClick={() => createRoom()}
-                    disabled={creatingRoom}
-                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-5 shadow-[0_0_34px_rgba(236,72,153,0.35)] ${creatingRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                >
-                    {creatingRoom ? 'Creating Room...' : 'Quick Start New Room'}
-                </button> 
+                <div className="text-xs text-cyan-100/75 mb-4 text-left">
+                    Use this to set host identity, workspace details, branding, and launch defaults in one pass.
+                </div>
                 {!uid && authError && (
                     <div className="mb-3 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 text-left">
                         Auth failed: {authError.code || authError.message || 'Unknown error'}
@@ -11023,6 +11183,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         Cleanup + Archive Tools
                     </button>
                 </div>
+                <details className="mt-4 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
+                    <summary className="cursor-pointer list-none flex items-center justify-between text-xs uppercase tracking-[0.18em] text-cyan-100">
+                        <span>Advanced Launch (QA / Returning Hosts)</span>
+                        <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
+                    </summary>
+                    <div className="mt-3 text-xs text-cyan-100/70">
+                        Quick start skips the guided checklist. It is best for hosts who already have identity/workspace configured.
+                    </div>
+                    <button
+                        data-host-quick-start
+                        onClick={() => createRoom()}
+                        disabled={creatingRoom || !canQuickStartRoom}
+                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 w-full py-2.5 text-xs uppercase tracking-[0.2em] shadow-[0_0_28px_rgba(236,72,153,0.25)] ${creatingRoom || !canQuickStartRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                        {creatingRoom ? 'Creating Room...' : 'Quick Start New Room'}
+                    </button>
+                    {!canQuickStartRoom && (
+                        <div className="mt-2 text-[11px] text-amber-200/85">
+                            Complete guided setup first to unlock quick start on this account.
+                        </div>
+                    )}
+                </details>
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-left">
                     <div className="rounded-xl border border-cyan-400/28 bg-cyan-500/8 px-3 py-2">
                         <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/65">Workspace</div>
@@ -11112,7 +11294,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             })}
                         </div>
                     ) : (
-                        <div className="text-xs text-cyan-100/70 mt-3">No recent hosted rooms yet. Create one with Quick Start and it will appear here.</div>
+                        <div className="text-xs text-cyan-100/70 mt-3">No recent hosted rooms yet. Launch your first room from Guided Setup and it will appear here.</div>
                     )}
                     {roomManagerError && (
                         <div className="mt-2 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-2 py-1.5">
@@ -11131,9 +11313,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 )}
                 <div className="mt-5 rounded-xl border border-pink-400/22 bg-gradient-to-r from-[#141028]/90 via-[#121726]/90 to-[#0f1d27]/90 px-3 py-2 text-left text-xs text-cyan-100/75">
-                    <div className="font-semibold text-white mb-1">Three Launch Paths</div>
-                    <div className="mb-1"><span className="text-cyan-200"><i className="fa-solid fa-wand-magic-sparkles mr-2"></i></span>Wizard: identity, billing, branding, then launch.</div>
-                    <div className="mb-1"><span className="text-pink-200"><i className="fa-solid fa-bolt mr-2"></i></span>Quick Start: create room now, fine-tune in Night Setup.</div>
+                    <div className="font-semibold text-white mb-1">Launch Flow</div>
+                    <div className="mb-1"><span className="text-cyan-200"><i className="fa-solid fa-wand-magic-sparkles mr-2"></i></span>Primary: Guided Setup for identity, billing, branding, then launch.</div>
+                    <div className="mb-1"><span className="text-pink-200"><i className="fa-solid fa-bolt mr-2"></i></span>Advanced: Quick Start (inside Advanced Launch) for QA or returning hosts.</div>
                     <div><span className="text-emerald-200"><i className="fa-solid fa-layer-group mr-2"></i></span>Room Manager: reopen, cleanup, archive, and restore existing rooms.</div>
                 </div> 
             </div>
@@ -11520,6 +11702,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             </div>
         </div>
     );
+    }
 
     const settingsNavigationSections = (() => {
         const q = settingsNavQuery.trim().toLowerCase();
@@ -11833,6 +12016,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         startReadyCheck,
         chatShowOnTv,
         setChatShowOnTv,
+        popTriviaEnabled,
+        setPopTriviaEnabled,
         chatUnread,
         dmUnread,
         chatEnabled,
@@ -11921,7 +12106,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }
 
     return (
-            <div className="host-app min-h-screen md:h-screen flex flex-col relative bg-zinc-950 text-white font-saira overflow-y-auto md:overflow-hidden">
+            <div className="host-app min-h-screen md:h-screen flex flex-col relative bg-zinc-950 text-white font-saira overflow-x-hidden overflow-y-auto md:overflow-hidden">
                 {/* Header */}
                 <HostTopChrome
                     room={room}
@@ -11966,6 +12151,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     setMarqueeEnabled={setMarqueeEnabled}
                     chatShowOnTv={chatShowOnTv}
                     setChatShowOnTv={setChatShowOnTv}
+                    popTriviaEnabled={popTriviaEnabled}
+                    setPopTriviaEnabled={setPopTriviaEnabled}
                     chatTvMode={chatTvMode}
                     setChatTvMode={setChatTvMode}
                     chatUnread={chatUnread}
@@ -12048,7 +12235,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
             )}
 
-            <div className="flex-1 min-h-0 p-3 sm:p-4 md:p-5 lg:p-6 overflow-y-auto md:overflow-hidden">
+            <div className="flex-1 min-h-0 p-3 sm:p-4 md:p-5 lg:p-6 overflow-x-hidden overflow-y-auto md:overflow-hidden">
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <HostGameControlPad
                         roomCode={roomCode}
@@ -12166,7 +12353,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </button>
                                         </div>
                                     </div>
-                                    <div className="mt-3 flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                                    <div className="mt-3 flex gap-2 overflow-x-auto pb-1 custom-scrollbar touch-scroll-x">
                                         {users.map((u) => {
                                             const userUid = resolveRoomUserUid(u);
                                             const userToken = resolveLobbyUserToken(u);
@@ -13409,7 +13596,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="overflow-x-auto">
+                                    <div className="overflow-x-auto touch-scroll-x custom-scrollbar">
                                         <table className="min-w-full text-xs text-left border border-zinc-800 rounded-lg overflow-hidden">
                                             <thead className="bg-zinc-950/80 text-zinc-400 uppercase tracking-widest">
                                                 <tr>
@@ -14341,101 +14528,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                         )}
                         {settingsTab === 'qa' && (
-                            <div className={`${STYLES.panel} p-4 border-white/10`}>
-                                <div className={STYLES.header}>QA DEBUG</div>
-                                <div className="mb-3 text-xs text-zinc-400">
-                                    Host UI version: <span className="text-cyan-300 font-semibold">v2 workspace</span>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-3">
-                                        <div className="text-sm uppercase tracking-widest text-zinc-500 mb-2">Room Snapshot</div>
-                                        <div className="text-sm text-zinc-300">Room: <span className="text-white font-mono">{roomCode || '--'}</span></div>
-                                        <div className="text-sm text-zinc-300">Mode: <span className="text-white">{room?.activeMode || 'karaoke'}</span></div>
-                                        <div className="text-sm text-zinc-300">Screen: <span className="text-white">{room?.activeScreen || 'stage'}</span></div>
-                                        <div className="text-sm text-zinc-300">On Stage: <span className="text-white">{currentSong?.singerName || 'None'}</span></div>
-                                        <div className="text-sm text-zinc-300">Queue: <span className="text-white">{queuedSongs.length}</span></div>
-                                        <div className="text-sm text-zinc-300">Lobby: <span className="text-white">{users?.length || 0}</span></div>
-                                    </div>
-                                    <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-3">
-                                        <div className="text-sm uppercase tracking-widest text-zinc-500 mb-2">Health</div>
-                                        <div className="text-sm text-zinc-300">BG Music: <span className="text-white">{room?.bgMusicPlaying ? 'On' : 'Off'}</span></div>
-                                        <div className="text-sm text-zinc-300">Mix: <span className="text-white">{Math.round(room?.mixFader ?? 50)}%</span></div>
-                                        <div className="text-sm text-zinc-300">Lyrics TV: <span className="text-white">{room?.showLyricsTv ? 'On' : 'Off'}</span></div>
-                                        <div className="text-sm text-zinc-300">Visualizer TV: <span className="text-white">{room?.showVisualizerTv ? 'On' : 'Off'}</span></div>
-                                        <div className="text-sm text-zinc-300">Lyrics Singer: <span className="text-white">{room?.showLyricsSinger ? 'On' : 'Off'}</span></div>
-                                        <div className="text-sm text-zinc-300">Light Mode: <span className="text-white">{room?.lightMode || 'off'}</span></div>
-                                        <div className="text-sm text-zinc-300">Audience Sync: <span className="text-white">{room?.audienceVideoMode || 'off'}</span></div>
-                                    </div>
-                                    <div className="bg-zinc-900/50 border border-white/5 rounded-xl p-3">
-                                        <div className="text-sm uppercase tracking-widest text-zinc-500 mb-2">Event Pulse</div>
-                                        <div className="text-sm text-zinc-300">Last 5 min: <span className="text-white">{recentActivities.length}</span></div>
-                                        <div className="text-sm text-zinc-300">Last Activity: <span className="text-white">{lastActivity?.text || 'None'}</span></div>
-                                        <button onClick={copySnapshot} className={`${STYLES.btnStd} ${STYLES.btnNeutral} mt-3 w-full`}>
-                                            <i className="fa-solid fa-copy mr-1"></i>Copy Room Snapshot
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="mt-4 border-t border-white/10 pt-3">
-                                    <div className="text-sm uppercase tracking-widest text-zinc-500 mb-2">Recent Activity</div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar">
-                                        {(activities || []).slice(0, 10).map((a, i) => (
-                                            <div key={`${a?.id || a?.timestamp?.seconds || 'activity'}-${i}`} className="text-sm text-zinc-300 bg-zinc-900/60 border border-white/5 rounded-lg px-2 py-1">
-                                                <span className="text-zinc-500 mr-1">{a?.icon || EMOJI.sparkle}</span>
-                                                <span className="text-white">{a?.user || 'Guest'}</span>
-                                                <span className="text-zinc-500"> {a?.text || ''}</span>
-                                            </div>
-                                        ))}
-                                        {(activities || []).length === 0 && (
-                                            <div className="text-sm text-zinc-500 italic">No activity yet.</div>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="mt-4 border-t border-white/10 pt-3">
-                                    <div className="flex items-center justify-between gap-3 mb-2">
-                                        <div className="text-sm uppercase tracking-widest text-zinc-500">Smoke Test</div>
-                                        <label className="flex items-center gap-2 text-sm text-zinc-400">
-                                            <input
-                                                type="checkbox"
-                                                checked={smokeIncludeWrite}
-                                                onChange={(e) => setSmokeIncludeWrite(e.target.checked)}
-                                                className="accent-[#00C4D9]"
-                                            />
-                                            Include write test
-                                        </label>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                            <button
-                                                onClick={runSmokeTest}
-                                                disabled={smokeRunning}
-                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 ${smokeRunning ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                            >
-                                                {smokeRunning ? 'Running...' : 'Run Smoke Test'}
-                                            </button>
-                                        <div className="text-sm text-zinc-500">Checks auth, room reads, user profile read/write, and optional write/delete.</div>
-                                    </div>
-                                    {smokeResults.length > 0 && (
-                                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                            {smokeResults.map((res, idx) => (
-                                                <div key={`${res.label}-${idx}`} className="text-sm text-zinc-300 bg-zinc-900/60 border border-white/5 rounded-lg px-2 py-1 flex items-center justify-between gap-2">
-                                                    <div className="truncate">
-                                                        <span className="text-white">{res.label}</span>
-                                                        {res.detail && <span className="text-zinc-500"> - {res.detail}</span>}
-                                                    </div>
-                                                    <span className={`text-sm uppercase tracking-widest ${
-                                                        res.status === 'ok'
-                                                            ? 'text-emerald-400'
-                                                            : res.status === 'warn'
-                                                                ? 'text-yellow-400'
-                                                                : 'text-rose-400'
-                                                    }`}>
-                                                        {res.status}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                            <HostQaDebugPanel
+                                styles={STYLES}
+                                roomCode={roomCode}
+                                room={room}
+                                currentSong={currentSong}
+                                queuedSongs={queuedSongs}
+                                users={users}
+                                recentActivities={recentActivities}
+                                lastActivity={lastActivity}
+                                activities={activities}
+                                copySnapshot={copySnapshot}
+                                smokeIncludeWrite={smokeIncludeWrite}
+                                setSmokeIncludeWrite={setSmokeIncludeWrite}
+                                runSmokeTest={runSmokeTest}
+                                smokeRunning={smokeRunning}
+                                smokeResults={smokeResults}
+                                sparkleEmoji={EMOJI.sparkle}
+                            />
                         )}
 
                                 </div>

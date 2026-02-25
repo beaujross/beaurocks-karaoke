@@ -161,6 +161,7 @@ async function run() {
         hideLogo: false,
         hideCornerOverlay: false,
         reduceMotionFx: true,
+        tvPresentationProfile: "simple",
       }));
 
       const snap = await roomRef.get();
@@ -176,6 +177,7 @@ async function run() {
       assert.equal(snap.get("hideLogo"), false);
       assert.equal(snap.get("hideCornerOverlay"), false);
       assert.equal(snap.get("reduceMotionFx"), true);
+      assert.equal(snap.get("tvPresentationProfile"), "simple");
     }],
 
     ["guest cannot update room as host", async () => {

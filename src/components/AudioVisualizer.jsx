@@ -17,6 +17,7 @@ const PRESET_CONFIG = Object.freeze({
 });
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const fract = (value) => value - Math.floor(value);
 const getPresetConfig = (preset = 'neon') => PRESET_CONFIG[preset] || PRESET_CONFIG.neon;
 
 const getOrCreateMediaElementSource = (ctx, mediaElement) => {
@@ -485,6 +486,297 @@ const AudioVisualizer = ({
                     ctx.shadowBlur = 0;
                 };
 
+                const drawLaserLine = () => {
+                    const phase = phaseRef.current;
+                    const avgNorm = avg / 255;
+                    const centerX = width * 0.5 + (Math.sin(phase * 0.6) * width * 0.04);
+                    const lineWidth = 3 + (avgNorm * 10);
+
+                    const glow = ctx.createRadialGradient(centerX, height * 0.5, 0, centerX, height * 0.5, width * 0.45);
+                    glow.addColorStop(0, `${colorB}66`);
+                    glow.addColorStop(0.55, `${colorA}2a`);
+                    glow.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = glow;
+                    ctx.fillRect(0, 0, width, height);
+
+                    ctx.strokeStyle = colorB;
+                    ctx.lineWidth = lineWidth;
+                    ctx.shadowBlur = presetConfig.glow + 20;
+                    ctx.shadowColor = colorB;
+                    ctx.beginPath();
+                    ctx.moveTo(centerX, 0);
+                    ctx.lineTo(centerX, height);
+                    ctx.stroke();
+
+                    for (let i = 0; i < 6; i += 1) {
+                        const p = i / 5;
+                        const sample = dataArray[Math.floor(p * (dataArray.length - 1))] / 255;
+                        const y = p * height;
+                        const notch = (sample * width * 0.1) + (Math.sin((phase * 1.4) + i) * width * 0.01);
+                        ctx.strokeStyle = i % 2 === 0 ? colorA : colorC;
+                        ctx.lineWidth = 1.4 + (sample * 4.2);
+                        ctx.shadowBlur = presetConfig.glow + 8;
+                        ctx.shadowColor = ctx.strokeStyle;
+                        ctx.beginPath();
+                        ctx.moveTo(centerX - (notch * 0.5), y);
+                        ctx.lineTo(centerX + notch, y - (height * 0.03 * (sample - 0.5)));
+                        ctx.stroke();
+                    }
+                    ctx.shadowBlur = 0;
+                };
+
+                const drawSideRails = () => {
+                    const phase = phaseRef.current;
+                    const avgNorm = avg / 255;
+                    const baseInset = width * 0.06;
+                    const railOffset = Math.sin(phase * 0.25) * width * 0.015;
+                    const leftX = baseInset + railOffset;
+                    const rightX = width - baseInset - railOffset;
+                    const lineWidth = 4 + (avgNorm * 6);
+
+                    ctx.fillStyle = 'rgba(4, 8, 18, 0.55)';
+                    ctx.fillRect(0, 0, width, height);
+
+                    const drawRail = (x, toneColor) => {
+                        const railGlow = ctx.createLinearGradient(x - 42, 0, x + 42, 0);
+                        railGlow.addColorStop(0, 'rgba(0,0,0,0)');
+                        railGlow.addColorStop(0.5, `${toneColor}66`);
+                        railGlow.addColorStop(1, 'rgba(0,0,0,0)');
+                        ctx.fillStyle = railGlow;
+                        ctx.fillRect(x - 52, 0, 104, height);
+
+                        ctx.strokeStyle = toneColor;
+                        ctx.lineWidth = lineWidth;
+                        ctx.shadowBlur = presetConfig.glow + 16;
+                        ctx.shadowColor = toneColor;
+                        ctx.beginPath();
+                        ctx.moveTo(x, 0);
+                        ctx.lineTo(x, height);
+                        ctx.stroke();
+                    };
+
+                    drawRail(leftX, colorC);
+                    drawRail(rightX, colorB);
+
+                    const rungs = 14;
+                    for (let i = 0; i < rungs; i += 1) {
+                        const p = i / (rungs - 1);
+                        const sample = dataArray[Math.floor(p * (dataArray.length - 1))] / 255;
+                        const y = p * height;
+                        const rungLen = width * (0.01 + sample * 0.04);
+                        ctx.strokeStyle = colorA;
+                        ctx.lineWidth = 1 + (sample * 2.2);
+                        ctx.globalAlpha = 0.18 + (sample * 0.45);
+                        ctx.beginPath();
+                        ctx.moveTo(leftX, y);
+                        ctx.lineTo(leftX + rungLen, y);
+                        ctx.moveTo(rightX, y);
+                        ctx.lineTo(rightX - rungLen, y);
+                        ctx.stroke();
+                    }
+                    ctx.globalAlpha = 1;
+                    ctx.shadowBlur = 0;
+                };
+
+                const drawLightningStrike = () => {
+                    const phase = phaseRef.current;
+                    const avgNorm = avg / 255;
+                    const centerX = width * 0.5 + (Math.sin(phase * 0.7) * width * 0.05);
+                    const segments = 22;
+                    let x = centerX;
+                    let y = 0;
+
+                    const points = [{ x, y }];
+                    for (let i = 1; i <= segments; i += 1) {
+                        const p = i / segments;
+                        const sample = dataArray[Math.floor(p * (dataArray.length - 1))] / 255;
+                        const jitterSeed = Math.sin((phase * 6.4) + (i * 3.71));
+                        const jitter = jitterSeed * (10 + sample * 48 + avgNorm * 22);
+                        x = centerX + jitter;
+                        y = p * height;
+                        points.push({ x, y, sample });
+                    }
+
+                    ctx.strokeStyle = colorB;
+                    ctx.lineWidth = 1.8 + (avgNorm * 2.8);
+                    ctx.shadowBlur = presetConfig.glow + 20;
+                    ctx.shadowColor = colorB;
+                    ctx.beginPath();
+                    points.forEach((point, idx) => {
+                        if (idx === 0) ctx.moveTo(point.x, point.y);
+                        else ctx.lineTo(point.x, point.y);
+                    });
+                    ctx.stroke();
+
+                    ctx.strokeStyle = '#d9fbff';
+                    ctx.lineWidth = 1 + (avgNorm * 1.2);
+                    ctx.shadowBlur = presetConfig.glow + 6;
+                    ctx.shadowColor = '#d9fbff';
+                    ctx.beginPath();
+                    points.forEach((point, idx) => {
+                        if (idx === 0) ctx.moveTo(point.x, point.y);
+                        else ctx.lineTo(point.x, point.y);
+                    });
+                    ctx.stroke();
+
+                    points.forEach((point, idx) => {
+                        if (idx === 0 || idx === points.length - 1 || idx % 4 !== 0) return;
+                        const sample = point.sample || 0;
+                        const branchLen = (24 + sample * 55) * (idx % 2 === 0 ? 1 : -1);
+                        ctx.strokeStyle = colorA;
+                        ctx.lineWidth = 0.8 + (sample * 1.6);
+                        ctx.shadowBlur = presetConfig.glow + 8;
+                        ctx.shadowColor = colorA;
+                        ctx.beginPath();
+                        ctx.moveTo(point.x, point.y);
+                        ctx.lineTo(point.x + branchLen, point.y + (height * 0.06));
+                        ctx.stroke();
+                    });
+                    ctx.shadowBlur = 0;
+                };
+
+                const drawArcDrive = () => {
+                    const phase = phaseRef.current;
+                    const cx = width / 2;
+                    const cy = height / 2;
+                    const rings = 5;
+                    const baseRadius = Math.min(width, height) * 0.12;
+
+                    ctx.save();
+                    ctx.translate(cx, cy);
+                    ctx.rotate(phase * 0.25);
+                    for (let i = 0; i < rings; i += 1) {
+                        const p = i / Math.max(1, rings - 1);
+                        const sample = dataArray[Math.floor(p * (dataArray.length - 1))] / 255;
+                        const radius = baseRadius + (i * Math.min(width, height) * 0.115);
+                        const arcLen = (Math.PI * 1.15) + (sample * Math.PI * 0.38);
+                        const gap = Math.PI * 2 - arcLen;
+                        const segments = 2 + (i % 2);
+                        const tone = i % 2 === 0 ? colorC : colorA;
+
+                        for (let s = 0; s < segments; s += 1) {
+                            const start = -Math.PI / 2 + (s * (arcLen + gap) / segments);
+                            const end = start + (arcLen / segments) - 0.06;
+                            ctx.beginPath();
+                            ctx.strokeStyle = tone;
+                            ctx.lineCap = 'round';
+                            ctx.lineWidth = 12 - i + (sample * 4);
+                            ctx.globalAlpha = 0.3 + ((1 - p) * 0.65);
+                            ctx.shadowBlur = presetConfig.glow + 10;
+                            ctx.shadowColor = tone;
+                            ctx.arc(0, 0, radius, start, end);
+                            ctx.stroke();
+                        }
+                    }
+                    ctx.restore();
+                    ctx.globalAlpha = 1;
+                    ctx.shadowBlur = 0;
+                };
+
+                const drawDiscoSphere = () => {
+                    const phase = phaseRef.current;
+                    const cx = width / 2;
+                    const cy = height / 2;
+                    const radius = Math.min(width, height) * 0.34;
+                    const avgNorm = avg / 255;
+
+                    const shellGrad = ctx.createRadialGradient(cx, cy - (radius * 0.25), radius * 0.08, cx, cy, radius * 1.05);
+                    shellGrad.addColorStop(0, 'rgba(255,255,255,0.2)');
+                    shellGrad.addColorStop(0.6, 'rgba(12,19,39,0.38)');
+                    shellGrad.addColorStop(1, 'rgba(2,6,16,0.85)');
+                    ctx.fillStyle = shellGrad;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    const latBands = 14;
+                    for (let lat = 0; lat < latBands; lat += 1) {
+                        const v = lat / (latBands - 1);
+                        const yRatio = (v * 2) - 1;
+                        const rowRadius = Math.sqrt(Math.max(0, 1 - (yRatio * yRatio))) * radius;
+                        const y = cy + (yRatio * radius * 0.92);
+                        const columns = Math.max(12, Math.floor(rowRadius * 0.36));
+                        for (let col = 0; col < columns; col += 1) {
+                            const u = col / columns;
+                            const sample = dataArray[Math.floor(((lat + col) % dataArray.length))] / 255;
+                            const angle = (u * Math.PI * 2) + (phase * 0.36);
+                            const x = cx + Math.cos(angle) * rowRadius;
+                            const depth = (Math.sin(angle + (phase * 0.2)) + 1) * 0.5;
+                            const dotSize = 1.8 + (sample * 4.2) + (depth * 1.5);
+                            const dotTone = lat < latBands * 0.33 ? colorC : lat < latBands * 0.66 ? colorA : colorB;
+                            ctx.fillStyle = dotTone;
+                            ctx.globalAlpha = 0.25 + (depth * 0.45) + (sample * 0.22);
+                            ctx.shadowBlur = presetConfig.glow + 4;
+                            ctx.shadowColor = dotTone;
+                            ctx.beginPath();
+                            ctx.arc(x, y, dotSize, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+
+                    const rayCount = 20;
+                    ctx.globalAlpha = 0.2 + (avgNorm * 0.35);
+                    for (let i = 0; i < rayCount; i += 1) {
+                        const p = i / rayCount;
+                        const sample = dataArray[Math.floor(p * (dataArray.length - 1))] / 255;
+                        const angle = (p * Math.PI * 2) + (phase * 0.22);
+                        const len = radius + (sample * radius * 0.8);
+                        const tone = i % 2 === 0 ? colorC : colorB;
+                        ctx.strokeStyle = tone;
+                        ctx.lineWidth = 1.2 + (sample * 2.8);
+                        ctx.shadowBlur = presetConfig.glow + 6;
+                        ctx.shadowColor = tone;
+                        ctx.beginPath();
+                        ctx.moveTo(cx, cy);
+                        ctx.lineTo(cx + Math.cos(angle) * len, cy + Math.sin(angle) * len);
+                        ctx.stroke();
+                    }
+                    ctx.globalAlpha = 1;
+                    ctx.shadowBlur = 0;
+                };
+
+                const drawTileStorm = () => {
+                    const phase = phaseRef.current;
+                    const cx = width / 2;
+                    const cy = height / 2;
+                    const tiles = 140;
+                    const maxR = Math.min(width, height) * 0.9;
+
+                    ctx.fillStyle = 'rgba(4, 8, 18, 0.45)';
+                    ctx.fillRect(0, 0, width, height);
+
+                    for (let i = 0; i < tiles; i += 1) {
+                        const seed = fract(i * 0.61803398875);
+                        const sample = dataArray[(i * 7) % dataArray.length] / 255;
+                        const depth = fract(seed + (phase * 0.08) + (sample * 0.18));
+                        const angle = (seed * Math.PI * 2) + (phase * 0.18) + Math.sin((i * 0.37) + phase * 0.5) * 0.2;
+                        const radius = (1 - depth) * (1 - depth) * maxR;
+                        const x = cx + Math.cos(angle) * radius;
+                        const y = cy + Math.sin(angle) * radius * 0.7;
+                        const size = 3 + ((1 - depth) * 15) + (sample * 7);
+                        const tilt = (phase * 0.4) + (seed * Math.PI * 2);
+                        const tone = i % 3 === 0 ? colorA : i % 3 === 1 ? colorC : colorB;
+
+                        ctx.save();
+                        ctx.translate(x, y);
+                        ctx.rotate(tilt);
+                        ctx.fillStyle = tone;
+                        ctx.globalAlpha = 0.22 + ((1 - depth) * 0.68);
+                        ctx.shadowBlur = presetConfig.glow + (sample * 10);
+                        ctx.shadowColor = tone;
+                        ctx.fillRect(-size * 0.55, -size * 0.38, size * 1.1, size * 0.76);
+                        ctx.restore();
+                    }
+
+                    const flare = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(width, height) * 0.46);
+                    flare.addColorStop(0, `${colorB}42`);
+                    flare.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = flare;
+                    ctx.fillRect(0, 0, width, height);
+                    ctx.globalAlpha = 1;
+                    ctx.shadowBlur = 0;
+                };
+
                 const activeMode = modeRef.current || 'waveform';
                 if (activeMode === 'ribbon') drawRibbon();
                 else if (activeMode === 'rings') drawRings();
@@ -496,6 +788,12 @@ const AudioVisualizer = ({
                 else if (activeMode === 'hex') drawHexTunnel();
                 else if (activeMode === 'orbit') drawOrbitArcs();
                 else if (activeMode === 'comet') drawCometSweep();
+                else if (activeMode === 'laserline') drawLaserLine();
+                else if (activeMode === 'sidelines') drawSideRails();
+                else if (activeMode === 'lightning') drawLightningStrike();
+                else if (activeMode === 'arcdrive') drawArcDrive();
+                else if (activeMode === 'disco') drawDiscoSphere();
+                else if (activeMode === 'tilestorm') drawTileStorm();
                 else drawWaveform();
             }
 

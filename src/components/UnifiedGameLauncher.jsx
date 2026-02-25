@@ -437,6 +437,7 @@ const UnifiedGameLauncher = ({
             wyr: '50 pts',
             bingo: 'Custom',
             karaoke_bracket: 'Champion',
+            team_pong: 'Rally',
             riding_scales: `${Math.max(10, Number(scaleRewardPerRound) || 50)} pts`,
             vocal_challenge: 'Streak',
             flappy_bird: 'High score',
@@ -451,6 +452,7 @@ const UnifiedGameLauncher = ({
             trivia_pop: 'Group',
             wyr: 'Group',
             bingo: 'Group',
+            team_pong: 'Left vs Right',
             karaoke_bracket: '1v1 bracket',
             selfie_challenge: 'Group'
         };
@@ -476,6 +478,7 @@ const UnifiedGameLauncher = ({
         selfie_cam: 'Selfie Cam',
         doodle_oke: 'Doodle-oke',
         bingo: 'Bingo',
+        team_pong: 'Team Pong',
         karaoke_bracket: 'Sweet 16 Bracket',
         trivia_pop: 'Trivia',
         trivia_reveal: 'Trivia',
@@ -598,6 +601,7 @@ const UnifiedGameLauncher = ({
             trivia_pop: `${Math.max(5, Number(triviaRoundSec) || 20)}s round`,
             wyr: '1 question',
             bingo: '1 board',
+            team_pong: 'Live rally',
             karaoke_bracket: 'Sweet 16 flow',
             flappy_bird: 'Quick round'
         };
@@ -605,6 +609,7 @@ const UnifiedGameLauncher = ({
             trivia_pop: '100 pts',
             wyr: '50 pts',
             bingo: 'Custom',
+            team_pong: 'Rally score',
             karaoke_bracket: 'Champion',
             riding_scales: `${Math.max(10, Number(scaleRewardPerRound) || 50)} pts`,
             vocal_challenge: 'Streak score',
@@ -627,6 +632,7 @@ const UnifiedGameLauncher = ({
         if (gameId === 'flappy_bird') return startFlappyAmbient();
         if (gameId === 'vocal_challenge') return startVocalAmbient();
         if (gameId === 'riding_scales') return startRidingScalesCrowd();
+        if (gameId === 'team_pong') return startTeamPong();
         if (gameId === 'trivia_pop') return startRandomTrivia();
         if (gameId === 'wyr') return startRandomWyr();
         if (gameId === 'bingo') {
@@ -822,6 +828,26 @@ const UnifiedGameLauncher = ({
         });
         logActivity(roomCode, 'HOST', 'started Riding Scales (turns).', 'GAME');
         toast("Riding Scales Started!");
+        setShowGameConfig(false);
+    };
+
+    const startTeamPong = async () => {
+        const now = Date.now();
+        await updateRoom({
+            activeMode: 'team_pong',
+            gameData: {
+                sessionId: `team_pong_${now}`,
+                status: 'live',
+                startedAt: now,
+                windowMs: 18000,
+                rallyTimeoutMs: 3200,
+                targetRally: 45,
+                inputSource: 'crowd'
+            },
+            ...buildParticipantPayload('all', [])
+        });
+        logActivity(roomCode, 'HOST', 'started Team Pong.', 'GAME');
+        toast('Team Pong started');
         setShowGameConfig(false);
     };
     
@@ -1435,6 +1461,7 @@ const UnifiedGameLauncher = ({
                 onStartVocalSolo={startVocalSolo}
                 onStartRidingCrowd={startRidingScalesCrowd}
                 onStartRidingTurns={startRidingScalesTurns}
+                onStartTeamPong={startTeamPong}
                 doodlePromptsText={doodlePromptsText}
                 setDoodlePromptsText={setDoodlePromptsText}
                 doodleDuration={doodleDuration}
@@ -1590,6 +1617,11 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
             { icon: 'fa-table-cells', label: 'Board' },
             { icon: 'fa-check', label: 'Mark' },
             { icon: 'fa-trophy', label: 'Win' }
+        ],
+        team_pong: [
+            { icon: 'fa-people-group', label: 'Teams' },
+            { icon: 'fa-table-tennis-paddle-ball', label: 'Rally' },
+            { icon: 'fa-bolt', label: 'Pace' }
         ],
         karaoke_bracket: [
             { icon: 'fa-trophy', label: 'Bracket' },
@@ -2354,6 +2386,7 @@ const GameConfigModal = ({
     setVocalParticipants,
     onStartRidingCrowd,
     onStartRidingTurns,
+    onStartTeamPong,
     doodlePromptsText,
     setDoodlePromptsText,
     doodleDuration,
@@ -2618,6 +2651,44 @@ const GameConfigModal = ({
                     </div>
                 </div>
             </div>
+        );
+    }
+    if (selectedGame === 'team_pong') {
+        return (
+            <GameConfigShell
+                title="Team Pong"
+                subtitle="Crowd teams tap to keep the rally alive."
+                accentClass="text-cyan-300"
+                onClose={onClose}
+            >
+                <div className="space-y-4">
+                    <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+                        <div className="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-2">How It Works</div>
+                        <div className="text-sm text-zinc-200">
+                            Players are split into left and right teams. Everyone taps from mobile to return the ball, and the TV tracks rally pace and team momentum live.
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Teams</div>
+                            <div className="text-2xl font-black text-white mt-1">Left vs Right</div>
+                        </div>
+                        <div className="rounded-xl border border-white/15 bg-black/35 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-300">Input</div>
+                            <div className="text-2xl font-black text-white mt-1">Tap</div>
+                        </div>
+                        <div className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-fuchsia-200">Goal</div>
+                            <div className="text-2xl font-black text-white mt-1">Longest Rally</div>
+                        </div>
+                    </div>
+                    <div className="flex gap-3">
+                        <button onClick={onStartTeamPong} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-6 py-3 text-sm`}>
+                            <i className="fa-solid fa-table-tennis-paddle-ball mr-1"></i> Start Team Pong
+                        </button>
+                    </div>
+                </div>
+            </GameConfigShell>
         );
     }
     if (selectedGame === 'doodle_oke') {

@@ -9,6 +9,7 @@ import {
   signInWithCustomToken,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signOut,
   GoogleAuthProvider,
   signInWithPopup,
   EmailAuthProvider,
@@ -333,6 +334,137 @@ const submitMarketingWaitlist = async (payload = {}) => {
   return data || null;
 };
 
+const redeemMarketingPrivateHostAccess = async (payload = {}) => {
+  await requireAppCheckToken("redeemMarketingPrivateHostAccess");
+  const data = await callFunction("redeemMarketingPrivateHostAccess", payload || {});
+  return data || null;
+};
+
+const getDirectoryMapsConfig = async () => {
+  const data = await callFunction("getDirectoryMapsConfig", {});
+  return data || null;
+};
+
+const upsertDirectoryProfile = async (payload = {}) => {
+  await requireAppCheckToken("upsertDirectoryProfile");
+  const data = await callFunction("upsertDirectoryProfile", payload || {});
+  return data || null;
+};
+
+const submitDirectoryListing = async (payload = {}) => {
+  await requireAppCheckToken("submitDirectoryListing");
+  const data = await callFunction("submitDirectoryListing", payload || {});
+  return data || null;
+};
+
+const updateDirectoryListing = async (payload = {}) => {
+  await requireAppCheckToken("updateDirectoryListing");
+  const data = await callFunction("updateDirectoryListing", payload || {});
+  return data || null;
+};
+
+const followDirectoryEntity = async (payload = {}) => {
+  await requireAppCheckToken("followDirectoryEntity");
+  const data = await callFunction("followDirectoryEntity", payload || {});
+  return data || null;
+};
+
+const unfollowDirectoryEntity = async (payload = {}) => {
+  await requireAppCheckToken("unfollowDirectoryEntity");
+  const data = await callFunction("unfollowDirectoryEntity", payload || {});
+  return data || null;
+};
+
+const createDirectoryCheckin = async (payload = {}) => {
+  await requireAppCheckToken("createDirectoryCheckin");
+  const data = await callFunction("createDirectoryCheckin", payload || {});
+  return data || null;
+};
+
+const submitDirectoryReview = async (payload = {}) => {
+  await requireAppCheckToken("submitDirectoryReview");
+  const data = await callFunction("submitDirectoryReview", payload || {});
+  return data || null;
+};
+
+const listModerationQueue = async (payload = {}) => {
+  await requireAppCheckToken("listModerationQueue");
+  const data = await callFunction("listModerationQueue", payload || {});
+  return data || null;
+};
+
+const resolveModerationItem = async (payload = {}) => {
+  await requireAppCheckToken("resolveModerationItem");
+  const data = await callFunction("resolveModerationItem", payload || {});
+  return data || null;
+};
+
+const runExternalDirectoryIngestion = async (payload = {}) => {
+  await requireAppCheckToken("runExternalDirectoryIngestion");
+  const data = await callFunction("runExternalDirectoryIngestion", payload || {});
+  return data || null;
+};
+
+const submitDirectoryClaimRequest = async (payload = {}) => {
+  await requireAppCheckToken("submitDirectoryClaimRequest");
+  const data = await callFunction("submitDirectoryClaimRequest", payload || {});
+  return data || null;
+};
+
+const resolveDirectoryClaimRequest = async (payload = {}) => {
+  await requireAppCheckToken("resolveDirectoryClaimRequest");
+  const data = await callFunction("resolveDirectoryClaimRequest", payload || {});
+  return data || null;
+};
+
+const setDirectoryRsvp = async (payload = {}) => {
+  await requireAppCheckToken("setDirectoryRsvp");
+  const data = await callFunction("setDirectoryRsvp", payload || {});
+  return data || null;
+};
+
+const setDirectoryReminderPreferences = async (payload = {}) => {
+  await requireAppCheckToken("setDirectoryReminderPreferences");
+  const data = await callFunction("setDirectoryReminderPreferences", payload || {});
+  return data || null;
+};
+
+const listDirectoryGeoLanding = async (payload = {}) => {
+  await requireAppCheckToken("listDirectoryGeoLanding");
+  const data = await callFunction("listDirectoryGeoLanding", payload || {});
+  return data || null;
+};
+
+const submitCatalogContribution = async (payload = {}) => {
+  await requireAppCheckToken("submitCatalogContribution");
+  const data = await callFunction("submitCatalogContribution", payload || {});
+  return data || null;
+};
+
+const listCatalogContributionQueue = async (payload = {}) => {
+  await requireAppCheckToken("listCatalogContributionQueue");
+  const data = await callFunction("listCatalogContributionQueue", payload || {});
+  return data || null;
+};
+
+const resolveCatalogContribution = async (payload = {}) => {
+  await requireAppCheckToken("resolveCatalogContribution");
+  const data = await callFunction("resolveCatalogContribution", payload || {});
+  return data || null;
+};
+
+const previewDirectoryRoomSessionByCode = async (payload = {}) => {
+  await requireAppCheckToken("previewDirectoryRoomSessionByCode");
+  const data = await callFunction("previewDirectoryRoomSessionByCode", payload || {});
+  return data || null;
+};
+
+const mergeAnonymousAccountData = async (payload = {}) => {
+  await requireAppCheckToken("mergeAnonymousAccountData");
+  const data = await callFunction("mergeAnonymousAccountData", payload || {});
+  return data || null;
+};
+
 const ensureOrganization = async (orgName = "") => {
   await requireAppCheckToken("ensureOrganization");
   const data = await callFunction("ensureOrganization", { orgName });
@@ -388,6 +520,24 @@ const updateRoomAsHost = async (roomCode = "", updates = {}) => {
     roomCode,
     updates: updates || {},
   });
+  return data || null;
+};
+
+const runDemoDirectorAction = async (payload = {}) => {
+  await requireAppCheckToken("runDemoDirectorAction");
+  const data = await callFunction("runDemoDirectorAction", payload || {});
+  return data || null;
+};
+
+const recordMarketingTelemetry = async (payload = {}) => {
+  await requireAppCheckToken("recordMarketingTelemetry");
+  const data = await callFunction("recordMarketingTelemetry", payload || {});
+  return data || null;
+};
+
+const getMarketingReportingSummary = async (payload = {}) => {
+  await requireAppCheckToken("getMarketingReportingSummary");
+  const data = await callFunction("getMarketingReportingSummary", payload || {});
   return data || null;
 };
 
@@ -591,6 +741,28 @@ export {
   callFunction,
   getGoogleMapsApiKey,
   submitMarketingWaitlist,
+  redeemMarketingPrivateHostAccess,
+  getDirectoryMapsConfig,
+  upsertDirectoryProfile,
+  submitDirectoryListing,
+  updateDirectoryListing,
+  followDirectoryEntity,
+  unfollowDirectoryEntity,
+  createDirectoryCheckin,
+  submitDirectoryReview,
+  listModerationQueue,
+  resolveModerationItem,
+  runExternalDirectoryIngestion,
+  submitDirectoryClaimRequest,
+  resolveDirectoryClaimRequest,
+  setDirectoryRsvp,
+  setDirectoryReminderPreferences,
+  listDirectoryGeoLanding,
+  submitCatalogContribution,
+  listCatalogContributionQueue,
+  resolveCatalogContribution,
+  previewDirectoryRoomSessionByCode,
+  mergeAnonymousAccountData,
   ensureOrganization,
   bootstrapOnboardingWorkspace,
   getMyEntitlements,
@@ -600,6 +772,9 @@ export {
   listMyUsageInvoices,
   assertRoomHostAccess,
   updateRoomAsHost,
+  runDemoDirectorAction,
+  recordMarketingTelemetry,
+  getMarketingReportingSummary,
   auth, 
   db, 
   rtdb, 
@@ -616,6 +791,7 @@ export {
   signInWithCustomToken,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signOut,
   GoogleAuthProvider,
   signInWithPopup,
   EmailAuthProvider,

@@ -12,6 +12,10 @@ const ROOM_CODE = "ROOM1";
 const HOST_UID = "host-uid";
 const GUEST_UID = "guest-uid";
 const OTHER_UID = "other-uid";
+const MOD_UID = "directory-mod";
+const VENUE_ID = "venue_1";
+const SESSION_ID = "session_1";
+const REVIEW_ID = "review_1";
 const BUCKET = `gs://${PROJECT_ID}.firebasestorage.app`;
 
 let testEnv;
@@ -28,6 +32,24 @@ async function resetState() {
       hostUid: HOST_UID,
       hostUids: [HOST_UID],
       activeMode: "karaoke",
+    });
+    await db.doc(`venues/${VENUE_ID}`).set({
+      title: "Approved Venue",
+      status: "approved",
+      visibility: "public",
+      ownerUid: HOST_UID,
+    });
+    await db.doc(`room_sessions/${SESSION_ID}`).set({
+      title: "Private Session",
+      status: "approved",
+      visibility: "private",
+      ownerUid: HOST_UID,
+    });
+    await db.doc(`directory_profiles/${HOST_UID}`).set({
+      uid: HOST_UID,
+      displayName: "Host",
+      status: "approved",
+      visibility: "public",
     });
   });
 }
@@ -100,6 +122,223 @@ async function run() {
           name: "Nope",
         })
       );
+    }],
+
+    ["firestore: unauthenticated can read approved venue listing", async () => {
+      const db = testEnv.unauthenticatedContext().firestore();
+      await assertSucceeds(db.doc(`venues/${VENUE_ID}`).get());
+    }],
+
+    ["firestore: unauthenticated cannot read private room session", async () => {
+      const db = testEnv.unauthenticatedContext().firestore();
+      await assertFails(db.doc(`room_sessions/${SESSION_ID}`).get());
+    }],
+
+    ["firestore: user can create follow for self", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`follows/${GUEST_UID}_host_${HOST_UID}`).set({
+          followerUid: GUEST_UID,
+          targetType: "host",
+          targetId: HOST_UID,
+        })
+      );
+    }],
+
+    ["firestore: user cannot spoof follow owner", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`follows/${OTHER_UID}_host_${HOST_UID}`).set({
+          followerUid: OTHER_UID,
+          targetType: "host",
+          targetId: HOST_UID,
+        })
+      );
+    }],
+
+    ["firestore: user can create private checkin but unauthenticated cannot read it", async () => {
+      const ownerDb = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        ownerDb.doc("checkins/checkin_1").set({
+          uid: GUEST_UID,
+          targetType: "venue",
+          targetId: VENUE_ID,
+          isPublic: false,
+        })
+      );
+      const publicDb = testEnv.unauthenticatedContext().firestore();
+      await assertFails(publicDb.doc("checkins/checkin_1").get());
+    }],
+
+    ["firestore: user can create own review", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`reviews/${REVIEW_ID}`).set({
+          uid: GUEST_UID,
+          targetType: "venue",
+          targetId: VENUE_ID,
+          rating: 5,
+        })
+      );
+    }],
+
+    ["firestore: non-owner cannot update another user's review", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(`reviews/${REVIEW_ID}`).set({
+          uid: GUEST_UID,
+          targetType: "venue",
+          targetId: VENUE_ID,
+          rating: 4,
+        });
+      });
+      const db = testEnv.authenticatedContext(OTHER_UID).firestore();
+      await assertFails(
+        db.doc(`reviews/${REVIEW_ID}`).update({
+          rating: 1,
+        })
+      );
+    }],
+
+    ["firestore: non-moderator cannot read another user's submission", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc("directory_submissions/sub_1").set({
+          createdBy: HOST_UID,
+          status: "pending",
+        });
+      });
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(db.doc("directory_submissions/sub_1").get());
+    }],
+
+    ["firestore: moderator can read queue submission", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc("directory_submissions/sub_1").set({
+          createdBy: HOST_UID,
+          status: "pending",
+        });
+        await db.doc(`directory_roles/${MOD_UID}`).set({
+          roles: ["directory_editor"],
+        });
+      });
+      const db = testEnv.authenticatedContext(MOD_UID).firestore();
+      await assertSucceeds(db.doc("directory_submissions/sub_1").get());
+    }],
+
+    ["firestore: user can create own directory claim request", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`directory_claim_requests/${GUEST_UID}_venue_${VENUE_ID}`).set({
+          createdBy: GUEST_UID,
+          listingType: "venue",
+          listingId: VENUE_ID,
+          status: "pending",
+        })
+      );
+    }],
+
+    ["firestore: user cannot read another user's claim request", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc("directory_claim_requests/claim_1").set({
+          createdBy: HOST_UID,
+          listingType: "venue",
+          listingId: VENUE_ID,
+          status: "pending",
+        });
+      });
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(db.doc("directory_claim_requests/claim_1").get());
+    }],
+
+    ["firestore: user can manage own RSVP but others cannot read", async () => {
+      const ownerDb = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        ownerDb.doc(`directory_rsvps/${GUEST_UID}_event_event_1`).set({
+          uid: GUEST_UID,
+          targetType: "event",
+          targetId: "event_1",
+          status: "going",
+        })
+      );
+      const otherDb = testEnv.authenticatedContext(OTHER_UID).firestore();
+      await assertFails(otherDb.doc(`directory_rsvps/${GUEST_UID}_event_event_1`).get());
+      await assertFails(
+        otherDb.doc(`directory_rsvps/${GUEST_UID}_event_event_1`).update({ status: "interested" })
+      );
+      await assertSucceeds(
+        ownerDb.doc(`directory_rsvps/${GUEST_UID}_event_event_1`).update({ status: "interested" })
+      );
+    }],
+
+    ["firestore: user can manage own reminder preferences", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`directory_reminders/${GUEST_UID}_event_event_1`).set({
+          uid: GUEST_UID,
+          targetType: "event",
+          targetId: "event_1",
+          emailOptIn: true,
+          smsOptIn: false,
+        })
+      );
+      await assertSucceeds(
+        db.doc(`directory_reminders/${GUEST_UID}_event_event_1`).update({
+          smsOptIn: true,
+          phone: "+12065550101",
+        })
+      );
+    }],
+
+    ["firestore: geo page cache is publicly readable and not client writable", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc("directory_geo_pages/wa_seattle").set({
+          token: "wa_seattle",
+          title: "Seattle Karaoke",
+        });
+      });
+      const publicDb = testEnv.unauthenticatedContext().firestore();
+      await assertSucceeds(publicDb.doc("directory_geo_pages/wa_seattle").get());
+      const authedDb = testEnv.authenticatedContext(HOST_UID).firestore();
+      await assertFails(
+        authedDb.doc("directory_geo_pages/wa_seattle").set({ token: "wa_seattle" }, { merge: true })
+      );
+    }],
+
+    ["firestore: reminder dispatch logs are moderator-readable only", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc("directory_reminder_dispatch/dispatch_1").set({
+          status: "sent",
+          uid: HOST_UID,
+        });
+        await db.doc(`directory_roles/${MOD_UID}`).set({
+          roles: ["directory_editor"],
+        });
+      });
+      const modDb = testEnv.authenticatedContext(MOD_UID).firestore();
+      await assertSucceeds(modDb.doc("directory_reminder_dispatch/dispatch_1").get());
+      const userDb = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(userDb.doc("directory_reminder_dispatch/dispatch_1").get());
+    }],
+
+    ["firestore: reminder jobs are moderator-readable only", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc("directory_reminder_jobs/job_1").set({
+          status: "completed",
+        });
+        await db.doc(`directory_roles/${MOD_UID}`).set({
+          roles: ["directory_editor"],
+        });
+      });
+      const modDb = testEnv.authenticatedContext(MOD_UID).firestore();
+      await assertSucceeds(modDb.doc("directory_reminder_jobs/job_1").get());
+      const userDb = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(userDb.doc("directory_reminder_jobs/job_1").get());
     }],
 
     ["firestore: unauthenticated cannot create room", async () => {

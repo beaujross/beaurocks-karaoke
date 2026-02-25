@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Venue location preview</title>
+  <desc id="desc">Branded fallback image used when a venue photo is unavailable.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1131" />
+      <stop offset="45%" stop-color="#2f1b66" />
+      <stop offset="100%" stop-color="#6a1e74" />
+    </linearGradient>
+    <linearGradient id="pin" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#30d7f6" />
+      <stop offset="100%" stop-color="#ff3ca6" />
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#bg)" />
+  <g opacity="0.22" stroke="#7fd4ff" stroke-width="2">
+    <path d="M0 420 L960 420" />
+    <path d="M0 330 L960 330" />
+    <path d="M0 240 L960 240" />
+    <path d="M0 150 L960 150" />
+    <path d="M140 540 L300 0" />
+    <path d="M300 540 L460 0" />
+    <path d="M460 540 L620 0" />
+    <path d="M620 540 L780 0" />
+    <path d="M780 540 L940 0" />
+  </g>
+  <g transform="translate(480,255)">
+    <path d="M0-92c-46 0-84 37-84 83c0 56 84 162 84 162s84-106 84-162c0-46-38-83-84-83z" fill="url(#pin)" />
+    <circle cx="0" cy="-10" r="36" fill="#0c173d" stroke="#e3f6ff" stroke-width="8" />
+  </g>
+  <text x="480" y="465" text-anchor="middle" fill="#e8f7ff" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" letter-spacing="1.2">
+    Venue image coming soon
+  </text>
+</svg>

@@ -27,6 +27,56 @@ const shuffleOptions = (list = []) => {
 };
 
 const normalizeOptionText = (value = '') => cleanText(value).toLowerCase();
+const dedupeOptionList = (items = []) => {
+    const list = Array.isArray(items) ? items : [];
+    return list.filter((optionText, optionIndex) => {
+        const key = normalizeOptionText(optionText);
+        return list.findIndex((candidate) => normalizeOptionText(candidate) === key) === optionIndex;
+    });
+};
+
+export const normalizePopTriviaSeedRows = (rows = [], options = {}) => {
+    if (!Array.isArray(rows)) return [];
+    const limit = Math.max(1, Number(options?.limit || DEFAULT_POP_TRIVIA_MAX_QUESTIONS));
+
+    const normalized = rows
+        .map((entry) => {
+            const question = cleanText(entry?.q || entry?.question);
+            if (!question) return null;
+
+            const explicitOptions = Array.isArray(entry?.options) ? entry.options : [];
+            const fallbackOptions = [entry?.correct, entry?.w1, entry?.w2, entry?.w3];
+            const candidateOptions = (explicitOptions.length ? explicitOptions : fallbackOptions)
+                .map((item) => cleanText(item))
+                .filter(Boolean);
+            const dedupedOptions = dedupeOptionList(candidateOptions);
+            if (dedupedOptions.length < 2) return null;
+
+            let correctIndex = -1;
+            const correctLabel = cleanText(entry?.correct);
+            if (correctLabel) {
+                const target = normalizeOptionText(correctLabel);
+                correctIndex = dedupedOptions.findIndex((item) => normalizeOptionText(item) === target);
+            }
+            if (correctIndex < 0 && Number.isInteger(entry?.correctIndex)) {
+                correctIndex = Math.max(0, Math.min(dedupedOptions.length - 1, Number(entry.correctIndex)));
+            }
+            if (correctIndex < 0 && Number.isInteger(entry?.correct)) {
+                correctIndex = Math.max(0, Math.min(dedupedOptions.length - 1, Number(entry.correct)));
+            }
+            if (correctIndex < 0) correctIndex = 0;
+
+            return {
+                q: question,
+                options: dedupedOptions,
+                correctIndex,
+                source: cleanText(entry?.source || 'ai')
+            };
+        })
+        .filter(Boolean);
+
+    return normalized.slice(0, limit);
+};
 
 export const normalizePopTriviaQuestions = (rows = [], options = {}) => {
     if (!Array.isArray(rows)) return [];
@@ -44,10 +94,7 @@ export const normalizePopTriviaQuestions = (rows = [], options = {}) => {
             const candidateOptions = (explicitOptions.length ? explicitOptions : fallbackOptions)
                 .map((item) => cleanText(item))
                 .filter(Boolean);
-            const dedupedOptions = candidateOptions.filter((optionText, optionIndex) => {
-                const key = normalizeOptionText(optionText);
-                return candidateOptions.findIndex((candidate) => normalizeOptionText(candidate) === key) === optionIndex;
-            });
+            const dedupedOptions = dedupeOptionList(candidateOptions);
             if (dedupedOptions.length < 2) return null;
 
             const correctLabel = cleanText(entry?.correct);
@@ -56,8 +103,11 @@ export const normalizePopTriviaQuestions = (rows = [], options = {}) => {
             if (correctLabel) {
                 const target = normalizeOptionText(correctLabel);
                 correctIndex = shuffled.findIndex((item) => normalizeOptionText(item) === target);
-            } else if (Number.isInteger(entry?.correctIndex)) {
-                const source = dedupedOptions[Math.max(0, Math.min(dedupedOptions.length - 1, Number(entry.correctIndex)))];
+            } else if (Number.isInteger(entry?.correctIndex) || Number.isInteger(entry?.correct)) {
+                const sourceIndex = Number.isInteger(entry?.correctIndex)
+                    ? Number(entry.correctIndex)
+                    : Number(entry.correct);
+                const source = dedupedOptions[Math.max(0, Math.min(dedupedOptions.length - 1, sourceIndex))];
                 const target = normalizeOptionText(source);
                 correctIndex = shuffled.findIndex((item) => normalizeOptionText(item) === target);
             }

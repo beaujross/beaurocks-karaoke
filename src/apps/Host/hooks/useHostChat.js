@@ -5,13 +5,13 @@ import {
     query,
     where,
     orderBy,
-    onSnapshot,
     addDoc,
     serverTimestamp,
     limit
 } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
 import { EMOJI } from '../../../lib/emoji';
+import { watchQuerySnapshot } from '../../../lib/firestoreWatch';
 
 const getTimestampMs = (message) => (
     message?.timestamp?.seconds ? message.timestamp.seconds * 1000 : 0
@@ -111,30 +111,41 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
             orderBy('timestamp', 'desc'),
             limit(40)
         );
-        const unsub = onSnapshot(q, snap => {
-            const next = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
-            setChatMessages(next);
-            const newestTargetUid = getNewestDmTargetUid(next);
-            if (newestTargetUid) {
-                setDmTargetUid((prev) => prev || newestTargetUid);
-            }
-            const roomTs = getNewestRoomTs(next);
-            const dmTs = getNewestDmTs(next);
+        const unsub = watchQuerySnapshot(
+            q,
+            (snap) => {
+                const next = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
+                setChatMessages(next);
+                const newestTargetUid = getNewestDmTargetUid(next);
+                if (newestTargetUid) {
+                    setDmTargetUid((prev) => prev || newestTargetUid);
+                }
+                const roomTs = getNewestRoomTs(next);
+                const dmTs = getNewestDmTs(next);
 
-            if (chatViewMode === 'room' && roomTs) {
-                chatLastSeenRef.current = Math.max(chatLastSeenRef.current, roomTs);
-                setChatUnread(false);
-            } else if (roomTs && roomTs > chatLastSeenRef.current && settingsTab !== 'chat') {
-                setChatUnread(true);
-            }
+                if (chatViewMode === 'room' && roomTs) {
+                    chatLastSeenRef.current = Math.max(chatLastSeenRef.current, roomTs);
+                    setChatUnread(false);
+                } else if (roomTs && roomTs > chatLastSeenRef.current && settingsTab !== 'chat') {
+                    setChatUnread(true);
+                }
 
-            if (chatViewMode === 'host' && dmTs) {
-                dmLastSeenRef.current = Math.max(dmLastSeenRef.current, dmTs);
-                setDmUnread(false);
-            } else if (dmTs && dmTs > dmLastSeenRef.current && settingsTab !== 'chat') {
-                setDmUnread(true);
+                if (chatViewMode === 'host' && dmTs) {
+                    dmLastSeenRef.current = Math.max(dmLastSeenRef.current, dmTs);
+                    setDmUnread(false);
+                } else if (dmTs && dmTs > dmLastSeenRef.current && settingsTab !== 'chat') {
+                    setDmUnread(true);
+                }
+            },
+            {
+                label: `hostChat:${roomCode}`,
+                onFallback: () => {
+                    setChatMessages([]);
+                    setChatUnread(false);
+                    setDmUnread(false);
+                }
             }
-        });
+        );
         return () => unsub();
     }, [roomCode, settingsTab, chatViewMode]);
 

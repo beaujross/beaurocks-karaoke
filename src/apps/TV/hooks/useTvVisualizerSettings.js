@@ -5,7 +5,8 @@ const LIGHT_PRESET_BY_MODE = Object.freeze({
     strobe: 'club',
     storm: 'neon',
     ballad: 'calm',
-    guitar: 'retro'
+    guitar: 'retro',
+    volley: 'neon'
 });
 const APPLAUSE_MODES = new Set(['applause_countdown', 'applause', 'applause_result']);
 

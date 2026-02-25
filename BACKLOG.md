@@ -1,6 +1,6 @@
 # Backlog
 
-Last updated: 2026-02-15
+Last updated: 2026-02-25
 
 ## Overnight Queue (Target: 2026-02-12 Morning)
 - [x] WS1 Fame XP UX: add next-unlock and points-to-next-level clarity across singer profile surfaces.
@@ -13,6 +13,26 @@ Last updated: 2026-02-15
 
 ## P0 - Blocking (Launch/Safety)
 - VIP SMS auth live sign-off: execute final manual browser reCAPTCHA + phone verification with both a Firebase test number and a real number, then append evidence to `docs/qa/P0_VERIFICATION_2026-02-12.md`.
+- Realtime multiplayer launch gates (all required before public launch):
+  - Surface authority contract:
+    - `Public TV` is shared visual reference only (read-mostly), never primary controller for gameplay input.
+    - `Audience/Performer mobile` is primary interaction input surface with immediate local feedback.
+    - `Host` is authoritative for room mode/screen transitions and game orchestration.
+  - Audience-all-play modes (`Team Pong`, `Volley`, crowd voice games):
+    - Support crowd participation with host-controlled orchestration and server-side aggregation.
+    - Audio driving source must resolve in this order: host-selected audio input -> host microphone pipeline -> configured fallback source.
+    - TV remains synchronized renderer, not event producer, during active rounds.
+  - Realtime sync/write policy:
+    - Replace 200ms full-state writes with event/delta writes plus 1s heartbeat snapshots for recovery.
+    - Aggregate high-frequency interactions (hits/votes/reactions) into server-managed counters/totals docs.
+    - Keep strict per-user/per-room rate limits on high-frequency gameplay events.
+  - Latency SLO gates (must pass):
+    - Mobile input to local feedback remains effectively instant (target sub-50ms perceived).
+    - Mobile input to shared TV reflection p95 <= 300ms under expected room load.
+    - No release if latency regresses against current production baseline for karaoke + audience-all-play modes.
+  - Observability + rollback:
+    - Budget/invocation alerts active and verified before launch-day traffic.
+    - Feature flags remain available for new sync/aggregation paths with one-click rollback to stable behavior.
 
 ## P1 - High Priority
 - Turnkey customer onboarding + subscriptions: build a self-serve flow to onboard additional organizations/users with monthly subscription signup, provisioning, and entitlement gating to app features.

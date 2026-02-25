@@ -7,7 +7,8 @@ import {
     auth, ensureUserProfile, EmailAuthProvider, linkWithCredential, onAuthStateChanged,
     RecaptchaVerifier, signInWithPhoneNumber, PhoneAuthProvider,
     trackEvent,
-    callFunction
+    callFunction,
+    ensureAppCheckToken
 } from '../../lib/firebase';
 import { APP_ID, ASSETS, STORM_SFX } from '../../lib/assets';
 import { emoji, EMOJI } from '../../lib/emoji';
@@ -18,7 +19,7 @@ import { averageBand } from '../../lib/utils';
 import { PARTY_LIGHTS_STYLE, SINGER_APP_CONFIG } from '../../lib/uiConstants';
 import { POINTS_PACKS, SUBSCRIPTIONS } from '../../billing/catalog';
 import { BILLING_PLATFORMS, createBillingProvider, detectBillingPlatform } from '../../billing/provider';
-import { ensureSong, ensureTrack, extractYouTubeId } from '../../lib/songCatalog';
+import { ensureSong, ensureTrack, extractYouTubeId, buildSongKey } from '../../lib/songCatalog';
 import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
 import GameContainer from '../../components/GameContainer';
 import AppleLyricsRenderer from '../../components/AppleLyricsRenderer';
@@ -38,8 +39,16 @@ import {
     applyLobbyInteraction,
     getActiveParticipants,
     deriveRelayObjective,
+    getLobbyInteractionProfile,
     LOBBY_PLAYGROUND_ENGINE_CONSTANTS
 } from '../TV/lobbyPlaygroundEngine';
+import { watchQuerySnapshot } from '../../lib/firestoreWatch';
+import {
+    CROWD_OBJECTIVE_DEFAULT_MODE_ID,
+    getCrowdObjectiveModeById,
+    getCrowdObjectiveModeFromLightMode,
+    isCrowdObjectiveLightMode
+} from '../../lib/crowdObjectiveModes';
 
 // Helper Component for Animated Points
 const AnimatedPoints = ({ value, onClick, className = '' }) => {
@@ -93,49 +102,68 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
         id: 'wave',
         label: 'Wave Tunnel',
         emoji: emoji(0x1F44B),
-        hint: 'Send a friendly room wave.',
+        hint: 'Best for saving a falling orb.',
         accentCard: 'from-cyan-500/22 via-sky-500/12 to-black/55',
         accentBorder: 'border-cyan-300/80',
         accentText: 'text-cyan-100',
         accentPill: 'bg-cyan-400/25 text-cyan-100 border-cyan-300/45',
-        boost: 'Streak Boost: Flow'
+        boost: 'Role: Stability'
     },
     {
         id: 'laser',
         label: 'Laser Pop',
         emoji: emoji(0x2728),
-        hint: 'Paint the TV with neon pops.',
+        hint: 'Best for quick power jumps.',
         accentCard: 'from-fuchsia-500/24 via-cyan-500/10 to-black/55',
         accentBorder: 'border-fuchsia-300/80',
         accentText: 'text-fuchsia-100',
         accentPill: 'bg-fuchsia-400/25 text-fuchsia-100 border-fuchsia-300/45',
-        boost: 'Streak Boost: Prism'
+        boost: 'Role: Power'
     },
     {
         id: 'echo',
         label: 'Echo Ring',
         emoji: emoji(0x1F30A),
-        hint: 'Pulse a ripple through the room.',
+        hint: 'Best when relay timer is low.',
         accentCard: 'from-indigo-500/22 via-blue-500/14 to-black/55',
         accentBorder: 'border-indigo-300/80',
         accentText: 'text-indigo-100',
         accentPill: 'bg-indigo-400/25 text-indigo-100 border-indigo-300/45',
-        boost: 'Streak Boost: Ripple'
+        boost: 'Role: Relay'
     },
     {
         id: 'confetti',
         label: 'Confetti',
         emoji: emoji(0x1F389),
-        hint: 'Trigger a celebration burst.',
+        hint: 'Best for climbing tiers fast.',
         accentCard: 'from-pink-500/24 via-yellow-400/15 to-black/55',
         accentBorder: 'border-pink-300/80',
         accentText: 'text-pink-100',
         accentPill: 'bg-pink-400/25 text-pink-100 border-pink-300/45',
-        boost: 'Streak Boost: Party'
+        boost: 'Role: Momentum'
     }
 ];
+const formatLobbyInteractionImpact = (interactionId = '') => {
+    const profile = getLobbyInteractionProfile(interactionId);
+    if (!profile) return '';
+    const interactionKey = String(interactionId || '').trim().toLowerCase();
+    if (interactionKey === 'wave') {
+        return `Decay -${Math.max(0, Math.round((1 - Number(profile.decayMultiplier || 1)) * 100))}%`;
+    }
+    if (interactionKey === 'laser') {
+        return `Energy +${Math.max(0, Math.round((Number(profile.energyGainMultiplier || 1) - 1) * 100))}%`;
+    }
+    if (interactionKey === 'echo') {
+        return `Relay +${(Math.max(0, Number(profile.relayWindowBonusMs || 0)) / 1000).toFixed(1)}s`;
+    }
+    if (interactionKey === 'confetti') {
+        return `Streak +${Math.max(1, Math.round(Number(profile.streakStep || 1)))}`;
+    }
+    return profile.roleLabel || '';
+};
 const LOBBY_PLAYGROUND_WINDOW_MS = 60 * 1000;
 const LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE = 12;
+let singerCatalogPermissionSkipLogged = false;
 
 const timestampToMs = (value) => {
     if (!value) return 0;
@@ -146,6 +174,73 @@ const timestampToMs = (value) => {
         return (value.seconds * 1000) + Math.floor(nanos / 1000000);
     }
     return 0;
+};
+
+const isCatalogPermissionDeniedError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('permission-denied')
+        || message.includes('permission-denied')
+        || message.includes('host or moderator access required')
+        || message.includes('catalog song')
+        || message.includes('catalog track')
+    );
+};
+
+const logSingerCatalogPermissionSkip = (scope = 'ensureSong/ensureTrack') => {
+    if (singerCatalogPermissionSkipLogged) return;
+    singerCatalogPermissionSkipLogged = true;
+    console.info(`[SingerApp] ${scope} skipped: catalog write access unavailable, queueing with fallback metadata.`);
+};
+
+const isQueuePermissionDeniedError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('permission-denied')
+        || code.includes('forbidden')
+        || message.includes('permission-denied')
+        || message.includes('missing or insufficient permissions')
+    );
+};
+
+const isQueueUnauthenticatedError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('unauthenticated')
+        || message.includes('auth')
+        || message.includes('sign in')
+    );
+};
+
+const isQueueAppCheckError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('failed-precondition')
+        && (message.includes('app check') || message.includes('appcheck') || message.includes('token required'))
+    );
+};
+
+const isQueueNetworkError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('unavailable')
+        || code.includes('deadline-exceeded')
+        || message.includes('network')
+        || message.includes('timed out')
+    );
+};
+
+const getQueueSubmitErrorMessage = (error, fallback = 'Could not send request.') => {
+    if (isQueueAppCheckError(error)) return 'Security token expired. Refresh and try again.';
+    if (isQueueUnauthenticatedError(error)) return 'Session expired. Sign in again and retry.';
+    if (isQueuePermissionDeniedError(error)) return 'Queue request is blocked for this room/account.';
+    if (isQueueNetworkError(error)) return 'Network issue while sending request. Try again.';
+    return fallback;
 };
 
 const normalizeTight15Text = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -784,13 +879,28 @@ const SingerApp = ({ roomCode, uid }) => {
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !isVipAccount;
     const tipCrates = useMemo(() => (Array.isArray(room?.tipCrates) ? room.tipCrates : []), [room?.tipCrates]);
     const isNativeMobileLayout = mobileLayoutMode === 'native';
-    const mobileTopInset = isStandaloneDisplay ? 'max(8px, env(safe-area-inset-top))' : '10px';
+    const mobileSafeTopInset = 'env(safe-area-inset-top)';
+    const mobileSafeLeftInset = 'env(safe-area-inset-left)';
+    const mobileSafeRightInset = 'env(safe-area-inset-right)';
+    const mobileSafeBottomInset = 'env(safe-area-inset-bottom)';
+    const mobileTopInset = isNativeMobileLayout
+        ? `max(0px, ${mobileSafeTopInset})`
+        : (isStandaloneDisplay ? `max(8px, ${mobileSafeTopInset})` : '10px');
     const mobileHeaderTopInset = isNativeMobileLayout
-        ? mobileTopInset
-        : (isStandaloneDisplay ? 'calc(env(safe-area-inset-top) + 12px)' : '12px');
-    const mobileSideInset = isStandaloneDisplay ? 'max(16px, env(safe-area-inset-left))' : '16px';
-    const mobileBottomInset = isStandaloneDisplay ? 'max(10px, env(safe-area-inset-bottom))' : '10px';
-    const mobileFloatingBottomInset = isStandaloneDisplay ? 'calc(env(safe-area-inset-bottom) + 80px)' : '80px';
+        ? `calc(${mobileTopInset} + 2px)`
+        : (isStandaloneDisplay ? `calc(${mobileSafeTopInset} + 12px)` : '12px');
+    const mobileSideInsetLeft = isNativeMobileLayout
+        ? `max(0px, ${mobileSafeLeftInset})`
+        : (isStandaloneDisplay ? `max(16px, ${mobileSafeLeftInset})` : '16px');
+    const mobileSideInsetRight = isNativeMobileLayout
+        ? `max(0px, ${mobileSafeRightInset})`
+        : (isStandaloneDisplay ? `max(16px, ${mobileSafeRightInset})` : '16px');
+    const mobileBottomInset = isNativeMobileLayout
+        ? `max(0px, ${mobileSafeBottomInset})`
+        : (isStandaloneDisplay ? `max(10px, ${mobileSafeBottomInset})` : '10px');
+    const mobileFloatingBottomInset = isNativeMobileLayout
+        ? `calc(${mobileBottomInset} + 80px)`
+        : (isStandaloneDisplay ? `calc(${mobileSafeBottomInset} + 80px)` : '80px');
     const showBallad = room?.lightMode === 'ballad';
     const showBanger = room?.lightMode === 'banger';
     const motionSafeFx = !!room?.reduceMotionFx;
@@ -1090,14 +1200,31 @@ const SingerApp = ({ roomCode, uid }) => {
             orderBy('timestamp', 'desc'),
             limit(80)
         );
-        const unsubSubs = onSnapshot(subsQ, snap => {
-            setDoodleSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-        const unsubVotes = onSnapshot(votesQ, snap => {
-            const votes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setDoodleVotes(votes);
-            setDoodleMyVote(votes.find(v => v.uid === uid) || null);
-        });
+        const unsubSubs = watchQuerySnapshot(
+            subsQ,
+            (snap) => {
+                setDoodleSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            },
+            {
+                label: `singer:doodle_submissions:${roomCode}`,
+                onFallback: () => setDoodleSubmissions([])
+            }
+        );
+        const unsubVotes = watchQuerySnapshot(
+            votesQ,
+            (snap) => {
+                const votes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                setDoodleVotes(votes);
+                setDoodleMyVote(votes.find(v => v.uid === uid) || null);
+            },
+            {
+                label: `singer:doodle_votes:${roomCode}`,
+                onFallback: () => {
+                    setDoodleVotes([]);
+                    setDoodleMyVote(null);
+                }
+            }
+        );
         return () => {
             unsubSubs();
             unsubVotes();
@@ -1533,6 +1660,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const pendingStormLayerCount = useRef(0);
     const lastStormLayerAt = useRef(0);
     const pendingPointDelta = useRef(0);
+    const pendingRewardToastPointsRef = useRef(0);
+    const rewardToastTimerRef = useRef(null);
     const lastPointsSync = useRef(0);
     const lastBonusDropId = useRef(null);
     const lastLobbyPlayAtRef = useRef(0);
@@ -1547,6 +1676,33 @@ const SingerApp = ({ roomCode, uid }) => {
     const [lobbyVolleyNowMs, setLobbyVolleyNowMs] = useState(Date.now());
 
     const toast = useToast();
+    const showToast = useCallback((message, options = {}) => {
+        if (typeof toast !== 'function') return;
+        toast(message, options);
+    }, [toast]);
+    const showRewardToast = useCallback((message, points = 0, options = {}) => {
+        const safePoints = Math.max(0, Math.round(Number(points) || 0));
+        const msg = String(message || '').trim() || (safePoints > 0 ? `+${safePoints} PTS` : 'Reward unlocked');
+        showToast(msg, {
+            tone: 'reward',
+            icon: EMOJI.coin,
+            durationMs: 3200,
+            ...options,
+        });
+    }, [showToast]);
+    const scheduleRewardToast = useCallback((points) => {
+        const safePoints = Math.max(0, Math.round(Number(points) || 0));
+        if (!safePoints) return;
+        pendingRewardToastPointsRef.current += safePoints;
+        if (rewardToastTimerRef.current) return;
+        rewardToastTimerRef.current = window.setTimeout(() => {
+            rewardToastTimerRef.current = null;
+            const total = Math.max(0, Math.round(Number(pendingRewardToastPointsRef.current) || 0));
+            pendingRewardToastPointsRef.current = 0;
+            if (!total) return;
+            showRewardToast(`+${total} PTS`, total, { durationMs: 2600 });
+        }, 950);
+    }, [showRewardToast]);
     const billingPlatform = useMemo(() => detectBillingPlatform(), []);
     const billingProvider = useMemo(() => {
         const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -1599,10 +1755,15 @@ const SingerApp = ({ roomCode, uid }) => {
         return next.length;
     }, []);
 
-    const queuePointDelta = useCallback((delta) => {
-        pendingPointDelta.current += delta;
-        setLocalPointOffset(prev => prev + delta);
-    }, []);
+    const queuePointDelta = useCallback((delta, options = {}) => {
+        const amount = Number(delta || 0);
+        if (!Number.isFinite(amount) || amount === 0) return;
+        pendingPointDelta.current += amount;
+        setLocalPointOffset(prev => prev + amount);
+        if (amount > 0 && options?.silentToast !== true) {
+            scheduleRewardToast(amount);
+        }
+    }, [scheduleRewardToast]);
 
     const syncPoints = useCallback(async (force = false) => {
         if (!user || !uid) return;
@@ -1645,18 +1806,28 @@ const SingerApp = ({ roomCode, uid }) => {
             orderBy('timestamp', 'desc'),
             limit(viewingChat ? 40 : 1)
         );
-        const unsub = onSnapshot(q, snap => {
-            const next = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
-            if (viewingChat) {
-                setChatMessages(next);
-            } else if (!next.length) {
-                setChatMessages([]);
+        const unsub = watchQuerySnapshot(
+            q,
+            (snap) => {
+                const next = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
+                if (viewingChat) {
+                    setChatMessages(next);
+                } else if (!next.length) {
+                    setChatMessages([]);
+                }
+                const newest = getNewestRelevantChatTimestamp(next);
+                if (newest && newest > chatLastSeenRef.current && !viewingChat) {
+                    setChatUnread(true);
+                }
+            },
+            {
+                label: `singer:chat_messages:${roomCode}`,
+                onFallback: () => {
+                    setChatMessages([]);
+                    setChatUnread(false);
+                }
             }
-            const newest = getNewestRelevantChatTimestamp(next);
-            if (newest && newest > chatLastSeenRef.current && !viewingChat) {
-                setChatUnread(true);
-            }
-        });
+        );
         return () => unsub();
     }, [roomCode, room?.chatEnabled, tab, socialTab, getNewestRelevantChatTimestamp]);
 
@@ -1668,9 +1839,16 @@ const SingerApp = ({ roomCode, uid }) => {
         const q = hallOfFameMode === 'week'
             ? query(collection(db, collectionName), where('weekKey', '==', weekKey), orderBy('bestScore', 'desc'), limit(50))
             : query(collection(db, collectionName), orderBy('bestScore', 'desc'), limit(50));
-        const unsub = onSnapshot(q, snap => {
-            setHallOfFameEntries(snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() })));
-        });
+        const unsub = watchQuerySnapshot(
+            q,
+            (snap) => {
+                setHallOfFameEntries(snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() })));
+            },
+            {
+                label: `singer:hall_of_fame:${hallOfFameMode}`,
+                onFallback: () => setHallOfFameEntries([])
+            }
+        );
         return () => unsub();
     }, [roomCode, hallOfFameMode, tab, socialTab]);
 
@@ -2320,6 +2498,22 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [roomCode]);
     useEffect(() => {
         if (!roomCode) return () => {};
+        if (room?.lobbyVolleyEnabled === false) {
+            setLobbyVolleyPreview(createLobbyVolleyState());
+            return () => {};
+        }
+        const lobbyQueueDepth = (Array.isArray(songs) ? songs : []).reduce(
+            (sum, song) => sum + (song?.status === 'requested' ? 1 : 0),
+            0
+        );
+        const lobbyVolleyModeForced = isCrowdObjectiveLightMode(room?.lightMode);
+        const lobbyVolleySceneActive = !currentSinger
+            && (!room?.activeMode || room.activeMode === 'karaoke')
+            && (lobbyVolleyModeForced || lobbyQueueDepth === 0);
+        if (!lobbyVolleySceneActive) {
+            setLobbyVolleyPreview(createLobbyVolleyState());
+            return () => {};
+        }
         const q = query(
             collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
             where('roomCode', '==', roomCode),
@@ -2353,7 +2547,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setLobbyVolleyPreview(nextState);
         });
         return () => unsub();
-    }, [roomCode]);
+    }, [roomCode, room?.lobbyVolleyEnabled, room?.lightMode, room?.activeMode, songs, currentSinger]);
     const popTriviaRoundSec = Math.max(8, Number(room?.popTriviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC));
     const popTriviaState = useMemo(() => {
         if (room?.activeMode !== 'karaoke') return null;
@@ -2384,6 +2578,30 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const val = Number(mine.val);
         return Number.isInteger(val) ? val : null;
     }, [popTriviaVotes, uid]);
+    const karaokePerformanceVotingOpen = !!currentSinger && (!room?.activeMode || room.activeMode === 'karaoke');
+    const showPerformanceVotingPromptCta = karaokePerformanceVotingOpen && tab !== 'home';
+    const showPopTriviaPromptCta = !!popTriviaQuestion && !['home', 'request', 'social'].includes(tab);
+    const floatingEngagementPrompt = useMemo(() => {
+        if (showPerformanceVotingPromptCta && showPopTriviaPromptCta) {
+            return {
+                icon: 'fa-bolt',
+                label: 'Stage + Trivia Live: Tap To Vote'
+            };
+        }
+        if (showPerformanceVotingPromptCta) {
+            return {
+                icon: 'fa-microphone-lines',
+                label: 'Stage Live: Voting Open'
+            };
+        }
+        if (showPopTriviaPromptCta) {
+            return {
+                icon: 'fa-brain',
+                label: `Trivia Live: ${popTriviaMyVote !== null ? 'Answer Locked' : 'Tap To Answer'}`
+            };
+        }
+        return null;
+    }, [showPerformanceVotingPromptCta, showPopTriviaPromptCta, popTriviaMyVote]);
 
     useEffect(() => {
         if (!popTriviaQuestionId) {
@@ -2564,8 +2782,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 console.warn('Failed to unlock guitar glow emoji', e);
             });
         }
-        toast(`You shredded the hardest! ${win.hits || 0} inputs.`);
-    }, [room?.guitarWinner, uid, profile?.unlockedEmojis, toast]);
+        showToast(`You shredded the hardest! ${win.hits || 0} inputs.`, { tone: 'success' });
+    }, [room?.guitarWinner, uid, profile?.unlockedEmojis, showToast]);
 
     useEffect(() => {
         const win = room?.strobeWinner;
@@ -2574,18 +2792,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         strobeWinSeenRef.current = win.sessionId;
         setStrobeVictoryInfo(win);
         setStrobeVictoryOpen(true);
-        toast(`Beat Drop MVP! ${win.taps || 0} taps.`);
-    }, [room?.strobeWinner, uid, toast]);
+        showToast(`Beat Drop MVP! ${win.taps || 0} taps.`, { tone: 'success' });
+    }, [room?.strobeWinner, uid, showToast]);
 
     useEffect(() => {
         const drop = room?.bonusDrop;
         if (!drop || !user) return;
         if (lastBonusDropId.current === drop.id) return;
         lastBonusDropId.current = drop.id;
-        queuePointDelta(drop.points || 0);
+        queuePointDelta(drop.points || 0, { silentToast: true });
         syncPoints(true);
-        toast(`Bonus drop: +${drop.points || 0} PTS`);
-    }, [room?.bonusDrop, user, queuePointDelta, syncPoints, toast]);
+        showRewardToast(`Bonus drop: +${drop.points || 0} PTS`, drop.points || 0);
+    }, [room?.bonusDrop, user, queuePointDelta, showRewardToast, syncPoints]);
 
     useEffect(() => {
         if (!room?.photoOverlay?.url) {
@@ -2651,7 +2869,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const interval = setInterval(() => {
             if (document.hidden) return;
             if (Date.now() - lastActiveAtRef.current > 10 * 60 * 1000) return;
-            queuePointDelta(10);
+            queuePointDelta(10, { silentToast: true });
         }, 60000); 
         return () => clearInterval(interval);
     }, [user, isVipAccount, queuePointDelta]);
@@ -2686,6 +2904,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (strumFlushTimer.current) clearTimeout(strumFlushTimer.current);
         if (strobeFlushTimer.current) clearTimeout(strobeFlushTimer.current);
         if (stormLayerFlushTimer.current) clearTimeout(stormLayerFlushTimer.current);
+        if (rewardToastTimerRef.current) clearTimeout(rewardToastTimerRef.current);
         stopStormAudio(false);
     }, [stopStormAudio]);
 
@@ -3126,7 +3345,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             points: increment(rewardPoints),
             lastActiveAt: serverTimestamp()
         });
-        toast(`READY! +${rewardPoints} PTS`);
+        showRewardToast(`READY! +${rewardPoints} PTS`, rewardPoints);
     };
 
     const captureSelfieCanvas = () => {
@@ -3355,6 +3574,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const triggerLobbyPlayInteraction = async (interactionId) => {
         if (!user || !roomCode || currentSinger) return;
+        const activeObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode)
+            || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
+        if (room?.lobbyVolleyEnabled === false) {
+            toast('Idle crowd objective is currently off.');
+            return;
+        }
+        const lobbyQueueDepth = (Array.isArray(songs) ? songs : []).reduce(
+            (sum, song) => sum + (song?.status === 'requested' ? 1 : 0),
+            0
+        );
+        const lobbyVolleyModeForced = isCrowdObjectiveLightMode(room?.lightMode);
+        const lobbyVolleySceneActive = !currentSinger
+            && (!room?.activeMode || room.activeMode === 'karaoke')
+            && (lobbyVolleyModeForced || lobbyQueueDepth === 0);
+        if (!lobbyVolleySceneActive) {
+            toast(`${activeObjectiveMode?.label || 'Crowd objective'} is available when stage is idle.`);
+            return;
+        }
         const key = String(interactionId || '').trim().toLowerCase();
         if (!key) return;
         if (room?.lobbyPlaygroundPaused) {
@@ -3521,6 +3758,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             const song = s || form.song; const artist = a || form.artist; const artwork = art || form.art; 
             if(!song) return; 
             markActive();
+            await ensureAppCheckToken(false).catch(() => false);
             const rotation = queueSettings.rotation || 'first_come';
             const firstTimeBoost = !!queueSettings.firstTimeBoost;
             const queuedCount = songs.filter(songItem => (songItem.singerUid === uid || songItem.singerName === user.name) && (songItem.status === 'requested' || songItem.status === 'pending' || songItem.status === 'performing')).length;
@@ -3541,20 +3779,41 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 return;
             }
 
-            const songRecord = await ensureSong({
-                title: song,
-                artist: artist || 'Unknown',
-                artworkUrl: artwork || '',
-                itunesId: options.itunesId || ''
-            });
+            let songId = buildSongKey(song, artist || 'Unknown');
+            try {
+                const songRecord = await ensureSong({
+                    title: song,
+                    artist: artist || 'Unknown',
+                    artworkUrl: artwork || '',
+                    itunesId: options.itunesId || ''
+                });
+                songId = songRecord?.songId || songId;
+            } catch (catalogError) {
+                if (isCatalogPermissionDeniedError(catalogError)) {
+                    logSingerCatalogPermissionSkip('ensureSong');
+                } else {
+                    console.warn('Singer ensureSong failed', catalogError);
+                }
+            }
 
-            const trackRecord = backingUrl ? await ensureTrack({
-                songId: songRecord?.songId || '',
-                source: trackSource,
-                mediaUrl: backingUrl,
-                label: options.trackLabel || (options.mediaUrl ? 'Host index' : 'Singer selected'),
-                addedBy: uid
-            }) : null;
+            let trackRecord = null;
+            if (backingUrl) {
+                try {
+                    trackRecord = await ensureTrack({
+                        songId: songId || '',
+                        source: trackSource,
+                        mediaUrl: backingUrl,
+                        label: options.trackLabel || (options.mediaUrl ? 'Host index' : 'Singer selected'),
+                        addedBy: uid
+                    });
+                } catch (catalogError) {
+                    if (isCatalogPermissionDeniedError(catalogError)) {
+                        logSingerCatalogPermissionSkip('ensureTrack');
+                    } else {
+                        console.warn('Singer ensureTrack failed', catalogError);
+                    }
+                }
+            }
 
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
                 roomCode,
@@ -3567,7 +3826,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 status: (room?.bouncerMode || enforcePending) ? 'pending' : 'requested',
                 timestamp: serverTimestamp(),
                 priorityScore,
-                songId: songRecord?.songId || null,
+                songId: songId || null,
                 trackId: trackRecord?.trackId || null,
                 trackSource: backingUrl ? trackSource : null,
                 mediaUrl: backingUrl || ''
@@ -3577,7 +3836,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setSearchQ(''); setResults([]); toast("Request Sent!"); 
             logActivity(`requested ${song}`, EMOJI.musicNotes);
             syncPoints(true);
-        } catch (_err) { toast("Error sending request"); }
+        } catch (err) {
+            console.warn('Singer queue submit failed', err);
+            toast(getQueueSubmitErrorMessage(err, 'Error sending request'));
+        }
     };
     
     const deleteMyRequest = async (id) => { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id)); toast("Request Deleted"); };
@@ -4012,7 +4274,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setShowVipOnboarding(true);
             setTab('request');
             setSongsTab('tight15');
-            toast('Phone linked - VIP unlocked! +5000 PTS');
+            showRewardToast('Phone linked - VIP unlocked! +5000 PTS', 5000, { durationMs: 3600 });
         } catch (e) {
             console.error('confirm error', e);
             toast('Verification failed');
@@ -4034,7 +4296,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setShowVipOnboarding(true);
             setTab('request');
             setSongsTab('tight15');
-            toast('VIP unlocked (bypass)');
+            showRewardToast('VIP unlocked (bypass) +5000 PTS', 5000, { durationMs: 3600 });
         } catch (e) {
             console.error('Bypass error', e);
             toast('Bypass failed');
@@ -6375,6 +6637,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const activeMessages = chatTab === 'host' ? dmMessages : loungeMessages;
     const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
     const noSingerOnStage = !currentSinger;
+    const lobbyVolleyEnabled = room?.lobbyVolleyEnabled !== false;
+    const lobbyQueueDepth = (Array.isArray(songs) ? songs : []).reduce(
+        (sum, song) => sum + (song?.status === 'requested' ? 1 : 0),
+        0
+    );
+    const lobbyForcedObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
+    const lobbyObjectiveMode = lobbyForcedObjectiveMode || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
+    const lobbyObjectiveLabel = lobbyObjectiveMode?.label || 'Volley Orb';
+    const lobbyObjectiveMobileGoal = lobbyObjectiveMode?.mobileGoal || 'Keep the orb airborne';
+    const lobbyObjectiveStreakLabel = lobbyObjectiveMode?.id === 'team_pong' ? 'Rally' : 'Streak';
+    const lobbyVolleyModeForced = isCrowdObjectiveLightMode(room?.lightMode);
+    const lobbyVolleySceneActive = noSingerOnStage
+        && (!room?.activeMode || room.activeMode === 'karaoke')
+        && (lobbyVolleyModeForced || lobbyQueueDepth === 0);
     const lobbyPlayStrictMode = !!room?.lobbyPlaygroundStrictMode;
     const lobbyPlaygroundPaused = !!room?.lobbyPlaygroundPaused;
     const lobbyPlayMaxPerMinute = Math.max(
@@ -6438,9 +6714,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <div
                         className="absolute inset-x-0 z-[22] pointer-events-none flex items-center justify-between px-4"
                         style={{
-                            top: isStandaloneDisplay ? 'max(2px, env(safe-area-inset-top))' : '2px',
-                            paddingLeft: mobileSideInset,
-                            paddingRight: mobileSideInset
+                            top: `calc(${mobileTopInset} + 2px)`,
+                            paddingLeft: mobileSideInsetLeft,
+                            paddingRight: mobileSideInsetRight
                         }}
                     >
                         <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/85">Native Mobile</div>
@@ -6459,7 +6735,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                       <button onClick={() => setShowAbout(true)} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-pointer hover:opacity-90 transition-opacity overflow-visible z-[80]">
                           <img src={BRAND_ICON} className="w-[212px] h-[106px] object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.75)] logo-bounce relative z-[60]" alt="Beaurocks Karaoke" />
                       </button>
-                      <div className="grid grid-cols-[minmax(0,140px)_auto_minmax(0,140px)] items-center h-full gap-2 px-4" style={{ paddingLeft: mobileSideInset, paddingRight: mobileSideInset }}>
+                      <div className="grid grid-cols-[minmax(0,140px)_auto_minmax(0,140px)] items-center h-full gap-2 px-4" style={{ paddingLeft: mobileSideInsetLeft, paddingRight: mobileSideInsetRight }}>
                       {/* Left: User Emoji & Name */}
                       <div className="flex items-center justify-start min-w-0 relative z-10">
                           <button onClick={() => { setTab('social'); setSocialTab('profile'); }} className="bg-black/60 backdrop-blur-sm px-3 py-2 rounded-full border border-white/10 flex items-center gap-2 shadow-lg h-11 w-[126px] sm:w-[140px] min-w-0">
@@ -6858,7 +7134,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             })}
                                         </div>
                                         <div className="mt-2 text-[10px] uppercase tracking-[0.25em] text-zinc-300">
-                                            {popTriviaMyVote !== null ? 'Answer locked' : 'Tap an answer to play'}
+                                            {popTriviaMyVote !== null ? 'Answer locked' : 'Tap an answer to join the recap'}
                                         </div>
                                     </div>
                                 )}
@@ -6926,14 +7202,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
                 {tab === 'home' && (
                     <div className="space-y-5">
-                         {noSingerOnStage ? (
-                             <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-3 space-y-2 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
+                         {lobbyVolleySceneActive && lobbyVolleyEnabled ? (
+                             <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-2.5 space-y-2 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
                                  <div className="flex items-center justify-between gap-2">
                                      <div className="min-w-0">
                                          <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Lobby Playground</div>
-                                         <div className="text-sm font-black text-white leading-none truncate">
-                                             Keep the orb airborne
-                                         </div>
+                                         <div className="text-[11px] font-bold text-white/90 leading-none truncate">{lobbyObjectiveMobileGoal}</div>
                                      </div>
                                      <div className="flex items-center gap-1">
                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] bg-cyan-400/20 border border-cyan-300/45 text-cyan-100">FREE</span>
@@ -6949,59 +7223,64 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          )}
                                      </div>
                                  </div>
-                                 <div className="rounded-xl border border-cyan-300/30 bg-black/35 px-2.5 py-2">
-                                     <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-zinc-100">
-                                         <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                             Streak {lobbyVolleyPreview?.streakCount || 0}
-                                         </span>
-                                         <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                             Tier {lobbyVolleyPreview?.currentTier || 0}
-                                         </span>
-                                         <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                             {lobbyVolleyParticipants.length} active
-                                         </span>
-                                         <span className={`px-2 py-0.5 rounded-full border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/45 border-white/20 text-zinc-100'}`}>
-                                             {lobbyPlayRemaining}/{lobbyPlayMaxPerMinute}
-                                         </span>
-                                     </div>
-                                     <div className="mt-2 h-1.5 rounded-full bg-black/60 border border-white/10 overflow-hidden">
-                                         <div className="h-full bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-yellow-300 transition-all duration-200" style={{ width: `${lobbyVolleyEnergyLive}%` }}></div>
-                                     </div>
-                                     <div className="mt-1 h-1 rounded-full bg-black/60 overflow-hidden">
-                                         <div className="h-full bg-white/70 transition-all duration-200" style={{ width: `${lobbyVolleyStreakDecayPct}%` }}></div>
-                                     </div>
+                                 <div className="flex flex-wrap items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-zinc-100">
+                                     <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
+                                         {lobbyObjectiveStreakLabel} {lobbyVolleyPreview?.streakCount || 0}
+                                     </span>
+                                     <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
+                                         Tier {lobbyVolleyPreview?.currentTier || 0}
+                                     </span>
+                                     <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
+                                         {lobbyVolleyParticipants.length} active
+                                     </span>
+                                     <span className={`px-2 py-0.5 rounded-full border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/45 border-white/20 text-zinc-100'}`}>
+                                         {lobbyPlayRemaining}/{lobbyPlayMaxPerMinute}
+                                     </span>
                                  </div>
-                                 <div className="grid grid-cols-2 gap-2.5">
-                                     {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction) => (
-                                         <button
-                                             key={interaction.id}
-                                             onClick={() => triggerLobbyPlayInteraction(interaction.id)}
-                                             disabled={lobbyPlayInteractionDisabled}
-                                             className={`relative overflow-hidden bg-gradient-to-b ${interaction.accentCard} border-2 ${interaction.accentBorder} rounded-2xl p-2.5 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${
-                                                 lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType
-                                                     ? 'ring-2 ring-emerald-300/75 shadow-[0_0_18px_rgba(52,211,153,0.5)]'
-                                                     : ''
-                                             } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
-                                         >
-                                             <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[10px] font-black tracking-[0.14em] border border-white/25 bg-black/40 text-white">FREE</span>
-                                             <span className="text-4xl mb-1.5">{interaction.emoji}</span>
-                                             <span className={`font-bold text-[15px] ${interaction.accentText}`}>{interaction.label}</span>
-                                             <div className={`mt-1 px-2 py-0.5 rounded-full border text-[11px] font-black ${interaction.accentPill}`}>
-                                                 {interaction.boost}
-                                             </div>
-                                             <div className={`mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/45 border-white/20 text-zinc-100'}`}>
-                                                 {lobbyPlaygroundPaused
-                                                     ? 'Paused by host'
-                                                     : lobbyPlayRateLimited
-                                                         ? 'Cooling down...'
-                                                         : (lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType)
-                                                             ? 'Pass target: teammate tap now'
-                                                             : interaction.hint}
-                                             </div>
-                                         </button>
-                                     ))}
-                                 </div>
-                                 <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-zinc-200">
+                                 <div className="grid grid-cols-2 gap-2">
+                                      {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction, idx) => {
+                                          const impactLabel = formatLobbyInteractionImpact(interaction.id);
+                                          const isRelayTarget = lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType;
+                                          const interactionStatusLabel = lobbyPlaygroundPaused
+                                              ? 'Paused by host'
+                                              : lobbyPlayRateLimited
+                                                  ? 'Cooling down...'
+                                                  : isRelayTarget
+                                                      ? 'Pass target: teammate tap now'
+                                                      : interaction.hint;
+                                          return (
+                                              <button
+                                                  key={interaction.id}
+                                                  onClick={() => triggerLobbyPlayInteraction(interaction.id)}
+                                                  disabled={lobbyPlayInteractionDisabled}
+                                                  className={`rounded-xl border px-3 py-2 text-left transition-all ${
+                                                      isRelayTarget
+                                                          ? 'border-emerald-300 bg-emerald-500/15 shadow-[0_0_18px_rgba(52,211,153,0.28)]'
+                                                          : `${interaction.accentBorder} bg-gradient-to-b ${interaction.accentCard}`
+                                                  } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95 hover:border-cyan-400/60'}`}
+                                              >
+                                                  <div className="flex items-center justify-between gap-2">
+                                                      <span className={`text-[10px] font-bold tracking-[0.22em] ${interaction.accentText}`}>{String.fromCharCode(65 + idx)}</span>
+                                                      <span className="text-[10px] font-mono text-zinc-300">FREE</span>
+                                                  </div>
+                                                  <div className="mt-1 flex items-center gap-2">
+                                                      <span className="text-2xl leading-none">{interaction.emoji}</span>
+                                                      <span className={`text-[13px] font-semibold leading-none ${interaction.accentText}`}>{interaction.label}</span>
+                                                  </div>
+                                                  <div className={`mt-1 inline-flex w-fit px-1.5 py-0.5 rounded-md border text-[10px] font-black ${interaction.accentPill}`}>
+                                                      {interaction.boost.replace('Role: ', '')}
+                                                  </div>
+                                                  <div className="mt-1 text-[11px] font-semibold text-white/90 truncate">
+                                                      {impactLabel || interaction.hint}
+                                                  </div>
+                                                  <div className="mt-0.5 text-[10px] text-zinc-300 truncate">
+                                                      {interactionStatusLabel}
+                                                  </div>
+                                              </button>
+                                          );
+                                      })}
+                                  </div>
+                                 <div className="flex flex-wrap items-center gap-1 text-[10px] text-zinc-200">
                                      <span className={`px-2 py-0.5 rounded-full border ${
                                          lobbyRelayObjective.active
                                              ? 'border-emerald-300/45 bg-emerald-500/12 text-emerald-100'
@@ -7015,7 +7294,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          Cooldown {lobbyPlayCooldownMs}ms
                                      </span>
                                  </div>
-                                 <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#27d3f7] to-[#26D7E8] text-black py-3 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
+                                 <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#27d3f7] to-[#26D7E8] text-black py-2.5 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
                                      Add first song to start karaoke
                                  </button>
                              </div>
@@ -8027,6 +8306,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     Bingo Live
                 </button>
             )}
+            {floatingEngagementPrompt && (
+                <button
+                    onClick={() => setTab('home')}
+                    className="fixed left-1/2 -translate-x-1/2 z-[96] rounded-full border border-cyan-300/55 bg-cyan-500/22 text-cyan-100 shadow-[0_10px_28px_rgba(34,211,238,0.35)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.22em]"
+                    style={{ bottom: `calc(${mobileFloatingBottomInset} + 2.75rem)` }}
+                >
+                    <i className={`fa-solid ${floatingEngagementPrompt.icon} mr-2`}></i>
+                    {floatingEngagementPrompt.label}
+                </button>
+            )}
             <button
                 onClick={toggleMobileLayoutMode}
                 className={`fixed left-3 z-[96] px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.18em] transition-colors ${isNativeMobileLayout ? 'border-cyan-300/50 bg-cyan-400/20 text-cyan-100' : 'border-white/30 bg-black/45 text-zinc-200'}`}
@@ -8048,7 +8337,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 )}
                 <div
                     className="relative py-1.5 flex"
-                    style={{ paddingLeft: isStandaloneDisplay ? 'max(8px, env(safe-area-inset-left))' : '8px', paddingRight: isStandaloneDisplay ? 'max(8px, env(safe-area-inset-right))' : '8px' }}
+                    style={{
+                        paddingLeft: isNativeMobileLayout
+                            ? mobileSideInsetLeft
+                            : (isStandaloneDisplay ? 'max(8px, env(safe-area-inset-left))' : '8px'),
+                        paddingRight: isNativeMobileLayout
+                            ? mobileSideInsetRight
+                            : (isStandaloneDisplay ? 'max(8px, env(safe-area-inset-right))' : '8px')
+                    }}
                 >
                     <button onClick={()=>setTab('home')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='home'?'text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]':'text-zinc-300'}`}><i className="fa-solid fa-champagne-glasses text-[28px]"></i><span className="text-base font-semibold">PARTY</span></button>
                     <button onClick={()=>setTab('request')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='request'?'text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]':'text-zinc-300'}`}><i className="fa-solid fa-music text-[28px]"></i><span className="text-base font-semibold">SONGS</span></button>

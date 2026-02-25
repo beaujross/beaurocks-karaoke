@@ -20,11 +20,51 @@ const AIR_MULTIPLIER_TEAM_BONUS_PER_USER = 0.25;
 const AIR_MULTIPLIER_HANDOFF_BONUS_PER_CHAIN = 0.08;
 const AIR_MULTIPLIER_RELAY_BONUS_PER_CHAIN = 0.05;
 const AIR_MULTIPLIER_CAP = 5;
+const MAX_POINTS_BUDGET_SCALE = 5;
+const MAX_POINTS_PER_USER_SCALE = 3;
 const RELAY_SEQUENCE = ['wave', 'laser', 'echo', 'confetti'];
+const INTERACTION_PROFILES = Object.freeze({
+    wave: Object.freeze({
+        id: 'wave',
+        roleLabel: 'Stability',
+        description: 'Slows orb decay between taps.',
+        energyGainMultiplier: 1,
+        decayMultiplier: 0.62,
+        relayWindowBonusMs: 0,
+        streakStep: 1
+    }),
+    laser: Object.freeze({
+        id: 'laser',
+        roleLabel: 'Power',
+        description: 'Delivers a stronger energy burst.',
+        energyGainMultiplier: 1.34,
+        decayMultiplier: 1,
+        relayWindowBonusMs: 0,
+        streakStep: 1
+    }),
+    echo: Object.freeze({
+        id: 'echo',
+        roleLabel: 'Relay',
+        description: 'Extends the relay handoff window.',
+        energyGainMultiplier: 1,
+        decayMultiplier: 1,
+        relayWindowBonusMs: 700,
+        streakStep: 1
+    }),
+    confetti: Object.freeze({
+        id: 'confetti',
+        roleLabel: 'Momentum',
+        description: 'Counts as a double streak step.',
+        energyGainMultiplier: 1.08,
+        decayMultiplier: 1,
+        relayWindowBonusMs: 0,
+        streakStep: 2
+    })
+});
 
 const TIER_DEFINITIONS = [
-    { tier: 1, name: 'Warm Up', threshold: 4, visualOnly: true, pointsBudget: 0, maxPointsPerUser: 0 },
-    { tier: 2, name: 'Lift Off', threshold: 9, visualOnly: true, pointsBudget: 0, maxPointsPerUser: 0 },
+    { tier: 1, name: 'Warm Up', threshold: 4, visualOnly: false, pointsBudget: 14, maxPointsPerUser: 6 },
+    { tier: 2, name: 'Lift Off', threshold: 9, visualOnly: false, pointsBudget: 24, maxPointsPerUser: 10 },
     { tier: 3, name: 'Skyline Pulse', threshold: 16, visualOnly: false, pointsBudget: 36, maxPointsPerUser: 16 },
     { tier: 4, name: 'Neon Nova', threshold: 26, visualOnly: false, pointsBudget: 60, maxPointsPerUser: 24 }
 ];
@@ -48,6 +88,8 @@ const normalizeInteractionType = (rawType = '') => {
 const isSupportedInteractionType = (type = '') => DEFAULT_INTERACTION_TYPES.includes(type);
 
 const normalizeCount = (rawCount) => clamp(Math.round(Number(rawCount) || 1), 1, 4);
+const getInteractionProfile = (type = '') => INTERACTION_PROFILES[normalizeInteractionType(type)] || INTERACTION_PROFILES.wave;
+export const getLobbyInteractionProfile = (interactionType = '') => getInteractionProfile(interactionType);
 
 const getNextRelayTargetType = (type = '') => {
     const normalized = normalizeInteractionType(type);
@@ -149,6 +191,7 @@ export const createLobbyVolleyState = () => ({
     relayChainCount: 0,
     relaySuccessCount: 0,
     relayTargetType: 'wave',
+    relayWindowMs: RELAY_WINDOW_MS,
     relayExpiryAtMs: 0,
     lastRelayAtMs: 0,
     lastRelayPasserUid: '',
@@ -166,6 +209,7 @@ export const createLobbyVolleyState = () => ({
     paidTierKeys: {},
     pendingTierTransitions: [],
     lastPayoutAtMs: 0,
+    lastPayoutTier: 0,
     authFailureLocked: false
 });
 
@@ -198,15 +242,17 @@ export const deriveRelayObjective = (state = createLobbyVolleyState(), nowMs = D
     const safeNow = Number(nowMs || Date.now());
     const streakCount = Number(state?.streakCount || 0);
     const lastInteractionAtMs = Number(state?.lastInteractionAtMs || 0);
-    const fallbackExpiry = lastInteractionAtMs > 0 ? (lastInteractionAtMs + RELAY_WINDOW_MS) : 0;
+    const relayWindowMs = clamp(Number(state?.relayWindowMs || RELAY_WINDOW_MS), 1200, 5000);
+    const fallbackExpiry = lastInteractionAtMs > 0 ? (lastInteractionAtMs + relayWindowMs) : 0;
     const expiresAtMs = Number(state?.relayExpiryAtMs || fallbackExpiry || 0);
     const remainingMs = Math.max(0, expiresAtMs - safeNow);
     const active = streakCount > 0 && remainingMs > 0;
-    const progressPct = active ? clamp((remainingMs / RELAY_WINDOW_MS) * 100, 0, 100) : 0;
+    const progressPct = active ? clamp((remainingMs / relayWindowMs) * 100, 0, 100) : 0;
     const urgency = progressPct > 66 ? 'stable' : (progressPct > 33 ? 'warning' : 'danger');
     return {
         active,
         targetType: String(state?.relayTargetType || getNextRelayTargetType(state?.lastInteractionType || 'wave')),
+        relayWindowMs,
         expiresAtMs,
         remainingMs,
         progressPct: Math.round(progressPct),
@@ -288,6 +334,15 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         : { ...baseState };
 
     const elapsedMs = Math.max(0, safeNow - Number(activeState.lastInteractionAtMs || safeNow));
+    const interactionProfile = getInteractionProfile(eventMeta.type);
+    const decayMultiplier = clamp(Number(interactionProfile?.decayMultiplier || 1), 0.35, 1.2);
+    const energyGainMultiplier = clamp(Number(interactionProfile?.energyGainMultiplier || 1), 0.5, 2);
+    const streakStep = clamp(Math.round(Number(interactionProfile?.streakStep || 1)), 1, 2);
+    const relayWindowMs = clamp(
+        RELAY_WINDOW_MS + Number(interactionProfile?.relayWindowBonusMs || 0),
+        1200,
+        5000
+    );
     const isHandoff = !!eventMeta.uid
         && !!activeState.lastInteractionUid
         && activeState.lastInteractionUid !== eventMeta.uid;
@@ -306,7 +361,7 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         ? (participants[eventMeta.uid] || createParticipant(eventMeta, safeNow))
         : null;
     const spamWeight = getSpamWeight(participant, eventMeta.type, safeNow);
-    const contribution = buildContributionScore({ count: eventMeta.count, spamWeight });
+    const contribution = buildContributionScore({ count: eventMeta.count, spamWeight }) * energyGainMultiplier;
 
     if (participant) {
         participant.userName = eventMeta.userName;
@@ -327,9 +382,9 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         participants[eventMeta.uid] = participant;
     }
 
-    const nextStreakCount = Number(activeState.streakCount || 0) + 1;
+    const nextStreakCount = Number(activeState.streakCount || 0) + streakStep;
     const nextEnergy = clamp(
-        decayEnergy(activeState.energy, elapsedMs) + contribution,
+        decayEnergy(activeState.energy, elapsedMs * decayMultiplier) + contribution,
         0,
         100
     );
@@ -370,7 +425,8 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         relayChainCount: nextRelayChainCount,
         relaySuccessCount: nextRelaySuccessCount,
         relayTargetType,
-        relayExpiryAtMs: safeNow + RELAY_WINDOW_MS,
+        relayWindowMs,
+        relayExpiryAtMs: safeNow + relayWindowMs,
         lastRelayAtMs: relayHit ? safeNow : Number(activeState.lastRelayAtMs || 0),
         lastRelayPasserUid: relayHit ? String(activeState.lastInteractionUid || '') : '',
         lastRelayPasserName: relayHit ? String(relayPasser?.userName || 'Guest') : '',
@@ -415,7 +471,14 @@ export const buildAwardPayload = (state = createLobbyVolleyState(), nowMs = Date
     if (state.paidTierKeys?.[awardKey]) {
         return { shouldProcess: false, reason: 'already_paid', nextState: state };
     }
-    if (Number(state.lastPayoutAtMs || 0) > 0 && (safeNow - Number(state.lastPayoutAtMs || 0)) < PAYOUT_COOLDOWN_MS) {
+    const currentTier = Number(tier.tier || 0);
+    const lastPayoutTier = Math.max(0, Number(state.lastPayoutTier || 0));
+    const effectiveLastPayoutTier = lastPayoutTier > 0 ? lastPayoutTier : currentTier;
+    if (
+        Number(state.lastPayoutAtMs || 0) > 0
+        && (safeNow - Number(state.lastPayoutAtMs || 0)) < PAYOUT_COOLDOWN_MS
+        && currentTier <= effectiveLastPayoutTier
+    ) {
         return { shouldProcess: false, reason: 'cooldown', nextState: state };
     }
 
@@ -423,25 +486,37 @@ export const buildAwardPayload = (state = createLobbyVolleyState(), nowMs = Date
         .filter((participant) => !!participant.uid)
         .slice(0, MAX_PARTICIPANTS_PER_PAYOUT);
 
-    const pointsBudget = clamp(Number(tier.pointsBudget || 0), 0, 120);
+    const teamworkMultiplier = clamp(Number(state.teamworkMultiplier || 1), 1, AIR_MULTIPLIER_CAP);
+    // Point payouts should match the orb's displayed multiplier directly.
+    const rewardMultiplier = teamworkMultiplier;
+    const basePointsBudget = Math.max(0, Number(tier.pointsBudget || 0));
+    const baseMaxPointsPerUser = Math.max(0, Number(tier.maxPointsPerUser || 0));
+    const pointsBudget = clamp(
+        Math.round(basePointsBudget * rewardMultiplier),
+        0,
+        Math.max(120, Math.round(basePointsBudget * MAX_POINTS_BUDGET_SCALE))
+    );
+    const maxPointsPerUser = clamp(
+        Math.round(baseMaxPointsPerUser * rewardMultiplier),
+        0,
+        Math.max(baseMaxPointsPerUser, Math.round(baseMaxPointsPerUser * MAX_POINTS_PER_USER_SCALE))
+    );
     const pointsEligible = !tier.visualOnly && pointsBudget > 0 && activeParticipants.length > 0;
     const awards = [];
 
     if (pointsEligible) {
         const count = activeParticipants.length;
-        const basePerUser = Math.max(1, Math.floor(pointsBudget / count));
-        let remainder = Math.max(0, pointsBudget - (basePerUser * count));
+        let remainingBudget = pointsBudget;
         activeParticipants.forEach((participant, idx) => {
-            let points = basePerUser + (idx < remainder ? 1 : 0);
-            if (points > Number(tier.maxPointsPerUser || points)) {
-                points = Number(tier.maxPointsPerUser || points);
-                remainder += 1;
-            }
+            const slotsLeft = Math.max(1, count - idx);
+            let points = Math.max(1, Math.floor(remainingBudget / slotsLeft));
+            points = Math.min(points, maxPointsPerUser || points);
             if (points > 0) {
                 awards.push({
                     uid: participant.uid,
                     points
                 });
+                remainingBudget = Math.max(0, remainingBudget - points);
             }
         });
     }
@@ -452,7 +527,8 @@ export const buildAwardPayload = (state = createLobbyVolleyState(), nowMs = Date
             ...(state.paidTierKeys || {}),
             [awardKey]: true
         },
-        lastPayoutAtMs: safeNow
+        lastPayoutAtMs: safeNow,
+        lastPayoutTier: currentTier
     };
 
     return {
@@ -460,6 +536,10 @@ export const buildAwardPayload = (state = createLobbyVolleyState(), nowMs = Date
         visualOnly: !awards.length,
         tier: tier.tier,
         tierName: tier.name,
+        teamworkMultiplier: roundToTenths(teamworkMultiplier),
+        rewardMultiplier: roundToTenths(rewardMultiplier),
+        pointsBudget,
+        maxPointsPerUser,
         awardKey,
         awards,
         nextState
@@ -489,6 +569,7 @@ export const LOBBY_PLAYGROUND_ENGINE_CONSTANTS = {
     AIR_MULTIPLIER_STEP_MS,
     AIR_MULTIPLIER_CAP,
     RELAY_SEQUENCE,
+    INTERACTION_PROFILES,
     TIER_DEFINITIONS,
     COMBO_DEFINITIONS
 };
