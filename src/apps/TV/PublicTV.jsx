@@ -4672,51 +4672,51 @@ const PublicTV = ({ roomCode }) => {
                         )}
                     </>
                 )}
-                <div className="absolute top-3 left-1/2 -translate-x-1/2 w-[min(88vw,960px)]">
-                    <div className="rounded-2xl border border-white/20 bg-black/58 px-3 py-2.5 backdrop-blur-md shadow-[0_0_24px_rgba(0,0,0,0.42)]">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            <div className="rounded-lg border border-white/15 bg-black/35 px-2 py-1.5">
-                                <div className="text-[9px] uppercase tracking-[0.18em] text-cyan-200">Goal</div>
-                                <div className="text-[11px] md:text-xs font-semibold text-white truncate">{lobbyObjectiveBannerGoal}</div>
-                            </div>
-                            <div className="rounded-lg border border-white/15 bg-black/35 px-2 py-1.5">
-                                <div className="text-[9px] uppercase tracking-[0.18em] text-cyan-200">Teamwork</div>
-                                <div className="text-[11px] md:text-xs font-semibold text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
-                            </div>
-                            <div className="rounded-lg border border-white/15 bg-black/35 px-2 py-1.5">
-                                <div className="text-[9px] uppercase tracking-[0.18em] text-cyan-200">Status</div>
-                                <div className="text-[11px] md:text-xs font-semibold text-white">{lobbyObjectiveProgressLabel}</div>
-                            </div>
-                            <div className="rounded-lg border border-white/15 bg-black/35 px-2 py-1.5">
-                                <div className="text-[9px] uppercase tracking-[0.18em] text-cyan-200">Relay</div>
-                                <div className="text-[11px] md:text-xs font-semibold text-white">
-                                    {lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s • Chain x${lobbyRelayObjective.chainCount || 0}` : 'Idle'}
-                                </div>
+                <div className="absolute top-[4.5%] left-[2.4%] w-[min(34vw,560px)] text-left">
+                    <div className="text-[12px] md:text-[14px] uppercase tracking-[0.22em] text-cyan-200/90">
+                        {lobbyObjectiveLabel}
+                    </div>
+                    <div className="mt-1 text-[30px] md:text-[44px] 2xl:text-[56px] leading-[0.95] font-bebas text-white drop-shadow-[0_0_12px_rgba(0,0,0,0.45)]">
+                        {lobbyObjectiveBannerGoal}
+                    </div>
+                    <div className="mt-4 space-y-2">
+                        <div className="flex items-end justify-between gap-4">
+                            <div className="text-[12px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100/85">Teamwork</div>
+                            <div className="text-[28px] md:text-[40px] leading-none font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
+                        </div>
+                        <div className="flex items-end justify-between gap-4">
+                            <div className="text-[12px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100/85">Status</div>
+                            <div className="text-[19px] md:text-[28px] leading-none font-bebas text-white">{lobbyObjectiveProgressLabel}</div>
+                        </div>
+                        <div className="flex items-end justify-between gap-4">
+                            <div className="text-[12px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100/85">Relay</div>
+                            <div className="text-[16px] md:text-[22px] leading-none font-bebas text-white">
+                                {lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s | chain x${lobbyRelayObjective.chainCount || 0}` : 'idle'}
                             </div>
                         </div>
-                        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                            <div className="rounded-lg border border-white/15 bg-black/35 px-2 py-1.5">
-                                <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.16em] text-cyan-100/90 mb-1">
-                                    <span>Momentum</span>
-                                    <span>{lobbyObjectiveStreakLabel}</span>
-                                </div>
-                                <div className="h-2 rounded-full overflow-hidden bg-black/55 border border-white/20">
-                                    <div className="h-full bg-gradient-to-r from-red-300 via-amber-300 to-emerald-300 transition-all duration-200" style={{ width: `${lobbyStreakDecayPct}%` }} />
-                                </div>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                        <div>
+                            <div className="flex items-center justify-between text-[12px] md:text-[14px] uppercase tracking-[0.17em] text-cyan-100/90 mb-1">
+                                <span>Momentum</span>
+                                <span>{lobbyObjectiveStreakLabel}</span>
                             </div>
-                            <div className="rounded-lg border border-white/15 bg-black/35 px-2 py-1.5">
-                                <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.16em] text-cyan-100/90 mb-1">
-                                    <span>Orb Energy</span>
-                                    <span>{Math.round(lobbyOrbEnergy)}%</span>
-                                </div>
-                                <div className="h-2 rounded-full overflow-hidden bg-black/55 border border-white/20">
-                                    <div className="h-full bg-cyan-300/85 transition-all duration-150" style={{ width: `${lobbyOrbEnergy}%` }} />
-                                </div>
+                            <div className="h-[10px] md:h-[12px] rounded-full overflow-hidden bg-white/18">
+                                <div className="h-full bg-gradient-to-r from-red-300 via-amber-300 to-emerald-300 transition-all duration-200" style={{ width: `${lobbyStreakDecayPct}%` }} />
+                            </div>
+                        </div>
+                        <div>
+                            <div className="flex items-center justify-between text-[12px] md:text-[14px] uppercase tracking-[0.17em] text-cyan-100/90 mb-1">
+                                <span>Orb Energy</span>
+                                <span>{Math.round(lobbyOrbEnergy)}%</span>
+                            </div>
+                            <div className="h-[10px] md:h-[12px] rounded-full overflow-hidden bg-white/18">
+                                <div className="h-full bg-cyan-300/90 transition-all duration-150" style={{ width: `${lobbyOrbEnergy}%` }} />
                             </div>
                         </div>
                     </div>
                 </div>
-                <div className="absolute top-24 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+                <div className="absolute top-24 left-[68%] -translate-x-1/2 flex flex-col items-end gap-2">
                     {lobbyComboMoments.slice(0, 3).map((combo) => {
                         const ageMs = nowMs() - Number(combo.createdAtMs || 0);
                         if (ageMs < 0) return null;
@@ -4734,7 +4734,7 @@ const PublicTV = ({ roomCode }) => {
                         );
                     })}
                 </div>
-                <div className="absolute top-40 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+                <div className="absolute top-44 left-[68%] -translate-x-1/2 flex flex-col items-end gap-2">
                     {lobbyAssistMoments.slice(0, 2).map((assist) => {
                         const ageMs = nowMs() - Number(assist.createdAtMs || 0);
                         if (ageMs < 0) return null;
@@ -5321,6 +5321,3 @@ const PublicTV = ({ roomCode }) => {
 };
 
 export default PublicTV;
-
-
-

@@ -85,6 +85,14 @@ const buildRouteSeo = (route = {}) => {
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Live Demo Arena" },
     };
   }
+  if (page === MARKETING_ROUTE_PAGES.hostAccess) {
+    return {
+      title: "Host Access | BeauRocks Karaoke",
+      description: "Private test host sign in, account setup, and invite code access.",
+      robots: "noindex,nofollow",
+      structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Host Access" },
+    };
+  }
   if (page === MARKETING_ROUTE_PAGES.forHosts) {
     return {
       title: "For Hosts | BeauRocks Karaoke",

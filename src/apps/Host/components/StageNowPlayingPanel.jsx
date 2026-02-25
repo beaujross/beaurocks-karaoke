@@ -8,6 +8,8 @@ const StageNowPlayingPanel = ({
     queueCount,
     waitTimeSec,
     formatWaitTime,
+    nextQueueSong,
+    roomCode,
     currentSourcePlaying,
     currentUsesAppleBacking,
     currentMediaUrl,
@@ -29,41 +31,66 @@ const StageNowPlayingPanel = ({
     emoji
 }) => (
     <>
-        <div className="flex justify-end items-center mb-2">
-            <div className="flex items-center gap-2">
-                {room?.activeMode === 'applause' && (<div className="text-[#00C4D9] animate-pulse font-bold">{emoji.mic} APPLAUSE!</div>)}
-                {room?.bouncerMode && (<div className="text-red-400 font-bold">{emoji.lock} LOCKED</div>)}
-            </div>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
-            <div className="bg-zinc-900/60 border border-white/10 rounded-lg px-3 py-2">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-zinc-500">
-                    <i className="fa-solid fa-users text-cyan-300"></i> Lobby
+        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 mb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    {!!roomCode && (
+                        <div className="flex items-center gap-2 bg-black/40 border border-cyan-400/35 px-2 py-1 rounded-full">
+                            <span className="text-[10px] uppercase tracking-[0.25em] text-cyan-200">Room</span>
+                            <span className="text-sm font-bebas text-cyan-200 tracking-[0.24em]">{roomCode}</span>
+                        </div>
+                    )}
+                    <div className="flex items-center gap-1 text-xs font-bold text-white/85 bg-black/40 border border-white/10 px-2.5 py-1 rounded-full">
+                        <i className="fa-solid fa-users text-white/70"></i>
+                        {lobbyCount}
+                    </div>
+                    <div className="flex items-center gap-1 text-xs font-bold text-white/85 bg-black/40 border border-white/10 px-2.5 py-1 rounded-full">
+                        <i className="fa-solid fa-list text-white/70"></i>
+                        {queueCount}
+                    </div>
+                    <div className="flex items-center gap-1 text-xs font-bold text-white/85 bg-black/40 border border-white/10 px-2.5 py-1 rounded-full">
+                        <i className="fa-solid fa-clock text-white/70"></i>
+                        {formatWaitTime(waitTimeSec)}
+                    </div>
                 </div>
-                <div className="text-lg font-bold text-white">{lobbyCount}</div>
-            </div>
-            <div className="bg-zinc-900/60 border border-white/10 rounded-lg px-3 py-2">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-zinc-500">
-                    <i className="fa-solid fa-list-ol text-emerald-300"></i> Queue
+                <div className="flex items-center gap-2">
+                    {room?.activeMode === 'applause' && (<div className="text-[#00C4D9] animate-pulse font-bold text-xs">{emoji.mic} APPLAUSE!</div>)}
+                    {room?.bouncerMode && (<div className="text-red-400 font-bold text-xs">{emoji.lock} LOCKED</div>)}
                 </div>
-                <div className="text-lg font-bold text-white">{queueCount}</div>
-            </div>
-            <div className="bg-zinc-900/60 border border-white/10 rounded-lg px-3 py-2">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-zinc-500">
-                    <i className="fa-solid fa-clock text-amber-300"></i> Est. Wait
-                </div>
-                <div className="text-lg font-bold text-white">{formatWaitTime(waitTimeSec)}</div>
             </div>
         </div>
         {current ? (
-            <div className="text-center relative">
+            <div className="relative">
                 {current.backingAudioOnly && (
                     <div className="text-[12px] text-orange-400 font-bold mb-2 bg-orange-900/30 p-1 rounded border border-orange-500/30 flex items-center justify-center gap-1">
                         <i className="fa-solid fa-window-restore"></i> BACKING AUDIO (Opens in popup)
                     </div>
                 )}
-                <div className="text-xl font-bold">{current.songTitle}</div>
-                <div className="text-fuchsia-400 mb-3">{current.singerName}</div>
+                <div className="flex items-start gap-3 mb-3">
+                    <div className="min-w-0 flex-1 text-left">
+                        <div className="text-[11px] text-indigo-300 uppercase tracking-widest font-bold">Now Performing</div>
+                        <div className="font-bold text-xl leading-none truncate text-white">{current.singerName || 'Singer'}</div>
+                        <div className="text-sm text-indigo-200 italic truncate">{current.songTitle || 'Song'}</div>
+                        {(current?.mediaUrl || current?.appleMusicId) && (
+                            <div className="mt-1 inline-flex items-center gap-2 text-[11px] uppercase tracking-widest bg-black/40 border border-white/10 rounded-full px-3 py-1 text-zinc-200">
+                                <span className={currentSourceToneClass}>{currentSourceLabel}</span>
+                                <span className="text-white/70">|</span>
+                                <span className="text-white/90 truncate max-w-[150px]">{current?.songTitle}</span>
+                                <span className="text-white/50">({currentSourcePlaying ? 'Playing' : 'Paused'})</span>
+                            </div>
+                        )}
+                    </div>
+                    {current.albumArtUrl ? (
+                        <img src={current.albumArtUrl} alt="Now playing art" className="w-14 h-14 rounded-lg shadow-md object-cover flex-shrink-0 border border-white/10" />
+                    ) : (
+                        <div className="w-14 h-14 rounded-lg bg-indigo-700/50 border border-white/10 flex items-center justify-center text-3xl shadow-md flex-shrink-0">
+                            {current.emoji || emoji.mic}
+                        </div>
+                    )}
+                </div>
+                <div className="text-[11px] text-zinc-300 mb-3 truncate">
+                    Up Next: <span className="text-white font-semibold">{nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued'}</span>
+                </div>
                 <div className="grid grid-cols-2 gap-2 mb-3">
                     <button onClick={togglePlay} className={`${styles.btnStd} ${currentSourcePlaying ? styles.btnNeutral : styles.btnPrimary}`}>
                         <i className={`fa-solid ${currentSourcePlaying ? 'fa-pause' : 'fa-play'} mr-2`}></i>
@@ -138,39 +165,6 @@ const StageNowPlayingPanel = ({
                         <div className="flex gap-2">
                             <button onClick={() => updateRoom({ lyricsMode: 'auto' })} className={`${styles.btnStd} ${room?.lyricsMode !== 'full' ? styles.btnHighlight : styles.btnNeutral} flex-1`}>Auto scroll</button>
                             <button onClick={() => updateRoom({ lyricsMode: 'full' })} className={`${styles.btnStd} ${room?.lyricsMode === 'full' ? styles.btnHighlight : styles.btnNeutral} flex-1`}>Full view</button>
-                        </div>
-                    </div>
-                )}
-                <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-3">
-                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-400 mb-2">TV Visualizer Style</div>
-                    <select
-                        value={room?.visualizerMode || 'ribbon'}
-                        onChange={(e) => updateRoom({ visualizerMode: e.target.value })}
-                        className={`${styles.input} w-full`}
-                    >
-                        <option value="ribbon">Liquid ribbon</option>
-                        <option value="rings">Neon rings</option>
-                        <option value="spark">Pulse sparkline</option>
-                        <option value="orb">Striped orb</option>
-                        <option value="halo">Halo pulse</option>
-                        <option value="sonar">Sonar spikes</option>
-                        <option value="kaleido">Kaleido burst</option>
-                        <option value="hex">Hex tunnel</option>
-                        <option value="orbit">Orbit arcs</option>
-                        <option value="comet">Comet sweep</option>
-                        <option value="waveform">Waveform</option>
-                    </select>
-                </div>
-                {(current?.mediaUrl || current?.appleMusicId) && (
-                    <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-3">
-                        <div className="text-sm uppercase tracking-[0.3em] text-zinc-400 mb-2">Now Playing</div>
-                        <div className="text-xs text-zinc-100 uppercase tracking-widest">
-                            <span className={currentSourceToneClass}>
-                                {currentSourceLabel}
-                            </span>
-                            <span className="text-zinc-400 mx-2">-</span>
-                            <span className="text-white/90">{current?.songTitle}</span>
-                            <span className="text-zinc-400 ml-2">({currentSourcePlaying ? 'Playing' : 'Paused'})</span>
                         </div>
                     </div>
                 )}

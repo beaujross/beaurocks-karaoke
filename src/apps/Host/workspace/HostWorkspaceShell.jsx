@@ -16,7 +16,7 @@ const HostWorkspaceShell = ({
             <div className="h-full min-h-0 flex flex-col">
                 {hasViewNav && (
                     <div className={`border-b border-zinc-800 bg-zinc-950 ${fullBleed ? 'px-3 py-2 md:px-4' : 'px-3 py-2'}`} data-admin-view-nav>
-                        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-0.5">
+                        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar touch-scroll-x pb-0.5">
                             {views.map((view) => {
                                 const isActive = activeView === view.id;
                                 return (

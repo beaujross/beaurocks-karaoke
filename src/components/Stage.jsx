@@ -270,16 +270,13 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
                             )}
                             {nowPlayingLabel && (
                                 <div className="text-sm text-zinc-100 bg-black/65 border border-white/20 inline-flex px-2.5 py-1 rounded-full max-w-[82vw]">
-                                    <span className={`mr-2 ${
+                                    <span className={`${
                                         nowPlayingLabel.sourceKey === 'apple'
                                             ? 'text-emerald-300'
                                             : nowPlayingLabel.sourceKey === 'youtube'
                                                 ? 'text-red-300'
                                                 : 'text-cyan-200'
                                     }`}>{nowPlayingLabel.source}</span>
-                                    <span className="text-zinc-400 mr-2">&bull;</span>
-                                    <span className="truncate">{nowPlayingLabel.title}</span>
-                                    <span className="text-zinc-400 ml-2">({nowPlayingLabel.state})</span>
                                 </div>
                             )}
                         </div>

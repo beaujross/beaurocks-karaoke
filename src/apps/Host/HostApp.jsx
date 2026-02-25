@@ -4164,33 +4164,11 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                 <div className={`${STYLES.panel} overflow-hidden`}>
                     <section className="px-4 py-4 border-b border-white/10 bg-zinc-950/90 sticky top-0 z-20 backdrop-blur-md">
                         <div className="rounded-xl border border-cyan-400/25 bg-gradient-to-r from-cyan-500/12 via-black/45 to-pink-500/10 p-3">
-                            <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                    <div className="text-[10px] uppercase tracking-[0.25em] text-cyan-200">Stage Deck</div>
-                                    <div className="text-sm font-bold text-white truncate">
-                                        {current ? (current.singerName || 'Singer') : 'Stage Empty'}
-                                    </div>
-                                    <div className="text-[12px] text-zinc-300 truncate">
-                                        {current ? (current.songTitle || 'Current performance') : 'Start the next singer to begin'}
-                                    </div>
-                                </div>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="text-[10px] uppercase tracking-[0.25em] text-cyan-200">Stage Quick Actions</div>
                                 <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.15em] border ${current ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100' : 'border-zinc-600 bg-zinc-900/70 text-zinc-300'}`}>
                                     {current ? 'Live' : 'Idle'}
                                 </span>
-                            </div>
-                            <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] uppercase tracking-[0.14em] text-zinc-300">
-                                <div className="rounded-lg border border-white/10 bg-black/30 px-2 py-1">
-                                    Lobby <span className="text-white font-bold ml-1 normal-case tracking-normal">{lobbyCount}</span>
-                                </div>
-                                <div className="rounded-lg border border-white/10 bg-black/30 px-2 py-1">
-                                    Queue <span className="text-white font-bold ml-1 normal-case tracking-normal">{queueCount}</span>
-                                </div>
-                                <div className="rounded-lg border border-white/10 bg-black/30 px-2 py-1">
-                                    Wait <span className="text-white font-bold ml-1 normal-case tracking-normal">{formatWaitTime(waitTimeSec)}</span>
-                                </div>
-                            </div>
-                            <div className="mt-2 text-[11px] text-zinc-300 truncate">
-                                Next: <span className="text-white font-semibold">{nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued'}</span>
                             </div>
                             {autoDj && (
                                 <div className="mt-2 rounded-lg border border-cyan-400/25 bg-black/35 px-2.5 py-2">
@@ -4281,6 +4259,8 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                                 queueCount={queueCount}
                                 waitTimeSec={waitTimeSec}
                                 formatWaitTime={formatWaitTime}
+                                nextQueueSong={nextQueueSong}
+                                roomCode={roomCode}
                                 currentSourcePlaying={currentSourcePlaying}
                                 currentUsesAppleBacking={currentUsesAppleBacking}
                                 currentMediaUrl={currentMediaUrl}
@@ -10772,12 +10752,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">
                                         Step {activeStep.id + 1}: {activeStep.label}
                                     </div>
-                                    {recommendation.presetId && recommendation.presetId !== nightSetupPresetId && (
+                                    {nightSetupStep === 0 && recommendation.presetId && recommendation.presetId !== nightSetupPresetId && (
                                         <button
                                             onClick={() => seedNightSetupFromPreset(recommendation.presetId, { keepQueueDraft: false })}
                                             className={`${STYLES.btnStd} ${STYLES.btnInfo}`}
                                         >
-                                            Use {HOST_NIGHT_PRESETS[recommendation.presetId]?.label || 'Recommended'}
+                                            Apply {HOST_NIGHT_PRESETS[recommendation.presetId]?.label || 'Recommended'} Preset
                                         </button>
                                     )}
                                 </div>
@@ -11012,7 +10992,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             >
                                 Open Full Admin
                             </button>
-                                <div className="min-w-0 flex-1 overflow-x-auto custom-scrollbar">
+                                <div className="min-w-0 flex-1 overflow-x-auto custom-scrollbar touch-scroll-x">
                                     <div className="inline-flex min-w-max items-center gap-2">
                                         <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 pr-1">Tonight&apos;s Plan</div>
                                         {tonightPlanFields.map((field) => {
@@ -12126,7 +12106,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }
 
     return (
-            <div className="host-app min-h-screen md:h-screen flex flex-col relative bg-zinc-950 text-white font-saira overflow-y-auto md:overflow-hidden">
+            <div className="host-app min-h-screen md:h-screen flex flex-col relative bg-zinc-950 text-white font-saira overflow-x-hidden overflow-y-auto md:overflow-hidden">
                 {/* Header */}
                 <HostTopChrome
                     room={room}
@@ -12255,7 +12235,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
             )}
 
-            <div className="flex-1 min-h-0 p-3 sm:p-4 md:p-5 lg:p-6 overflow-y-auto md:overflow-hidden">
+            <div className="flex-1 min-h-0 p-3 sm:p-4 md:p-5 lg:p-6 overflow-x-hidden overflow-y-auto md:overflow-hidden">
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <HostGameControlPad
                         roomCode={roomCode}
@@ -12373,7 +12353,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </button>
                                         </div>
                                     </div>
-                                    <div className="mt-3 flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                                    <div className="mt-3 flex gap-2 overflow-x-auto pb-1 custom-scrollbar touch-scroll-x">
                                         {users.map((u) => {
                                             const userUid = resolveRoomUserUid(u);
                                             const userToken = resolveLobbyUserToken(u);
@@ -13616,7 +13596,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="overflow-x-auto">
+                                    <div className="overflow-x-auto touch-scroll-x custom-scrollbar">
                                         <table className="min-w-full text-xs text-left border border-zinc-800 rounded-lg overflow-hidden">
                                             <thead className="bg-zinc-950/80 text-zinc-400 uppercase tracking-widest">
                                                 <tr>

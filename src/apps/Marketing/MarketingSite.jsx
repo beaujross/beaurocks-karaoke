@@ -43,79 +43,21 @@ const PRODUCT_BRAND = {
   host: "Host Deck",
 };
 
-const PUBLIC_CHANGELOG_ENTRIES = [
-  {
-    id: "demo",
-    surfaceLabel: "Demo Arena",
-    routePage: MARKETING_ROUTE_PAGES.demo,
-    ctaLabel: "Open demo",
-    updatedAt: "2026-02-23",
-    highlights: [
-      "One scripted flow now shows TV, audience, and host working together in real time.",
-      "Reaction waves, guitar vibe-sync, and trivia now play in one clean sequence.",
-      "Each scene has direct launch links so you can jump into real surfaces fast.",
-    ],
-  },
-  {
-    id: "finder",
-    surfaceLabel: PRODUCT_BRAND.finder,
-    routePage: MARKETING_ROUTE_PAGES.discover,
-    ctaLabel: "Open finder",
-    updatedAt: "2026-02-23",
-    highlights: [
-      "Map + rail now stay tighter so nearby karaoke is faster to scan.",
-      "Selected listing gets featured with image, timing, and distance at a glance.",
-      "Cards lead with visuals and hosts first, not walls of text.",
-    ],
-  },
-  {
-    id: "tv",
-    surfaceLabel: PRODUCT_BRAND.tv,
-    routePage: MARKETING_ROUTE_PAGES.join,
-    ctaLabel: "Open TV entry",
-    updatedAt: "2026-02-22",
-    highlights: [
-      "TV launch steps are cleaner, so setup takes less host brainpower.",
-      "Join flow language is now consistent across the full experience.",
-      "Public display routing got a reliability pass for live rooms.",
-    ],
-  },
-  {
-    id: "audience",
-    surfaceLabel: PRODUCT_BRAND.audience,
-    routePage: MARKETING_ROUTE_PAGES.forFans,
-    ctaLabel: "Open audience",
-    updatedAt: "2026-02-22",
-    highlights: [
-      "Audience flow now feels lighter on mobile with bigger taps and fewer dead ends.",
-      "Profiles still carry favorites into compatible game modes like Tight 15.",
-      "New guests can join faster without needing a full tutorial.",
-    ],
-  },
-  {
-    id: "host",
-    surfaceLabel: PRODUCT_BRAND.host,
-    routePage: MARKETING_ROUTE_PAGES.forHosts,
-    ctaLabel: "Open host",
-    updatedAt: "2026-02-21",
-    highlights: [
-      "Host actions now have clearer next steps mid-show, not just in setup.",
-      "Cadence and moderation flows were trimmed for real weekly workflows.",
-      "Host, venue, performer, and session profiles now connect more naturally.",
-    ],
-  },
-];
-
 const PRIMARY_PAGE_OPTIONS = [
-  { id: MARKETING_ROUTE_PAGES.forFans, label: "Home" },
-  { id: MARKETING_ROUTE_PAGES.discover, label: "Find Karaoke" },
+  { id: MARKETING_ROUTE_PAGES.forFans, label: "For Guests" },
+  { id: MARKETING_ROUTE_PAGES.discover, label: "Live Listings" },
   { id: MARKETING_ROUTE_PAGES.forHosts, label: "For Hosts" },
 ];
 
 const LOCKED_PRIMARY_PAGE_OPTIONS = [
-  { id: MARKETING_ROUTE_PAGES.forFans, label: "Home" },
-  { id: MARKETING_ROUTE_PAGES.discover, label: "Find Karaoke" },
+  { id: MARKETING_ROUTE_PAGES.forFans, label: "For Guests" },
+  { id: MARKETING_ROUTE_PAGES.discover, label: "Live Listings" },
   { id: MARKETING_ROUTE_PAGES.forHosts, label: "For Hosts" },
+];
+
+const HOME_PRIMARY_PAGE_OPTIONS = [
+  { id: MARKETING_ROUTE_PAGES.discover, label: "Live Map" },
+  { id: MARKETING_ROUTE_PAGES.demo, label: "Watch Demo" },
 ];
 
 const SECONDARY_PAGE_OPTIONS = [
@@ -140,6 +82,7 @@ const normalizePage = (value = "") => {
   if (safe === "home") return MARKETING_ROUTE_PAGES.forFans;
   if (safe === "discover") return MARKETING_ROUTE_PAGES.discover;
   if (safe === "demo") return MARKETING_ROUTE_PAGES.demo;
+  if (safe === "host_access" || safe === "host-access") return MARKETING_ROUTE_PAGES.hostAccess;
   if (safe === "venue") return MARKETING_ROUTE_PAGES.venue;
   if (safe === "event") return MARKETING_ROUTE_PAGES.event;
   if (safe === "host") return MARKETING_ROUTE_PAGES.host;
@@ -186,16 +129,6 @@ const stripIntentParams = (params = {}) => {
   delete next.next;
   delete next.return_to;
   return next;
-};
-
-const formatReleaseDate = (value = "") => {
-  const ms = Date.parse(String(value || ""));
-  if (!Number.isFinite(ms)) return "Recent";
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(ms);
 };
 
 const PRIVATE_TEST_USE_CASE_OPTIONS = [
@@ -400,9 +333,9 @@ const MarketingSite = () => {
     const currentRoute = normalizeRouteInput(route);
     const plannedReturn = normalizeRouteInput(returnRoute || currentRoute);
     const nextRoute = {
-      ...currentRoute,
+      page: MARKETING_ROUTE_PAGES.hostAccess,
+      id: "",
       params: {
-        ...currentRoute.params,
         intent: String(intent || "").trim() || "continue",
         targetType: String(targetType || "").trim(),
         targetId: String(targetId || "").trim(),
@@ -427,11 +360,13 @@ const MarketingSite = () => {
     const targetType = String(currentRoute.params?.targetType || "").trim();
     const targetId = String(currentRoute.params?.targetId || "").trim();
     if (!returnToHref) {
-      const cleared = {
-        ...currentRoute,
-        params: stripIntentParams(currentRoute.params),
-      };
-      navigate(cleared, "", {}, { replace: true });
+      const fallbackRoute = currentRoute.page === MARKETING_ROUTE_PAGES.hostAccess
+        ? { page: MARKETING_ROUTE_PAGES.profile, id: "", params: {} }
+        : {
+          ...currentRoute,
+          params: stripIntentParams(currentRoute.params),
+        };
+      navigate(fallbackRoute, "", {}, { replace: true });
       return;
     }
     const parsedReturnRoute = normalizeRouteInput(parseMarketingRouteFromHref(returnToHref));
@@ -448,6 +383,14 @@ const MarketingSite = () => {
   }, [navigate]);
 
   const activePage = useMemo(() => normalizePage(route.page), [route.page]);
+  const isHostAccessPage = activePage === MARKETING_ROUTE_PAGES.hostAccess;
+  const isGuestsHomePage = activePage === MARKETING_ROUTE_PAGES.forFans;
+
+  useEffect(() => {
+    if (!isHostAccessPage) return;
+    if (!route.params?.intent) return;
+    scrollAuthPanelIntoView();
+  }, [isHostAccessPage, route.params?.intent, scrollAuthPanelIntoView]);
 
   const onAuthSubmit = async (event) => {
     event.preventDefault();
@@ -640,16 +583,24 @@ const MarketingSite = () => {
     [privateAccessLocked]
   );
   const gatedSecondaryOptions = useMemo(
-    () => (privateAccessLocked ? [] : visibleSecondaryOptions),
-    [privateAccessLocked, visibleSecondaryOptions]
+    () => visibleSecondaryOptions,
+    [visibleSecondaryOptions]
+  );
+  const navPrimaryOptions = useMemo(
+    () => (isGuestsHomePage ? HOME_PRIMARY_PAGE_OPTIONS : visiblePrimaryOptions),
+    [isGuestsHomePage, visiblePrimaryOptions]
+  );
+  const navSecondaryOptions = useMemo(
+    () => (isGuestsHomePage ? [] : gatedSecondaryOptions),
+    [gatedSecondaryOptions, isGuestsHomePage]
   );
   const moreMenuActive = useMemo(
-    () => gatedSecondaryOptions.some((item) => item.id === activePage),
-    [activePage, gatedSecondaryOptions]
+    () => navSecondaryOptions.some((item) => item.id === activePage),
+    [activePage, navSecondaryOptions]
   );
 
   const postAuthHint = useMemo(() => {
-    if (privateAccessLocked) {
+    if (isHostAccessPage && privateAccessLocked) {
       return privateInviteRequired
         ? "Got a host code? Enter it, then create your account."
         : "Unlock host onboarding to create new private-test accounts.";
@@ -664,22 +615,7 @@ const MarketingSite = () => {
       return "After sign in, you will land back on your dashboard.";
     }
     return "Create an account to save follows, RSVPs, and check-ins.";
-  }, [activePage, authMode, privateAccessLocked, privateInviteRequired, route.params?.intent]);
-  const publicChangelog = useMemo(
-    () => PUBLIC_CHANGELOG_ENTRIES
-      .map((entry) => {
-        const updatedAtMs = Date.parse(String(entry.updatedAt || ""));
-        return {
-          ...entry,
-          updatedAtMs: Number.isFinite(updatedAtMs) ? updatedAtMs : 0,
-          updatedLabel: formatReleaseDate(entry.updatedAt),
-        };
-      })
-      .sort((a, b) => b.updatedAtMs - a.updatedAtMs),
-    []
-  );
-  const latestReleaseMs = publicChangelog[0]?.updatedAtMs || 0;
-
+  }, [activePage, authMode, isHostAccessPage, privateAccessLocked, privateInviteRequired, route.params?.intent]);
   const pageNode = useMemo(() => {
     const pageProps = {
       id: route.id,
@@ -693,6 +629,7 @@ const MarketingSite = () => {
     };
     if (activePage === MARKETING_ROUTE_PAGES.discover) return <DiscoverPage {...pageProps} />;
     if (activePage === MARKETING_ROUTE_PAGES.demo) return <DemoExperiencePage {...pageProps} />;
+    if (activePage === MARKETING_ROUTE_PAGES.hostAccess) return <ForHostsPage {...pageProps} />;
     if (activePage === MARKETING_ROUTE_PAGES.venue) return <VenuePage {...pageProps} />;
     if (activePage === MARKETING_ROUTE_PAGES.event) return <EventPage {...pageProps} />;
     if (activePage === MARKETING_ROUTE_PAGES.host) return <HostPage {...pageProps} />;
@@ -725,7 +662,7 @@ const MarketingSite = () => {
               </div>
             </button>
             <nav className="mk3-links" aria-label="Primary">
-              {visiblePrimaryOptions.map((item) => (
+              {navPrimaryOptions.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -735,11 +672,11 @@ const MarketingSite = () => {
                   {item.label}
                 </button>
               ))}
-              {gatedSecondaryOptions.length > 0 && (
+              {navSecondaryOptions.length > 0 && (
                 <details className={`mk3-more-menu ${moreMenuActive ? "is-active" : ""}`}>
                   <summary>More</summary>
                   <div className="mk3-more-list">
-                    {gatedSecondaryOptions.map((item) => (
+                    {navSecondaryOptions.map((item) => (
                       <button
                         key={item.id}
                         type="button"
@@ -758,21 +695,15 @@ const MarketingSite = () => {
                 type="button"
                 className="mk3-account-action"
                 onClick={() => {
-                  if (privateAccessLocked) {
-                    navigate(MARKETING_ROUTE_PAGES.discover);
-                    return;
-                  }
                   if (hasFullAccount) {
                     navigate(MARKETING_ROUTE_PAGES.profile);
                     return;
                   }
-                  setAuthMode("signup");
-                  scrollAuthPanelIntoView();
+                  trackEvent("mk_persona_cta_click", { persona: "all", cta: "nav_explore_live_map" });
+                  navigate(MARKETING_ROUTE_PAGES.discover);
                 }}
               >
-                {privateAccessLocked
-                  ? "Find Karaoke"
-                  : (hasFullAccount ? "Dashboard" : "Create Account")}
+                {hasFullAccount ? "Dashboard" : "Explore"}
               </button>
               <button
                 type="button"
@@ -782,17 +713,12 @@ const MarketingSite = () => {
                     actions.signOutAccount();
                     return;
                   }
-                  if (privateAccessLocked && !canCreatePrivateHostAccount) {
-                    setPrivateAccessNotice("");
-                    setPrivateAccessError("Enter a valid host access code first.");
-                    scrollAuthPanelIntoView();
-                    return;
-                  }
                   setAuthMode("signin");
-                  scrollAuthPanelIntoView();
+                  trackEvent("mk_nav_host_access_click", { source: "nav_link" });
+                  navigate(MARKETING_ROUTE_PAGES.hostAccess);
                 }}
               >
-                {hasFullAccount ? "Sign out" : (privateAccessLocked ? "Host sign in" : "Sign in")}
+                {hasFullAccount ? "Sign out" : "Host sign in"}
               </button>
               <button
                 type="button"
@@ -807,7 +733,7 @@ const MarketingSite = () => {
           </div>
           <div id="mk3-mobile-menu" className={mobileMenuOpen ? "mk3-mobile-menu is-open" : "mk3-mobile-menu"}>
             <div className="mk3-mobile-link-grid">
-              {visiblePrimaryOptions.map((item) => (
+              {navPrimaryOptions.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -817,7 +743,7 @@ const MarketingSite = () => {
                   {item.label}
                 </button>
               ))}
-              {gatedSecondaryOptions.map((item) => (
+              {navSecondaryOptions.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -843,43 +769,35 @@ const MarketingSite = () => {
             </div>
           )}
 
+          {isHostAccessPage ? (
           <section className={`mk3-auth-panel${privateAccessLocked ? " is-private-focus" : ""}`} ref={authPanelRef}>
             <div>
-              <h1>Karaoke Nights That Build Real Connection</h1>
+              <h1>Host Access + Private Pilot</h1>
               <p>
-                BeauRocks helps turn standard karaoke nights into meaningful moments. Whether it is a home party,
-                community event, fundraiser, or venue night, the goal is the same: get people off passive scroll and
-                into real shared experience.
+                This page is for hosts and venue operators joining private test waves. If you were invited, unlock with
+                your code, then create your host account.
               </p>
               <div className="mk3-private-pill-row">
-                <span className="mk3-private-pill">Home parties</span>
-                <span className="mk3-private-pill">Fundraisers + events</span>
-                <span className="mk3-private-pill">Human connection first</span>
+                <span className="mk3-private-pill">Invite-first</span>
+                <span className="mk3-private-pill">Weekly rollout</span>
+                <span className="mk3-private-pill">Host + venue focus</span>
               </div>
-              <div className="mk3-home-path-grid">
-                <article className="mk3-home-path-card mk3-home-path-finder">
-                  <h3>Karaoke Finder Mode</h3>
-                  <p>
-                    Looking for a night out? Use finder mode to browse by city, host, venue, timing, and vibe.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
-                  >
-                    Open Finder
-                  </button>
+              <div className="mk3-permission-grid">
+                <article>
+                  <strong>Step 1</strong>
+                  <span>Apply for private test or enter a host access code.</span>
                 </article>
-                <article className="mk3-home-path-card mk3-home-path-host">
-                  <h3>Host + Venue Growth Mode</h3>
-                  <p>
-                    Running nights? Build repeat attendance, host better rooms, and turn one-off events into stronger communities.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts)}
-                  >
-                    Explore Host Path
-                  </button>
+                <article>
+                  <strong>Step 2</strong>
+                  <span>Create your account and claim your host identity.</span>
+                </article>
+                <article>
+                  <strong>Step 3</strong>
+                  <span>Launch rooms across TV, audience, and host surfaces.</span>
+                </article>
+                <article>
+                  <strong>Not hosting?</strong>
+                  <span>Use Live Listings to find karaoke by host, venue, or vibe.</span>
                 </article>
               </div>
               {heroStats?.total > 0 && (
@@ -893,41 +811,20 @@ const MarketingSite = () => {
                 <span>Your phone still matters, but now it helps you interact with the room you are actually in.</span>
               </div>
               <div className="mk3-auth-cta-row">
-                {!hasFullAccount ? (
-                  <>
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-primary"
-                      onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
-                    >
-                      Find Karaoke Near Me
-                    </button>
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-secondary"
-                      onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts)}
-                    >
-                      For Hosts + Venues
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-primary"
-                      onClick={() => navigate(MARKETING_ROUTE_PAGES.profile)}
-                    >
-                      Open My Dashboard
-                    </button>
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-secondary"
-                      onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}
-                    >
-                      Open Finder
-                    </button>
-                  </>
-                )}
+                <button
+                  type="button"
+                  className="mk3-auth-cta-primary"
+                  onClick={() => navigate(hasFullAccount ? MARKETING_ROUTE_PAGES.profile : MARKETING_ROUTE_PAGES.discover)}
+                >
+                  {hasFullAccount ? "Open My Dashboard" : "Back to Live Listings"}
+                </button>
+                <button
+                  type="button"
+                  className="mk3-auth-cta-secondary"
+                  onClick={() => navigate(MARKETING_ROUTE_PAGES.demo)}
+                >
+                  Watch Demo Walkthrough
+                </button>
               </div>
               {privateAccessLocked && (
                 <form className="mk3-private-apply-form mk3-private-apply-form-compact" onSubmit={onPrivateApplySubmit}>
@@ -1158,75 +1055,114 @@ const MarketingSite = () => {
               )}
             </div>
           </section>
+          ) : isGuestsHomePage ? (
+            <>
+              <section className="mk3-home-premium-shell mk3-zone" aria-label="BeauRocks premium launch">
+                <div className="mk3-home-premium-main">
+                  <div className="mk3-home-premium-kicker">Invite-Only Cultural Pilot</div>
+                  <h1>Karaoke Is Cool Again.</h1>
+                  <p>
+                    Most karaoke apps optimized for queue management and forgot the room.
+                    BeauRocks is built to reverse that: use tech to get people into real spaces, then turn phones
+                    into social amplifiers that bring strangers into shared moments.
+                  </p>
+                  <div className="mk3-home-premium-stats">
+                    <span>{heroStats?.total > 0 ? `${heroStats.total.toLocaleString()} live listings` : "Live listings updating"}</span>
+                    <span>Audience, TV, and host in sync</span>
+                    <span>One code. One room. Shared energy.</span>
+                  </div>
+                  <div className="mk3-auth-cta-row mk3-home-primary-cta">
+                    <button
+                      type="button"
+                      className="mk3-auth-cta-primary"
+                      onClick={() => {
+                        trackEvent("mk_home_primary_cta_click", { cta: "explore_live_listings", source: "premium_home" });
+                        navigate(MARKETING_ROUTE_PAGES.discover);
+                      }}
+                    >
+                      Explore Live Listings
+                    </button>
+                    <button
+                      type="button"
+                      className="mk3-auth-cta-secondary"
+                      onClick={() => {
+                        trackEvent("mk_home_secondary_cta_click", { cta: "watch_demo", source: "premium_home" });
+                        navigate(MARKETING_ROUTE_PAGES.demo);
+                      }}
+                    >
+                      Watch 90-Second Demo
+                    </button>
+                  </div>
+                </div>
+                <aside className="mk3-home-premium-side" aria-label="Pilot access">
+                  <strong>Private Host Drops</strong>
+                  <p>Host onboarding opens in limited waves to keep quality high and rooms full.</p>
+                  <div className="mk3-home-premium-side-list">
+                    <span>Weekly invite batches</span>
+                    <span>Human-first host standards</span>
+                    <span>Priority support during pilot</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="mk3-auth-cta-primary"
+                    onClick={() => {
+                      trackEvent("mk_home_secondary_cta_click", { cta: "host_access", source: "premium_home" });
+                      navigate(MARKETING_ROUTE_PAGES.hostAccess);
+                    }}
+                  >
+                    Apply for Host Pilot
+                  </button>
+                </aside>
+              </section>
 
-          {privateAccessLocked ? (
-            <>
-              <Suspense fallback={<PageShellLoader />}>
-                {pageNode}
-              </Suspense>
-              <section className="mk3-private-locked-panel mk3-zone" aria-label="Private test locked">
-                <h2>Use Finder freely. Host onboarding stays invite-only.</h2>
-                <p>
-                  Finder mode is open for everyone. Host account creation unlocks through pilot invites and code access.
-                </p>
-                <div className="mk3-private-locked-grid">
+              <section className="mk3-home-loop-strip mk3-zone" aria-label="Viral loop">
+                <h2>Why this spreads</h2>
+                <div className="mk3-home-loop-grid">
                   <article>
-                    <strong>Find karaoke</strong>
-                    <span>Search live listings by host, venue, location, and timing.</span>
+                    <strong>Discover</strong>
+                    <span>People find rooms by vibe, host, and location.</span>
                   </article>
                   <article>
-                    <strong>Host pilots</strong>
-                    <span>Use a host code above, then create your host account.</span>
+                    <strong>Participate</strong>
+                    <span>Audience reactions, games, and shoutouts make everyone part of the show.</span>
+                  </article>
+                  <article>
+                    <strong>Return</strong>
+                    <span>Each night becomes a memory worth sharing, then repeating.</span>
                   </article>
                 </div>
               </section>
             </>
-          ) : (
-            <>
-              <section className="mk3-public-changelog mk3-zone mk3-zone-changelog" aria-label="Public changelog">
-                <div className="mk3-public-changelog-head">
-                  <h2>What We Shipped</h2>
-                  <span>Short notes by surface</span>
-                </div>
-                <div className="mk3-public-changelog-grid">
-                  {publicChangelog.map((entry) => (
-                    <article key={entry.id} className="mk3-public-changelog-card">
-                      <div className="mk3-public-changelog-meta">
-                        <strong>{entry.surfaceLabel}</strong>
-                        <span>{`Updated ${entry.updatedLabel}`}</span>
-                        {entry.updatedAtMs > 0 && entry.updatedAtMs === latestReleaseMs && (
-                          <em>Latest</em>
-                        )}
-                      </div>
-                      <ul>
-                        {entry.highlights.map((line) => (
-                          <li key={`${entry.id}:${line}`}>{line}</li>
-                        ))}
-                      </ul>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          trackEvent("mk_public_changelog_surface_open", {
-                            surface: entry.id,
-                            route: entry.routePage,
-                          });
-                          navigate(entry.routePage);
-                        }}
-                      >
-                        {entry.ctaLabel}
-                      </button>
-                    </article>
-                  ))}
-                </div>
-              </section>
-              <Suspense fallback={<PageShellLoader />}>
-                {pageNode}
-              </Suspense>
-            </>
+          ) : null}
+
+          {!isGuestsHomePage && (
+            <Suspense fallback={<PageShellLoader />}>
+              {pageNode}
+            </Suspense>
           )}
+
+          {isHostAccessPage && privateAccessLocked && (
+            <section className="mk3-private-locked-panel mk3-zone" aria-label="Private test locked">
+              <h2>Live listings are open. Host onboarding is invite-only.</h2>
+              <p>
+                Anyone can browse karaoke by host, venue, and location. Creating host accounts stays private during test.
+              </p>
+              <div className="mk3-private-locked-grid">
+                <article>
+                  <strong>For guests</strong>
+                  <span>Use Live Listings to find karaoke nearby.</span>
+                </article>
+                <article>
+                  <strong>For hosts</strong>
+                  <span>Apply here or unlock with a host access code.</span>
+                </article>
+              </div>
+            </section>
+          )}
+
         </div>
       </main>
-      {!privateAccessLocked && (
+      {!isHostAccessPage && !isGuestsHomePage && (
         <Suspense fallback={null}>
           <GoldenPathRail
             navigate={navigate}

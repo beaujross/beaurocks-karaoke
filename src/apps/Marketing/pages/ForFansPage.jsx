@@ -7,17 +7,26 @@ const ForFansPage = ({ navigate, session, authFlow }) => {
   <section className="mk3-page mk3-two-col">
     <article className="mk3-detail-card">
       <div className="mk3-chip">for fans</div>
-      <h2>Find karaoke near you without the chaos.</h2>
-      <p>Discover nearby nights, follow your favorite hosts, and get reminders before doors open.</p>
+      <h2>Karaoke has been awkward for way too long.</h2>
+      <p>Find nearby nights fast, then use your phone to interact with the room instead of scrolling alone.</p>
       <div className="mk3-actions-inline">
         <button
           type="button"
           onClick={() => {
-            trackEvent("mk_persona_cta_click", { persona: "fan", cta: "start_discovering" });
+            trackEvent("mk_persona_cta_click", { persona: "fan", cta: "open_live_listings" });
             navigate("discover");
           }}
         >
-          Start Discovering
+          Open Live Listings
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            trackEvent("mk_persona_cta_click", { persona: "fan", cta: "watch_demo" });
+            navigate("demo");
+          }}
+        >
+          Watch Demo
         </button>
         {canUseDashboard ? (
           <button
@@ -45,11 +54,11 @@ const ForFansPage = ({ navigate, session, authFlow }) => {
       </div>
     </article>
     <aside className="mk3-actions-card">
-      <h4>Fan Path</h4>
+      <h4>Guest Path</h4>
       <ul className="mk3-plain-list">
-        <li>Follow venues and hosts to build your feed.</li>
-        <li>RSVP to events and enroll in reminders.</li>
-        <li>Check in and leave post-night reviews after attendance.</li>
+        <li>Browse by host, venue, city, and timing.</li>
+        <li>RSVP and reminder options reduce no-show chaos.</li>
+        <li>Check in, react, and keep the room social in real time.</li>
       </ul>
     </aside>
   </section>

@@ -1,6 +1,7 @@
 export const MARKETING_ROUTE_PAGES = {
   discover: "discover",
   demo: "demo",
+  hostAccess: "host_access",
   venue: "venue",
   event: "event",
   host: "host",
@@ -29,6 +30,7 @@ const QUERY_PARAM_KEYS = new Set([
 const LEGACY_PAGE_TO_CANONICAL = {
   discover: { page: MARKETING_ROUTE_PAGES.discover },
   demo: { page: MARKETING_ROUTE_PAGES.demo },
+  host_access: { page: MARKETING_ROUTE_PAGES.hostAccess },
   venue: { page: MARKETING_ROUTE_PAGES.venue },
   event: { page: MARKETING_ROUTE_PAGES.event },
   host: { page: MARKETING_ROUTE_PAGES.host },
@@ -79,6 +81,7 @@ const routeForPathTokens = (parts = []) => {
 
   if (parts[0] === "discover") return { page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} };
   if (parts[0] === "demo") return { page: MARKETING_ROUTE_PAGES.demo, id: "", params: {} };
+  if (parts[0] === "host-access") return { page: MARKETING_ROUTE_PAGES.hostAccess, id: "", params: {} };
   if (parts[0] === "for-hosts") return { page: MARKETING_ROUTE_PAGES.forHosts, id: "", params: {} };
   if (parts[0] === "for-venues") return { page: MARKETING_ROUTE_PAGES.forVenues, id: "", params: {} };
   if (parts[0] === "for-performers") return { page: MARKETING_ROUTE_PAGES.forPerformers, id: "", params: {} };
@@ -178,6 +181,7 @@ export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.forFans, id = 
   const safeId = String(id || "").trim();
   if (page === MARKETING_ROUTE_PAGES.discover) return applyBasePath("/discover");
   if (page === MARKETING_ROUTE_PAGES.demo) return applyBasePath("/demo");
+  if (page === MARKETING_ROUTE_PAGES.hostAccess) return applyBasePath("/host-access");
   if (page === MARKETING_ROUTE_PAGES.forHosts) return applyBasePath("/for-hosts");
   if (page === MARKETING_ROUTE_PAGES.forVenues) return applyBasePath("/for-venues");
   if (page === MARKETING_ROUTE_PAGES.forPerformers) return applyBasePath("/for-performers");
@@ -232,6 +236,7 @@ export const buildLegacyMarketingQuery = ({ page = MARKETING_ROUTE_PAGES.discove
   const pageMap = {
     [MARKETING_ROUTE_PAGES.discover]: "discover",
     [MARKETING_ROUTE_PAGES.demo]: "demo",
+    [MARKETING_ROUTE_PAGES.hostAccess]: "host_access",
     [MARKETING_ROUTE_PAGES.venue]: "venue",
     [MARKETING_ROUTE_PAGES.event]: "event",
     [MARKETING_ROUTE_PAGES.host]: "host",

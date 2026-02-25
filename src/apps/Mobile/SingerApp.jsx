@@ -1660,6 +1660,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const pendingStormLayerCount = useRef(0);
     const lastStormLayerAt = useRef(0);
     const pendingPointDelta = useRef(0);
+    const pendingRewardToastPointsRef = useRef(0);
+    const rewardToastTimerRef = useRef(null);
     const lastPointsSync = useRef(0);
     const lastBonusDropId = useRef(null);
     const lastLobbyPlayAtRef = useRef(0);
@@ -1674,6 +1676,33 @@ const SingerApp = ({ roomCode, uid }) => {
     const [lobbyVolleyNowMs, setLobbyVolleyNowMs] = useState(Date.now());
 
     const toast = useToast();
+    const showToast = useCallback((message, options = {}) => {
+        if (typeof toast !== 'function') return;
+        toast(message, options);
+    }, [toast]);
+    const showRewardToast = useCallback((message, points = 0, options = {}) => {
+        const safePoints = Math.max(0, Math.round(Number(points) || 0));
+        const msg = String(message || '').trim() || (safePoints > 0 ? `+${safePoints} PTS` : 'Reward unlocked');
+        showToast(msg, {
+            tone: 'reward',
+            icon: EMOJI.coin,
+            durationMs: 3200,
+            ...options,
+        });
+    }, [showToast]);
+    const scheduleRewardToast = useCallback((points) => {
+        const safePoints = Math.max(0, Math.round(Number(points) || 0));
+        if (!safePoints) return;
+        pendingRewardToastPointsRef.current += safePoints;
+        if (rewardToastTimerRef.current) return;
+        rewardToastTimerRef.current = window.setTimeout(() => {
+            rewardToastTimerRef.current = null;
+            const total = Math.max(0, Math.round(Number(pendingRewardToastPointsRef.current) || 0));
+            pendingRewardToastPointsRef.current = 0;
+            if (!total) return;
+            showRewardToast(`+${total} PTS`, total, { durationMs: 2600 });
+        }, 950);
+    }, [showRewardToast]);
     const billingPlatform = useMemo(() => detectBillingPlatform(), []);
     const billingProvider = useMemo(() => {
         const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -1726,10 +1755,15 @@ const SingerApp = ({ roomCode, uid }) => {
         return next.length;
     }, []);
 
-    const queuePointDelta = useCallback((delta) => {
-        pendingPointDelta.current += delta;
-        setLocalPointOffset(prev => prev + delta);
-    }, []);
+    const queuePointDelta = useCallback((delta, options = {}) => {
+        const amount = Number(delta || 0);
+        if (!Number.isFinite(amount) || amount === 0) return;
+        pendingPointDelta.current += amount;
+        setLocalPointOffset(prev => prev + amount);
+        if (amount > 0 && options?.silentToast !== true) {
+            scheduleRewardToast(amount);
+        }
+    }, [scheduleRewardToast]);
 
     const syncPoints = useCallback(async (force = false) => {
         if (!user || !uid) return;
@@ -2748,8 +2782,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 console.warn('Failed to unlock guitar glow emoji', e);
             });
         }
-        toast(`You shredded the hardest! ${win.hits || 0} inputs.`);
-    }, [room?.guitarWinner, uid, profile?.unlockedEmojis, toast]);
+        showToast(`You shredded the hardest! ${win.hits || 0} inputs.`, { tone: 'success' });
+    }, [room?.guitarWinner, uid, profile?.unlockedEmojis, showToast]);
 
     useEffect(() => {
         const win = room?.strobeWinner;
@@ -2758,18 +2792,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         strobeWinSeenRef.current = win.sessionId;
         setStrobeVictoryInfo(win);
         setStrobeVictoryOpen(true);
-        toast(`Beat Drop MVP! ${win.taps || 0} taps.`);
-    }, [room?.strobeWinner, uid, toast]);
+        showToast(`Beat Drop MVP! ${win.taps || 0} taps.`, { tone: 'success' });
+    }, [room?.strobeWinner, uid, showToast]);
 
     useEffect(() => {
         const drop = room?.bonusDrop;
         if (!drop || !user) return;
         if (lastBonusDropId.current === drop.id) return;
         lastBonusDropId.current = drop.id;
-        queuePointDelta(drop.points || 0);
+        queuePointDelta(drop.points || 0, { silentToast: true });
         syncPoints(true);
-        toast(`Bonus drop: +${drop.points || 0} PTS`);
-    }, [room?.bonusDrop, user, queuePointDelta, syncPoints, toast]);
+        showRewardToast(`Bonus drop: +${drop.points || 0} PTS`, drop.points || 0);
+    }, [room?.bonusDrop, user, queuePointDelta, showRewardToast, syncPoints]);
 
     useEffect(() => {
         if (!room?.photoOverlay?.url) {
@@ -2835,7 +2869,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const interval = setInterval(() => {
             if (document.hidden) return;
             if (Date.now() - lastActiveAtRef.current > 10 * 60 * 1000) return;
-            queuePointDelta(10);
+            queuePointDelta(10, { silentToast: true });
         }, 60000); 
         return () => clearInterval(interval);
     }, [user, isVipAccount, queuePointDelta]);
@@ -2870,6 +2904,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (strumFlushTimer.current) clearTimeout(strumFlushTimer.current);
         if (strobeFlushTimer.current) clearTimeout(strobeFlushTimer.current);
         if (stormLayerFlushTimer.current) clearTimeout(stormLayerFlushTimer.current);
+        if (rewardToastTimerRef.current) clearTimeout(rewardToastTimerRef.current);
         stopStormAudio(false);
     }, [stopStormAudio]);
 
@@ -3310,7 +3345,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             points: increment(rewardPoints),
             lastActiveAt: serverTimestamp()
         });
-        toast(`READY! +${rewardPoints} PTS`);
+        showRewardToast(`READY! +${rewardPoints} PTS`, rewardPoints);
     };
 
     const captureSelfieCanvas = () => {
@@ -4239,7 +4274,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setShowVipOnboarding(true);
             setTab('request');
             setSongsTab('tight15');
-            toast('Phone linked - VIP unlocked! +5000 PTS');
+            showRewardToast('Phone linked - VIP unlocked! +5000 PTS', 5000, { durationMs: 3600 });
         } catch (e) {
             console.error('confirm error', e);
             toast('Verification failed');
@@ -4261,7 +4296,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setShowVipOnboarding(true);
             setTab('request');
             setSongsTab('tight15');
-            toast('VIP unlocked (bypass)');
+            showRewardToast('VIP unlocked (bypass) +5000 PTS', 5000, { durationMs: 3600 });
         } catch (e) {
             console.error('Bypass error', e);
             toast('Bypass failed');

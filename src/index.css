@@ -197,9 +197,29 @@ html, body, #root { height: 100%; width: 100%; }
 
 
 /* Custom Scrollbar */
-.custom-scrollbar::-webkit-scrollbar { width: 6px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); }
-.custom-scrollbar::-webkit-scrollbar-thumb { @apply bg-pink-600 rounded; }
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(236, 72, 153, 0.75) rgba(255, 255, 255, 0.08);
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(236, 72, 153, 0.95), rgba(59, 130, 246, 0.85));
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(244, 114, 182, 0.98), rgba(34, 211, 238, 0.9));
+}
+.custom-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
 /* Touch-friendly vertical scroll containers for nested/fixed panels */
 .touch-scroll-y {
@@ -207,6 +227,15 @@ html, body, #root { height: 100%; width: 100%; }
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
+}
+
+/* Horizontal-only swipe/scroll utility for chip rails and tables */
+.touch-scroll-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
 }
 
 /* Mix slider thumb */
