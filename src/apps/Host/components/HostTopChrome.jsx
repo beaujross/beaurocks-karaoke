@@ -97,6 +97,11 @@ const HostTopChrome = ({
     onOpenAiSettings,
     onOpenAccessSettings
 }) => {
+    const clampNumber = (value, min, max, fallback = min) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return fallback;
+        return Math.max(min, Math.min(max, numeric));
+    };
     const SmallWaveform = smallWaveform;
     const [showAutomationMenu, setShowAutomationMenu] = React.useState(false);
     const [showTvQuickMenu, setShowTvQuickMenu] = React.useState(false);
@@ -151,12 +156,12 @@ const HostTopChrome = ({
     const visualizerMode = room?.visualizerMode || 'ribbon';
     const visualizerPreset = room?.visualizerPreset || 'neon';
     const visualizerSyncLightMode = !!room?.visualizerSyncLightMode;
-    const visualizerSensitivity = Number.isFinite(Number(room?.visualizerSensitivity))
-        ? Math.max(0.5, Math.min(2.5, Number(room.visualizerSensitivity)))
-        : 1;
-    const visualizerSmoothing = Number.isFinite(Number(room?.visualizerSmoothing))
-        ? Math.max(0, Math.min(0.95, Number(room.visualizerSmoothing)))
-        : 0.35;
+    const roomVisualizerSensitivity = clampNumber(room?.visualizerSensitivity, 0.5, 2.5, 1);
+    const roomVisualizerSmoothing = clampNumber(room?.visualizerSmoothing, 0, 0.95, 0.35);
+    const [visualizerSensitivityDraft, setVisualizerSensitivityDraft] = React.useState(roomVisualizerSensitivity);
+    const [visualizerSmoothingDraft, setVisualizerSmoothingDraft] = React.useState(roomVisualizerSmoothing);
+    const visualizerSliderTimerRef = React.useRef({ sensitivity: null, smoothing: null });
+    const visualizerSliderDraggingRef = React.useRef({ sensitivity: false, smoothing: false });
     const activeVibeLabel = selfieCamActive
         ? 'Selfie Cam'
         : stormActive
@@ -214,6 +219,70 @@ const HostTopChrome = ({
         setShowLaunchMenu(false);
         setShowNavMenu(false);
     }, [closeAllDeckMenus, setShowLaunchMenu, setShowNavMenu]);
+
+    React.useEffect(() => {
+        if (!visualizerSliderDraggingRef.current.sensitivity) {
+            setVisualizerSensitivityDraft(roomVisualizerSensitivity);
+        }
+    }, [roomVisualizerSensitivity]);
+
+    React.useEffect(() => {
+        if (!visualizerSliderDraggingRef.current.smoothing) {
+            setVisualizerSmoothingDraft(roomVisualizerSmoothing);
+        }
+    }, [roomVisualizerSmoothing]);
+
+    React.useEffect(() => {
+        const timerMap = visualizerSliderTimerRef.current;
+        return () => {
+            Object.values(timerMap).forEach((timerId) => {
+                if (timerId) clearTimeout(timerId);
+            });
+        };
+    }, []);
+
+    const queueVisualizerRoomUpdate = React.useCallback((field, value, { flush = false } = {}) => {
+        const timerKey = field === 'visualizerSensitivity' ? 'sensitivity' : 'smoothing';
+        const timerMap = visualizerSliderTimerRef.current;
+        if (timerMap[timerKey]) {
+            clearTimeout(timerMap[timerKey]);
+            timerMap[timerKey] = null;
+        }
+        if (flush) {
+            updateRoom({ [field]: value });
+            return;
+        }
+        timerMap[timerKey] = setTimeout(() => {
+            timerMap[timerKey] = null;
+            updateRoom({ [field]: value });
+        }, 120);
+    }, [updateRoom]);
+
+    const handleVisualizerSliderDraftChange = React.useCallback((field, rawValue) => {
+        if (field === 'visualizerSensitivity') {
+            const next = clampNumber(rawValue, 0.5, 2.5, visualizerSensitivityDraft);
+            setVisualizerSensitivityDraft(next);
+            queueVisualizerRoomUpdate('visualizerSensitivity', next);
+            return;
+        }
+        const next = clampNumber(rawValue, 0, 0.95, visualizerSmoothingDraft);
+        setVisualizerSmoothingDraft(next);
+        queueVisualizerRoomUpdate('visualizerSmoothing', next);
+    }, [queueVisualizerRoomUpdate, visualizerSensitivityDraft, visualizerSmoothingDraft]);
+
+    const commitVisualizerSliderChange = React.useCallback((field, rawValue) => {
+        if (field === 'visualizerSensitivity') {
+            visualizerSliderDraggingRef.current.sensitivity = false;
+            const next = clampNumber(rawValue, 0.5, 2.5, visualizerSensitivityDraft);
+            setVisualizerSensitivityDraft(next);
+            queueVisualizerRoomUpdate('visualizerSensitivity', next, { flush: true });
+            return;
+        }
+        visualizerSliderDraggingRef.current.smoothing = false;
+        const next = clampNumber(rawValue, 0, 0.95, visualizerSmoothingDraft);
+        setVisualizerSmoothingDraft(next);
+        queueVisualizerRoomUpdate('visualizerSmoothing', next, { flush: true });
+    }, [queueVisualizerRoomUpdate, visualizerSensitivityDraft, visualizerSmoothingDraft]);
 
     React.useEffect(() => {
         if (
@@ -778,6 +847,12 @@ const HostTopChrome = ({
                                             <option value="hex">Hex tunnel</option>
                                             <option value="orbit">Orbit arcs</option>
                                             <option value="comet">Comet sweep</option>
+                                            <option value="laserline">Laser line</option>
+                                            <option value="sidelines">Side rails</option>
+                                            <option value="lightning">Lightning strike</option>
+                                            <option value="arcdrive">Arc drive</option>
+                                            <option value="disco">Disco sphere</option>
+                                            <option value="tilestorm">Tile storm</option>
                                             <option value="waveform">Waveform</option>
                                         </select>
                                     </label>
@@ -808,26 +883,32 @@ const HostTopChrome = ({
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     <label className="text-xs text-zinc-300">
-                                        Sensitivity: <span className="text-white">{visualizerSensitivity.toFixed(2)}x</span>
+                                        Sensitivity: <span className="text-white">{visualizerSensitivityDraft.toFixed(2)}x</span>
                                         <input
                                             type="range"
                                             min="0.5"
                                             max="2.5"
                                             step="0.05"
-                                            value={visualizerSensitivity}
-                                            onChange={(e) => updateRoom({ visualizerSensitivity: Number(e.target.value) })}
+                                            value={visualizerSensitivityDraft}
+                                            onPointerDown={() => { visualizerSliderDraggingRef.current.sensitivity = true; }}
+                                            onChange={(e) => handleVisualizerSliderDraftChange('visualizerSensitivity', e.target.value)}
+                                            onPointerUp={(e) => commitVisualizerSliderChange('visualizerSensitivity', e.target.value)}
+                                            onBlur={(e) => commitVisualizerSliderChange('visualizerSensitivity', e.target.value)}
                                             className="w-full accent-[#00C4D9] mt-1 h-2.5"
                                         />
                                     </label>
                                     <label className="text-xs text-zinc-300">
-                                        Smoothing: <span className="text-white">{visualizerSmoothing.toFixed(2)}</span>
+                                        Smoothing: <span className="text-white">{visualizerSmoothingDraft.toFixed(2)}</span>
                                         <input
                                             type="range"
                                             min="0"
                                             max="0.95"
                                             step="0.05"
-                                            value={visualizerSmoothing}
-                                            onChange={(e) => updateRoom({ visualizerSmoothing: Number(e.target.value) })}
+                                            value={visualizerSmoothingDraft}
+                                            onPointerDown={() => { visualizerSliderDraggingRef.current.smoothing = true; }}
+                                            onChange={(e) => handleVisualizerSliderDraftChange('visualizerSmoothing', e.target.value)}
+                                            onPointerUp={(e) => commitVisualizerSliderChange('visualizerSmoothing', e.target.value)}
+                                            onBlur={(e) => commitVisualizerSliderChange('visualizerSmoothing', e.target.value)}
                                             className="w-full accent-[#00C4D9] mt-1 h-2.5"
                                         />
                                     </label>
