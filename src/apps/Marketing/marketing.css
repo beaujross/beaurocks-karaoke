@@ -557,6 +557,14 @@
   margin-top: 12px;
 }
 
+.mk3-home-section-cta {
+  margin-top: 10px;
+}
+
+.mk3-home-section-cta .mk3-auth-cta-primary {
+  width: 100%;
+}
+
 .mk3-home-premium-stats {
   margin-top: 12px;
   display: flex;
@@ -667,6 +675,32 @@
   line-height: 1.38;
 }
 
+.mk3-home-system-strip {
+  margin-top: 8px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(122, 205, 239, 0.24);
+  border-radius: 16px;
+  padding: 10px;
+  background: linear-gradient(144deg, rgba(9, 16, 26, 0.78), rgba(24, 11, 38, 0.72));
+}
+
+.mk3-home-system-strip h2 {
+  margin: 0;
+  font-family: "Archivo Black", "Impact", sans-serif;
+  font-size: clamp(0.96rem, 2.2vw, 1.2rem);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #f0e9ff;
+}
+
+.mk3-home-system-strip p {
+  margin: 8px 0 0;
+  color: #cde1f7;
+  font-size: 0.82rem;
+  line-height: 1.48;
+  max-width: 980px;
+}
+
 .mk3-surface-grid {
   margin-top: 12px;
   display: grid;
@@ -693,6 +727,164 @@
   color: #cce7ff;
   font-size: 0.71rem;
   letter-spacing: 0.02em;
+}
+
+.mk3-home-launch-stack {
+  margin-top: 8px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(255, 214, 106, 0.22);
+  border-radius: 16px;
+  padding: 10px;
+  background: linear-gradient(142deg, rgba(13, 16, 28, 0.82), rgba(26, 12, 34, 0.74));
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+  gap: 10px;
+}
+
+.mk3-home-launch-timeline {
+  border: 1px solid rgba(120, 209, 246, 0.2);
+  border-radius: 12px;
+  background: rgba(10, 19, 30, 0.72);
+  padding: 0.72rem;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.mk3-home-launch-timeline h2 {
+  margin: 0;
+  font-family: "Archivo Black", "Impact", sans-serif;
+  font-size: clamp(0.94rem, 2vw, 1.16rem);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f2ecff;
+}
+
+.mk3-home-launch-timeline p {
+  margin: 0;
+  color: #cfe1f3;
+  font-size: 0.79rem;
+  line-height: 1.45;
+}
+
+.mk3-home-launch-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.mk3-home-launch-steps article {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(11, 17, 27, 0.76);
+  padding: 0.56rem 0.62rem;
+  display: grid;
+  gap: 4px;
+}
+
+.mk3-home-launch-steps span {
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 214, 106, 0.38);
+  background: rgba(255, 214, 106, 0.14);
+  color: #ffe8b8;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 0.16rem 0.44rem;
+}
+
+.mk3-home-launch-steps strong {
+  color: #e9f5ff;
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+}
+
+.mk3-home-launch-steps p {
+  margin: 0;
+  color: #c9ddee;
+  font-size: 0.76rem;
+  line-height: 1.38;
+}
+
+.mk3-home-interest-card {
+  border: 1px solid rgba(255, 107, 193, 0.24);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 84% 10%, rgba(76, 229, 255, 0.12), transparent 40%),
+    linear-gradient(138deg, rgba(23, 10, 38, 0.84), rgba(10, 13, 24, 0.88));
+  padding: 0.72rem;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.mk3-home-interest-card h3 {
+  margin: 0;
+  font-family: "Archivo Black", "Impact", sans-serif;
+  font-size: 0.96rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #ffe9bf;
+}
+
+.mk3-home-interest-card p {
+  margin: 0;
+  color: #cee0f2;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.mk3-home-interest-card form {
+  display: grid;
+  gap: 8px;
+}
+
+.mk3-home-interest-card label {
+  display: grid;
+  gap: 4px;
+  color: #d4ebff;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.mk3-home-interest-card input,
+.mk3-home-interest-card select {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(116, 201, 240, 0.36);
+  background: rgba(2, 7, 18, 0.82);
+  color: #e8f3ff;
+  padding: 0.48rem 0.62rem;
+  font-size: 0.9rem;
+}
+
+.mk3-home-interest-card input:focus,
+.mk3-home-interest-card select:focus {
+  outline: none;
+  border-color: rgba(76, 229, 255, 0.65);
+  box-shadow: 0 0 0 2px rgba(76, 229, 255, 0.22);
+}
+
+.mk3-home-interest-card button {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--mk3-btn-border-primary);
+  border-radius: var(--mk3-btn-radius);
+  color: var(--mk3-btn-ink-primary);
+  background: var(--mk3-btn-gradient-primary);
+  font-size: 0.86rem;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mk3-home-interest-card button:disabled {
+  opacity: 0.62;
+  cursor: progress;
 }
 
 .mk3-value-points span {
@@ -2921,6 +3113,10 @@
   }
 
   .mk3-home-loop-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mk3-home-launch-stack {
     grid-template-columns: 1fr;
   }
 

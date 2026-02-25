@@ -7,8 +7,8 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
   <section className="mk3-page mk3-two-col">
     <article className="mk3-detail-card">
       <div className="mk3-chip">for venues</div>
-      <h2>Turn karaoke night into a real repeat crowd.</h2>
-      <p>Claim your venue, publish your cadence, and make it easy for regulars to find you again next week.</p>
+      <h2>Turn your venue into the room everyone wants in.</h2>
+      <p>Claim your venue, publish your recurring cadence, and become the trusted home base for premium karaoke nights.</p>
       <div className="mk3-actions-inline">
         <button
           type="button"
@@ -17,7 +17,7 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
             navigate("discover");
           }}
         >
-          Find Your Venue
+          Claim Your Venue
         </button>
         {canSubmit ? (
           <button
@@ -27,7 +27,7 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
               navigate("submit");
             }}
           >
-            Submit New Venue
+            Submit Venue Profile
           </button>
         ) : (
           <button
@@ -39,17 +39,17 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
               returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "venue" } },
             })}
           >
-            Create Account To Submit
+            Create Account To Claim
           </button>
         )}
       </div>
     </article>
     <aside className="mk3-actions-card">
-      <h4>Venue Path</h4>
+      <h4>Venue Prestige Path</h4>
       <ul className="mk3-plain-list">
-        <li>Claim ownership for direct publishing.</li>
-        <li>Set recurring cadence and keep schedule updates current.</li>
-        <li>Track follows, RSVPs, and check-ins by listing.</li>
+        <li>Claim ownership for direct publishing authority.</li>
+        <li>Keep schedule updates clean and reliable.</li>
+        <li>Track follows, RSVPs, and check-ins from each listing.</li>
       </ul>
     </aside>
   </section>

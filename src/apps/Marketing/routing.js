@@ -25,6 +25,13 @@ const QUERY_PARAM_KEYS = new Set([
   "targetId",
   "next",
   "return_to",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+  "utm_id",
+  "campaign_variant",
 ]);
 
 const LEGACY_PAGE_TO_CANONICAL = {

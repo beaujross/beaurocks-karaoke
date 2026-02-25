@@ -2697,7 +2697,9 @@ const resolveDemoSceneMode = (sceneId = "") => {
   const token = sanitizeDemoToken(sceneId, 80);
   if (!token) return "karaoke";
   if (token.includes("guitar")) return "guitar";
+  if (token.includes("vocal")) return "vocal";
   if (token.includes("trivia")) return "trivia";
+  if (token.includes("wyr") || token.includes("would_you_rather")) return "wyr";
   if (token.includes("finale")) return "finale";
   return "karaoke";
 };
@@ -2780,6 +2782,41 @@ const normalizeDemoDirectorPayload = (rawData = {}) => {
     }
   }
 
+  let wyr = null;
+  const rawWyr = isPlainObject(rawData.wyr) ? rawData.wyr : null;
+  if (rawWyr) {
+    const question = typeof rawWyr.question === "string"
+      ? rawWyr.question.trim().slice(0, 240)
+      : "";
+    const optionA = typeof rawWyr.optionA === "string"
+      ? rawWyr.optionA.trim().slice(0, 120)
+      : "";
+    const optionB = typeof rawWyr.optionB === "string"
+      ? rawWyr.optionB.trim().slice(0, 120)
+      : "";
+    if (question && optionA && optionB) {
+      const statusToken = sanitizeDemoToken(rawWyr.status || "live", 24);
+      const status = statusToken === "reveal" ? "reveal" : "live";
+      const questionId = sanitizeDemoToken(rawWyr.questionId || `wyr_${Math.floor(timelineMs / 1000)}`, 64)
+        || `wyr_${Math.floor(timelineMs / 1000)}`;
+      const votesRaw = Array.isArray(rawWyr.votes) ? rawWyr.votes : [];
+      const votes = [
+        clampNumber(votesRaw[0] ?? 0, 0, 200, 0),
+        clampNumber(votesRaw[1] ?? 0, 0, 200, 0),
+      ];
+      wyr = {
+        question,
+        optionA,
+        optionB,
+        status,
+        questionId,
+        votes,
+        points: clampNumber(rawWyr.points ?? 50, 10, 500, 50),
+        durationSec: clampNumber(rawWyr.durationSec ?? 18, 8, 90, 18),
+      };
+    }
+  }
+
   return {
     roomCode,
     action,
@@ -2792,6 +2829,7 @@ const normalizeDemoDirectorPayload = (rawData = {}) => {
     crowdSize,
     reactionEvents,
     trivia,
+    wyr,
   };
 };
 
@@ -2823,6 +2861,8 @@ const buildDemoRoomUpdates = (payload = {}) => {
     updates.showLyricsTv = false;
     updates.showLyricsSinger = false;
     updates.guitarSessionId = Math.max(1, Math.floor(Number(payload.timelineMs || 0) / 1000) || 1);
+  } else {
+    updates.guitarSessionId = null;
   }
 
   if (mode === "trivia") {
@@ -2856,6 +2896,46 @@ const buildDemoRoomUpdates = (payload = {}) => {
     };
   } else {
     updates.triviaQuestion = null;
+  }
+
+  if (mode === "vocal") {
+    updates.activeMode = "vocal_challenge";
+    updates.lightMode = "banger";
+    updates.showLyricsTv = true;
+    updates.showLyricsSinger = true;
+  }
+
+  if (mode === "wyr") {
+    const wyr = payload.wyr || {
+      question: "Would you rather open with a duet or solo hook?",
+      optionA: "Duet opener",
+      optionB: "Solo hook",
+      status: "live",
+      questionId: `wyr_${Math.floor(Number(payload.timelineMs || 0) / 1000)}`,
+      votes: [7, 9],
+      points: 50,
+      durationSec: 18,
+    };
+    const isReveal = wyr.status === "reveal";
+    updates.activeMode = isReveal ? "wyr_reveal" : "wyr";
+    updates.lightMode = "banger";
+    updates.showLyricsTv = false;
+    updates.showLyricsSinger = false;
+    updates.wyrData = {
+      question: wyr.question,
+      optionA: wyr.optionA,
+      optionB: wyr.optionB,
+      id: wyr.questionId,
+      status: isReveal ? "reveal" : "live",
+      points: wyr.points,
+      autoReveal: true,
+      durationSec: wyr.durationSec,
+      startedAt: now,
+      revealAt: now + (Math.max(1, Number(wyr.durationSec || 18)) * 1000),
+      rewarded: false,
+    };
+  } else {
+    updates.wyrData = null;
   }
 
   if (mode === "finale") {
@@ -2976,20 +3056,26 @@ const writeDemoTriviaVotes = async ({
   const safeRoomCode = normalizeRoomCode(roomCode);
   if (!safeRoomCode) return 0;
   const mode = resolveDemoSceneMode(payload.sceneId || "");
-  if (mode !== "trivia") return 0;
-  const trivia = payload.trivia;
-  if (!trivia || !Array.isArray(trivia.options) || !Array.isArray(trivia.votes)) return 0;
-  if (!trivia.options.length || !trivia.votes.length) return 0;
+  if (mode !== "trivia" && mode !== "wyr") return 0;
 
   const db = admin.firestore();
   const batch = db.batch();
-  const questionId = sanitizeDemoToken(trivia.questionId || "q_demo", 64) || "q_demo";
+  const questionIdToken = mode === "trivia"
+    ? (payload?.trivia?.questionId || "q_demo")
+    : (payload?.wyr?.questionId || "wyr_demo");
+  const questionId = sanitizeDemoToken(questionIdToken, 64) || (mode === "trivia" ? "q_demo" : "wyr_demo");
   const serverNow = admin.firestore.FieldValue.serverTimestamp();
+  const voteType = mode === "trivia" ? "vote_trivia" : "vote_wyr";
+  const voteValues = mode === "trivia" ? [0, 1, 2, 3] : ["A", "B"];
+  const voteCounts = mode === "trivia"
+    ? (Array.isArray(payload?.trivia?.votes) ? payload.trivia.votes : [])
+    : (Array.isArray(payload?.wyr?.votes) ? payload.wyr.votes : []);
+  if (!voteCounts.length) return 0;
 
   let cursor = 0;
   let written = 0;
-  for (let optionIndex = 0; optionIndex < trivia.options.length; optionIndex += 1) {
-    const requestedVotes = clampNumber(trivia.votes[optionIndex] ?? 0, 0, 200, 0);
+  for (let optionIndex = 0; optionIndex < voteValues.length; optionIndex += 1) {
+    const requestedVotes = clampNumber(voteCounts[optionIndex] ?? 0, 0, 200, 0);
     const count = Math.min(DEMO_MAX_VOTES_PER_OPTION, requestedVotes);
     for (let i = 0; i < count; i += 1) {
       const profile = DEMO_USER_LIBRARY[cursor % DEMO_USER_LIBRARY.length];
@@ -2997,8 +3083,8 @@ const writeDemoTriviaVotes = async ({
       const voteDocId = `demo_vote_${safeRoomCode}_${questionId}_${uid}`;
       batch.set(rootRef.collection("reactions").doc(voteDocId), {
         roomCode: safeRoomCode,
-        type: "vote_trivia",
-        val: optionIndex,
+        type: voteType,
+        val: voteValues[optionIndex],
         questionId,
         uid,
         userName: profile.name,

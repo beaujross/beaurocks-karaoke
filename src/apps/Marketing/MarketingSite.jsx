@@ -36,7 +36,7 @@ const GoldenPathRail = lazy(() => import("./pages/GoldenPathRail"));
 
 const PRODUCT_BRAND = {
   name: "BeauRocks Karaoke",
-  tagline: "Karaoke, but finally built for actual humans",
+  tagline: "Premium karaoke tech for legendary hosts",
   finder: "Setlist Finder",
   tv: "Spotlight TV",
   audience: "Party Mic",
@@ -56,8 +56,9 @@ const LOCKED_PRIMARY_PAGE_OPTIONS = [
 ];
 
 const HOME_PRIMARY_PAGE_OPTIONS = [
-  { id: MARKETING_ROUTE_PAGES.discover, label: "Live Map" },
+  { id: MARKETING_ROUTE_PAGES.discover, label: "Find Karaoke" },
   { id: MARKETING_ROUTE_PAGES.demo, label: "Watch Demo" },
+  { id: MARKETING_ROUTE_PAGES.hostAccess, label: "Founding Access" },
 ];
 
 const SECONDARY_PAGE_OPTIONS = [
@@ -138,6 +139,59 @@ const PRIVATE_TEST_USE_CASE_OPTIONS = [
   "Venue / KJ Operator",
 ];
 
+const HOME_INTEREST_USE_CASE_OPTIONS = [
+  "Founding Host",
+  "Venue Partner",
+  "Performer Creator",
+  "Guest / Fan",
+];
+
+const CAMPAIGN_PARAM_KEYS = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+  "utm_id",
+  "campaign_variant",
+];
+
+const normalizeCampaignVariant = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  if (token === "paid" || token === "social" || token === "organic") return token;
+  return "";
+};
+
+const inferCampaignVariant = (params = {}) => {
+  const explicit = normalizeCampaignVariant(params?.campaign_variant);
+  if (explicit) return explicit;
+  const medium = String(params?.utm_medium || "").trim().toLowerCase();
+  const source = String(params?.utm_source || "").trim().toLowerCase();
+  if (medium.includes("paid") || medium === "cpc" || medium === "ppc") return "paid";
+  if (medium.includes("social")) return "social";
+  if (
+    source.includes("meta")
+    || source.includes("instagram")
+    || source.includes("facebook")
+    || source.includes("tiktok")
+    || source.includes("x")
+    || source.includes("youtube")
+    || source.includes("linkedin")
+  ) {
+    return "social";
+  }
+  return "organic";
+};
+
+const pickCampaignParams = (params = {}) => {
+  const next = {};
+  CAMPAIGN_PARAM_KEYS.forEach((key) => {
+    const value = String(params?.[key] || "").trim();
+    if (value) next[key] = value;
+  });
+  return next;
+};
+
 const parsePrivateInviteCodes = (value = "") => {
   const source = Array.isArray(value)
     ? value
@@ -201,6 +255,17 @@ const MarketingSite = () => {
   const [privateAccessNotice, setPrivateAccessNotice] = useState("");
   const [privateInviteCodes] = useState(() => readPrivateInviteCodes());
   const [privateCodeEntry, setPrivateCodeEntry] = useState("");
+  const [homeInterestForm, setHomeInterestForm] = useState({
+    name: "",
+    email: "",
+    useCase: HOME_INTEREST_USE_CASE_OPTIONS[0],
+  });
+  const [homeInterestState, setHomeInterestState] = useState({
+    submitting: false,
+    success: "",
+    error: "",
+    linePosition: 0,
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const authPanelRef = useRef(null);
   const { session, actions } = useDirectorySession();
@@ -385,6 +450,67 @@ const MarketingSite = () => {
   const activePage = useMemo(() => normalizePage(route.page), [route.page]);
   const isHostAccessPage = activePage === MARKETING_ROUTE_PAGES.hostAccess;
   const isGuestsHomePage = activePage === MARKETING_ROUTE_PAGES.forFans;
+  const campaignContext = useMemo(() => {
+    const preserved = pickCampaignParams(route.params || {});
+    const variant = inferCampaignVariant(preserved);
+    const utmSourceDefault = variant === "paid"
+      ? "paid_media"
+      : variant === "social"
+        ? "social"
+        : "owned";
+    const utmMediumDefault = variant === "paid"
+      ? "paid"
+      : variant === "social"
+        ? "social"
+        : "web";
+    return {
+      variant,
+      params: {
+        utm_source: String(preserved.utm_source || utmSourceDefault),
+        utm_medium: String(preserved.utm_medium || utmMediumDefault),
+        utm_campaign: String(preserved.utm_campaign || "launch_week_2026"),
+        utm_content: String(preserved.utm_content || ""),
+        utm_term: String(preserved.utm_term || ""),
+        utm_id: String(preserved.utm_id || ""),
+        campaign_variant: String(preserved.campaign_variant || variant),
+      },
+    };
+  }, [route.params]);
+  const withCampaignParams = useCallback((overrides = {}) => {
+    const next = {
+      ...campaignContext.params,
+      ...pickCampaignParams(overrides),
+    };
+    if (!next.campaign_variant) {
+      next.campaign_variant = inferCampaignVariant(next);
+    }
+    return next;
+  }, [campaignContext.params]);
+  const goToCampaignRoute = useCallback((page, { cta = "", source = "", utmContent = "" } = {}) => {
+    const params = withCampaignParams({
+      utm_content: utmContent || cta || source,
+    });
+    trackEvent("mk_home_launch_cta_click", {
+      cta: String(cta || "unknown"),
+      source: String(source || "marketing_home"),
+      campaign_variant: campaignContext.variant,
+      utm_source: params.utm_source,
+      utm_medium: params.utm_medium,
+      utm_campaign: params.utm_campaign,
+      utm_content: params.utm_content,
+    });
+    navigate(page, "", params);
+  }, [campaignContext.variant, navigate, withCampaignParams]);
+  const homeHeroPrimaryLabel = campaignContext.variant === "paid"
+    ? "Start Founding Host Application"
+    : campaignContext.variant === "social"
+      ? "Join The Founding Host Wave"
+      : "Request Founding Access";
+  const homeHeroSubhead = campaignContext.variant === "paid"
+    ? "You found us through launch media. Claim your seat in the founding host cohort."
+    : campaignContext.variant === "social"
+      ? "You found us through the social buzz. Step into the founding host wave."
+      : "Most karaoke software helps manage songs. BeauRocks helps you command the whole room.";
 
   useEffect(() => {
     if (!isHostAccessPage) return;
@@ -569,6 +695,60 @@ const MarketingSite = () => {
     trackEvent("mk_private_test_unlock", { ok: true, method: "pin_code" });
   };
 
+  const onHomeInterestSubmit = async (event) => {
+    event.preventDefault();
+    const name = String(homeInterestForm.name || "").trim();
+    const email = String(homeInterestForm.email || "").trim().toLowerCase();
+    const useCase = String(homeInterestForm.useCase || HOME_INTEREST_USE_CASE_OPTIONS[0]).trim();
+    if (!name || !email) {
+      setHomeInterestState((prev) => ({
+        ...prev,
+        error: "Name and email are required.",
+        success: "",
+      }));
+      return;
+    }
+    setHomeInterestState({
+      submitting: true,
+      success: "",
+      error: "",
+      linePosition: 0,
+    });
+    try {
+      const result = await directoryActions.submitMarketingWaitlist({
+        name,
+        email,
+        useCase,
+        source: "marketing_home_interest_2026",
+      });
+      const linePosition = Number(result?.linePosition || 0) || 0;
+      const message = String(result?.message || "You are on the priority list.");
+      setHomeInterestState({
+        submitting: false,
+        success: message,
+        error: "",
+        linePosition,
+      });
+      trackEvent("mk_home_interest_submit", {
+        ok: true,
+        useCase,
+        linePosition,
+      });
+    } catch (error) {
+      const message = String(error?.message || "Could not submit your interest right now.");
+      setHomeInterestState({
+        submitting: false,
+        success: "",
+        error: message,
+        linePosition: 0,
+      });
+      trackEvent("mk_home_interest_submit", {
+        ok: false,
+        error: message.slice(0, 80),
+      });
+    }
+  };
+
   const privateAccessUnlocked = !privateTestModeEnabled
     || (hasFullAccount && privateCodeUnlocked);
   const privateAccessLocked = privateTestModeEnabled && !privateAccessUnlocked;
@@ -654,7 +834,11 @@ const MarketingSite = () => {
       <header className="mk3-nav">
         <div className="mk3-shell">
           <div className="mk3-nav-inner">
-            <button type="button" className="mk3-brand" onClick={() => navigate(MARKETING_ROUTE_PAGES.forFans)}>
+            <button
+              type="button"
+              className="mk3-brand"
+              onClick={() => navigate(MARKETING_ROUTE_PAGES.forFans, "", withCampaignParams({ utm_content: "nav_brand" }))}
+            >
               <img src="/images/logo-library/beaurocks-karaoke-logo-2.png" alt="BeauRocks Karaoke logo" />
               <div>
                 <strong>{PRODUCT_BRAND.name}</strong>
@@ -667,7 +851,7 @@ const MarketingSite = () => {
                   key={item.id}
                   type="button"
                   className={activePage === item.id ? "active" : ""}
-                  onClick={() => navigate(item.id)}
+                  onClick={() => navigate(item.id, "", withCampaignParams({ utm_content: `nav_primary_${item.id}` }))}
                 >
                   {item.label}
                 </button>
@@ -681,7 +865,7 @@ const MarketingSite = () => {
                         key={item.id}
                         type="button"
                         className={activePage === item.id ? "active" : ""}
-                        onClick={() => navigate(item.id)}
+                        onClick={() => navigate(item.id, "", withCampaignParams({ utm_content: `nav_secondary_${item.id}` }))}
                       >
                         {item.label}
                       </button>
@@ -700,7 +884,7 @@ const MarketingSite = () => {
                     return;
                   }
                   trackEvent("mk_persona_cta_click", { persona: "all", cta: "nav_explore_live_map" });
-                  navigate(MARKETING_ROUTE_PAGES.discover);
+                  navigate(MARKETING_ROUTE_PAGES.discover, "", withCampaignParams({ utm_content: "nav_explore" }));
                 }}
               >
                 {hasFullAccount ? "Dashboard" : "Explore"}
@@ -715,7 +899,7 @@ const MarketingSite = () => {
                   }
                   setAuthMode("signin");
                   trackEvent("mk_nav_host_access_click", { source: "nav_link" });
-                  navigate(MARKETING_ROUTE_PAGES.hostAccess);
+                  navigate(MARKETING_ROUTE_PAGES.hostAccess, "", withCampaignParams({ utm_content: "nav_host_signin" }));
                 }}
               >
                 {hasFullAccount ? "Sign out" : "Host sign in"}
@@ -738,7 +922,7 @@ const MarketingSite = () => {
                   key={item.id}
                   type="button"
                   className={activePage === item.id ? "active" : ""}
-                  onClick={() => navigate(item.id)}
+                  onClick={() => navigate(item.id, "", withCampaignParams({ utm_content: `mobile_primary_${item.id}` }))}
                 >
                   {item.label}
                 </button>
@@ -748,7 +932,7 @@ const MarketingSite = () => {
                   key={item.id}
                   type="button"
                   className={activePage === item.id ? "active" : ""}
-                  onClick={() => navigate(item.id)}
+                  onClick={() => navigate(item.id, "", withCampaignParams({ utm_content: `mobile_secondary_${item.id}` }))}
                 >
                   {item.label}
                 </button>
@@ -772,20 +956,20 @@ const MarketingSite = () => {
           {isHostAccessPage ? (
           <section className={`mk3-auth-panel${privateAccessLocked ? " is-private-focus" : ""}`} ref={authPanelRef}>
             <div>
-              <h1>Host Access + Private Pilot</h1>
+              <h1>Founding Host Access</h1>
               <p>
-                This page is for hosts and venue operators joining private test waves. If you were invited, unlock with
-                your code, then create your host account.
+                This is where new party leaders enter. We are onboarding hosts in controlled waves so every room
+                launches at premium quality from day one.
               </p>
               <div className="mk3-private-pill-row">
-                <span className="mk3-private-pill">Invite-first</span>
-                <span className="mk3-private-pill">Weekly rollout</span>
-                <span className="mk3-private-pill">Host + venue focus</span>
+                <span className="mk3-private-pill">Invite-only</span>
+                <span className="mk3-private-pill">Founding host cohort</span>
+                <span className="mk3-private-pill">Quality over scale</span>
               </div>
               <div className="mk3-permission-grid">
                 <article>
                   <strong>Step 1</strong>
-                  <span>Apply for private test or enter a host access code.</span>
+                  <span>Apply for pilot access or enter your founding code.</span>
                 </article>
                 <article>
                   <strong>Step 2</strong>
@@ -793,11 +977,11 @@ const MarketingSite = () => {
                 </article>
                 <article>
                   <strong>Step 3</strong>
-                  <span>Launch rooms across TV, audience, and host surfaces.</span>
+                  <span>Launch your room across TV, audience, and host control surfaces.</span>
                 </article>
                 <article>
                   <strong>Not hosting?</strong>
-                  <span>Use Live Listings to find karaoke by host, venue, or vibe.</span>
+                  <span>Use Live Listings to find premium karaoke nights by host, venue, or vibe.</span>
                 </article>
               </div>
               {heroStats?.total > 0 && (
@@ -807,28 +991,32 @@ const MarketingSite = () => {
                 </div>
               )}
               <div className="mk3-value-points">
-                <span>Technology got us here. Now we use it to bring people back together in the real world.</span>
-                <span>Your phone still matters, but now it helps you interact with the room you are actually in.</span>
+                <span>Technology got us here. We use it to bring people back together in real rooms.</span>
+                <span>Your phone stays useful, but now it upgrades connection instead of replacing it.</span>
               </div>
               <div className="mk3-auth-cta-row">
                 <button
                   type="button"
                   className="mk3-auth-cta-primary"
-                  onClick={() => navigate(hasFullAccount ? MARKETING_ROUTE_PAGES.profile : MARKETING_ROUTE_PAGES.discover)}
+                  onClick={() => navigate(
+                    hasFullAccount ? MARKETING_ROUTE_PAGES.profile : MARKETING_ROUTE_PAGES.discover,
+                    "",
+                    withCampaignParams({ utm_content: "host_access_primary" })
+                  )}
                 >
                   {hasFullAccount ? "Open My Dashboard" : "Back to Live Listings"}
                 </button>
                 <button
                   type="button"
                   className="mk3-auth-cta-secondary"
-                  onClick={() => navigate(MARKETING_ROUTE_PAGES.demo)}
+                  onClick={() => navigate(MARKETING_ROUTE_PAGES.demo, "", withCampaignParams({ utm_content: "host_access_demo" }))}
                 >
                   Watch Demo Walkthrough
                 </button>
               </div>
               {privateAccessLocked && (
                 <form className="mk3-private-apply-form mk3-private-apply-form-compact" onSubmit={onPrivateApplySubmit}>
-                  <h2>Apply for private host pilot</h2>
+                  <h2>Apply for founding host pilot</h2>
                   <div className="mk3-private-apply-grid">
                     <label>
                       Name
@@ -879,7 +1067,7 @@ const MarketingSite = () => {
                     <button
                       type="button"
                       className="mk3-auth-cta-secondary"
-                      onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts)}
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "host_access_details" }))}
                     >
                       Host Pilot Details
                     </button>
@@ -910,8 +1098,8 @@ const MarketingSite = () => {
               ) : (
                 privateAccessLocked && !canCreatePrivateHostAccount ? (
                   <div className="mk3-status mk3-status-warning">
-                    <strong>Host login is hidden until invite unlock.</strong>
-                    <span>Enter a valid host code below to enable sign in and account creation.</span>
+                    <strong>Host login is hidden until access unlock.</strong>
+                    <span>Enter a valid founding code below to enable sign in and host account creation.</span>
                   </div>
                 ) : (
                   <form onSubmit={onAuthSubmit}>
@@ -1006,11 +1194,11 @@ const MarketingSite = () => {
               )}
               {privateTestModeEnabled && (
                 <div className="mk3-private-invite-box">
-                  <h3>Host Access Code</h3>
+                  <h3>Founding Host Code</h3>
                   <p>
                     {privateInviteRequired
-                      ? "Got invited? Drop your code below to unlock host onboarding."
-                      : "Host onboarding is currently open for invited testers."}
+                      ? "Invited to the cohort? Enter your code to unlock founding host onboarding."
+                      : "Host onboarding is currently open for invited founding testers."}
                   </p>
                   {canCreatePrivateHostAccount ? (
                     <div className="mk3-status mk3-private-unlocked">
@@ -1059,78 +1247,206 @@ const MarketingSite = () => {
             <>
               <section className="mk3-home-premium-shell mk3-zone" aria-label="BeauRocks premium launch">
                 <div className="mk3-home-premium-main">
-                  <div className="mk3-home-premium-kicker">Invite-Only Cultural Pilot</div>
-                  <h1>Karaoke Is Cool Again.</h1>
+                  <div className="mk3-home-premium-kicker">Private Pilot: Founding Host Wave</div>
+                  <h1>Be The King Or Queen Of Karaoke Night.</h1>
                   <p>
-                    Most karaoke apps optimized for queue management and forgot the room.
-                    BeauRocks is built to reverse that: use tech to get people into real spaces, then turn phones
-                    into social amplifiers that bring strangers into shared moments.
+                    {homeHeroSubhead}
+                    {" "}
+                    Built as a premium multi-surface system, it gives hosts TV, audience, and control tools that turn
+                    normal karaoke into unforgettable social nights people talk about for weeks.
                   </p>
                   <div className="mk3-home-premium-stats">
                     <span>{heroStats?.total > 0 ? `${heroStats.total.toLocaleString()} live listings` : "Live listings updating"}</span>
-                    <span>Audience, TV, and host in sync</span>
-                    <span>One code. One room. Shared energy.</span>
+                    <span>TV, audience, and host surfaces in lockstep</span>
+                    <span>Exclusive host onboarding in controlled drops</span>
                   </div>
                   <div className="mk3-auth-cta-row mk3-home-primary-cta">
                     <button
                       type="button"
                       className="mk3-auth-cta-primary"
                       onClick={() => {
-                        trackEvent("mk_home_primary_cta_click", { cta: "explore_live_listings", source: "premium_home" });
-                        navigate(MARKETING_ROUTE_PAGES.discover);
+                        goToCampaignRoute(MARKETING_ROUTE_PAGES.hostAccess, {
+                          cta: "hero_request_founding_access",
+                          source: "premium_home_hero",
+                          utmContent: "home_hero_primary",
+                        });
                       }}
                     >
-                      Explore Live Listings
-                    </button>
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-secondary"
-                      onClick={() => {
-                        trackEvent("mk_home_secondary_cta_click", { cta: "watch_demo", source: "premium_home" });
-                        navigate(MARKETING_ROUTE_PAGES.demo);
-                      }}
-                    >
-                      Watch 90-Second Demo
+                      {homeHeroPrimaryLabel}
                     </button>
                   </div>
                 </div>
                 <aside className="mk3-home-premium-side" aria-label="Pilot access">
-                  <strong>Private Host Drops</strong>
-                  <p>Host onboarding opens in limited waves to keep quality high and rooms full.</p>
+                  <strong>Founding Host Circle</strong>
+                  <p>Host onboarding opens in limited city-by-city waves to keep quality high and every launch supported.</p>
                   <div className="mk3-home-premium-side-list">
-                    <span>Weekly invite batches</span>
-                    <span>Human-first host standards</span>
-                    <span>Priority support during pilot</span>
+                    <span>Limited seats per rollout wave</span>
+                    <span>Concierge setup during pilot</span>
+                    <span>Early access to premium party modes</span>
                   </div>
+                </aside>
+              </section>
+
+              <section className="mk3-home-system-strip mk3-zone" aria-label="Platform surfaces">
+                <h2>One Product. Three Surfaces. Zero Guesswork.</h2>
+                <p>
+                  Prelaunch winners are obvious fast: the host looks in control, guests know what to do, and the room energy never drops.
+                  BeauRocks is built to deliver that outcome every night.
+                </p>
+                <div className="mk3-surface-grid">
+                  <article>
+                    <strong>Spotlight TV</strong>
+                    <span>Premium visuals, lyrics, and mode shifts that lead the room.</span>
+                  </article>
+                  <article>
+                    <strong>Audience Mobile</strong>
+                    <span>Reactions, votes, and game interactions that keep everyone participating.</span>
+                  </article>
+                  <article>
+                    <strong>Host Deck</strong>
+                    <span>Live controls for pacing, queue flow, and social momentum.</span>
+                  </article>
+                  <article>
+                    <strong>Setlist Finder</strong>
+                    <span>Discovery engine that helps new guests find your room and return.</span>
+                  </article>
+                </div>
+                <div className="mk3-home-section-cta">
                   <button
                     type="button"
                     className="mk3-auth-cta-primary"
                     onClick={() => {
-                      trackEvent("mk_home_secondary_cta_click", { cta: "host_access", source: "premium_home" });
-                      navigate(MARKETING_ROUTE_PAGES.hostAccess);
+                      goToCampaignRoute(MARKETING_ROUTE_PAGES.demo, {
+                        cta: "system_watch_demo",
+                        source: "home_system_strip",
+                        utmContent: "home_system_strip_primary",
+                      });
                     }}
                   >
-                    Apply for Host Pilot
+                    Watch Live System Demo
                   </button>
-                </aside>
+                </div>
               </section>
 
               <section className="mk3-home-loop-strip mk3-zone" aria-label="Viral loop">
-                <h2>Why this spreads</h2>
+                <h2>How Legendary Nights Are Built</h2>
                 <div className="mk3-home-loop-grid">
                   <article>
-                    <strong>Discover</strong>
-                    <span>People find rooms by vibe, host, and location.</span>
+                    <strong>Set The Stage</strong>
+                    <span>Hosts launch high-trust rooms with premium visuals, clear flow, and instant join paths.</span>
                   </article>
                   <article>
-                    <strong>Participate</strong>
-                    <span>Audience reactions, games, and shoutouts make everyone part of the show.</span>
+                    <strong>Command The Room</strong>
+                    <span>Audience reactions, games, and social prompts keep every guest in the moment.</span>
                   </article>
                   <article>
-                    <strong>Return</strong>
-                    <span>Each night becomes a memory worth sharing, then repeating.</span>
+                    <strong>Own The Afterglow</strong>
+                    <span>Great nights become stories, stories drive invites, and invite demand builds host status.</span>
                   </article>
                 </div>
+                <div className="mk3-home-section-cta">
+                  <button
+                    type="button"
+                    className="mk3-auth-cta-primary"
+                    onClick={() => {
+                      goToCampaignRoute(MARKETING_ROUTE_PAGES.discover, {
+                        cta: "loop_explore_nights",
+                        source: "home_loop_strip",
+                        utmContent: "home_loop_strip_primary",
+                      });
+                    }}
+                  >
+                    Explore Live Listings
+                  </button>
+                </div>
+              </section>
+
+              <section className="mk3-home-launch-stack mk3-zone" aria-label="2026 launch path">
+                <article className="mk3-home-launch-timeline">
+                  <h2>2026 Launch Plan</h2>
+                  <p>
+                    We are pacing rollout on purpose. Prelaunch quality beats premature scale.
+                    Each cohort gets tight support, then we expand.
+                  </p>
+                  <div className="mk3-home-launch-steps">
+                    <article>
+                      <span>March 2026</span>
+                      <strong>Founding Host Cohort</strong>
+                      <p>Invite-only onboarding for top pilot hosts and high-signal venues.</p>
+                    </article>
+                    <article>
+                      <span>April 2026</span>
+                      <strong>City Showcase Drops</strong>
+                      <p>Weekly regional expansions with curated host and venue launches.</p>
+                    </article>
+                    <article>
+                      <span>Summer 2026</span>
+                      <strong>Broader Access Waves</strong>
+                      <p>Scaled onboarding for qualified hosts, creators, and venue partners.</p>
+                    </article>
+                  </div>
+                </article>
+                <aside className="mk3-home-interest-card">
+                  <h3>Get Priority Launch Updates</h3>
+                  <p>Join the 2026 interest queue for early access invites and launch announcements.</p>
+                  <form onSubmit={onHomeInterestSubmit}>
+                    <label>
+                      Name
+                      <input
+                        type="text"
+                        value={homeInterestForm.name}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setHomeInterestForm((prev) => ({ ...prev, name: next }));
+                          setHomeInterestState((prev) => ({ ...prev, error: "", success: "" }));
+                        }}
+                        required
+                        maxLength={80}
+                      />
+                    </label>
+                    <label>
+                      Email
+                      <input
+                        type="email"
+                        value={homeInterestForm.email}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setHomeInterestForm((prev) => ({ ...prev, email: next }));
+                          setHomeInterestState((prev) => ({ ...prev, error: "", success: "" }));
+                        }}
+                        required
+                      />
+                    </label>
+                    <label>
+                      I am joining as
+                      <select
+                        value={homeInterestForm.useCase}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setHomeInterestForm((prev) => ({ ...prev, useCase: next }));
+                        }}
+                      >
+                        {HOME_INTEREST_USE_CASE_OPTIONS.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <button type="submit" disabled={homeInterestState.submitting}>
+                      {homeInterestState.submitting ? "Saving..." : "Join Priority Queue"}
+                    </button>
+                  </form>
+                  {homeInterestState.success && (
+                    <div className="mk3-status">
+                      <strong>{homeInterestState.success}</strong>
+                      {homeInterestState.linePosition > 0 && (
+                        <span>{`Queue position: #${homeInterestState.linePosition}`}</span>
+                      )}
+                    </div>
+                  )}
+                  {homeInterestState.error && (
+                    <div className="mk3-status mk3-status-error">{homeInterestState.error}</div>
+                  )}
+                </aside>
               </section>
             </>
           ) : null}
@@ -1143,18 +1459,18 @@ const MarketingSite = () => {
 
           {isHostAccessPage && privateAccessLocked && (
             <section className="mk3-private-locked-panel mk3-zone" aria-label="Private test locked">
-              <h2>Live listings are open. Host onboarding is invite-only.</h2>
+              <h2>Live listings are open. Founding host onboarding is invite-only.</h2>
               <p>
-                Anyone can browse karaoke by host, venue, and location. Creating host accounts stays private during test.
+                Anyone can browse nights by host, venue, and location. Creating host accounts stays private while we scale quality.
               </p>
               <div className="mk3-private-locked-grid">
                 <article>
                   <strong>For guests</strong>
-                  <span>Use Live Listings to find karaoke nearby.</span>
+                  <span>Use Live Listings to find the strongest rooms nearby.</span>
                 </article>
                 <article>
                   <strong>For hosts</strong>
-                  <span>Apply here or unlock with a host access code.</span>
+                  <span>Apply here or unlock with a founding host code.</span>
                 </article>
               </div>
             </section>

@@ -7,8 +7,8 @@ const ForFansPage = ({ navigate, session, authFlow }) => {
   <section className="mk3-page mk3-two-col">
     <article className="mk3-detail-card">
       <div className="mk3-chip">for fans</div>
-      <h2>Karaoke has been awkward for way too long.</h2>
-      <p>Find nearby nights fast, then use your phone to interact with the room instead of scrolling alone.</p>
+      <h2>Find the rooms everyone will be talking about tomorrow.</h2>
+      <p>Skip random karaoke roulette. Find premium nights fast, then use your phone to join the energy instead of watching from the edge.</p>
       <div className="mk3-actions-inline">
         <button
           type="button"
@@ -17,7 +17,7 @@ const ForFansPage = ({ navigate, session, authFlow }) => {
             navigate("discover");
           }}
         >
-          Open Live Listings
+          Find Premium Nights
         </button>
         <button
           type="button"
@@ -26,7 +26,7 @@ const ForFansPage = ({ navigate, session, authFlow }) => {
             navigate("demo");
           }}
         >
-          Watch Demo
+          Watch Experience Demo
         </button>
         {canUseDashboard ? (
           <button
@@ -36,7 +36,7 @@ const ForFansPage = ({ navigate, session, authFlow }) => {
               navigate("profile");
             }}
           >
-            Activity Dashboard
+            Open Guest Dashboard
           </button>
         ) : (
           <button
@@ -48,17 +48,17 @@ const ForFansPage = ({ navigate, session, authFlow }) => {
               returnRoute: { page: "profile" },
             })}
           >
-            Create Account For Activity
+            Create Account For Guest Pass
           </button>
         )}
       </div>
     </article>
     <aside className="mk3-actions-card">
-      <h4>Guest Path</h4>
+      <h4>Guest Prestige Path</h4>
       <ul className="mk3-plain-list">
-        <li>Browse by host, venue, city, and timing.</li>
-        <li>RSVP and reminder options reduce no-show chaos.</li>
-        <li>Check in, react, and keep the room social in real time.</li>
+        <li>Browse by host reputation, venue quality, city, and timing.</li>
+        <li>RSVP and reminder flow gets you into the right room early.</li>
+        <li>Check in, react, and help shape the night in real time.</li>
       </ul>
     </aside>
   </section>

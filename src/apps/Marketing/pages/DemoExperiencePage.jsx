@@ -10,14 +10,14 @@ const DEMO_SCENES = [
     mode: "karaoke",
     durationMs: 28000,
     title: "Lyrics lead the room while audience joins in",
-    description: "Karaoke stays front and center: the host keeps lyrics visible while crowd energy rises.",
-    songTitle: "Neon Mic Check",
-    artist: "BeauRocks Demo Band",
+    description: "Karaoke stays front and center with a Sweet Caroline-style singalong moment.",
+    songTitle: "Sweet Caroline",
+    artist: "Classic Singalong (Demo Adaptation)",
     lyrics: [
-      "Mic check one, lights up, voices in tune",
-      "Find your people in the room and sing it soon",
-      "Phones in hand, but eyes up on the stage",
-      "Real world chorus, everyone engaged"
+      "Hands up high now, the whole room sways in time",
+      "Voices rising, every table joins the line",
+      "Call and answer, crowd glow left and right",
+      "Big singalong energy all through the night"
     ],
     hostActions: [
       {
@@ -52,13 +52,13 @@ const DEMO_SCENES = [
     durationMs: 24000,
     title: "Second karaoke pass with call-and-response",
     description: "This shows high-participation karaoke before switching into games.",
-    songTitle: "Crowd Chorus Run",
-    artist: "BeauRocks Demo Band",
+    songTitle: "Sweet Caroline",
+    artist: "Classic Singalong (Demo Adaptation)",
     lyrics: [
-      "Call and response from left to right",
-      "Host keeps cadence, crowd stays tight",
-      "Verse to hook and back again",
-      "Karaoke made social for actual humans"
+      "One more chorus, crowd response in stereo",
+      "Host keeps cadence while the phone reactions grow",
+      "Verse to hook and everybody knows the cue",
+      "Shared room anthem with a modern social view"
     ],
     hostActions: [
       {
@@ -193,19 +193,105 @@ const DEMO_SCENES = [
     ],
   },
   {
+    id: "wyr_split_decision_one",
+    label: "Would You Rather I",
+    mode: "wyr",
+    durationMs: 18000,
+    title: "Would You Rather starts with a fast crowd split",
+    description: "Audience chooses sides live, then the winning side expands on reveal.",
+    songTitle: "Would You Rather Pulse",
+    artist: "BeauRocks Demo Band",
+    hostActions: [
+      {
+        id: "host_wyr_launch_one",
+        at: 0.18,
+        control: "wyr",
+        label: "Host launches Would You Rather",
+        explain: "The question runs while music stays moving so the room never stalls.",
+        result: "Audience picks A or B, then TV reveals the crowd split."
+      },
+      {
+        id: "host_wyr_reveal_one",
+        at: 0.7,
+        control: "wyr",
+        label: "Host reveals the first result",
+        explain: "Reveal phase resolves the question and spotlights the larger side.",
+        result: "Percentages lock in and the room gets instant payoff."
+      }
+    ],
+    wyr: {
+      question: "Would you rather open with a duet or start solo with the crowd singing backup?",
+      optionA: "Open with a duet",
+      optionB: "Start solo, crowd backup",
+      votes: [28, 34],
+      revealAt: 0.62,
+      points: 50,
+      durationSec: 18
+    },
+    reactions: [
+      { type: "vote", label: "Vote", seed: 2 },
+      { type: "party", label: "Party", seed: 1 },
+      { type: "wow", label: "Wow", seed: 1 },
+      { type: "cheer", label: "Cheer", seed: 1 },
+    ],
+  },
+  {
+    id: "wyr_split_decision_two",
+    label: "Would You Rather II",
+    mode: "wyr",
+    durationMs: 18000,
+    title: "Second Would You Rather proves repeatable format",
+    description: "A fresh question shows this can run repeatedly between songs.",
+    songTitle: "Would You Rather Pulse",
+    artist: "BeauRocks Demo Band",
+    hostActions: [
+      {
+        id: "host_wyr_launch_two",
+        at: 0.16,
+        control: "wyr",
+        label: "Host fires a second WYR question",
+        explain: "Running two rounds demonstrates variety, not a one-off gimmick.",
+        result: "Audience re-engages instantly with a new social prompt."
+      },
+      {
+        id: "host_wyr_reveal_two",
+        at: 0.7,
+        control: "wyr",
+        label: "Host resolves the second result",
+        explain: "Resolution keeps pace and closes the question with clarity.",
+        result: "TV shows final split before returning to music-forward flow."
+      }
+    ],
+    wyr: {
+      question: "Would you rather control song order by crowd vote or let the host curate the full set?",
+      optionA: "Crowd votes each round",
+      optionB: "Host curates the full set",
+      votes: [36, 30],
+      revealAt: 0.62,
+      points: 50,
+      durationSec: 18
+    },
+    reactions: [
+      { type: "vote", label: "Vote", seed: 2 },
+      { type: "clap", label: "Clap", seed: 1 },
+      { type: "party", label: "Party", seed: 1 },
+      { type: "cheer", label: "Cheer", seed: 1 },
+    ],
+  },
+  {
     id: "finale_drop",
     label: "Finale Drop",
     mode: "finale",
     durationMs: 24000,
     title: "Back to karaoke for the close",
     description: "Finish with lyrics, crowd effects, and one clear call to join a real room.",
-    songTitle: "Final Chorus",
-    artist: "BeauRocks Demo Band",
+    songTitle: "Sweet Caroline",
+    artist: "Classic Singalong (Demo Adaptation)",
     lyrics: [
-      "Final round, whole room together",
-      "Host and crowd locked in forever",
-      "Find your next night on the map",
-      "Then join the room and run it back"
+      "Final round now, everybody lean in close",
+      "Host and audience lock into the biggest moment",
+      "Find your next night and bring your whole crew back",
+      "Sing it louder, then run that room right back"
     ],
     hostActions: [
       {
@@ -230,7 +316,7 @@ const DEMO_SCENES = [
 const DEMO_TOTAL_MS = DEMO_SCENES.reduce((sum, scene) => sum + scene.durationMs, 0);
 const DEMO_ROOM_STORAGE_KEY = "mk_demo_room_code_v2";
 const DEMO_DEFAULT_LYRICS = [
-  "Karaoke, but finally built for actual humans",
+  "Sweet Caroline singalong demo adaptation",
   "Find each other, then sing together in real rooms"
 ];
 const HOST_CONTROL_BUTTONS = Object.freeze([
@@ -239,6 +325,7 @@ const HOST_CONTROL_BUTTONS = Object.freeze([
   { id: "guitar", label: "Guitar", icon: "fa-guitar", sceneId: "guitar_vibe_sync" },
   { id: "vocal", label: "Vocal Game", icon: "fa-wave-square", sceneId: "vocal_game_challenge" },
   { id: "trivia", label: "Trivia", icon: "fa-circle-question", sceneId: "trivia_showdown" },
+  { id: "wyr", label: "Would You Rather", icon: "fa-left-right", sceneId: "wyr_split_decision_one" },
   { id: "finale", label: "Finale", icon: "fa-bolt", sceneId: "finale_drop" },
   { id: "wave", label: "Wave", icon: "fa-water", sceneId: "karaoke_kickoff" },
   { id: "echo", label: "Echo", icon: "fa-circle-notch", sceneId: "karaoke_singalong" },
@@ -349,8 +436,8 @@ const DemoExperiencePage = () => {
   const [loopPlayback, setLoopPlayback] = useState(true);
   const [roomCode, setRoomCode] = useState(() => getInitialDemoRoomCode());
   const [liveSync, setLiveSync] = useState(true);
-  const [autoPauseCues, setAutoPauseCues] = useState(true);
-  const [audioBedEnabled, setAudioBedEnabled] = useState(false);
+  const [autoPauseCues, setAutoPauseCues] = useState(false);
+  const [audioBedEnabled, setAudioBedEnabled] = useState(true);
   const [beatPulseTick, setBeatPulseTick] = useState(0);
   const [surfaceReloadToken, setSurfaceReloadToken] = useState(0);
   const [syncState, setSyncState] = useState({ tone: "muted", message: "Scripted sync warming up." });
@@ -440,6 +527,7 @@ const DemoExperiencePage = () => {
     if (mode === "guitar") return "Guitar Vibe Sync";
     if (mode === "vocal") return "Vocal Game";
     if (mode === "trivia") return "Trivia";
+    if (mode === "wyr") return "Would You Rather";
     if (mode === "finale") return "Finale";
     return "Karaoke";
   }, [activeScene]);
@@ -464,6 +552,37 @@ const DemoExperiencePage = () => {
       status: reveal ? "reveal" : "live",
       votes,
       questionId: `trivia_${Math.floor(activeScene.startMs / 1000)}`,
+    };
+  }, [activeScene, sceneProgress]);
+
+  const wyrModel = useMemo(() => {
+    if (activeScene.mode !== "wyr") return null;
+    const model = activeScene.wyr || {
+      question: "Would you rather warm up with a duet or a group chorus?",
+      optionA: "Duet",
+      optionB: "Group chorus",
+      votes: [14, 16],
+      revealAt: 0.62,
+      points: 50,
+      durationSec: 18
+    };
+    const revealAt = clampNumber(model.revealAt ?? 0.62, 0.5, 0.95, 0.62);
+    const reveal = sceneProgress >= revealAt;
+    const targetVotes = Array.isArray(model.votes) ? model.votes : [12, 10];
+    const votes = [0, 1].map((index) => {
+      const baseVotes = Number(targetVotes[index] || 0);
+      const scaled = Math.round(baseVotes * (0.35 + (sceneProgress * 0.65)));
+      return Math.max(0, scaled);
+    });
+    return {
+      question: String(model.question || "").trim(),
+      optionA: String(model.optionA || "Option A").trim(),
+      optionB: String(model.optionB || "Option B").trim(),
+      status: reveal ? "reveal" : "live",
+      votes,
+      questionId: `wyr_${Math.floor(activeScene.startMs / 1000)}`,
+      points: clampNumber(model.points ?? 50, 10, 250, 50),
+      durationSec: clampNumber(model.durationSec ?? 18, 8, 90, 18),
     };
   }, [activeScene, sceneProgress]);
 
@@ -516,6 +635,7 @@ const DemoExperiencePage = () => {
     crowdSize,
     reactionEvents,
     triviaModel,
+    wyrModel,
     playing,
     roomCode: sanitizedRoomCode,
   };
@@ -567,6 +687,18 @@ const DemoExperiencePage = () => {
             questionId: snapshot.triviaModel.questionId,
             points: 100,
             durationSec: 22,
+          }
+          : null,
+        wyr: snapshot.wyrModel
+          ? {
+            question: snapshot.wyrModel.question,
+            optionA: snapshot.wyrModel.optionA,
+            optionB: snapshot.wyrModel.optionB,
+            status: snapshot.wyrModel.status,
+            votes: snapshot.wyrModel.votes,
+            questionId: snapshot.wyrModel.questionId,
+            points: snapshot.wyrModel.points,
+            durationSec: snapshot.wyrModel.durationSec,
           }
           : null,
         ...(overrides && typeof overrides === "object" ? overrides : {}),
@@ -665,8 +797,8 @@ const DemoExperiencePage = () => {
     const oscillator = context.createOscillator();
     const gain = context.createGain();
     const mode = String(activeScene?.mode || "karaoke").toLowerCase();
-    oscillator.type = mode === "trivia" ? "triangle" : "sine";
-    oscillator.frequency.setValueAtTime(mode === "guitar" ? 196 : mode === "vocal" ? 247 : 220, now);
+    oscillator.type = mode === "trivia" || mode === "wyr" ? "triangle" : "sine";
+    oscillator.frequency.setValueAtTime(mode === "guitar" ? 196 : mode === "vocal" ? 247 : mode === "wyr" ? 262 : 220, now);
     gain.gain.setValueAtTime(0.0001, now);
     gain.gain.exponentialRampToValueAtTime(mode === "finale" ? 0.08 : 0.055, now + 0.012);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
@@ -680,7 +812,7 @@ const DemoExperiencePage = () => {
     const ambienceNode = ambienceAudioRef.current;
     if (!ambienceNode) return;
     const mode = String(activeScene?.mode || "karaoke").toLowerCase();
-    ambienceNode.volume = mode === "trivia" ? 0.08 : mode === "guitar" ? 0.16 : 0.12;
+    ambienceNode.volume = mode === "trivia" ? 0.08 : mode === "wyr" ? 0.09 : mode === "guitar" ? 0.16 : 0.12;
     if (!audioBedEnabled) {
       ambienceNode.pause();
       ambienceNode.currentTime = 0;
@@ -696,7 +828,7 @@ const DemoExperiencePage = () => {
     }
     if (!audioBedEnabled) return () => {};
     const mode = String(activeScene?.mode || "karaoke").toLowerCase();
-    const bpm = mode === "trivia" ? 108 : mode === "guitar" ? 132 : mode === "vocal" ? 122 : mode === "finale" ? 136 : 118;
+    const bpm = mode === "trivia" ? 108 : mode === "wyr" ? 112 : mode === "guitar" ? 132 : mode === "vocal" ? 122 : mode === "finale" ? 136 : 118;
     const intervalMs = Math.max(260, Math.round(60000 / bpm));
     const tick = () => {
       setBeatPulseTick((prev) => prev + 1);
@@ -740,7 +872,7 @@ const DemoExperiencePage = () => {
         <h2>One room, three synced surfaces</h2>
         <p>
           BeauRocks ties the Public TV, Audience phone view, and Host deck into one shared karaoke flow.
-          The scripted run below starts with karaoke, moves through game moments, then lands on a sing-along finale.
+          The scripted run below starts with karaoke, moves through game moments, includes two Would You Rather rounds with reveals, then lands on a sing-along finale.
         </p>
         <div className="mk3-demo-overview-grid">
           <article>
@@ -761,7 +893,7 @@ const DemoExperiencePage = () => {
         </div>
         <div className="mk3-demo-overview-flow">
           <span>Demo flow</span>
-          <strong>Karaoke kickoff, guitar vibe sync, vocal game plus trivia, then finale chorus.</strong>
+          <strong>Karaoke kickoff, guitar vibe sync, vocal game, trivia, two Would You Rather reveals, then finale chorus.</strong>
           <p>Use the controls below to play, pause, scrub the timeline, or jump directly to any scene.</p>
         </div>
       </article>
@@ -909,6 +1041,7 @@ const DemoExperiencePage = () => {
                 {activeScene.mode === "guitar" && "Solo mode: audience strums drive sync meter."}
                 {activeScene.mode === "vocal" && "Vocal game: timing + pitch challenge runs between songs."}
                 {activeScene.mode === "trivia" && "Trivia mode: votes in real-time, reveal on countdown."}
+                {activeScene.mode === "wyr" && "Would You Rather: live A/B voting with automatic reveal and crowd split."}
                 {activeScene.mode === "karaoke" && "Karaoke first: lyrics stay dominant so anyone can jump in."}
                 {activeScene.mode === "finale" && "Finale: return to karaoke hook with full crowd effects."}
               </div>
@@ -963,9 +1096,10 @@ const DemoExperiencePage = () => {
                 <span><i className="fa-solid fa-wifi" /> Sync {liveSync ? "On" : "Off"}</span>
               </div>
               <div className="mk3-demo-host-controls">
-                {HOST_CONTROL_BUTTONS.slice(0, 6).map((control) => {
+                {HOST_CONTROL_BUTTONS.slice(0, 7).map((control) => {
                   const isActive = highlightedHostControl === control.id
                     || (control.id === "karaoke" && activeScene.mode === "karaoke")
+                    || (control.id === "wyr" && activeScene.mode === "wyr")
                     || (control.id === "finale" && activeScene.mode === "finale");
                   return (
                     <button
@@ -991,7 +1125,7 @@ const DemoExperiencePage = () => {
                 </div>
               </div>
               <div className="mk3-demo-host-actions-mini">
-                {HOST_CONTROL_BUTTONS.slice(6).map((control) => {
+                {HOST_CONTROL_BUTTONS.slice(7).map((control) => {
                   const isActive = highlightedHostControl === control.id;
                   return (
                     <span key={control.id} className={isActive ? "active" : ""}>
@@ -1012,7 +1146,7 @@ const DemoExperiencePage = () => {
 
       <article className="mk3-demo-launch">
         <h3>Launch Real Surfaces From This Room Code</h3>
-        <p>Runs a preset multi-surface flow with karaoke first, game moments in sequence, and host tutorial checkpoints you can scrub and pause.</p>
+        <p>Runs an ambient multi-surface loop with karaoke first, game moments in sequence, two Would You Rather resolutions, and a finale reset.</p>
         <div className={`mk3-inline-status ${syncState.tone === "error" ? "mk3-status-error" : syncState.tone === "ok" ? "mk3-inline-next" : ""}`}>
           {syncState.message}
         </div>

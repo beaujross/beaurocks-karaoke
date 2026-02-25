@@ -7,8 +7,8 @@ const ForPerformersPage = ({ navigate, session, authFlow }) => {
   <section className="mk3-page mk3-two-col">
     <article className="mk3-detail-card">
       <div className="mk3-chip">for performers</div>
-      <h2>Find better nights, sing more, track the fun.</h2>
-      <p>Follow hosts, RSVP fast, and keep your performance history in one place without spreadsheet energy.</p>
+      <h2>Find high-energy rooms and build your legend.</h2>
+      <p>Follow standout hosts, RSVP fast, and track your karaoke story in one place without the spreadsheet chaos.</p>
       <div className="mk3-actions-inline">
         <button
           type="button"
@@ -17,7 +17,7 @@ const ForPerformersPage = ({ navigate, session, authFlow }) => {
             navigate("discover");
           }}
         >
-          Find Nights
+          Find Spotlight Nights
         </button>
         {canUseDashboard ? (
           <button
@@ -27,7 +27,7 @@ const ForPerformersPage = ({ navigate, session, authFlow }) => {
               navigate("profile");
             }}
           >
-            Open Dashboard
+            Open Performer Dashboard
           </button>
         ) : (
           <button
@@ -39,17 +39,17 @@ const ForPerformersPage = ({ navigate, session, authFlow }) => {
               returnRoute: { page: "profile" },
             })}
           >
-            Create Account To Track History
+            Create Account To Build Profile
           </button>
         )}
       </div>
     </article>
     <aside className="mk3-actions-card">
-      <h4>Performer Path</h4>
+      <h4>Performer Spotlight Path</h4>
       <ul className="mk3-plain-list">
-        <li>Discover by city, timing, and vibe.</li>
-        <li>RSVP and reminder flow for upcoming sessions.</li>
-        <li>See recent songs plus your top venues and hosts.</li>
+        <li>Discover rooms by city, timing, and host energy.</li>
+        <li>Use RSVP and reminders to stay consistent.</li>
+        <li>Track recent songs plus your top venues and hosts.</li>
       </ul>
     </aside>
   </section>

@@ -72,7 +72,7 @@ const buildRouteSeo = (route = {}) => {
   if (page === MARKETING_ROUTE_PAGES.discover) {
     return {
       title: "Setlist Karaoke Finder | BeauRocks Karaoke",
-      description: "Use BeauRocks Karaoke Setlist to find public karaoke nights by city, host, venue, and time window.",
+      description: "Find premium karaoke nights by city, host, venue, and time window using the BeauRocks Setlist Finder.",
       robots: "index,follow",
       structuredData: { "@context": "https://schema.org", "@type": "CollectionPage", name: "BeauRocks Karaoke Setlist Finder" },
     };
@@ -80,7 +80,7 @@ const buildRouteSeo = (route = {}) => {
   if (page === MARKETING_ROUTE_PAGES.demo) {
     return {
       title: "Live Demo Arena | BeauRocks Karaoke",
-      description: "Watch a scripted TV, audience, and host walkthrough with reactions, vibe-sync guitar mode, and trivia.",
+      description: "Watch TV, audience, and host surfaces run in sync through karaoke, game modes, and live crowd interaction.",
       robots: "index,follow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Live Demo Arena" },
     };
@@ -88,7 +88,7 @@ const buildRouteSeo = (route = {}) => {
   if (page === MARKETING_ROUTE_PAGES.hostAccess) {
     return {
       title: "Host Access | BeauRocks Karaoke",
-      description: "Private test host sign in, account setup, and invite code access.",
+      description: "Founding host access for invite-only pilot onboarding, account setup, and secure unlock code entry.",
       robots: "noindex,nofollow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Host Access" },
     };
@@ -96,7 +96,7 @@ const buildRouteSeo = (route = {}) => {
   if (page === MARKETING_ROUTE_PAGES.forHosts) {
     return {
       title: "For Hosts | BeauRocks Karaoke",
-      description: "Create private room sessions or public discoverable events and grow repeat attendance.",
+      description: "Run premium karaoke nights with synced host, TV, and audience surfaces that turn one-offs into signature events.",
       robots: "index,follow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "For Hosts" },
     };
@@ -104,7 +104,7 @@ const buildRouteSeo = (route = {}) => {
   if (page === MARKETING_ROUTE_PAGES.forVenues) {
     return {
       title: "For Venues | BeauRocks Karaoke",
-      description: "Claim your venue listing and publish recurring karaoke cadence updates.",
+      description: "Claim your venue profile, publish recurring cadence updates, and become a destination for premium karaoke nights.",
       robots: "index,follow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "For Venues" },
     };
@@ -112,7 +112,7 @@ const buildRouteSeo = (route = {}) => {
   if (page === MARKETING_ROUTE_PAGES.forPerformers) {
     return {
       title: "For Performers | BeauRocks Karaoke",
-      description: "Find events, RSVP, and track your karaoke performance history in one profile.",
+      description: "Find standout rooms, RSVP quickly, and track your performer history in one profile.",
       robots: "index,follow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "For Performers" },
     };
@@ -120,7 +120,7 @@ const buildRouteSeo = (route = {}) => {
   if (page === MARKETING_ROUTE_PAGES.forFans) {
     return {
       title: "For Fans | BeauRocks Karaoke",
-      description: "Browse nearby karaoke events and get reminders before showtime.",
+      description: "Discover premium karaoke nights nearby and join a more social, interactive room experience.",
       robots: "index,follow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "For Fans" },
     };
@@ -213,7 +213,7 @@ const buildRouteSeo = (route = {}) => {
   }
   return {
     title: "BeauRocks Karaoke",
-    description: "Discover karaoke events, venues, hosts, and performers.",
+    description: "Premium karaoke technology for hosts who want unforgettable rooms and stronger real-world connection.",
     robots: "index,follow",
     structuredData: { "@context": "https://schema.org", "@type": "WebSite", name: "BeauRocks Karaoke" },
   };

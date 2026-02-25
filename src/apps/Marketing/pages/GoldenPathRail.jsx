@@ -12,7 +12,7 @@ const GoldenPathRail = ({ navigate, muted = false }) => (
         navigate(MARKETING_ROUTE_PAGES.forHosts);
       }}
     >
-      Host
+      Host Crown
     </button>
     <button
       type="button"
@@ -22,7 +22,7 @@ const GoldenPathRail = ({ navigate, muted = false }) => (
         navigate(MARKETING_ROUTE_PAGES.forVenues);
       }}
     >
-      Venue Owner
+      Venue Prestige
     </button>
     <button
       type="button"
@@ -32,7 +32,7 @@ const GoldenPathRail = ({ navigate, muted = false }) => (
         navigate(MARKETING_ROUTE_PAGES.forPerformers);
       }}
     >
-      Performer
+      Performer Spotlight
     </button>
     <button
       type="button"
@@ -42,7 +42,7 @@ const GoldenPathRail = ({ navigate, muted = false }) => (
         navigate(MARKETING_ROUTE_PAGES.forFans);
       }}
     >
-      Fan
+      Guest Pass
     </button>
     <button
       type="button"
@@ -52,7 +52,7 @@ const GoldenPathRail = ({ navigate, muted = false }) => (
         navigate(MARKETING_ROUTE_PAGES.demo);
       }}
     >
-      Try Demo
+      Live Demo
     </button>
     <button
       type="button"
@@ -62,7 +62,7 @@ const GoldenPathRail = ({ navigate, muted = false }) => (
         navigate(MARKETING_ROUTE_PAGES.join);
       }}
     >
-      Join by Code
+      Invite Code
     </button>
   </aside>
 );

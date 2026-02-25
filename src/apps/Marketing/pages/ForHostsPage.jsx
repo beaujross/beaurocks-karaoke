@@ -74,10 +74,10 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-chip">for hosts</div>
-        <h2>Turn karaoke nights into meaningful moments.</h2>
+        <h2>Run the night everyone remembers.</h2>
         <p>
-          Home parties, venue nights, fundraisers, and community events all need the same thing: real connection.
-          BeauRocks helps hosts run smoother rooms and create nights people remember.
+          Home parties, venue nights, fundraisers, and community events all need one thing: a host who can command the room.
+          BeauRocks gives you premium control across TV, audience, and host surfaces so you can feel like the king or queen of karaoke night.
         </p>
         <div className="mk3-actions-inline">
           {canSubmit ? (
@@ -88,7 +88,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
                 navigate("submit");
               }}
             >
-              Create Event Or Session
+              Launch Host Setup
             </button>
           ) : (
             <button
@@ -100,7 +100,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
                 returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "event" } },
               })}
             >
-              Create Account To Host
+              Create Host Account
             </button>
           )}
           <button
@@ -110,12 +110,12 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
               navigate("discover");
             }}
           >
-            Open Finder Mode
+            Review Live Market
           </button>
         </div>
         {canSubmit && (
         <form className="mk3-actions-block" onSubmit={submitPrivateSession}>
-          <h3>Host Quick Start</h3>
+          <h3>Quick Room Launch</h3>
           <label>
             Room Code
             <input
@@ -150,7 +150,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
             />
           </label>
           <button type="submit" disabled={busy}>
-            {busy ? "Creating..." : "Create Private Session"}
+            {busy ? "Creating..." : "Create Private Room"}
           </button>
           {!!status && <div className="mk3-status">{status}</div>}
           {!!nextStep && (
@@ -162,7 +162,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
         )}
         {!canSubmit && (
           <div className="mk3-actions-block">
-            <div className="mk3-status">Create an account to unlock host quick start.</div>
+            <div className="mk3-status">Create an account to unlock room launch.</div>
             <button
               type="button"
               onClick={() => authFlow?.requireFullAuth?.({
@@ -178,20 +178,20 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
                 },
               })}
             >
-              Create Account To Start A Private Session
+              Create Account To Launch
             </button>
           </div>
         )}
       </article>
       <aside className="mk3-actions-card">
-        <h4>Host Growth Path</h4>
+        <h4>Host Crown Path</h4>
         <ul className="mk3-plain-list">
-          <li>Pick private-room pilots or public listing flow.</li>
-          <li>Run nights with less dead air and clearer crowd participation.</li>
-          <li>Turn one-off events into repeat community nights.</li>
+          <li>Choose private pilot rooms or public listing growth.</li>
+          <li>Run cleaner flow with less dead air and stronger crowd response.</li>
+          <li>Turn one-off parties into recurring signature nights.</li>
         </ul>
         {!canSubmit && (
-          <div className="mk3-status">Create an account to create and manage your nights.</div>
+          <div className="mk3-status">Create an account to run and manage your nights.</div>
         )}
       </aside>
     </section>
