@@ -3543,6 +3543,12 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                 mediaUrl: stageMediaUrl,
                 appleMusicId: s?.appleMusicId
             });
+            const roomSnapshot = roomRef.current || room || {};
+            const stageDisplayFlags = {
+                showLyricsTv: !!roomSnapshot?.showLyricsTv,
+                showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
+                showLyricsSinger: !!roomSnapshot?.showLyricsSinger
+            };
             const songMediaUrl = effectiveBacking.mediaUrl;
             const useAppleBacking = effectiveBacking.usesAppleBacking;
             const autoStartMedia = !!(room?.autoPlayMedia !== false) && !!(songMediaUrl || useAppleBacking);
@@ -3556,9 +3562,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                     videoPlaying: false,
                     videoStartTimestamp: null,
                     videoVolume: 100,
-                    showLyricsTv: false,
-                    showVisualizerTv: false,
-                    showLyricsSinger: false
+                    ...stageDisplayFlags
                 });
             } else {
                 await stopAppleMusic?.();
@@ -3570,9 +3574,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                     videoPlaying: autoStartMedia && !!songMediaUrl,
                     videoStartTimestamp: autoStartMedia ? nowMs() : null,
                     videoVolume: 100,
-                    showLyricsTv: false,
-                    showVisualizerTv: false,
-                    showLyricsSinger: false,
+                    ...stageDisplayFlags,
                     appleMusicPlayback: null
                 });
             }
@@ -6131,6 +6133,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const nextMediaUrl = queuePlayback.mediaUrl;
         const useAppleBacking = queuePlayback.usesAppleBacking;
         const autoStartMedia = queuePlayback.autoStartMedia;
+        const stageDisplayFlags = {
+            showLyricsTv: !!activeRoom?.showLyricsTv,
+            showVisualizerTv: !!activeRoom?.showVisualizerTv,
+            showLyricsSinger: !!activeRoom?.showLyricsSinger
+        };
         if (useAppleBacking && autoStartMedia) {
             await playAppleMusicTrack(next.appleMusicId, { title: next.songTitle, artist: next.artist });
             await updateRoom({
@@ -6141,9 +6148,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 videoPlaying: false,
                 videoStartTimestamp: null,
                 videoVolume: 100,
-                showLyricsTv: false,
-                showVisualizerTv: false,
-                showLyricsSinger: false
+                ...stageDisplayFlags
             });
         } else {
             await stopAppleMusic();
@@ -6155,9 +6160,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 videoPlaying: autoStartMedia && !!nextMediaUrl,
                 videoStartTimestamp: autoStartMedia ? nowMs() : null,
                 videoVolume: 100,
-                showLyricsTv: false,
-                showVisualizerTv: false,
-                showLyricsSinger: false,
+                ...stageDisplayFlags,
                 appleMusicPlayback: null
             });
         }
@@ -8248,6 +8251,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const nextMediaUrl = queuePlayback.mediaUrl;
         const useAppleBacking = queuePlayback.usesAppleBacking;
         const autoStartMedia = queuePlayback.autoStartMedia;
+        const stageDisplayFlags = {
+            showLyricsTv: !!roomSnapshot?.showLyricsTv,
+            showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
+            showLyricsSinger: !!roomSnapshot?.showLyricsSinger
+        };
         if (useAppleBacking && autoStartMedia) {
             await playAppleMusicTrack(song.appleMusicId, { title: song.songTitle, artist: song.artist });
             await updateRoom({
@@ -8258,9 +8266,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 videoPlaying: false,
                 videoStartTimestamp: null,
                 videoVolume: 100,
-                showLyricsTv: false,
-                showVisualizerTv: false,
-                showLyricsSinger: false
+                ...stageDisplayFlags
             });
         } else {
             await stopAppleMusic();
@@ -8272,9 +8278,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 videoPlaying: autoStartMedia && !!nextMediaUrl,
                 videoStartTimestamp: autoStartMedia ? nowMs() : null,
                 videoVolume: 100,
-                showLyricsTv: false,
-                showVisualizerTv: false,
-                showLyricsSinger: false,
+                ...stageDisplayFlags,
                 appleMusicPlayback: null
             });
         }

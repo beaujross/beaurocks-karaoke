@@ -42,6 +42,27 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
     const velocityRef = useRef(0);
     const lastFlapRef = useRef(0);
     const prevVolRef = useRef(0);
+    const voiceGateRef = useRef(false);
+
+    const triggerFlap = () => {
+        if (!isController || gameStateLocal === 'gameover') return;
+        const now = performance.now();
+        if (now - lastFlapRef.current < 110) return;
+        velocityRef.current = -3.8;
+        lastFlapRef.current = now;
+    };
+
+    useEffect(() => {
+        if (!isController) return undefined;
+        const handleKeyDown = (event) => {
+            if (event.code !== 'Space' && event.code !== 'ArrowUp' && event.code !== 'KeyW') return;
+            event.preventDefault();
+            if (gameStateLocal === 'ready') setGameStateLocal('playing');
+            triggerFlap();
+        };
+        window.addEventListener('keydown', handleKeyDown, { passive: false });
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isController, gameStateLocal]);
 
     useEffect(() => {
         if (!isController || gameStateLocal !== 'ready' || !startsPlaying) return;
@@ -143,11 +164,18 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
             const vol = voice.volumeNormalized || 0;
             const delta = vol - prevVolRef.current;
             prevVolRef.current = vol;
-            const isSpike = delta >= 0.3;
             const canFlap = now - lastFlapRef.current > 200;
-            if (voice.isSinging && isSpike && canFlap) {
+            const crossedHigh = voice.isSinging && vol >= 0.52 && !voiceGateRef.current;
+            const voiceSpike = voice.isSinging && delta >= 0.22;
+            if (voice.isSinging && vol <= 0.32) {
+                voiceGateRef.current = false;
+            } else if (!voice.isSinging && vol < 0.2) {
+                voiceGateRef.current = false;
+            }
+            if ((crossedHigh || voiceSpike) && canFlap) {
                 velocityRef.current = -3.8;
                 lastFlapRef.current = now;
+                voiceGateRef.current = true;
             }
             velocityRef.current = clamp(velocityRef.current + 0.32, -4, 4);
             let targetY = birdYRef.current + velocityRef.current;
@@ -224,8 +252,29 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
         return () => cancelAnimationFrame(raf);
     }, [gameStateLocal, isController, invincible, onGameOver]);
 
+    const spectatorMessage = (() => {
+        if (view === 'mobile' && isRoomControlled) {
+            return 'Crowd mic mode is running. Bird control is on Public TV. Ask host for Solo Flappy to control from your phone.';
+        }
+        if (view === 'mobile' && !isRoomControlled) {
+            return `Waiting for ${data.playerName || 'the active player'} to play.`;
+        }
+        return 'WATCHING LIVE FEED';
+    })();
+
+    const handleControlSurfaceTap = (event) => {
+        if (!isController || gameStateLocal === 'gameover') return;
+        const tag = String(event?.target?.tagName || '').toLowerCase();
+        if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea') return;
+        if (gameStateLocal === 'ready') setGameStateLocal('playing');
+        triggerFlap();
+    };
+
     return ( 
-        <div className="relative w-full h-full bg-cyan-900 overflow-hidden font-pixel"> 
+        <div
+            className="relative w-full h-full bg-cyan-900 overflow-hidden font-pixel"
+            onPointerDown={handleControlSurfaceTap}
+        > 
             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-20 scrolling-bg-slow"></div> 
             <div className="absolute inset-0 flex flex-col justify-evenly opacity-30 pointer-events-none">
                 {[1,2,3,4,5].map(i => <div key={i} className="w-full h-0.5 bg-white shadow-[0_0_10px_white]"></div>)}
@@ -252,15 +301,22 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
             {coins.map(c => (<div key={c.id} className="absolute text-3xl animate-spin" style={{left: `${c.x}%`, top: `${c.y}%`}}>{EMOJI.coin}</div>))} 
             
             {/* Screens */}
-            {!isController && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="text-white/50 animate-pulse text-xl">WATCHING LIVE FEED</div></div>} 
+            {!isController && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-6">
+                    <div className="max-w-2xl text-white/80 bg-black/45 border border-white/15 rounded-2xl px-5 py-4 text-center">
+                        {view === 'tv'
+                            ? <div className="text-xl animate-pulse">{spectatorMessage}</div>
+                            : <div className="text-sm md:text-base">{spectatorMessage}</div>}
+                    </div>
+                </div>
+            )} 
             
             {isController && gameStateLocal === 'ready' && (
                 <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50 text-center p-4">
-                    <h1 className="text-4xl text-yellow-400 mb-4">VOICE CONTROL</h1>
-                    <p>Sing HIGH = Fly Up</p>
-                    <p>Sing LOW = Fly Down</p>
-                    <p>LOUD = Shield</p>
-                    <p>STEADY NOTE = Bonus Coins</p>
+                    <h1 className="text-4xl text-yellow-400 mb-4">{isRoomControlled ? 'CROWD MIC CONTROL' : 'SOLO CONTROL'}</h1>
+                    <p>Make quick loud bursts to flap up.</p>
+                    <p>Hold a strong steady tone for shield assist.</p>
+                    <p>{view === 'tv' ? 'Click or press Space to flap at any time.' : 'Tap screen to flap at any time.'}</p>
                     <button onClick={()=>setGameStateLocal('playing')} className="bg-green-600 px-8 py-4 rounded text-white font-bold animate-bounce mt-4 text-2xl">START</button>
                 </div>
             )} 
@@ -281,6 +337,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
                 stableNote={isController ? stableNote : remoteVoice.stableNote}
                 stability={isController ? stability : remoteVoice.stability}
                 calibrating={isController ? calibrating : remoteVoice.calibrating}
+                view={view}
             />
         </div> 
     );

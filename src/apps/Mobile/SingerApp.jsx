@@ -165,6 +165,7 @@ const formatLobbyInteractionImpact = (interactionId = '') => {
 const LOBBY_PLAYGROUND_WINDOW_MS = 60 * 1000;
 const LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE = 12;
 let singerCatalogPermissionSkipLogged = false;
+let singerCatalogWriteEnabled = true;
 
 const timestampToMs = (value) => {
     if (!value) return 0;
@@ -3417,8 +3418,28 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const uploadSelfieBlob = async (blob, suffix = 'selfie') => {
         if (!blob || !roomCode) throw new Error('Missing selfie payload');
-        const safeUid = (auth?.currentUser?.uid || uid || user?.uid || 'guest').trim() || 'guest';
-        const storagePath = `room_photos/${roomCode}/${safeUid}/${Date.now()}_${suffix}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+        const authUid = String(auth?.currentUser?.uid || '').trim();
+        if (!authUid) {
+            const err = new Error('Sign in required for photo upload');
+            err.code = 'auth/missing';
+            throw err;
+        }
+        const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${authUid}`);
+        const roomUserSnap = await getDoc(roomUserRef);
+        if (!roomUserSnap.exists()) {
+            await setDoc(roomUserRef, {
+                uid: authUid,
+                roomCode,
+                name: user?.name || form.name || 'Guest',
+                avatar: user?.avatar || form.emoji || DEFAULT_EMOJI,
+                isVip: !!(user?.isVip || profile?.isVip || (profile?.vipLevel || 0) > 0),
+                vipLevel: Math.max(0, Number(profile?.vipLevel || user?.vipLevel || 0)),
+                fameLevel: Math.max(0, Number(profile?.currentLevel || user?.fameLevel || 0)),
+                totalFamePoints: Math.max(0, Number(profile?.totalFamePoints || user?.totalFamePoints || 0)),
+                lastActiveAt: serverTimestamp()
+            }, { merge: true });
+        }
+        const storagePath = `room_photos/${roomCode}/${authUid}/${Date.now()}_${suffix}_${Math.random().toString(36).slice(2, 8)}.jpg`;
         const fileRef = storageRef(storage, storagePath);
         const task = uploadBytesResumable(fileRef, blob, { contentType: 'image/jpeg' });
         await new Promise((resolve, reject) => {
@@ -3445,6 +3466,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const resolveSelfieErrorMessage = (error, fallback = 'Selfie upload failed') => {
         const code = String(error?.code || '').toLowerCase();
         const message = String(error?.message || '').toLowerCase();
+        if (code.includes('auth/missing') || code.includes('auth') || message.includes('sign in')) {
+            return 'Session expired. Refresh and rejoin the room, then try again.';
+        }
         if (code.includes('storage/unauthorized') || message.includes('403')) {
             return 'Photo upload blocked by storage permissions. Host should deploy updated storage rules.';
         }
@@ -3781,24 +3805,27 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
 
             let songId = buildSongKey(song, artist || 'Unknown');
-            try {
-                const songRecord = await ensureSong({
-                    title: song,
-                    artist: artist || 'Unknown',
-                    artworkUrl: artwork || '',
-                    itunesId: options.itunesId || ''
-                });
-                songId = songRecord?.songId || songId;
-            } catch (catalogError) {
-                if (isCatalogPermissionDeniedError(catalogError)) {
-                    logSingerCatalogPermissionSkip('ensureSong');
-                } else {
-                    console.warn('Singer ensureSong failed', catalogError);
+            if (singerCatalogWriteEnabled) {
+                try {
+                    const songRecord = await ensureSong({
+                        title: song,
+                        artist: artist || 'Unknown',
+                        artworkUrl: artwork || '',
+                        itunesId: options.itunesId || ''
+                    });
+                    songId = songRecord?.songId || songId;
+                } catch (catalogError) {
+                    if (isCatalogPermissionDeniedError(catalogError)) {
+                        singerCatalogWriteEnabled = false;
+                        logSingerCatalogPermissionSkip('ensureSong');
+                    } else {
+                        console.warn('Singer ensureSong failed', catalogError);
+                    }
                 }
             }
 
             let trackRecord = null;
-            if (backingUrl) {
+            if (backingUrl && singerCatalogWriteEnabled) {
                 try {
                     trackRecord = await ensureTrack({
                         songId: songId || '',
@@ -3809,6 +3836,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     });
                 } catch (catalogError) {
                     if (isCatalogPermissionDeniedError(catalogError)) {
+                        singerCatalogWriteEnabled = false;
                         logSingerCatalogPermissionSkip('ensureTrack');
                     } else {
                         console.warn('Singer ensureTrack failed', catalogError);

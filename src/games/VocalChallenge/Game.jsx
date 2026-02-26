@@ -26,6 +26,7 @@ const NOTE_Y = {
 };
 
 const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+const centsBetween = (freqA, freqB) => (freqA > 0 && freqB > 0 ? (1200 * Math.log2(freqA / freqB)) : 9999);
 
 const difficultyConfig = (difficulty) => {
     if (difficulty === 'easy') {
@@ -67,7 +68,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     const [remoteVoice, setRemoteVoice] = useState({ note: '-', confidence: 0, volumeNormalized: 0, stableNote: '-', stability: 0 });
 
     const stateRef = useRef(null);
-    const matchRef = useRef({ note: '-', since: 0 });
+    const matchRef = useRef({ note: '-', quality: 'none', since: 0 });
     const rewardRef = useRef(false);
     const endRef = useRef(false);
     const advanceRef = useRef(false);
@@ -160,22 +161,44 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                 }
 
                 const targetNote = state.sequence[state.targetIndex];
-                const isMatch = isSinging &&
-                    displayNote === targetNote &&
-                    confidence >= minConfidence &&
-                    stability >= minStability;
+                const targetFreq = NOTE_FREQ[targetNote] || 0;
+                const centsOff = targetFreq ? centsBetween(pitch || 0, targetFreq) : 9999;
+                const inTune = Math.abs(centsOff) <= 95;
+                const nearTune = Math.abs(centsOff) <= 160;
+                const exactNote = (displayNote === targetNote) || (stableNote === targetNote);
+                const relaxedConfidence = Math.max(0.42, minConfidence - 0.18);
+                const relaxedStability = Math.max(0.32, minStability - 0.22);
+                const nearConfidence = Math.max(0.32, relaxedConfidence - 0.1);
+                const nearStability = Math.max(0.18, relaxedStability - 0.12);
+                const fullMatch = isSinging
+                    && confidence >= relaxedConfidence
+                    && stability >= relaxedStability
+                    && (exactNote || inTune);
+                const nearMatch = !fullMatch
+                    && isSinging
+                    && confidence >= nearConfidence
+                    && stability >= nearStability
+                    && nearTune;
+                const matchQuality = fullMatch ? 'full' : (nearMatch ? 'near' : 'none');
+                const requiredHoldMs = matchQuality === 'full' ? holdMs : Math.round(holdMs * 1.3);
 
-                if (isMatch) {
-                    if (matchRef.current.note !== targetNote) {
-                        matchRef.current = { note: targetNote, since: now };
-                    } else if (now - matchRef.current.since >= holdMs) {
-                        state.streak = (state.streak || 0) + 1;
-                        const bonus = Math.min(50, state.streak * 6);
-                        state.score = (state.score || 0) + 25 + bonus;
-                        matchRef.current = { note: '-', since: 0 };
+                if (matchQuality !== 'none') {
+                    if (matchRef.current.note !== targetNote || matchRef.current.quality !== matchQuality) {
+                        matchRef.current = { note: targetNote, quality: matchQuality, since: now };
+                    } else if (now - matchRef.current.since >= requiredHoldMs) {
+                        if (matchQuality === 'full') {
+                            state.streak = (state.streak || 0) + 1;
+                            const bonus = Math.min(50, state.streak * 6);
+                            state.score = (state.score || 0) + 25 + bonus;
+                        } else {
+                            // Partial credit keeps beginners engaged even if pitch is slightly off.
+                            state.streak = Math.max(0, (state.streak || 0) - 1);
+                            state.score = (state.score || 0) + 10;
+                        }
+                        matchRef.current = { note: '-', quality: 'none', since: 0 };
                     }
                 } else {
-                    matchRef.current = { note: '-', since: 0 };
+                    matchRef.current = { note: '-', quality: 'none', since: 0 };
                 }
             }
 
@@ -410,6 +433,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                 stableNote={isController ? stableNote : remoteVoice.stableNote}
                 stability={isController ? stability : remoteVoice.stability}
                 calibrating={isController ? calibrating : remoteVoice.calibrating}
+                view={view}
             />
         </div>
     );

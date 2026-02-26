@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState, useCallback } from 'react';
+import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { db, collection, query, where, limit, onSnapshot, addDoc, serverTimestamp } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
 import { emoji } from '../../lib/emoji';
@@ -49,6 +49,8 @@ const TeamPongGame = ({
     const [now, setNow] = useState(Date.now());
     const [submitting, setSubmitting] = useState(false);
     const [cooldownUntil, setCooldownUntil] = useState(0);
+    const [showTvIntro, setShowTvIntro] = useState(false);
+    const introKeyRef = useRef('');
     const sessionId = String(gameState?.sessionId || '');
     const windowMs = Math.max(6000, Number(gameState?.windowMs || 18000));
     const rallyTimeoutMs = Math.max(900, Number(gameState?.rallyTimeoutMs || 3200));
@@ -191,6 +193,9 @@ const TeamPongGame = ({
     const myTeam = normalizeTeam(gameState?.teamAssignments?.[resolvedUserId])
         || assignTeamById(resolvedUserId || 'guest', roomCode || sessionId || 'pong');
     const leftLead = stats.leftHits >= stats.rightHits;
+    const cooldownRemainingMs = Math.max(0, cooldownUntil - now);
+    const canSendHit = Boolean(isPlayer) && !submitting && cooldownRemainingMs <= 0;
+    const rallyTimeoutSeconds = (rallyTimeoutMs / 1000).toFixed(1);
 
     const sendPongHit = useCallback(async () => {
         if (!roomCode || !isPlayer || submitting) return;
@@ -222,6 +227,19 @@ const TeamPongGame = ({
             setSubmitting(false);
         }
     }, [roomCode, isPlayer, submitting, cooldownUntil, myTeam, sessionId, user?.name, user?.avatar, user?.uid]);
+
+    useEffect(() => {
+        if (view !== 'tv') {
+            setShowTvIntro(false);
+            return () => {};
+        }
+        const introKey = `${sessionId || 'team_pong'}:${Number(gameState?.startedAt || gameState?.timestamp || 0)}`;
+        if (introKeyRef.current === introKey) return () => {};
+        introKeyRef.current = introKey;
+        setShowTvIntro(true);
+        const timer = setTimeout(() => setShowTvIntro(false), 3000);
+        return () => clearTimeout(timer);
+    }, [view, sessionId, gameState?.startedAt, gameState?.timestamp]);
 
     if (view === 'mobile') {
         return (
@@ -255,21 +273,39 @@ const TeamPongGame = ({
                         </div>
                     </div>
                 </div>
+                <div className="px-4 mt-3">
+                    <div className="rounded-xl border border-white/15 bg-black/35 px-3 py-3">
+                        <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-300">How It Works</div>
+                        <div className="mt-2 text-[12px] text-zinc-100 leading-relaxed">
+                            <div>1. Every tap sends <span className="font-black text-white">+1 hit</span> for your team.</div>
+                            <div>2. Keep taps flowing so the rally does not drop for {rallyTimeoutSeconds}s.</div>
+                            <div>3. Bigger rally boosts teamwork multiplier and energy.</div>
+                        </div>
+                    </div>
+                </div>
                 <div className="flex-1 px-4 pt-4 pb-6 flex items-center">
                     <button
                         onClick={sendPongHit}
-                        disabled={!isPlayer || submitting}
+                        disabled={!canSendHit}
                         className={`w-full rounded-[2rem] border py-8 px-6 text-center transition-all ${
                             myTeam === 'right'
                                 ? 'border-fuchsia-300/55 bg-fuchsia-500/20 text-fuchsia-100'
                                 : 'border-cyan-300/55 bg-cyan-500/20 text-cyan-100'
-                        } ${(!isPlayer || submitting) ? 'opacity-45 cursor-not-allowed' : 'active:scale-[0.98]'}`}
+                        } ${!canSendHit ? 'opacity-45 cursor-not-allowed' : 'active:scale-[0.98]'}`}
                     >
-                        <div className="text-[10px] uppercase tracking-[0.32em] opacity-90">Tap To Return</div>
+                        <div className="text-[10px] uppercase tracking-[0.26em] opacity-90">
+                            {!isPlayer
+                                ? 'Spectator View'
+                                : canSendHit
+                                    ? 'Tap To Send +1 Hit'
+                                    : `Cooldown ${Math.max(0.1, cooldownRemainingMs / 1000).toFixed(1)}s`}
+                        </div>
                         <div className="text-6xl mt-2">{emoji(0x1F3D3)}</div>
-                        <div className="text-2xl font-black mt-2">{submitting ? 'Sending...' : 'PADDLE HIT'}</div>
+                        <div className="text-2xl font-black mt-2">
+                            {!isPlayer ? 'WATCHING' : (submitting ? 'SENDING...' : (canSendHit ? 'SEND HIT' : 'RECHARGING'))}
+                        </div>
                         <div className="text-[11px] uppercase tracking-[0.15em] opacity-80 mt-2">
-                            Keep the rally alive with your team
+                            Every valid tap boosts your team and keeps the rally alive
                         </div>
                     </button>
                 </div>
@@ -279,6 +315,19 @@ const TeamPongGame = ({
 
     return (
         <div className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.2),transparent_60%),radial-gradient(circle_at_bottom,rgba(217,70,239,0.2),transparent_55%),#03050c] text-white font-saira relative overflow-hidden">
+            {showTvIntro && (
+                <div className="absolute inset-0 z-40 bg-black/65 backdrop-blur-[2px] flex items-center justify-center px-8">
+                    <div className="w-[min(94vw,1200px)] rounded-[2.4rem] border border-cyan-200/35 bg-zinc-950/92 px-10 py-9 text-center shadow-[0_0_90px_rgba(34,211,238,0.35)]">
+                        <div className="text-[clamp(1rem,1.8vw,1.6rem)] uppercase tracking-[0.35em] text-zinc-300">Team Pong Controls</div>
+                        <div className="mt-3 text-[clamp(3.4rem,10.8vw,8.8rem)] font-bebas text-cyan-300 leading-none">Tap Phone = +1 Hit</div>
+                        <div className="mt-5 text-[clamp(1.45rem,3.1vw,2.55rem)] text-zinc-100 leading-tight">Everyone taps on their phone to keep the rally alive.</div>
+                        <div className="mt-3 text-[clamp(1.2rem,2.4vw,2rem)] text-zinc-300">If no hit lands for {rallyTimeoutSeconds}s, the rally drops to 0.</div>
+                        <div className="mt-6 inline-flex rounded-full border border-white/25 bg-black/55 px-7 py-3 text-[clamp(1rem,1.9vw,1.55rem)] uppercase tracking-[0.2em] text-zinc-100">
+                            Goal: reach rally {targetRally}
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className="absolute top-5 left-1/2 -translate-x-1/2 w-[min(86vw,760px)]">
                 <div className="rounded-2xl border border-white/20 bg-black/45 px-4 py-3 backdrop-blur-sm">
                     <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-zinc-200">
@@ -338,11 +387,12 @@ const TeamPongGame = ({
                     <div className="text-[10px] uppercase tracking-[0.12em] text-white/75">{stats.participantCount} active</div>
                 </div>
             </div>
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-2xl border border-white/20 bg-black/45 px-4 py-2 text-[11px] uppercase tracking-[0.14em] text-zinc-200">
-                Goal: hit rally {targetRally} • keep alternating teams to sustain pace
+            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-2xl border border-white/25 bg-black/55 px-6 py-3 text-[clamp(0.95rem,1.6vw,1.4rem)] uppercase tracking-[0.14em] text-zinc-100 shadow-[0_0_24px_rgba(0,0,0,0.35)]">
+                Goal: reach rally {targetRally} - keep hits flowing before timeout
             </div>
         </div>
     );
 };
 
 export default TeamPongGame;
+

@@ -5,9 +5,9 @@ const GAME_RULES = {
     flappy_bird: {
         title: 'Flappy Bird (Voice)',
         lines: [
-            'Use your voice to fly: louder = up, quieter = down.',
-            'Avoid the clefs and chase the high score.',
-            'Stay steady to keep control.'
+            'Use short loud bursts (or tap) to flap upward.',
+            'Hold a strong steady tone to trigger shield/assist.',
+            'Avoid obstacles, collect coins, and chase the high score.'
         ]
     },
     vocal_challenge: {

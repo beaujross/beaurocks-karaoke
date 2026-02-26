@@ -603,7 +603,7 @@ const UnifiedGameLauncher = ({
             bingo: '1 board',
             team_pong: 'Live rally',
             karaoke_bracket: 'Sweet 16 flow',
-            flappy_bird: 'Quick round'
+            flappy_bird: 'Crowd mic quick round'
         };
         const rewardMap = {
             trivia_pop: '100 pts',
@@ -629,8 +629,20 @@ const UnifiedGameLauncher = ({
                 if (config.setParticipants) config.setParticipants([]);
             }
         }
-        if (gameId === 'flappy_bird') return startFlappyAmbient();
-        if (gameId === 'vocal_challenge') return startVocalAmbient();
+        if (gameId === 'flappy_bird') {
+            const playableUsers = sortedUsers.filter((entry) => !isHostCandidate(room, entry));
+            if (playableUsers.length === 1) {
+                return startFlappySoloForUser(playableUsers[0], { quick: true });
+            }
+            return startFlappyAmbient({ quick: true });
+        }
+        if (gameId === 'vocal_challenge') {
+            const playableUsers = sortedUsers.filter((entry) => !isHostCandidate(room, entry));
+            if (playableUsers.length === 1) {
+                return startVocalTurnsForParticipants([playableUsers[0].id.split('_')[1]], { quick: true });
+            }
+            return startVocalAmbient({ quick: true });
+        }
         if (gameId === 'riding_scales') return startRidingScalesCrowd();
         if (gameId === 'team_pong') return startTeamPong();
         if (gameId === 'trivia_pop') return startRandomTrivia();
@@ -676,33 +688,46 @@ const UnifiedGameLauncher = ({
         }
         return startGame(gameId);
     };
-    
-    const startFlappyAmbient = async () => {
+
+    const startFlappyAmbient = async ({ quick = false } = {}) => {
         await updateRoom({
             activeMode: 'flappy_bird',
             gameData: { playerId: 'AMBIENT', playerName: 'THE CROWD', playerAvatar: 'O', inputSource: 'ambient', status: 'waiting', score: 0, lives: 3, timestamp: Date.now() },
             ...buildParticipantPayload('all', [])
         });
         logActivity(roomCode, 'HOST', 'started Ambient Flappy (crowd mic).', 'GAME');
-        toast("Ambient Flappy Started!");
+        toast(quick
+            ? "Quick Flappy: Crowd mic mode (TV controls bird)."
+            : "Ambient Flappy Started! Crowd mic (TV) controls the bird.");
         setShowGameConfig(false);
     };
-    
-    const startFlappySolo = async () => {
-        const selected = users.find(u => u.id?.split('_')[1] === selectedSingerId);
-        if (!selected) { toast("Pick a singer to start Solo Flappy."); return; }
-        const uid = selected.id.split('_')[1];
+
+    const startFlappySoloForUser = async (selected, { quick = false } = {}) => {
+        const uid = selected?.id?.split('_')[1];
+        if (!selected || !uid) {
+            toast("Pick a singer to start Solo Flappy.");
+            return;
+        }
         await updateRoom({
             activeMode: 'flappy_bird',
             gameData: { playerId: uid, playerName: selected.name || 'SINGER', playerAvatar: selected.avatar || 'O', inputSource: 'singer', status: 'waiting', score: 0, lives: 3, timestamp: Date.now() },
             ...buildParticipantPayload('selected', [uid])
         });
         logActivity(roomCode, 'HOST', `started Solo Flappy for ${selected.name || 'Singer'}.`, 'GAME');
-        toast("Solo Flappy Started!");
+        toast(quick
+            ? `Quick Flappy: Solo mode for ${selected.name || 'Singer'}.`
+            : "Solo Flappy Started!");
         setShowGameConfig(false);
     };
     
-    const startVocalAmbient = async () => {
+    const startFlappySolo = async () => {
+        const selected = users.find(u => u.id?.split('_')[1] === selectedSingerId);
+        if (!selected) { toast("Pick a singer to start Solo Flappy."); return; }
+        await startFlappySoloForUser(selected, { quick: false });
+        setShowGameConfig(false);
+    };
+    
+    const startVocalAmbient = async ({ quick = false } = {}) => {
         await updateRoom({
             activeMode: 'vocal_challenge',
             gameData: {
@@ -722,12 +747,16 @@ const UnifiedGameLauncher = ({
             ...buildParticipantPayload('all', [])
         });
         logActivity(roomCode, 'HOST', 'started Ambient Vocal Challenge.', 'GAME');
-        toast("Ambient Vocal Challenge Started!");
+        toast(quick
+            ? "Quick Vocal: Crowd mic mode (TV controls scoring)."
+            : "Ambient Vocal Challenge Started! Crowd mic (TV) controls scoring.");
         setShowGameConfig(false);
     };
-    
-    const startVocalSolo = async () => {
-        const participants = vocalParticipants.length ? vocalParticipants : sortedUsers.map(u => u.id.split('_')[1]);
+
+    const startVocalTurnsForParticipants = async (participantIds = [], { quick = false } = {}) => {
+        const participants = Array.isArray(participantIds) && participantIds.length
+            ? participantIds
+            : (vocalParticipants.length ? vocalParticipants : sortedUsers.map(u => u.id.split('_')[1]));
         if (!participants.length) { toast("Select at least one participant."); return; }
         const first = users.find(u => u.id?.split('_')[1] === participants[0]);
         const uid = participants[0];
@@ -757,7 +786,14 @@ const UnifiedGameLauncher = ({
             ...buildParticipantPayload('selected', participants)
         });
         logActivity(roomCode, 'HOST', 'started Vocal Challenge (turns).', 'GAME');
-        toast("Vocal Challenge Started!");
+        toast(quick
+            ? `Quick Vocal: Solo mode for ${first?.name || 'Singer'}.`
+            : "Vocal Challenge Started!");
+        setShowGameConfig(false);
+    };
+    
+    const startVocalSolo = async () => {
+        await startVocalTurnsForParticipants([], { quick: false });
         setShowGameConfig(false);
     };
     
