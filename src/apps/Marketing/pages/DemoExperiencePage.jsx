@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { trackEvent } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { STORM_SOUND_URL } from "../../../lib/assets";
+import { buildSurfaceUrl as buildCanonicalSurfaceUrl } from "../../../lib/surfaceDomains";
 
 const DEMO_SCENES = [
   {
@@ -315,6 +316,11 @@ const DEMO_SCENES = [
 
 const DEMO_TOTAL_MS = DEMO_SCENES.reduce((sum, scene) => sum + scene.durationMs, 0);
 const DEMO_ROOM_STORAGE_KEY = "mk_demo_room_code_v2";
+const DEMO_VIEW_STORAGE_KEY = "mk_demo_view_mode_v1";
+const DEMO_VIEW_MODES = Object.freeze({
+  interactive: "interactive",
+  autoplay: "autoplay",
+});
 const DEMO_DEFAULT_LYRICS = [
   "Sweet Caroline singalong demo adaptation",
   "Find each other, then sing together in real rooms"
@@ -378,6 +384,29 @@ const createDemoRoomCode = () => {
   return normalizeRoomCode(`DEMO${stamp}${random}`);
 };
 
+const normalizeDemoViewMode = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  if (token === DEMO_VIEW_MODES.autoplay) return DEMO_VIEW_MODES.autoplay;
+  return DEMO_VIEW_MODES.interactive;
+};
+
+const getInitialDemoViewMode = () => {
+  if (typeof window === "undefined") return DEMO_VIEW_MODES.interactive;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const modeFromQuery = normalizeDemoViewMode(
+      params.get("demo_view")
+      || params.get("demoView")
+      || (params.get("autoplay") === "1" ? DEMO_VIEW_MODES.autoplay : "")
+    );
+    if (modeFromQuery === DEMO_VIEW_MODES.autoplay) return modeFromQuery;
+    const stored = normalizeDemoViewMode(window.sessionStorage.getItem(DEMO_VIEW_STORAGE_KEY) || "");
+    return stored;
+  } catch {
+    return DEMO_VIEW_MODES.interactive;
+  }
+};
+
 const getInitialDemoRoomCode = () => {
   if (typeof window === "undefined") return "DEMO001";
   try {
@@ -431,11 +460,12 @@ const buildReactionEvents = (scene, sceneProgress = 0) => {
 };
 
 const DemoExperiencePage = () => {
+  const [demoViewMode, setDemoViewMode] = useState(() => getInitialDemoViewMode());
   const [timelineMs, setTimelineMs] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [loopPlayback, setLoopPlayback] = useState(true);
   const [roomCode, setRoomCode] = useState(() => getInitialDemoRoomCode());
-  const [liveSync, setLiveSync] = useState(true);
+  const [liveSync, setLiveSync] = useState(() => getInitialDemoViewMode() !== DEMO_VIEW_MODES.autoplay);
   const [autoPauseCues, setAutoPauseCues] = useState(false);
   const [audioBedEnabled, setAudioBedEnabled] = useState(true);
   const [beatPulseTick, setBeatPulseTick] = useState(0);
@@ -453,6 +483,7 @@ const DemoExperiencePage = () => {
   const beatTimerRef = useRef(null);
   const audioContextRef = useRef(null);
   const previousTimelineMsRef = useRef(0);
+  const isAutoplayShowcase = demoViewMode === DEMO_VIEW_MODES.autoplay;
 
   useEffect(() => {
     if (!playing) return () => {};
@@ -587,27 +618,70 @@ const DemoExperiencePage = () => {
   }, [activeScene, sceneProgress]);
 
   const sanitizedRoomCode = useMemo(() => normalizeRoomCode(roomCode), [roomCode]);
-  const baseHref = useMemo(() => {
+  const buildSceneSurfaceUrl = useCallback((surface = "app", params = {}) => {
     if (typeof window === "undefined") return "/";
-    return `${window.location.origin}${import.meta.env.BASE_URL || "/"}`;
-  }, []);
-
-  const buildSurfaceUrl = useCallback((relative = "") => {
-    const url = new URL(relative, baseHref);
-    url.searchParams.set("room", sanitizedRoomCode);
+    const url = new URL(buildCanonicalSurfaceUrl({
+      surface,
+      params: {
+        room: sanitizedRoomCode,
+        ...params
+      }
+    }, window.location));
     if (surfaceReloadToken > 0) {
       url.searchParams.set("mkDemoReload", String(surfaceReloadToken));
     } else {
       url.searchParams.delete("mkDemoReload");
     }
     return url.toString();
-  }, [baseHref, sanitizedRoomCode, surfaceReloadToken]);
+  }, [sanitizedRoomCode, surfaceReloadToken]);
 
   const launchLinks = useMemo(() => ({
-    audience: buildSurfaceUrl("?mobile_layout=native"),
-    tv: buildSurfaceUrl("?mode=tv"),
-    host: buildSurfaceUrl("?mode=host&tab=stage"),
-  }), [buildSurfaceUrl]);
+    audience: buildSceneSurfaceUrl("app", { mobile_layout: "native" }),
+    tv: buildSceneSurfaceUrl("tv", { mode: "tv" }),
+    host: buildSceneSurfaceUrl("host", { mode: "host", tab: "stage" }),
+  }), [buildSceneSurfaceUrl]);
+
+  const sceneInteractionTotal = useMemo(
+    () => reactionEvents.reduce((sum, entry) => sum + Math.max(0, Number(entry.count || 0)), 0),
+    [reactionEvents]
+  );
+
+  const triviaVoteTotal = useMemo(() => {
+    if (!triviaModel || !Array.isArray(triviaModel.votes)) return 0;
+    return triviaModel.votes.reduce((sum, val) => sum + Math.max(0, Number(val || 0)), 0);
+  }, [triviaModel]);
+
+  const wyrVoteTotal = useMemo(() => {
+    if (!wyrModel || !Array.isArray(wyrModel.votes)) return 0;
+    return wyrModel.votes.reduce((sum, val) => sum + Math.max(0, Number(val || 0)), 0);
+  }, [wyrModel]);
+
+  const audiencePresenceSlots = useMemo(() => {
+    const names = [
+      "Alex", "Jules", "Sky", "Remy", "Ari", "Jordan", "Parker", "Casey",
+      "Riley", "Cameron", "Taylor", "Morgan"
+    ];
+    const onlineCount = Math.max(4, Math.min(names.length, Math.round(crowdSize / 2)));
+    return names.slice(0, 8).map((name, index) => ({
+      name,
+      online: index < onlineCount,
+      pulse: (beatPulseTick + index) % 5 === 0,
+    }));
+  }, [crowdSize, beatPulseTick]);
+
+  const audienceFeedItems = useMemo(() => {
+    const highlights = reactionEvents.slice(0, 4);
+    if (!highlights.length) {
+      return [
+        { label: "Host opened room", detail: "Guests are joining now" },
+        { label: "Stage ready", detail: "Song request queue is live" },
+      ];
+    }
+    return highlights.map((entry, index) => ({
+      label: `${entry.label} x${entry.count}`,
+      detail: `Fan ${index + 1} triggered ${entry.token}`,
+    }));
+  }, [reactionEvents]);
 
   useEffect(() => {
     try {
@@ -616,6 +690,21 @@ const DemoExperiencePage = () => {
       // Ignore storage failures in private mode.
     }
   }, [sanitizedRoomCode]);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(DEMO_VIEW_STORAGE_KEY, demoViewMode);
+    } catch {
+      // Ignore storage failures in private mode.
+    }
+  }, [demoViewMode]);
+
+  useEffect(() => {
+    if (!isAutoplayShowcase) return;
+    if (!liveSync) return;
+    setLiveSync(false);
+    setSyncState({ tone: "muted", message: "Autoplay Showcase uses local scripted playback only." });
+  }, [isAutoplayShowcase, liveSync]);
 
   useEffect(() => {
     autoRoomRetryRef.current = false;
@@ -901,9 +990,32 @@ const DemoExperiencePage = () => {
       <article className="mk3-demo-controls">
         <header>
           <h3>Demo Controls</h3>
-          <p>Run the scripted timeline, pause on host cues, and sync all three surfaces in real time.</p>
+          <p>
+            Switch between full interactive surfaces and a self-running showcase that emulates TV, audience, and host activity without requiring any clicks.
+          </p>
         </header>
         <div className="mk3-demo-toolbar">
+          <button
+            type="button"
+            className={!isAutoplayShowcase ? "active" : ""}
+            onClick={() => {
+              setDemoViewMode(DEMO_VIEW_MODES.interactive);
+              setLiveSync(true);
+              trackEvent("mk_demo_view_mode", { mode: DEMO_VIEW_MODES.interactive });
+            }}
+          >
+            Interactive Surfaces
+          </button>
+          <button
+            type="button"
+            className={isAutoplayShowcase ? "active" : ""}
+            onClick={() => {
+              setDemoViewMode(DEMO_VIEW_MODES.autoplay);
+              trackEvent("mk_demo_view_mode", { mode: DEMO_VIEW_MODES.autoplay });
+            }}
+          >
+            Autoplay Showcase
+          </button>
           <button type="button" onClick={onTogglePlayback}>
             {playing ? "Pause Demo" : "Play Demo"}
           </button>
@@ -924,27 +1036,31 @@ const DemoExperiencePage = () => {
           >
             Loop: {loopPlayback ? "On" : "Off"}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              const next = !liveSync;
-              setLiveSync(next);
-              trackEvent("mk_demo_live_sync_toggle", { enabled: next ? 1 : 0 });
-              if (!next) setSyncState({ tone: "muted", message: "Scripted sync is paused." });
-            }}
-          >
-            Scripted Sync: {liveSync ? "On" : "Off"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const next = !autoPauseCues;
-              setAutoPauseCues(next);
-              trackEvent("mk_demo_autopause_toggle", { enabled: next ? 1 : 0 });
-            }}
-          >
-            Cue Pause: {autoPauseCues ? "On" : "Off"}
-          </button>
+          {!isAutoplayShowcase && (
+            <button
+              type="button"
+              onClick={() => {
+                const next = !liveSync;
+                setLiveSync(next);
+                trackEvent("mk_demo_live_sync_toggle", { enabled: next ? 1 : 0 });
+                if (!next) setSyncState({ tone: "muted", message: "Scripted sync is paused." });
+              }}
+            >
+              Scripted Sync: {liveSync ? "On" : "Off"}
+            </button>
+          )}
+          {!isAutoplayShowcase && (
+            <button
+              type="button"
+              onClick={() => {
+                const next = !autoPauseCues;
+                setAutoPauseCues(next);
+                trackEvent("mk_demo_autopause_toggle", { enabled: next ? 1 : 0 });
+              }}
+            >
+              Cue Pause: {autoPauseCues ? "On" : "Off"}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -955,15 +1071,17 @@ const DemoExperiencePage = () => {
           >
             Music + Ambience: {audioBedEnabled ? "On" : "Off"}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSurfaceReloadToken((prev) => prev + 1);
-              trackEvent("mk_demo_surfaces_refresh", { room_code: sanitizedRoomCode });
-            }}
-          >
-            Refresh Surfaces
-          </button>
+          {!isAutoplayShowcase && (
+            <button
+              type="button"
+              onClick={() => {
+                setSurfaceReloadToken((prev) => prev + 1);
+                trackEvent("mk_demo_surfaces_refresh", { room_code: sanitizedRoomCode });
+              }}
+            >
+              Refresh Surfaces
+            </button>
+          )}
         </div>
         <div className="mk3-demo-progress">
           <strong>{formatClock(timelineMs)}</strong>
@@ -975,10 +1093,10 @@ const DemoExperiencePage = () => {
             value={Math.round(timelineMs)}
             onChange={(event) => setTimelineMs(clampNumber(event.target.value, 0, DEMO_TOTAL_MS, 0))}
             onMouseUp={() => {
-              if (liveSync) sendDirectorAction("seek");
+              if (liveSync && !isAutoplayShowcase) sendDirectorAction("seek");
             }}
             onTouchEnd={() => {
-              if (liveSync) sendDirectorAction("seek");
+              if (liveSync && !isAutoplayShowcase) sendDirectorAction("seek");
             }}
           />
           <span>{formatClock(DEMO_TOTAL_MS)}</span>
@@ -1046,6 +1164,95 @@ const DemoExperiencePage = () => {
                 {activeScene.mode === "finale" && "Finale: return to karaoke hook with full crowd effects."}
               </div>
             </div>
+            {isAutoplayShowcase && (
+              <div className={`mk3-demo-autoplay-cover mk3-demo-autoplay-tv is-${activeScene.mode}`}>
+                <div className="mk3-demo-tv-stage">
+                  <div className="mk3-demo-tv-video">
+                    <div className="mk3-demo-tv-video-kicker">Live video preview</div>
+                    <strong>{activeScene.songTitle || "Demo Track"} - {activeScene.artist || "BeauRocks"}</strong>
+                    <div className="mk3-demo-tv-video-eq">
+                      {Array.from({ length: 22 }).map((_, index) => {
+                        const swing = 0.3 + ((Math.sin((beatPulseTick + index) * 0.7) + 1) * 0.35);
+                        const height = Math.max(16, Math.round(20 + (swing * 56) + ((sceneProgress * 22) % 18)));
+                        return <i key={`eq_${index}`} style={{ height: `${height}px` }} />;
+                      })}
+                    </div>
+                  </div>
+                  {lyricOverlayEnabled ? (
+                    <div className="mk3-demo-lyrics">
+                      <div className="mk3-demo-lyric-meta">
+                        <span>On lyric line {Math.min(lyricLines.length, lyricLineIndex + 1)}/{lyricLines.length}</span>
+                        <span>{stageModeLabel}</span>
+                      </div>
+                      <h3>{currentLyricLine}</h3>
+                      <p>{nextLyricLine || currentLyricLine}</p>
+                    </div>
+                  ) : (
+                    <div className="mk3-demo-lyrics">
+                      <div className="mk3-demo-lyric-meta">
+                        <span>Scene focus</span>
+                        <span>{stageModeLabel}</span>
+                      </div>
+                      <h3>{activeScene.title}</h3>
+                      <p>{activeScene.description}</p>
+                    </div>
+                  )}
+                  {(activeScene.mode === "guitar" || activeScene.mode === "vocal" || activeScene.mode === "finale") && (
+                    <div className="mk3-demo-vibe-meter">
+                      <span>{activeScene.mode === "guitar" ? "Vibe sync energy" : activeScene.mode === "vocal" ? "Vocal challenge drive" : "Finale momentum"}</span>
+                      <div>
+                        <i style={{ width: `${Math.max(22, Math.min(100, Math.round((sceneProgress * 68) + 24)))}%` }} />
+                      </div>
+                    </div>
+                  )}
+                  {triviaModel && (
+                    <div className="mk3-demo-trivia">
+                      <strong>{triviaModel.question}</strong>
+                      <div className="mk3-demo-trivia-options">
+                        {triviaModel.options.map((option, index) => {
+                          const votes = Number(triviaModel.votes?.[index] || 0);
+                          const percentage = triviaVoteTotal > 0 ? Math.round((votes / triviaVoteTotal) * 100) : 0;
+                          const isRevealWinner = triviaModel.status === "reveal" && index === triviaModel.correctIndex;
+                          return (
+                            <div key={`trivia_opt_${index}`} className={`mk3-demo-trivia-option ${isRevealWinner ? "is-highlight" : ""}`}>
+                              <span>{option}</span>
+                              <div className="mk3-demo-trivia-bar"><div style={{ width: `${Math.max(5, percentage)}%` }} /></div>
+                              <b>{votes}</b>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {wyrModel && (
+                    <div className="mk3-demo-trivia">
+                      <strong>{wyrModel.question}</strong>
+                      <div className="mk3-demo-trivia-options">
+                        {[wyrModel.optionA, wyrModel.optionB].map((option, index) => {
+                          const votes = Number(wyrModel.votes?.[index] || 0);
+                          const percentage = wyrVoteTotal > 0 ? Math.round((votes / wyrVoteTotal) * 100) : 0;
+                          return (
+                            <div key={`wyr_opt_${index}`} className="mk3-demo-trivia-option">
+                              <span>{option}</span>
+                              <div className="mk3-demo-trivia-bar"><div style={{ width: `${Math.max(5, percentage)}%` }} /></div>
+                              <b>{percentage}%</b>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <div className="mk3-demo-reaction-rail">
+                    {reactionEvents.map((entry) => (
+                      <div key={`tv_reaction_${entry.type}`} className="mk3-demo-reaction-item">
+                        <span>{entry.token}</span>
+                        <small>{entry.count} hits</small>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <div className="mk3-demo-surface-status">
             <span>{activeScene.title}</span>
@@ -1071,12 +1278,79 @@ const DemoExperiencePage = () => {
                   className="mk3-demo-iframe mk3-demo-iframe-mobile"
                   allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
                 />
+                {isAutoplayShowcase && (
+                  <div className="mk3-demo-autoplay-cover mk3-demo-autoplay-audience">
+                    <div className="mk3-demo-surface-body mk3-demo-audience-sim">
+                      <h4>{activeScene.mode === "karaoke" || activeScene.mode === "finale" ? "Now singing live" : `${stageModeLabel} active`}</h4>
+                      <p>{activeScene.description}</p>
+                      {(activeScene.mode === "trivia" && triviaModel) && (
+                        <div className="mk3-demo-trivia">
+                          <strong>{triviaModel.question}</strong>
+                          <div className="mk3-demo-trivia-options">
+                            {triviaModel.options.slice(0, 3).map((option, index) => (
+                              <div key={`audience_trivia_${index}`} className="mk3-demo-trivia-option">
+                                <span>{option}</span>
+                                <div className="mk3-demo-trivia-bar">
+                                  <div
+                                    style={{
+                                      width: `${Math.max(
+                                        12,
+                                        triviaVoteTotal > 0
+                                          ? Math.round((Number(triviaModel.votes?.[index] || 0) / triviaVoteTotal) * 100)
+                                          : 18
+                                      )}%`
+                                    }}
+                                  />
+                                </div>
+                                <b>{Number(triviaModel.votes?.[index] || 0)}</b>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {(activeScene.mode === "wyr" && wyrModel) && (
+                        <div className="mk3-demo-trivia">
+                          <strong>{wyrModel.question}</strong>
+                          <div className="mk3-demo-mini-actions">
+                            <button type="button">{wyrModel.optionA}</button>
+                            <button type="button">{wyrModel.optionB}</button>
+                            <button type="button">{wyrModel.status === "reveal" ? "Result Live" : "Vote Now"}</button>
+                          </div>
+                        </div>
+                      )}
+                      {(activeScene.mode === "guitar" || activeScene.mode === "vocal" || activeScene.mode === "karaoke" || activeScene.mode === "finale") && (
+                        <div className="mk3-demo-mini-actions">
+                          {reactionEvents.slice(0, 3).map((entry) => (
+                            <button key={`audience_action_${entry.type}`} type="button">
+                              {entry.token}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="mk3-demo-audience-grid">
+                        {audiencePresenceSlots.map((slot) => (
+                          <div key={`presence_${slot.name}`} className={slot.online || slot.pulse ? "online" : ""}>
+                            {slot.name}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mk3-demo-audience-feed">
+                        {audienceFeedItems.map((item) => (
+                          <div key={`feed_${item.label}`}>
+                            <strong>{item.label}</strong>
+                            <span>{item.detail}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
           <div className="mk3-demo-surface-status">
             <span>Mobile-framed audience client for room {sanitizedRoomCode}</span>
-            <strong>{reactionEvents.reduce((sum, entry) => sum + entry.count, 0)} interactions per cycle</strong>
+            <strong>{sceneInteractionTotal} interactions per cycle</strong>
           </div>
         </article>
 
@@ -1093,7 +1367,7 @@ const DemoExperiencePage = () => {
               <div className="mk3-demo-host-top-row">
                 <span><i className="fa-solid fa-microphone-lines" /> Mic Live</span>
                 <span><i className="fa-solid fa-list" /> Queue Ready</span>
-                <span><i className="fa-solid fa-wifi" /> Sync {liveSync ? "On" : "Off"}</span>
+                <span><i className="fa-solid fa-wifi" /> {isAutoplayShowcase ? "Local Autoplay" : `Sync ${liveSync ? "On" : "Off"}`}</span>
               </div>
               <div className="mk3-demo-host-controls">
                 {HOST_CONTROL_BUTTONS.slice(0, 7).map((control) => {
@@ -1139,14 +1413,18 @@ const DemoExperiencePage = () => {
           </div>
           <div className="mk3-demo-surface-status">
             <span>Host cue drives each scene so cause-and-effect is obvious</span>
-            <strong>{syncState.tone === "ok" ? "Sync healthy" : syncState.tone === "error" ? "Sync issue" : "Tutorial mode"}</strong>
+            <strong>{isAutoplayShowcase ? "Autoplay showcase" : syncState.tone === "ok" ? "Sync healthy" : syncState.tone === "error" ? "Sync issue" : "Tutorial mode"}</strong>
           </div>
         </article>
       </div>
 
       <article className="mk3-demo-launch">
-        <h3>Launch Real Surfaces From This Room Code</h3>
-        <p>Runs an ambient multi-surface loop with karaoke first, game moments in sequence, two Would You Rather resolutions, and a finale reset.</p>
+        <h3>{isAutoplayShowcase ? "Autoplay Showcase Is Running" : "Launch Real Surfaces From This Room Code"}</h3>
+        <p>
+          {isAutoplayShowcase
+            ? "This view is intentionally no-touch: every surface is emulated and sequenced automatically. Switch back to Interactive Surfaces when you want live iframes."
+            : "Runs an ambient multi-surface loop with karaoke first, game moments in sequence, two Would You Rather resolutions, and a finale reset."}
+        </p>
         <div className={`mk3-inline-status ${syncState.tone === "error" ? "mk3-status-error" : syncState.tone === "ok" ? "mk3-inline-next" : ""}`}>
           {syncState.message}
         </div>

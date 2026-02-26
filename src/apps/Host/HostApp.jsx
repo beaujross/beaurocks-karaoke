@@ -62,6 +62,7 @@ import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabi
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
 import { buildSongKey, ensureSong, ensureTrack } from '../../lib/songCatalog';
 import { createLogger } from '../../lib/logger';
+import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
 import {
     DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
     POP_TRIVIA_VOTE_TYPE,
@@ -1922,7 +1923,7 @@ const IncomingModerationQueuePanel = ({
     );
 };
 
-const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, appBase }) => {
+const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase }) => {
     const toast = useToast() || console.log;
     const [doodleSubmissions, setDoodleSubmissions] = useState([]);
     const [selfieSubmissions, setSelfieSubmissions] = useState([]);
@@ -2104,7 +2105,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, appBase }) => 
 
     const openTv = () => {
         if (!roomCode) return;
-        window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer');
+        window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer');
     };
 
     const closeGameMode = async () => {
@@ -2710,7 +2711,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, appBase }) => 
 const AudienceMiniPreview = ({
     room,
     roomCode,
-    appBase,
+    tvBase,
     currentSong,
     queueCount,
     collapsed = false,
@@ -2738,7 +2739,7 @@ const AudienceMiniPreview = ({
     };
     const modeLabel = modeLabelMap[room?.activeMode] || (room?.activeMode || 'Karaoke');
     const layoutLabel = room?.layoutMode || 'standard';
-    const viewHref = `${appBase}?room=${roomCode}&mode=tv`;
+    const viewHref = `${tvBase}?room=${roomCode}&mode=tv`;
     return (
         <div className="fixed right-3 bottom-3 z-[35] w-[320px] max-w-[calc(100vw-24px)]">
             <div className="bg-zinc-950/95 border border-white/15 rounded-2xl shadow-[0_20px_45px_rgba(0,0,0,0.55)] overflow-hidden backdrop-blur-sm">
@@ -2827,7 +2828,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3919,7 +3920,7 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                 enabled: !!roomCode,
                 hint: roomCode ? `Room ${roomCode}` : 'No room code',
                 keywords: 'tv display public open',
-                run: async () => { window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer'); }
+                run: async () => { window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer'); }
             },
             {
                 id: 'chat-settings',
@@ -4440,7 +4441,8 @@ const QueueTab = ({ songs, room, roomCode, appBase, updateRoom, logActivity, loc
                                     chatUnread={chatUnread}
                                     openChatSettings={openChatSettings}
                                     styles={STYLES}
-                                    appBase={appBase}
+                                    appBase={hostBase}
+                                    hostBase={hostBase}
                                     roomCode={roomCode}
                                     chatEnabled={chatEnabled}
                                     setChatEnabled={setChatEnabled}
@@ -4532,7 +4534,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             throw error;
         }
     }, []);
-    const appBase = typeof window !== 'undefined' ? `${window.location.origin}${import.meta.env.BASE_URL || '/'}` : '';
+    const hostBase = typeof window !== 'undefined' ? getSurfaceBaseHref('host', window.location) : '';
+    const audienceBase = typeof window !== 'undefined' ? getSurfaceBaseHref('app', window.location) : '';
+    const tvBase = typeof window !== 'undefined' ? getSurfaceBaseHref('tv', window.location) : '';
     const isChatPopout = typeof window !== 'undefined'
         && new URLSearchParams(window.location.search).get('chat') === '1';
 
@@ -7007,7 +7011,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Open a room first.');
             return;
         }
-        const tvUrl = `${appBase}?room=${encodeURIComponent(roomCode)}&mode=tv`;
+        const tvUrl = `${tvBase}?room=${encodeURIComponent(roomCode)}&mode=tv`;
         try {
             window.open(tvUrl, '_blank', 'noopener,noreferrer');
         } catch (_err) {
@@ -7016,7 +7020,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const applied = await applyNightSetupWizard({ intent: 'start_match' });
         if (!applied) return;
 
-        const joinUrl = `${appBase}?room=${encodeURIComponent(roomCode)}`;
+        const joinUrl = `${audienceBase}?room=${encodeURIComponent(roomCode)}`;
         try {
             await navigator.clipboard.writeText(joinUrl);
             toast('Launch package complete: TV opened and join link copied.');
@@ -7031,7 +7035,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
     }, [
         roomCode,
-        appBase,
+        audienceBase,
+        tvBase,
         applyNightSetupWizard,
         toast,
         nightSetupPresetId,
@@ -8661,7 +8666,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 highlights: [...tournamentMoments, ...(activities || []).slice(0, 20)].slice(0, 30)
             };
             await updateRoom({ closedAt: nowMs(), recap });
-            const recapUrl = `${window.location.origin}/?room=${roomCode}&mode=recap`;
+            const recapUrl = `${audienceBase}?room=${roomCode}&mode=recap`;
             await navigator.clipboard.writeText(recapUrl);
             toast('Room closed. Recap link copied.');
         } catch (e) {
@@ -11928,7 +11933,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <div className="mt-2 divide-y divide-zinc-900 rounded-md border border-zinc-800 overflow-hidden">
                     <button
                         data-feature-id="quick-open-tv"
-                        onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                        onClick={() => window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
                         className="w-full bg-zinc-900/70 px-3 py-2.5 text-left text-sm text-zinc-100 hover:bg-zinc-900"
                     >
                         <span className="inline-flex items-center gap-2">
@@ -11938,7 +11943,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </button>
                     <button
                         onClick={async () => {
-                            const audienceUrl = `${appBase}?room=${roomCode}`;
+                            const audienceUrl = `${audienceBase}?room=${roomCode}`;
                             try {
                                 await navigator.clipboard.writeText(audienceUrl);
                                 toast('Audience join link copied.');
@@ -11985,7 +11990,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         songs,
         room,
         roomCode,
-        appBase,
+        hostBase,
+        tvBase,
         updateRoom,
         logActivity,
         localLibrary,
@@ -12071,7 +12077,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         chatUnread={chatUnread}
                         openChatSettings={openChatSettings}
                         styles={STYLES}
-                        appBase={appBase}
+                        appBase={hostBase}
+                        hostBase={hostBase}
                         roomCode={roomCode}
                         chatEnabled={chatEnabled}
                         setChatEnabled={setChatEnabled}
@@ -12110,7 +12117,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 {/* Header */}
                 <HostTopChrome
                     room={room}
-                    appBase={appBase}
+                    appBase={hostBase}
+                    hostBase={hostBase}
+                    audienceBase={audienceBase}
+                    tvBase={tvBase}
                     roomCode={roomCode}
                     gamesMeta={GAMES_META}
                     tab={tab}
@@ -12242,7 +12252,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         room={room}
                         updateRoom={updateRoom}
                         setTab={setTab}
-                        appBase={appBase}
+                        tvBase={tvBase}
                     />
                 )}
                 {tab === 'stage' && (
@@ -12679,7 +12689,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <AudienceMiniPreview
                         room={room}
                         roomCode={roomCode}
-                        appBase={appBase}
+                        tvBase={tvBase}
                         currentSong={currentSong}
                         queueCount={queuedSongs.length}
                         collapsed={audiencePreviewCollapsed}
@@ -12873,7 +12883,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         {inAdminWorkspace && (
                                             <div className="ml-auto flex items-center gap-2 text-xs text-zinc-300">
                                                 <button
-                                                    onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                                                    onClick={() => window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
                                                     className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-2.5 py-1 hover:bg-cyan-500/20"
                                                 >
                                                     <i className="fa-solid fa-tv text-[11px]"></i> TV
@@ -12895,7 +12905,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <div className="text-sm text-zinc-300 mt-1">{activeSettingsMeta.description || 'Configure room behavior and host controls.'}</div>
                                             <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-300">
                                                 <button
-                                                    onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                                                    onClick={() => window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
                                                     className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-3 py-1.5 hover:bg-cyan-500/20"
                                                 >
                                                     <i className="fa-solid fa-tv text-[11px]"></i> Open TV
@@ -12942,14 +12952,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     1. Queue + Room Setup
                                 </button>
                                 <button
-                                    onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                                    onClick={() => window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
                                     className={`${STYLES.btnStd} ${STYLES.btnInfo} justify-start`}
                                 >
                                     2. Open Public TV
                                 </button>
                                 <button
                                     onClick={async () => {
-                                        const audienceUrl = `${appBase}?room=${roomCode}`;
+                                        const audienceUrl = `${audienceBase}?room=${roomCode}`;
                                         try {
                                             await navigator.clipboard.writeText(audienceUrl);
                                             toast('Audience join link copied.');
@@ -13306,7 +13316,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <i className="fa-solid fa-microphone-lines"></i>
                                             Stage Controls (Exit Admin)
                                         </button>
-                                        <button onClick={() => window.open(`${appBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')} className={`${STYLES.btnStd} ${STYLES.btnInfo} justify-start`}>
+                                        <button onClick={() => window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')} className={`${STYLES.btnStd} ${STYLES.btnInfo} justify-start`}>
                                             <i className="fa-solid fa-tv"></i>
                                             Open Public TV
                                         </button>

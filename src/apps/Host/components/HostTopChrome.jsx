@@ -20,6 +20,9 @@ const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', onCl
 const HostTopChrome = ({
     room,
     appBase,
+    hostBase,
+    audienceBase,
+    tvBase,
     roomCode,
     gamesMeta,
     tab,
@@ -97,6 +100,9 @@ const HostTopChrome = ({
     onOpenAiSettings,
     onOpenAccessSettings
 }) => {
+    const resolvedHostBase = hostBase || appBase;
+    const resolvedAudienceBase = audienceBase || appBase;
+    const resolvedTvBase = tvBase || appBase;
     const clampNumber = (value, min, max, fallback = min) => {
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) return fallback;
@@ -477,7 +483,7 @@ const HostTopChrome = ({
                     {showLaunchMenu && (
                         <div className="absolute left-0 top-full mt-2 w-56 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-50">
                             <a
-                                href={`${appBase}?room=${roomCode}&mode=tv`}
+                                href={`${resolvedTvBase}?room=${roomCode}&mode=tv`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={() => setShowLaunchMenu(false)}
@@ -486,7 +492,7 @@ const HostTopChrome = ({
                                 <i className="fa-solid fa-tv mr-2 text-cyan-300"></i> Launch TV
                             </a>
                             <a
-                                href={`${appBase}?room=${roomCode}`}
+                                href={`${resolvedAudienceBase}?room=${roomCode}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={() => setShowLaunchMenu(false)}
@@ -495,7 +501,7 @@ const HostTopChrome = ({
                                 <i className="fa-solid fa-mobile-screen-button mr-2 text-pink-300"></i> Launch Mobile
                             </a>
                             <a
-                                href={`${appBase}?room=${roomCode}&mode=host&tab=browse&catalogue=1`}
+                                href={`${resolvedHostBase}?room=${roomCode}&mode=host&tab=browse&catalogue=1`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={() => setShowLaunchMenu(false)}
@@ -509,7 +515,7 @@ const HostTopChrome = ({
                             {gamesMeta.map((game, idx, arr) => (
                                 <a
                                     key={game.id}
-                                    href={`${appBase}?room=${roomCode}&mode=host&game=${game.id}`}
+                                    href={`${resolvedHostBase}?room=${roomCode}&mode=host&game=${game.id}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={() => setShowLaunchMenu(false)}

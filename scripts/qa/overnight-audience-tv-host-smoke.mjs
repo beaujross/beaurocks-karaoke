@@ -3,6 +3,7 @@ const DEFAULT_TIMEOUT_MS = 90000;
 const DEFAULT_FAILURE_SCREENSHOT = "tmp/qa-overnight-smoke-failure.png";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const ROOM_CODE_BLOCKLIST = new Set(["ROOM", "CODE", "LIKE", "OPEN", "HOST"]);
 
 const ensurePlaywright = async () => {
   try {
@@ -16,29 +17,105 @@ const ensurePlaywright = async () => {
 };
 
 const sanitizeRoomCode = (value) => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+const isLikelyRoomCode = (value) => {
+  const code = sanitizeRoomCode(value);
+  return code.length >= 4 && code.length <= 10 && !ROOM_CODE_BLOCKLIST.has(code);
+};
 
 const readHostRoomCode = async (page) => {
   const hooked = page.locator("[data-host-room-code]").first();
   if (await hooked.count()) {
     const text = sanitizeRoomCode(await hooked.innerText().catch(() => ""));
-    if (text.length >= 4) return text;
+    if (isLikelyRoomCode(text)) return text;
   }
+
+  const monoCode = await page.evaluate(() => {
+    const nodes = Array.from(document.querySelectorAll("div,span"));
+    for (const node of nodes) {
+      const cls = typeof node.className === "string" ? node.className : "";
+      if (!cls.includes("font-mono")) continue;
+      const text = (node.textContent || "").trim().toUpperCase();
+      if (/^[A-Z0-9]{4,10}$/.test(text)) return text;
+    }
+    return "";
+  }).catch(() => "");
+  if (isLikelyRoomCode(monoCode)) return sanitizeRoomCode(monoCode);
+
+  const bodyText = await page.locator("body").innerText().catch(() => "");
+  const regexes = [/\broom\s+([A-Z0-9]{4,8})\b/i, /\b([A-Z0-9]{4,8})\s+created\b/i];
+  for (const regex of regexes) {
+    const match = bodyText.match(regex);
+    const candidate = sanitizeRoomCode(match?.[1] || "");
+    if (isLikelyRoomCode(candidate)) return candidate;
+  }
+
   try {
     const parsed = new URL(page.url());
     const fromQuery = sanitizeRoomCode(parsed.searchParams.get("room") || "");
-    if (fromQuery.length >= 4) return fromQuery;
+    if (isLikelyRoomCode(fromQuery)) return fromQuery;
   } catch {
     // ignore
   }
   return "";
 };
 
+const runGuidedSetupWizardLaunch = async ({ page, timeoutMs }) => {
+  const guidedWizardBtn = page.getByRole("button", { name: /Guided Setup Wizard/i }).first();
+  if (!(await guidedWizardBtn.isVisible().catch(() => false))) return "";
+
+  if (await guidedWizardBtn.isEnabled().catch(() => false)) {
+    await guidedWizardBtn.click({ force: true });
+    await delay(1200);
+  }
+
+  const steps = [
+    /Continue to Plan/i,
+    /Continue to Branding/i,
+    /Continue to Launch/i,
+    /Launch First Room/i,
+  ];
+
+  for (const stepRegex of steps) {
+    const stepStart = Date.now();
+    while (Date.now() - stepStart < Math.min(45000, timeoutMs)) {
+      const code = await readHostRoomCode(page);
+      if (code) return code;
+
+      const btn = page.getByRole("button", { name: stepRegex }).first();
+      const visible = await btn.isVisible().catch(() => false);
+      const enabled = await btn.isEnabled().catch(() => false);
+      if (visible && enabled) {
+        await btn.click({ force: true });
+        await delay(1800);
+        break;
+      }
+      await delay(500);
+    }
+  }
+
+  const finalStart = Date.now();
+  while (Date.now() - finalStart < Math.min(35000, timeoutMs)) {
+    const code = await readHostRoomCode(page);
+    if (code) return code;
+    await delay(700);
+  }
+
+  return "";
+};
+
 const waitForHostRoomCode = async ({ page, timeoutMs }) => {
   const started = Date.now();
   let createClicked = false;
+  let guidedFlowAttempted = false;
   while (Date.now() - started < timeoutMs) {
     const code = await readHostRoomCode(page);
     if (code) return code;
+
+    const advancedSummary = page.getByText(/Advanced Launch \(QA \/ Returning Hosts\)/i).first();
+    if (await advancedSummary.isVisible().catch(() => false)) {
+      await advancedSummary.click({ force: true }).catch(() => {});
+      await delay(300);
+    }
 
     const quickStart = page.locator("[data-host-quick-start]").first();
     if (await quickStart.count()) {
@@ -48,14 +125,12 @@ const waitForHostRoomCode = async ({ page, timeoutMs }) => {
         await quickStart.click({ force: true });
         createClicked = true;
       }
-    } else {
-      const fallbackQuickStart = page.getByRole("button", { name: /quick start/i }).first();
-      const visible = await fallbackQuickStart.isVisible().catch(() => false);
-      const enabled = await fallbackQuickStart.isEnabled().catch(() => false);
-      if (!createClicked && visible && enabled) {
-        await fallbackQuickStart.click({ force: true });
-        createClicked = true;
-      }
+    }
+
+    if (!createClicked && !guidedFlowAttempted) {
+      guidedFlowAttempted = true;
+      const guidedRoomCode = await runGuidedSetupWizardLaunch({ page, timeoutMs });
+      if (guidedRoomCode) return guidedRoomCode;
     }
     await delay(1000);
   }

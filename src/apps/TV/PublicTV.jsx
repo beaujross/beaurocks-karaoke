@@ -45,6 +45,7 @@ import {
     getCrowdObjectiveModeFromLightMode,
     isCrowdObjectiveLightMode
 } from '../../lib/crowdObjectiveModes';
+import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
 
 const isTvVisibleChatMessage = (message) => {
     if (!message) return false;
@@ -574,8 +575,8 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
     }, [slides.length]);
 
     const active = slides[index] || { title: '', items: [] };
-    const appBase = `${window.location.origin}${import.meta.env.BASE_URL || '/'}`;
-    const qrValue = `${appBase}?room=${roomCode}`;
+    const audienceBase = typeof window !== 'undefined' ? getSurfaceBaseHref('app', window.location) : '/';
+    const qrValue = `${audienceBase}?room=${roomCode}`;
 
     return (
         <div className="public-tv fixed inset-0 z-[200] bg-zinc-900/95 flex flex-col items-center justify-center text-white font-saira p-3 md:p-6">
@@ -2943,8 +2944,8 @@ const PublicTV = ({ roomCode }) => {
         })),
         [particleSeedBase]
     );
-    const appBase = `${window.location.origin}${import.meta.env.BASE_URL || '/'}`;
-    const joinUrl = `${appBase}?room=${roomCode}`;
+    const audienceBase = typeof window !== 'undefined' ? getSurfaceBaseHref('app', window.location) : '/';
+    const joinUrl = `${audienceBase}?room=${roomCode}`;
     const joinUrlDisplay = joinUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const joinUrlPieces = joinUrlDisplay.split('?');
     const joinUrlBaseDisplay = joinUrlPieces[0];
@@ -3964,7 +3965,7 @@ const PublicTV = ({ roomCode }) => {
                             <div className="text-xl md:text-2xl 2xl:text-3xl font-black text-cyan-100 mb-1 uppercase tracking-[0.14em] md:tracking-[0.18em]">JOIN</div>
                             <div className="bg-white p-2 md:p-3 rounded-2xl md:rounded-3xl inline-block shadow-[0_0_45px_rgba(255,255,255,0.2)]">
                                 <LocalQrImage
-                                    value={`${appBase}?room=${roomCode}`}
+                                    value={joinUrl}
                                     size={joinQrSize}
                                     alt="QR"
                                     className={joinQrClass}

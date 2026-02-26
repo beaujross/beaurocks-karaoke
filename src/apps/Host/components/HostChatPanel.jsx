@@ -7,6 +7,7 @@ const HostChatPanel = ({
     openChatSettings,
     styles,
     appBase,
+    hostBase,
     roomCode,
     chatEnabled,
     setChatEnabled,
@@ -35,6 +36,7 @@ const HostChatPanel = ({
     showSettingsButton = true,
     showPopoutButton = true
 }) => {
+    const resolvedHostBase = hostBase || appBase;
     const displayedMessages = chatViewMode === 'room' ? roomChatMessages : hostDmMessages;
     const groupedMessages = groupChatMessages(displayedMessages.slice(-6), { mergeWindowMs: 12 * 60 * 1000 });
     const dmInputRef = useRef(null);
@@ -72,7 +74,7 @@ const HostChatPanel = ({
                 {showPopoutButton && (
                     <button
                         onClick={() => {
-                            const target = `${appBase}?room=${roomCode}&mode=host&tab=stage&chat=1`;
+                            const target = `${resolvedHostBase}?room=${roomCode}&mode=host&tab=stage&chat=1`;
                             window.open(target, '_blank');
                         }}
                         className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1`}

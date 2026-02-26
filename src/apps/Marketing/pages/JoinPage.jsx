@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { directoryActions } from "../api/directoryApi";
 import { formatDateTime } from "./shared";
+import { buildSurfaceUrl } from "../../../lib/surfaceDomains";
 
 const JoinPage = ({ navigate, id = "" }) => {
   const [roomCode, setRoomCode] = useState(String(id || "").trim().toUpperCase());
@@ -75,7 +76,14 @@ const JoinPage = ({ navigate, id = "" }) => {
               <button type="button" onClick={() => navigate("session", preview.id)}>
                 Open Session Details
               </button>
-              <button type="button" onClick={() => { window.location.href = `/?room=${encodeURIComponent(String(roomCode || id).trim().toUpperCase())}`; }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const code = String(roomCode || id).trim().toUpperCase();
+                  if (!code) return;
+                  window.location.href = buildSurfaceUrl({ surface: "app", params: { room: code } }, window.location);
+                }}
+              >
                 Join On Mobile
               </button>
             </div>

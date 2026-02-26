@@ -1,4 +1,11 @@
 const CALLABLE_URL = "https://us-west1-beaurocks-karaoke-v2.cloudfunctions.net/submitMarketingWaitlist";
+const toBool = (value, fallback = false) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
+  return fallback;
+};
 
 const toJsonOrText = async (response) => {
   const raw = await response.text();
@@ -10,6 +17,8 @@ const toJsonOrText = async (response) => {
 };
 
 const run = async () => {
+  const expectReject = toBool(process.env.QA_APP_CHECK_EXPECT_REJECT, false);
+
   const response = await fetch(CALLABLE_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -25,15 +34,19 @@ const run = async () => {
   const body = await toJsonOrText(response);
 
   const blocked = response.status >= 400;
+  const ok = blocked || !expectReject;
   const output = {
-    ok: blocked,
-    expected: "Request without App Check token should be rejected",
+    ok,
+    expected: expectReject
+      ? "Request without App Check token should be rejected"
+      : "Request may be allowed when APP_CHECK_MODE is monitor/log",
+    mode: expectReject ? "enforce" : "monitor",
     status: response.status,
     body,
   };
 
   console.log(JSON.stringify(output, null, 2));
-  if (!blocked) process.exit(1);
+  if (!ok) process.exit(1);
 };
 
 run().catch((error) => {

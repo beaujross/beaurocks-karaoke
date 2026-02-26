@@ -4,6 +4,7 @@ import { auth, onAuthStateChanged, initAuth } from './lib/firebase';
 import { ASSETS } from './lib/assets';
 import { marketingFlags } from './apps/Marketing/featureFlags';
 import { isMarketingPath } from './apps/Marketing/routing';
+import { buildSurfaceUrl, inferSurfaceFromHostname } from './lib/surfaceDomains';
 
 // App Views
 const PublicTV = lazy(() => import('./apps/TV/PublicTV'));
@@ -24,6 +25,7 @@ const getInitialRouteState = () => {
     }
     const params = new URLSearchParams(window.location.search);
     const pathname = window.location.pathname.replace(/\/+$/, '');
+    const detectedSurface = inferSurfaceFromHostname(window.location.hostname, window.location);
     const r = params.get('room');
     const m = params.get('mode');
     if (m === 'host') {
@@ -44,6 +46,15 @@ const getInitialRouteState = () => {
     if (r) {
         return { view: m === 'tv' ? 'tv' : 'mobile', roomCode: r.toUpperCase() };
     }
+    if (detectedSurface === 'marketing') {
+        return { view: 'marketing', roomCode: '' };
+    }
+    if (detectedSurface === 'host') {
+        return { view: 'host', roomCode: '' };
+    }
+    if (detectedSurface === 'tv') {
+        return { view: 'tv', roomCode: '' };
+    }
     return { view: 'landing', roomCode: '' };
 };
 
@@ -52,21 +63,22 @@ const Landing = ({ onJoin }) => {
     const [showHostGate, setShowHostGate] = useState(false);
     const [hostPasscode, setHostPasscode] = useState('');
     const [hostPasscodeError, setHostPasscodeError] = useState('');
-    const appBase = typeof window !== 'undefined' ? `${window.location.origin}${import.meta.env.BASE_URL || '/'}` : '';
     const marketingHref = typeof window !== 'undefined'
         ? (
             marketingFlags.routePathsEnabled
-                ? new URL('for-fans', appBase || window.location.origin).toString()
-                : `${appBase}?mode=marketing`
+                ? buildSurfaceUrl({ surface: 'marketing', path: 'for-fans' }, window.location)
+                : buildSurfaceUrl({ surface: 'marketing', params: { mode: 'marketing' } }, window.location)
         )
-        : `${appBase}?mode=marketing`;
+        : '/';
     const hostGateCode = import.meta.env.VITE_HOST_PASSCODE || '';
     const handleOpenHostControls = () => {
         if (hostGateCode) {
             setShowHostGate(true);
             return;
         }
-        window.location.href = code ? `${appBase}?room=${code}&mode=host` : `${appBase}?mode=host`;
+        window.location.href = code
+            ? buildSurfaceUrl({ surface: 'host', params: { room: code, mode: 'host' } }, window.location)
+            : buildSurfaceUrl({ surface: 'host', params: { mode: 'host' } }, window.location);
     };
     const handleSubmitHostGate = () => {
         if (hostPasscode.trim() !== hostGateCode) {
@@ -76,7 +88,9 @@ const Landing = ({ onJoin }) => {
         setHostPasscodeError('');
         setShowHostGate(false);
         setHostPasscode('');
-        window.location.href = code ? `${appBase}?room=${code}&mode=host` : `${appBase}?mode=host`;
+        window.location.href = code
+            ? buildSurfaceUrl({ surface: 'host', params: { room: code, mode: 'host' } }, window.location)
+            : buildSurfaceUrl({ surface: 'host', params: { mode: 'host' } }, window.location);
     };
     return ( 
         <div className="h-full w-full overflow-y-auto bg-black relative font-saira text-white">
@@ -89,7 +103,10 @@ const Landing = ({ onJoin }) => {
                         JOIN PARTY (MOBILE)
                     </button>
                     
-                    <button onClick={()=>code && (window.location.href = `${appBase}?room=${code}&mode=tv`)} className="w-full bg-cyan-600 py-3 rounded-xl font-bold text-lg text-white mb-2 hover:bg-cyan-500 transition-colors">
+                    <button
+                        onClick={() => code && (window.location.href = buildSurfaceUrl({ surface: 'tv', params: { room: code, mode: 'tv' } }, window.location))}
+                        className="w-full bg-cyan-600 py-3 rounded-xl font-bold text-lg text-white mb-2 hover:bg-cyan-500 transition-colors"
+                    >
                         LAUNCH TV DISPLAY
                     </button>
                     

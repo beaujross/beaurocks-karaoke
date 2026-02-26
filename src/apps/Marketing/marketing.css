@@ -2405,6 +2405,13 @@
   font-weight: 700;
 }
 
+.mk3-demo-toolbar button.active {
+  border-color: rgba(255, 214, 106, 0.75);
+  color: #fff0cf;
+  background: linear-gradient(130deg, rgba(42, 26, 10, 0.78), rgba(63, 26, 72, 0.72));
+  box-shadow: 0 0 22px rgba(255, 214, 106, 0.22);
+}
+
 .mk3-demo-progress {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -2650,11 +2657,69 @@
 }
 
 .mk3-demo-phone-screen {
+  position: relative;
   border-radius: 21px;
   overflow: hidden;
   border: 1px solid rgba(162, 191, 217, 0.22);
   background: #05070c;
   min-height: 0;
+}
+
+.mk3-demo-autoplay-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: rgba(5, 10, 18, 0.96);
+}
+
+.mk3-demo-autoplay-tv {
+  padding: 0.55rem;
+}
+
+.mk3-demo-autoplay-audience {
+  padding: 0.52rem;
+  overflow-y: auto;
+}
+
+.mk3-demo-tv-video {
+  border: 1px solid rgba(154, 207, 240, 0.28);
+  border-radius: 11px;
+  padding: 0.5rem 0.55rem;
+  background: radial-gradient(circle at 30% 22%, rgba(116, 208, 255, 0.2), transparent 60%), rgba(7, 14, 24, 0.9);
+  display: grid;
+  gap: 0.35rem;
+}
+
+.mk3-demo-tv-video-kicker {
+  font-size: 0.54rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #95d7ff;
+}
+
+.mk3-demo-tv-video strong {
+  font-size: 0.75rem;
+  color: #ffe8bb;
+  letter-spacing: 0.03em;
+}
+
+.mk3-demo-tv-video-eq {
+  min-height: 84px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(4, 9, 15, 0.92), rgba(14, 7, 24, 0.9));
+  display: grid;
+  grid-template-columns: repeat(22, minmax(0, 1fr));
+  align-items: end;
+  gap: 3px;
+  padding: 0.42rem 0.38rem;
+}
+
+.mk3-demo-tv-video-eq i {
+  display: block;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(96, 239, 255, 0.92), rgba(141, 140, 255, 0.92) 50%, rgba(255, 120, 196, 0.9));
+  box-shadow: 0 0 10px rgba(103, 219, 255, 0.32);
 }
 
 .mk3-demo-iframe-mobile {
@@ -2903,6 +2968,11 @@
   align-items: center;
 }
 
+.mk3-demo-trivia-option.is-highlight span,
+.mk3-demo-trivia-option.is-highlight b {
+  color: #ffe6b0;
+}
+
 .mk3-demo-trivia-option span {
   color: #dceaf8;
   font-size: 0.74rem;
@@ -2956,6 +3026,11 @@
   gap: 8px;
 }
 
+.mk3-demo-audience-sim {
+  min-height: 100%;
+  align-content: start;
+}
+
 .mk3-demo-surface-body h4,
 .mk3-demo-surface-body p {
   margin: 0;
@@ -2999,6 +3074,32 @@
   letter-spacing: 0.08em;
   font-size: 0.62rem;
   font-weight: 700;
+}
+
+.mk3-demo-audience-feed {
+  display: grid;
+  gap: 6px;
+}
+
+.mk3-demo-audience-feed > div {
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(10, 16, 25, 0.8);
+  padding: 0.38rem 0.44rem;
+  display: grid;
+  gap: 2px;
+}
+
+.mk3-demo-audience-feed strong {
+  font-size: 0.61rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #dff1ff;
+}
+
+.mk3-demo-audience-feed span {
+  font-size: 0.62rem;
+  color: #aac2da;
 }
 
 .mk3-demo-host-stats {

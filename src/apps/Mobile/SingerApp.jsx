@@ -49,6 +49,7 @@ import {
     getCrowdObjectiveModeFromLightMode,
     isCrowdObjectiveLightMode
 } from '../../lib/crowdObjectiveModes';
+import { buildSurfaceUrl } from '../../lib/surfaceDomains';
 
 // Helper Component for Animated Points
 const AnimatedPoints = ({ value, onClick, className = '' }) => {
@@ -2156,7 +2157,7 @@ const SingerApp = ({ roomCode, uid }) => {
     };
     
     const copyInviteLink = async () => {
-        const url = `${window.location.origin}?room=${roomCode}`;
+        const url = buildSurfaceUrl({ surface: 'app', params: { room: roomCode } }, window.location);
         try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 await navigator.clipboard.writeText(url);
