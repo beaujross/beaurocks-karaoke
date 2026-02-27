@@ -262,7 +262,7 @@ const LOBBY_ORB_EVENT_CAP = 14;
 const LOBBY_PARTICLE_MAX = 24;
 const LOBBY_ORB_MIN_TOP_PCT = 24;
 const LOBBY_ORB_IDLE_TOP_PCT = 66;
-const LOBBY_GROUND_LINE_TOP_PCT = 78;
+const LOBBY_GROUND_LINE_TOP_PCT = 92;
 const GUITAR_SYNC_DECAY_PER_SECOND = 14;
 const GUITAR_SYNC_GAIN_PER_HIT = 11;
 const GUITAR_SYNC_GROUND_THRESHOLD = 12;
@@ -3059,12 +3059,27 @@ const PublicTV = ({ roomCode }) => {
         ? (isVeryShortViewport ? 'min-h-[48vh] md:min-h-[56vh]' : isShortViewport ? 'min-h-[52vh] md:min-h-[60vh]' : 'min-h-[58vh] md:min-h-[66vh]')
         : stageMinHeightClass;
     const sidebarGapClass = isShortViewport ? 'gap-1.5 pb-1' : 'gap-2 pb-2';
-    const joinQrSize = isVeryShortViewport ? 132 : isShortViewport ? 152 : 176;
-    const joinQrClass = isVeryShortViewport
-        ? 'w-[108px] h-[108px] md:w-[124px] md:h-[124px] 2xl:w-[168px] 2xl:h-[168px]'
-        : isShortViewport
-            ? 'w-[120px] h-[120px] md:w-[140px] md:h-[140px] 2xl:w-[196px] 2xl:h-[196px]'
-            : 'w-[132px] h-[132px] md:w-[160px] md:h-[160px] 2xl:w-[220px] 2xl:h-[220px]';
+    const compactJoinCardMode = lobbyCompactHudMode || isDistanceConstrained;
+    const joinQrSize = compactJoinCardMode
+        ? (isVeryShortViewport ? 104 : isShortViewport ? 116 : 128)
+        : (isVeryShortViewport ? 132 : isShortViewport ? 152 : 176);
+    const joinQrClass = compactJoinCardMode
+        ? (isVeryShortViewport
+            ? 'w-[92px] h-[92px] md:w-[104px] md:h-[104px] 2xl:w-[132px] 2xl:h-[132px]'
+            : isShortViewport
+                ? 'w-[100px] h-[100px] md:w-[116px] md:h-[116px] 2xl:w-[148px] 2xl:h-[148px]'
+                : 'w-[108px] h-[108px] md:w-[124px] md:h-[124px] 2xl:w-[160px] 2xl:h-[160px]')
+        : (isVeryShortViewport
+            ? 'w-[108px] h-[108px] md:w-[124px] md:h-[124px] 2xl:w-[168px] 2xl:h-[168px]'
+            : isShortViewport
+                ? 'w-[120px] h-[120px] md:w-[140px] md:h-[140px] 2xl:w-[196px] 2xl:h-[196px]'
+                : 'w-[132px] h-[132px] md:w-[160px] md:h-[160px] 2xl:w-[220px] 2xl:h-[220px]');
+    const lobbyObjectiveHudRight = viewportSize.width >= 1024
+        ? (lobbyCompactHudMode ? '26.4%' : '34.2%')
+        : '3%';
+    const lobbyObjectiveHudWidth = viewportSize.width >= 1024
+        ? (lobbyCompactHudMode ? 'min(25vw,460px)' : 'min(29vw,520px)')
+        : 'min(90vw,560px)';
     const marqueeHeightClass = isVeryShortViewport ? 'h-14 md:h-16' : isShortViewport ? 'h-16 md:h-20' : 'h-20 md:h-28 2xl:h-36';
     const marqueeTextSize = isVeryShortViewport
         ? 'clamp(1.5rem, 2.8vw, 2.4rem)'
@@ -3961,9 +3976,9 @@ const PublicTV = ({ roomCode }) => {
                 {/* SIDEBAR: Hidden in Cinema Mode */}
                 {!isCinema && (
                     <div className={`col-span-12 ${lobbyCompactHudMode ? 'lg:col-span-3' : 'lg:col-span-4'} flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden`}>
-                         <div className="p-3 md:p-4 rounded-2xl md:rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20">
-                            <div className="text-xl md:text-2xl 2xl:text-3xl font-black text-cyan-100 mb-1 uppercase tracking-[0.14em] md:tracking-[0.18em]">JOIN</div>
-                            <div className="bg-white p-2 md:p-3 rounded-2xl md:rounded-3xl inline-block shadow-[0_0_45px_rgba(255,255,255,0.2)]">
+                         <div className={`${lobbyCompactHudMode ? 'p-2 md:p-3' : 'p-3 md:p-4'} rounded-2xl md:rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20`}>
+                            <div className={`${lobbyCompactHudMode ? 'text-lg md:text-xl 2xl:text-2xl' : 'text-xl md:text-2xl 2xl:text-3xl'} font-black text-cyan-100 mb-1 uppercase tracking-[0.14em] md:tracking-[0.18em]`}>JOIN</div>
+                            <div className={`bg-white ${lobbyCompactHudMode ? 'p-1.5 md:p-2' : 'p-2 md:p-3'} rounded-2xl md:rounded-3xl inline-block shadow-[0_0_45px_rgba(255,255,255,0.2)]`}>
                                 <LocalQrImage
                                     value={joinUrl}
                                     size={joinQrSize}
@@ -3971,14 +3986,14 @@ const PublicTV = ({ roomCode }) => {
                                     className={joinQrClass}
                                 />
                             </div>
-                            <div className="text-2xl md:text-3xl 2xl:text-4xl font-bebas text-white mt-2 tracking-[0.1em] md:tracking-[0.14em]">{roomCode}</div>
-                            <div className="mt-1">
+                            <div className={`${lobbyCompactHudMode ? 'text-xl md:text-2xl 2xl:text-3xl mt-1.5' : 'text-2xl md:text-3xl 2xl:text-4xl mt-2'} font-bebas text-white tracking-[0.1em] md:tracking-[0.14em]`}>{roomCode}</div>
+                            <div className={`${lobbyCompactHudMode ? 'mt-0.5' : 'mt-1'}`}>
                                 {lobbyCompactHudMode ? (
                                     <>
-                                        <div className="text-sm md:text-base text-zinc-100 font-semibold uppercase tracking-[0.08em] leading-tight">
+                                        <div className="text-xs md:text-sm text-zinc-100 font-semibold uppercase tracking-[0.08em] leading-tight">
                                             Scan to join on your phone
                                         </div>
-                                        <div className="text-xs md:text-sm text-cyan-100 tracking-[0.05em] break-all leading-tight mt-1">
+                                        <div className="text-[10px] md:text-xs text-cyan-100 tracking-[0.04em] break-all leading-tight mt-0.5">
                                             {joinUrlBaseDisplay}
                                         </div>
                                     </>
@@ -4066,24 +4081,24 @@ const PublicTV = ({ roomCode }) => {
                          ) : (
                              <div className="flex-1 min-h-0 bg-zinc-800/80 backdrop-blur rounded-2xl md:rounded-3xl p-3 md:p-5 border border-white/10 flex flex-col overflow-hidden">
                                 {lobbyVolleySceneActive && lobbyVolleyEnabled ? (
-                                    <>
+                                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
                                         <div className="flex items-center justify-between mb-2 border-b border-white/10 pb-2">
                                             <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-cyan-300">LOBBY PLAYGROUND</h3>
                                         </div>
-                                        <div className="text-xs md:text-sm text-zinc-200/90 mb-3 uppercase tracking-[0.12em]">
+                                        <div className={`${lobbyCompactHudMode ? 'text-[11px] md:text-xs mb-2' : 'text-xs md:text-sm mb-3'} text-zinc-200/90 uppercase tracking-[0.12em]`}>
                                             Phones drive the room. Keep the orb alive.
                                         </div>
-                                        <div className="rounded-2xl border border-emerald-300/35 bg-emerald-500/10 px-3 py-3 mb-3">
+                                        <div className={`rounded-2xl border border-emerald-300/35 bg-emerald-500/10 px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'}`}>
                                             <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-100 mb-1">{lobbyObjectiveLabel} Goal</div>
-                                            <div className="text-sm md:text-lg font-semibold text-white leading-tight">
+                                            <div className={`${lobbyCompactHudMode ? 'text-sm md:text-base' : 'text-sm md:text-lg'} font-semibold text-white leading-tight`}>
                                                 {lobbyObjectiveBannerGoal}
                                             </div>
                                         </div>
-                                        <div className="rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-3 mb-3">
+                                        <div className={`rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'}`}>
                                             <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200 mb-1">Try This</div>
-                                            <div className="text-sm md:text-lg font-semibold text-white leading-tight">{lobbyPrompt}</div>
+                                            <div className={`${lobbyCompactHudMode ? 'text-sm md:text-base' : 'text-sm md:text-lg'} font-semibold text-white leading-tight`}>{lobbyPrompt}</div>
                                         </div>
-                                        <div className="rounded-2xl border border-fuchsia-300/35 bg-gradient-to-r from-cyan-500/14 via-indigo-500/14 to-fuchsia-500/16 px-3 py-3 mb-3">
+                                        <div className={`rounded-2xl border border-fuchsia-300/35 bg-gradient-to-r from-cyan-500/14 via-indigo-500/14 to-fuchsia-500/16 px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'}`}>
                                             <div className="flex items-center justify-between gap-2">
                                                 <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100">Teamwork Multiplier</div>
                                                 <div className="px-2 py-1 rounded-full border border-white/25 bg-black/35 text-[10px] uppercase tracking-[0.15em] text-white">
@@ -4130,7 +4145,7 @@ const PublicTV = ({ roomCode }) => {
                                                 </div>
                                             )}
                                         </div>
-                                        <div className={`rounded-2xl border px-3 py-3 mb-3 ${
+                                        <div className={`rounded-2xl border px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'} ${
                                             lobbyRelayObjective.active
                                                 ? 'border-emerald-300/45 bg-emerald-500/12'
                                                 : 'border-white/20 bg-black/35'
@@ -4162,37 +4177,53 @@ const PublicTV = ({ roomCode }) => {
                                                 />
                                             </div>
                                         </div>
-                                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-300 mb-1">In Room ({roomUsers.length})</div>
-                                        <div className="grid grid-cols-2 gap-2 mb-3 max-h-[16vh] overflow-y-auto custom-scrollbar pr-1">
-                                            {lobbyMembers.length === 0 && (
-                                                <div className="col-span-2 rounded-xl border border-white/10 bg-black/35 px-3 py-3 text-zinc-200 text-sm md:text-base">
-                                                    Scan the QR to join. First person in unlocks live interaction.
+                                        {lobbyCompactHudMode ? (
+                                            <div className="rounded-2xl border border-white/20 bg-black/35 px-3 py-2">
+                                                <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-zinc-200">
+                                                    <span>In Room {roomUsers.length}</span>
+                                                    <span>{lobbyActiveParticipants.length} active</span>
                                                 </div>
-                                            )}
-                                            {lobbyMembers.map((member, idx) => (
-                                                <div key={`${member.uid || member.name || 'guest'}-${idx}`} className="rounded-xl border border-white/10 bg-black/35 px-2 py-1.5 flex items-center gap-1.5">
-                                                    <span className="text-base md:text-lg">{member.avatar || EMOJI.sparkle}</span>
-                                                    <span className="truncate text-xs md:text-sm font-semibold text-zinc-100">{member.name || 'Guest'}</span>
+                                                <div className="mt-1 text-xs text-zinc-100 leading-tight">
+                                                    {lobbyEventFeed[0]
+                                                        ? `${lobbyEventFeed[0].user || 'Guest'} ${lobbyEventFeed[0].text || ''}`
+                                                        : 'Scan the QR to join and launch the first volley.'}
                                                 </div>
-                                            ))}
-                                        </div>
-                                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-300 mb-1">Live Signals</div>
-                                        <div className="flex-1 min-h-[120px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
-                                            {lobbyEventFeed.length === 0 && (
-                                                <div className="rounded-xl border border-white/10 bg-black/35 px-3 py-3 text-zinc-200 text-sm md:text-base">
-                                                    Waiting for joins, reactions, or chat...
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-300 mb-1">In Room ({roomUsers.length})</div>
+                                                <div className="grid grid-cols-2 gap-2 mb-3 max-h-[16vh] overflow-y-auto custom-scrollbar pr-1">
+                                                    {lobbyMembers.length === 0 && (
+                                                        <div className="col-span-2 rounded-xl border border-white/10 bg-black/35 px-3 py-3 text-zinc-200 text-sm md:text-base">
+                                                            Scan the QR to join. First person in unlocks live interaction.
+                                                        </div>
+                                                    )}
+                                                    {lobbyMembers.map((member, idx) => (
+                                                        <div key={`${member.uid || member.name || 'guest'}-${idx}`} className="rounded-xl border border-white/10 bg-black/35 px-2 py-1.5 flex items-center gap-1.5">
+                                                            <span className="text-base md:text-lg">{member.avatar || EMOJI.sparkle}</span>
+                                                            <span className="truncate text-xs md:text-sm font-semibold text-zinc-100">{member.name || 'Guest'}</span>
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            )}
-                                            {lobbyEventFeed.map((entry) => (
-                                                <div key={entry.id} className="rounded-xl border border-white/10 bg-black/45 px-3 py-2 flex items-center gap-2">
-                                                    <span className="text-lg md:text-xl">{entry.avatar || EMOJI.sparkle}</span>
-                                                    <span className="truncate text-sm md:text-base text-zinc-100">
-                                                        <span className="font-bold text-white">{entry.user || 'Guest'}</span> {entry.text}
-                                                    </span>
+                                                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-300 mb-1">Live Signals</div>
+                                                <div className="flex-1 min-h-[120px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
+                                                    {lobbyEventFeed.length === 0 && (
+                                                        <div className="rounded-xl border border-white/10 bg-black/35 px-3 py-3 text-zinc-200 text-sm md:text-base">
+                                                            Waiting for joins, reactions, or chat...
+                                                        </div>
+                                                    )}
+                                                    {lobbyEventFeed.map((entry) => (
+                                                        <div key={entry.id} className="rounded-xl border border-white/10 bg-black/45 px-3 py-2 flex items-center gap-2">
+                                                            <span className="text-lg md:text-xl">{entry.avatar || EMOJI.sparkle}</span>
+                                                            <span className="truncate text-sm md:text-base text-zinc-100">
+                                                                <span className="font-bold text-white">{entry.user || 'Guest'}</span> {entry.text}
+                                                            </span>
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            ))}
-                                        </div>
-                                    </>
+                                            </>
+                                        )}
+                                    </div>
                                 ) : (
                                     <>
                                         <div className="flex items-center justify-between mb-2 border-b border-white/10 pb-2">
@@ -4618,7 +4649,7 @@ const PublicTV = ({ roomCode }) => {
                             </>
                         ) : (
                             <>
-                                <div className="absolute left-[8%] right-[8%] lobby-volley-ground-line" style={{ top: `${LOBBY_GROUND_LINE_TOP_PCT}%` }}>
+                                <div className="absolute left-[6%] right-[6%] lobby-volley-ground-line" style={{ top: 'auto', bottom: lobbyCompactHudMode ? '3.2%' : '4.4%' }}>
                                     <div className="lobby-volley-ground-core" />
                                     <div className="lobby-volley-ground-label">Ground Line</div>
                                 </div>
@@ -4673,21 +4704,24 @@ const PublicTV = ({ roomCode }) => {
                         )}
                     </>
                 )}
-                <div className="absolute top-[4.5%] left-[2.4%] w-[min(34vw,560px)] text-left">
+                <div
+                    className="absolute top-[4.5%] text-right pointer-events-none"
+                    style={{ right: lobbyObjectiveHudRight, width: lobbyObjectiveHudWidth }}
+                >
                     <div className="text-[12px] md:text-[14px] uppercase tracking-[0.22em] text-cyan-200/90">
                         {lobbyObjectiveLabel}
                     </div>
-                    <div className="mt-1 text-[30px] md:text-[44px] 2xl:text-[56px] leading-[0.95] font-bebas text-white drop-shadow-[0_0_12px_rgba(0,0,0,0.45)]">
+                    <div className="mt-0.5 text-[42px] md:text-[58px] 2xl:text-[68px] leading-[0.9] font-bebas text-white drop-shadow-[0_0_12px_rgba(0,0,0,0.45)]">
                         {lobbyObjectiveBannerGoal}
                     </div>
-                    <div className="mt-4 space-y-2">
+                    <div className="mt-2 space-y-1.5">
                         <div className="flex items-end justify-between gap-4">
                             <div className="text-[12px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100/85">Teamwork</div>
-                            <div className="text-[28px] md:text-[40px] leading-none font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
+                            <div className="text-[34px] md:text-[48px] leading-none font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
                         </div>
                         <div className="flex items-end justify-between gap-4">
                             <div className="text-[12px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100/85">Status</div>
-                            <div className="text-[19px] md:text-[28px] leading-none font-bebas text-white">{lobbyObjectiveProgressLabel}</div>
+                            <div className="text-[22px] md:text-[32px] leading-none font-bebas text-white">{lobbyObjectiveProgressLabel}</div>
                         </div>
                         <div className="flex items-end justify-between gap-4">
                             <div className="text-[12px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100/85">Relay</div>
@@ -4696,7 +4730,7 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                         </div>
                     </div>
-                    <div className="mt-4 space-y-3">
+                    <div className="mt-2.5 space-y-2">
                         <div>
                             <div className="flex items-center justify-between text-[12px] md:text-[14px] uppercase tracking-[0.17em] text-cyan-100/90 mb-1">
                                 <span>Momentum</span>
@@ -5082,26 +5116,42 @@ const PublicTV = ({ roomCode }) => {
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                pointer-events: none;
               }
               .lobby-volley-ground-core {
                 width: 100%;
-                height: 5px;
+                height: 8px;
                 border-radius: 9999px;
-                background: linear-gradient(90deg, rgba(244,114,182,0.2), rgba(251,191,36,0.95), rgba(244,114,182,0.2));
-                box-shadow: 0 0 18px rgba(251,191,36,0.52), 0 0 36px rgba(239,68,68,0.2);
+                border: 1px solid rgba(253, 224, 71, 0.78);
+                background: linear-gradient(90deg, rgba(244,114,182,0.24), rgba(250,204,21,0.98), rgba(244,114,182,0.24));
+                box-shadow: 0 0 20px rgba(250,204,21,0.58), 0 0 44px rgba(236,72,153,0.3);
+                position: relative;
+              }
+              .lobby-volley-ground-core::before {
+                content: '';
+                position: absolute;
+                left: 0;
+                right: 0;
+                top: -11px;
+                bottom: -11px;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, rgba(250,204,21,0.2), rgba(253,186,116,0.42), rgba(250,204,21,0.2));
+                filter: blur(7px);
+                opacity: 0.82;
               }
               .lobby-volley-ground-label {
                 position: absolute;
-                top: -20px;
-                padding: 2px 10px;
+                top: -26px;
+                padding: 3px 12px;
                 border-radius: 9999px;
-                border: 1px solid rgba(255,255,255,0.3);
-                background: rgba(2,6,23,0.72);
+                border: 1px solid rgba(253,224,71,0.45);
+                background: linear-gradient(180deg, rgba(15,23,42,0.88), rgba(2,6,23,0.78));
                 color: rgba(254,243,199,0.95);
-                font-size: 10px;
+                font-size: 11px;
                 font-weight: 800;
-                letter-spacing: 0.16em;
+                letter-spacing: 0.14em;
                 text-transform: uppercase;
+                box-shadow: 0 0 14px rgba(250,204,21,0.26);
               }
               .lobby-volley-orb-shell {
                 --orb-energy-norm: 0.4;

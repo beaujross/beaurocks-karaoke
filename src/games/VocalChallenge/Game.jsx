@@ -102,6 +102,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             phase: 'playing',
             score: 0,
             streak: 0,
+            lastAward: null,
             sequence,
             targetIndex: 0,
             nextNoteAt: Date.now() + intervalMs,
@@ -186,15 +187,24 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                     if (matchRef.current.note !== targetNote || matchRef.current.quality !== matchQuality) {
                         matchRef.current = { note: targetNote, quality: matchQuality, since: now };
                     } else if (now - matchRef.current.since >= requiredHoldMs) {
+                        let awardPoints = 0;
                         if (matchQuality === 'full') {
                             state.streak = (state.streak || 0) + 1;
                             const bonus = Math.min(50, state.streak * 6);
-                            state.score = (state.score || 0) + 25 + bonus;
+                            awardPoints = 25 + bonus;
+                            state.score = (state.score || 0) + awardPoints;
                         } else {
                             // Partial credit keeps beginners engaged even if pitch is slightly off.
                             state.streak = Math.max(0, (state.streak || 0) - 1);
-                            state.score = (state.score || 0) + 10;
+                            awardPoints = 10;
+                            state.score = (state.score || 0) + awardPoints;
                         }
+                        state.lastAward = {
+                            at: now,
+                            points: awardPoints,
+                            quality: matchQuality === 'full' ? 'perfect' : 'near',
+                            note: targetNote
+                        };
                         matchRef.current = { note: '-', quality: 'none', since: 0 };
                     }
                 } else {
@@ -333,6 +343,9 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
         ? metaList.find((p) => p.id === (data.participants || [])[Math.min((data.turnIndex || 0) + 1, (data.participants || []).length - 1)])
         : null;
     const showSummary = localState.phase === 'summary';
+    const lastAward = localState.lastAward || null;
+    const lastAwardAgeMs = lastAward?.at ? (Date.now() - Number(lastAward.at || 0)) : Number.POSITIVE_INFINITY;
+    const showAwardBanner = lastAward && lastAwardAgeMs < 1700;
 
     return (
         <div className="relative w-full h-full bg-indigo-950 overflow-hidden font-saira text-white">
@@ -341,34 +354,50 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
 
             <div className="absolute top-6 left-8 right-8 flex items-center justify-between z-20">
                 <div>
-                    <div className="text-xs md:text-sm uppercase tracking-[0.24em] md:tracking-[0.3em] text-zinc-400">Vocal Challenge</div>
-                    <div className="text-3xl font-bebas text-pink-300">{data.playerId === 'AMBIENT' ? 'THE CROWD' : (data.playerName || 'SINGER')}</div>
-                    <div className="text-base md:text-lg text-zinc-400">Match the melody notes as they change.</div>
+                    <div className="text-sm md:text-base uppercase tracking-[0.24em] md:tracking-[0.3em] text-zinc-300">Vocal Challenge</div>
+                    <div className="text-4xl md:text-5xl font-bebas text-pink-300">{data.playerId === 'AMBIENT' ? 'THE CROWD' : (data.playerName || 'SINGER')}</div>
+                    <div className="text-lg md:text-xl text-zinc-300">Match the melody notes as they change.</div>
                     {isTurnsMode && (
-                        <div className="mt-2 text-sm uppercase tracking-[0.2em] text-zinc-500">
+                        <div className="mt-2 text-base uppercase tracking-[0.2em] text-zinc-400">
                             {isController ? "You're up" : `Up now: ${currentTurnMeta?.name || data.playerName || 'Singer'}`}
                         </div>
                     )}
                 </div>
                 <div className="text-right">
-                    <div className="text-sm uppercase tracking-[0.2em] text-zinc-400">Score</div>
-                    <div className="text-3xl font-black text-white">{localState.score}</div>
-                    <div className="text-sm text-zinc-500">Streak: {localState.streak || 0}</div>
-                    <div className="mt-2 flex items-center justify-end gap-2 text-xs uppercase tracking-[0.2em] text-zinc-400">
+                    <div className="text-base uppercase tracking-[0.2em] text-zinc-300">Score</div>
+                    <div className="text-5xl md:text-6xl font-black text-white leading-none">{localState.score}</div>
+                    <div className="text-base text-zinc-300 mt-1">Streak: {localState.streak || 0}</div>
+                    <div className="mt-3 flex items-center justify-end gap-2 text-sm uppercase tracking-[0.18em] text-zinc-300">
                         <span className="px-2 py-1 rounded-full border border-white/10 bg-black/40">{difficulty}</span>
                         <span className={`px-2 py-1 rounded-full border ${guideTone ? 'border-emerald-400/40 text-emerald-200 bg-emerald-500/10' : 'border-zinc-600 text-zinc-400 bg-black/40'}`}>
                             Guide tone {guideTone ? 'on' : 'off'}
                         </span>
                     </div>
                     {isTurnsMode && nextTurnMeta?.name && (
-                        <div className="text-xs text-zinc-500 mt-2">Next up: {nextTurnMeta.name}</div>
+                        <div className="text-sm text-zinc-400 mt-2">Next up: {nextTurnMeta.name}</div>
                     )}
                 </div>
             </div>
+            {showAwardBanner && (
+                <div className="absolute top-[112px] left-1/2 -translate-x-1/2 z-30">
+                    <div
+                        className={`rounded-2xl border px-5 py-2.5 text-center shadow-[0_0_30px_rgba(0,0,0,0.35)] ${
+                            lastAward.quality === 'perfect'
+                                ? 'border-emerald-300/60 bg-emerald-500/18 text-emerald-100'
+                                : 'border-amber-300/60 bg-amber-500/16 text-amber-100'
+                        }`}
+                    >
+                        <div className="text-sm uppercase tracking-[0.2em]">
+                            {lastAward.quality === 'perfect' ? 'Perfect Match' : 'Near Match'}
+                        </div>
+                        <div className="text-[34px] md:text-[44px] leading-none font-black mt-1">+{lastAward.points}</div>
+                    </div>
+                </div>
+            )}
 
             <div className="absolute inset-x-10 top-28 bottom-24 flex flex-col gap-6">
                 <div className="bg-black/50 border border-white/10 rounded-3xl p-6">
-                    <div className="flex items-center justify-between text-sm uppercase tracking-[0.2em] text-zinc-500 mb-3">
+                    <div className="flex items-center justify-between text-base md:text-lg uppercase tracking-[0.16em] text-zinc-300 mb-3">
                         <span>Melody</span>
                         <span>Match the note</span>
                     </div>
@@ -378,16 +407,16 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                         ))}
                         <div className="absolute left-6 right-6 top-0 bottom-0">
                             {SCALE_NOTES.map((n) => (
-                                <div key={n} className="absolute left-0 text-sm text-zinc-400" style={{ top: `${NOTE_Y[n]}%` }}>{n}</div>
+                                <div key={n} className="absolute left-0 text-base md:text-lg font-semibold text-zinc-300" style={{ top: `${NOTE_Y[n]}%` }}>{n}</div>
                             ))}
                             {targetNote && (
-                                <div className="absolute left-1/2 w-6 h-6 rounded-full bg-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.7)]" style={{ top: `${NOTE_Y[targetNote]}%`, transform: 'translate(-50%, -50%)' }}></div>
+                                <div className="absolute left-1/2 w-8 h-8 rounded-full bg-cyan-400 shadow-[0_0_24px_rgba(34,211,238,0.78)]" style={{ top: `${NOTE_Y[targetNote]}%`, transform: 'translate(-50%, -50%)' }}></div>
                             )}
                             {detected && detected !== '-' && (
-                                <div className="absolute left-[60%] w-5 h-5 rounded-full bg-pink-400 shadow-[0_0_16px_rgba(236,72,153,0.6)]" style={{ top: `${NOTE_Y[detected] || 50}%`, transform: 'translate(-50%, -50%)' }}></div>
+                                <div className="absolute left-[60%] w-7 h-7 rounded-full bg-pink-400 shadow-[0_0_18px_rgba(236,72,153,0.68)]" style={{ top: `${NOTE_Y[detected] || 50}%`, transform: 'translate(-50%, -50%)' }}></div>
                             )}
                         </div>
-                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-sm md:text-base text-zinc-300">
+                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-lg md:text-2xl text-zinc-200">
                             Target: <span className="text-white font-bold">{targetNote || '-'}</span>
                             <span className="mx-2 text-zinc-600">|</span>
                             Detected: <span className="text-white font-bold">{detected}</span>
@@ -396,7 +425,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                 </div>
                 <div className="flex flex-wrap gap-2">
                     {(localState.sequence || []).map((n, idx) => (
-                        <div key={`${n}-${idx}`} className={`px-3 py-1 rounded-full text-sm md:text-base font-bold border ${idx === localState.targetIndex ? 'border-pink-300 text-pink-200 bg-pink-500/10' : 'border-white/10 text-zinc-500 bg-black/20'}`}>
+                        <div key={`${n}-${idx}`} className={`px-3 py-1.5 rounded-full text-base md:text-xl font-bold border ${idx === localState.targetIndex ? 'border-pink-300 text-pink-200 bg-pink-500/10' : 'border-white/10 text-zinc-400 bg-black/20'}`}>
                             {n}
                         </div>
                     ))}
@@ -406,11 +435,11 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             {showSummary && (
                 <div className="absolute inset-0 bg-black/75 z-30 flex items-center justify-center text-center">
                     <div className="bg-zinc-900/90 border border-white/10 rounded-3xl px-8 py-6 max-w-lg">
-                        <div className="text-sm uppercase tracking-[0.24em] text-zinc-400">Round Summary</div>
-                        <div className="text-4xl font-bebas text-pink-300 mt-2">Score {localState.score}</div>
-                        <div className="text-base md:text-lg text-zinc-400 mt-1">Best streak {localState.streak || 0}</div>
+                        <div className="text-base uppercase tracking-[0.24em] text-zinc-300">Round Summary</div>
+                        <div className="text-5xl md:text-6xl font-bebas text-pink-300 mt-2">Score {localState.score}</div>
+                        <div className="text-lg md:text-xl text-zinc-300 mt-1">Best streak {localState.streak || 0}</div>
                         {isTurnsMode && nextTurnMeta?.name && (
-                            <div className="text-sm uppercase tracking-[0.2em] text-zinc-500 mt-4">Next up: {nextTurnMeta.name}</div>
+                            <div className="text-base uppercase tracking-[0.2em] text-zinc-400 mt-4">Next up: {nextTurnMeta.name}</div>
                         )}
                     </div>
                 </div>
@@ -419,8 +448,8 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             {waitingForTurn && (
                 <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-30 text-center">
                     <div className="bg-zinc-900/80 border border-white/10 rounded-2xl px-6 py-4">
-                        <div className="text-sm uppercase tracking-[0.24em] text-zinc-400">Vocal Challenge</div>
-                        <div className="text-2xl font-bebas text-pink-300 mt-2">Waiting for your turn</div>
+                        <div className="text-base uppercase tracking-[0.24em] text-zinc-300">Vocal Challenge</div>
+                        <div className="text-4xl md:text-5xl font-bebas text-pink-300 mt-2">Waiting for your turn</div>
                     </div>
                 </div>
             )}

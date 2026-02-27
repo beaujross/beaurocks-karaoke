@@ -196,6 +196,7 @@ const TeamPongGame = ({
     const cooldownRemainingMs = Math.max(0, cooldownUntil - now);
     const canSendHit = Boolean(isPlayer) && !submitting && cooldownRemainingMs <= 0;
     const rallyTimeoutSeconds = (rallyTimeoutMs / 1000).toFixed(1);
+    const tvBottomSafeStyle = { bottom: 'max(14px, env(safe-area-inset-bottom))' };
 
     const sendPongHit = useCallback(async () => {
         if (!roomCode || !isPlayer || submitting) return;
@@ -330,26 +331,29 @@ const TeamPongGame = ({
             )}
             <div className="absolute top-5 left-1/2 -translate-x-1/2 w-[min(86vw,760px)]">
                 <div className="rounded-2xl border border-white/20 bg-black/45 px-4 py-3 backdrop-blur-sm">
-                    <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-zinc-200">
+                    <div className="flex items-center justify-between text-xs md:text-sm uppercase tracking-[0.2em] text-zinc-200">
                         <span>Team Pong</span>
                         <span>x{teamworkMultiplier.toFixed(1)} teamwork</span>
                     </div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-center">
                         <div className={`rounded-xl border px-2 py-2 ${leftLead ? 'border-cyan-300/45 bg-cyan-500/15' : 'border-white/15 bg-black/35'}`}>
-                            <div className="text-[10px] uppercase tracking-[0.15em] text-zinc-300">Left Team</div>
+                            <div className="text-xs md:text-sm uppercase tracking-[0.15em] text-zinc-300">Left Team</div>
                             <div className="text-2xl font-black text-cyan-100">{stats.leftHits}</div>
                         </div>
                         <div className="rounded-xl border border-white/15 bg-black/35 px-2 py-2">
-                            <div className="text-[10px] uppercase tracking-[0.15em] text-zinc-300">Rally</div>
+                            <div className="text-xs md:text-sm uppercase tracking-[0.15em] text-zinc-300">Rally</div>
                             <div className="text-2xl font-black text-white">{rallyCount}</div>
                         </div>
                         <div className={`rounded-xl border px-2 py-2 ${!leftLead ? 'border-fuchsia-300/45 bg-fuchsia-500/15' : 'border-white/15 bg-black/35'}`}>
-                            <div className="text-[10px] uppercase tracking-[0.15em] text-zinc-300">Right Team</div>
+                            <div className="text-xs md:text-sm uppercase tracking-[0.15em] text-zinc-300">Right Team</div>
                             <div className="text-2xl font-black text-fuchsia-100">{stats.rightHits}</div>
                         </div>
                     </div>
                     <div className="mt-2 h-2 rounded-full overflow-hidden bg-black/55 border border-white/20">
                         <div className="h-full bg-gradient-to-r from-cyan-300 via-indigo-300 to-fuchsia-300 transition-all duration-120" style={{ width: `${energyPct}%` }} />
+                    </div>
+                    <div className="mt-2 text-sm md:text-base uppercase tracking-[0.11em] text-zinc-100 text-center">
+                        Tap Phone = +1 Hit | Rally resets after {rallyTimeoutSeconds}s with no hit
                     </div>
                 </div>
             </div>
@@ -358,7 +362,7 @@ const TeamPongGame = ({
                 <div className="absolute inset-x-[8%] top-[8%] h-[1px] bg-cyan-100/20"></div>
                 <div className="absolute inset-x-[8%] bottom-[8%] h-[1px] bg-cyan-100/20"></div>
             </div>
-            <div className="absolute top-[24%] left-[7.5%] rounded-xl border border-cyan-200/35 bg-black/45 px-2 py-1.5 text-[11px] uppercase tracking-[0.13em] text-cyan-100 min-w-[120px]">
+            <div className="absolute top-[24%] left-[7.5%] rounded-xl border border-cyan-200/35 bg-black/45 px-2 py-1.5 text-xs uppercase tracking-[0.13em] text-cyan-100 min-w-[120px]">
                 <div className="font-black mb-1">Left Team</div>
                 <div className="flex items-center gap-1">
                     {(stats.leftMembers.length ? stats.leftMembers : [{ uid: 'left-empty', avatar: emoji(0x1F44B), name: 'Open' }]).slice(0, 5).map((entry, idx) => (
@@ -368,7 +372,7 @@ const TeamPongGame = ({
                     ))}
                 </div>
             </div>
-            <div className="absolute top-[24%] right-[7.5%] rounded-xl border border-fuchsia-200/35 bg-black/45 px-2 py-1.5 text-[11px] uppercase tracking-[0.13em] text-fuchsia-100 min-w-[120px]">
+            <div className="absolute top-[24%] right-[7.5%] rounded-xl border border-fuchsia-200/35 bg-black/45 px-2 py-1.5 text-xs uppercase tracking-[0.13em] text-fuchsia-100 min-w-[120px]">
                 <div className="font-black mb-1">Right Team</div>
                 <div className="flex items-center justify-end gap-1">
                     {(stats.rightMembers.length ? stats.rightMembers : [{ uid: 'right-empty', avatar: emoji(0x2728), name: 'Open' }]).slice(0, 5).map((entry, idx) => (
@@ -382,13 +386,21 @@ const TeamPongGame = ({
             <div className="absolute right-[8.5%] w-[1.4%] min-w-[12px] h-[18%] min-h-[90px] -translate-y-1/2 rounded-full border border-fuchsia-200/45 bg-fuchsia-400/25 shadow-[0_0_22px_rgba(217,70,239,0.35)] transition-[top] duration-150" style={{ top: `${motion.rightPaddleTopPct}%` }} />
             <div className="absolute -translate-x-1/2 -translate-y-1/2 transition-[top,left] duration-130 ease-out" style={{ top: `${motion.ballTopPct}%`, left: `${motion.ballLeftPct}%` }}>
                 <div className="w-[92px] h-[92px] rounded-full border border-cyan-200/45 bg-gradient-to-br from-cyan-300/35 via-blue-400/30 to-fuchsia-400/35 shadow-[0_0_34px_rgba(34,211,238,0.45)] flex flex-col items-center justify-center">
-                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100">Rally</div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-cyan-100">Rally</div>
                     <div className="text-3xl font-bebas text-white leading-none">{rallyCount}</div>
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-white/75">{stats.participantCount} active</div>
+                    <div className="text-xs uppercase tracking-[0.12em] text-white/75">{stats.participantCount} active</div>
                 </div>
             </div>
-            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-2xl border border-white/25 bg-black/55 px-6 py-3 text-[clamp(0.95rem,1.6vw,1.4rem)] uppercase tracking-[0.14em] text-zinc-100 shadow-[0_0_24px_rgba(0,0,0,0.35)]">
-                Goal: reach rally {targetRally} - keep hits flowing before timeout
+            <div
+                className="absolute left-1/2 -translate-x-1/2 rounded-2xl border border-white/25 bg-black/60 px-5 py-2.5 w-[min(92vw,980px)] text-center shadow-[0_0_24px_rgba(0,0,0,0.35)]"
+                style={tvBottomSafeStyle}
+            >
+                <div className="text-[clamp(1.2rem,2.2vw,2rem)] font-black uppercase tracking-[0.12em] text-zinc-100 leading-tight">
+                    Goal: Rally {targetRally}
+                </div>
+                <div className="text-[clamp(0.9rem,1.5vw,1.35rem)] uppercase tracking-[0.1em] text-zinc-200 mt-1">
+                    Keep hits flowing before {rallyTimeoutSeconds}s timeout
+                </div>
             </div>
         </div>
     );

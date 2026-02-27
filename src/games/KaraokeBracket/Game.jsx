@@ -58,12 +58,12 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
     const roundTransition = state?.roundTransition || null;
     const showRoundTransition = !!roundTransition?.id && !isComplete && !activeMatchId;
     const titleSize = view === 'tv' ? 'text-7xl' : 'text-4xl';
-    const cardPadding = view === 'tv' ? 'p-5' : 'p-3';
+    const cardPadding = view === 'tv' ? 'p-6' : 'p-3';
     const metaLabelClass = view === 'tv'
-        ? 'text-sm uppercase tracking-[0.24em] text-zinc-400'
+        ? 'text-base uppercase tracking-[0.2em] text-zinc-300'
         : 'text-xs uppercase tracking-[0.4em] text-zinc-500';
     const subtleLabelClass = view === 'tv'
-        ? 'text-sm uppercase tracking-[0.2em] text-zinc-300'
+        ? 'text-base uppercase tracking-[0.16em] text-zinc-300'
         : 'text-xs uppercase tracking-[0.3em] text-zinc-400';
     const crowdVotingEnabled = state?.crowdVotingEnabled !== false;
     const voteSummaryByMatch = useMemo(() => {
@@ -169,11 +169,11 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
                 <div className="text-center mb-6">
                     <div className={metaLabelClass}>Karaoke Tournament</div>
                     <div className={`${titleSize} font-bebas text-rose-300 mt-2`}>Sweet 16 Bracket</div>
-                    <div className={`${view === 'tv' ? 'text-lg' : 'text-sm'} uppercase tracking-[0.18em] text-zinc-400 mt-2`}>
+                    <div className={`${view === 'tv' ? 'text-2xl' : 'text-sm'} uppercase tracking-[0.14em] text-zinc-300 mt-2`}>
                         {round?.name || 'Round'} | {state?.status || 'setup'}
                     </div>
                     {localInActiveMatch && (
-                        <div className={`inline-block mt-3 bg-cyan-500/15 border border-cyan-400/40 rounded-full px-4 py-2 ${view === 'tv' ? 'text-sm tracking-[0.2em]' : 'text-xs tracking-[0.28em]'} uppercase text-cyan-200`}>
+                        <div className={`inline-block mt-3 bg-cyan-500/15 border border-cyan-400/40 rounded-full px-4 py-2 ${view === 'tv' ? 'text-base tracking-[0.16em]' : 'text-xs tracking-[0.28em]'} uppercase text-cyan-200`}>
                             You are up in the current match
                         </div>
                     )}
@@ -237,22 +237,23 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
                         const winnerUid = match?.winnerUid || '';
                         const isActive = activeMatchId && match?.id === activeMatchId;
                         const voteSummary = voteSummaryByMatch?.[match?.id] || { aVotes: 0, bVotes: 0 };
+                        const showVotes = crowdVotingEnabled && (view !== 'tv' || isActive || !!winnerUid);
                         return (
                             <div key={match?.id || `${match?.slot}`} className={`rounded-2xl border ${isActive ? 'border-cyan-400/60 bg-cyan-500/10' : 'border-white/10 bg-black/45'} ${cardPadding}`}>
                                 <div className="flex items-center justify-between mb-3">
-                                    <div className={`${view === 'tv' ? 'text-sm tracking-[0.22em]' : 'text-xs tracking-[0.32em]'} uppercase text-zinc-500`}>Match {match?.slot || '-'}</div>
-                                    {isActive && <div className={`${view === 'tv' ? 'text-sm tracking-[0.2em]' : 'text-[10px] tracking-[0.3em]'} uppercase text-cyan-200`}>Now Live</div>}
+                                    <div className={`${view === 'tv' ? 'text-base tracking-[0.16em]' : 'text-xs tracking-[0.32em]'} uppercase text-zinc-400`}>Match {match?.slot || '-'}</div>
+                                    {isActive && <div className={`${view === 'tv' ? 'text-base tracking-[0.16em]' : 'text-[10px] tracking-[0.3em]'} uppercase text-cyan-200`}>Now Live</div>}
                                 </div>
                                 <div className="space-y-3">
                                     <div className={`rounded-xl border px-3 py-2 ${winnerUid && winnerUid === a?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-white/10 bg-black/35'}`}>
-                                        <div className={`font-black ${view === 'tv' ? 'text-2xl' : 'text-lg'}`}>{a?.name || 'Open Slot'}</div>
-                                        <div className={`${view === 'tv' ? 'text-lg' : 'text-sm'} text-zinc-300`}>{songLabel(match?.aSong)}</div>
-                                        {crowdVotingEnabled && <div className={`${view === 'tv' ? 'text-sm' : 'text-[11px]'} text-cyan-200 mt-1`}>{voteSummary.aVotes || 0} crowd votes</div>}
+                                        <div className={`font-black ${view === 'tv' ? 'text-3xl' : 'text-lg'}`}>{a?.name || 'Open Slot'}</div>
+                                        <div className={`${view === 'tv' ? 'text-xl' : 'text-sm'} text-zinc-200`}>{songLabel(match?.aSong)}</div>
+                                        {showVotes && <div className={`${view === 'tv' ? 'text-base' : 'text-[11px]'} text-cyan-200 mt-1`}>{voteSummary.aVotes || 0} crowd votes</div>}
                                     </div>
                                     <div className={`rounded-xl border px-3 py-2 ${winnerUid && winnerUid === b?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-white/10 bg-black/35'}`}>
-                                        <div className={`font-black ${view === 'tv' ? 'text-2xl' : 'text-lg'}`}>{b?.name || 'Open Slot'}</div>
-                                        <div className={`${view === 'tv' ? 'text-lg' : 'text-sm'} text-zinc-300`}>{songLabel(match?.bSong)}</div>
-                                        {crowdVotingEnabled && <div className={`${view === 'tv' ? 'text-sm' : 'text-[11px]'} text-cyan-200 mt-1`}>{voteSummary.bVotes || 0} crowd votes</div>}
+                                        <div className={`font-black ${view === 'tv' ? 'text-3xl' : 'text-lg'}`}>{b?.name || 'Open Slot'}</div>
+                                        <div className={`${view === 'tv' ? 'text-xl' : 'text-sm'} text-zinc-200`}>{songLabel(match?.bSong)}</div>
+                                        {showVotes && <div className={`${view === 'tv' ? 'text-base' : 'text-[11px]'} text-cyan-200 mt-1`}>{voteSummary.bVotes || 0} crowd votes</div>}
                                     </div>
                                 </div>
                             </div>

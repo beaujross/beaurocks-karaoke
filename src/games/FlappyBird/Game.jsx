@@ -261,6 +261,9 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
         }
         return 'WATCHING LIVE FEED';
     })();
+    const displayedVolume = clamp(((isController ? volumeNormalized : remoteVoice?.volumeNormalized) || 0) * 100, 0, 100);
+    const flapThresholdPct = 52;
+    const shieldThresholdPct = 70;
 
     const handleControlSurfaceTap = (event) => {
         if (!isController || gameStateLocal === 'gameover') return;
@@ -285,6 +288,23 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
                 <div className="bg-black/50 p-2 rounded text-yellow-400 border-2 border-white">SCORE: {score}</div> 
                 <div className="bg-black/50 p-2 rounded text-red-500 border-2 border-white flex gap-1">{[...Array(3)].map((_,i) => <span key={i}>{i < lives ? EMOJI.heart : EMOJI.skull}</span>)}</div> 
             </div> 
+            {view === 'tv' && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-[min(86vw,980px)]">
+                    <div className="rounded-2xl border border-white/20 bg-black/58 px-5 py-3 shadow-[0_0_30px_rgba(0,0,0,0.4)]">
+                        <div className="text-[clamp(1rem,1.5vw,1.45rem)] uppercase tracking-[0.14em] text-cyan-100 text-center">
+                            Quick loud burst above {flapThresholdPct}% to flap up | Keep voice above {shieldThresholdPct}% for shield assist
+                        </div>
+                        <div className="mt-2 h-3 rounded-full bg-white/10 border border-white/20 relative overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-cyan-300 via-emerald-300 to-yellow-300 transition-all duration-120" style={{ width: `${displayedVolume}%` }} />
+                            <div className="absolute inset-y-0 w-[2px] bg-cyan-100/80" style={{ left: `${flapThresholdPct}%` }} />
+                            <div className="absolute inset-y-0 w-[2px] bg-yellow-100/80" style={{ left: `${shieldThresholdPct}%` }} />
+                        </div>
+                        <div className="mt-1 text-sm md:text-base text-zinc-200 text-center uppercase tracking-[0.1em]">
+                            Live input {Math.round(displayedVolume)}%
+                        </div>
+                    </div>
+                </div>
+            )}
             
             {/* Player */}
             <div className={`absolute left-[15%] w-12 h-12 transition-transform duration-75 flex items-center justify-center text-4xl bird-flap ${invincible ? 'opacity-50 animate-pulse' : ''} ${screechActive ? 'drop-shadow-[0_0_15px_rgba(255,255,0,0.8)] scale-125' : ''}`} style={{ top: `${birdY}%`, transform: `translateY(-50%)` }}>
@@ -313,11 +333,14 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
             
             {isController && gameStateLocal === 'ready' && (
                 <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50 text-center p-4">
-                    <h1 className="text-4xl text-yellow-400 mb-4">{isRoomControlled ? 'CROWD MIC CONTROL' : 'SOLO CONTROL'}</h1>
-                    <p>Make quick loud bursts to flap up.</p>
-                    <p>Hold a strong steady tone for shield assist.</p>
-                    <p>{view === 'tv' ? 'Click or press Space to flap at any time.' : 'Tap screen to flap at any time.'}</p>
-                    <button onClick={()=>setGameStateLocal('playing')} className="bg-green-600 px-8 py-4 rounded text-white font-bold animate-bounce mt-4 text-2xl">START</button>
+                    <h1 className="text-5xl md:text-7xl text-yellow-400 mb-5">{isRoomControlled ? 'CROWD MIC CONTROL' : 'SOLO CONTROL'}</h1>
+                    <div className="max-w-4xl rounded-3xl border border-white/15 bg-black/45 px-8 py-6 space-y-3">
+                        <p className="text-2xl md:text-3xl">1. Burst your voice above <span className="text-cyan-300 font-black">{flapThresholdPct}%</span> to flap up.</p>
+                        <p className="text-2xl md:text-3xl">2. Let volume drop to glide down through the gap.</p>
+                        <p className="text-2xl md:text-3xl">3. Hold strong voice above <span className="text-yellow-300 font-black">{shieldThresholdPct}%</span> for shield assist.</p>
+                        <p className="text-xl md:text-2xl text-zinc-200">{view === 'tv' ? 'You can also click or press Space to flap.' : 'Tap screen to flap at any time.'}</p>
+                    </div>
+                    <button onClick={()=>setGameStateLocal('playing')} className="bg-green-600 px-10 py-4 rounded text-white font-bold animate-bounce mt-5 text-3xl">START</button>
                 </div>
             )} 
             

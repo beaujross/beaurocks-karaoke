@@ -313,7 +313,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                                 <div className="absolute top-3 left-3 text-sm uppercase tracking-[0.18em] bg-black/40 border border-white/10 rounded-full px-2 py-1">
                                     {TRIVIA_OPTION_LABELS[i]}
                                 </div>
-                                <div className="absolute top-3 right-3 text-sm bg-black/40 border border-white/10 rounded-full px-2 py-1">
+                                <div className="absolute top-3 right-3 text-base bg-black/40 border border-white/10 rounded-full px-2 py-1 font-bold">
                                     {voters.length}
                                 </div>
                                 <div className="relative z-10 text-center">{o}</div>
@@ -323,10 +323,10 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                                         {voters.slice(0, 6).map((v, idx) => (
                                             <span key={idx} className="text-lg animate-pop bg-black/40 border border-white/10 rounded-full px-3 py-1 flex items-center gap-2" style={{animationDelay: `${idx*50}ms`}} title={v.userName}>
                                                 <span className="text-xl">{v.avatar || DEFAULT_EMOJI}</span>
-                                                <span className="text-sm font-bold">{v.userName || 'Player'}</span>
+                                                <span className="text-base font-bold">{v.userName || 'Player'}</span>
                                             </span>
                                         ))}
-                                        {voters.length > 6 && <span className="text-sm bg-white/20 rounded-full px-2 py-1">+{voters.length - 6}</span>}
+                                        {voters.length > 6 && <span className="text-base bg-white/20 rounded-full px-2 py-1 font-bold">+{voters.length - 6}</span>}
                                     </div>
                                 )}
                             </div>
@@ -336,26 +336,26 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
 
                 {isReveal && (
                     <div className="z-10 mt-8 w-full max-w-5xl bg-black/55 border border-white/15 rounded-3xl p-6">
-                        <div className="text-sm uppercase tracking-[0.2em] text-zinc-300 mb-3">Question Summary</div>
+                        <div className="text-lg uppercase tracking-[0.18em] text-zinc-200 mb-3">Question Summary</div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                             <div className="bg-zinc-900/70 border border-white/10 rounded-xl p-3">
-                                <div className="text-xs md:text-sm uppercase tracking-[0.16em] text-zinc-400">Responses</div>
+                                <div className="text-sm md:text-base uppercase tracking-[0.14em] text-zinc-300">Responses</div>
                                 <div className="text-3xl font-black text-white">{totalVotes}</div>
                             </div>
                             <div className="bg-zinc-900/70 border border-white/10 rounded-xl p-3">
-                                <div className="text-xs md:text-sm uppercase tracking-[0.16em] text-zinc-400">Correct</div>
+                                <div className="text-sm md:text-base uppercase tracking-[0.14em] text-zinc-300">Correct</div>
                                 <div className="text-3xl font-black text-cyan-300">{correctVotes.length}</div>
                             </div>
                             <div className="bg-zinc-900/70 border border-white/10 rounded-xl p-3">
-                                <div className="text-xs md:text-sm uppercase tracking-[0.16em] text-zinc-400">Accuracy</div>
+                                <div className="text-sm md:text-base uppercase tracking-[0.14em] text-zinc-300">Accuracy</div>
                                 <div className="text-3xl font-black text-white">{correctRate}%</div>
                             </div>
                             <div className="bg-zinc-900/70 border border-white/10 rounded-xl p-3">
-                                <div className="text-xs md:text-sm uppercase tracking-[0.16em] text-zinc-400">Points Total</div>
+                                <div className="text-sm md:text-base uppercase tracking-[0.14em] text-zinc-300">Points Total</div>
                                 <div className="text-3xl font-black text-amber-300">{correctVotes.length * pointsPerCorrect}</div>
                             </div>
                         </div>
-                        <div className="text-sm uppercase tracking-[0.18em] text-zinc-300 mb-2">Top Correct</div>
+                        <div className="text-base uppercase tracking-[0.16em] text-zinc-200 mb-2">Top Correct</div>
                         {topCorrect.length ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                 {topCorrect.map((entry) => (
@@ -454,7 +454,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                     {wyrPrompt && (
                         <div className="w-full max-w-[94vw] px-8">
                             <div className="bg-black/68 border border-white/15 rounded-2xl px-6 py-4 text-center shadow-[0_0_24px_rgba(0,0,0,0.45)]">
-                                <div className="text-xs uppercase tracking-[0.3em] text-zinc-400 mb-2">Prompt</div>
+                                <div className="text-base uppercase tracking-[0.22em] text-zinc-300 mb-2">Prompt</div>
                                 <div className="text-[clamp(1rem,2vw,1.85rem)] font-black leading-tight text-white whitespace-pre-wrap break-words">
                                     {wyrPrompt}
                                 </div>
@@ -462,7 +462,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                         </div>
                     )}
                     {!isReveal && timerSecRemaining !== null && (
-                        <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.24em] bg-black/65 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
+                        <div className="inline-flex items-center gap-2 text-base uppercase tracking-[0.14em] bg-black/65 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
                             <i className="fa-regular fa-clock"></i>
                             {timerSecRemaining}s left
                         </div>
@@ -485,7 +485,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                                     <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto max-h-[26vh] overflow-y-auto custom-scrollbar pr-1">
                                         {votesA.map((v, i) => (
                                             <div key={i} className="bg-black/40 px-3 py-1 rounded-full text-lg font-bold flex items-center gap-2 border border-white/10 animate-float" style={{ animationDelay: `${i * 100}ms` }}>
-                                                {v.avatar || DEFAULT_EMOJI} <span className="text-xs">{v.userName || 'Player'}</span>
+                                                {v.avatar || DEFAULT_EMOJI} <span className="text-sm">{v.userName || 'Player'}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -509,7 +509,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                                     <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto max-h-[26vh] overflow-y-auto custom-scrollbar pr-1">
                                         {votesB.map((v, i) => (
                                             <div key={i} className="bg-black/40 px-3 py-1 rounded-full text-lg font-bold flex items-center gap-2 border border-white/10 animate-float" style={{ animationDelay: `${i * 100}ms` }}>
-                                                {v.avatar || DEFAULT_EMOJI} <span className="text-xs">{v.userName || 'Player'}</span>
+                                                {v.avatar || DEFAULT_EMOJI} <span className="text-sm">{v.userName || 'Player'}</span>
                                             </div>
                                         ))}
                                     </div>
