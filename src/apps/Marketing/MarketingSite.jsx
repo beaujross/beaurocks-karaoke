@@ -505,7 +505,16 @@ const MarketingSite = () => {
   }, [campaignContext.variant, navigate, withCampaignParams]);
   const hostDashboardHref = useMemo(() => {
     if (typeof window === "undefined") return "";
-    return buildSurfaceUrl({ surface: "host", params: { mode: "host" } }, window.location);
+    return buildSurfaceUrl({
+      surface: "host",
+      params: {
+        mode: "host",
+        hostUiVersion: "v2",
+        view: "ops",
+        section: "ops.room_setup",
+        tab: "admin",
+      },
+    }, window.location);
   }, []);
   const openHostDashboard = useCallback((source = "marketing_nav") => {
     if (typeof window === "undefined") return;
@@ -517,18 +526,25 @@ const MarketingSite = () => {
       || buildSurfaceUrl({ surface: "host", params: { mode: "host" } }, window.location);
     window.location.href = nextHref;
   }, [hasFullAccount, hostDashboardHref]);
-  const openHostPanelOnRoot = useCallback((source = "marketing_home_host_panel") => {
+  const openHostPanelDirect = useCallback((source = "marketing_home_host_panel") => {
     if (typeof window === "undefined") return;
     trackEvent("mk_nav_host_dashboard_click", {
       source: String(source || "marketing_home_host_panel"),
       authed: hasFullAccount ? 1 : 0,
     });
-    const url = new URL(window.location.href);
-    url.pathname = "/";
-    url.search = "mode=host";
-    url.hash = "";
-    window.location.href = url.toString();
-  }, [hasFullAccount]);
+    const nextHref = hostDashboardHref
+      || buildSurfaceUrl({
+        surface: "host",
+        params: {
+          mode: "host",
+          hostUiVersion: "v2",
+          view: "ops",
+          section: "ops.room_setup",
+          tab: "admin",
+        },
+      }, window.location);
+    window.location.href = nextHref;
+  }, [hasFullAccount, hostDashboardHref]);
   const homeHeroPrimaryLabel = campaignContext.variant === "paid"
     ? "Start Founding Host Application"
     : campaignContext.variant === "social"
@@ -1323,7 +1339,7 @@ const MarketingSite = () => {
                     <button
                       type="button"
                       className="mk3-auth-cta-secondary"
-                      onClick={() => openHostPanelOnRoot("home_hero_host_panel")}
+                      onClick={() => openHostPanelDirect("home_hero_host_panel")}
                     >
                       Open Host Panel
                     </button>
@@ -1361,7 +1377,7 @@ const MarketingSite = () => {
                     <button
                       type="button"
                       className="mk3-auth-cta-primary"
-                      onClick={() => openHostPanelOnRoot("home_tester_fast_lane")}
+                      onClick={() => openHostPanelDirect("home_tester_fast_lane")}
                     >
                       Open Host Panel
                     </button>
@@ -1390,7 +1406,7 @@ const MarketingSite = () => {
                   <div className="mk3-actions-inline">
                     <button
                       type="button"
-                      onClick={() => openHostPanelOnRoot("home_launch_plan_host_panel")}
+                      onClick={() => openHostPanelDirect("home_launch_plan_host_panel")}
                     >
                       Open Host Panel Now
                     </button>

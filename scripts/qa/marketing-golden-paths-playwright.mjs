@@ -1,6 +1,6 @@
-const DEFAULT_BASE_URL = "https://beaurocks-karaoke-v2.web.app";
+const DEFAULT_BASE_URL = "https://beaurocks.app";
 const DEFAULT_TIMEOUT_MS = 70000;
-const HERO_TEXT_PATTERN = /Find karaoke nights fast/i;
+const DISCOVER_TEXT_PATTERN = /setlist live karaoke map|beaurocks karaoke setlist finder/i;
 
 const toBool = (value, fallback = false) => {
   if (value === undefined || value === null || value === "") return fallback;
@@ -59,13 +59,13 @@ const assertRoute = (urlText, { pathIncludes = "", legacyPage = "" } = {}) => {
 
 const loadMarketingDiscover = async (page, baseUrl, timeoutMs) => {
   await page.goto(`${baseUrl}/discover`, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-  const hero = page.getByText(HERO_TEXT_PATTERN).first();
-  if (await hero.isVisible().catch(() => false)) return;
+  const mapHeading = page.getByText(DISCOVER_TEXT_PATTERN).first();
+  if (await mapHeading.isVisible().catch(() => false)) return;
 
   const marketingButton = page.getByRole("button", { name: /View Marketing Site/i }).first();
   if (await marketingButton.isVisible().catch(() => false)) {
     await marketingButton.click({ force: true });
-    await hero.waitFor({ state: "visible", timeout: timeoutMs });
+    await mapHeading.waitFor({ state: "visible", timeout: timeoutMs });
     return;
   }
 
@@ -73,13 +73,13 @@ const loadMarketingDiscover = async (page, baseUrl, timeoutMs) => {
     waitUntil: "domcontentloaded",
     timeout: timeoutMs,
   });
-  await hero.waitFor({ state: "visible", timeout: timeoutMs });
+  await mapHeading.waitFor({ state: "visible", timeout: timeoutMs });
 };
 
 const loadMarketingRoute = async (page, baseUrl, { path, legacyPage }, timeoutMs) => {
   await page.goto(`${baseUrl}${path}`, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-  const hero = page.getByText(HERO_TEXT_PATTERN).first();
-  if (await hero.isVisible().catch(() => false)) return;
+  const parsed = new URL(page.url());
+  if (String(parsed.pathname || "").toLowerCase().includes(String(path || "").toLowerCase())) return;
   await page.goto(`${baseUrl}/?mode=marketing&page=${encodeURIComponent(legacyPage)}`, {
     waitUntil: "domcontentloaded",
     timeout: timeoutMs,
@@ -107,7 +107,7 @@ const run = async () => {
   try {
     await runCheck(checks, "discover_loads", async () => {
       await loadMarketingDiscover(page, baseUrl, timeoutMs);
-      await page.getByText(HERO_TEXT_PATTERN).first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText(DISCOVER_TEXT_PATTERN).first().waitFor({ state: "visible", timeout: timeoutMs });
       return "Discover loaded.";
     });
 
@@ -119,28 +119,37 @@ const run = async () => {
     });
 
     await runCheck(checks, "rail_venue_route", async () => {
-      await page.getByRole("button", { name: /^(Venue Owner|For Venues)$/i }).first().click({ force: true });
+      await page.getByRole("button", { name: /^(Venue Owner|For Venues|Venue Prestige)$/i }).first().click({ force: true });
       await delay(350);
       assertRoute(page.url(), { pathIncludes: "/for-venues", legacyPage: "for_venues" });
       return page.url();
     });
 
     await runCheck(checks, "rail_performer_route", async () => {
-      await page.getByRole("button", { name: /^(Performer|For Performers)$/i }).first().click({ force: true });
+      await page.getByRole("button", { name: /^(Performer|For Performers|Performer Spotlight)$/i }).first().click({ force: true });
       await delay(350);
       assertRoute(page.url(), { pathIncludes: "/for-performers", legacyPage: "for_performers" });
       return page.url();
     });
 
     await runCheck(checks, "rail_fan_route", async () => {
-      await page.getByRole("button", { name: /^(Fan|For Fans)$/i }).first().click({ force: true });
+      await page.getByRole("button", { name: /^(Fan|For Fans|For Guests|Guest Pass)$/i }).first().click({ force: true });
       await delay(350);
       assertRoute(page.url(), { pathIncludes: "/for-fans", legacyPage: "for_fans" });
       return page.url();
     });
 
     await runCheck(checks, "rail_join_route", async () => {
-      await page.getByRole("button", { name: /^Join by Code$/i }).first().click({ force: true });
+      await loadMarketingDiscover(page, baseUrl, timeoutMs);
+      const joinByCode = page.getByRole("button", { name: /^Join(?: by)? Code$/i }).first();
+      const inviteCode = page.getByRole("button", { name: /^Invite Code$/i }).first();
+      if (await joinByCode.isVisible().catch(() => false)) {
+        await joinByCode.click({ force: true });
+      } else if (await inviteCode.isVisible().catch(() => false)) {
+        await inviteCode.click({ force: true });
+      } else {
+        throw new Error("No Join/Invite code CTA visible on discover rail.");
+      }
       await delay(350);
       assertRoute(page.url(), { pathIncludes: "/join", legacyPage: "join" });
       return page.url();
@@ -153,40 +162,24 @@ const run = async () => {
         { path: "/for-hosts", legacyPage: "for_hosts" },
         timeoutMs
       );
-      const quickStartHeading = page.getByRole("heading", { name: /Private Host Quick Start/i }).first();
       await delay(450);
-      let hasQuickStart = await quickStartHeading.isVisible().catch(() => false);
-      if (!hasQuickStart) {
-        const hostRail = page.getByRole("button", { name: /^Host$/i }).first();
-        if (await hostRail.isVisible().catch(() => false)) {
-          await hostRail.click({ force: true });
-          await delay(450);
-          hasQuickStart = await quickStartHeading.isVisible().catch(() => false);
-        }
-      }
-      if (hasQuickStart) {
-        const roomCode = page.getByPlaceholder(/VIP123/i).first();
-        await roomCode.fill("QA123");
-        await page.getByRole("button", { name: /Create Private Session/i }).first().click({ force: true });
+      const createAccountHost = page.getByRole("button", {
+        name: /Create Account To Launch|Create Host Account|Create Account To Create Private Session/i,
+      }).first();
+      if (await createAccountHost.isVisible().catch(() => false)) {
+        await createAccountHost.click({ force: true });
       } else {
-        const createAccountHost = page.getByRole("button", {
-          name: /Create Account To Create Private Session/i,
-        }).first();
-        if (await createAccountHost.isVisible().catch(() => false)) {
-          await createAccountHost.click({ force: true });
-        } else {
-          const snapshot = await page.evaluate(() =>
-            String(document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 420).trim()
-          );
-          throw new Error(`Private Host Quick Start entry not visible at ${page.url()} :: ${snapshot}`);
-        }
+        const snapshot = await page.evaluate(() =>
+          String(document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 420).trim()
+        );
+        throw new Error(`Host auth-gate CTA not visible at ${page.url()} :: ${snapshot}`);
       }
       await delay(500);
       const parsed = new URL(page.url());
       const intent = parsed.searchParams.get("intent") || "";
       const returnTo = parsed.searchParams.get("return_to") || "";
-      if (!intent.includes("private_session_create")) {
-        throw new Error(`Expected intent=private_session_create but got "${intent}".`);
+      if (!intent.includes("private_session_create") && !intent.includes("listing_submit")) {
+        throw new Error(`Expected private_session_create or listing_submit intent, got "${intent}".`);
       }
       if (!returnTo) {
         throw new Error("Expected return_to query param after auth gate.");

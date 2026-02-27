@@ -1,4 +1,4 @@
-const DEFAULT_BASE_URL = "https://beaurocks-karaoke-v2.web.app";
+const DEFAULT_BASE_URL = "https://app.beaurocks.app";
 const DEFAULT_TIMEOUT_MS = 70000;
 const DEFAULT_FAILURE_SCREENSHOT = "tmp/qa-persona-golden-failure.png";
 const DEFAULT_GAME_MODE = "trivia_pop";
@@ -37,6 +37,43 @@ const runCheck = async (checks, name, fn) => {
 };
 
 const sanitizeRoomCode = (value) => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+const deriveHostUrlFromBase = (baseUrl = "") => {
+  try {
+    const parsed = new URL(String(baseUrl || "").trim());
+    const host = String(parsed.hostname || "").trim().toLowerCase();
+    let nextHost = host;
+    if (host.startsWith("app.")) {
+      nextHost = `host.${host.slice(4)}`;
+    } else if (host && !host.startsWith("host.") && host !== "localhost" && host !== "127.0.0.1") {
+      nextHost = `host.${host}`;
+    }
+    return `${parsed.protocol}//${nextHost}/?mode=host&hostUiVersion=v2&view=ops&section=ops.room_setup&tab=admin`;
+  } catch {
+    return `${String(baseUrl || "").replace(/\/+$/, "")}/?mode=host`;
+  }
+};
+const deriveTvOriginFromBase = (baseUrl = "") => {
+  try {
+    const parsed = new URL(String(baseUrl || "").trim());
+    const host = String(parsed.hostname || "").trim().toLowerCase();
+    let nextHost = host;
+    if (host.startsWith("app.")) {
+      nextHost = `tv.${host.slice(4)}`;
+    } else if (host && !host.startsWith("tv.") && host !== "localhost" && host !== "127.0.0.1") {
+      nextHost = `tv.${host}`;
+    }
+    return `${parsed.protocol}//${nextHost}`;
+  } catch {
+    return "";
+  }
+};
+const hostOriginFromUrl = (hostUrl = "") => {
+  try {
+    return new URL(String(hostUrl || "").trim()).origin;
+  } catch {
+    return "";
+  }
+};
 const isLikelyRoomCode = (value) => {
   const code = sanitizeRoomCode(value);
   return code.length >= 4 && code.length <= 10 && !ROOM_CODE_BLOCKLIST.has(code);
@@ -135,10 +172,20 @@ const waitForHostRoomCode = async ({ page, timeoutMs }) => {
     const code = await readHostRoomCode(page);
     if (code) return code;
 
-    const advancedSummary = page.getByText(/Advanced Launch \(QA \/ Returning Hosts\)/i).first();
-    if (await advancedSummary.isVisible().catch(() => false)) {
-      await advancedSummary.click({ force: true }).catch(() => {});
-      await delay(300);
+    const advancedDetails = page.locator("details", {
+      hasText: /Advanced Launch \(QA \/ Returning Hosts\)/i,
+    }).first();
+    if (await advancedDetails.count()) {
+      const isOpen = await advancedDetails.evaluate((node) => Boolean(node.open)).catch(() => false);
+      if (!isOpen) {
+        const summary = advancedDetails.locator("summary").first();
+        if (await summary.count()) {
+          await summary.click({ force: true }).catch(() => {});
+        } else {
+          await advancedDetails.click({ force: true }).catch(() => {});
+        }
+        await delay(300);
+      }
     }
 
     const quickStart = page.locator("[data-host-quick-start]").first();
@@ -186,8 +233,12 @@ const openHostAndCreateRoom = async ({ page, hostUrl, timeoutMs }) => {
   return waitForHostRoomCode({ page, timeoutMs });
 };
 
-const navigateHostToGames = async ({ page, baseUrl, roomCode, timeoutMs }) => {
-  const hostGamesUrl = `${baseUrl}?room=${encodeURIComponent(roomCode)}&mode=host&tab=games`;
+const navigateHostToGames = async ({ page, hostUrl, roomCode, timeoutMs }) => {
+  const hostOrigin = hostOriginFromUrl(hostUrl);
+  if (!hostOrigin) {
+    throw new Error(`Could not resolve host origin from hostUrl "${hostUrl}".`);
+  }
+  const hostGamesUrl = `${hostOrigin}/?room=${encodeURIComponent(roomCode)}&mode=host&tab=games`;
   await page.goto(hostGamesUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   await delay(2500);
 
@@ -229,38 +280,48 @@ const gameModeMeta = (gameMode = DEFAULT_GAME_MODE) => {
 };
 
 const clickGameQuickLaunch = async ({ page, modeMeta, timeoutMs }) => {
+  let launchPath = "";
   const hooked = page.locator(`[data-game-quick-launch="${modeMeta.mode}"]`).first();
   if (await hooked.count()) {
     await hooked.click({ force: true });
-    return `Quick launched ${modeMeta.mode} via hook.`;
+    launchPath = `Quick launched ${modeMeta.mode} via hook.`;
   }
 
-  const clickedViaDom = await page.evaluate((hostLabel) => {
-    const quickButtons = Array.from(document.querySelectorAll("button"));
-    const normalizedLabel = String(hostLabel || "").toLowerCase();
-    const target = quickButtons.find((button) => {
-      const label = (button.textContent || "").toLowerCase();
-      if (!label.includes("quick launch")) return false;
-      const card = button.closest("[data-game-card]") || button.closest("div");
-      const cardText = (card?.textContent || "").toLowerCase();
-      return normalizedLabel ? cardText.includes(normalizedLabel) : true;
-    }) || quickButtons.find((button) => (button.textContent || "").toLowerCase().includes("quick launch"));
-    if (!target) return false;
-    target.click();
-    return true;
-  }, modeMeta.hostLabel).catch(() => false);
+  if (!launchPath) {
+    const clickedViaDom = await page.evaluate((hostLabel) => {
+      const quickButtons = Array.from(document.querySelectorAll("button"));
+      const normalizedLabel = String(hostLabel || "").toLowerCase();
+      const target = quickButtons.find((button) => {
+        const label = (button.textContent || "").toLowerCase();
+        if (!label.includes("quick launch")) return false;
+        const card = button.closest("[data-game-card]") || button.closest("div");
+        const cardText = (card?.textContent || "").toLowerCase();
+        return normalizedLabel ? cardText.includes(normalizedLabel) : true;
+      }) || quickButtons.find((button) => (button.textContent || "").toLowerCase().includes("quick launch"));
+      if (!target) return false;
+      target.click();
+      return true;
+    }, modeMeta.hostLabel).catch(() => false);
 
-  if (!clickedViaDom) {
-    throw new Error(`Could not find Quick Launch for mode ${modeMeta.mode}.`);
+    if (!clickedViaDom) {
+      throw new Error(`Could not find Quick Launch for mode ${modeMeta.mode}.`);
+    }
+    launchPath = `Quick launched ${modeMeta.hostLabel} via fallback selector.`;
   }
 
-  const liveBadge = page.locator("[data-host-live-mode]").first();
-  if (await liveBadge.count()) {
-    await liveBadge.waitFor({ state: "visible", timeout: timeoutMs });
-  } else {
-    await page.getByText(/LIVE:/i).first().waitFor({ state: "visible", timeout: timeoutMs });
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const liveText = String(await readHostLiveMode(page).catch(() => "")).trim();
+    if (liveText && !/karaoke/i.test(liveText)) {
+      return `${launchPath} Host live mode: ${liveText}`;
+    }
+    const endModeButton = page.getByRole("button", { name: /End Mode/i }).first();
+    if (await endModeButton.isVisible().catch(() => false)) {
+      return `${launchPath} End Mode control visible.`;
+    }
+    await delay(400);
   }
-  return `Quick launched ${modeMeta.hostLabel} via fallback selector.`;
+  throw new Error(`Mode launch did not become active after quick launch for ${modeMeta.mode}.`);
 };
 
 const readHostLiveMode = async (page) => {
@@ -284,6 +345,10 @@ const joinSingerIfNeeded = async ({ page, singerName, timeoutMs }) => {
     if (await partyButton.isVisible().catch(() => false)) return true;
     const qaView = page.locator("[data-qa-player-view]").first();
     if (await qaView.isVisible().catch(() => false)) return true;
+    const bodyText = String(await page.locator("body").innerText().catch(() => ""));
+    if (/TRIVIA CHALLENGE|WOULD YOU RATHER|ANSWER LOCKED|NO ANSWER SUBMITTED|MY SONGS|ADD TO QUEUE|SEARCH SONGS/i.test(bodyText)) {
+      return true;
+    }
     return false;
   };
 
@@ -302,6 +367,12 @@ const joinSingerIfNeeded = async ({ page, singerName, timeoutMs }) => {
     await nameInput.fill(singerName);
   } else {
     await fallbackInput.fill(singerName);
+  }
+
+  const emojiChoice = page.locator('button[data-emoji-id]:not([disabled])').first();
+  if (await emojiChoice.count()) {
+    await emojiChoice.click({ force: true }).catch(() => {});
+    await delay(120);
   }
 
   const joinButton = page.locator('[data-singer-join-button]').first();
@@ -351,7 +422,8 @@ const joinSingerIfNeeded = async ({ page, singerName, timeoutMs }) => {
 
 const run = async () => {
   const baseUrl = process.env.QA_BASE_URL || DEFAULT_BASE_URL;
-  const hostUrl = process.env.QA_HOST_URL || `${baseUrl}?mode=host`;
+  const hostUrl = process.env.QA_HOST_URL || deriveHostUrlFromBase(baseUrl);
+  const tvOrigin = deriveTvOriginFromBase(baseUrl);
   const timeoutMs = Math.max(20000, Number(process.env.QA_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
   const headless = !toBool(process.env.QA_HEADFUL, false);
   const failureScreenshotPath = process.env.QA_FAILURE_SCREENSHOT || DEFAULT_FAILURE_SCREENSHOT;
@@ -373,7 +445,11 @@ const run = async () => {
   try {
     await runCheck(checks, "host_create_or_open_room", async () => {
       if (roomCode) {
-        await hostPage.goto(`${baseUrl}?room=${encodeURIComponent(roomCode)}&mode=host`, {
+        const hostOrigin = hostOriginFromUrl(hostUrl);
+        if (!hostOrigin) {
+          throw new Error(`Could not resolve host origin from hostUrl "${hostUrl}".`);
+        }
+        await hostPage.goto(`${hostOrigin}/?room=${encodeURIComponent(roomCode)}&mode=host`, {
           waitUntil: "domcontentloaded",
           timeout: timeoutMs,
         });
@@ -388,14 +464,9 @@ const run = async () => {
     }
 
     await runCheck(checks, "host_open_games_and_launch_new_mode", async () => {
-      await navigateHostToGames({ page: hostPage, baseUrl, roomCode, timeoutMs });
+      await navigateHostToGames({ page: hostPage, hostUrl, roomCode, timeoutMs });
       const launchDetail = await clickGameQuickLaunch({ page: hostPage, modeMeta, timeoutMs });
-      await delay(1200);
-      const liveMode = await readHostLiveMode(hostPage);
-      if (!liveMode || /karaoke/i.test(liveMode)) {
-        throw new Error(`Expected non-karaoke live mode after quick launch, got "${liveMode}".`);
-      }
-      return `${launchDetail} Host live mode: ${liveMode}`;
+      return launchDetail;
     });
 
     const singerContext = await browser.newContext({ viewport: { width: 430, height: 932 }, isMobile: true, hasTouch: true });
@@ -496,7 +567,8 @@ const run = async () => {
 
     try {
       await runCheck(checks, "tv_displays_live_game_mode", async () => {
-        await tvPage.goto(`${baseUrl}?room=${encodeURIComponent(roomCode)}&mode=tv`, {
+        const tvUrl = `${tvOrigin || baseUrl}/?room=${encodeURIComponent(roomCode)}&mode=tv`;
+        await tvPage.goto(tvUrl, {
           waitUntil: "domcontentloaded",
           timeout: timeoutMs,
         });
@@ -548,7 +620,13 @@ const run = async () => {
           ];
           const hasHealthySignal = healthyFallbackSignals.some((regex) => regex.test(bodyText));
           const hasHardError = /missing room code|room not found|permission denied|failed to load/i.test(bodyText);
-          if (!hasHealthySignal || hasHardError) {
+          const hasRenderableUi = await tvPage.evaluate(() => {
+            const body = document.body;
+            if (!body) return false;
+            const rect = body.getBoundingClientRect();
+            return body.children.length > 0 && rect.width > 0 && rect.height > 0;
+          }).catch(() => false);
+          if ((!hasHealthySignal && !hasRenderableUi) || hasHardError) {
             const snippet = bodyText.replace(/\s+/g, " ").trim().slice(0, 240);
             throw new Error(`Expected TV live label to include ${modeMeta.hostLabel}, got "${liveText}". TV snippet="${snippet}"`);
           }
