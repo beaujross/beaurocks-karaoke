@@ -1678,6 +1678,7 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
         WebkitBoxOrient: 'vertical',
         overflow: 'hidden'
     };
+    const touchButtonStyle = { touchAction: 'manipulation' };
     const toggleParticipant = (uid) => {
         if (!participantConfig?.setParticipants) return;
         participantConfig.setMode?.('selected');
@@ -1748,8 +1749,10 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
             {participantConfig ? (
                 <div className="relative z-10">
                     <button
+                        type="button"
                         onClick={() => setShowPicker(v => !v)}
                         className={`${STYLES.btnStd} ${participantConfig.mode === 'selected' ? STYLES.btnHighlight : STYLES.btnSecondary} w-full py-1.5 text-xs justify-between`}
+                        style={touchButtonStyle}
                     >
                         <span>{playerLabel}</span>
                         <i className={`fa-solid fa-chevron-${showPicker ? 'up' : 'down'}`}></i>
@@ -1758,14 +1761,18 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                         <div className="mt-2 bg-black/40 border border-white/10 rounded-xl p-2 space-y-2">
                             <div className="flex gap-2">
                                 <button
+                                    type="button"
                                     onClick={onSelectAll}
                                     className={`${STYLES.btnStd} ${participantConfig.mode === 'all' ? STYLES.btnHighlight : STYLES.btnSecondary} flex-1 py-2 text-xs`}
+                                    style={touchButtonStyle}
                                 >
                                     All
                                 </button>
                                 <button
+                                    type="button"
                                     onClick={onSelectParticipants}
                                     className={`${STYLES.btnStd} ${participantConfig.mode === 'selected' ? STYLES.btnHighlight : STYLES.btnSecondary} flex-1 py-2 text-xs`}
+                                    style={touchButtonStyle}
                                 >
                                     Select
                                 </button>
@@ -1779,9 +1786,11 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                                             const isSelected = selectedIds.includes(uid);
                                             return (
                                                 <button
+                                                    type="button"
                                                     key={u.id}
                                                     onClick={() => toggleParticipant(uid)}
                                                     className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-left text-xs ${isSelected ? 'border-[#00C4D9] bg-[#00C4D9]/10' : 'border-zinc-700 bg-zinc-900/60'}`}
+                                                    style={touchButtonStyle}
                                                 >
                                                     <span className="text-lg">{u.avatar || 'O'}</span>
                                                     <span className="text-zinc-200 truncate">{u.name || 'Singer'}</span>
@@ -1790,8 +1799,8 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                                         })}
                                     </div>
                                     <div className="flex gap-2">
-                                        <button onClick={() => participantConfig?.setParticipants?.(users.map(u => u.id.split('_')[1]))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-xs`}>Select all</button>
-                                        <button onClick={() => participantConfig?.setParticipants?.([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-xs`}>Clear</button>
+                                        <button type="button" onClick={() => participantConfig?.setParticipants?.(users.map(u => u.id.split('_')[1]))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-xs`} style={touchButtonStyle}>Select all</button>
+                                        <button type="button" onClick={() => participantConfig?.setParticipants?.([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-xs`} style={touchButtonStyle}>Clear</button>
                                     </div>
                                 </>
                             )}
@@ -1802,22 +1811,24 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                 <div className="h-6"></div>
             )}
             <div className="flex gap-2 relative z-10">
-                <button data-game-configure={game.id} onClick={() => onLaunch(game.id)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-1.5 text-xs`}>
+                <button type="button" data-game-configure={game.id} onClick={() => onLaunch(game.id)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-1.5 text-xs`} style={touchButtonStyle}>
                     <i className="fa-solid fa-sliders mr-1"></i> Configure
                 </button>
-                <button data-game-quick-launch={game.id} onClick={onQuickLaunch} className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1 py-1.5 text-xs`}>
+                <button type="button" data-game-quick-launch={game.id} onClick={onQuickLaunch} className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1 py-1.5 text-xs`} style={touchButtonStyle}>
                     <i className="fa-solid fa-bolt mr-1"></i> Quick Launch
                 </button>
             </div>
             <div className="flex gap-2 relative z-10">
                 <button
+                    type="button"
                     onClick={onPreview}
                     className={`${STYLES.btnStd} ${previewActive ? STYLES.btnHighlight : STYLES.btnSecondary} flex-1 py-2 text-xs`}
+                    style={touchButtonStyle}
                 >
                     <i className="fa-solid fa-tv mr-1"></i> Preview on TV
                 </button>
                 {isActive && (
-                    <button onClick={onStop} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3`} title="Stop">
+                    <button type="button" onClick={onStop} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3`} title="Stop" style={touchButtonStyle}>
                         <i className="fa-solid fa-stop"></i>
                     </button>
                 )}

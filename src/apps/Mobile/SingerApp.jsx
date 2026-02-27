@@ -1005,6 +1005,14 @@ const SingerApp = ({ roomCode, uid }) => {
         balladTouchStartXRef.current = null;
         setBalladRaised(false);
     }, []);
+    const pulseNativeUiFeedback = useCallback((duration = 14) => {
+        if (!isNativeMobileLayout) return;
+        try {
+            if (window.navigator?.vibrate) window.navigator.vibrate(duration);
+        } catch {
+            // Ignore haptic/vibrate failures.
+        }
+    }, [isNativeMobileLayout]);
     const toggleMobileLayoutMode = useCallback(() => {
         setMobileLayoutMode((prev) => {
             const next = prev === 'native' ? 'legacy' : 'native';
@@ -6755,7 +6763,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             )}
             {/* Header: Reorganized Layout */}
               <div
-                  className="bg-gradient-to-r from-[#4b1436] via-[#FF67B6] to-[#4b1436] shadow-lg z-20 relative h-24 overflow-visible"
+                  className={`bg-gradient-to-r from-[#4b1436] via-[#FF67B6] to-[#4b1436] shadow-lg z-20 relative overflow-visible ${isNativeMobileLayout ? 'h-28 mobile-native-header' : 'h-24'}`}
                   style={{
                       paddingTop: mobileHeaderTopInset
                   }}
@@ -6767,7 +6775,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                       <div className="grid grid-cols-[minmax(0,140px)_auto_minmax(0,140px)] items-center h-full gap-2 px-4" style={{ paddingLeft: mobileSideInsetLeft, paddingRight: mobileSideInsetRight }}>
                       {/* Left: User Emoji & Name */}
                       <div className="flex items-center justify-start min-w-0 relative z-10">
-                          <button onClick={() => { setTab('social'); setSocialTab('profile'); }} className="bg-black/60 backdrop-blur-sm px-3 py-2 rounded-full border border-white/10 flex items-center gap-2 shadow-lg h-11 w-[126px] sm:w-[140px] min-w-0">
+                          <button onClick={() => { pulseNativeUiFeedback(); setTab('social'); setSocialTab('profile'); }} className={`bg-black/60 backdrop-blur-sm px-3 py-2 rounded-full border border-white/10 flex items-center gap-2 shadow-lg h-11 w-[126px] sm:w-[140px] min-w-0 ${isNativeMobileLayout ? 'mobile-native-pill' : ''}`}>
                               <span className="text-2xl">{user?.avatar}</span>
                               <span className="font-bold truncate text-sm text-white">{user?.name}</span>
                           </button>
@@ -6925,10 +6933,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
             {/* Omnipresent Stage Area */}
             {(tab === 'home' || tab === 'request' || tab === 'social') && (
-                <div className="bg-black/40 border-b-4 border-[#00C4D9]/30 z-10 relative" style={{ paddingLeft: 'max(16px, env(safe-area-inset-left))', paddingRight: 'max(16px, env(safe-area-inset-right))', paddingTop: '16px', paddingBottom: '16px' }}>
+                <div className={`bg-black/40 border-b-4 border-[#00C4D9]/30 z-10 relative ${isNativeMobileLayout ? 'mobile-native-stage-shell' : ''}`} style={{ paddingLeft: 'max(16px, env(safe-area-inset-left))', paddingRight: 'max(16px, env(safe-area-inset-right))', paddingTop: '16px', paddingBottom: '16px' }}>
                     {currentSinger ? (
-                        <div className="bg-indigo-900/80 rounded-2xl border border-indigo-500/30 shadow-lg backdrop-blur-md relative overflow-hidden">
-                            <div className="px-4 py-3 border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70">
+                        <div className={`bg-indigo-900/80 rounded-2xl border border-indigo-500/30 shadow-lg backdrop-blur-md relative overflow-hidden ${isNativeMobileLayout ? 'mobile-native-stage-card' : ''}`}>
+                            <div className={`px-4 py-3 border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70 ${isNativeMobileLayout ? 'mobile-native-stage-meta' : ''}`}>
                                 <div className="flex items-center justify-between gap-3">
                                     <div className="flex items-center gap-2">
                                         <div className="flex items-center gap-2 bg-black/50 border border-cyan-400/40 px-3 py-1.5 rounded-full">
@@ -7227,7 +7235,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 </div>
             )}
 
-            <div className="flex-1 p-4 overflow-y-auto custom-scrollbar relative z-0">
+            <div className={`flex-1 p-4 overflow-y-auto custom-scrollbar relative z-0 ${isNativeMobileLayout ? 'mobile-native-content' : ''}`}>
 
                 {tab === 'home' && (
                     <div className="space-y-5">
@@ -8337,8 +8345,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             )}
             {floatingEngagementPrompt && (
                 <button
-                    onClick={() => setTab('home')}
-                    className="fixed left-1/2 -translate-x-1/2 z-[96] rounded-full border border-cyan-300/55 bg-cyan-500/22 text-cyan-100 shadow-[0_10px_28px_rgba(34,211,238,0.35)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.22em]"
+                    onClick={() => { pulseNativeUiFeedback(); setTab('home'); }}
+                    className={`fixed left-1/2 -translate-x-1/2 z-[96] rounded-full border border-cyan-300/55 bg-cyan-500/22 text-cyan-100 shadow-[0_10px_28px_rgba(34,211,238,0.35)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.22em] ${isNativeMobileLayout ? 'mobile-native-engagement-pill' : ''}`}
                     style={{ bottom: `calc(${mobileFloatingBottomInset} + 2.75rem)` }}
                 >
                     <i className={`fa-solid ${floatingEngagementPrompt.icon} mr-2`}></i>
@@ -8346,8 +8354,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 </button>
             )}
             <button
-                onClick={toggleMobileLayoutMode}
-                className={`fixed left-3 z-[96] px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.18em] transition-colors ${isNativeMobileLayout ? 'border-cyan-300/50 bg-cyan-400/20 text-cyan-100' : 'border-white/30 bg-black/45 text-zinc-200'}`}
+                onClick={() => { pulseNativeUiFeedback(10); toggleMobileLayoutMode(); }}
+                className={`fixed left-3 z-[96] px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.18em] transition-colors ${isNativeMobileLayout ? 'border-cyan-300/50 bg-cyan-400/20 text-cyan-100 mobile-native-layout-toggle' : 'border-white/30 bg-black/45 text-zinc-200'}`}
                 style={{ bottom: mobileFloatingBottomInset }}
                 title="Toggle between native and classic mobile layout"
             >
@@ -8355,7 +8363,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             </button>
 
             <div
-                className={`relative border-t border-pink-400/30 flex-none z-20 ${isNativeMobileLayout ? 'backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)]' : ''}`}
+                className={`relative border-t border-pink-400/30 flex-none z-20 ${isNativeMobileLayout ? 'backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)] mobile-native-tabbar' : ''}`}
                 style={{ paddingBottom: isNativeMobileLayout ? mobileBottomInset : (isStandaloneDisplay ? 'env(safe-area-inset-bottom)' : '0px') }}
             >
                 <div className="absolute inset-0" style={{ background: MOBILE_NAV_GRADIENT }}></div>
@@ -8365,7 +8373,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     </div>
                 )}
                 <div
-                    className="relative py-1.5 flex"
+                    className={`relative py-1.5 flex ${isNativeMobileLayout ? 'mobile-native-tabbar-row' : ''}`}
                     style={{
                         paddingLeft: isNativeMobileLayout
                             ? mobileSideInsetLeft
@@ -8375,15 +8383,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             : (isStandaloneDisplay ? 'max(8px, env(safe-area-inset-right))' : '8px')
                     }}
                 >
-                    <button onClick={()=>setTab('home')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='home'?'text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]':'text-zinc-300'}`}><i className="fa-solid fa-champagne-glasses text-[28px]"></i><span className="text-base font-semibold">PARTY</span></button>
-                    <button onClick={()=>setTab('request')} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='request'?'text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]':'text-zinc-300'}`}><i className="fa-solid fa-music text-[28px]"></i><span className="text-base font-semibold">SONGS</span></button>
+                    <button onClick={()=>{ pulseNativeUiFeedback(); setTab('home'); }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='home' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]` : 'text-zinc-300'}`}><i className="fa-solid fa-champagne-glasses text-[28px]"></i><span className="text-base font-semibold">PARTY</span></button>
+                    <button onClick={()=>{ pulseNativeUiFeedback(); setTab('request'); }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='request' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]` : 'text-zinc-300'}`}><i className="fa-solid fa-music text-[28px]"></i><span className="text-base font-semibold">SONGS</span></button>
                     <button onClick={() => {
+                        pulseNativeUiFeedback();
                         setTab('social');
                         setSocialTab('lounge');
                         const newest = getNewestRelevantChatTimestamp(chatMessages);
                         if (newest) chatLastSeenRef.current = newest;
                         setChatUnread(false);
-                    }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${tab==='social'?'text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]':'text-zinc-300'} relative`}>
+                    }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='social' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]` : 'text-zinc-300'} relative`}>
                         <i className="fa-solid fa-comments text-[28px]"></i>
                         {chatUnread && <span className="absolute top-2 right-8 w-2.5 h-2.5 rounded-full bg-pink-400 ring-2 ring-pink-300/60 shadow-[0_0_10px_rgba(255,103,182,0.8)]"></span>}
                         <span className="text-base font-semibold">SOCIAL</span>

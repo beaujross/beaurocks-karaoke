@@ -300,25 +300,43 @@ const HostTopChrome = ({
             && !showLaunchMenu
             && !showNavMenu
         ) return undefined;
-        const handleWindowPointerDown = (event) => {
-            if (
-                automationMenuRef.current?.contains(event.target)
-                || tvQuickMenuRef.current?.contains(event.target)
-                || overlaysMenuRef.current?.contains(event.target)
-                || sfxQuickMenuRef.current?.contains(event.target)
-                || vibeQuickMenuRef.current?.contains(event.target)
-                || launchMenuRef.current?.contains(event.target)
-                || navMenuRef.current?.contains(event.target)
-            ) return;
+        const menuNodes = [
+            automationMenuRef.current,
+            tvQuickMenuRef.current,
+            overlaysMenuRef.current,
+            sfxQuickMenuRef.current,
+            vibeQuickMenuRef.current,
+            launchMenuRef.current,
+            navMenuRef.current
+        ].filter(Boolean);
+        const eventInsideMenu = (event) => {
+            if (!menuNodes.length) return false;
+            const target = event?.target || null;
+            if (target && menuNodes.some((node) => node.contains(target))) return true;
+            if (typeof event?.composedPath === 'function') {
+                const path = event.composedPath();
+                if (Array.isArray(path) && path.length) {
+                    return menuNodes.some((node) => path.includes(node));
+                }
+            }
+            return false;
+        };
+        const handleWindowInteract = (event) => {
+            if (eventInsideMenu(event)) return;
             closeAllTopMenus();
         };
         const handleEscape = (event) => {
             if (event.key === 'Escape') closeAllTopMenus();
         };
-        window.addEventListener('pointerdown', handleWindowPointerDown, true);
+        // Avoid pointerdown-capture quirks on iOS Safari by listening to click/touch/mouse.
+        window.addEventListener('mousedown', handleWindowInteract, true);
+        window.addEventListener('touchstart', handleWindowInteract, true);
+        window.addEventListener('click', handleWindowInteract, true);
         window.addEventListener('keydown', handleEscape);
         return () => {
-            window.removeEventListener('pointerdown', handleWindowPointerDown, true);
+            window.removeEventListener('mousedown', handleWindowInteract, true);
+            window.removeEventListener('touchstart', handleWindowInteract, true);
+            window.removeEventListener('click', handleWindowInteract, true);
             window.removeEventListener('keydown', handleEscape);
         };
     }, [
