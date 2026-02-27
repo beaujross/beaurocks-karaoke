@@ -1,4 +1,4 @@
-const DEFAULT_BASE_URL = "https://beaurocks.com";
+const DEFAULT_BASE_URL = "https://beaurocks.app";
 const DEFAULT_TIMEOUT_MS = 70000;
 
 const DEMO_FIREBASE_CONFIG = {

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://beaurocks.com/sitemap.xml
+Sitemap: https://beaurocks.app/sitemap.xml

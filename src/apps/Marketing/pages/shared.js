@@ -64,9 +64,9 @@ const normalizeLocation = (entity = {}) => {
 export const buildPublicLocationImageUrl = (entity = {}) => {
   const location = normalizeLocation(entity);
   if (!location) return "";
-  const lat = Number(location.lat).toFixed(6);
-  const lng = Number(location.lng).toFixed(6);
-  return `https://staticmap.openstreetmap.de/staticmap.php?center=${encodeURIComponent(`${lat},${lng}`)}&zoom=15&size=960x540&maptype=mapnik&markers=${encodeURIComponent(`${lat},${lng},lightblue1`)}`;
+  // External OSM static-map endpoint has become unreliable for this project.
+  // Return an internal fallback image to avoid noisy failed-network requests.
+  return "/images/marketing/venue-location-fallback.svg";
 };
 
 const appendMediaCandidate = (list = [], raw = "") => {

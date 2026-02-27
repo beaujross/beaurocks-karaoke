@@ -39,7 +39,7 @@ const withBasePath = (pathname = "/") => {
 };
 
 const readSiteUrl = () => {
-  const raw = readEnv("SITE_URL", readEnv("VITE_SITE_URL", "https://beaurocks.com"));
+  const raw = readEnv("SITE_URL", readEnv("VITE_SITE_URL", "https://beaurocks.app"));
   return String(raw || "").trim().replace(/\/+$/, "");
 };
 

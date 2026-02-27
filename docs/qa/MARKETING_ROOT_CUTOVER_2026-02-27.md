@@ -24,8 +24,8 @@ Legacy compatibility:
 
 Verification:
 ```powershell
-curl -I https://beaurocks.com/marketing
-curl -I https://beaurocks.com/marketing/for-hosts
+curl -I https://beaurocks.app/marketing
+curl -I https://beaurocks.app/marketing/for-hosts
 ```
 Expected:
 - HTTP status `301`

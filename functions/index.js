@@ -2862,7 +2862,7 @@ const buildDemoRoomUpdates = (payload = {}) => {
     updates.showLyricsSinger = false;
     updates.guitarSessionId = Math.max(1, Math.floor(Number(payload.timelineMs || 0) / 1000) || 1);
   } else {
-    updates.guitarSessionId = null;
+    updates.guitarSessionId = 0;
   }
 
   if (mode === "trivia") {
@@ -4920,7 +4920,11 @@ exports.autoAppleLyrics = onDocumentCreated(
 );
 
 const FIREBASE_HOSTING_SITE_ID = "beaurocks-karaoke-v2";
-const DEFAULT_PUBLIC_ORIGIN = "https://beauross.com";
+const DEFAULT_PUBLIC_ORIGIN = "https://beaurocks.app";
+const FIRST_PARTY_ROOT_DOMAINS = [
+  "beaurocks.app",
+  "beaurocks.com",
+];
 
 const parseOriginHostname = (origin = "") => {
   try {
@@ -4934,7 +4938,7 @@ const isAllowedOriginHostname = (hostname = "") => {
   const host = String(hostname || "").trim().toLowerCase();
   if (!host) return false;
   if (host === "localhost" || host === "127.0.0.1") return true;
-  if (host === "beauross.com" || host.endsWith(".beauross.com")) return true;
+  if (FIRST_PARTY_ROOT_DOMAINS.some((root) => host === root || host.endsWith(`.${root}`))) return true;
 
   const webAppHost = `${FIREBASE_HOSTING_SITE_ID}.web.app`;
   if (host === webAppHost) return true;

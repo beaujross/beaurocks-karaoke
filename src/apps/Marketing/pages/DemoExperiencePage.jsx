@@ -459,7 +459,9 @@ const buildReactionEvents = (scene, sceneProgress = 0) => {
   }));
 };
 
-const DemoExperiencePage = () => {
+const DemoExperiencePage = ({ session = {} }) => {
+  const isSessionReady = !!session?.ready;
+  const hasCallableAuth = !!session?.isAuthed;
   const [demoViewMode, setDemoViewMode] = useState(() => getInitialDemoViewMode());
   const [timelineMs, setTimelineMs] = useState(0);
   const [playing, setPlaying] = useState(true);
@@ -733,6 +735,10 @@ const DemoExperiencePage = () => {
     const snapshot = latestStateRef.current;
     if (!snapshot) return;
     if (inFlightRef.current && action === "tick") return;
+    if (!isSessionReady || !hasCallableAuth) {
+      setSyncState({ tone: "muted", message: "Waiting for secure session..." });
+      return;
+    }
     if (!snapshot.roomCode.startsWith("DEMO")) {
       setSyncState({ tone: "error", message: "Use a room code that starts with DEMO." });
       return;
@@ -815,17 +821,21 @@ const DemoExperiencePage = () => {
     } finally {
       inFlightRef.current = false;
     }
-  }, []);
+  }, [hasCallableAuth, isSessionReady]);
 
   useEffect(() => {
     if (!liveSync) return;
+    if (!isSessionReady || !hasCallableAuth) {
+      setSyncState({ tone: "muted", message: "Waiting for secure session..." });
+      return;
+    }
     const snapshot = latestStateRef.current;
     const seedSceneId = snapshot?.activeScene?.id || TIMELINE[0].id;
     const seedTimelineMs = Number(snapshot?.timelineMs || 0);
     lastSceneIdRef.current = seedSceneId;
     lastTickBucketRef.current = Math.floor(seedTimelineMs / 4000);
     sendDirectorAction("bootstrap");
-  }, [liveSync, sanitizedRoomCode, sendDirectorAction]);
+  }, [hasCallableAuth, isSessionReady, liveSync, sanitizedRoomCode, sendDirectorAction]);
 
   useEffect(() => {
     if (!liveSync) return;

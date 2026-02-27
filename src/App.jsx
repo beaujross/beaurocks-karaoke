@@ -19,6 +19,35 @@ const ViewLoader = () => (
     </div>
 );
 
+const DEFAULT_CANONICAL_MARKETING_ORIGIN = 'https://beaurocks.app';
+const MANAGED_HOST_PATTERN = /\.(web\.app|firebaseapp\.com)$/i;
+
+const normalizeOrigin = (value = '') => String(value || '').trim().replace(/\/+$/, '');
+
+const getCanonicalManagedHostRedirectUrl = (locationLike = null) => {
+    if (!locationLike) return '';
+    const hostname = String(locationLike.hostname || '').trim().toLowerCase();
+    if (!MANAGED_HOST_PATTERN.test(hostname)) return '';
+
+    const configuredOrigin = normalizeOrigin(
+        import.meta.env.VITE_CANONICAL_MARKETING_ORIGIN
+        || import.meta.env.VITE_MARKETING_ORIGIN
+        || DEFAULT_CANONICAL_MARKETING_ORIGIN
+    );
+    if (!configuredOrigin) return '';
+
+    try {
+        const destination = new URL(configuredOrigin);
+        if (destination.hostname.trim().toLowerCase() === hostname) return '';
+        destination.pathname = locationLike.pathname || '/';
+        destination.search = locationLike.search || '';
+        destination.hash = locationLike.hash || '';
+        return destination.toString();
+    } catch {
+        return '';
+    }
+};
+
 const getInitialRouteState = () => {
     if (typeof window === 'undefined') {
         return { view: 'landing', roomCode: '' };
@@ -33,6 +62,9 @@ const getInitialRouteState = () => {
     }
     if (m === 'recap') {
         return { view: 'recap', roomCode: r ? r.toUpperCase() : '' };
+    }
+    if (pathname === '/host' || pathname === '/host-dashboard') {
+        return { view: 'host', roomCode: r ? r.toUpperCase() : '' };
     }
     if (m === 'marketing') {
         return { view: 'marketing', roomCode: '' };
@@ -203,6 +235,9 @@ const KaraokeTerms = () => (
 );
 
 const App = () => {
+    const [canonicalRedirectUrl] = useState(() => (
+        typeof window !== 'undefined' ? getCanonicalManagedHostRedirectUrl(window.location) : ''
+    ));
     const initialRoute = getInitialRouteState();
     const [view, setView] = useState(() => initialRoute.view);
     const [roomCode, setRoomCode] = useState(() => initialRoute.roomCode);
@@ -210,6 +245,11 @@ const App = () => {
     const [authError, setAuthError] = useState(null);
     const isKaraokeTerms = typeof window !== 'undefined'
         && window.location.pathname.replace(/\/+$/, '').endsWith('/karaoke/terms');
+
+    useEffect(() => {
+        if (!canonicalRedirectUrl || typeof window === 'undefined') return;
+        window.location.replace(canonicalRedirectUrl);
+    }, [canonicalRedirectUrl]);
 
     // 1. Initialize Auth
     useEffect(() => {
@@ -226,6 +266,7 @@ const App = () => {
         });
         return () => unsub();
     }, []);
+    if (canonicalRedirectUrl) return <ViewLoader />;
     if (isKaraokeTerms) return <KaraokeTerms />;
     if (view === 'landing') return <Landing onJoin={(c) => { setRoomCode(c); setView('mobile'); }} />;
     if (view === 'tv') return (

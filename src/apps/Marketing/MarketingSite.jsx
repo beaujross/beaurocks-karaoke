@@ -517,6 +517,18 @@ const MarketingSite = () => {
       || buildSurfaceUrl({ surface: "host", params: { mode: "host" } }, window.location);
     window.location.href = nextHref;
   }, [hasFullAccount, hostDashboardHref]);
+  const openHostPanelOnRoot = useCallback((source = "marketing_home_host_panel") => {
+    if (typeof window === "undefined") return;
+    trackEvent("mk_nav_host_dashboard_click", {
+      source: String(source || "marketing_home_host_panel"),
+      authed: hasFullAccount ? 1 : 0,
+    });
+    const url = new URL(window.location.href);
+    url.pathname = "/";
+    url.search = "mode=host";
+    url.hash = "";
+    window.location.href = url.toString();
+  }, [hasFullAccount]);
   const homeHeroPrimaryLabel = campaignContext.variant === "paid"
     ? "Start Founding Host Application"
     : campaignContext.variant === "social"
@@ -1308,6 +1320,13 @@ const MarketingSite = () => {
                       }}
                     >
                       {homeHeroPrimaryLabel}
+                    </button>
+                    <button
+                      type="button"
+                      className="mk3-auth-cta-secondary"
+                      onClick={() => openHostPanelOnRoot("home_hero_host_panel")}
+                    >
+                      Open Host Panel
                     </button>
                   </div>
                 </div>
