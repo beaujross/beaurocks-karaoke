@@ -38,6 +38,7 @@ const LEGACY_PAGE_TO_CANONICAL = {
   discover: { page: MARKETING_ROUTE_PAGES.discover },
   demo: { page: MARKETING_ROUTE_PAGES.demo },
   host_access: { page: MARKETING_ROUTE_PAGES.hostAccess },
+  "host-access": { page: MARKETING_ROUTE_PAGES.hostAccess },
   venue: { page: MARKETING_ROUTE_PAGES.venue },
   event: { page: MARKETING_ROUTE_PAGES.event },
   host: { page: MARKETING_ROUTE_PAGES.host },
@@ -46,6 +47,17 @@ const LEGACY_PAGE_TO_CANONICAL = {
   profile: { page: MARKETING_ROUTE_PAGES.profile },
   submit: { page: MARKETING_ROUTE_PAGES.submit },
   admin: { page: MARKETING_ROUTE_PAGES.admin },
+  for_hosts: { page: MARKETING_ROUTE_PAGES.forHosts },
+  "for-hosts": { page: MARKETING_ROUTE_PAGES.forHosts },
+  for_venues: { page: MARKETING_ROUTE_PAGES.forVenues },
+  "for-venues": { page: MARKETING_ROUTE_PAGES.forVenues },
+  for_performers: { page: MARKETING_ROUTE_PAGES.forPerformers },
+  "for-performers": { page: MARKETING_ROUTE_PAGES.forPerformers },
+  for_fans: { page: MARKETING_ROUTE_PAGES.forFans },
+  "for-fans": { page: MARKETING_ROUTE_PAGES.forFans },
+  join: { page: MARKETING_ROUTE_PAGES.join },
+  geo_city: { page: MARKETING_ROUTE_PAGES.geoCity },
+  geo_region: { page: MARKETING_ROUTE_PAGES.geoRegion },
 };
 
 const trimSlashes = (value = "") => String(value || "").replace(/^\/+|\/+$/g, "");
@@ -84,7 +96,7 @@ const applyBasePath = (pathname = "") => {
 };
 
 const routeForPathTokens = (parts = []) => {
-  if (!Array.isArray(parts) || !parts.length) return defaultRoute();
+  if (!Array.isArray(parts) || !parts.length) return null;
 
   if (parts[0] === "discover") return { page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} };
   if (parts[0] === "demo") return { page: MARKETING_ROUTE_PAGES.demo, id: "", params: {} };
@@ -124,7 +136,7 @@ const routeForPathTokens = (parts = []) => {
       params: { regionToken: lower(parts[1]) },
     };
   }
-  return defaultRoute();
+  return null;
 };
 
 const appendQueryParamsToRoute = (route = {}, search = "") => {
@@ -145,15 +157,63 @@ const appendQueryParamsToRoute = (route = {}, search = "") => {
 const parseLegacyQueryRoute = (search = "") => {
   const params = new URLSearchParams(search || "");
   const mode = lower(params.get("mode"));
+  const hasLegacyPage = params.has("page");
   if (mode && mode !== "marketing") return null;
+  if (!hasLegacyPage && mode !== "marketing") return null;
   const page = lower(params.get("page") || "discover");
-  const id = String(params.get("id") || "").trim();
-  const mapped = LEGACY_PAGE_TO_CANONICAL[page] || defaultRoute();
-  return {
+  const mapped = LEGACY_PAGE_TO_CANONICAL[page];
+  if (!mapped) return defaultRoute();
+  const id = String(
+    params.get("id")
+    || params.get("uid")
+    || params.get("venueId")
+    || params.get("eventId")
+    || params.get("sessionId")
+    || params.get("hostUid")
+    || params.get("performerUid")
+    || ""
+  ).trim();
+  const base = {
     page: mapped.page,
     id: id || "",
     params: {},
     isLegacyQuery: true,
+  };
+  if (mapped.page === MARKETING_ROUTE_PAGES.join) {
+    const roomCode = String(params.get("roomCode") || params.get("room") || id || "").trim().toUpperCase();
+    return {
+      ...base,
+      id: roomCode,
+      params: roomCode ? { roomCode } : {},
+    };
+  }
+  if (mapped.page === MARKETING_ROUTE_PAGES.geoRegion) {
+    const regionToken = safeToken(params.get("regionToken") || id || "");
+    return {
+      ...base,
+      id: regionToken,
+      params: regionToken ? { regionToken } : {},
+    };
+  }
+  if (mapped.page === MARKETING_ROUTE_PAGES.geoCity) {
+    const state = safeToken(params.get("state") || "");
+    const city = safeToken(params.get("city") || "");
+    const [idStateRaw = "", idCityRaw = ""] = String(id || "").split(":");
+    const idState = safeToken(idStateRaw);
+    const idCity = safeToken(idCityRaw);
+    const resolvedState = state || idState;
+    const resolvedCity = city || idCity;
+    return {
+      ...base,
+      id: resolvedState && resolvedCity ? `${resolvedState}:${resolvedCity}` : "",
+      params: {
+        ...(resolvedState ? { state: resolvedState } : {}),
+        ...(resolvedCity ? { city: resolvedCity } : {}),
+      },
+    };
+  }
+  return {
+    ...base,
   };
 };
 
@@ -161,12 +221,21 @@ export const parseMarketingRouteFromLocation = (locationLike = null) => {
   const pathname = stripBasePath(String(locationLike?.pathname || "/"));
   const search = String(locationLike?.search || "");
   const pathTokens = trimSlashes(pathname).split("/").filter(Boolean).map((token) => lower(token));
-  const byPath = appendQueryParamsToRoute(routeForPathTokens(pathTokens), search);
-  if (byPath.page !== MARKETING_ROUTE_PAGES.discover || pathTokens[0] === "discover") {
-    return byPath;
+  const legacyRoute = parseLegacyQueryRoute(search);
+
+  if (pathTokens[0] === "marketing") {
+    const childRoute = routeForPathTokens(pathTokens.slice(1)) || defaultRoute();
+    if (legacyRoute && pathTokens.length <= 1) {
+      return appendQueryParamsToRoute(legacyRoute, search);
+    }
+    return appendQueryParamsToRoute(childRoute, search);
   }
-  const legacy = parseLegacyQueryRoute(search);
-  return appendQueryParamsToRoute(legacy || byPath, search);
+
+  const pathRoute = routeForPathTokens(pathTokens);
+  if (pathRoute) return appendQueryParamsToRoute(pathRoute, search);
+  if (legacyRoute) return appendQueryParamsToRoute(legacyRoute, search);
+
+  return appendQueryParamsToRoute(defaultRoute(), search);
 };
 
 export const parseMarketingRouteFromHref = (href = "") => {
@@ -252,6 +321,13 @@ export const buildLegacyMarketingQuery = ({ page = MARKETING_ROUTE_PAGES.discove
     [MARKETING_ROUTE_PAGES.profile]: "profile",
     [MARKETING_ROUTE_PAGES.submit]: "submit",
     [MARKETING_ROUTE_PAGES.admin]: "admin",
+    [MARKETING_ROUTE_PAGES.forHosts]: "for_hosts",
+    [MARKETING_ROUTE_PAGES.forVenues]: "for_venues",
+    [MARKETING_ROUTE_PAGES.forPerformers]: "for_performers",
+    [MARKETING_ROUTE_PAGES.forFans]: "for_fans",
+    [MARKETING_ROUTE_PAGES.join]: "join",
+    [MARKETING_ROUTE_PAGES.geoCity]: "geo_city",
+    [MARKETING_ROUTE_PAGES.geoRegion]: "geo_region",
   };
   params.set("page", pageMap[page] || "discover");
   if (id) params.set("id", id);
@@ -262,7 +338,6 @@ export const isMarketingPath = (pathname = "") => {
   const parts = trimSlashes(stripBasePath(pathname)).split("/").filter(Boolean).map((token) => lower(token));
   if (!parts.length) return false;
   if (parts[0] === "karaoke" && parts[1] === "terms") return false;
-  const parsed = routeForPathTokens(parts);
-  if (parsed.page === MARKETING_ROUTE_PAGES.discover && parts[0] !== "discover") return false;
-  return true;
+  if (parts[0] === "marketing") return true;
+  return !!routeForPathTokens(parts);
 };

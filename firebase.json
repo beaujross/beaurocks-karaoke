@@ -55,6 +55,23 @@
         ]
       }
     ],
+    "redirects": [
+      {
+        "source": "/marketing",
+        "destination": "/for-fans",
+        "type": 301
+      },
+      {
+        "source": "/marketing/",
+        "destination": "/for-fans",
+        "type": 301
+      },
+      {
+        "source": "/marketing/:path*",
+        "destination": "/:path*",
+        "type": 301
+      }
+    ],
     "rewrites": [
       {
         "source": "**",

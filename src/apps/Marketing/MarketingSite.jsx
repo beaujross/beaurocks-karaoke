@@ -14,6 +14,7 @@ import { applyMarketingSeo } from "./seo";
 import { directoryActions } from "./api/directoryApi";
 import { useDirectorySession } from "./hooks/useDirectorySession";
 import { formatDateTime } from "./pages/shared";
+import { buildSurfaceUrl } from "../../lib/surfaceDomains";
 import "./marketing.css";
 
 const DiscoverPage = lazy(() => import("./pages/DiscoverPage"));
@@ -299,13 +300,14 @@ const MarketingSite = () => {
     if (!marketingFlags.routePathsEnabled) return;
     const params = new URLSearchParams(window.location.search);
     const hasLegacyQuery = params.get("mode") === "marketing" || params.has("page");
-    if (!hasLegacyQuery) return;
+    const hasLegacyPath = /^\/marketing(?:\/|$)/i.test(String(window.location.pathname || ""));
+    if (!hasLegacyQuery && !hasLegacyPath) return;
 
     const parsed = normalizeRouteInput(parseMarketingRouteFromLocation(window.location));
-    const canonicalPath = buildMarketingPath(parsed);
-    const nextUrl = `${canonicalPath}${window.location.hash || ""}`;
-    if (window.location.pathname !== canonicalPath || window.location.search) {
-      window.history.replaceState({}, "", nextUrl);
+    const canonicalUrl = `${buildMarketingUrl(parsed)}${window.location.hash || ""}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash || ""}`;
+    if (currentUrl !== canonicalUrl) {
+      window.location.replace(canonicalUrl);
     }
   }, []);
 
@@ -501,6 +503,20 @@ const MarketingSite = () => {
     });
     navigate(page, "", params);
   }, [campaignContext.variant, navigate, withCampaignParams]);
+  const hostDashboardHref = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return buildSurfaceUrl({ surface: "host", params: { mode: "host" } }, window.location);
+  }, []);
+  const openHostDashboard = useCallback((source = "marketing_nav") => {
+    if (typeof window === "undefined") return;
+    trackEvent("mk_nav_host_dashboard_click", {
+      source: String(source || "marketing_nav"),
+      authed: hasFullAccount ? 1 : 0,
+    });
+    const nextHref = hostDashboardHref
+      || buildSurfaceUrl({ surface: "host", params: { mode: "host" } }, window.location);
+    window.location.href = nextHref;
+  }, [hasFullAccount, hostDashboardHref]);
   const homeHeroPrimaryLabel = campaignContext.variant === "paid"
     ? "Start Founding Host Application"
     : campaignContext.variant === "social"
@@ -892,6 +908,13 @@ const MarketingSite = () => {
               <button
                 type="button"
                 className="mk3-account-link"
+                onClick={() => openHostDashboard("marketing_nav_host_dashboard")}
+              >
+                Host Dashboard
+              </button>
+              <button
+                type="button"
+                className="mk3-account-link"
                 onClick={() => {
                   if (hasFullAccount) {
                     actions.signOutAccount();
@@ -937,6 +960,12 @@ const MarketingSite = () => {
                   {item.label}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => openHostDashboard("marketing_mobile_menu_host_dashboard")}
+              >
+                Host Dashboard
+              </button>
             </div>
           </div>
         </div>
@@ -998,13 +1027,19 @@ const MarketingSite = () => {
                 <button
                   type="button"
                   className="mk3-auth-cta-primary"
-                  onClick={() => navigate(
-                    hasFullAccount ? MARKETING_ROUTE_PAGES.profile : MARKETING_ROUTE_PAGES.discover,
-                    "",
-                    withCampaignParams({ utm_content: "host_access_primary" })
-                  )}
+                  onClick={() => {
+                    if (hasFullAccount) {
+                      openHostDashboard("host_access_primary");
+                      return;
+                    }
+                    navigate(
+                      MARKETING_ROUTE_PAGES.discover,
+                      "",
+                      withCampaignParams({ utm_content: "host_access_primary" })
+                    );
+                  }}
                 >
-                  {hasFullAccount ? "Open My Dashboard" : "Back to Live Listings"}
+                  {hasFullAccount ? "Open Host Dashboard" : "Back to Live Listings"}
                 </button>
                 <button
                   type="button"

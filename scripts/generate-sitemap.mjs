@@ -10,9 +10,23 @@ const projectRoot = path.resolve(__dirname, "..");
 const publicDir = path.join(projectRoot, "public");
 const require = createRequire(import.meta.url);
 
+const readEnv = (name = "", fallback = "") => {
+  const value = process.env[name];
+  if (value === undefined || value === null) return fallback;
+  return String(value);
+};
+
+const readEnvBool = (name, fallback = false) => {
+  const raw = readEnv(name, "").trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  return fallback;
+};
+
 const trimSlashes = (value = "") => String(value || "").replace(/^\/+|\/+$/g, "");
 const cleanBasePath = (() => {
-  const raw = process.env.BASE_URL || "/";
+  const raw = readEnv("BASE_URL", "/");
   const trimmed = trimSlashes(raw);
   return trimmed ? `/${trimmed}` : "";
 })();
@@ -25,7 +39,7 @@ const withBasePath = (pathname = "/") => {
 };
 
 const readSiteUrl = () => {
-  const raw = process.env.SITE_URL || process.env.VITE_SITE_URL || "https://beaurocks.com";
+  const raw = readEnv("SITE_URL", readEnv("VITE_SITE_URL", "https://beaurocks.com"));
   return String(raw || "").trim().replace(/\/+$/, "");
 };
 
@@ -51,91 +65,206 @@ const loadFirebaseAdmin = () => {
   }
 };
 
-const loadManifestFromFirestore = async () => {
-  const enabled = String(process.env.SITEMAP_USE_FIRESTORE || "true").trim().toLowerCase() !== "false";
-  if (!enabled) return null;
-  const admin = loadFirebaseAdmin();
-  if (!admin) return null;
+const toErrorMessage = (error) => String(error?.message || error || "unknown error").replace(/\s+/g, " ").trim();
+
+const parseServiceAccountPayload = (raw = "") => {
+  const text = String(raw || "").trim();
+  if (!text) return null;
   try {
-    if (!admin.apps.length) {
-      admin.initializeApp();
-    }
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
+
+const loadServiceAccount = async () => {
+  const inlinePayload = parseServiceAccountPayload(
+    readEnv("SITEMAP_FIREBASE_SERVICE_ACCOUNT_JSON")
+    || readEnv("FIREBASE_SERVICE_ACCOUNT_JSON")
+    || readEnv("GOOGLE_SERVICE_ACCOUNT_JSON")
+  );
+  if (inlinePayload) return inlinePayload;
+
+  const relativeFile = readEnv("SITEMAP_FIREBASE_SERVICE_ACCOUNT_FILE", "").trim();
+  if (!relativeFile) return null;
+  const serviceAccountPath = path.isAbsolute(relativeFile)
+    ? relativeFile
+    : path.join(projectRoot, relativeFile);
+  try {
+    const raw = await fs.readFile(serviceAccountPath, "utf8");
+    return parseServiceAccountPayload(raw);
+  } catch {
+    return null;
+  }
+};
+
+const initializeFirebaseAdmin = async (admin) => {
+  if (!admin || admin.apps.length) return;
+
+  const explicitProjectId = readEnv("SITEMAP_FIREBASE_PROJECT_ID")
+    || readEnv("GCLOUD_PROJECT")
+    || readEnv("GOOGLE_CLOUD_PROJECT")
+    || readEnv("FIREBASE_CONFIG_PROJECT_ID");
+  const serviceAccount = await loadServiceAccount();
+
+  if (serviceAccount && admin.credential?.cert) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      ...(explicitProjectId || serviceAccount.project_id
+        ? { projectId: explicitProjectId || serviceAccount.project_id }
+        : {}),
+    });
+    return;
+  }
+
+  if (explicitProjectId) {
+    admin.initializeApp({ projectId: explicitProjectId });
+    return;
+  }
+
+  admin.initializeApp();
+};
+
+const isListingPublic = (data = {}) => {
+  const visibility = safeToken(data.visibility || "public");
+  return !["private", "hidden", "invite-only", "invite_only", "unlisted", "draft"].includes(visibility);
+};
+
+const resolveHostUid = (data = {}) => {
+  const candidate = data.hostUid || data.hostId || data.ownerUid || data.ownerId || "";
+  return safeToken(candidate);
+};
+
+const extractProfileRoles = (data = {}) => {
+  const roles = new Set();
+  const addRole = (value = "") => {
+    const token = safeToken(value);
+    if (token) roles.add(token);
+  };
+  (Array.isArray(data.roles) ? data.roles : []).forEach((entry) => addRole(entry));
+  addRole(data.role);
+  addRole(data.profileRole);
+  addRole(data.profileType);
+  addRole(data.type);
+  if (data.isHost === true || data.hostApproved === true || data.hostEnabled === true) roles.add("host");
+  if (data.isPerformer === true || data.performerApproved === true || data.performerEnabled === true) roles.add("performer");
+  return roles;
+};
+
+const resolveRegionToken = (data = {}) => safeToken(
+  data.region
+  || data.regionToken
+  || data.location?.region
+  || ""
+);
+
+const resolveStateToken = (data = {}) => safeToken(
+  data.state
+  || data.stateCode
+  || data.location?.state
+  || data.geo?.state
+  || ""
+);
+
+const resolveCityToken = (data = {}) => toCitySlug(
+  data.city
+  || data.location?.city
+  || data.geo?.city
+  || ""
+);
+
+const loadManifestFromFirestore = async () => {
+  const enabled = readEnvBool("SITEMAP_USE_FIRESTORE", true);
+  if (!enabled) return { manifest: null, error: null };
+  const admin = loadFirebaseAdmin();
+  if (!admin) {
+    return {
+      manifest: null,
+      error: new Error("firebase-admin is unavailable. Install dependency or provide functions/node_modules fallback."),
+    };
+  }
+  try {
+    await initializeFirebaseAdmin(admin);
     const db = admin.firestore();
-    const [venueSnap, eventSnap, sessionSnap, profileSnap] = await Promise.all([
-      db.collection("venues").where("status", "==", "approved").limit(3000).get(),
-      db.collection("karaoke_events").where("status", "==", "approved").limit(3500).get(),
-      db.collection("room_sessions")
-        .where("status", "==", "approved")
-        .where("visibility", "==", "public")
-        .limit(3500)
-        .get(),
-      db.collection("directory_profiles").where("status", "==", "approved").limit(2500).get(),
+    const [venueSnapRaw, eventSnapRaw, sessionSnapRaw, profileSnapRaw] = await Promise.all([
+      db.collection("venues").where("status", "==", "approved").limit(5000).get(),
+      db.collection("karaoke_events").where("status", "==", "approved").limit(6000).get(),
+      db.collection("room_sessions").where("status", "==", "approved").limit(6000).get(),
+      db.collection("directory_profiles").where("status", "==", "approved").limit(4500).get(),
     ]);
+
+    const venueDocs = venueSnapRaw.docs.filter((docSnap) => isListingPublic(docSnap.data() || {}));
+    const eventDocs = eventSnapRaw.docs.filter((docSnap) => isListingPublic(docSnap.data() || {}));
+    const sessionDocs = sessionSnapRaw.docs.filter((docSnap) => isListingPublic(docSnap.data() || {}));
+    const profileDocs = profileSnapRaw.docs.filter((docSnap) => isListingPublic(docSnap.data() || {}));
 
     const regionTokens = new Set(["nationwide"]);
     const geoCities = new Set();
     const detailRoutes = new Set();
 
     const consumeGeo = (data = {}) => {
-      const region = safeToken(data.region || "");
+      const region = resolveRegionToken(data);
       if (region) regionTokens.add(region);
-      const state = safeToken(data.state || "");
-      const city = toCitySlug(data.city || "");
+      const state = resolveStateToken(data);
+      const city = resolveCityToken(data);
       if (state && city) geoCities.add(`${state}:${city}`);
     };
 
-    venueSnap.docs.forEach((docSnap) => {
+    venueDocs.forEach((docSnap) => {
       const data = docSnap.data() || {};
       consumeGeo(data);
       detailRoutes.add(`/venues/${encodeURIComponent(docSnap.id)}`);
     });
-    eventSnap.docs.forEach((docSnap) => {
+    eventDocs.forEach((docSnap) => {
       const data = docSnap.data() || {};
       consumeGeo(data);
       detailRoutes.add(`/events/${encodeURIComponent(docSnap.id)}`);
-      const hostUid = safeToken(data.hostUid || "");
+      const hostUid = resolveHostUid(data);
       if (hostUid) detailRoutes.add(`/hosts/${encodeURIComponent(hostUid)}`);
     });
-    sessionSnap.docs.forEach((docSnap) => {
+    sessionDocs.forEach((docSnap) => {
       const data = docSnap.data() || {};
       consumeGeo(data);
       detailRoutes.add(`/sessions/${encodeURIComponent(docSnap.id)}`);
-      const hostUid = safeToken(data.hostUid || "");
+      const hostUid = resolveHostUid(data);
       if (hostUid) detailRoutes.add(`/hosts/${encodeURIComponent(hostUid)}`);
     });
-    profileSnap.docs.forEach((docSnap) => {
+    profileDocs.forEach((docSnap) => {
       const data = docSnap.data() || {};
       consumeGeo(data);
-      const roles = Array.isArray(data.roles) ? data.roles.map((entry) => safeToken(entry)) : [];
-      if (roles.includes("performer")) {
+      const roles = extractProfileRoles(data);
+      if (roles.has("performer")) {
         detailRoutes.add(`/performers/${encodeURIComponent(docSnap.id)}`);
       }
-      if (roles.includes("host")) {
+      if (roles.has("host")) {
         detailRoutes.add(`/hosts/${encodeURIComponent(docSnap.id)}`);
       }
     });
 
     return {
-      source: "firestore",
-      generatedAt: new Date().toISOString(),
-      counts: {
-        venues: venueSnap.size,
-        events: eventSnap.size,
-        sessions: sessionSnap.size,
-        profiles: profileSnap.size,
-        regions: regionTokens.size,
-        cities: geoCities.size,
-        detailRoutes: detailRoutes.size,
+      manifest: {
+        source: "firestore",
+        generatedAt: new Date().toISOString(),
+        counts: {
+          venues: venueDocs.length,
+          events: eventDocs.length,
+          sessions: sessionDocs.length,
+          profiles: profileDocs.length,
+          regions: regionTokens.size,
+          cities: geoCities.size,
+          detailRoutes: detailRoutes.size,
+        },
+        geoRegionTokens: Array.from(regionTokens).sort(),
+        geoCityPairs: Array.from(geoCities).map((entry) => {
+          const [state, city] = String(entry || "").split(":");
+          return { state, city };
+        }),
+        detailRoutes: Array.from(detailRoutes).sort(),
       },
-      geoRegionTokens: Array.from(regionTokens).sort(),
-      geoCityPairs: Array.from(geoCities).map((entry) => {
-        const [state, city] = String(entry || "").split(":");
-        return { state, city };
-      }),
-      detailRoutes: Array.from(detailRoutes).sort(),
+      error: null,
     };
-  } catch {
-    return null;
+  } catch (error) {
+    return { manifest: null, error };
   }
 };
 
@@ -164,11 +293,36 @@ const buildStaticManifest = () => ({
 });
 
 const resolveManifest = async () => {
+  const strictFirestore = readEnvBool("SITEMAP_STRICT_FIRESTORE", false);
+  const requireDetailRoutes = readEnvBool("SITEMAP_REQUIRE_DETAIL_ROUTES", false);
+  const warnings = [];
+
   const live = await loadManifestFromFirestore();
-  if (live) return live;
+  if (live?.manifest) {
+    const detailRouteCount = Array.isArray(live.manifest.detailRoutes) ? live.manifest.detailRoutes.length : 0;
+    if (requireDetailRoutes && detailRouteCount === 0) {
+      throw new Error("SITEMAP_REQUIRE_DETAIL_ROUTES is enabled but Firestore manifest returned zero detail routes.");
+    }
+    return { manifest: live.manifest, warnings };
+  }
+  if (live?.error) {
+    warnings.push(`Firestore sitemap source unavailable: ${toErrorMessage(live.error)}`);
+  }
+  if (strictFirestore) {
+    throw new Error("SITEMAP_STRICT_FIRESTORE is enabled and live Firestore manifest could not be loaded.");
+  }
+
   const existing = await loadExistingManifest();
-  if (existing) return { ...existing, source: `${existing.source || "cached"}_cached` };
-  return buildStaticManifest();
+  if (existing) {
+    warnings.push("Using cached marketing-route-manifest.json fallback.");
+    const cachedSourceBase = String(existing.source || "cached").replace(/(?:_cached)+$/g, "") || "cached";
+    return {
+      manifest: { ...existing, source: `${cachedSourceBase}_cached` },
+      warnings,
+    };
+  }
+  warnings.push("Using static preset fallback manifest with no dynamic detail routes.");
+  return { manifest: buildStaticManifest(), warnings };
 };
 
 const buildUrlEntries = (manifest = null) => {
@@ -252,7 +406,10 @@ const buildRobotsTxt = (siteUrl) => {
 
 const run = async () => {
   const siteUrl = readSiteUrl();
-  const manifest = await resolveManifest();
+  const { manifest, warnings } = await resolveManifest();
+  warnings.forEach((line) => {
+    process.stderr.write(`[seo:sitemap] ${line}\n`);
+  });
   const entries = buildUrlEntries(manifest);
   const sitemapXml = buildSitemapXml(siteUrl, entries);
   const robotsTxt = buildRobotsTxt(siteUrl);
