@@ -1294,18 +1294,17 @@ const MarketingSite = () => {
             <>
               <section className="mk3-home-premium-shell mk3-zone" aria-label="BeauRocks premium launch">
                 <div className="mk3-home-premium-main">
-                  <div className="mk3-home-premium-kicker">Private Pilot: Founding Host Wave</div>
-                  <h1>Be The King Or Queen Of Karaoke Night.</h1>
+                  <div className="mk3-home-premium-kicker">Launch Focus: Founding Host Wave</div>
+                  <h1>Launch-Ready Karaoke Nights Start Here.</h1>
                   <p>
                     {homeHeroSubhead}
                     {" "}
-                    Built as a premium multi-surface system, it gives hosts TV, audience, and control tools that turn
-                    normal karaoke into unforgettable social nights people talk about for weeks.
+                    We are optimizing this page for two actions only: capturing qualified launch interest and getting active testers into host controls fast.
                   </p>
                   <div className="mk3-home-premium-stats">
                     <span>{heroStats?.total > 0 ? `${heroStats.total.toLocaleString()} live listings` : "Live listings updating"}</span>
-                    <span>TV, audience, and host surfaces in lockstep</span>
-                    <span>Exclusive host onboarding in controlled drops</span>
+                    <span>Interest queue drives rollout priority</span>
+                    <span>Tester host access is one click away</span>
                   </div>
                   <div className="mk3-auth-cta-row mk3-home-primary-cta">
                     <button
@@ -1329,120 +1328,83 @@ const MarketingSite = () => {
                       Open Host Panel
                     </button>
                   </div>
+                  <div className="mk3-actions-inline">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        trackEvent("mk_home_tester_fast_lane_click", { source: "home_primary_actions", target: "host_access" });
+                        navigate(MARKETING_ROUTE_PAGES.hostAccess, "", withCampaignParams({ utm_content: "home_host_access_quick" }));
+                      }}
+                    >
+                      Host Sign In / Access
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        trackEvent("mk_home_tester_fast_lane_click", { source: "home_primary_actions", target: "discover" });
+                        navigate(MARKETING_ROUTE_PAGES.discover, "", withCampaignParams({ utm_content: "home_discover_quick" }));
+                      }}
+                    >
+                      Browse Live Listings
+                    </button>
+                  </div>
                 </div>
-                <aside className="mk3-home-premium-side" aria-label="Pilot access">
-                  <strong>Founding Host Circle</strong>
-                  <p>Host onboarding opens in limited city-by-city waves to keep quality high and every launch supported.</p>
+                <aside className="mk3-home-premium-side" aria-label="Tester fast lane">
+                  <strong>Tester Fast Lane</strong>
+                  <p>If you are already testing, jump directly into host controls and skip the long path.</p>
                   <div className="mk3-home-premium-side-list">
-                    <span>Limited seats per rollout wave</span>
-                    <span>Concierge setup during pilot</span>
-                    <span>Early access to premium party modes</span>
+                    <span>Open host panel instantly</span>
+                    <span>Use your room code and begin host flow</span>
+                    <span>Return here to submit launch feedback</span>
+                  </div>
+                  <div className="mk3-auth-cta-row">
+                    <button
+                      type="button"
+                      className="mk3-auth-cta-primary"
+                      onClick={() => openHostPanelOnRoot("home_tester_fast_lane")}
+                    >
+                      Open Host Panel
+                    </button>
                   </div>
                 </aside>
               </section>
 
-              <section className="mk3-home-system-strip mk3-zone" aria-label="Platform surfaces">
-                <h2>One Product. Three Surfaces. Zero Guesswork.</h2>
-                <p>
-                  Prelaunch winners are obvious fast: the host looks in control, guests know what to do, and the room energy never drops.
-                  BeauRocks is built to deliver that outcome every night.
-                </p>
-                <div className="mk3-surface-grid">
-                  <article>
-                    <strong>Spotlight TV</strong>
-                    <span>Premium visuals, lyrics, and mode shifts that lead the room.</span>
-                  </article>
-                  <article>
-                    <strong>Audience Mobile</strong>
-                    <span>Reactions, votes, and game interactions that keep everyone participating.</span>
-                  </article>
-                  <article>
-                    <strong>Host Deck</strong>
-                    <span>Live controls for pacing, queue flow, and social momentum.</span>
-                  </article>
-                  <article>
-                    <strong>Setlist Finder</strong>
-                    <span>Discovery engine that helps new guests find your room and return.</span>
-                  </article>
-                </div>
-                <div className="mk3-home-section-cta">
-                  <button
-                    type="button"
-                    className="mk3-auth-cta-primary"
-                    onClick={() => {
-                      goToCampaignRoute(MARKETING_ROUTE_PAGES.demo, {
-                        cta: "system_watch_demo",
-                        source: "home_system_strip",
-                        utmContent: "home_system_strip_primary",
-                      });
-                    }}
-                  >
-                    Watch Live System Demo
-                  </button>
-                </div>
-              </section>
-
-              <section className="mk3-home-loop-strip mk3-zone" aria-label="Viral loop">
-                <h2>How Legendary Nights Are Built</h2>
-                <div className="mk3-home-loop-grid">
-                  <article>
-                    <strong>Set The Stage</strong>
-                    <span>Hosts launch high-trust rooms with premium visuals, clear flow, and instant join paths.</span>
-                  </article>
-                  <article>
-                    <strong>Command The Room</strong>
-                    <span>Audience reactions, games, and social prompts keep every guest in the moment.</span>
-                  </article>
-                  <article>
-                    <strong>Own The Afterglow</strong>
-                    <span>Great nights become stories, stories drive invites, and invite demand builds host status.</span>
-                  </article>
-                </div>
-                <div className="mk3-home-section-cta">
-                  <button
-                    type="button"
-                    className="mk3-auth-cta-primary"
-                    onClick={() => {
-                      goToCampaignRoute(MARKETING_ROUTE_PAGES.discover, {
-                        cta: "loop_explore_nights",
-                        source: "home_loop_strip",
-                        utmContent: "home_loop_strip_primary",
-                      });
-                    }}
-                  >
-                    Explore Live Listings
-                  </button>
-                </div>
-              </section>
-
               <section className="mk3-home-launch-stack mk3-zone" aria-label="2026 launch path">
                 <article className="mk3-home-launch-timeline">
-                  <h2>2026 Launch Plan</h2>
+                  <h2>Launch Plan</h2>
                   <p>
-                    We are pacing rollout on purpose. Prelaunch quality beats premature scale.
-                    Each cohort gets tight support, then we expand.
+                    We are keeping launch scope tight: capture high-intent host interest, onboard qualified testers, and expand only when quality stays high.
                   </p>
                   <div className="mk3-home-launch-steps">
                     <article>
-                      <span>March 2026</span>
-                      <strong>Founding Host Cohort</strong>
-                      <p>Invite-only onboarding for top pilot hosts and high-signal venues.</p>
+                      <span>Now</span>
+                      <strong>Capture Interest + Qualify Hosts</strong>
+                      <p>Collect launch intent and prioritize serious hosts for onboarding waves.</p>
                     </article>
                     <article>
-                      <span>April 2026</span>
-                      <strong>City Showcase Drops</strong>
-                      <p>Weekly regional expansions with curated host and venue launches.</p>
+                      <span>Next</span>
+                      <strong>Scale By Quality Signals</strong>
+                      <p>Expand city-by-city using usage, retention, and host outcomes as gates.</p>
                     </article>
-                    <article>
-                      <span>Summer 2026</span>
-                      <strong>Broader Access Waves</strong>
-                      <p>Scaled onboarding for qualified hosts, creators, and venue partners.</p>
-                    </article>
+                  </div>
+                  <div className="mk3-actions-inline">
+                    <button
+                      type="button"
+                      onClick={() => openHostPanelOnRoot("home_launch_plan_host_panel")}
+                    >
+                      Open Host Panel Now
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(MARKETING_ROUTE_PAGES.hostAccess, "", withCampaignParams({ utm_content: "home_launch_plan_host_access" }))}
+                    >
+                      View Host Access Page
+                    </button>
                   </div>
                 </article>
                 <aside className="mk3-home-interest-card">
                   <h3>Get Priority Launch Updates</h3>
-                  <p>Join the 2026 interest queue for early access invites and launch announcements.</p>
+                  <p>Join the launch queue. We prioritize outreach based on fit, readiness, and region.</p>
                   <form onSubmit={onHomeInterestSubmit}>
                     <label>
                       Name
