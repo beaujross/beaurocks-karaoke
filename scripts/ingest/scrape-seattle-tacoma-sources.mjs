@@ -97,6 +97,20 @@ function normalizeState(value = "") {
   return token;
 }
 
+function normalizeCityLabel(value = "", state = "") {
+  const raw = safe(value, 120).replace(/\+/g, " ");
+  const compact = normalizeWhitespace(raw);
+  if (!compact) return "";
+  const stateToken = normalizeState(state || "");
+  if (!stateToken) return safe(compact, 80);
+  const trailingStateRegex = new RegExp(`\\b${stateToken}\\b$`, "i");
+  return safe(compact.replace(trailingStateRegex, "").trim(), 80);
+}
+
+function normalizeCityToken(value = "") {
+  return slugToken(normalizeCityLabel(value, ""), 80);
+}
+
 function normalizeListingType(value = "") {
   const token = normalizeToken(value, 40);
   if (token === "venue" || token === "event" || token === "room_session") return token;
@@ -634,6 +648,127 @@ function parseSquarespaceEvents({ html = "", source = {} } = {}) {
   return records;
 }
 
+async function parseKaraokeListingsState({ html = "", source = {}, timeout = DEFAULT_TIMEOUT_MS } = {}) {
+  const records = [];
+  const stateDefault = normalizeState(source.state || "WA");
+  const cityLinks = [];
+  const cityPattern = /href="(cities\.php\?city=([^"&]+)&state=([A-Za-z]{2}))"/gi;
+  let cityMatch;
+  while ((cityMatch = cityPattern.exec(String(html || ""))) !== null) {
+    const href = safe(cityMatch[1] || "", 300);
+    const cityRaw = decodeHtml(String(cityMatch[2] || "").replace(/\+/g, " "));
+    const stateRaw = normalizeState(cityMatch[3] || stateDefault);
+    const city = normalizeCityLabel(cityRaw, stateRaw);
+    if (!href || !city) continue;
+    cityLinks.push({
+      city,
+      state: stateRaw || stateDefault,
+      url: absoluteUrl(source.url, href),
+    });
+  }
+
+  const dedupedCityLinks = [];
+  const seenCityLinks = new Set();
+  cityLinks.forEach((entry) => {
+    const key = `${normalizeCityToken(entry.city)}|${normalizeState(entry.state || stateDefault)}`;
+    if (!key || seenCityLinks.has(key)) return;
+    seenCityLinks.add(key);
+    dedupedCityLinks.push(entry);
+  });
+
+  const allowedCityTokens = new Set(
+    (Array.isArray(source.allowedCities) ? source.allowedCities : [])
+      .map((city) => normalizeCityToken(city))
+      .filter(Boolean)
+  );
+  const blockedCityTokens = new Set(
+    (Array.isArray(source.excludeCities) ? source.excludeCities : [])
+      .map((city) => normalizeCityToken(city))
+      .filter(Boolean)
+  );
+
+  const cityTargets = dedupedCityLinks.filter((entry) => {
+    const token = normalizeCityToken(entry.city);
+    if (!token) return false;
+    if (allowedCityTokens.size && !allowedCityTokens.has(token)) return false;
+    if (blockedCityTokens.has(token)) return false;
+    return true;
+  });
+
+  const maxCityPages = Math.max(1, Math.min(Number(source.maxCityPages || cityTargets.length || 1), cityTargets.length || 1));
+  const nowIso = new Date().toISOString();
+  const cityPages = cityTargets.slice(0, maxCityPages);
+
+  for (const cityEntry of cityPages) {
+    let cityHtml = "";
+    try {
+      cityHtml = await fetchText(cityEntry.url, { timeout });
+    } catch {
+      await sleep(120);
+      continue;
+    }
+
+    const rowPattern = /<tr[^>]*>\s*<td[^>]*>[\s\S]*?<a href="(venue\.php\?ID=\d+)">([\s\S]*?)<\/a>([\s\S]*?)<\/td>\s*<\/tr>/gi;
+    let rowMatch;
+    while ((rowMatch = rowPattern.exec(cityHtml)) !== null) {
+      const venueHref = safe(rowMatch[1] || "", 200);
+      const venueName = stripTags(rowMatch[2] || "");
+      const tailHtml = String(rowMatch[3] || "");
+      if (!venueHref || !venueName) continue;
+
+      const detailLines = tailHtml
+        .split(/<br\s*\/?>/gi)
+        .map((line) => stripTags(line))
+        .map((line) => safe(line, 220))
+        .filter(Boolean);
+      const address1 = safe(detailLines[0] || "", 180);
+      const noteLines = detailLines
+        .slice(1)
+        .filter((line) => !/^\s*PSTD\s*:/i.test(line))
+        .filter((line) => !/^\s*\d[\d\-() ]{6,}\s*$/.test(line));
+      const notes = safe(noteLines.join(" | "), 300);
+
+      if (!matchesSourceKeywords(`${venueName} ${address1} ${notes}`, source)) continue;
+
+      const city = normalizeCityLabel(cityEntry.city, cityEntry.state || stateDefault);
+      const state = normalizeState(cityEntry.state || stateDefault);
+      const region = deriveRegionToken({
+        state,
+        city,
+        fallback: source.region || "",
+      });
+      const sourceItemUrl = absoluteUrl(cityEntry.url, venueHref);
+
+      records.push({
+        listingType: "venue",
+        name: venueName,
+        city,
+        state: state || stateDefault,
+        region,
+        locationText: safe([city, state || stateDefault, "United States"].filter(Boolean).join(", "), 220),
+        address1,
+        startsAtMs: 0,
+        endsAtMs: 0,
+        hostName: "",
+        venueName,
+        websiteUrl: "",
+        bookingUrl: "",
+        sourceId: safe(source.id || "", 80),
+        sourceLabel: safe(source.label || "", 120),
+        sourceUrl: normalizeOptionalUrl(source.url || ""),
+        sourceItemUrl: normalizeOptionalUrl(sourceItemUrl),
+        notes,
+        lat: null,
+        lng: null,
+        scrapedAt: nowIso,
+      });
+    }
+    await sleep(120);
+  }
+
+  return records;
+}
+
 async function scrapeSource(source = {}, options = {}) {
   const normalizedSource = {
     ...source,
@@ -661,6 +796,13 @@ async function scrapeSource(source = {}, options = {}) {
   }
   if (normalizedSource.type === "squarespace_events") {
     return parseSquarespaceEvents({ html, source: normalizedSource });
+  }
+  if (normalizedSource.type === "karaokelistings_state") {
+    return parseKaraokeListingsState({
+      html,
+      source: normalizedSource,
+      timeout: options.timeoutMs || DEFAULT_TIMEOUT_MS,
+    });
   }
   throw new Error(`Unsupported source type: ${normalizedSource.type}`);
 }

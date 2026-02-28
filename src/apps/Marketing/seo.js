@@ -96,7 +96,7 @@ const buildRouteSeo = (route = {}) => {
   if (page === MARKETING_ROUTE_PAGES.hostAccess) {
     return {
       title: "Host Access | BeauRocks Karaoke",
-      description: "Founding host access for invite-only pilot onboarding, account setup, and secure unlock code entry.",
+      description: "Log in with your BeauRocks account to open host dashboard access and launch room controls.",
       robots: "noindex,nofollow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Host Access" },
     };

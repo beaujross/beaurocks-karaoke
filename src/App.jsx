@@ -90,11 +90,8 @@ const getInitialRouteState = () => {
     return { view: 'landing', roomCode: '' };
 };
 
-const Landing = ({ onJoin }) => {
+const Landing = ({ onJoin, hasBeauRocksAccount = false }) => {
     const [code, setCode] = useState('');
-    const [showHostGate, setShowHostGate] = useState(false);
-    const [hostPasscode, setHostPasscode] = useState('');
-    const [hostPasscodeError, setHostPasscodeError] = useState('');
     const marketingHref = typeof window !== 'undefined'
         ? (
             marketingFlags.routePathsEnabled
@@ -102,24 +99,18 @@ const Landing = ({ onJoin }) => {
                 : buildSurfaceUrl({ surface: 'marketing', params: { mode: 'marketing' } }, window.location)
         )
         : '/';
-    const hostGateCode = import.meta.env.VITE_HOST_PASSCODE || '';
+    const hostAccessHref = typeof window !== 'undefined'
+        ? (
+            marketingFlags.routePathsEnabled
+                ? buildSurfaceUrl({ surface: 'marketing', path: 'host-access' }, window.location)
+                : buildSurfaceUrl({ surface: 'marketing', params: { mode: 'marketing', page: 'host_access' } }, window.location)
+        )
+        : '/';
     const handleOpenHostControls = () => {
-        if (hostGateCode) {
-            setShowHostGate(true);
+        if (!hasBeauRocksAccount) {
+            window.location.href = hostAccessHref;
             return;
         }
-        window.location.href = code
-            ? buildSurfaceUrl({ surface: 'host', params: { room: code, mode: 'host' } }, window.location)
-            : buildSurfaceUrl({ surface: 'host', params: { mode: 'host' } }, window.location);
-    };
-    const handleSubmitHostGate = () => {
-        if (hostPasscode.trim() !== hostGateCode) {
-            setHostPasscodeError('Incorrect passcode.');
-            return;
-        }
-        setHostPasscodeError('');
-        setShowHostGate(false);
-        setHostPasscode('');
         window.location.href = code
             ? buildSurfaceUrl({ surface: 'host', params: { room: code, mode: 'host' } }, window.location)
             : buildSurfaceUrl({ surface: 'host', params: { mode: 'host' } }, window.location);
@@ -143,7 +134,7 @@ const Landing = ({ onJoin }) => {
                     </button>
                     
                     <button onClick={handleOpenHostControls} className="w-full bg-zinc-700 py-3 rounded-xl font-bold text-base text-zinc-300 hover:bg-zinc-600 hover:text-white transition-colors mt-2">
-                        HOST CONTROLS
+                        {hasBeauRocksAccount ? 'HOST CONTROLS' : 'HOST CONTROLS (BEAUROCKS LOGIN)'}
                     </button>
                     <button
                         onClick={() => { window.location.href = marketingHref; }}
@@ -152,53 +143,6 @@ const Landing = ({ onJoin }) => {
                         VIEW MARKETING SITE
                     </button>
                 </div>
-                {showHostGate && (
-                    <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-6">
-                        <div className="w-full max-w-sm bg-gradient-to-br from-[#120b1a] via-[#0f1218] to-[#0a0d12] border border-cyan-500/30 rounded-3xl p-6 shadow-[0_0_50px_rgba(0,196,217,0.35)] text-left">
-                            <div className="flex items-center gap-4 mb-4">
-                                <img src={ASSETS.logo} className="h-16 w-16 rounded-2xl drop-shadow-[0_0_18px_rgba(0,196,217,0.4)]" alt="Beaurocks Karaoke" />
-                                <div>
-                                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Host Controls</div>
-                                    <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899]">
-                                        Enter Passcode
-                                    </div>
-                                </div>
-                            </div>
-                            <input
-                                type="password"
-                                value={hostPasscode}
-                                onChange={(e) => {
-                                    setHostPasscode(e.target.value);
-                                    if (hostPasscodeError) setHostPasscodeError('');
-                                }}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleSubmitHostGate();
-                                }}
-                                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-lg text-white mb-3"
-                                placeholder="Passcode"
-                                autoFocus
-                            />
-                            {hostPasscodeError && (
-                                <div className="text-sm text-pink-300 mb-3">{hostPasscodeError}</div>
-                            )}
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => { setShowHostGate(false); setHostPasscode(''); setHostPasscodeError(''); }}
-                                    className="flex-1 bg-zinc-800 border border-zinc-700 text-zinc-200 py-3 rounded-xl font-bold"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleSubmitHostGate}
-                                    className="flex-1 bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black py-3 rounded-xl font-black"
-                                >
-                                    Unlock
-                                </button>
-                            </div>
-                            <div className="text-xs text-zinc-500 mt-3">Need access? Ask the host for the code.</div>
-                        </div>
-                    </div>
-                )}
             </div>
         </div> 
     );
@@ -242,6 +186,7 @@ const App = () => {
     const [view, setView] = useState(() => initialRoute.view);
     const [roomCode, setRoomCode] = useState(() => initialRoute.roomCode);
     const [uid, setUid] = useState(null);
+    const [hasBeauRocksAccount, setHasBeauRocksAccount] = useState(false);
     const [authError, setAuthError] = useState(null);
     const isKaraokeTerms = typeof window !== 'undefined'
         && window.location.pathname.replace(/\/+$/, '').endsWith('/karaoke/terms');
@@ -261,14 +206,18 @@ const App = () => {
         const unsub = onAuthStateChanged(auth, (user) => {
             if (user) {
                 setUid(user.uid);
+                setHasBeauRocksAccount(!user.isAnonymous);
                 setAuthError(null);
+                return;
             }
+            setUid(null);
+            setHasBeauRocksAccount(false);
         });
         return () => unsub();
     }, []);
     if (canonicalRedirectUrl) return <ViewLoader />;
     if (isKaraokeTerms) return <KaraokeTerms />;
-    if (view === 'landing') return <Landing onJoin={(c) => { setRoomCode(c); setView('mobile'); }} />;
+    if (view === 'landing') return <Landing hasBeauRocksAccount={hasBeauRocksAccount} onJoin={(c) => { setRoomCode(c); setView('mobile'); }} />;
     if (view === 'tv') return (
         <Suspense fallback={<ViewLoader />}>
             <PublicTV roomCode={roomCode} />

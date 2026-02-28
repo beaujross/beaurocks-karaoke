@@ -107,15 +107,8 @@ const stripIntentParams = (params = {}) => {
   return next;
 };
 
-const PRIVATE_TEST_USE_CASE_OPTIONS = [
-  "Home Party Host",
-  "Fundraiser Organizer",
-  "Community Event Host",
-  "Venue / KJ Operator",
-];
-
 const HOME_INTEREST_USE_CASE_OPTIONS = [
-  "Founding Host",
+  "Host / KJ",
   "Venue Partner",
   "Performer Creator",
   "Guest / Fan",
@@ -208,46 +201,6 @@ const pickCampaignParams = (params = {}) => {
   return next;
 };
 
-const parsePrivateInviteCodes = (value = "") => {
-  const source = Array.isArray(value)
-    ? value
-    : String(value || "").split(/[,\n;|]/g);
-  const seen = new Set();
-  const list = [];
-  source.forEach((entry) => {
-    const code = String(entry || "").trim();
-    if (!code) return;
-    const normalized = normalizePrivateInviteToken(code);
-    if (!normalized || seen.has(normalized)) return;
-    seen.add(normalized);
-    list.push(normalized);
-  });
-  return list;
-};
-
-const readPrivateInviteCodes = () => {
-  const envCodes = typeof import.meta !== "undefined" && import.meta?.env
-    ? String(
-      import.meta.env.VITE_MARKETING_PRIVATE_INVITE_CODES
-      || import.meta.env.VITE_MARKETING_PRIVATE_INVITE_CODE
-      || ""
-    )
-    : "";
-  const overrideRaw = typeof window !== "undefined"
-    ? (
-      window?.__marketingFlags?.privateInviteCodes
-      || window?.__marketingFlags?.privateInviteCode
-      || ""
-    )
-    : "";
-  return parsePrivateInviteCodes(overrideRaw || envCodes || "");
-};
-
-const normalizePrivateInviteToken = (value = "") =>
-  String(value || "").trim().toUpperCase().replace(/[^A-Z0-9@]/g, "");
-
-const PRIVATE_UNLOCK_MAX_LENGTH = 12;
-
 const MarketingSite = () => {
   const [route, setRoute] = useState(() => readRouteFromWindow());
   const [mapsConfig, setMapsConfig] = useState(null);
@@ -256,21 +209,6 @@ const MarketingSite = () => {
   const [authMode, setAuthMode] = useState("signin");
   const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "" });
   const [authLocalError, setAuthLocalError] = useState("");
-  const [privateApplyForm, setPrivateApplyForm] = useState({
-    name: "",
-    email: "",
-    useCase: PRIVATE_TEST_USE_CASE_OPTIONS[0],
-  });
-  const [privateApplyState, setPrivateApplyState] = useState({
-    submitting: false,
-    success: "",
-    error: "",
-    linePosition: 0,
-  });
-  const [privateAccessError, setPrivateAccessError] = useState("");
-  const [privateAccessNotice, setPrivateAccessNotice] = useState("");
-  const [privateInviteCodes] = useState(() => readPrivateInviteCodes());
-  const [privateCodeEntry, setPrivateCodeEntry] = useState("");
   const [homeInterestForm, setHomeInterestForm] = useState({
     name: "",
     email: "",
@@ -288,17 +226,6 @@ const MarketingSite = () => {
   const isAuthed = !!session?.isAuthed;
   const isAnonymous = !!session?.isAnonymous;
   const hasFullAccount = isAuthed && !isAnonymous;
-  const privateTestModeEnabled = !!marketingFlags.privateTestModeEnabled;
-  const privateInviteRequired = privateTestModeEnabled && privateInviteCodes.length > 0;
-  const privateInviteStorageKey = "mk3_private_test_invite:global_unlock";
-  const normalizedPrivateInviteCodes = useMemo(
-    () => parsePrivateInviteCodes(privateInviteCodes),
-    [privateInviteCodes]
-  );
-  const privateUnlockLength = useMemo(() => {
-    const longest = normalizedPrivateInviteCodes.reduce((max, code) => Math.max(max, code.length), 0);
-    return Math.max(4, Math.min(PRIVATE_UNLOCK_MAX_LENGTH, longest || 6));
-  }, [normalizedPrivateInviteCodes]);
 
   useEffect(() => {
     if (typeof window === "undefined") return () => {};
@@ -569,34 +496,21 @@ const MarketingSite = () => {
     });
   }, [campaignContext.variant]);
   const homeHeroPrimaryLabel = campaignContext.variant === "paid"
-    ? "Start Founding Host Application"
+    ? "Log In To Host With BeauRocks"
     : campaignContext.variant === "social"
-      ? "Join The Founding Host Wave"
-      : "Request Founding Access";
+      ? "Create Your BeauRocks Account"
+      : "Log In With BeauRocks";
   const homeHeroSubhead = campaignContext.variant === "paid"
-    ? "You found us through launch media. Claim your seat in the founding host cohort."
+    ? "You found us through launch media. Create or log in with your BeauRocks account to host."
     : campaignContext.variant === "social"
-      ? "You found us through the social buzz. Step into the founding host wave."
-      : "Most karaoke software helps manage songs. BeauRocks helps you command the whole room.";
+      ? "You found us through the social buzz. Jump in with your BeauRocks account."
+      : "Most karaoke software helps manage songs. BeauRocks helps you command the whole room with one account.";
 
   useEffect(() => {
     if (!isHostAccessPage) return;
     if (!route.params?.intent) return;
     scrollAuthPanelIntoView();
   }, [isHostAccessPage, route.params?.intent, scrollAuthPanelIntoView]);
-
-  useEffect(() => {
-    if (!marketingFlags.routePathsEnabled) return;
-    if (activePage !== MARKETING_ROUTE_PAGES.hostAccess) return;
-    const hasAuthIntent = Boolean(
-      String(route.params?.intent || "").trim()
-      || String(route.params?.return_to || "").trim()
-      || String(route.params?.targetType || "").trim()
-      || String(route.params?.targetId || "").trim()
-    );
-    if (hasAuthIntent) return;
-    navigate({ page: MARKETING_ROUTE_PAGES.forHosts, id: "", params: {} }, "", {}, { replace: true });
-  }, [activePage, navigate, route.params?.intent, route.params?.return_to, route.params?.targetId, route.params?.targetType]);
 
   const onAuthSubmit = async (event) => {
     event.preventDefault();
@@ -606,10 +520,6 @@ const MarketingSite = () => {
     setAuthLocalError("");
     if (!email || !password) return;
     if (authMode === "signup") {
-      if (!canCreatePrivateHostAccount) {
-        setAuthLocalError("Unlock private host access first using your access code.");
-        return;
-      }
       if (password.length < 6) {
         setAuthLocalError("Use at least 6 characters for your password.");
         return;
@@ -620,16 +530,6 @@ const MarketingSite = () => {
       }
       const result = await actions.signUpWithEmail({ email, password });
       if (result?.ok) {
-        if (
-          privateTestModeEnabled
-          && canCreatePrivateHostAccount
-          && (!privateInviteRequired || !!String(privateCodeEntry || "").trim())
-        ) {
-          await redeemPrivateHostAccess({
-            code: privateInviteRequired ? privateCodeEntry : "",
-            source: "marketing_signup",
-          });
-        }
         trackEvent("marketing_account_signup", { source: "marketing_directory" });
         setAuthForm({ email, password: "", confirmPassword: "" });
         resolvePostAuthReturn();
@@ -641,138 +541,6 @@ const MarketingSite = () => {
       trackEvent("marketing_account_signin", { source: "marketing_directory" });
       resolvePostAuthReturn();
     }
-  };
-
-  const storePrivateInviteAccess = useCallback((granted = false) => {
-    if (typeof window === "undefined" || !privateInviteStorageKey) return;
-    try {
-      if (granted) {
-        window.localStorage.setItem(privateInviteStorageKey, "1");
-      } else {
-        window.localStorage.removeItem(privateInviteStorageKey);
-      }
-    } catch {
-      // Ignore storage failures for private invite persistence.
-    }
-  }, [privateInviteStorageKey]);
-
-  const storedPrivateInviteAccess = useMemo(() => {
-    if (typeof window === "undefined" || !privateInviteStorageKey) return false;
-    try {
-      return window.localStorage.getItem(privateInviteStorageKey) === "1";
-    } catch {
-      return false;
-    }
-  }, [privateInviteStorageKey]);
-  const privateCodeUnlocked = !privateTestModeEnabled || storedPrivateInviteAccess;
-  const canCreatePrivateHostAccount = !privateTestModeEnabled || privateCodeUnlocked;
-
-  const redeemPrivateHostAccess = useCallback(async ({ code = "", source = "marketing_site" } = {}) => {
-    try {
-      await directoryActions.redeemMarketingPrivateHostAccess({
-        code: String(code || "").trim(),
-        source: String(source || "marketing_site"),
-      });
-      setPrivateAccessError("");
-      setPrivateAccessNotice("Server access granted. Host onboarding is now authorized for this account.");
-      return { ok: true };
-    } catch (error) {
-      const message = String(error?.message || "Could not complete server unlock.");
-      setPrivateAccessError(message);
-      setPrivateAccessNotice("");
-      return { ok: false, error: message };
-    }
-  }, []);
-
-  const onPrivateApplySubmit = async (event) => {
-    event.preventDefault();
-    const name = String(privateApplyForm.name || "").trim();
-    const email = String(privateApplyForm.email || "").trim().toLowerCase();
-    const useCase = String(privateApplyForm.useCase || PRIVATE_TEST_USE_CASE_OPTIONS[0]).trim();
-    if (!name || !email) {
-      setPrivateApplyState((prev) => ({
-        ...prev,
-        error: "Name and email are required.",
-        success: "",
-      }));
-      return;
-    }
-    setPrivateApplyState({ submitting: true, success: "", error: "", linePosition: 0 });
-    try {
-      const result = await directoryActions.submitMarketingWaitlist({
-        name,
-        email,
-        useCase,
-        source: `marketing_private_test:${String(activePage || "discover")}`,
-      });
-      const linePosition = Number(result?.linePosition || 0) || 0;
-      const message = String(result?.message || "Thanks. Your private test application was received.");
-      setPrivateApplyState({
-        submitting: false,
-        success: message,
-        error: "",
-        linePosition,
-      });
-      trackEvent("mk_private_test_apply_submit", {
-        ok: true,
-        isNewSignup: !!result?.isNewSignup,
-        linePosition,
-        useCase,
-      });
-    } catch (error) {
-      const message = String(error?.message || "Unable to submit your application right now.");
-      setPrivateApplyState({
-        submitting: false,
-        success: "",
-        error: message,
-        linePosition: 0,
-      });
-      trackEvent("mk_private_test_apply_submit", {
-        ok: false,
-        error: message.slice(0, 80),
-      });
-    }
-  };
-
-  const onPrivateAccessSubmit = async (event) => {
-    event.preventDefault();
-    setPrivateAccessNotice("");
-    if (!privateInviteRequired) {
-      setPrivateAccessError("");
-      if (hasFullAccount) {
-        const redeemed = await redeemPrivateHostAccess({ code: "", source: "marketing_unlock_open" });
-        if (!redeemed?.ok) return;
-        storePrivateInviteAccess(true);
-      } else {
-        storePrivateInviteAccess(true);
-        setPrivateAccessNotice("Unlock staged. Create or sign in to finalize server access.");
-      }
-      trackEvent("mk_private_test_unlock", { ok: true, method: "no_pin_required" });
-      return;
-    }
-
-    const supplied = normalizePrivateInviteToken(privateCodeEntry);
-    if (!supplied) {
-      setPrivateAccessError("Enter your unlock code.");
-      return;
-    }
-    if (!normalizedPrivateInviteCodes.includes(supplied)) {
-      setPrivateAccessError("That code did not match. Try again.");
-      trackEvent("mk_private_test_unlock", { ok: false, method: "pin_code" });
-      return;
-    }
-
-    if (hasFullAccount) {
-      const redeemed = await redeemPrivateHostAccess({ code: supplied, source: "marketing_unlock_pin" });
-      if (!redeemed?.ok) return;
-      storePrivateInviteAccess(true);
-      setPrivateCodeEntry("");
-      setPrivateAccessError("");
-    } else {
-      storePrivateInviteAccess(true);
-      setPrivateAccessNotice("Code accepted. Create or sign in to finalize server access.");
-    }
-    trackEvent("mk_private_test_unlock", { ok: true, method: "pin_code" });
   };
 
   const onHomeInterestSubmit = async (event) => {
@@ -829,17 +597,13 @@ const MarketingSite = () => {
     }
   };
 
-  const privateAccessUnlocked = !privateTestModeEnabled
-    || (hasFullAccount && privateCodeUnlocked);
-  const privateAccessLocked = privateTestModeEnabled && !privateAccessUnlocked;
   const navModel = useMemo(
     () => getMarketingNavModel({
       isGuestsHomePage,
-      privateAccessLocked,
       hasFullAccount,
       isModerator: !!session.isModerator,
     }),
-    [hasFullAccount, isGuestsHomePage, privateAccessLocked, session.isModerator]
+    [hasFullAccount, isGuestsHomePage, session.isModerator]
   );
   const navPrimaryOptions = navModel.primary;
   const navSecondaryOptions = navModel.secondary;
@@ -849,22 +613,17 @@ const MarketingSite = () => {
   );
 
   const postAuthHint = useMemo(() => {
-    if (isHostAccessPage && privateAccessLocked) {
-      return privateInviteRequired
-        ? "Got a host code? Enter it, then create your account."
-        : "Unlock host onboarding to create new private-test accounts.";
-    }
     if (authMode === "signup") {
-      return "Quick signup: email, password, confirm, done.";
+      return "Create your BeauRocks account in under a minute.";
     }
     if (route.params?.intent) {
-      return "Sign in and we will drop you right back to what you were doing.";
+      return "Log in with your BeauRocks account and we will return you to your flow.";
     }
     if (activePage === MARKETING_ROUTE_PAGES.profile) {
       return "After sign in, you will land back on your dashboard.";
     }
-    return "Create an account to save follows, RSVPs, and check-ins.";
-  }, [activePage, authMode, isHostAccessPage, privateAccessLocked, privateInviteRequired, route.params?.intent]);
+    return "Create or log in with your BeauRocks account to save follows, RSVPs, and check-ins.";
+  }, [activePage, authMode, route.params?.intent]);
   const pageNode = useMemo(() => {
     const pageProps = {
       id: route.id,
@@ -976,11 +735,11 @@ const MarketingSite = () => {
                     actions.signOutAccount();
                     return;
                   }
-                  trackEvent("mk_nav_host_access_click", { source: "nav_start_hosting" });
-                  navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "nav_start_hosting" }));
+                  trackEvent("mk_nav_host_access_click", { source: "nav_login_beaurocks_account" });
+                  navigate(MARKETING_ROUTE_PAGES.hostAccess, "", withCampaignParams({ utm_content: "nav_login" }));
                 }}
               >
-                {hasFullAccount ? "Sign out" : "Start Hosting"}
+                {hasFullAccount ? "Sign out" : "Log In"}
               </button>
               <button
                 type="button"
@@ -1032,32 +791,32 @@ const MarketingSite = () => {
 
           {!!route.params?.intent && (!session?.isAuthed || session?.isAnonymous) && (
             <div className="mk3-status mk3-status-warning">
-              <strong>Sign in to keep going.</strong>
+              <strong>Log in with your BeauRocks account to keep going.</strong>
               <span>We will bounce you right back to the action you picked.</span>
             </div>
           )}
 
           {isHostAccessPage ? (
-          <section className={`mk3-auth-panel${privateAccessLocked ? " is-private-focus" : ""}`} ref={authPanelRef}>
+          <section className="mk3-auth-panel" ref={authPanelRef}>
             <div>
-              <h1>Founding Host Access</h1>
+              <h1>Host Access</h1>
               <p>
-                This is where new party leaders enter. We are onboarding hosts in controlled waves so every room
-                launches at premium quality from day one.
+                Log in with your BeauRocks account to launch host controls, run your room, and keep your setup synced
+                across host, TV, and audience surfaces.
               </p>
               <div className="mk3-private-pill-row">
-                <span className="mk3-private-pill">Invite-only</span>
-                <span className="mk3-private-pill">Founding host cohort</span>
-                <span className="mk3-private-pill">Quality over scale</span>
+                <span className="mk3-private-pill">Account-first access</span>
+                <span className="mk3-private-pill">Host dashboard ready</span>
+                <span className="mk3-private-pill">Cross-surface control</span>
               </div>
               <div className="mk3-permission-grid">
                 <article>
                   <strong>Step 1</strong>
-                  <span>Apply for pilot access or enter your founding code.</span>
+                  <span>Log in with your BeauRocks account.</span>
                 </article>
                 <article>
                   <strong>Step 2</strong>
-                  <span>Create your account and claim your host identity.</span>
+                  <span>Open Host Dashboard and configure room setup.</span>
                 </article>
                 <article>
                   <strong>Step 3</strong>
@@ -1087,14 +846,13 @@ const MarketingSite = () => {
                       openHostDashboard("host_access_primary");
                       return;
                     }
-                    navigate(
-                      MARKETING_ROUTE_PAGES.discover,
-                      "",
-                      withCampaignParams({ utm_content: "host_access_primary" })
-                    );
+                    setAuthMode("signin");
+                    setAuthLocalError("");
+                    actions.clearAuthError?.();
+                    scrollAuthPanelIntoView();
                   }}
                 >
-                  {hasFullAccount ? "Open Host Dashboard" : "Back to Live Listings"}
+                  {hasFullAccount ? "Open Host Dashboard" : "Log In With BeauRocks"}
                 </button>
                 <button
                   type="button"
@@ -1104,75 +862,6 @@ const MarketingSite = () => {
                   Watch Demo Walkthrough
                 </button>
               </div>
-              {privateAccessLocked && (
-                <form className="mk3-private-apply-form mk3-private-apply-form-compact" onSubmit={onPrivateApplySubmit}>
-                  <h2>Apply for founding host pilot</h2>
-                  <div className="mk3-private-apply-grid">
-                    <label>
-                      Name
-                      <input
-                        type="text"
-                        value={privateApplyForm.name}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setPrivateApplyForm((prev) => ({ ...prev, name: next }));
-                          setPrivateApplyState((prev) => ({ ...prev, error: "", success: "" }));
-                        }}
-                        required
-                        maxLength={80}
-                      />
-                    </label>
-                    <label>
-                      Email
-                      <input
-                        type="email"
-                        value={privateApplyForm.email}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setPrivateApplyForm((prev) => ({ ...prev, email: next }));
-                          setPrivateApplyState((prev) => ({ ...prev, error: "", success: "" }));
-                        }}
-                        required
-                      />
-                    </label>
-                    <label>
-                      Use case
-                      <select
-                        value={privateApplyForm.useCase}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setPrivateApplyForm((prev) => ({ ...prev, useCase: next }));
-                        }}
-                      >
-                        {PRIVATE_TEST_USE_CASE_OPTIONS.map((option) => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="mk3-private-apply-actions">
-                    <button type="submit" disabled={privateApplyState.submitting}>
-                      {privateApplyState.submitting ? "Sending..." : "Apply"}
-                    </button>
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-secondary"
-                      onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "host_access_details" }))}
-                    >
-                      Host Pilot Details
-                    </button>
-                  </div>
-                  {privateApplyState.success && (
-                    <div className="mk3-status">
-                      <strong>{privateApplyState.success}</strong>
-                      {privateApplyState.linePosition > 0 && (
-                        <span>{`You are in line at #${privateApplyState.linePosition}`}</span>
-                      )}
-                    </div>
-                  )}
-                  {privateApplyState.error && <div className="mk3-status mk3-status-error">{privateApplyState.error}</div>}
-                </form>
-              )}
             </div>
             <div className="mk3-auth-box">
               {hasFullAccount ? (
@@ -1186,63 +875,66 @@ const MarketingSite = () => {
                   </div>
                 </div>
               ) : (
-                privateAccessLocked && !canCreatePrivateHostAccount ? (
-                  <div className="mk3-status mk3-status-warning">
-                    <strong>Host login is hidden until access unlock.</strong>
-                    <span>Enter a valid founding code below to enable sign in and host account creation.</span>
+                <form onSubmit={onAuthSubmit}>
+                  <div className="mk3-toggle-row">
+                    <button
+                      type="button"
+                      className={authMode === "signin" ? "active" : ""}
+                      onClick={() => {
+                        setAuthMode("signin");
+                        setAuthLocalError("");
+                        actions.clearAuthError?.();
+                      }}
+                    >
+                      Log In
+                    </button>
+                    <button
+                      type="button"
+                      className={authMode === "signup" ? "active" : ""}
+                      onClick={() => {
+                        setAuthMode("signup");
+                        setAuthLocalError("");
+                        actions.clearAuthError?.();
+                      }}
+                    >
+                      Create Account
+                    </button>
                   </div>
-                ) : (
-                  <form onSubmit={onAuthSubmit}>
-                    <div className="mk3-toggle-row">
-                      <button
-                        type="button"
-                        className={authMode === "signin" ? "active" : ""}
-                        onClick={() => {
-                          setAuthMode("signin");
-                          setAuthLocalError("");
-                          actions.clearAuthError?.();
-                        }}
-                      >
-                        Sign In
-                      </button>
-                      <button
-                        type="button"
-                        className={authMode === "signup" ? "active" : ""}
-                        disabled={!canCreatePrivateHostAccount}
-                        onClick={() => {
-                          if (!canCreatePrivateHostAccount) {
-                            setAuthMode("signin");
-                            setAuthLocalError("Unlock private host access with your access code first.");
-                            return;
-                          }
-                          setAuthMode("signup");
-                          setAuthLocalError("");
-                          actions.clearAuthError?.();
-                        }}
-                      >
-                        Create Account
-                      </button>
-                    </div>
+                  <label>
+                    Email
+                    <input
+                      type="email"
+                      value={authForm.email}
+                      onChange={(e) => {
+                        setAuthForm((prev) => ({ ...prev, email: e.target.value }));
+                        setAuthLocalError("");
+                        actions.clearAuthError?.();
+                      }}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      type="password"
+                      value={authForm.password}
+                      onChange={(e) => {
+                        setAuthForm((prev) => ({ ...prev, password: e.target.value }));
+                        setAuthLocalError("");
+                        actions.clearAuthError?.();
+                      }}
+                      required
+                      minLength={6}
+                    />
+                  </label>
+                  {authMode === "signup" && (
                     <label>
-                      Email
-                      <input
-                        type="email"
-                        value={authForm.email}
-                        onChange={(e) => {
-                          setAuthForm((prev) => ({ ...prev, email: e.target.value }));
-                          setAuthLocalError("");
-                          actions.clearAuthError?.();
-                        }}
-                        required
-                      />
-                    </label>
-                    <label>
-                      Password
+                      Confirm Password
                       <input
                         type="password"
-                        value={authForm.password}
+                        value={authForm.confirmPassword}
                         onChange={(e) => {
-                          setAuthForm((prev) => ({ ...prev, password: e.target.value }));
+                          setAuthForm((prev) => ({ ...prev, confirmPassword: e.target.value }));
                           setAuthLocalError("");
                           actions.clearAuthError?.();
                         }}
@@ -1250,86 +942,21 @@ const MarketingSite = () => {
                         minLength={6}
                       />
                     </label>
-                    {authMode === "signup" && (
-                      <label>
-                        Confirm Password
-                        <input
-                          type="password"
-                          value={authForm.confirmPassword}
-                          onChange={(e) => {
-                            setAuthForm((prev) => ({ ...prev, confirmPassword: e.target.value }));
-                            setAuthLocalError("");
-                            actions.clearAuthError?.();
-                          }}
-                          required
-                          minLength={6}
-                        />
-                      </label>
-                    )}
-                    <button
-                      type="submit"
-                      disabled={session.authLoading || (authMode === "signup" && !canCreatePrivateHostAccount)}
-                    >
-                      {session.authLoading
-                        ? "Working..."
-                        : authMode === "signup"
-                          ? "Create Account"
-                          : "Sign In"}
-                    </button>
-                    <div className="mk3-auth-hint">{postAuthHint}</div>
-                    {authLocalError && <div className="mk3-status mk3-status-error">{authLocalError}</div>}
-                    {session.authError && <div className="mk3-status mk3-status-error">{session.authError}</div>}
-                  </form>
-                )
-              )}
-              {privateTestModeEnabled && (
-                <div className="mk3-private-invite-box">
-                  <h3>Founding Host Code</h3>
-                  <p>
-                    {privateInviteRequired
-                      ? "Invited to the cohort? Enter your code to unlock founding host onboarding."
-                      : "Host onboarding is currently open for invited founding testers."}
-                  </p>
-                  {canCreatePrivateHostAccount ? (
-                    <div className="mk3-status mk3-private-unlocked">
-                      <strong>Access unlocked.</strong>
-                      <span>You are clear to create a host account.</span>
-                    </div>
-                  ) : (
-                    <form className="mk3-private-invite-form" onSubmit={onPrivateAccessSubmit}>
-                      {privateInviteRequired && (
-                        <>
-                          <label className="mk3-private-pin-input-row">
-                            Enter access code
-                            <input
-                              type="text"
-                              value={privateCodeEntry}
-                              onChange={(event) => {
-                                const normalized = normalizePrivateInviteToken(event.target.value || "");
-                                setPrivateCodeEntry(normalized.slice(0, privateUnlockLength));
-                                setPrivateAccessError("");
-                                setPrivateAccessNotice("");
-                              }}
-                              maxLength={privateUnlockLength}
-                              placeholder="ENTER CODE"
-                              autoComplete="off"
-                              autoCapitalize="characters"
-                              spellCheck={false}
-                            />
-                          </label>
-                          <div className="mk3-private-invite-caption">
-                            Codes are not case-sensitive. If yours is stale, ask us for a fresh one.
-                          </div>
-                        </>
-                      )}
-                      <button type="submit" className="mk3-private-invite-submit">
-                        {privateInviteRequired ? "Unlock Host Onboarding" : "Unlock Access"}
-                      </button>
-                      {privateAccessNotice && <div className="mk3-status">{privateAccessNotice}</div>}
-                      {privateAccessError && <div className="mk3-status mk3-status-error">{privateAccessError}</div>}
-                    </form>
                   )}
-                </div>
+                  <button
+                    type="submit"
+                    disabled={session.authLoading}
+                  >
+                    {session.authLoading
+                      ? "Working..."
+                      : authMode === "signup"
+                        ? "Create Account"
+                        : "Log In"}
+                  </button>
+                  <div className="mk3-auth-hint">{postAuthHint}</div>
+                  {authLocalError && <div className="mk3-status mk3-status-error">{authLocalError}</div>}
+                  {session.authError && <div className="mk3-status mk3-status-error">{session.authError}</div>}
+                </form>
               )}
             </div>
           </section>
@@ -1337,24 +964,24 @@ const MarketingSite = () => {
             <>
               <section className="mk3-home-premium-shell mk3-zone" aria-label="BeauRocks premium launch">
                 <div className="mk3-home-premium-main">
-                  <div className="mk3-home-premium-kicker">Launch Focus: Founding Host Wave</div>
+                  <div className="mk3-home-premium-kicker">Launch Focus: BeauRocks Account Access</div>
                   <h1>Launch-Ready Karaoke Nights Start Here.</h1>
                   <p>
                     {homeHeroSubhead}
-                    {" "}Primary conversion flow: request host access or jump straight into host controls.
+                    {" "}Primary conversion flow: log in with your BeauRocks account, then jump into host controls.
                   </p>
                   <div className="mk3-home-premium-stats">
                     <span>{heroStats?.total > 0 ? `${heroStats.total.toLocaleString()} live listings` : "Live listings updating"}</span>
-                    <span>Interest queue drives rollout priority</span>
-                    <span>Tester host access is one click away</span>
+                    <span>Host tools unlock after account login</span>
+                    <span>BeauRocks account access is one click away</span>
                   </div>
                   <div className="mk3-auth-cta-row mk3-home-primary-cta">
                     <button
                       type="button"
                       className="mk3-auth-cta-primary"
                       onClick={() => {
-                        goToCampaignRoute(MARKETING_ROUTE_PAGES.forHosts, {
-                          cta: "hero_request_founding_access",
+                        goToCampaignRoute(MARKETING_ROUTE_PAGES.hostAccess, {
+                          cta: "hero_login_beaurocks_account",
                           source: "premium_home_hero",
                           utmContent: "home_hero_primary",
                         });
@@ -1525,25 +1152,6 @@ const MarketingSite = () => {
             <Suspense fallback={<PageShellLoader />}>
               {pageNode}
             </Suspense>
-          )}
-
-          {isHostAccessPage && privateAccessLocked && (
-            <section className="mk3-private-locked-panel mk3-zone" aria-label="Private test locked">
-              <h2>Live listings are open. Founding host onboarding is invite-only.</h2>
-              <p>
-                Anyone can browse nights by host, venue, and location. Creating host accounts stays private while we scale quality.
-              </p>
-              <div className="mk3-private-locked-grid">
-                <article>
-                  <strong>For guests</strong>
-                  <span>Use Live Listings to find the strongest rooms nearby.</span>
-                </article>
-                <article>
-                  <strong>For hosts</strong>
-                  <span>Apply here or unlock with a founding host code.</span>
-                </article>
-              </div>
-            </section>
           )}
 
           <footer className="mk3-site-footer mk3-zone" aria-label="Marketing quick links">

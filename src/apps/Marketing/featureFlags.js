@@ -23,5 +23,4 @@ export const marketingFlags = {
   rsvpEnabled: resolveFlag("VITE_MARKETING_RSVP_ENABLED", "rsvpEnabled", true),
   smsRemindersEnabled: resolveFlag("VITE_MARKETING_SMS_REMINDERS_ENABLED", "smsRemindersEnabled", false),
   geoPagesEnabled: resolveFlag("VITE_MARKETING_GEO_PAGES_ENABLED", "geoPagesEnabled", true),
-  privateTestModeEnabled: resolveFlag("VITE_MARKETING_PRIVATE_TEST_MODE_ENABLED", "privateTestModeEnabled", true),
 };

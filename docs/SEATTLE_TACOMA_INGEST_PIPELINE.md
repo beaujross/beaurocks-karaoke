@@ -4,7 +4,7 @@ Last updated: 2026-02-28
 
 ## Goal
 
-Expand finder coverage into Greater Seattle and Tacoma by scraping public karaoke source pages, normalizing records into `directory_regions.seedListings`, and letting existing ingestion jobs enrich and queue moderation submissions.
+Expand finder coverage into Western Washington by scraping public karaoke source pages, normalizing records into `directory_regions.seedListings`, and letting existing ingestion jobs enrich and queue moderation submissions.
 
 ## Sources in registry
 
@@ -14,6 +14,7 @@ Configured in:
 
 Current source set:
 
+- `https://www.karaokelistings.com/venues.php?state=WA` (city-page crawl filtered to Western WA)
 - `https://karaokenear.me/karaoke/countries/united-states/cities/seattle`
 - `https://karaokenear.me/karaoke/countries/united-states/cities/shoreline`
 - `https://do206.com/karaoke-nights-seattle`

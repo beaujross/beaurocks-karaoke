@@ -340,160 +340,6 @@
   font-weight: 700;
 }
 
-.mk3-private-apply-form {
-  margin-top: 12px;
-  border: 1px solid rgba(98, 206, 248, 0.3);
-  border-radius: 12px;
-  background: linear-gradient(126deg, rgba(13, 10, 35, 0.88), rgba(19, 11, 40, 0.76));
-  padding: 0.7rem;
-  display: grid;
-  gap: 9px;
-}
-
-.mk3-private-apply-form h2 {
-  margin: 0;
-  font-size: 0.9rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #d8f1ff;
-}
-
-.mk3-private-apply-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.mk3-private-apply-grid label {
-  display: grid;
-  gap: 6px;
-  color: #cbe1f5;
-  font-size: 0.74rem;
-}
-
-.mk3-private-apply-grid input,
-.mk3-private-apply-grid select {
-  width: 100%;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(6, 11, 16, 0.86);
-  color: #f2f8ff;
-  padding: 0.56rem 0.64rem;
-  font: inherit;
-}
-
-.mk3-private-apply-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.mk3-private-apply-actions button,
-.mk3-private-invite-form button {
-  border: 1px solid var(--mk3-btn-border-primary);
-  border-radius: 10px;
-  min-height: 42px;
-  padding: 0.44rem 0.72rem;
-  color: var(--mk3-btn-ink-primary);
-  background: var(--mk3-btn-gradient-primary);
-  background-clip: padding-box, border-box;
-  -webkit-background-clip: padding-box, border-box;
-  font-size: 0.76rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-.mk3-private-apply-actions button:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-
-.mk3-private-apply-actions .mk3-auth-cta-secondary {
-  border: 1px solid var(--mk3-btn-border-muted);
-  background: var(--mk3-btn-bg-muted);
-  color: var(--mk3-btn-ink-muted);
-}
-
-.mk3-private-invite-box {
-  margin-top: 12px;
-  border: 1px solid rgba(89, 211, 246, 0.3);
-  border-radius: 12px;
-  padding: 0.72rem;
-  background: linear-gradient(132deg, rgba(14, 11, 36, 0.86), rgba(26, 10, 42, 0.72));
-  display: grid;
-  gap: 9px;
-}
-
-.mk3-private-invite-box h3 {
-  margin: 0;
-  color: #ffe7be;
-  font-size: 0.74rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-.mk3-private-invite-box p {
-  margin: 0;
-  color: #d8cfee;
-  font-size: 0.79rem;
-  line-height: 1.45;
-}
-
-.mk3-private-invite-form {
-  display: grid;
-  gap: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.14);
-  padding-top: 0.65rem;
-}
-
-.mk3-private-pin-input-row {
-  display: grid;
-  gap: 6px;
-  color: #d8d2ea;
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-weight: 700;
-}
-
-.mk3-private-pin-input-row input {
-  width: 100%;
-  border-radius: 12px;
-  border: 1px solid rgba(83, 211, 247, 0.44);
-  background: rgba(9, 12, 35, 0.92);
-  color: #f2f8ff;
-  padding: 0.68rem 0.78rem;
-  font: inherit;
-  text-transform: uppercase;
-  letter-spacing: 0.13em;
-}
-
-.mk3-private-invite-caption {
-  border: 1px dashed rgba(255, 187, 114, 0.42);
-  border-radius: 10px;
-  background: rgba(30, 17, 47, 0.62);
-  color: #ffe1b2;
-  font-size: 0.7rem;
-  line-height: 1.4;
-  padding: 0.5rem 0.58rem;
-}
-
-.mk3-private-invite-submit {
-  width: 100%;
-  min-height: 44px;
-  border-radius: 999px;
-  font-size: 0.74rem;
-  letter-spacing: 0.09em;
-}
-
-.mk3-private-unlocked {
-  border-color: rgba(116, 239, 178, 0.48);
-  background: rgba(45, 113, 74, 0.16);
-  color: #d6ffe6;
-}
-
 .mk3-value-points {
   display: grid;
   gap: 5px;
@@ -964,10 +810,6 @@
   line-height: 1.35;
 }
 
-.mk3-private-apply-form-compact {
-  margin-top: 12px;
-}
-
 .mk3-hero-proof {
   margin-top: 10px;
 }
@@ -1078,63 +920,6 @@
 .mk3-public-changelog-card button {
   margin-top: auto;
 }
-
-.mk3-private-locked-panel {
-  margin-bottom: 14px;
-  border: 1px solid rgba(122, 205, 239, 0.26);
-  border-radius: 16px;
-  padding: 12px;
-  background:
-    radial-gradient(circle at 14% 6%, rgba(122, 205, 239, 0.12), transparent 46%),
-    radial-gradient(circle at 84% 10%, rgba(255, 215, 106, 0.12), transparent 44%),
-    rgba(9, 15, 22, 0.86);
-}
-
-.mk3-private-locked-panel h2 {
-  margin: 0;
-  font-family: "Archivo Black", "Impact", sans-serif;
-  font-size: clamp(1rem, 2vw, 1.34rem);
-  color: #d9f0ff;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.mk3-private-locked-panel p {
-  margin: 8px 0 0;
-  color: #ccdfef;
-  font-size: 0.86rem;
-  line-height: 1.5;
-}
-
-.mk3-private-locked-grid {
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.mk3-private-locked-grid article {
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 10px;
-  background: rgba(13, 22, 31, 0.82);
-  padding: 0.56rem 0.62rem;
-  display: grid;
-  gap: 5px;
-}
-
-.mk3-private-locked-grid strong {
-  color: #ffe9be;
-  font-size: 0.76rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.mk3-private-locked-grid span {
-  color: #cae0f4;
-  font-size: 0.76rem;
-  line-height: 1.4;
-}
-
 
 .mk3-auth-box {
   align-self: start;
@@ -2144,6 +1929,39 @@
   letter-spacing: 0.06em;
 }
 
+.mk3-rail-head-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.mk3-rail-view-toggle {
+  display: inline-flex;
+  border-radius: 999px;
+  border: 1px solid rgba(126, 214, 246, 0.36);
+  padding: 2px;
+  background: rgba(8, 16, 24, 0.86);
+}
+
+.mk3-rail-head .mk3-rail-view-toggle button {
+  border: 0;
+  border-radius: 999px;
+  min-height: 30px;
+  padding: 0.24rem 0.56rem;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #c4deef;
+  background: transparent;
+}
+
+.mk3-rail-head .mk3-rail-view-toggle button.active {
+  color: #fff3d2;
+  background: linear-gradient(120deg, rgba(255, 214, 106, 0.28), rgba(255, 86, 190, 0.3));
+}
+
 .mk3-rail-head button {
   border-radius: 999px;
   border: 1px solid rgba(126, 214, 246, 0.4);
@@ -2379,11 +2197,27 @@
   gap: 10px;
 }
 
+.mk3-card-results {
+  grid-template-columns: 1fr;
+}
+
+.mk3-card-tiles {
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+
 .mk3-card-rail {
   max-height: 640px;
   min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.mk3-card-tiles .mk3-discover-media {
+  min-height: 132px;
+}
+
+.mk3-card-tiles .mk3-discover-media img {
+  min-height: 132px;
 }
 
 .mk3-discover-card,
@@ -3935,6 +3769,31 @@
   padding: 0.38rem 0.52rem;
 }
 
+@media (min-width: 1720px) {
+  .mk3-demo-shell,
+  .mk3-demo-shell.mk3-demo-shell-testing {
+    grid-template-columns: minmax(0, 1.28fr) minmax(360px, 0.92fr) minmax(0, 1.1fr);
+    grid-template-areas: "tv audience host";
+    align-items: start;
+  }
+
+  .mk3-demo-shell .mk3-demo-tv .mk3-demo-frame-wrap,
+  .mk3-demo-shell .mk3-demo-audience .mk3-demo-frame-wrap,
+  .mk3-demo-shell .mk3-demo-host .mk3-demo-frame-wrap,
+  .mk3-demo-shell .mk3-demo-host .mk3-demo-host-frame-wrap-live {
+    min-height: clamp(440px, 60vh, 760px);
+  }
+
+  .mk3-demo-shell .mk3-demo-tv-frame-wrap {
+    min-height: clamp(480px, 64vh, 800px);
+  }
+
+  .mk3-demo-shell .mk3-demo-audience-frame-wrap,
+  .mk3-demo-shell .mk3-demo-audience .mk3-demo-audience-frame-wrap-live {
+    min-height: clamp(440px, 60vh, 760px);
+  }
+}
+
 @media (max-width: 1120px) {
   .mk3-site {
     --mk3-rail-space: 176px;
@@ -4009,11 +3868,6 @@
   .mk3-filter-row,
   .mk3-metric-row,
   .mk3-form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .mk3-private-apply-grid,
-  .mk3-private-locked-grid {
     grid-template-columns: 1fr;
   }
 
@@ -4243,8 +4097,18 @@
     flex-direction: column;
   }
 
-  .mk3-rail-head button {
+  .mk3-rail-head > button {
     width: 100%;
+  }
+
+  .mk3-rail-head-meta {
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
+  }
+
+  .mk3-card-tiles {
+    grid-template-columns: 1fr;
   }
 
   .mk3-discover-card .mk3-actions-inline {
@@ -4293,15 +4157,6 @@
 
   .mk3-host-badge-row span {
     font-size: 0.62rem;
-  }
-
-  .mk3-private-apply-actions {
-    flex-direction: column;
-  }
-
-  .mk3-private-apply-actions button,
-  .mk3-private-apply-actions .mk3-auth-cta-secondary {
-    width: 100%;
   }
 
   .mk3-venue-gallery {

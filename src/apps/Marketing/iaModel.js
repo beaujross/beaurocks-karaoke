@@ -156,7 +156,6 @@ export const MARKETING_NAV_CONFIG = Object.freeze({
     navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
   publicSecondary: Object.freeze([]),
-  lockedSecondary: Object.freeze([]),
   homePrimary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.forHosts, "Product"),
     navItem(MARKETING_ROUTE_PAGES.demo, "Demo"),
@@ -192,7 +191,6 @@ const mergeUniqueItems = (...groups) => {
 
 export const getMarketingNavModel = ({
   isGuestsHomePage = false,
-  privateAccessLocked = false,
   hasFullAccount = false,
   isModerator = false,
 } = {}) => {
@@ -202,7 +200,7 @@ export const getMarketingNavModel = ({
 
   const baseSecondary = isGuestsHomePage
     ? MARKETING_NAV_CONFIG.homeSecondary
-    : (privateAccessLocked ? MARKETING_NAV_CONFIG.lockedSecondary : MARKETING_NAV_CONFIG.publicSecondary);
+    : MARKETING_NAV_CONFIG.publicSecondary;
 
   const secondary = mergeUniqueItems(
     hasFullAccount ? MARKETING_NAV_CONFIG.authenticatedSecondary : [],
@@ -218,5 +216,5 @@ export const MARKETING_ZERO_BREAK_REDIRECT_PLAN = Object.freeze([
   Object.freeze({ from: "/marketing?page=for_hosts", to: "/for-hosts", strategy: "alias_keep_live" }),
   Object.freeze({ from: "/marketing?page=discover", to: "/discover", strategy: "alias_keep_live" }),
   Object.freeze({ from: "/marketing?page=join", to: "/join", strategy: "alias_keep_live" }),
-  Object.freeze({ from: "/marketing?page=host_access", to: "/for-hosts", strategy: "alias_keep_live" }),
+  Object.freeze({ from: "/marketing?page=host_access", to: "/host-access", strategy: "alias_keep_live" }),
 ]);
