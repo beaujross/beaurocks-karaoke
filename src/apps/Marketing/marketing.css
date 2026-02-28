@@ -983,6 +983,10 @@
     rgba(9, 15, 22, 0.86);
 }
 
+.mk3-site-footer {
+  margin-top: 12px;
+}
+
 .mk3-zone-changelog::before {
   background: linear-gradient(180deg, #5edaf2, #ffd76a);
 }
@@ -1014,7 +1018,7 @@
 
 .mk3-public-changelog-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 

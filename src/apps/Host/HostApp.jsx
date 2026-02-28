@@ -7405,9 +7405,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             updatedAt: serverTimestamp()
         });
     };
+    const confirmRoomManagerAction = ({ actionName = 'update room data', roomCode: targetRoomCode = '', requireTypedCode = false } = {}) => {
+        const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
+        if (!normalizedCode || typeof window === 'undefined') return true;
+        const confirmed = window.confirm(
+            `Are you sure you want to ${actionName} for room ${normalizedCode}?`
+        );
+        if (!confirmed) return false;
+        if (!requireTypedCode) return true;
+        const typed = window.prompt(`Type ${normalizedCode} to confirm this action.`, '');
+        if (String(typed || '').trim().toUpperCase() !== normalizedCode) {
+            toast('Confirmation code mismatch. Action canceled.');
+            return false;
+        }
+        return true;
+    };
     const setRoomArchivedState = async (targetRoomCode = '', nextArchived = true) => {
         const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
         if (!normalizedCode) return;
+        const approved = confirmRoomManagerAction({
+            actionName: nextArchived ? 'archive this room' : 'restore this room',
+            roomCode: normalizedCode,
+            requireTypedCode: !!nextArchived
+        });
+        if (!approved) return;
         setRoomManagerBusyCode(normalizedCode);
         setRoomManagerBusyAction(nextArchived ? 'archive' : 'restore');
         setRoomManagerError('');
@@ -7441,7 +7462,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setRoomManagerError('Enter a room code first.');
             return;
         }
-        const ok = window.confirm(`Clear queue, users, activity, and uploads for room ${normalizedCode}?`);
+        const ok = confirmRoomManagerAction({
+            actionName: 'clear queue, users, activity, and uploads',
+            roomCode: normalizedCode,
+            requireTypedCode: true
+        });
         if (!ok) return;
         setRoomManagerBusyCode(normalizedCode);
         setRoomManagerBusyAction('cleanup');
@@ -11087,6 +11112,89 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const hasHostIdentity = Boolean(String(hostName || '').trim());
         const quickStartRoleAllowed = new Set(['owner', 'moderator', 'captain']).has(String(hostPermissionLevel || '').toLowerCase());
         const canQuickStartRoom = hasWorkspaceIdentity && hasHostIdentity && quickStartRoleAllowed;
+        const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+        const authHealthLabel = authError
+            ? 'Auth Error'
+            : uid
+                ? 'Authenticated'
+                : 'Auth Pending';
+        const roomClosed = Boolean(room?.closedAt);
+        const roomPaused = Boolean(room?.paused || room?.isPaused || String(room?.activeMode || '').toLowerCase() === 'paused');
+        const launchRoomCodeCandidate = String(roomCodeInput || roomCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const hasLaunchRoomCode = launchRoomCodeCandidate.length >= 4 && launchRoomCodeCandidate.length <= 10;
+        let launchState = 'Idle';
+        if (entryError) {
+            launchState = 'Error';
+        } else if (creatingRoom || joiningRoom) {
+            launchState = 'Starting';
+        } else if (roomClosed) {
+            launchState = 'Ended';
+        } else if (roomPaused) {
+            launchState = 'Paused';
+        } else if (roomCode && hasLaunchRoomCode && String(roomCode).toUpperCase() === launchRoomCodeCandidate) {
+            launchState = 'Live';
+        } else if (hasLaunchRoomCode) {
+            launchState = 'Ready';
+        }
+        const launchStateTone = (() => {
+            switch (launchState) {
+                case 'Starting':
+                    return 'border-cyan-300/40 bg-cyan-500/15 text-cyan-100';
+                case 'Live':
+                    return 'border-emerald-300/45 bg-emerald-500/15 text-emerald-100';
+                case 'Paused':
+                    return 'border-amber-300/45 bg-amber-500/15 text-amber-100';
+                case 'Ended':
+                    return 'border-zinc-300/40 bg-zinc-500/12 text-zinc-100';
+                case 'Error':
+                    return 'border-rose-300/45 bg-rose-500/15 text-rose-100';
+                case 'Ready':
+                    return 'border-indigo-300/45 bg-indigo-500/15 text-indigo-100';
+                default:
+                    return 'border-zinc-500/35 bg-zinc-500/10 text-zinc-200';
+            }
+        })();
+        const launchStateHelp = (() => {
+            switch (launchState) {
+                case 'Starting':
+                    return 'Provisioning room and host controls.';
+                case 'Live':
+                    return `Room ${launchRoomCodeCandidate} is active.`;
+                case 'Paused':
+                    return 'Room is paused. Resume or reopen controls.';
+                case 'Ended':
+                    return 'Room session ended. Create or reopen a room.';
+                case 'Error':
+                    return 'Last launch action failed. Retry or use troubleshooting.';
+                case 'Ready':
+                    return `Room ${launchRoomCodeCandidate} is ready to open.`;
+                default:
+                    return 'Create a room or enter a room code to begin.';
+            }
+        })();
+        const resolveLaunchRoomCode = () => {
+            if (hasLaunchRoomCode) return launchRoomCodeCandidate;
+            toast('Enter a valid room code first.');
+            setEntryError('Enter a valid room code first.');
+            return '';
+        };
+        const launchAudienceUrl = hasLaunchRoomCode ? `${audienceBase}?room=${encodeURIComponent(launchRoomCodeCandidate)}` : '';
+        const retryLastHostAction = async () => {
+            if (creatingRoom || joiningRoom || roomManagerBusyCode) return;
+            if (hasLaunchRoomCode) {
+                await joinRoom(launchRoomCodeCandidate);
+                return;
+            }
+            if (canQuickStartRoom) {
+                await createRoom({ openNightSetup: false });
+                return;
+            }
+            if (canUseWorkspaceOnboarding) {
+                openOnboardingWizard();
+                return;
+            }
+            toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
+        };
         return ( 
         <div
             className="relative min-h-screen overflow-hidden flex flex-col items-center justify-start md:justify-center p-4 pt-6 md:p-8 text-center"
@@ -11126,6 +11234,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 </div>
                 <div className="text-[11px] uppercase tracking-[0.2em] text-fuchsia-100/60 mb-4">Recommended path: guided setup first, then launch.</div>
+                <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-2.5 text-left" data-host-room-state>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100/75">Room State</div>
+                        <div className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${launchStateTone}`}>
+                            {launchState}
+                        </div>
+                    </div>
+                    <div className="mt-1 text-xs text-cyan-100/70">{launchStateHelp}</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${authError ? 'border-rose-300/40 bg-rose-500/12 text-rose-100' : 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100'}`}>
+                            Auth: {authHealthLabel}
+                        </span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${isOnline ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : 'border-amber-300/40 bg-amber-500/12 text-amber-100'}`}>
+                            Network: {isOnline ? 'Online' : 'Offline'}
+                        </span>
+                    </div>
+                </div>
                 <button
                     onClick={() => {
                         if (!canUseWorkspaceOnboarding) {
@@ -11142,6 +11267,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <div className="text-xs text-cyan-100/75 mb-4 text-left">
                     Use this to set host identity, workspace details, branding, and launch defaults in one pass.
                 </div>
+                <button
+                    data-host-create-room-primary
+                    onClick={() => {
+                        if (creatingRoom || joiningRoom || roomManagerBusyCode) return;
+                        if (canQuickStartRoom) {
+                            createRoom({ openNightSetup: false });
+                            return;
+                        }
+                        if (canUseWorkspaceOnboarding) {
+                            toast('Quick create is locked until Guided Setup completes workspace identity.');
+                            openOnboardingWizard();
+                            return;
+                        }
+                        toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
+                    }}
+                    disabled={creatingRoom || joiningRoom || !!roomManagerBusyCode}
+                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-3 ${creatingRoom || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                    {creatingRoom ? 'Creating Room...' : 'Create New Room'}
+                </button>
                 {!uid && authError && (
                     <div className="mb-3 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 text-left">
                         Auth failed: {authError.code || authError.message || 'Unknown error'}
@@ -11191,6 +11336,115 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     >
                         Cleanup + Archive Tools
                     </button>
+                </div>
+                <div className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left" data-host-share-launch>
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Share + Launch</div>
+                    <div className="mt-1 text-xs text-cyan-100/70">
+                        {hasLaunchRoomCode
+                            ? `Room ${launchRoomCodeCandidate} ready. Send the audience link and open TV in one pass.`
+                            : 'Enter a room code above to enable audience + TV launch actions.'}
+                    </div>
+                    {hasLaunchRoomCode && (
+                        <div className="mt-2 rounded-lg border border-cyan-400/20 bg-cyan-500/8 px-2 py-1.5 text-[11px] text-cyan-100/80 font-mono break-all">
+                            {launchAudienceUrl}
+                        </div>
+                    )}
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const code = resolveLaunchRoomCode();
+                                if (!code) return;
+                                window.open(`${audienceBase}?room=${encodeURIComponent(code)}`, '_blank', 'noopener,noreferrer');
+                            }}
+                            disabled={!hasLaunchRoomCode}
+                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            Open Audience App
+                        </button>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const code = resolveLaunchRoomCode();
+                                if (!code) return;
+                                const audienceUrl = `${audienceBase}?room=${encodeURIComponent(code)}`;
+                                try {
+                                    await navigator.clipboard.writeText(audienceUrl);
+                                    toast('Audience join link copied.');
+                                } catch {
+                                    toast(audienceUrl);
+                                }
+                            }}
+                            disabled={!hasLaunchRoomCode}
+                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            Copy Join Link
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const code = resolveLaunchRoomCode();
+                                if (!code) return;
+                                window.open(`${tvBase}?room=${encodeURIComponent(code)}&mode=tv`, '_blank', 'noopener,noreferrer');
+                            }}
+                            disabled={!hasLaunchRoomCode}
+                            className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            Open Public TV
+                        </button>
+                    </div>
+                </div>
+                <div className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/8 px-3 py-3 text-left" data-host-troubleshooting>
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-amber-100/85">Troubleshooting</div>
+                    <div className="mt-1 text-xs text-amber-100/80">
+                        Quick recovery shortcuts when a launch step fails.
+                    </div>
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const code = resolveLaunchRoomCode();
+                                if (!code) return;
+                                await openExistingRoomWorkspace(code, 'advanced.diagnostics');
+                            }}
+                            disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode}
+                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            Can't Open Room
+                        </button>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const code = resolveLaunchRoomCode();
+                                if (!code) return;
+                                const audienceUrl = `${audienceBase}?room=${encodeURIComponent(code)}`;
+                                try {
+                                    await navigator.clipboard.writeText(audienceUrl);
+                                    toast('Audience join link copied.');
+                                } catch {
+                                    toast(audienceUrl);
+                                }
+                                window.open(audienceUrl, '_blank', 'noopener,noreferrer');
+                            }}
+                            disabled={!hasLaunchRoomCode}
+                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            Audience Can't Join
+                        </button>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                const code = resolveLaunchRoomCode();
+                                if (!code) return;
+                                window.open(`${tvBase}?room=${encodeURIComponent(code)}&mode=tv`, '_blank', 'noopener,noreferrer');
+                                await openExistingRoomWorkspace(code, 'advanced.diagnostics');
+                            }}
+                            disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode}
+                            className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            TV Not Loading
+                        </button>
+                    </div>
                 </div>
                 <details className="mt-4 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
                     <summary className="cursor-pointer list-none flex items-center justify-between text-xs uppercase tracking-[0.18em] text-cyan-100">
@@ -11303,7 +11557,42 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             })}
                         </div>
                     ) : (
-                        <div className="text-xs text-cyan-100/70 mt-3">No recent hosted rooms yet. Launch your first room from Guided Setup and it will appear here.</div>
+                        <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-500/8 px-2.5 py-2">
+                            <div className="text-xs text-cyan-100/75">No recent hosted rooms yet. Launch your first room and it will appear here.</div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (canQuickStartRoom) {
+                                            createRoom({ openNightSetup: false });
+                                            return;
+                                        }
+                                        if (canUseWorkspaceOnboarding) {
+                                            openOnboardingWizard();
+                                            return;
+                                        }
+                                        toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
+                                    }}
+                                    disabled={creatingRoom || joiningRoom || !!roomManagerBusyCode}
+                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[11px] px-2 py-1 ${creatingRoom || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    {creatingRoom ? 'Creating...' : 'Create First Room'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (!canUseWorkspaceOnboarding) {
+                                            toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
+                                            return;
+                                        }
+                                        openOnboardingWizard();
+                                    }}
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-[11px] px-2 py-1`}
+                                >
+                                    Open Guided Setup
+                                </button>
+                            </div>
+                        </div>
                     )}
                     {roomManagerError && (
                         <div className="mt-2 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-2 py-1.5">
@@ -11313,7 +11602,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
                 {entryError && (
                     <div className="mt-3 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2 text-left">
-                        {entryError}
+                        <div>{entryError}</div>
+                        <button
+                            type="button"
+                            onClick={retryLastHostAction}
+                            disabled={creatingRoom || joiningRoom || !!roomManagerBusyCode}
+                            className={`mt-2 inline-flex items-center gap-2 rounded-md border border-rose-300/45 bg-rose-500/15 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-rose-100 ${creatingRoom || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            Retry Last Action
+                        </button>
                     </div>
                 )}
                 {hostUpdateDeploymentBanner && (

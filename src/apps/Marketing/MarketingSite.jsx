@@ -147,6 +147,47 @@ const HOME_INTEREST_USE_CASE_OPTIONS = [
   "Guest / Fan",
 ];
 
+const APP_VERSION = typeof import.meta !== "undefined" && import.meta?.env
+  ? String(import.meta.env.VITE_APP_VERSION || "")
+  : "";
+const APP_BUILD = typeof import.meta !== "undefined" && import.meta?.env
+  ? String(import.meta.env.VITE_APP_BUILD || "")
+  : "";
+const MARKETING_RELEASE_VERSION = APP_VERSION ? `v${APP_VERSION}` : "v0.0.0";
+const MARKETING_RELEASE_LABEL = APP_BUILD ? `${MARKETING_RELEASE_VERSION}+${APP_BUILD}` : MARKETING_RELEASE_VERSION;
+const MARKETING_PUBLIC_CHANGELOG = [
+  {
+    title: "Launch Access + Routing",
+    date: "February 27, 2026",
+    tag: "Release",
+    bullets: [
+      "Root domain now prioritizes launch-intent capture and tester fast-lane actions.",
+      "Primary host panel calls-to-action now route directly to host.beaurocks.app.",
+      "Cross-surface links for audience, host, and TV were revalidated for production.",
+    ],
+  },
+  {
+    title: "Host Setup Reliability",
+    date: "February 27, 2026",
+    tag: "Host Ops",
+    bullets: [
+      "Host landing now exposes an always-visible create-room path with fewer hidden dependencies.",
+      "Share-and-launch actions for audience join and TV open were streamlined on setup flows.",
+      "Setup smoke tests were updated to track current split-domain production behavior.",
+    ],
+  },
+  {
+    title: "Quality + Safeguards",
+    date: "February 27, 2026",
+    tag: "QA",
+    bullets: [
+      "Marketing golden-loop tests were aligned to current labels, routing, and auth intents.",
+      "Persona/admin test coverage now reflects modern host setup and fallback UI behavior.",
+      "Release gate checks continue to include host join, users profile, and app-check smoke paths.",
+    ],
+  },
+];
+
 const CAMPAIGN_PARAM_KEYS = [
   "utm_source",
   "utm_medium",
@@ -1507,6 +1548,29 @@ const MarketingSite = () => {
               </div>
             </section>
           )}
+
+          <footer className="mk3-site-footer mk3-zone mk3-zone-changelog mk3-public-changelog" aria-label="Product changelog">
+            <div className="mk3-public-changelog-head">
+              <h2>Product Changelog</h2>
+              <span>{`Current Build: ${MARKETING_RELEASE_LABEL}`}</span>
+            </div>
+            <div className="mk3-public-changelog-grid">
+              {MARKETING_PUBLIC_CHANGELOG.map((entry) => (
+                <article key={`${entry.title}-${entry.date}`} className="mk3-public-changelog-card">
+                  <div className="mk3-public-changelog-meta">
+                    <strong>{entry.title}</strong>
+                    <span>{entry.date}</span>
+                    <em>{entry.tag}</em>
+                  </div>
+                  <ul>
+                    {entry.bullets.map((item) => (
+                      <li key={`${entry.title}-${item}`}>{item}</li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+          </footer>
 
         </div>
       </main>
