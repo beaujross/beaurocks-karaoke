@@ -47,6 +47,15 @@ const WORKSPACE_OPTIONS = [
     { id: 'custom', label: 'Custom Layout' }
 ];
 
+const AUTOCOMPLETE_PROVIDER_KEY = 'bross_queue_autocomplete_provider_v1';
+const AUTOCOMPLETE_PROVIDER_OPTIONS = new Set(['youtube', 'apple', 'spotify']);
+
+const normalizeAutocompleteProvider = (value = '') => {
+    const token = String(value || '').trim().toLowerCase();
+    if (AUTOCOMPLETE_PROVIDER_OPTIONS.has(token)) return token;
+    return 'youtube';
+};
+
 const sanitizePart = (value = '', fallback = 'default') => {
     const cleaned = String(value || '')
         .trim()
@@ -85,6 +94,14 @@ const useQueueTabState = ({ hostName, roomCode }) => {
     const [activeWorkspace, setActiveWorkspace] = useState('default');
 
     const [searchQ, setSearchQ] = useState('');
+    const [autocompleteProvider, setAutocompleteProviderState] = useState(() => {
+        try {
+            if (typeof window === 'undefined') return 'youtube';
+            return normalizeAutocompleteProvider(window.localStorage.getItem(AUTOCOMPLETE_PROVIDER_KEY) || '');
+        } catch {
+            return 'youtube';
+        }
+    });
     const [results, setResults] = useState([]);
     const [manual, setManual] = useState({
         song: '',
@@ -233,6 +250,19 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         }
     }, [activeWorkspace, panelLayout]);
 
+    const setAutocompleteProvider = (value) => {
+        setAutocompleteProviderState(normalizeAutocompleteProvider(value));
+    };
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        try {
+            window.localStorage.setItem(AUTOCOMPLETE_PROVIDER_KEY, normalizeAutocompleteProvider(autocompleteProvider));
+        } catch {
+            // Ignore persistence failures.
+        }
+    }, [autocompleteProvider]);
+
     return {
         stagePanelOpen,
         setStagePanelOpen,
@@ -262,6 +292,8 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         resetPanelLayout,
         searchQ,
         setSearchQ,
+        autocompleteProvider,
+        setAutocompleteProvider,
         results,
         setResults,
         manual,

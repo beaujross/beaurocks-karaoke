@@ -391,19 +391,17 @@ const normalizeDemoViewMode = (value = "") => {
 };
 
 const getInitialDemoViewMode = () => {
-  if (typeof window === "undefined") return DEMO_VIEW_MODES.interactive;
+  if (typeof window === "undefined") return DEMO_VIEW_MODES.autoplay;
   try {
     const params = new URLSearchParams(window.location.search);
-    const modeFromQuery = normalizeDemoViewMode(
-      params.get("demo_view")
-      || params.get("demoView")
-      || (params.get("autoplay") === "1" ? DEMO_VIEW_MODES.autoplay : "")
-    );
-    if (modeFromQuery === DEMO_VIEW_MODES.autoplay) return modeFromQuery;
-    const stored = normalizeDemoViewMode(window.sessionStorage.getItem(DEMO_VIEW_STORAGE_KEY) || "");
-    return stored;
+    const queryModeRaw = params.get("demo_view") || params.get("demoView") || "";
+    if (queryModeRaw) return normalizeDemoViewMode(queryModeRaw);
+    if (params.get("autoplay") === "1") return DEMO_VIEW_MODES.autoplay;
+    const storedRaw = window.sessionStorage.getItem(DEMO_VIEW_STORAGE_KEY) || "";
+    if (storedRaw) return normalizeDemoViewMode(storedRaw);
+    return DEMO_VIEW_MODES.autoplay;
   } catch {
-    return DEMO_VIEW_MODES.interactive;
+    return DEMO_VIEW_MODES.autoplay;
   }
 };
 
@@ -486,6 +484,8 @@ const DemoExperiencePage = ({ session = {} }) => {
   const audioContextRef = useRef(null);
   const previousTimelineMsRef = useRef(0);
   const isAutoplayShowcase = demoViewMode === DEMO_VIEW_MODES.autoplay;
+  const canRunLiveSync = isSessionReady && hasCallableAuth;
+  const usesScriptedRailsOverlay = isAutoplayShowcase || !liveSync || !canRunLiveSync || syncState.tone === "error";
 
   useEffect(() => {
     if (!playing) return () => {};
@@ -707,6 +707,14 @@ const DemoExperiencePage = ({ session = {} }) => {
     setLiveSync(false);
     setSyncState({ tone: "muted", message: "Autoplay Showcase uses local scripted playback only." });
   }, [isAutoplayShowcase, liveSync]);
+
+  useEffect(() => {
+    if (isAutoplayShowcase) return;
+    if (!canRunLiveSync && liveSync) {
+      setLiveSync(false);
+      setSyncState({ tone: "muted", message: "Live sync needs signed-in demo host access. On-rails playback is active." });
+    }
+  }, [canRunLiveSync, isAutoplayShowcase, liveSync]);
 
   useEffect(() => {
     autoRoomRetryRef.current = false;
@@ -1001,21 +1009,10 @@ const DemoExperiencePage = ({ session = {} }) => {
         <header>
           <h3>Demo Controls</h3>
           <p>
-            Switch between full interactive surfaces and a self-running showcase that emulates TV, audience, and host activity without requiring any clicks.
+            Start with Demo On Rails for a deterministic walkthrough, or switch to live interactive surfaces when authenticated sync is available.
           </p>
         </header>
         <div className="mk3-demo-toolbar">
-          <button
-            type="button"
-            className={!isAutoplayShowcase ? "active" : ""}
-            onClick={() => {
-              setDemoViewMode(DEMO_VIEW_MODES.interactive);
-              setLiveSync(true);
-              trackEvent("mk_demo_view_mode", { mode: DEMO_VIEW_MODES.interactive });
-            }}
-          >
-            Interactive Surfaces
-          </button>
           <button
             type="button"
             className={isAutoplayShowcase ? "active" : ""}
@@ -1024,7 +1021,21 @@ const DemoExperiencePage = ({ session = {} }) => {
               trackEvent("mk_demo_view_mode", { mode: DEMO_VIEW_MODES.autoplay });
             }}
           >
-            Autoplay Showcase
+            Demo On Rails (Recommended)
+          </button>
+          <button
+            type="button"
+            className={!isAutoplayShowcase ? "active" : ""}
+            onClick={() => {
+              setDemoViewMode(DEMO_VIEW_MODES.interactive);
+              setLiveSync(canRunLiveSync);
+              if (!canRunLiveSync) {
+                setSyncState({ tone: "muted", message: "Interactive mode loaded with local rails. Sign in to enable live sync." });
+              }
+              trackEvent("mk_demo_view_mode", { mode: DEMO_VIEW_MODES.interactive });
+            }}
+          >
+            Interactive Surfaces
           </button>
           <button type="button" onClick={onTogglePlayback}>
             {playing ? "Pause Demo" : "Play Demo"}
@@ -1049,6 +1060,7 @@ const DemoExperiencePage = ({ session = {} }) => {
           {!isAutoplayShowcase && (
             <button
               type="button"
+              disabled={!canRunLiveSync}
               onClick={() => {
                 const next = !liveSync;
                 setLiveSync(next);
@@ -1056,7 +1068,9 @@ const DemoExperiencePage = ({ session = {} }) => {
                 if (!next) setSyncState({ tone: "muted", message: "Scripted sync is paused." });
               }}
             >
-              Scripted Sync: {liveSync ? "On" : "Off"}
+              {canRunLiveSync
+                ? `Scripted Sync: ${liveSync ? "On" : "Off"}`
+                : "Scripted Sync: Sign-in required"}
             </button>
           )}
           {!isAutoplayShowcase && (
@@ -1174,7 +1188,7 @@ const DemoExperiencePage = ({ session = {} }) => {
                 {activeScene.mode === "finale" && "Finale: return to karaoke hook with full crowd effects."}
               </div>
             </div>
-            {isAutoplayShowcase && (
+            {usesScriptedRailsOverlay && (
               <div className={`mk3-demo-autoplay-cover mk3-demo-autoplay-tv is-${activeScene.mode}`}>
                 <div className="mk3-demo-tv-stage">
                   <div className="mk3-demo-tv-video">
@@ -1288,7 +1302,7 @@ const DemoExperiencePage = ({ session = {} }) => {
                   className="mk3-demo-iframe mk3-demo-iframe-mobile"
                   allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
                 />
-                {isAutoplayShowcase && (
+                {usesScriptedRailsOverlay && (
                   <div className="mk3-demo-autoplay-cover mk3-demo-autoplay-audience">
                     <div className="mk3-demo-surface-body mk3-demo-audience-sim">
                       <h4>{activeScene.mode === "karaoke" || activeScene.mode === "finale" ? "Now singing live" : `${stageModeLabel} active`}</h4>
@@ -1423,16 +1437,26 @@ const DemoExperiencePage = ({ session = {} }) => {
           </div>
           <div className="mk3-demo-surface-status">
             <span>Host cue drives each scene so cause-and-effect is obvious</span>
-            <strong>{isAutoplayShowcase ? "Autoplay showcase" : syncState.tone === "ok" ? "Sync healthy" : syncState.tone === "error" ? "Sync issue" : "Tutorial mode"}</strong>
+            <strong>
+              {isAutoplayShowcase
+                ? "On-rails showcase"
+                : usesScriptedRailsOverlay
+                  ? "Rails assist active"
+                  : syncState.tone === "ok"
+                    ? "Sync healthy"
+                    : syncState.tone === "error"
+                      ? "Sync issue"
+                      : "Tutorial mode"}
+            </strong>
           </div>
         </article>
       </div>
 
       <article className="mk3-demo-launch">
-        <h3>{isAutoplayShowcase ? "Autoplay Showcase Is Running" : "Launch Real Surfaces From This Room Code"}</h3>
+        <h3>{usesScriptedRailsOverlay ? "Demo On Rails Is Running" : "Launch Real Surfaces From This Room Code"}</h3>
         <p>
-          {isAutoplayShowcase
-            ? "This view is intentionally no-touch: every surface is emulated and sequenced automatically. Switch back to Interactive Surfaces when you want live iframes."
+          {usesScriptedRailsOverlay
+            ? "This deterministic run keeps TV, audience, and host in lockstep so stage moments stay visible even without backend sync."
             : "Runs an ambient multi-surface loop with karaoke first, game moments in sequence, two Would You Rather resolutions, and a finale reset."}
         </p>
         <div className={`mk3-inline-status ${syncState.tone === "error" ? "mk3-status-error" : syncState.tone === "ok" ? "mk3-inline-next" : ""}`}>

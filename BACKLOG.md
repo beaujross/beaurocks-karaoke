@@ -1,6 +1,6 @@
 # Backlog
 
-Last updated: 2026-02-25
+Last updated: 2026-02-28
 
 ## Overnight Queue (Target: 2026-02-12 Morning)
 - [x] WS1 Fame XP UX: add next-unlock and points-to-next-level clarity across singer profile surfaces.
@@ -40,6 +40,11 @@ Last updated: 2026-02-25
 - Organization/workspace model: add org-level ownership, roles, and room-to-org mapping for multi-customer operation.
 - Capability gating: enforce feature entitlements in both client UI and cloud functions (single source of truth for plan capabilities).
 - Turnkey onboarding wizard: account -> workspace -> plan -> branding -> first room launch.
+- Content-agnostic source integration refinement (research-first, implementation on hold):
+  - Treat Spotify/Amazon provider support as a refinement of existing Apple Music integration patterns (account linking, playlist ingest, source-aware host search/autocomplete), not a separate net-new pipeline.
+  - Minimize break risk: use adapter-based extension and feature flags so current Apple/YouTube/local/manual host flows remain default/stable until compatibility checks pass.
+  - Discovery gate required before implementation: Karafun/Singa feasibility matrix, compliance review, and explicit regression plan covering queue/search/autoplay for existing providers.
+  - Hold implementation until research sign-off is complete and scope is reconfirmed.
 - Public TV 10-foot UX pass: continue readability polish (sidebar density, chat/activity typography, reduce overlay collision during high-intensity scenes).
 - VIP profile onboarding: enforce ToS consent and required fields; allow profile edits from app.
 - Fame XP UX: clearer "next unlock" and progress feedback in profile surfaces.

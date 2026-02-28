@@ -2853,6 +2853,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
         resetPanelLayout,
         searchQ,
         setSearchQ,
+        autocompleteProvider,
+        setAutocompleteProvider,
         showAddForm,
         setShowAddForm,
         results,
@@ -3194,79 +3196,104 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
             setQueueSearchNoResultHint('');
             return;
         } 
-        let controller;
+        let cancelled = false;
         const t = setTimeout(async () => { 
-            controller = new AbortController();
             const normalizedQuery = String(searchQ || '').trim();
-            const shouldUseYouTubeFallback = !!searchSources.itunes && !appleMusicAuthorized;
+            const normalizedLower = normalizedQuery.toLowerCase();
+            const preferredAutocompleteSource = String(autocompleteProvider || 'youtube').toLowerCase();
+
             // 1. Local Search
             const localMatchesRaw = searchSources.local
                 ? localLibrary.filter(s =>
-                    s.title.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
-                    s.artist.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
-                    (s.fileName || '').toLowerCase().includes(normalizedQuery.toLowerCase())
+                    s.title.toLowerCase().includes(normalizedLower) ||
+                    s.artist.toLowerCase().includes(normalizedLower) ||
+                    (s.fileName || '').toLowerCase().includes(normalizedLower)
                 ).map(s => ({ ...s, source: 'local', trackName: s.title, artistName: s.artist, artworkUrl100: '' }))
                 : [];
             const localMatches = annotateQueueSearchResults(localMatchesRaw, {
                 sourceReason: 'local_library',
                 sourceDetail: 'Room media library match.'
             });
-            const ytMatchesRaw = searchSources.youtube
-                ? ytIndex.filter(s =>
-                    s.trackName.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
-                    s.artistName.toLowerCase().includes(normalizedQuery.toLowerCase())
-                )
-                : [];
+
+            if (preferredAutocompleteSource === 'spotify') {
+                setQueueSearchSourceNote('Spotify autocomplete is coming soon. Showing local results only.');
+                setQueueSearchNoResultHint('Switch autocomplete source to YouTube or Apple Music for live suggestions.');
+                setResults(localMatches);
+                return;
+            }
+
+            if (preferredAutocompleteSource === 'apple') {
+                if (!searchSources.itunes) {
+                    setQueueSearchSourceNote('Apple Music autocomplete is disabled in Search Sources. Showing local results only.');
+                    setQueueSearchNoResultHint('Enable Apple Music in Search Sources or switch autocomplete to YouTube.');
+                    setResults(localMatches);
+                    return;
+                }
+                if (!appleMusicAuthorized) {
+                    setQueueSearchSourceNote('Apple Music is not connected. Connect Apple Music or switch autocomplete to YouTube.');
+                    setQueueSearchNoResultHint('No Apple Music results while disconnected.');
+                    setResults(localMatches);
+                    return;
+                }
+                try {
+                    const data = await callFunction('itunesSearch', { term: normalizedQuery, limit: 7 });
+                    if (cancelled) return;
+                    const itunesMatches = annotateQueueSearchResults((data?.results || []).map(r => ({ ...r, source: 'itunes' })), {
+                        sourceReason: 'apple_authorized',
+                        sourceDetail: 'Apple Music/iTunes search match.'
+                    });
+                    setQueueSearchSourceNote('Autocomplete source: Apple Music + local library.');
+                    setQueueSearchNoResultHint('No Apple Music matches yet. Try song + artist.');
+                    setResults(mergeUniqueQueueSearchResults(localMatches, itunesMatches));
+                } catch (e) {
+                    if (cancelled) return;
+                    setQueueSearchSourceNote('Apple Music lookup is unavailable right now. Showing local results only.');
+                    setQueueSearchNoResultHint('Apple lookup failed. Try again or switch autocomplete to YouTube.');
+                    setResults(localMatches);
+                }
+                return;
+            }
+
+            if (!searchSources.youtube) {
+                setQueueSearchSourceNote('YouTube autocomplete is disabled in Search Sources. Showing local results only.');
+                setQueueSearchNoResultHint('Enable YouTube in Search Sources or switch autocomplete to Apple Music.');
+                setResults(localMatches);
+                return;
+            }
+
+            const ytMatchesRaw = ytIndex.filter(s =>
+                s.trackName.toLowerCase().includes(normalizedLower) ||
+                s.artistName.toLowerCase().includes(normalizedLower)
+            );
             const ytMatches = annotateQueueSearchResults(ytMatchesRaw.filter((entry) => entry?.playable === true), {
                 sourceReason: 'youtube_index',
                 sourceDetail: 'Indexed YouTube playlist match.'
             });
             let liveYouTubeMatches = [];
-            if (shouldUseYouTubeFallback) {
-                try {
-                    const ytFallbackData = await callFunction('youtubeSearch', {
-                        query: `${normalizedQuery} karaoke`,
-                        maxResults: 6,
-                        playableOnly: true
-                    });
-                    liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
-                        reason: 'apple_missing'
-                    });
-                } catch (ytErr) {
-                    hostLogger.debug('YouTube fallback search failed', ytErr);
-                }
-            }
-            const fallbackResults = mergeUniqueQueueSearchResults(localMatches, ytMatches, liveYouTubeMatches);
-            if (shouldUseYouTubeFallback) {
-                setQueueSearchSourceNote('Apple Music is not connected. Showing local + verified YouTube playable tracks.');
-                setQueueSearchNoResultHint('No playable YouTube tracks were found. Connect Apple Music or paste a direct playable URL.');
-            } else {
-                setQueueSearchSourceNote('');
-                setQueueSearchNoResultHint('No matching tracks yet. Try artist + song, or open YouTube search.');
-            }
-
             try { 
-                // 2. iTunes Search
-                if (!searchSources.itunes || shouldUseYouTubeFallback) {
-                    setResults(fallbackResults);
-                    return;
-                }
-                const data = await callFunction('itunesSearch', { term: normalizedQuery, limit: 5 });
-                const itunesMatches = annotateQueueSearchResults((data?.results || []).map(r => ({ ...r, source: 'itunes' })), {
-                    sourceReason: 'apple_authorized',
-                    sourceDetail: 'Apple Music/iTunes search match.'
+                const ytFallbackData = await callFunction('youtubeSearch', {
+                    query: `${normalizedQuery} karaoke`,
+                    maxResults: 6,
+                    playableOnly: true
                 });
-                setResults(mergeUniqueQueueSearchResults(localMatches, ytMatches, itunesMatches)); 
+                if (cancelled) return;
+                liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
+                    reason: 'youtube_search'
+                });
             } catch(e) { 
-                if (e.name === 'AbortError') return;
-                setResults(fallbackResults);
+                if (cancelled) return;
+                hostLogger.debug('YouTube autocomplete search failed', e);
             } 
+            if (cancelled) return;
+            setQueueSearchSourceNote('Autocomplete source: YouTube verified tracks + local library.');
+            setQueueSearchNoResultHint('No playable YouTube tracks found. Try artist + song or use manual YouTube search.');
+            setResults(mergeUniqueQueueSearchResults(localMatches, ytMatches, liveYouTubeMatches));
         }, 500); 
         return () => {
+            cancelled = true;
             clearTimeout(t);
-            if (controller) controller.abort();
         }; 
-    }, [searchQ, localLibrary, ytIndex, searchSources, setResults, appleMusicAuthorized]);
+    }, [searchQ, autocompleteProvider, localLibrary, ytIndex, searchSources, setResults, appleMusicAuthorized]);
 
     const getResultRowKey = (r, idx = 0) => {
         return `${r?.source || 'song'}_${r?.trackId || r?.videoId || r?.url || r?.trackName || idx}`;
@@ -4022,6 +4049,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                 <AddToQueueFormBody
                     searchQ={searchQ}
                     setSearchQ={setSearchQ}
+                    autocompleteProvider={autocompleteProvider}
+                    setAutocompleteProvider={setAutocompleteProvider}
                     styles={STYLES}
                     quickAddOnResultClick={quickAddOnResultClick}
                     setQuickAddOnResultClick={setQuickAddOnResultClick}
@@ -4049,6 +4078,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                     manualBackingChip={manualBackingChip}
                     openYtSearch={openYtSearch}
                     addSong={addSong}
+                    appleMusicAuthorized={appleMusicAuthorized}
                 />
             )}
         </div>

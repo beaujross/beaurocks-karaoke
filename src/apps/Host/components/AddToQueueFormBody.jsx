@@ -3,6 +3,8 @@ import React from 'react';
 const AddToQueueFormBody = ({
     searchQ,
     setSearchQ,
+    autocompleteProvider,
+    setAutocompleteProvider,
     styles,
     quickAddOnResultClick,
     setQuickAddOnResultClick,
@@ -29,7 +31,8 @@ const AddToQueueFormBody = ({
     onGenerateManualLyrics,
     manualBackingChip,
     openYtSearch,
-    addSong
+    addSong,
+    appleMusicAuthorized
 }) => (
     <div className="mt-2 pr-1">
         <div className="relative mb-2 z-30">
@@ -40,8 +43,47 @@ const AddToQueueFormBody = ({
                         value={searchQ}
                         onChange={e=>setSearchQ(e.target.value)}
                         className={`${styles.input} py-2 text-sm pl-8`}
-                        placeholder="Search songs (Local, verified YouTube, Apple Music)"
+                        placeholder="Search songs (autocomplete source + local library)"
                     />
+                </div>
+                <div className="mt-2">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 mb-1">Autocomplete Source</div>
+                    <div className="flex flex-wrap gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => setAutocompleteProvider('youtube')}
+                            className={`px-2 py-1 rounded-full border text-[10px] uppercase tracking-[0.12em] ${
+                                autocompleteProvider === 'youtube'
+                                    ? 'border-red-300/45 bg-red-500/12 text-red-100'
+                                    : 'border-zinc-700 bg-zinc-900/70 text-zinc-400'
+                            }`}
+                        >
+                            <i className="fa-brands fa-youtube mr-1"></i>
+                            YouTube
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setAutocompleteProvider('apple')}
+                            className={`px-2 py-1 rounded-full border text-[10px] uppercase tracking-[0.12em] ${
+                                autocompleteProvider === 'apple'
+                                    ? 'border-pink-300/45 bg-pink-500/12 text-pink-100'
+                                    : 'border-zinc-700 bg-zinc-900/70 text-zinc-400'
+                            }`}
+                            title={appleMusicAuthorized ? 'Use Apple Music autocomplete' : 'Connect Apple Music to use Apple autocomplete'}
+                        >
+                            <i className="fa-brands fa-apple mr-1"></i>
+                            Apple Music
+                        </button>
+                        <button
+                            type="button"
+                            disabled
+                            className="px-2 py-1 rounded-full border text-[10px] uppercase tracking-[0.12em] border-zinc-800 bg-zinc-900/60 text-zinc-600 cursor-not-allowed"
+                            title="Coming soon"
+                        >
+                            <i className="fa-brands fa-spotify mr-1"></i>
+                            Spotify (Soon)
+                        </button>
+                    </div>
                 </div>
                 {queueSearchSourceNote && (
                     <div className="mt-2 text-[11px] text-cyan-200 bg-cyan-500/10 border border-cyan-400/25 rounded px-2 py-1">
