@@ -510,7 +510,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
     return window.matchMedia("(max-width: 1120px)").matches;
   });
-  const [mobileSurface, setMobileSurface] = useState("list");
+  const [mobileSurface, setMobileSurface] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "list";
+    return window.matchMedia("(max-width: 1120px)").matches ? "map" : "list";
+  });
   const [mobileFiltersExpanded, setMobileFiltersExpanded] = useState(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
     return !window.matchMedia("(max-width: 1120px)").matches;
@@ -545,14 +548,16 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
     const media = window.matchMedia("(max-width: 1120px)");
-    const syncViewport = (matches) => {
-      const isMobile = !!matches;
-      setIsMobileViewport(isMobile);
-      if (!isMobile) {
-        setMobileFiltersExpanded(true);
-        setMobileSurface("list");
-      }
-    };
+      const syncViewport = (matches) => {
+        const isMobile = !!matches;
+        setIsMobileViewport(isMobile);
+        if (!isMobile) {
+          setMobileFiltersExpanded(true);
+          setMobileSurface("list");
+          return;
+        }
+        setMobileSurface("map");
+      };
     const onViewportChange = (event) => syncViewport(event?.matches);
     if (typeof media.addEventListener === "function") {
       media.addEventListener("change", onViewportChange);
@@ -999,13 +1004,6 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (token === "nationwide") return "Nationwide";
     return humanizeRegion(token) || token;
   }, [region]);
-  const activeRegionToken = useMemo(() => {
-    const token = String(region || "").trim().toLowerCase();
-    if (!token) return "nationwide";
-    if (token === "nationwide") return "nationwide";
-    if (token.includes("_")) return token;
-    return "nationwide";
-  }, [region]);
   const hasSearchFilters = !!String(search || "").trim()
     || !!String(region || "").trim()
     || effectiveHostFilter !== "all"
@@ -1074,7 +1072,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       </nav>
       <div className="mk3-status mk3-zone mk3-zone-finder">
         <strong>BeauRocks Karaoke {FINDER_BRAND} Finder</strong>
-        <span>Find your next karaoke night fast, then meet actual humans when you get there.</span>
+        <span>Open the map, pick a room, and go. Everything else is optional.</span>
         <div className="mk3-finder-cta-row">
           <button
             type="button"
@@ -1082,39 +1080,23 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           >
             Add Karaoke Night
           </button>
-          <button
-            type="button"
-            onClick={() => navigate("geo_region", activeRegionToken, { regionToken: activeRegionToken })}
-          >
-            Open Geo Landing
-          </button>
         </div>
       </div>
       {isMobileViewport && (
         <div className="mk3-mobile-discover-switch mk3-zone mk3-zone-mobile-controls">
           <button
             type="button"
-            className={mobileSurface === "list" ? "active" : ""}
-            onClick={() => setMobileSurface("list")}
-          >
-            Results ({visibleListings.length})
-          </button>
-          <button
-            type="button"
-            className={mobileSurface === "list" && resultsView === "tiles" ? "active" : ""}
-            onClick={() => {
-              setMobileSurface("list");
-              setResultsView("tiles");
-            }}
-          >
-            Tiles
-          </button>
-          <button
-            type="button"
             className={mobileSurface === "map" ? "active" : ""}
             onClick={() => setMobileSurface("map")}
           >
             Map ({mappableListings.length})
+          </button>
+          <button
+            type="button"
+            className={mobileSurface === "list" ? "active" : ""}
+            onClick={() => setMobileSurface("list")}
+          >
+            Results ({visibleListings.length})
           </button>
           <button
             type="button"
@@ -1248,7 +1230,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       </div>
       {geoError && <div className="mk3-status mk3-status-warning">{geoError}</div>}
 
-      <div className="mk3-metric-row mk3-zone mk3-zone-metrics">
+      <div className={`mk3-metric-row mk3-zone mk3-zone-metrics ${isMobileViewport ? "mk3-metric-row-mobile" : ""}`}>
         <div className="mk3-metric">
           <span>matching listings</span>
           <strong>{rankedListings.length}</strong>
@@ -1269,8 +1251,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
       <div className={`mk3-discover-shell ${mapFirst ? "is-map-first" : "is-balanced"} ${isMobileViewport ? `is-mobile-surface-${mobileSurface}` : ""}`}>
         <article className={`mk3-map-card mk3-zone mk3-zone-map ${isMobileViewport && mobileSurface !== "map" ? "is-mobile-hidden" : ""}`}>
-          <h2>{FINDER_BRAND} Live Karaoke Map</h2>
-          <div className="mk3-map-badge">Map and rail stay in sync</div>
+          <h2>{FINDER_BRAND} Live Map</h2>
+          <div className="mk3-map-badge">Map-first discover view</div>
           <div className="mk3-map-toolbar">
             <label className="mk3-inline">
               <input

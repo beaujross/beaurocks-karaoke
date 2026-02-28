@@ -2192,6 +2192,10 @@
   font-size: 1rem;
 }
 
+.mk3-metric-row-mobile .mk3-metric:nth-child(n + 3) {
+  display: none;
+}
+
 .mk3-card-list {
   display: grid;
   gap: 10px;
@@ -3818,6 +3822,10 @@
     padding: 0 0 14px;
   }
 
+  .mk3-main {
+    padding-top: 10px;
+  }
+
   .mk3-account {
     gap: 8px;
   }
@@ -3886,7 +3894,7 @@
   .mk3-map-card {
     position: static;
     top: auto;
-    min-height: 460px;
+    min-height: 72vh;
   }
 
   .mk3-mobile-discover-switch {
@@ -3920,7 +3928,7 @@
   .mk3-map-grid,
   .mk3-discover-shell.is-map-first .mk3-map-canvas,
   .mk3-discover-shell.is-map-first .mk3-map-grid {
-    min-height: 360px;
+    min-height: 54vh;
   }
 
   .mk3-venue-stat-grid {
@@ -3947,8 +3955,22 @@
     align-items: flex-start;
   }
 
-  .mk3-golden-rail {
+  .mk3-actions-inline {
+    display: grid;
     grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .mk3-actions-inline button {
+    width: 100%;
+  }
+
+  .mk3-site-footer .mk3-actions-inline {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mk3-golden-rail {
+    display: none;
   }
 
   .mk3-demo-shell,
@@ -4023,7 +4045,7 @@
 
 @media (max-width: 640px) {
   .mk3-shell {
-    width: min(1320px, 92vw);
+    width: min(1320px, 94vw);
   }
 
   .mk3-brand img {
@@ -4060,7 +4082,11 @@
   .mk3-map-grid,
   .mk3-discover-shell.is-map-first .mk3-map-canvas,
   .mk3-discover-shell.is-map-first .mk3-map-grid {
-    min-height: 320px;
+    min-height: 52vh;
+  }
+
+  .mk3-map-toolbar {
+    grid-template-columns: 1fr;
   }
 
   .mk3-map-stage-overlay {
@@ -4069,6 +4095,10 @@
 
   .mk3-mobile-discover-switch {
     top: 84px;
+  }
+
+  .mk3-mobile-discover-switch button {
+    flex: 1 1 48%;
   }
 
   .mk3-discover-filters {
@@ -4121,6 +4151,14 @@
     width: 100%;
   }
 
+  .mk3-actions-inline {
+    grid-template-columns: 1fr;
+  }
+
+  .mk3-site-footer .mk3-actions-inline {
+    grid-template-columns: 1fr;
+  }
+
   .mk3-public-changelog-head {
     align-items: flex-start;
     flex-direction: column;
@@ -4168,7 +4206,7 @@
   }
 
   .mk3-golden-rail {
-    bottom: calc(8px + var(--mk3-safe-bottom));
+    display: none;
   }
 
   .mk3-demo-trivia-option {

@@ -107,13 +107,6 @@ const stripIntentParams = (params = {}) => {
   return next;
 };
 
-const HOME_INTEREST_USE_CASE_OPTIONS = [
-  "Host / KJ",
-  "Venue Partner",
-  "Performer Creator",
-  "Guest / Fan",
-];
-
 const APP_VERSION = typeof import.meta !== "undefined" && import.meta?.env
   ? String(import.meta.env.VITE_APP_VERSION || "")
   : "";
@@ -209,17 +202,6 @@ const MarketingSite = () => {
   const [authMode, setAuthMode] = useState("signin");
   const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "" });
   const [authLocalError, setAuthLocalError] = useState("");
-  const [homeInterestForm, setHomeInterestForm] = useState({
-    name: "",
-    email: "",
-    useCase: HOME_INTEREST_USE_CASE_OPTIONS[0],
-  });
-  const [homeInterestState, setHomeInterestState] = useState({
-    submitting: false,
-    success: "",
-    error: "",
-    linePosition: 0,
-  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const authPanelRef = useRef(null);
   const { session, actions } = useDirectorySession();
@@ -540,60 +522,6 @@ const MarketingSite = () => {
     if (result?.ok) {
       trackEvent("marketing_account_signin", { source: "marketing_directory" });
       resolvePostAuthReturn();
-    }
-  };
-
-  const onHomeInterestSubmit = async (event) => {
-    event.preventDefault();
-    const name = String(homeInterestForm.name || "").trim();
-    const email = String(homeInterestForm.email || "").trim().toLowerCase();
-    const useCase = String(homeInterestForm.useCase || HOME_INTEREST_USE_CASE_OPTIONS[0]).trim();
-    if (!name || !email) {
-      setHomeInterestState((prev) => ({
-        ...prev,
-        error: "Name and email are required.",
-        success: "",
-      }));
-      return;
-    }
-    setHomeInterestState({
-      submitting: true,
-      success: "",
-      error: "",
-      linePosition: 0,
-    });
-    try {
-      const result = await directoryActions.submitMarketingWaitlist({
-        name,
-        email,
-        useCase,
-        source: "marketing_home_interest_2026",
-      });
-      const linePosition = Number(result?.linePosition || 0) || 0;
-      const message = String(result?.message || "You are on the priority list.");
-      setHomeInterestState({
-        submitting: false,
-        success: message,
-        error: "",
-        linePosition,
-      });
-      trackEvent("mk_home_interest_submit", {
-        ok: true,
-        useCase,
-        linePosition,
-      });
-    } catch (error) {
-      const message = String(error?.message || "Could not submit your interest right now.");
-      setHomeInterestState({
-        submitting: false,
-        success: "",
-        error: message,
-        linePosition: 0,
-      });
-      trackEvent("mk_home_interest_submit", {
-        ok: false,
-        error: message.slice(0, 80),
-      });
     }
   };
 
@@ -964,16 +892,16 @@ const MarketingSite = () => {
             <>
               <section className="mk3-home-premium-shell mk3-zone" aria-label="BeauRocks premium launch">
                 <div className="mk3-home-premium-main">
-                  <div className="mk3-home-premium-kicker">Launch Focus: BeauRocks Account Access</div>
-                  <h1>Launch-Ready Karaoke Nights Start Here.</h1>
+                  <div className="mk3-home-premium-kicker">Simple Start</div>
+                  <h1>Find a room. Join fast. Run the night.</h1>
                   <p>
                     {homeHeroSubhead}
-                    {" "}Primary conversion flow: log in with your BeauRocks account, then jump into host controls.
+                    {" "}Start with the live map, then open host tools only when you need them.
                   </p>
                   <div className="mk3-home-premium-stats">
                     <span>{heroStats?.total > 0 ? `${heroStats.total.toLocaleString()} live listings` : "Live listings updating"}</span>
-                    <span>Host tools unlock after account login</span>
-                    <span>BeauRocks account access is one click away</span>
+                    <span>Map-first discovery</span>
+                    <span>One account for host + guest flows</span>
                   </div>
                   <div className="mk3-auth-cta-row mk3-home-primary-cta">
                     <button
@@ -987,162 +915,71 @@ const MarketingSite = () => {
                         });
                       }}
                     >
-                      {homeHeroPrimaryLabel}
+                      Open Discover Map
                     </button>
                     <button
                       type="button"
                       className="mk3-auth-cta-secondary"
                       onClick={() => {
-                        trackHomeConversionAction("hero_open_host_panel", "premium_home_hero");
-                        openHostPanelDirect("home_hero_host_panel");
+                        goToCampaignRoute(MARKETING_ROUTE_PAGES.hostAccess, {
+                          cta: "hero_login_beaurocks_account",
+                          source: "premium_home_hero",
+                          utmContent: "home_hero_primary",
+                        });
                       }}
                     >
-                      Open Host Panel
+                      {homeHeroPrimaryLabel}
                     </button>
                   </div>
                   <div className="mk3-actions-inline">
                     <button
                       type="button"
                       onClick={() => {
-                        trackHomeConversionAction("home_secondary_browse_live_listings", "home_primary_actions");
-                        navigate(MARKETING_ROUTE_PAGES.discover, "", withCampaignParams({ utm_content: "home_discover_quick" }));
+                        trackHomeConversionAction("home_quick_for_hosts", "home_primary_actions");
+                        navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "home_for_hosts_quick" }));
                       }}
                     >
-                      Browse Live Listings
+                      For Hosts
                     </button>
                     <button
                       type="button"
                       onClick={() => {
-                        trackHomeConversionAction("home_secondary_view_host_product", "home_primary_actions");
-                        navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "home_host_access_quick" }));
+                        trackHomeConversionAction("home_quick_for_venues", "home_primary_actions");
+                        navigate(MARKETING_ROUTE_PAGES.forVenues, "", withCampaignParams({ utm_content: "home_for_venues_quick" }));
                       }}
                     >
-                      View Host Product
+                      For Venues
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        trackHomeConversionAction("home_quick_for_performers", "home_primary_actions");
+                        navigate(MARKETING_ROUTE_PAGES.forPerformers, "", withCampaignParams({ utm_content: "home_for_performers_quick" }));
+                      }}
+                    >
+                      For Performers
                     </button>
                   </div>
                 </div>
-                <aside className="mk3-home-premium-side" aria-label="Tester fast lane">
-                  <strong>Tester Fast Lane</strong>
-                  <p>If you are already testing, jump directly into host controls and skip the long path.</p>
+                <aside className="mk3-home-premium-side" aria-label="Quick path">
+                  <strong>Start In 3 Steps</strong>
                   <div className="mk3-home-premium-side-list">
-                    <span>Open host panel instantly</span>
-                    <span>Use your room code and begin host flow</span>
-                    <span>Return here to submit launch feedback</span>
+                    <span>Open the map and pick a live room.</span>
+                    <span>Tap into details, then join or RSVP.</span>
+                    <span>Need control? Open Host Dashboard.</span>
                   </div>
                   <div className="mk3-auth-cta-row">
                     <button
                       type="button"
                       className="mk3-auth-cta-primary"
                       onClick={() => {
-                        trackHomeConversionAction("home_tester_fast_lane_open_host_panel", "home_fast_lane");
-                        openHostPanelDirect("home_tester_fast_lane");
+                        trackHomeConversionAction("home_quick_open_host_panel", "home_fast_lane");
+                        openHostPanelDirect("home_quick_host_panel");
                       }}
                     >
                       Open Host Panel
                     </button>
                   </div>
-                </aside>
-              </section>
-
-              <section className="mk3-home-launch-stack mk3-zone" aria-label="2026 launch path">
-                <article className="mk3-home-launch-timeline">
-                  <h2>Launch Plan</h2>
-                  <p>
-                    We are keeping launch scope tight: capture high-intent host interest, onboard qualified testers, and expand only when quality stays high.
-                  </p>
-                  <div className="mk3-home-launch-steps">
-                    <article>
-                      <span>Now</span>
-                      <strong>Capture Interest + Qualify Hosts</strong>
-                      <p>Collect launch intent and prioritize serious hosts for onboarding waves.</p>
-                    </article>
-                    <article>
-                      <span>Next</span>
-                      <strong>Scale By Quality Signals</strong>
-                      <p>Expand city-by-city using usage, retention, and host outcomes as gates.</p>
-                    </article>
-                  </div>
-                  <div className="mk3-actions-inline">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        trackHomeConversionAction("home_launch_plan_open_host_panel", "home_launch_plan");
-                        openHostPanelDirect("home_launch_plan_host_panel");
-                      }}
-                    >
-                      Open Host Panel Now
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        trackHomeConversionAction("home_launch_plan_view_host_product", "home_launch_plan");
-                        navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "home_launch_plan_host_access" }));
-                      }}
-                    >
-                      View Host Product Page
-                    </button>
-                  </div>
-                </article>
-                <aside className="mk3-home-interest-card">
-                  <h3>Get Priority Launch Updates</h3>
-                  <p>Join the launch queue. We prioritize outreach based on fit, readiness, and region.</p>
-                  <form onSubmit={onHomeInterestSubmit}>
-                    <label>
-                      Name
-                      <input
-                        type="text"
-                        value={homeInterestForm.name}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setHomeInterestForm((prev) => ({ ...prev, name: next }));
-                          setHomeInterestState((prev) => ({ ...prev, error: "", success: "" }));
-                        }}
-                        required
-                        maxLength={80}
-                      />
-                    </label>
-                    <label>
-                      Email
-                      <input
-                        type="email"
-                        value={homeInterestForm.email}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setHomeInterestForm((prev) => ({ ...prev, email: next }));
-                          setHomeInterestState((prev) => ({ ...prev, error: "", success: "" }));
-                        }}
-                        required
-                      />
-                    </label>
-                    <label>
-                      I am joining as
-                      <select
-                        value={homeInterestForm.useCase}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setHomeInterestForm((prev) => ({ ...prev, useCase: next }));
-                        }}
-                      >
-                        {HOME_INTEREST_USE_CASE_OPTIONS.map((option) => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <button type="submit" disabled={homeInterestState.submitting}>
-                      {homeInterestState.submitting ? "Saving..." : "Join Priority Queue"}
-                    </button>
-                  </form>
-                  {homeInterestState.success && (
-                    <div className="mk3-status">
-                      <strong>{homeInterestState.success}</strong>
-                      {homeInterestState.linePosition > 0 && (
-                        <span>{`Queue position: #${homeInterestState.linePosition}`}</span>
-                      )}
-                    </div>
-                  )}
-                  {homeInterestState.error && (
-                    <div className="mk3-status mk3-status-error">{homeInterestState.error}</div>
-                  )}
                 </aside>
               </section>
             </>
