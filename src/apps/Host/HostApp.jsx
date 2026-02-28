@@ -7188,23 +7188,50 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setView('panel');
             return true;
         } catch (e) {
-            const code = e?.code || '';
+            const errorCode = e?.code || '';
+            if (silent && isMarketingDemoEmbed && errorCode.includes('not-found')) {
+                try {
+                    const sequence = Date.now();
+                    await callFunction('runDemoDirectorAction', {
+                        roomCode: code,
+                        action: 'bootstrap',
+                        actionId: `host_embed_bootstrap_${sequence}`,
+                        sequence,
+                        sceneId: 'karaoke_kickoff',
+                        timelineMs: 0,
+                        progress: 0,
+                        playing: true,
+                        crowdSize: 12,
+                    });
+                    await assertRoomHostAccess(code);
+                    setRoomCode(code);
+                    setRoomCodeInput(code);
+                    setView('panel');
+                    return true;
+                } catch (seedError) {
+                    hostLogger.debug('Marketing demo embed room bootstrap failed', { roomCode: code, error: seedError });
+                    setRoomCode(code);
+                    setRoomCodeInput(code);
+                    setView('panel');
+                    return false;
+                }
+            }
             if (!silent) {
-                if (code.includes('not-found')) {
+                if (errorCode.includes('not-found')) {
                     toast(`Room ${(candidateCode || roomCodeInput || '').trim().toUpperCase()} not found`);
                     setEntryError(`Room ${(candidateCode || roomCodeInput || '').trim().toUpperCase()} not found.`);
-                } else if (code.includes('permission-denied')) {
+                } else if (errorCode.includes('permission-denied')) {
                     toast('Only room hosts can open host controls for this room.');
                     setEntryError('Only room hosts can open host controls for this room.');
-                } else if (code.includes('unauthenticated')) {
+                } else if (errorCode.includes('unauthenticated')) {
                     toast('You are signed out. Please retry auth, then open room again.');
                     setEntryError('You are signed out. Retry auth, then open room again.');
-                } else if (code.includes('unavailable') || code.includes('network')) {
+                } else if (errorCode.includes('unavailable') || errorCode.includes('network')) {
                     toast('Network issue while opening room. Please retry.');
                     setEntryError('Network issue while opening room. Please retry.');
                 } else {
-                    toast(`Failed to open room${code ? ` (${code})` : ''}`);
-                    setEntryError(`Failed to open room${code ? ` (${code})` : ''}.`);
+                    toast(`Failed to open room${errorCode ? ` (${errorCode})` : ''}`);
+                    setEntryError(`Failed to open room${errorCode ? ` (${errorCode})` : ''}.`);
                 }
             }
             return false;

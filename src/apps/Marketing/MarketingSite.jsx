@@ -562,6 +562,13 @@ const MarketingSite = () => {
       }, window.location);
     window.location.href = nextHref;
   }, [hasFullAccount, hostDashboardHref]);
+  const trackHomeConversionAction = useCallback((cta = "", surface = "home") => {
+    trackEvent("mk_home_conversion_click", {
+      cta: String(cta || "unknown"),
+      surface: String(surface || "home"),
+      campaign_variant: campaignContext.variant,
+    });
+  }, [campaignContext.variant]);
   const homeHeroPrimaryLabel = campaignContext.variant === "paid"
     ? "Start Founding Host Application"
     : campaignContext.variant === "social"
@@ -1335,8 +1342,7 @@ const MarketingSite = () => {
                   <h1>Launch-Ready Karaoke Nights Start Here.</h1>
                   <p>
                     {homeHeroSubhead}
-                    {" "}
-                    We are optimizing this page for two actions only: capturing qualified launch interest and getting active testers into host controls fast.
+                    {" "}Primary conversion flow: request host access or jump straight into host controls.
                   </p>
                   <div className="mk3-home-premium-stats">
                     <span>{heroStats?.total > 0 ? `${heroStats.total.toLocaleString()} live listings` : "Live listings updating"}</span>
@@ -1360,7 +1366,10 @@ const MarketingSite = () => {
                     <button
                       type="button"
                       className="mk3-auth-cta-secondary"
-                      onClick={() => openHostPanelDirect("home_hero_host_panel")}
+                      onClick={() => {
+                        trackHomeConversionAction("hero_open_host_panel", "premium_home_hero");
+                        openHostPanelDirect("home_hero_host_panel");
+                      }}
                     >
                       Open Host Panel
                     </button>
@@ -1369,20 +1378,20 @@ const MarketingSite = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        trackEvent("mk_home_tester_fast_lane_click", { source: "home_primary_actions", target: "for_hosts" });
-                        navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "home_host_access_quick" }));
-                      }}
-                    >
-                      Start Hosting
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        trackEvent("mk_home_tester_fast_lane_click", { source: "home_primary_actions", target: "discover" });
+                        trackHomeConversionAction("home_secondary_browse_live_listings", "home_primary_actions");
                         navigate(MARKETING_ROUTE_PAGES.discover, "", withCampaignParams({ utm_content: "home_discover_quick" }));
                       }}
                     >
                       Browse Live Listings
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        trackHomeConversionAction("home_secondary_view_host_product", "home_primary_actions");
+                        navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "home_host_access_quick" }));
+                      }}
+                    >
+                      View Host Product
                     </button>
                   </div>
                 </div>
@@ -1398,7 +1407,10 @@ const MarketingSite = () => {
                     <button
                       type="button"
                       className="mk3-auth-cta-primary"
-                      onClick={() => openHostPanelDirect("home_tester_fast_lane")}
+                      onClick={() => {
+                        trackHomeConversionAction("home_tester_fast_lane_open_host_panel", "home_fast_lane");
+                        openHostPanelDirect("home_tester_fast_lane");
+                      }}
                     >
                       Open Host Panel
                     </button>
@@ -1427,13 +1439,19 @@ const MarketingSite = () => {
                   <div className="mk3-actions-inline">
                     <button
                       type="button"
-                      onClick={() => openHostPanelDirect("home_launch_plan_host_panel")}
+                      onClick={() => {
+                        trackHomeConversionAction("home_launch_plan_open_host_panel", "home_launch_plan");
+                        openHostPanelDirect("home_launch_plan_host_panel");
+                      }}
                     >
                       Open Host Panel Now
                     </button>
                     <button
                       type="button"
-                      onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "home_launch_plan_host_access" }))}
+                      onClick={() => {
+                        trackHomeConversionAction("home_launch_plan_view_host_product", "home_launch_plan");
+                        navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "home_launch_plan_host_access" }));
+                      }}
                     >
                       View Host Product Page
                     </button>
