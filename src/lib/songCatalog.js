@@ -1,5 +1,67 @@
 import { callFunction } from './firebase';
 
+const CATALOG_WRITE_BLOCK_STORAGE_KEY = 'bross_catalog_write_block_until_ms_v1';
+const CATALOG_WRITE_BLOCK_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+const readCatalogWriteBlockUntil = () => {
+  if (typeof window === 'undefined') return 0;
+  try {
+    const raw = window.localStorage.getItem(CATALOG_WRITE_BLOCK_STORAGE_KEY);
+    const parsed = Number(raw || 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0;
+  }
+};
+
+let catalogWriteBlockedUntilMs = readCatalogWriteBlockUntil();
+
+const persistCatalogWriteBlockUntil = (untilMs = 0) => {
+  catalogWriteBlockedUntilMs = Math.max(0, Number(untilMs || 0));
+  if (typeof window === 'undefined') return;
+  try {
+    if (catalogWriteBlockedUntilMs > 0) {
+      window.localStorage.setItem(CATALOG_WRITE_BLOCK_STORAGE_KEY, String(catalogWriteBlockedUntilMs));
+    } else {
+      window.localStorage.removeItem(CATALOG_WRITE_BLOCK_STORAGE_KEY);
+    }
+  } catch {
+    // Swallow localStorage errors in private browsing or strict environments.
+  }
+};
+
+const isCatalogWriteTemporarilyBlocked = () => (
+  Number(catalogWriteBlockedUntilMs || 0) > Date.now()
+);
+
+const markCatalogWriteBlocked = () => {
+  persistCatalogWriteBlockUntil(Date.now() + CATALOG_WRITE_BLOCK_WINDOW_MS);
+};
+
+const clearCatalogWriteBlocked = () => {
+  persistCatalogWriteBlockUntil(0);
+};
+
+const isPermissionDeniedError = (error = null) => {
+  const code = String(error?.code || '').toLowerCase();
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    code.includes('permission-denied')
+    || code.includes('forbidden')
+    || message.includes('permission-denied')
+    || message.includes('403')
+    || message.includes('host or moderator access required')
+    || message.includes('catalog')
+  );
+};
+
+const shouldSkipCatalogWrites = () => isCatalogWriteTemporarilyBlocked();
+
+const setCatalogWriteAccess = (allowed = null) => {
+  if (allowed === true) clearCatalogWriteBlocked();
+  else if (allowed === false) markCatalogWriteBlocked();
+};
+
 const normalizeText = (value = '') => {
   return value
     .toLowerCase()
@@ -33,6 +95,10 @@ const ensureSong = async ({
   const safeTitle = (title || '').trim();
   if (!safeTitle) return null;
   const safeArtist = (artist || 'Unknown').trim() || 'Unknown';
+  const fallbackSongId = buildSongKey(safeTitle, safeArtist);
+  if (shouldSkipCatalogWrites()) {
+    return { songId: fallbackSongId };
+  }
   const payload = {
     title: safeTitle,
     artist: safeArtist,
@@ -43,8 +109,17 @@ const ensureSong = async ({
     verifyMeta,
     verifiedBy
   };
-  const res = await callFunction('ensureSong', payload);
-  return { songId: res?.songId || buildSongKey(safeTitle, safeArtist) };
+  try {
+    const res = await callFunction('ensureSong', payload);
+    clearCatalogWriteBlocked();
+    return { songId: res?.songId || fallbackSongId };
+  } catch (error) {
+    if (isPermissionDeniedError(error)) {
+      markCatalogWriteBlocked();
+      return { songId: fallbackSongId };
+    }
+    throw error;
+  }
 };
 
 const ensureTrack = async ({
@@ -59,18 +134,30 @@ const ensureTrack = async ({
   addedBy
 } = {}) => {
   if (!songId) return null;
-  const res = await callFunction('ensureTrack', {
-    songId,
-    source: source || 'custom',
-    mediaUrl: mediaUrl || '',
-    appleMusicId: appleMusicId || '',
-    label: label || null,
-    duration: duration ?? null,
-    audioOnly: !!audioOnly,
-    backingOnly: !!backingOnly,
-    addedBy: addedBy || ''
-  });
-  return { trackId: res?.trackId || null };
+  if (shouldSkipCatalogWrites()) {
+    return { trackId: null };
+  }
+  try {
+    const res = await callFunction('ensureTrack', {
+      songId,
+      source: source || 'custom',
+      mediaUrl: mediaUrl || '',
+      appleMusicId: appleMusicId || '',
+      label: label || null,
+      duration: duration ?? null,
+      audioOnly: !!audioOnly,
+      backingOnly: !!backingOnly,
+      addedBy: addedBy || ''
+    });
+    clearCatalogWriteBlocked();
+    return { trackId: res?.trackId || null };
+  } catch (error) {
+    if (isPermissionDeniedError(error)) {
+      markCatalogWriteBlocked();
+      return { trackId: null };
+    }
+    throw error;
+  }
 };
 
 const resolveSongCatalog = async ({ songId, title, artist } = {}) => {
@@ -117,6 +204,7 @@ const isSongVerified = (songDoc) => {
 
 export {
   buildSongKey,
+  setCatalogWriteAccess,
   ensureSong,
   ensureTrack,
   resolveSongCatalog,

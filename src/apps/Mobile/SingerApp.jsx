@@ -6681,7 +6681,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     );
     const lobbyForcedObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
     const lobbyObjectiveMode = lobbyForcedObjectiveMode || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
-    const lobbyObjectiveLabel = lobbyObjectiveMode?.label || 'Volley Orb';
+    const _lobbyObjectiveLabel = lobbyObjectiveMode?.label || 'Volley Orb';
     const lobbyObjectiveMobileGoal = lobbyObjectiveMode?.mobileGoal || 'Keep the orb airborne';
     const lobbyObjectiveStreakLabel = lobbyObjectiveMode?.id === 'team_pong' ? 'Rally' : 'Streak';
     const lobbyVolleyModeForced = isCrowdObjectiveLightMode(room?.lightMode);
@@ -6703,8 +6703,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     );
     const lobbyVolleyTimeoutMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.STREAK_TIMEOUT_MS || 6200);
     const lobbyVolleyAgeMs = Math.max(0, lobbyVolleyNowMs - Number(lobbyVolleyPreview?.lastInteractionAtMs || 0));
-    const lobbyVolleyStreakDecayPct = Math.max(0, Math.min(100, Math.round(100 - ((lobbyVolleyAgeMs / Math.max(1, lobbyVolleyTimeoutMs)) * 100))));
-    const lobbyVolleyEnergyLive = Math.max(0, Math.min(100, Math.round(
+    const _lobbyVolleyStreakDecayPct = Math.max(0, Math.min(100, Math.round(100 - ((lobbyVolleyAgeMs / Math.max(1, lobbyVolleyTimeoutMs)) * 100))));
+    const _lobbyVolleyEnergyLive = Math.max(0, Math.min(100, Math.round(
         Number(lobbyVolleyPreview?.energy || 0) - ((lobbyVolleyAgeMs / 1000) * 0.28)
     )));
     const lobbyVolleyParticipants = getActiveParticipants(lobbyVolleyPreview, lobbyVolleyNowMs).slice(0, 4);

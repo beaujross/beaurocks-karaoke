@@ -54,8 +54,63 @@ const SECURITY_ALERT_WINDOW_MS = 15 * 60 * 1000;
 const youtubeSearchCache = new Map();
 const YOUTUBE_SEARCH_CACHE_TTL_MS = 30000;
 const YOUTUBE_SEARCH_CACHE_MAX_KEYS = 120;
+const SUPER_ADMIN_EMAIL_DEFAULT = "hello@beauross.com";
+
+const parseCsvEnvTokens = (value = "") =>
+  String(value || "")
+    .split(",")
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean);
+
+const normalizeEmailToken = (value = "") => String(value || "").trim().toLowerCase();
+const normalizeUidToken = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 180);
+
+const SUPER_ADMIN_EMAILS = new Set(
+  parseCsvEnvTokens(process.env.SUPER_ADMIN_EMAILS || SUPER_ADMIN_EMAIL_DEFAULT)
+    .map(normalizeEmailToken)
+    .filter(Boolean)
+);
+const SUPER_ADMIN_UIDS = new Set(
+  parseCsvEnvTokens(process.env.SUPER_ADMIN_UIDS || "")
+    .map(normalizeUidToken)
+    .filter(Boolean)
+);
+const SUPER_ADMIN_UID_CACHE = new Map();
+const SUPER_ADMIN_UID_CACHE_TTL_MS = 10 * 60 * 1000;
 
 const nowMs = () => Date.now();
+
+const isSuperAdminUid = async (uid = "") => {
+  const safeUid = normalizeUidToken(uid);
+  if (!safeUid) return false;
+  if (SUPER_ADMIN_UIDS.has(safeUid)) return true;
+  const now = nowMs();
+  const cached = SUPER_ADMIN_UID_CACHE.get(safeUid);
+  if (cached && Number(cached.expiresAt || 0) > now) {
+    return !!cached.value;
+  }
+  try {
+    const userRecord = await admin.auth().getUser(safeUid);
+    const email = normalizeEmailToken(userRecord?.email || "");
+    const emailVerified = userRecord?.emailVerified === true;
+    const allowed = !!email && emailVerified && SUPER_ADMIN_EMAILS.has(email);
+    SUPER_ADMIN_UID_CACHE.set(safeUid, {
+      value: allowed,
+      expiresAt: now + SUPER_ADMIN_UID_CACHE_TTL_MS,
+    });
+    return allowed;
+  } catch (_error) {
+    SUPER_ADMIN_UID_CACHE.set(safeUid, {
+      value: false,
+      expiresAt: now + (60 * 1000),
+    });
+    return false;
+  }
+};
 
 const readYoutubeSearchCache = (cacheKey = "") => {
   if (!cacheKey) return null;
@@ -807,6 +862,12 @@ const sanitizeOrgToken = (value = "") =>
 const buildOrgIdForUid = (uid = "") => {
   const token = sanitizeOrgToken(uid) || "owner";
   return `org_${token}`;
+};
+
+const normalizeOrganizationMemberRole = (value = "", fallback = "member") => {
+  const token = String(value || "").trim().toLowerCase();
+  if (token === "owner" || token === "admin" || token === "member") return token;
+  return fallback;
 };
 
 const normalizeOrgName = (value = "", uid = "") => {
@@ -1764,6 +1825,14 @@ const directoryRoleDocRef = (uid = "") => admin.firestore().collection("director
 
 const getDirectoryModeratorAccess = async (uid = "") => {
   if (!uid) return { isModerator: false, isAdmin: false, roles: [] };
+  if (await isSuperAdminUid(uid)) {
+    return {
+      isModerator: true,
+      isAdmin: true,
+      roles: ["directory_admin", "super_admin"],
+      mode: "super_admin",
+    };
+  }
   const roleSnap = await directoryRoleDocRef(uid).get();
   const roles = Array.isArray(roleSnap.data()?.roles)
     ? roleSnap.data().roles.map((entry) => normalizeDirectoryToken(entry, 40)).filter(Boolean)
@@ -1791,6 +1860,9 @@ const hasMarketingPrivateHostAccess = async (uid = "") => {
 const requireMarketingPrivateHostAccess = async (uid = "", options = {}) => {
   if (!uid) {
     throw new HttpsError("unauthenticated", options.authMessage || "Sign in required.");
+  }
+  if (await isSuperAdminUid(uid)) {
+    return { allowed: true, mode: "super_admin" };
   }
   if (!MARKETING_PRIVATE_HOST_ACCESS_ENFORCED) {
     return { allowed: true, mode: "disabled" };
@@ -2323,18 +2395,46 @@ const ensureOrganizationForUser = async ({ uid, orgName = "" }) => {
   const userRef = db.collection("users").doc(uid);
   const userSnap = await userRef.get();
   const userData = userSnap.data() || {};
-  const existingOrgId = String(userData?.organization?.orgId || "").trim();
-  const orgId = sanitizeOrgToken(existingOrgId) ? existingOrgId : buildOrgIdForUid(uid);
-  const role = String(userData?.organization?.role || "owner").trim() || "owner";
+  const claimedOrgIdRaw = String(userData?.organization?.orgId || "").trim();
+  const claimedOrgId = sanitizeOrgToken(claimedOrgIdRaw) || "";
+  const ownerScopedOrgId = buildOrgIdForUid(uid);
+  let orgId = ownerScopedOrgId;
+  let role = "owner";
+
+  if (claimedOrgId && claimedOrgId !== ownerScopedOrgId) {
+    try {
+      const claimedMemberSnap = await db
+        .collection(ORGS_COLLECTION)
+        .doc(claimedOrgId)
+        .collection("members")
+        .doc(uid)
+        .get();
+      if (claimedMemberSnap.exists) {
+        orgId = claimedOrgId;
+        role = normalizeOrganizationMemberRole(claimedMemberSnap.data()?.role || "member", "member");
+      }
+    } catch (_error) {
+      orgId = ownerScopedOrgId;
+      role = "owner";
+    }
+  }
+
   const orgRef = orgsCollection().doc(orgId);
   const memberRef = orgRef.collection("members").doc(uid);
   const subscriptionRef = orgRef.collection("subscription").doc("current");
   const entitlementsRef = orgRef.collection("entitlements").doc("current");
   const now = admin.firestore.FieldValue.serverTimestamp();
 
-  const orgSnap = await orgRef.get();
+  const [orgSnap, memberSnap] = await Promise.all([
+    orgRef.get(),
+    memberRef.get(),
+  ]);
+  if (memberSnap.exists) {
+    role = normalizeOrganizationMemberRole(memberSnap.data()?.role || role, role);
+  }
   const batch = db.batch();
   if (!orgSnap.exists) {
+    role = "owner";
     batch.set(orgRef, {
       orgId,
       name: normalizeOrgName(orgName, uid),
@@ -2432,14 +2532,51 @@ const readOrganizationEntitlements = async (orgId = "") => {
 const resolveUserEntitlements = async (uid) => {
   const db = admin.firestore();
   const { orgId, role } = await ensureOrganizationForUser({ uid });
-  const [entitlements, userSnap] = await Promise.all([
+  const [entitlements] = await Promise.all([
     readOrganizationEntitlements(orgId),
-    db.collection("users").doc(uid).get(),
   ]);
-  const userData = userSnap.data() || {};
-  const legacyTier = String(userData?.subscription?.tier || "").toLowerCase();
+  const superAdmin = await isSuperAdminUid(uid);
+  if (superAdmin) {
+    return {
+      orgId,
+      role: "owner",
+      planId: entitlements.planId || "host_annual",
+      status: "active",
+      provider: "super_admin",
+      renewalAtMs: entitlements.renewalAtMs,
+      cancelAtPeriodEnd: false,
+      source: "super_admin",
+      capabilities: normalizeCapabilities({
+        ...BASE_CAPABILITIES,
+        "ai.generate_content": true,
+        "api.youtube_data": true,
+        "api.apple_music": true,
+        "billing.invoice_drafts": true,
+        "workspace.onboarding": true,
+      }),
+    };
+  }
   const capabilities = normalizeCapabilities(entitlements.capabilities || {});
-  if (legacyTier === "host" || legacyTier === "host_plus") {
+  const allowLegacyTierEntitlements = ["1", "true", "yes", "on"].includes(
+    String(process.env.ALLOW_LEGACY_USER_TIER_ENTITLEMENTS || "").trim().toLowerCase()
+  );
+  if (allowLegacyTierEntitlements) {
+    const userSnap = await db.collection("users").doc(uid).get();
+    const userData = userSnap.data() || {};
+    const legacyTier = String(userData?.subscription?.tier || "").toLowerCase();
+    if (legacyTier !== "host" && legacyTier !== "host_plus") {
+      return {
+        orgId,
+        role,
+        planId: entitlements.planId,
+        status: entitlements.status,
+        provider: entitlements.provider,
+        renewalAtMs: entitlements.renewalAtMs,
+        cancelAtPeriodEnd: entitlements.cancelAtPeriodEnd,
+        source: entitlements.source,
+        capabilities,
+      };
+    }
     capabilities["ai.generate_content"] = true;
     capabilities["api.youtube_data"] = true;
     capabilities["api.apple_music"] = true;
@@ -2613,6 +2750,7 @@ const ensureRoomHostAccess = async ({
   if (!callerUid) {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
+  const superAdmin = await isSuperAdminUid(callerUid);
 
   const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
   const roomSnap = tx ? await tx.get(roomRef) : await roomRef.get();
@@ -2625,7 +2763,7 @@ const ensureRoomHostAccess = async ({
   const hostUids = Array.isArray(roomData.hostUids)
     ? roomData.hostUids.filter((u) => typeof u === "string")
     : [];
-  const isHost = callerUid === hostUid || hostUids.includes(callerUid);
+  const isHost = superAdmin || callerUid === hostUid || hostUids.includes(callerUid);
   if (!isHost) {
     throw new HttpsError("permission-denied", deniedMessage);
   }
@@ -3585,6 +3723,8 @@ const fetchAiLyricsFallbackText = async (title, artist) => {
 
 exports.itunesSearch = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "itunes");
+  requireAuth(request);
+  enforceAppCheckIfEnabled(request, "itunes_search");
   const term = request.data?.term || "";
   ensureString(term, "term");
   const limit = clampNumber(request.data?.limit || 6, 1, 25, 6);
@@ -3646,9 +3786,11 @@ exports.ensureTrack = onCall({ cors: true }, async (request) => {
 });
 
 exports.logPerformance = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "log_performance", { perMinute: 24, perHour: 240 });
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
+  enforceAppCheckIfEnabled(request, "log_performance");
   const data = request.data || {};
   const songTitle = (data.songTitle || data.title || "").trim();
   if (!songTitle) {
@@ -4328,7 +4470,7 @@ exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asyn
 });
 
 exports.geminiGenerate = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async (request) => {
-  checkRateLimit(request.rawRequest, "gemini");
+  checkRateLimit(request.rawRequest, "gemini", { perMinute: 10, perHour: 120 });
   const uid = requireAuth(request);
   const entitlements = await resolveUserEntitlements(uid);
   let aiDemoBypass = false;
@@ -4440,7 +4582,9 @@ const cacheSongLyricsFromQueueDoc = async (data = {}, verifiedBy = "queue") => {
 };
 
 exports.resolveSongCatalog = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "resolve_song_catalog", { perMinute: 45, perHour: 500 });
   requireAuth(request);
+  enforceAppCheckIfEnabled(request, "resolve_song_catalog");
   const data = request.data || {};
   const rawSongId = (data.songId || "").trim();
   const title = (data.title || "").trim();
@@ -7193,6 +7337,7 @@ exports.runDemoDirectorAction = onCall({ cors: true }, async (request) => {
     checkRateLimit(request.rawRequest, "run_demo_director_action", { perMinute: 120, perHour: 1200 });
     enforceAppCheckIfEnabled(request, "run_demo_director_action");
     const authedUid = requireAuth(request);
+    const superAdmin = await isSuperAdminUid(authedUid);
     payload = normalizeDemoDirectorPayload(request.data || {});
     safeRoomCode = payload.roomCode;
 
@@ -7231,7 +7376,7 @@ exports.runDemoDirectorAction = onCall({ cors: true }, async (request) => {
         const hostUids = Array.isArray(roomData.hostUids)
           ? roomData.hostUids.filter((uid) => typeof uid === "string")
           : [];
-        const isHost = authedUid === hostUid || hostUids.includes(authedUid);
+        const isHost = superAdmin || authedUid === hostUid || hostUids.includes(authedUid);
         if (!isHost) {
           throw new HttpsError("permission-denied", "Only demo room hosts can drive demo director sync.");
         }
@@ -7704,10 +7849,11 @@ exports.createSubscriptionPortalSession = onCall(
     const callerUid = requireAuth(request);
     enforceAppCheckIfEnabled(request, "create_subscription_portal");
     const { orgId, role } = await ensureOrganizationForUser({ uid: callerUid });
+    const superAdmin = await isSuperAdminUid(callerUid);
     if (!orgId) {
       throw new HttpsError("failed-precondition", "Organization is not initialized.");
     }
-    if (!["owner", "admin"].includes(role)) {
+    if (!superAdmin && !["owner", "admin"].includes(role)) {
       throw new HttpsError("permission-denied", "Only organization owners/admins can manage billing.");
     }
     const subSnap = await orgsCollection()

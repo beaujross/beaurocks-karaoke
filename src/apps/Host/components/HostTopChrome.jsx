@@ -58,6 +58,8 @@ const HostTopChrome = ({
     setAutoPlayMedia,
     autoDj = false,
     setAutoDj,
+    autoLyricsOnQueue = false,
+    setAutoLyricsOnQueue,
     toggleHowToPlay,
     marqueeEnabled = false,
     setMarqueeEnabled,
@@ -189,7 +191,11 @@ const HostTopChrome = ({
     const tipCtaActive = room?.activeScreen === 'tipping';
     const howToPlayActive = !!room?.howToPlay?.active;
     const lobbyVolleyEnabled = room?.lobbyVolleyEnabled !== false;
-    const activeAutomationCount = Number(!!autoPlayMedia) + Number(!!autoBgMusic) + Number(!!autoDj) + Number(!!room?.bouncerMode);
+    const activeAutomationCount = Number(!!autoPlayMedia)
+        + Number(!!autoBgMusic)
+        + Number(!!autoDj)
+        + Number(!!autoLyricsOnQueue)
+        + Number(!!room?.bouncerMode);
     const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive) + Number(popTriviaActive);
     const quickMenuPanelClass = 'absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[80]';
     const quickMenuScrollClass = 'overflow-y-auto custom-scrollbar overscroll-contain';
@@ -431,6 +437,11 @@ const HostTopChrome = ({
         const next = !autoDj;
         setAutoDj?.(next);
         await updateRoom({ autoDj: next });
+    };
+    const toggleAutoLyricsQueue = async () => {
+        const next = !autoLyricsOnQueue;
+        setAutoLyricsOnQueue?.(next);
+        await updateRoom({ autoLyricsOnQueue: next });
     };
     const toggleOverlayScreen = async (screenId) => {
         const nextScreen = room?.activeScreen === screenId ? 'stage' : screenId;
@@ -733,6 +744,22 @@ const HostTopChrome = ({
                                         Auto DJ Queue
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{autoDj ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={toggleAutoLyricsQueue}
+                                    data-feature-id="deck-auto-lyrics-queue-toggle"
+                                    className={`${styles.btnStd} ${autoLyricsOnQueue ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    title={aiToolsConnected
+                                        ? 'Auto-generate lyrics for queued tracks when lyrics are missing.'
+                                        : 'AI tools are currently unavailable; this setting is saved and will activate when AI tools are enabled.'}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-file-lines"></i>
+                                        Auto Lyrics (AI)
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">
+                                        {autoLyricsOnQueue ? (aiToolsConnected ? 'On' : 'Armed') : 'Off'}
+                                    </span>
                                 </button>
                                 <button
                                     onClick={async () => {

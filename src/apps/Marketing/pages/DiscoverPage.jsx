@@ -154,6 +154,95 @@ const normalizeLocation = (entry = {}) => {
   return { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
 };
 
+const normalizeLookupToken = (value = "") =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const buildVenueLookupKey = ({ venueName = "", city = "", state = "" } = {}) => {
+  const nameToken = normalizeLookupToken(venueName);
+  if (!nameToken) return "";
+  const cityToken = normalizeLookupToken(city);
+  const stateToken = normalizeLookupToken(state);
+  return [nameToken, cityToken, stateToken].filter(Boolean).join("|");
+};
+
+const toLocationFields = (entry = {}) => ({
+  address1: String(entry?.address1 || entry?.address || "").trim(),
+  city: String(entry?.city || "").trim(),
+  state: String(entry?.state || "").trim(),
+  postalCode: String(entry?.postalCode || "").trim(),
+  country: String(entry?.country || "").trim(),
+});
+
+const mergeLocationFields = (primary = {}, fallback = {}) => ({
+  address1: String(primary?.address1 || fallback?.address1 || "").trim(),
+  city: String(primary?.city || fallback?.city || "").trim(),
+  state: String(primary?.state || fallback?.state || "").trim(),
+  postalCode: String(primary?.postalCode || fallback?.postalCode || "").trim(),
+  country: String(primary?.country || fallback?.country || "").trim(),
+});
+
+const buildVenueLocationIndex = (venues = []) => {
+  const byVenueId = new Map();
+  const byVenueKey = new Map();
+  venues.forEach((venue) => {
+    const venueId = String(venue?.id || "").trim();
+    const venueName = String(venue?.title || venue?.venueName || "").trim();
+    const locationFields = toLocationFields(venue);
+    const location = normalizeLocation(venue);
+    const payload = { location, locationFields };
+    if (venueId && !byVenueId.has(venueId)) byVenueId.set(venueId, payload);
+    const venueKey = buildVenueLookupKey({
+      venueName,
+      city: locationFields.city,
+      state: locationFields.state,
+    });
+    if (venueKey && !byVenueKey.has(venueKey)) byVenueKey.set(venueKey, payload);
+  });
+  return { byVenueId, byVenueKey };
+};
+
+const resolveListingLocationData = (entry = {}, venueIndex = null) => {
+  const locationFields = toLocationFields(entry);
+  const directLocation = normalizeLocation(entry);
+  let source = directLocation ? "entry" : "missing";
+  let fallbackData = null;
+
+  const venueId = String(entry?.venueId || "").trim();
+  if (venueIndex && venueId) {
+    fallbackData = venueIndex.byVenueId.get(venueId) || null;
+    if (!directLocation && fallbackData?.location) source = "venue_id";
+  }
+  if ((!fallbackData || !fallbackData.location) && venueIndex) {
+    const venueKey = buildVenueLookupKey({
+      venueName: entry?.venueName || entry?.title,
+      city: locationFields.city || entry?.city,
+      state: locationFields.state || entry?.state,
+    });
+    if (venueKey) {
+      const keyMatch = venueIndex.byVenueKey.get(venueKey) || null;
+      if (keyMatch) {
+        fallbackData = fallbackData
+          ? {
+            location: fallbackData.location || keyMatch.location || null,
+            locationFields: mergeLocationFields(fallbackData.locationFields || {}, keyMatch.locationFields || {}),
+          }
+          : keyMatch;
+        if (!directLocation && fallbackData?.location) source = "venue_match";
+      }
+    }
+  }
+
+  return {
+    location: directLocation || fallbackData?.location || null,
+    locationFields: mergeLocationFields(locationFields, fallbackData?.locationFields || {}),
+    locationSource: source,
+  };
+};
+
 const toAddressLine = (entry = {}) =>
   [entry?.address1, entry?.city, entry?.state, entry?.postalCode, entry?.country]
     .filter(Boolean)
@@ -234,12 +323,18 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const mapsApiKey = String(options?.mapsApiKey || "").trim();
   const listingType = normalizeListingType(entry?.listingType || fallbackType);
   const meta = MAP_TYPE_META[listingType] || MAP_TYPE_META.venue;
-  const location = normalizeLocation(entry);
+  const location = options?.resolvedLocation || normalizeLocation(entry);
+  const resolvedFields = options?.resolvedLocationFields || {};
+  const address1 = String(resolvedFields?.address1 || entry?.address1 || entry?.address || "").trim();
+  const city = String(resolvedFields?.city || entry?.city || "").trim();
+  const state = String(resolvedFields?.state || entry?.state || "").trim();
+  const postalCode = String(resolvedFields?.postalCode || entry?.postalCode || "").trim();
+  const country = String(resolvedFields?.country || entry?.country || "").trim();
   const startsAtMs = Number(entry?.startsAtMs || 0) || 0;
   const mediaType = listingType === "room_session" ? "session" : listingType;
   const explicitImageCandidates = resolveListingImageCandidates(entry, mediaType, { includeFallback: false })
     .filter((url) => !isScreenPlaceholderImage(url));
-  const addressLine = toAddressLine(entry);
+  const addressLine = toAddressLine({ address1, city, state, postalCode, country });
   const venueImageUrl = buildStreetViewImageUrl({ location, addressLine, mapsApiKey });
   const mapFallbackImageUrl = buildStaticMapImageUrl({ location, mapsApiKey });
   const publicLocationFallbackUrl = buildPublicLocationImageUrl({ location });
@@ -256,8 +351,8 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const hostUid = String(entry?.hostUid || "").trim();
   const hostName = String(entry?.hostName || "").trim();
   const avatarUrl = resolveProfileAvatarUrl(entry);
-  const locationLabel = [entry?.city, entry?.state, entry?.address1].filter(Boolean).join(", ");
-  const subtitle = locationLabel || [entry?.city, entry?.state].filter(Boolean).join(", ") || "Location pending";
+  const locationLabel = [city, state, address1].filter(Boolean).join(", ");
+  const subtitle = locationLabel || [city, state].filter(Boolean).join(", ") || "Location pending";
   const timeLabel = listingType === "venue"
     ? String(entry?.karaokeNightsLabel || "").trim()
     : startsAtMs > 0 ? formatDateTime(startsAtMs) : "Time TBD";
@@ -298,6 +393,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     cadenceBadges,
     startsAtMs,
     location,
+    locationSource: String(options?.locationSource || "").trim() || (location ? "entry" : "missing"),
   };
 };
 
@@ -375,6 +471,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState("");
   const [rankingNowMs, setRankingNowMs] = useState(() => Date.now());
+  const [isMobileViewport, setIsMobileViewport] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    return window.matchMedia("(max-width: 1120px)").matches;
+  });
+  const [mobileSurface, setMobileSurface] = useState("list");
+  const [mobileFiltersExpanded, setMobileFiltersExpanded] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
+    return !window.matchMedia("(max-width: 1120px)").matches;
+  });
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -392,19 +497,67 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     enabled: mapEnabled,
     apiKey: String(mapsConfig?.apiKey || ""),
   });
+  const venueLocationIndex = useMemo(
+    () => buildVenueLocationIndex(Array.isArray(rawData?.venues) ? rawData.venues : []),
+    [rawData]
+  );
 
   useEffect(() => {
     const timer = window.setInterval(() => setRankingNowMs(Date.now()), 60 * 1000);
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
+    const media = window.matchMedia("(max-width: 1120px)");
+    const syncViewport = (matches) => {
+      const isMobile = !!matches;
+      setIsMobileViewport(isMobile);
+      if (!isMobile) {
+        setMobileFiltersExpanded(true);
+        setMobileSurface("list");
+      }
+    };
+    const onViewportChange = (event) => syncViewport(event?.matches);
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", onViewportChange);
+      return () => media.removeEventListener("change", onViewportChange);
+    }
+    media.addListener(onViewportChange);
+    return () => media.removeListener(onViewportChange);
+  }, []);
+
   const allListings = useMemo(() => {
     const next = [];
-    data.events.forEach((entry) => next.push(toListing(entry, "event", { mapsApiKey })));
-    data.sessions.forEach((entry) => next.push(toListing(entry, "room_session", { mapsApiKey })));
-    data.venues.forEach((entry) => next.push(toListing(entry, "venue", { mapsApiKey })));
+    data.events.forEach((entry) => {
+      const resolved = resolveListingLocationData(entry, venueLocationIndex);
+      next.push(toListing(entry, "event", {
+        mapsApiKey,
+        resolvedLocation: resolved.location,
+        resolvedLocationFields: resolved.locationFields,
+        locationSource: resolved.locationSource,
+      }));
+    });
+    data.sessions.forEach((entry) => {
+      const resolved = resolveListingLocationData(entry, venueLocationIndex);
+      next.push(toListing(entry, "room_session", {
+        mapsApiKey,
+        resolvedLocation: resolved.location,
+        resolvedLocationFields: resolved.locationFields,
+        locationSource: resolved.locationSource,
+      }));
+    });
+    data.venues.forEach((entry) => {
+      const resolved = resolveListingLocationData(entry, venueLocationIndex);
+      next.push(toListing(entry, "venue", {
+        mapsApiKey,
+        resolvedLocation: resolved.location,
+        resolvedLocationFields: resolved.locationFields,
+        locationSource: resolved.locationSource,
+      }));
+    });
     return next;
-  }, [data.events, data.sessions, data.venues, mapsApiKey]);
+  }, [data.events, data.sessions, data.venues, mapsApiKey, venueLocationIndex]);
 
   const filteredByType = useMemo(() => {
     if (typeFilter === "all") return allListings;
@@ -577,6 +730,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   );
   const featuredListing = selectedListing;
 
+  const resetDiscoverFilters = useCallback(() => {
+    setSearch("");
+    setRegion("");
+    setTypeFilter("all");
+    setTimeWindow("all");
+    setSortMode("smart");
+    setHostFilter("all");
+  }, []);
+
   const registerCardRef = useCallback((key, node) => {
     if (!key) return;
     if (node) {
@@ -656,6 +818,18 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       node.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   }, [selectedListing]);
+
+  useEffect(() => {
+    if (!isMobileViewport || mobileSurface !== "map") return () => {};
+    const googleMaps = window.google?.maps;
+    const map = mapRef.current;
+    if (!googleMaps || !map) return () => {};
+    const timer = window.setTimeout(() => {
+      googleMaps.event.trigger(map, "resize");
+      if (selectedListing?.location) map.panTo(selectedListing.location);
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [isMobileViewport, mobileSurface, selectedListing]);
 
   useEffect(() => {
     if (!mapsLoaded || !mapEnabled || mapRef.current || !mapContainerRef.current) return;
@@ -839,12 +1013,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       return;
     }
     if (intent === "discover_reset") {
+      resetDiscoverFilters();
       setRegion("nationwide");
-      setSearch("");
-      setTypeFilter("all");
-      setTimeWindow("all");
-      setSortMode("smart");
-      setHostFilter("all");
       return;
     }
     if (intent === "submit_listing") {
@@ -885,127 +1055,152 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           </button>
         </div>
       </div>
-      <div className="mk3-filter-row mk3-discover-filters mk3-zone mk3-zone-filters">
-        <label>
-          Search
-          <input
-            value={search}
-            placeholder="Host, venue, city, or vibe"
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
-        <label>
-          Region
-          <input
-            value={region}
-            placeholder="Nationwide, or pick a preset below"
-            onChange={(event) => setRegion(event.target.value)}
-          />
-        </label>
-        <label>
-          Type
-          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-            <option value="all">All</option>
-            <option value="event">Events</option>
-            <option value="venue">Venues</option>
-            <option value="room_session">Room Sessions</option>
-          </select>
-        </label>
-        <label>
-          Rank
-          <select
-            value={sortMode}
-            onChange={(event) => {
-              const nextMode = event.target.value;
-              setSortMode(nextMode);
-              trackEvent("mk_discover_sort_change", {
-                source: "discover_filters",
-                sortMode: nextMode,
-              });
-            }}
-          >
-            <option value="smart">Smart (live + near)</option>
-            <option value="soonest">Soonest start time</option>
-            <option value="nearest">Nearest to me</option>
-            <option value="host_first">Host-first</option>
-          </select>
-        </label>
-      </div>
-      <div className="mk3-filter-chips mk3-zone mk3-zone-time">
-        {TIME_WINDOW_OPTIONS.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            className={timeWindow === option.id ? "active" : ""}
-            onClick={() => {
-              setTimeWindow(option.id);
-              trackEvent("mk_discover_time_filter_change", {
-                source: "discover_filters",
-                timeWindow: option.id,
-              });
-            }}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-      <div className="mk3-filter-chips mk3-zone mk3-zone-region">
-        {dynamicRegionPresets.map((preset) => (
-          <button
-            key={preset.id}
-            type="button"
-            className={String(region).trim().toLowerCase() === preset.id ? "active" : ""}
-            onClick={() => setRegion(preset.id)}
-          >
-            {preset.label}
-            {Number(preset.count || 0) > 0 && <span className="mk3-filter-chip-count">{preset.count}</span>}
-          </button>
-        ))}
-        {hasSearchFilters && (
+      {isMobileViewport && (
+        <div className="mk3-mobile-discover-switch mk3-zone mk3-zone-mobile-controls">
           <button
             type="button"
-            onClick={() => {
-              setSearch("");
-              setRegion("");
-              setTypeFilter("all");
-              setTimeWindow("all");
-              setSortMode("smart");
-              setHostFilter("all");
-            }}
+            className={mobileSurface === "list" ? "active" : ""}
+            onClick={() => setMobileSurface("list")}
           >
-            Clear filters
+            List ({visibleListings.length})
           </button>
-        )}
-      </div>
-      {hostFacetOptions.length > 0 && (
-        <div className="mk3-filter-chips mk3-zone mk3-zone-host">
-          <span className="mk3-filter-chip-label">Browse by host</span>
           <button
             type="button"
-            className={effectiveHostFilter === "all" ? "active" : ""}
-            onClick={() => setHostFilter("all")}
+            className={mobileSurface === "map" ? "active" : ""}
+            onClick={() => setMobileSurface("map")}
           >
-            All hosts
+            Map ({mappableListings.length})
           </button>
-          {hostFacetOptions.map((host) => (
-            <button
-              key={host.id}
-              type="button"
-              className={effectiveHostFilter === host.id ? "active" : ""}
-              onClick={() => {
-                setHostFilter(host.id);
-                trackEvent("mk_discover_host_filter_change", {
+          <button
+            type="button"
+            className={mobileFiltersExpanded ? "active" : ""}
+            onClick={() => setMobileFiltersExpanded((prev) => !prev)}
+          >
+            {mobileFiltersExpanded ? "Hide Filters" : "Show Filters"}
+          </button>
+          {hasSearchFilters && (
+            <button type="button" onClick={resetDiscoverFilters}>
+              Reset
+            </button>
+          )}
+        </div>
+      )}
+      <div className={`mk3-discover-filter-stack ${isMobileViewport && !mobileFiltersExpanded ? "is-collapsed" : ""}`}>
+        <div className="mk3-filter-row mk3-discover-filters mk3-zone mk3-zone-filters">
+          <label className="mk3-discover-filter-basic">
+            Search
+            <input
+              value={search}
+              placeholder="Host, venue, city, or vibe"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+          <label className="mk3-discover-filter-basic">
+            Region
+            <input
+              value={region}
+              placeholder="Nationwide, or pick a preset below"
+              onChange={(event) => setRegion(event.target.value)}
+            />
+          </label>
+          <label className="mk3-discover-filter-advanced-field">
+            Type
+            <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+              <option value="all">All</option>
+              <option value="event">Events</option>
+              <option value="venue">Venues</option>
+              <option value="room_session">Room Sessions</option>
+            </select>
+          </label>
+          <label className="mk3-discover-filter-advanced-field">
+            Rank
+            <select
+              value={sortMode}
+              onChange={(event) => {
+                const nextMode = event.target.value;
+                setSortMode(nextMode);
+                trackEvent("mk_discover_sort_change", {
                   source: "discover_filters",
-                  hostToken: host.id,
-                  hostUid: host.hostUid || "",
+                  sortMode: nextMode,
                 });
               }}
             >
-              {host.hostName} ({host.count})
+              <option value="smart">Smart (live + near)</option>
+              <option value="soonest">Soonest start time</option>
+              <option value="nearest">Nearest to me</option>
+              <option value="host_first">Host-first</option>
+            </select>
+          </label>
+        </div>
+        <div className="mk3-filter-chips mk3-zone mk3-zone-time mk3-discover-filter-advanced">
+          {TIME_WINDOW_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={timeWindow === option.id ? "active" : ""}
+              onClick={() => {
+                setTimeWindow(option.id);
+                trackEvent("mk_discover_time_filter_change", {
+                  source: "discover_filters",
+                  timeWindow: option.id,
+                });
+              }}
+            >
+              {option.label}
             </button>
           ))}
         </div>
-      )}
+        <div className="mk3-filter-chips mk3-zone mk3-zone-region mk3-discover-filter-advanced">
+          {dynamicRegionPresets.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className={String(region).trim().toLowerCase() === preset.id ? "active" : ""}
+              onClick={() => setRegion(preset.id)}
+            >
+              {preset.label}
+              {Number(preset.count || 0) > 0 && <span className="mk3-filter-chip-count">{preset.count}</span>}
+            </button>
+          ))}
+          {hasSearchFilters && (
+            <button
+              type="button"
+              onClick={resetDiscoverFilters}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+        {hostFacetOptions.length > 0 && (
+          <div className="mk3-filter-chips mk3-zone mk3-zone-host mk3-discover-filter-advanced">
+            <span className="mk3-filter-chip-label">Browse by host</span>
+            <button
+              type="button"
+              className={effectiveHostFilter === "all" ? "active" : ""}
+              onClick={() => setHostFilter("all")}
+            >
+              All hosts
+            </button>
+            {hostFacetOptions.map((host) => (
+              <button
+                key={host.id}
+                type="button"
+                className={effectiveHostFilter === host.id ? "active" : ""}
+                onClick={() => {
+                  setHostFilter(host.id);
+                  trackEvent("mk_discover_host_filter_change", {
+                    source: "discover_filters",
+                    hostToken: host.id,
+                    hostUid: host.hostUid || "",
+                  });
+                }}
+              >
+                {host.hostName} ({host.count})
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       {geoError && <div className="mk3-status mk3-status-warning">{geoError}</div>}
 
       <div className="mk3-metric-row mk3-zone mk3-zone-metrics">
@@ -1027,8 +1222,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         </div>
       </div>
 
-      <div className={`mk3-discover-shell ${mapFirst ? "is-map-first" : "is-balanced"}`}>
-        <article className="mk3-map-card mk3-zone mk3-zone-map">
+      <div className={`mk3-discover-shell ${mapFirst ? "is-map-first" : "is-balanced"} ${isMobileViewport ? `is-mobile-surface-${mobileSurface}` : ""}`}>
+        <article className={`mk3-map-card mk3-zone mk3-zone-map ${isMobileViewport && mobileSurface !== "map" ? "is-mobile-hidden" : ""}`}>
           <h2>{FINDER_BRAND} Live Karaoke Map</h2>
           <div className="mk3-map-badge">Map and rail stay in sync</div>
           <div className="mk3-map-toolbar">
@@ -1050,9 +1245,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             >
               {geoLoading ? "Locating..." : userLocation ? "Refresh my location" : "Use my location"}
             </button>
-            <button type="button" onClick={() => setMapFirst((prev) => !prev)}>
-              {mapFirst ? "Balanced layout" : "Map-first layout"}
-            </button>
+            {isMobileViewport ? (
+              <button type="button" onClick={() => setMobileSurface("list")}>
+                Show list
+              </button>
+            ) : (
+              <button type="button" onClick={() => setMapFirst((prev) => !prev)}>
+                {mapFirst ? "Balanced layout" : "Map-first layout"}
+              </button>
+            )}
           </div>
 
           {!mapEnabled && (
@@ -1087,7 +1288,16 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             </div>
           </article>
 
-        <aside className="mk3-feed-column mk3-zone mk3-zone-rail">
+        <aside className={`mk3-feed-column mk3-zone mk3-zone-rail ${isMobileViewport && mobileSurface !== "list" ? "is-mobile-hidden" : ""}`}>
+          <div className="mk3-rail-head">
+            <strong>Results rail</strong>
+            <span>{visibleListings.length} shown</span>
+            {isMobileViewport && (
+              <button type="button" onClick={() => setMobileSurface("map")}>
+                Open map
+              </button>
+            )}
+          </div>
           {loading && <div className="mk3-status">Loading listings...</div>}
           {!loading && !!error && !permissionError && !indexError && (
             <div className="mk3-status mk3-status-error">{error}</div>
@@ -1182,6 +1392,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                   <button
                     type="button"
                     onClick={() => {
+                      if (isMobileViewport) setMobileSurface("map");
                       focusListing(entry, { pan: true, zoom: true });
                       trackEvent("mk_discover_focus_marker", {
                         source: "discover_rail",
@@ -1192,7 +1403,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                     }}
                     disabled={!entry.location || !mapsLoaded}
                   >
-                    Focus marker
+                    {isMobileViewport ? "Focus on map" : "Focus marker"}
                   </button>
                   <button
                     type="button"

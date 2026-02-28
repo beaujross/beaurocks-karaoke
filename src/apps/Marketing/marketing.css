@@ -2119,6 +2119,43 @@
   letter-spacing: 0.08em;
 }
 
+.mk3-rail-head {
+  border-radius: 12px;
+  border: 1px solid rgba(92, 206, 245, 0.24);
+  background: rgba(6, 13, 23, 0.82);
+  padding: 0.5rem 0.62rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.mk3-rail-head strong {
+  color: #ebf5ff;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mk3-rail-head span {
+  color: #b9d3eb;
+  font-size: 0.69rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mk3-rail-head button {
+  border-radius: 999px;
+  border: 1px solid rgba(126, 214, 246, 0.4);
+  background: rgba(8, 18, 30, 0.9);
+  color: #dff3ff;
+  min-height: 34px;
+  padding: 0.3rem 0.62rem;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .mk3-filter-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2163,10 +2200,52 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.mk3-discover-filter-stack {
+  display: grid;
+  gap: 8px;
+}
+
 .mk3-filter-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.mk3-mobile-discover-switch {
+  display: none;
+}
+
+.mk3-zone-mobile-controls {
+  border: 1px solid rgba(126, 214, 246, 0.34);
+  background: linear-gradient(125deg, rgba(6, 16, 28, 0.9), rgba(13, 15, 38, 0.86));
+  padding: 8px;
+}
+
+.mk3-zone-mobile-controls::before {
+  background: linear-gradient(180deg, #6ce4f6, #ff84c4);
+}
+
+.mk3-mobile-discover-switch button {
+  border-radius: 12px;
+  border: 1px solid rgba(147, 223, 255, 0.32);
+  background: rgba(8, 16, 24, 0.88);
+  color: #d8ebff;
+  min-height: 44px;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.mk3-mobile-discover-switch button.active {
+  border-color: rgba(255, 207, 116, 0.58);
+  background:
+    linear-gradient(112deg, rgba(255, 214, 106, 0.22), rgba(255, 86, 190, 0.28)) padding-box,
+    linear-gradient(rgba(255, 215, 106, 0.44), rgba(255, 86, 190, 0.42)) border-box;
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
+  color: #fff3d5;
 }
 
 .mk3-filter-chip-label {
@@ -3956,6 +4035,33 @@
     min-height: 460px;
   }
 
+  .mk3-mobile-discover-switch {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    position: sticky;
+    top: 92px;
+    z-index: 36;
+  }
+
+  .mk3-mobile-discover-switch button {
+    flex: 1 1 120px;
+  }
+
+  .mk3-discover-filter-stack.is-collapsed .mk3-discover-filter-advanced,
+  .mk3-discover-filter-stack.is-collapsed .mk3-discover-filter-advanced-field {
+    display: none;
+  }
+
+  .mk3-discover-filter-stack.is-collapsed .mk3-discover-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mk3-zone-rail.is-mobile-hidden,
+  .mk3-map-card.is-mobile-hidden {
+    display: none;
+  }
+
   .mk3-map-canvas,
   .mk3-map-grid,
   .mk3-discover-shell.is-map-first .mk3-map-canvas,
@@ -3965,6 +4071,26 @@
 
   .mk3-venue-stat-grid {
     grid-template-columns: 1fr;
+  }
+
+  .mk3-card-rail {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .mk3-map-toolbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mk3-map-toolbar .mk3-inline {
+    grid-column: 1 / -1;
+  }
+
+  .mk3-map-footer {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .mk3-golden-rail {
@@ -4085,6 +4211,50 @@
 
   .mk3-map-stage-overlay {
     padding: 8px;
+  }
+
+  .mk3-mobile-discover-switch {
+    top: 84px;
+  }
+
+  .mk3-discover-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .mk3-discover-filter-stack.is-collapsed .mk3-discover-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .mk3-filter-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .mk3-filter-chips button,
+  .mk3-filter-chip-label {
+    flex: 0 0 auto;
+  }
+
+  .mk3-rail-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .mk3-rail-head button {
+    width: 100%;
+  }
+
+  .mk3-discover-card .mk3-actions-inline {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .mk3-discover-card .mk3-actions-inline button {
+    width: 100%;
   }
 
   .mk3-public-changelog-head {

@@ -6,6 +6,27 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isSuperAdmin() {
+      return isAuthed()
+        && (
+          (
+            request.auth.token.keys().hasAny(['super_admin'])
+            && request.auth.token.super_admin == true
+          )
+          || (
+            request.auth.token.keys().hasAny(['superAdmin'])
+            && request.auth.token.superAdmin == true
+          )
+          || (
+            request.auth.token.keys().hasAny(['email'])
+            && request.auth.token.keys().hasAny(['email_verified'])
+            && request.auth.token.email is string
+            && request.auth.token.email == 'hello@beauross.com'
+            && request.auth.token.email_verified == true
+          )
+        );
+    }
+
     function isBrossApp(appId) {
       return appId == 'bross-app';
     }
@@ -22,10 +43,13 @@ service cloud.firestore {
       return isAuthed()
         && roomExists(roomCode)
         && (
-          get(roomDocPath(roomCode)).data.hostUid == request.auth.uid
+          isSuperAdmin()
           || (
-            get(roomDocPath(roomCode)).data.hostUids is list
-            && request.auth.uid in get(roomDocPath(roomCode)).data.hostUids
+            get(roomDocPath(roomCode)).data.hostUid == request.auth.uid
+            || (
+              get(roomDocPath(roomCode)).data.hostUids is list
+              && request.auth.uid in get(roomDocPath(roomCode)).data.hostUids
+            )
           )
         );
     }
@@ -38,6 +62,56 @@ service cloud.firestore {
 
     function asNumberOrZero(v) {
       return v is number ? v : 0;
+    }
+
+    function hasSafeClientSubscriptionDefaults(data) {
+      return !data.keys().hasAny(['subscription'])
+        || (
+          data.subscription is map
+          && (
+            !data.subscription.keys().hasAny(['tier'])
+            || (data.subscription.tier is string && data.subscription.tier == 'free')
+          )
+          && (
+            !data.subscription.keys().hasAny(['plan'])
+            || (data.subscription.plan is string && data.subscription.plan in ['monthly', 'yearly'])
+          )
+          && (
+            !data.subscription.keys().hasAny(['startDate'])
+            || data.subscription.startDate == null
+          )
+          && (
+            !data.subscription.keys().hasAny(['renewalDate'])
+            || data.subscription.renewalDate == null
+          )
+          && (
+            !data.subscription.keys().hasAny(['cancelledAt'])
+            || data.subscription.cancelledAt == null
+          )
+          && (
+            !data.subscription.keys().hasAny(['paymentMethod'])
+            || data.subscription.paymentMethod == null
+          )
+        );
+    }
+
+    function hasSafeClientOrganizationDefaults(data) {
+      return !data.keys().hasAny(['organization'])
+        || (
+          data.organization is map
+          && (
+            !data.organization.keys().hasAny(['orgId'])
+            || data.organization.orgId == null
+          )
+          && (
+            !data.organization.keys().hasAny(['role'])
+            || (data.organization.role is string && data.organization.role == 'member')
+          )
+          && (
+            !data.organization.keys().hasAny(['updatedAt'])
+            || data.organization.updatedAt == null
+          )
+        );
     }
 
     function directoryRoleDocPath(uid) {
@@ -64,15 +138,20 @@ service cloud.firestore {
 
     function isDirectoryModerator() {
       return isAuthed()
-        && exists(directoryRoleDocPath(request.auth.uid))
         && (
-          (
-            get(directoryRoleDocPath(request.auth.uid)).data.roles is list
-            && "directory_editor" in get(directoryRoleDocPath(request.auth.uid)).data.roles
-          )
+          isSuperAdmin()
           || (
-            get(directoryRoleDocPath(request.auth.uid)).data.roles is list
-            && "directory_admin" in get(directoryRoleDocPath(request.auth.uid)).data.roles
+            exists(directoryRoleDocPath(request.auth.uid))
+            && (
+              (
+                get(directoryRoleDocPath(request.auth.uid)).data.roles is list
+                && "directory_editor" in get(directoryRoleDocPath(request.auth.uid)).data.roles
+              )
+              || (
+                get(directoryRoleDocPath(request.auth.uid)).data.roles is list
+                && "directory_admin" in get(directoryRoleDocPath(request.auth.uid)).data.roles
+              )
+            )
           )
         );
     }
@@ -107,7 +186,25 @@ service cloud.firestore {
     // User profiles
     match /users/{uid} {
       allow read: if isAuthed();
-      allow write: if isAuthed() && request.auth.uid == uid;
+      allow create: if isAuthed()
+        && request.auth.uid == uid
+        && (
+          !request.resource.data.keys().hasAny(['uid'])
+          || (
+            request.resource.data.uid is string
+            && request.resource.data.uid == uid
+          )
+        )
+        && hasSafeClientSubscriptionDefaults(request.resource.data)
+        && hasSafeClientOrganizationDefaults(request.resource.data);
+      allow update: if isAuthed()
+        && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).changedKeys().hasAny(['subscription', 'organization']);
+      allow delete: if false;
+    }
+
+    match /private_user_settings/{uid} {
+      allow read, create, update, delete: if isAuthed() && request.auth.uid == uid;
     }
 
     match /directory_profiles/{uid} {

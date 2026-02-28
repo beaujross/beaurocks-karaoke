@@ -6,7 +6,6 @@ import {
   buildLegacyMarketingQuery,
   buildMarketingSearch,
   buildMarketingUrl,
-  buildMarketingPath,
   parseMarketingRouteFromHref,
   parseMarketingRouteFromLocation,
 } from "./routing";

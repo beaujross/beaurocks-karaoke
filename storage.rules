@@ -5,6 +5,27 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function isSuperAdmin() {
+      return isAuthed()
+        && (
+          (
+            request.auth.token.keys().hasAny(['super_admin'])
+            && request.auth.token.super_admin == true
+          )
+          || (
+            request.auth.token.keys().hasAny(['superAdmin'])
+            && request.auth.token.superAdmin == true
+          )
+          || (
+            request.auth.token.keys().hasAny(['email'])
+            && request.auth.token.keys().hasAny(['email_verified'])
+            && request.auth.token.email is string
+            && request.auth.token.email == 'hello@beauross.com'
+            && request.auth.token.email_verified == true
+          )
+        );
+    }
+
     function roomDocPath(roomCode) {
       return /databases/(default)/documents/artifacts/bross-app/public/data/rooms/$(roomCode);
     }
@@ -17,10 +38,13 @@ service firebase.storage {
       return isAuthed()
         && firestore.exists(roomDocPath(roomCode))
         && (
-          firestore.get(roomDocPath(roomCode)).data.hostUid == request.auth.uid
+          isSuperAdmin()
           || (
-            firestore.get(roomDocPath(roomCode)).data.hostUids != null
-            && request.auth.uid in firestore.get(roomDocPath(roomCode)).data.hostUids
+            firestore.get(roomDocPath(roomCode)).data.hostUid == request.auth.uid
+            || (
+              firestore.get(roomDocPath(roomCode)).data.hostUids != null
+              && request.auth.uid in firestore.get(roomDocPath(roomCode)).data.hostUids
+            )
           )
         );
     }

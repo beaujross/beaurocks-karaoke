@@ -831,6 +831,23 @@ const parseAppleMusicPlaylistId = (value = '') => {
     return trimmed;
 };
 
+const DEFAULT_HOST_MUSIC_PREFS = Object.freeze({
+    appleAutoConnect: false,
+    applePlaylistUrl: '',
+    appleAutoPlaylistId: '',
+    appleAutoPlaylistTitle: ''
+});
+
+const normalizeHostMusicPrefs = (value = {}) => {
+    const input = value && typeof value === 'object' ? value : {};
+    return {
+        appleAutoConnect: input.appleAutoConnect === true,
+        applePlaylistUrl: String(input.applePlaylistUrl || '').trim().slice(0, 600),
+        appleAutoPlaylistId: parseAppleMusicPlaylistId(String(input.appleAutoPlaylistId || '')).slice(0, 180),
+        appleAutoPlaylistTitle: String(input.appleAutoPlaylistTitle || '').trim().slice(0, 180)
+    };
+};
+
 const normalizeYouTubeSearchItems = (rawItems = [], { reason = 'youtube_search' } = {}) => (
     (rawItems || [])
         .map((item) => {
@@ -3245,7 +3262,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                     setQueueSearchSourceNote('Autocomplete source: Apple Music + local library.');
                     setQueueSearchNoResultHint('No Apple Music matches yet. Try song + artist.');
                     setResults(mergeUniqueQueueSearchResults(localMatches, itunesMatches));
-                } catch (e) {
+                } catch (_error) {
                     if (cancelled) return;
                     setQueueSearchSourceNote('Apple Music lookup is unavailable right now. Showing local results only.');
                     setQueueSearchNoResultHint('Apple lookup failed. Try again or switch autocomplete to YouTube.');
@@ -3570,7 +3587,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                 mediaUrl: stageMediaUrl,
                 appleMusicId: s?.appleMusicId
             });
-            const roomSnapshot = roomRef.current || room || {};
+            const roomSnapshot = room || {};
             const stageDisplayFlags = {
                 showLyricsTv: !!roomSnapshot?.showLyricsTv,
                 showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
@@ -4620,6 +4637,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await instance.authorize();
             setAppleMusicAuthorized(true);
             setAppleMusicStatus('Connected');
+            await persistAccountMusicPrefs({
+                appleAutoConnect: true
+            });
         } catch (e) {
             hostLogger.error(e);
             setAppleMusicStatus('Apple Music login failed.');
@@ -4636,6 +4656,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setAppleMusicAuthorized(false);
         setAppleMusicPlaying(false);
         setAppleMusicStatus('Disconnected');
+        await persistAccountMusicPrefs({
+            appleAutoConnect: false
+        });
     };
 
     const playAppleMusicTrack = useCallback(async (trackId, meta = {}) => {
@@ -4791,6 +4814,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [appleMusicAutoPlaylistId, setAppleMusicAutoPlaylistId] = useState('');
     const [appleMusicAutoPlaylistTitle, setAppleMusicAutoPlaylistTitle] = useState('');
     const appleMusicRef = useRef(null);
+    const [accountMusicPrefsReady, setAccountMusicPrefsReady] = useState(false);
+    const accountMusicPrefsRef = useRef(DEFAULT_HOST_MUSIC_PREFS);
     const getAppleMusicUserToken = () => appleMusicRef.current?.musicUserToken || '';
     const mixFadeRef = useRef(null);
     const mixFadeTargetRef = useRef(mixFader);
@@ -4814,10 +4839,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [tipCrates, setTipCrates] = useState(DEFAULT_TIP_CRATES);
     const [catalogueName, setCatalogueName] = useState('');
     const [catalogueUserId, setCatalogueUserId] = useState('');
-    const [showCataloguePrompt, setShowCataloguePrompt] = useState(false);
-    const [cataloguePendingSong, setCataloguePendingSong] = useState(null);
+    const [_showCataloguePrompt, setShowCataloguePrompt] = useState(false);
+    const [_cataloguePendingSong, setCataloguePendingSong] = useState(null);
     const [catalogueSearchQ, setCatalogueSearchQ] = useState('');
-    const [catalogueResults, setCatalogueResults] = useState([]);
+    const [_catalogueResults, setCatalogueResults] = useState([]);
     const [activeBrowseList, setActiveBrowseList] = useState(null);
     const [showTop100, setShowTop100] = useState(false);
     const [showYtIndex, setShowYtIndex] = useState(false);
@@ -5131,9 +5156,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const canUseWorkspaceOnboarding = !!capabilities[CAPABILITY_KEYS.WORKSPACE_ONBOARDING];
     const canUseInvoiceDrafts = !!capabilities[CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS];
     const canGenerateAiContent = !!capabilities[CAPABILITY_KEYS.AI_GENERATE_CONTENT];
-    const hasOwnerHostAiAccess = ['owner', 'admin'].includes(String(orgContext?.role || '').toLowerCase());
     const aiDemoBypassEnabled = !!room?.missionControl?.aiDemoBypass;
-    const canUseAiTools = canGenerateAiContent || aiDemoBypassEnabled || hasOwnerHostAiAccess;
+    const canUseAiTools = canGenerateAiContent || aiDemoBypassEnabled;
     const missionQueryOverride = useMemo(() => {
         if (typeof window === 'undefined') return null;
         const value = String(new URLSearchParams(window.location.search).get(MISSION_QUERY_KEY) || '').trim().toLowerCase();
@@ -6028,10 +6052,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room.autoDj !== undefined && room.autoDj !== null) setAutoDj(!!room.autoDj);
         if (room.autoPlayMedia !== undefined && room.autoPlayMedia !== null) setAutoPlayMedia(!!room.autoPlayMedia);
         if (room.appleMusicAutoPlaylistId !== undefined && room.appleMusicAutoPlaylistId !== null) {
-            setAppleMusicAutoPlaylistId(room.appleMusicAutoPlaylistId || '');
+            const roomPlaylistId = parseAppleMusicPlaylistId(String(room.appleMusicAutoPlaylistId || ''));
+            if (roomPlaylistId) {
+                setAppleMusicAutoPlaylistId(roomPlaylistId);
+            } else if (accountMusicPrefsRef.current?.appleAutoPlaylistId) {
+                setAppleMusicAutoPlaylistId(accountMusicPrefsRef.current.appleAutoPlaylistId);
+            } else {
+                setAppleMusicAutoPlaylistId('');
+            }
         }
         if (room.appleMusicAutoPlaylistTitle !== undefined && room.appleMusicAutoPlaylistTitle !== null) {
-            setAppleMusicAutoPlaylistTitle(room.appleMusicAutoPlaylistTitle || '');
+            const roomPlaylistTitle = String(room.appleMusicAutoPlaylistTitle || '').trim();
+            if (roomPlaylistTitle) {
+                setAppleMusicAutoPlaylistTitle(roomPlaylistTitle);
+            } else if (accountMusicPrefsRef.current?.appleAutoPlaylistTitle) {
+                setAppleMusicAutoPlaylistTitle(accountMusicPrefsRef.current.appleAutoPlaylistTitle);
+            } else {
+                setAppleMusicAutoPlaylistTitle('');
+            }
         }
         if (room.readyCheckDurationSec !== undefined && room.readyCheckDurationSec !== null) {
             setReadyCheckDurationSec(room.readyCheckDurationSec);
@@ -6058,13 +6096,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.bingoAudienceReopenEnabled !== undefined && room?.bingoAudienceReopenEnabled !== null) {
             setAudienceBingoReopenEnabled(room.bingoAudienceReopenEnabled !== false);
         }
-        if (room?.autoLyricsOnQueue !== undefined && room?.autoLyricsOnQueue !== null) {
-            setAutoLyricsOnQueue(!!room.autoLyricsOnQueue);
-        }
         if (room?.popTriviaEnabled !== undefined && room?.popTriviaEnabled !== null) {
             setPopTriviaEnabled(room.popTriviaEnabled !== false);
         }
-    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.autoDj, room?.autoPlayMedia, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.autoLyricsOnQueue, room?.popTriviaEnabled, room]);
+    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.autoDj, room?.autoPlayMedia, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
+    useEffect(() => {
+        if (room?.autoLyricsOnQueue === undefined || room?.autoLyricsOnQueue === null) return;
+        setAutoLyricsOnQueue(!!room.autoLyricsOnQueue);
+    }, [roomCode, room?.autoLyricsOnQueue]);
+    useEffect(() => {
+        if (!uid || !accountMusicPrefsReady) return;
+        if (!accountMusicPrefsRef.current?.appleAutoConnect) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const instance = await ensureAppleMusic();
+                if (cancelled) return;
+                if (instance?.isAuthorized) {
+                    setAppleMusicAuthorized(true);
+                    if (!appleMusicStatus) setAppleMusicStatus('Connected');
+                }
+            } catch (error) {
+                hostLogger.debug('Apple Music account restore skipped', error);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [uid, accountMusicPrefsReady, ensureAppleMusic, appleMusicStatus]);
     useEffect(() => {
         if (!room) return;
         setMarqueeEnabled(!!room?.marqueeEnabled);
@@ -6382,6 +6441,84 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         return () => { isMounted = false; };
     }, []);
+
+    const persistAccountMusicPrefs = useCallback(async (patch = {}) => {
+        const activeUid = auth.currentUser?.uid || uid || '';
+        if (!activeUid) return;
+        const current = normalizeHostMusicPrefs(accountMusicPrefsRef.current || DEFAULT_HOST_MUSIC_PREFS);
+        const merged = normalizeHostMusicPrefs({
+            ...current,
+            ...(patch || {})
+        });
+        if (
+            current.appleAutoConnect === merged.appleAutoConnect
+            && current.applePlaylistUrl === merged.applePlaylistUrl
+            && current.appleAutoPlaylistId === merged.appleAutoPlaylistId
+            && current.appleAutoPlaylistTitle === merged.appleAutoPlaylistTitle
+        ) {
+            return;
+        }
+        accountMusicPrefsRef.current = merged;
+        try {
+            await setDoc(doc(db, 'private_user_settings', activeUid), {
+                uid: activeUid,
+                hostMusic: merged,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        } catch (error) {
+            hostLogger.debug('Could not persist account music preferences', error);
+        }
+    }, [uid]);
+
+    useEffect(() => {
+        let unsub = () => {};
+        const activeUid = auth.currentUser?.uid || uid || '';
+        if (!activeUid) {
+            accountMusicPrefsRef.current = DEFAULT_HOST_MUSIC_PREFS;
+            setAccountMusicPrefsReady(false);
+            return () => unsub();
+        }
+        try {
+            unsub = onSnapshot(
+                doc(db, 'private_user_settings', activeUid),
+                (snap) => {
+                    const nextPrefs = normalizeHostMusicPrefs(snap.data()?.hostMusic || {});
+                    accountMusicPrefsRef.current = nextPrefs;
+                    setAccountMusicPrefsReady(true);
+                    setAppleMusicPlaylistUrl((prev) => prev || nextPrefs.applePlaylistUrl || '');
+                },
+                (error) => {
+                    hostLogger.debug('Could not load account music preferences', error);
+                    setAccountMusicPrefsReady(true);
+                }
+            );
+        } catch (error) {
+            hostLogger.debug('Could not subscribe account music preferences', error);
+            setAccountMusicPrefsReady(true);
+        }
+        return () => unsub();
+    }, [uid]);
+
+    useEffect(() => {
+        if (!accountMusicPrefsReady) return;
+        const activeUid = auth.currentUser?.uid || uid || '';
+        if (!activeUid) return;
+        const timer = setTimeout(() => {
+            persistAccountMusicPrefs({
+                applePlaylistUrl: appleMusicPlaylistUrl,
+                appleAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId || ''),
+                appleAutoPlaylistTitle: appleMusicAutoPlaylistTitle
+            });
+        }, 450);
+        return () => clearTimeout(timer);
+    }, [
+        accountMusicPrefsReady,
+        uid,
+        appleMusicPlaylistUrl,
+        appleMusicAutoPlaylistId,
+        appleMusicAutoPlaylistTitle,
+        persistAccountMusicPrefs
+    ]);
 
     const ensureActiveUid = async () => {
         let activeUid = auth.currentUser?.uid || uid || null;
@@ -8043,7 +8180,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 allowSingerTrackSelect: !!allowSingerTrackSelect,
                 hostNightPreset: hostNightPreset || 'custom',
                 bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
-                autoLyricsOnQueue: !!autoLyricsOnQueue && !!canUseAiTools,
+                autoLyricsOnQueue: !!autoLyricsOnQueue,
                 popTriviaEnabled: popTriviaEnabled !== false,
                 queueSettings: {
                     limitMode: queueLimitMode || 'none',
@@ -8517,11 +8654,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (projected > 2 * 1024 * 1024 * 1024) {
             const proceed = window.confirm('Room storage is over 2GB. Upload anyway?');
             if (!proceed) return null;
-        }
-        const hostUids = room?.hostUids || (room?.hostUid ? [room.hostUid] : []);
-        if (hostUids.length && !hostUids.includes(uid)) {
-            toast('Only hosts can upload to the room library');
-            return null;
         }
         const maxBytes = 150 * 1024 * 1024;
         if (file.size && file.size > maxBytes) {
@@ -9395,7 +9527,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const hasPlainLyrics = !!String(fetchedApple?.lyrics || '').trim();
         const appleMusicId = fetchedApple?.songId ? String(fetchedApple.songId) : '';
         let aiLyricsText = '';
-        if (!hasTimedLyrics && !hasPlainLyrics && room?.autoLyricsOnQueue && typeof generateAIContent === 'function') {
+        if (!hasTimedLyrics && !hasPlainLyrics && room?.autoLyricsOnQueue && canUseAiTools && typeof generateAIContent === 'function') {
             try {
                 const generated = await generateAIContent('lyrics', {
                     title: song.title,
@@ -10203,7 +10335,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         toast('Added to queue');
     };
 
-    const resolveCatalogueSinger = () => {
+    const _resolveCatalogueSinger = () => {
         if (catalogueUserId) {
             const matched = users.find(u => u.id?.split('_')[1] === catalogueUserId || u.uid === catalogueUserId);
             return matched?.name || catalogueName.trim();
@@ -10232,7 +10364,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setCatalogueName('');
         setShowCataloguePrompt(true);
     };
-    const handleCatalogueResultClick = (r) => {
+    const _handleCatalogueResultClick = (r) => {
         if (r.source === 'local') {
             addLocalItemToQueue(r);
         } else if (r.source === 'youtube') {
@@ -11956,117 +12088,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             </div>
         </div>
     );
-    if (catalogueOnly) return (
-            <div className="min-h-screen bg-zinc-950 text-white font-saira p-6 flex flex-col">
-            <div className="max-w-6xl mx-auto w-full flex flex-col min-h-0 flex-1">
-                <div className="flex items-center justify-between gap-6 mb-6">
-                    <div>
-                        <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Catalogue</div>
-                        <div className="text-2xl font-bold text-white">Browse songs</div>
-                    </div>
-                        <div className="text-xs text-zinc-500 font-mono tracking-widest">ROOM {roomCode}</div>
-                </div>
-                <div className="mb-6 relative">
-                    <input
-                        value={catalogueSearchQ}
-                        onChange={e=>setCatalogueSearchQ(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white outline-none"
-                        placeholder="Search Local + YouTube + Apple Music..."
-                    />
-                    {(catalogueResults.length > 0 || catalogueSearchQ.length >= 3) && (
-                        <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 z-50 shadow-2xl">
-                            <div className="max-h-72 touch-scroll-y custom-scrollbar">
-                                {catalogueResults.length > 0 ? catalogueResults.map((r, idx) => (
-                                    <div key={idx} onClick={()=>handleCatalogueResultClick(r)} className="p-3 hover:bg-zinc-800 text-sm cursor-pointer flex gap-3 items-center border-b border-white/5">
-                                        <div className="w-10 h-10 flex items-center justify-center bg-zinc-800 rounded">
-                                            {r.source === 'local' ? (
-                                                <i className="fa-solid fa-hard-drive text-[#00C4D9]"></i>
-                                            ) : r.source === 'youtube' ? (
-                                                <div className="relative">
-                                                    <img src={r.artworkUrl100} className="w-10 h-10 rounded" />
-                                                    <i className="fa-brands fa-youtube text-red-500 absolute -bottom-1 -right-1 text-[10px] bg-black/70 rounded-full p-[2px]"></i>
-                                                </div>
-                                            ) : (
-                                                <img src={r.artworkUrl100} className="w-10 h-10 rounded"/>
-                                            )}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <div className="font-bold text-white truncate">{r.trackName}</div>
-                                            <div className="text-sm text-zinc-400 truncate">{r.artistName}</div>
-                                        </div>
-                                        <div className="text-sm font-bold text-cyan-300">+ Queue</div>
-                                    </div>
-                                )) : (
-                                    <div className="text-center text-zinc-500 text-base py-4">No results yet.</div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-                <div className="flex-1 min-h-0">
-                    {browsePanel}
-                </div>
-                {showCataloguePrompt && (
-                    <div className="fixed inset-0 z-[90] bg-black/70 flex items-center justify-center p-4">
-                        <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
-                            <div className="text-lg font-bold text-white mb-2">Add your name</div>
-                            <div className="text-sm text-zinc-400 mb-4">We'll use it for the song you're adding.</div>
-                            <input
-                                value={catalogueName}
-                                onChange={e => setCatalogueName(e.target.value)}
-                                className="bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white outline-none w-full"
-                                placeholder="Your name"
-                            />
-                            {users.length > 0 && (
-                                <div className="mt-3">
-                                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-500 mb-2">Or pick from lobby</div>
-                                    <div className="grid grid-cols-2 gap-2 max-h-32 custom-scrollbar touch-scroll-y pr-1">
-                                        {users.map(u => (
-                                            <button
-                                                key={u.id}
-                                                onClick={() => { setCatalogueUserId(u.id?.split('_')[1] || u.uid || u.id); setCatalogueName(u.name || ''); }}
-                                                className={`px-2 py-1 rounded-lg text-sm border ${catalogueUserId && (catalogueUserId === (u.id?.split('_')[1] || u.uid || u.id)) ? 'bg-[#00C4D9]/20 text-[#00C4D9] border-[#00C4D9]/40' : 'bg-zinc-900 text-zinc-300 border-zinc-700'}`}
-                                            >
-                                                {u.avatar ? `${u.avatar} ` : ''}{u.name || 'Guest'}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            <div className="flex gap-2 mt-4">
-                                <button
-                                    onClick={() => { setShowCataloguePrompt(false); setCataloguePendingSong(null); setCatalogueUserId(''); setCatalogueName(''); }}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} flex-1`}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        const name = resolveCatalogueSinger();
-                                        if (!name) return;
-                                        if (cataloguePendingSong) {
-                                            if (cataloguePendingSong.__yt) {
-                                                queueYouTubeIndexItem(cataloguePendingSong.item, name);
-                                            } else {
-                                                queueBrowseSong(cataloguePendingSong, name);
-                                            }
-                                        }
-                                        setCataloguePendingSong(null);
-                                        setShowCataloguePrompt(false);
-                                        setCatalogueUserId('');
-                                        setCatalogueName('');
-                                    }}
-                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} flex-1`}
-                                >
-                                    Add to Queue
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
     }
 
     const settingsNavigationSections = (() => {
@@ -12120,7 +12141,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         allowSingerTrackSelect: !!allowSingerTrackSelect,
         hostNightPreset: hostNightPreset || 'custom',
         bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
-        autoLyricsOnQueue: !!autoLyricsOnQueue && !!canUseAiTools,
+        autoLyricsOnQueue: !!autoLyricsOnQueue,
         popTriviaEnabled: popTriviaEnabled !== false,
         queueSettings: {
             limitMode: queueLimitMode || 'none',
@@ -12150,7 +12171,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             allowSingerTrackSelect: !!room.allowSingerTrackSelect,
             hostNightPreset: room.hostNightPreset || 'custom',
             bingoAudienceReopenEnabled: room.bingoAudienceReopenEnabled !== false,
-            autoLyricsOnQueue: !!room.autoLyricsOnQueue && !!canUseAiTools,
+            autoLyricsOnQueue: !!room.autoLyricsOnQueue,
             popTriviaEnabled: room.popTriviaEnabled !== false,
             queueSettings: {
                 limitMode: room.queueSettings?.limitMode || 'none',
@@ -12516,6 +12537,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     setAutoPlayMedia={setAutoPlayMedia}
                     autoDj={autoDj}
                     setAutoDj={setAutoDj}
+                    autoLyricsOnQueue={autoLyricsOnQueue}
+                    setAutoLyricsOnQueue={setAutoLyricsOnQueue}
                     toggleHowToPlay={toggleHowToPlay}
                     marqueeEnabled={marqueeEnabled}
                     setMarqueeEnabled={setMarqueeEnabled}
@@ -13543,7 +13566,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                   <input
                                       type="checkbox"
                                       checked={autoLyricsOnQueue}
-                                      disabled={!canUseAiTools}
                                       onChange={e => setAutoLyricsOnQueue(e.target.checked)}
                                       className="accent-[#00C4D9]"
                                   />
@@ -13552,7 +13574,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                               <div className="host-form-helper">
                                   {canUseAiTools
                                       ? 'When no lyrics are available, generate fallback lyrics for queued songs.'
-                                      : 'AI lyric generation requires an active Host subscription (or room demo bypass).'}
+                                      : 'Saved now; this activates when AI tools are enabled for the workspace (or demo bypass is on).'}
                               </div>
                               <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
                                   <input
@@ -14441,6 +14463,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             {appleMusicPlaylistStatus ? (
                                 <div className="host-form-helper host-form-helper-status">{appleMusicPlaylistStatus}</div>
                             ) : null}
+                            <div className="host-form-helper">Connection preference and playlist defaults are saved to your account for future sessions.</div>
                             <div className="host-form-helper">Playlist playback is host-only and drives the room vibe.</div>
                         </div>
 

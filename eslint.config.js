@@ -13,6 +13,7 @@ export default defineConfig([
       'google-cloud-sdk/**',
       'node_modules/**',
       'public/**',
+      'tmp/**',
     ],
   },
   {

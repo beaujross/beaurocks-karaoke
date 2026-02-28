@@ -74,12 +74,18 @@ const readEnv = (name) => {
   return typeof value === "string" ? value.trim() : "";
 };
 
-const readEnvBool = (name, fallback = false) => {
-  const raw = readEnv(name).toLowerCase();
-  if (!raw) return fallback;
-  if (["1", "true", "yes", "on"].includes(raw)) return true;
-  if (["0", "false", "no", "off"].includes(raw)) return false;
-  return fallback;
+const parseOptionalBool = (raw = "") => {
+  const token = String(raw || "").trim().toLowerCase();
+  if (!token) return null;
+  if (["1", "true", "yes", "on"].includes(token)) return true;
+  if (["0", "false", "no", "off"].includes(token)) return false;
+  return null;
+};
+
+const isLocalDevHost = () => {
+  if (typeof window === "undefined") return true;
+  const host = String(window.location?.hostname || "").trim().toLowerCase();
+  return host === "localhost" || host === "127.0.0.1";
 };
 
 const REQUIRED_FIREBASE_KEYS = [
@@ -154,13 +160,15 @@ const app = initializeApp(firebaseConfig);
 let appCheck = null;
 
 const shouldEnableAppCheckClient = () => {
-  const envEnabled = readEnvBool("VITE_APP_CHECK_ENABLED", false);
-  return envEnabled;
+  const explicit = parseOptionalBool(readEnv("VITE_APP_CHECK_ENABLED"));
+  if (explicit !== null) return explicit;
+  return !isLocalDevHost();
 };
 
 const shouldRequireLocalAppCheck = () => {
-  const envRequired = readEnvBool("VITE_REQUIRE_APP_CHECK", false);
-  return envRequired;
+  const explicit = parseOptionalBool(readEnv("VITE_REQUIRE_APP_CHECK"));
+  if (explicit !== null) return explicit;
+  return !isLocalDevHost() && !!getAppCheckSiteKey();
 };
 
 const resolveAuthPersistenceMode = () => {
@@ -674,18 +682,6 @@ const ensureUserProfile = async (uid, opts = {}) => {
     if (!('levelProgress' in data)) updates.levelProgress = 0;
     if (!('unlockedBadges' in data)) updates.unlockedBadges = [];
     if (!('unlockedAvatars' in data)) updates.unlockedAvatars = [];
-    if (!('subscription' in data)) updates.subscription = {
-      tier: 'free',
-      startDate: null,
-      renewalDate: null,
-      cancelledAt: null,
-      paymentMethod: null
-    };
-    if (!('organization' in data)) updates.organization = {
-      orgId: null,
-      role: 'member',
-      updatedAt: null
-    };
     if (!('vipProfile' in data)) updates.vipProfile = {
       location: '',
       birthMonth: '',
