@@ -331,6 +331,7 @@ const buildUrlEntries = (manifest = null) => {
   const core = [
     { path: "/discover", changefreq: "hourly", priority: "1.0" },
     { path: "/for-hosts", changefreq: "daily", priority: "0.9" },
+    { path: "/changelog", changefreq: "weekly", priority: "0.5" },
     { path: "/for-venues", changefreq: "daily", priority: "0.9" },
     { path: "/for-performers", changefreq: "daily", priority: "0.8" },
     { path: "/for-fans", changefreq: "daily", priority: "0.8" },

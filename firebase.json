@@ -58,12 +58,12 @@
     "redirects": [
       {
         "source": "/marketing",
-        "destination": "/for-fans",
+        "destination": "/for-hosts",
         "type": 301
       },
       {
         "source": "/marketing/",
-        "destination": "/for-fans",
+        "destination": "/for-hosts",
         "type": 301
       },
       {

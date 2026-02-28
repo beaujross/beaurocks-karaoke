@@ -13,21 +13,30 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
         <button
           type="button"
           onClick={() => {
-            trackEvent("mk_persona_cta_click", { persona: "venue_owner", cta: "find_venue" });
-            navigate("discover");
+            trackEvent("mk_persona_cta_click", { persona: "venue_owner", cta: "start_hosting" });
+            navigate("for_hosts");
           }}
         >
-          Claim Your Venue
+          Start Hosting
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            trackEvent("mk_persona_cta_click", { persona: "venue_owner", cta: "watch_demo" });
+            navigate("demo");
+          }}
+        >
+          Watch Demo
         </button>
         {canSubmit ? (
           <button
             type="button"
             onClick={() => {
-              trackEvent("mk_persona_cta_click", { persona: "venue_owner", cta: "submit_venue" });
+              trackEvent("mk_persona_cta_click", { persona: "venue_owner", cta: "submit_venue_profile" });
               navigate("submit");
             }}
           >
-            Submit Venue Profile
+            Claim Your Venue
           </button>
         ) : (
           <button
@@ -39,7 +48,7 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
               returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "venue" } },
             })}
           >
-            Create Account To Claim
+            Claim Your Venue
           </button>
         )}
       </div>

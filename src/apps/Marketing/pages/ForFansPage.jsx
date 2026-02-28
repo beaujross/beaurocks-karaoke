@@ -13,11 +13,11 @@ const ForFansPage = ({ navigate, session, authFlow }) => {
         <button
           type="button"
           onClick={() => {
-            trackEvent("mk_persona_cta_click", { persona: "fan", cta: "open_live_listings" });
-            navigate("discover");
+            trackEvent("mk_persona_cta_click", { persona: "fan", cta: "start_hosting" });
+            navigate("for_hosts");
           }}
         >
-          Find Premium Nights
+          Start Hosting
         </button>
         <button
           type="button"
@@ -26,7 +26,16 @@ const ForFansPage = ({ navigate, session, authFlow }) => {
             navigate("demo");
           }}
         >
-          Watch Experience Demo
+          Watch Demo
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            trackEvent("mk_persona_cta_click", { persona: "fan", cta: "open_live_listings" });
+            navigate("discover");
+          }}
+        >
+          Find Premium Nights
         </button>
         {canUseDashboard ? (
           <button

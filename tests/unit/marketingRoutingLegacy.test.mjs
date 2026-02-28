@@ -19,6 +19,12 @@ const run = () => {
   });
   assert.equal(fromLegacyPath.page, MARKETING_ROUTE_PAGES.forVenues);
 
+  const fromChangelogPath = parseMarketingRouteFromLocation({
+    pathname: "/changelog",
+    search: "",
+  });
+  assert.equal(fromChangelogPath.page, MARKETING_ROUTE_PAGES.changelog);
+
   const fromLegacyJoin = parseMarketingRouteFromLocation({
     pathname: "/",
     search: "?mode=marketing&page=join&room=vip123",
@@ -38,6 +44,12 @@ const run = () => {
   assert.equal(isMarketingPath("/marketing"), true);
   assert.equal(isMarketingPath("/random-unrelated-path"), false);
   assert.equal(isMarketingPath("/karaoke/terms"), false);
+
+  const fromRootFallback = parseMarketingRouteFromLocation({
+    pathname: "/",
+    search: "",
+  });
+  assert.equal(fromRootFallback.page, MARKETING_ROUTE_PAGES.forHosts);
 
   console.log("PASS marketingRoutingLegacy");
 };

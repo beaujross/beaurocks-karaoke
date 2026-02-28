@@ -13,6 +13,7 @@ export const MARKETING_CANONICAL_ROUTE_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.forHosts]: "/for-hosts",
   [MARKETING_ROUTE_PAGES.hostAccess]: "/host-access",
   [MARKETING_ROUTE_PAGES.demo]: "/demo",
+  [MARKETING_ROUTE_PAGES.changelog]: "/changelog",
   [MARKETING_ROUTE_PAGES.discover]: "/discover",
   [MARKETING_ROUTE_PAGES.join]: "/join",
   [MARKETING_ROUTE_PAGES.forVenues]: "/for-venues",
@@ -48,6 +49,12 @@ export const MARKETING_ROUTE_OWNERSHIP = Object.freeze({
     owner: "Marketing/Product",
     audience: "public",
     intent: "Product proof and conversion",
+  },
+  [MARKETING_ROUTE_PAGES.changelog]: {
+    zone: MARKETING_IA_ZONES.market,
+    owner: "Marketing/Product",
+    audience: "public",
+    intent: "Release history and product updates",
   },
   [MARKETING_ROUTE_PAGES.discover]: {
     zone: MARKETING_IA_ZONES.utility,
@@ -148,14 +155,8 @@ export const MARKETING_NAV_CONFIG = Object.freeze({
     navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
     navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
-  publicSecondary: Object.freeze([
-    navItem(MARKETING_ROUTE_PAGES.forVenues, "For Venues"),
-    navItem(MARKETING_ROUTE_PAGES.forPerformers, "For Performers"),
-    navItem(MARKETING_ROUTE_PAGES.forFans, "For Guests"),
-  ]),
-  lockedSecondary: Object.freeze([
-    navItem(MARKETING_ROUTE_PAGES.forFans, "For Guests"),
-  ]),
+  publicSecondary: Object.freeze([]),
+  lockedSecondary: Object.freeze([]),
   homePrimary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.forHosts, "Product"),
     navItem(MARKETING_ROUTE_PAGES.demo, "Demo"),
@@ -170,7 +171,7 @@ export const MARKETING_NAV_CONFIG = Object.freeze({
     navItem(MARKETING_ROUTE_PAGES.admin, "Marketing Admin"),
   ]),
   ctas: Object.freeze({
-    startHosting: Object.freeze({ id: MARKETING_ROUTE_PAGES.hostAccess, label: "Start Hosting" }),
+    startHosting: Object.freeze({ id: MARKETING_ROUTE_PAGES.forHosts, label: "Start Hosting" }),
     openHostDashboard: Object.freeze({ id: "host_dashboard", label: "Host Dashboard" }),
   }),
 });
@@ -217,5 +218,5 @@ export const MARKETING_ZERO_BREAK_REDIRECT_PLAN = Object.freeze([
   Object.freeze({ from: "/marketing?page=for_hosts", to: "/for-hosts", strategy: "alias_keep_live" }),
   Object.freeze({ from: "/marketing?page=discover", to: "/discover", strategy: "alias_keep_live" }),
   Object.freeze({ from: "/marketing?page=join", to: "/join", strategy: "alias_keep_live" }),
-  Object.freeze({ from: "/marketing?page=host_access", to: "/host-access", strategy: "alias_keep_live" }),
+  Object.freeze({ from: "/marketing?page=host_access", to: "/for-hosts", strategy: "alias_keep_live" }),
 ]);

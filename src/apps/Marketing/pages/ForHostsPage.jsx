@@ -79,16 +79,20 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
           Home parties, venue nights, fundraisers, and community events all need one thing: a host who can command the room.
           BeauRocks gives you premium control across TV, audience, and host surfaces so you can feel like the king or queen of karaoke night.
         </p>
+        <div className="mk3-status mk3-status-warning">
+          <strong>Content-agnostic by design</strong>
+          <span>Bring your own tracks and connected sources. Hosts remain responsible for music-rights compliance.</span>
+        </div>
         <div className="mk3-actions-inline">
           {canSubmit ? (
             <button
               type="button"
               onClick={() => {
-                trackEvent("mk_persona_cta_click", { persona: "host", cta: "create_event_session" });
+                trackEvent("mk_persona_cta_click", { persona: "host", cta: "start_hosting_submit" });
                 navigate("submit");
               }}
             >
-              Launch Host Setup
+              Start Hosting
             </button>
           ) : (
             <button
@@ -100,17 +104,17 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
                 returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "event" } },
               })}
             >
-              Create Host Account
+              Start Hosting
             </button>
           )}
           <button
             type="button"
             onClick={() => {
-              trackEvent("mk_persona_cta_click", { persona: "host", cta: "browse_discover" });
-              navigate("discover");
+              trackEvent("mk_persona_cta_click", { persona: "host", cta: "watch_demo" });
+              navigate("demo");
             }}
           >
-            Review Live Market
+            Watch Demo
           </button>
         </div>
         {canSubmit && (
@@ -185,6 +189,10 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
       </article>
       <aside className="mk3-actions-card">
         <h4>Host Crown Path</h4>
+        <div className="mk3-status">
+          <strong>Proof from live ops</strong>
+          <span>Hosts report faster queue movement and fewer dead-air moments when all three surfaces stay synced.</span>
+        </div>
         <ul className="mk3-plain-list">
           <li>Choose private pilot rooms or public listing growth.</li>
           <li>Run cleaner flow with less dead air and stronger crowd response.</li>

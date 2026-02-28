@@ -65,7 +65,7 @@ const buildGeoLabel = (params = {}) => {
 };
 
 const buildRouteSeo = (route = {}) => {
-  const page = String(route?.page || MARKETING_ROUTE_PAGES.forFans);
+  const page = String(route?.page || MARKETING_ROUTE_PAGES.forHosts);
   const id = String(route?.id || "");
   const params = route?.params || {};
 
@@ -83,6 +83,14 @@ const buildRouteSeo = (route = {}) => {
       description: "Watch TV, audience, and host surfaces run in sync through karaoke, game modes, and live crowd interaction.",
       robots: "index,follow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Live Demo Arena" },
+    };
+  }
+  if (page === MARKETING_ROUTE_PAGES.changelog) {
+    return {
+      title: "Product Changelog | BeauRocks Karaoke",
+      description: "Release updates and product changes across host, audience, and public TV experiences.",
+      robots: "index,follow",
+      structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Product Changelog" },
     };
   }
   if (page === MARKETING_ROUTE_PAGES.hostAccess) {

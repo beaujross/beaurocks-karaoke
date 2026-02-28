@@ -477,15 +477,47 @@ const DemoExperiencePage = ({ session = {} }) => {
   const lastTickBucketRef = useRef(-1);
   const lastSceneIdRef = useRef("");
   const lastSequenceRef = useRef(0);
+  const demoShellRef = useRef(null);
   const autoRoomRetryRef = useRef(false);
   const cuePauseHistoryRef = useRef(new Set());
   const ambienceAudioRef = useRef(null);
   const beatTimerRef = useRef(null);
   const audioContextRef = useRef(null);
   const previousTimelineMsRef = useRef(0);
+  const [iframeMountReady, setIframeMountReady] = useState(false);
   const isAutoplayShowcase = demoViewMode === DEMO_VIEW_MODES.autoplay;
   const canRunLiveSync = isSessionReady && hasCallableAuth;
   const isInteractiveTestingLayout = !isAutoplayShowcase;
+
+  useEffect(() => {
+    if (iframeMountReady) return;
+    const node = demoShellRef.current;
+    if (!node || typeof window === "undefined") {
+      setIframeMountReady(true);
+      return;
+    }
+    if (typeof window.IntersectionObserver !== "function") {
+      setIframeMountReady(true);
+      return;
+    }
+    let cancelled = false;
+    const reveal = () => {
+      if (cancelled) return;
+      setIframeMountReady(true);
+    };
+    const timeoutId = window.setTimeout(reveal, 2500);
+    const observer = new window.IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        reveal();
+      }
+    }, { root: null, rootMargin: "400px 0px", threshold: 0.01 });
+    observer.observe(node);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+      observer.disconnect();
+    };
+  }, [iframeMountReady]);
 
   useEffect(() => {
     if (!playing) return () => {};
@@ -1148,7 +1180,7 @@ const DemoExperiencePage = ({ session = {} }) => {
         />
       </article>
 
-      <div className={`mk3-demo-shell ${isInteractiveTestingLayout ? "mk3-demo-shell-testing" : ""}`}>
+      <div ref={demoShellRef} className={`mk3-demo-shell ${isInteractiveTestingLayout ? "mk3-demo-shell-testing" : ""}`}>
         <article className={`mk3-demo-surface mk3-demo-tv is-${activeScene.mode}`}>
           <header>
             <span>Public TV</span>
@@ -1160,8 +1192,9 @@ const DemoExperiencePage = ({ session = {} }) => {
           <div className="mk3-demo-frame-wrap mk3-demo-tv-frame-wrap">
             <iframe
               title="Public TV surface"
-              src={launchLinks.tv}
+              src={iframeMountReady ? launchLinks.tv : "about:blank"}
               className="mk3-demo-iframe"
+              loading="lazy"
               allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
             />
             {isAutoplayShowcase && (
@@ -1303,8 +1336,9 @@ const DemoExperiencePage = ({ session = {} }) => {
                 <div className="mk3-demo-phone-screen">
                   <iframe
                     title="Audience surface"
-                    src={launchLinks.audience}
+                    src={iframeMountReady ? launchLinks.audience : "about:blank"}
                     className="mk3-demo-iframe mk3-demo-iframe-mobile"
+                    loading="lazy"
                     allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
                   />
                   {isAutoplayShowcase && (
@@ -1379,8 +1413,9 @@ const DemoExperiencePage = ({ session = {} }) => {
             ) : (
               <iframe
                 title="Audience surface"
-                src={launchLinks.audience}
+                src={iframeMountReady ? launchLinks.audience : "about:blank"}
                 className="mk3-demo-iframe"
+                loading="lazy"
                 allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
               />
             )}
@@ -1451,8 +1486,9 @@ const DemoExperiencePage = ({ session = {} }) => {
             ) : (
               <iframe
                 title="Host deck surface"
-                src={launchLinks.host}
+                src={iframeMountReady ? launchLinks.host : "about:blank"}
                 className="mk3-demo-iframe"
+                loading="lazy"
                 allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
               />
             )}

@@ -13,21 +13,30 @@ const ForPerformersPage = ({ navigate, session, authFlow }) => {
         <button
           type="button"
           onClick={() => {
-            trackEvent("mk_persona_cta_click", { persona: "performer", cta: "find_events" });
-            navigate("discover");
+            trackEvent("mk_persona_cta_click", { persona: "performer", cta: "start_hosting" });
+            navigate("for_hosts");
           }}
         >
-          Find Spotlight Nights
+          Start Hosting
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            trackEvent("mk_persona_cta_click", { persona: "performer", cta: "watch_demo" });
+            navigate("demo");
+          }}
+        >
+          Watch Demo
         </button>
         {canUseDashboard ? (
           <button
             type="button"
             onClick={() => {
-              trackEvent("mk_persona_cta_click", { persona: "performer", cta: "open_dashboard" });
-              navigate("profile");
+              trackEvent("mk_persona_cta_click", { persona: "performer", cta: "find_events" });
+              navigate("discover");
             }}
           >
-            Open Performer Dashboard
+            Find Spotlight Nights
           </button>
         ) : (
           <button
@@ -39,7 +48,7 @@ const ForPerformersPage = ({ navigate, session, authFlow }) => {
               returnRoute: { page: "profile" },
             })}
           >
-            Create Account To Build Profile
+            Find Spotlight Nights
           </button>
         )}
       </div>

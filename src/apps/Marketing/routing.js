@@ -1,6 +1,7 @@
 export const MARKETING_ROUTE_PAGES = {
   discover: "discover",
   demo: "demo",
+  changelog: "changelog",
   hostAccess: "host_access",
   venue: "venue",
   event: "event",
@@ -37,6 +38,7 @@ const QUERY_PARAM_KEYS = new Set([
 const LEGACY_PAGE_TO_CANONICAL = {
   discover: { page: MARKETING_ROUTE_PAGES.discover },
   demo: { page: MARKETING_ROUTE_PAGES.demo },
+  changelog: { page: MARKETING_ROUTE_PAGES.changelog },
   host_access: { page: MARKETING_ROUTE_PAGES.hostAccess },
   "host-access": { page: MARKETING_ROUTE_PAGES.hostAccess },
   venue: { page: MARKETING_ROUTE_PAGES.venue },
@@ -75,7 +77,7 @@ const safeToken = (value = "") =>
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-const defaultRoute = () => ({ page: MARKETING_ROUTE_PAGES.forFans, id: "", params: {} });
+const defaultRoute = () => ({ page: MARKETING_ROUTE_PAGES.forHosts, id: "", params: {} });
 
 const stripBasePath = (pathname = "") => {
   const clean = `/${trimSlashes(pathname)}`;
@@ -100,6 +102,7 @@ const routeForPathTokens = (parts = []) => {
 
   if (parts[0] === "discover") return { page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} };
   if (parts[0] === "demo") return { page: MARKETING_ROUTE_PAGES.demo, id: "", params: {} };
+  if (parts[0] === "changelog") return { page: MARKETING_ROUTE_PAGES.changelog, id: "", params: {} };
   if (parts[0] === "host-access") return { page: MARKETING_ROUTE_PAGES.hostAccess, id: "", params: {} };
   if (parts[0] === "for-hosts") return { page: MARKETING_ROUTE_PAGES.forHosts, id: "", params: {} };
   if (parts[0] === "for-venues") return { page: MARKETING_ROUTE_PAGES.forVenues, id: "", params: {} };
@@ -160,7 +163,7 @@ const parseLegacyQueryRoute = (search = "") => {
   const hasLegacyPage = params.has("page");
   if (mode && mode !== "marketing") return null;
   if (!hasLegacyPage && mode !== "marketing") return null;
-  const page = lower(params.get("page") || "discover");
+  const page = lower(params.get("page") || "for_hosts");
   const mapped = LEGACY_PAGE_TO_CANONICAL[page];
   if (!mapped) return defaultRoute();
   const id = String(
@@ -253,10 +256,11 @@ export const parseMarketingRouteFromHref = (href = "") => {
   }
 };
 
-export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.forFans, id = "", params = {} } = {}) => {
+export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.forHosts, id = "", params = {} } = {}) => {
   const safeId = String(id || "").trim();
   if (page === MARKETING_ROUTE_PAGES.discover) return applyBasePath("/discover");
   if (page === MARKETING_ROUTE_PAGES.demo) return applyBasePath("/demo");
+  if (page === MARKETING_ROUTE_PAGES.changelog) return applyBasePath("/changelog");
   if (page === MARKETING_ROUTE_PAGES.hostAccess) return applyBasePath("/host-access");
   if (page === MARKETING_ROUTE_PAGES.forHosts) return applyBasePath("/for-hosts");
   if (page === MARKETING_ROUTE_PAGES.forVenues) return applyBasePath("/for-venues");
@@ -284,7 +288,7 @@ export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.forFans, id = 
     const token = safeToken(params.regionToken || safeId || "");
     if (token) return applyBasePath(`/karaoke/${encodeURIComponent(token)}`);
   }
-  return applyBasePath("/for-fans");
+  return applyBasePath("/for-hosts");
 };
 
 export const buildMarketingSearch = ({ params = {} } = {}) => {
@@ -306,12 +310,13 @@ export const buildMarketingUrl = (route = {}) => {
   return `${path}${search}`;
 };
 
-export const buildLegacyMarketingQuery = ({ page = MARKETING_ROUTE_PAGES.discover, id = "" } = {}) => {
+export const buildLegacyMarketingQuery = ({ page = MARKETING_ROUTE_PAGES.forHosts, id = "" } = {}) => {
   const params = new URLSearchParams();
   params.set("mode", "marketing");
   const pageMap = {
     [MARKETING_ROUTE_PAGES.discover]: "discover",
     [MARKETING_ROUTE_PAGES.demo]: "demo",
+    [MARKETING_ROUTE_PAGES.changelog]: "changelog",
     [MARKETING_ROUTE_PAGES.hostAccess]: "host_access",
     [MARKETING_ROUTE_PAGES.venue]: "venue",
     [MARKETING_ROUTE_PAGES.event]: "event",
@@ -329,7 +334,7 @@ export const buildLegacyMarketingQuery = ({ page = MARKETING_ROUTE_PAGES.discove
     [MARKETING_ROUTE_PAGES.geoCity]: "geo_city",
     [MARKETING_ROUTE_PAGES.geoRegion]: "geo_region",
   };
-  params.set("page", pageMap[page] || "discover");
+  params.set("page", pageMap[page] || "for_hosts");
   if (id) params.set("id", id);
   return `${applyBasePath("/")}?${params.toString()}`;
 };

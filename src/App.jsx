@@ -98,7 +98,7 @@ const Landing = ({ onJoin }) => {
     const marketingHref = typeof window !== 'undefined'
         ? (
             marketingFlags.routePathsEnabled
-                ? buildSurfaceUrl({ surface: 'marketing', path: 'for-fans' }, window.location)
+                ? buildSurfaceUrl({ surface: 'marketing', path: 'for-hosts' }, window.location)
                 : buildSurfaceUrl({ surface: 'marketing', params: { mode: 'marketing' } }, window.location)
         )
         : '/';

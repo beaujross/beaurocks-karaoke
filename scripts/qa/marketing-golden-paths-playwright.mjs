@@ -164,7 +164,7 @@ const run = async () => {
       );
       await delay(450);
       const createAccountHost = page.getByRole("button", {
-        name: /Create Account To Launch|Create Host Account|Create Account To Create Private Session/i,
+        name: /Start Hosting|Create Account To Launch|Create Host Account|Create Account To Create Private Session/i,
       }).first();
       if (await createAccountHost.isVisible().catch(() => false)) {
         await createAccountHost.click({ force: true });

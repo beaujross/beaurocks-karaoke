@@ -13,8 +13,9 @@ This spec is implemented as a non-breaking refinement layer. Existing routes rem
 | Route Key | Canonical Path | IA Zone | Component Owner |
 | --- | --- | --- | --- |
 | `for_hosts` | `/for-hosts` | `market` | `ForHostsPage` |
-| `host_access` | `/host-access` | `market` | `ForHostsPage` with access gate shell |
+| `host_access` | `/host-access` | `market` | Internal auth/access gate alias |
 | `demo` | `/demo` | `market` | `DemoExperiencePage` |
+| `changelog` | `/changelog` | `market` | `ChangelogPage` |
 | `discover` | `/discover` | `utility` | `DiscoverPage` |
 | `join` | `/join` | `utility` | `JoinPage` |
 | `for_venues` | `/for-venues` | `market` | `ForVenuesPage` |
@@ -39,10 +40,10 @@ Source of truth now lives in:
 Current nav intent:
 
 1. Public primary: `Product`, `Demo`, `Discover`, `Join`.
-2. Public secondary: `For Venues`, `For Performers`, `For Guests`.
-3. Locked secondary: `For Guests`.
-4. Authenticated secondary: `Dashboard`.
-5. Moderator secondary: `Marketing Admin`.
+2. Public secondary in header: none.
+3. Authenticated secondary: `Dashboard`.
+4. Moderator secondary: `Marketing Admin`.
+5. Persona links and changelog live in footer links.
 
 ## Page Ownership Table
 | IA Zone | Scope | Notes |
@@ -60,10 +61,10 @@ Strategy: keep legacy aliases live while canonicalizing links and analytics to p
 | `/marketing?page=for_hosts` | `/for-hosts` | `alias_keep_live` |
 | `/marketing?page=discover` | `/discover` | `alias_keep_live` |
 | `/marketing?page=join` | `/join` | `alias_keep_live` |
-| `/marketing?page=host_access` | `/host-access` | `alias_keep_live` |
+| `/marketing?page=host_access` | `/for-hosts` | `alias_keep_live` |
 
 ## Implementation Notes
 1. No route removal in this phase.
 2. Navigation behavior is centralized through `getMarketingNavModel()`.
 3. Brand click now routes to host product path (`/for-hosts`) to support host-first positioning.
-4. `host_access` and `for_hosts` consolidation remains a follow-up architecture step after content and conversion validation.
+4. `host_access` remains an internal auth/access alias while public canonical host path is `/for-hosts`.
