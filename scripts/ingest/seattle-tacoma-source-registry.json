@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "updatedAt": "2026-02-28",
+  "maxPerRegion": 20,
+  "regions": [
+    {
+      "token": "wa_seattle",
+      "city": "Seattle",
+      "state": "WA",
+      "label": "Seattle"
+    },
+    {
+      "token": "wa_shoreline",
+      "city": "Shoreline",
+      "state": "WA",
+      "label": "Shoreline"
+    },
+    {
+      "token": "wa_tacoma",
+      "city": "Tacoma",
+      "state": "WA",
+      "label": "Tacoma"
+    }
+  ],
+  "sources": [
+    {
+      "id": "karaokenear_seattle",
+      "label": "Karaoke Near Me - Seattle",
+      "type": "karaokenear_city",
+      "url": "https://karaokenear.me/karaoke/countries/united-states/cities/seattle",
+      "city": "Seattle",
+      "state": "WA",
+      "region": "wa_seattle",
+      "priority": 100,
+      "fetchDetailPages": true,
+      "maxDetailPages": 20
+    },
+    {
+      "id": "karaokenear_shoreline",
+      "label": "Karaoke Near Me - Shoreline",
+      "type": "karaokenear_city",
+      "url": "https://karaokenear.me/karaoke/countries/united-states/cities/shoreline",
+      "city": "Shoreline",
+      "state": "WA",
+      "region": "wa_shoreline",
+      "priority": 92,
+      "fetchDetailPages": true,
+      "maxDetailPages": 12
+    },
+    {
+      "id": "do206_karaoke_nights",
+      "label": "Do206 - Nightly Karaoke",
+      "type": "do206_event_feed",
+      "url": "https://do206.com/karaoke-nights-seattle",
+      "city": "Seattle",
+      "state": "WA",
+      "region": "wa_seattle",
+      "priority": 95,
+      "keywords": [
+        "karaoke"
+      ],
+      "emitVenueCompanions": true
+    },
+    {
+      "id": "lucky_silver_calendar",
+      "label": "Lucky Silver Tavern Calendar",
+      "type": "squarespace_events",
+      "url": "https://www.theluckysilver.com/calendar",
+      "city": "Tacoma",
+      "state": "WA",
+      "region": "wa_tacoma",
+      "priority": 88,
+      "keywords": [
+        "karaoke"
+      ],
+      "venueName": "The Lucky Silver",
+      "emitVenueCompanions": true,
+      "skipPastDays": 45
+    },
+    {
+      "id": "burleskaraoke_events",
+      "label": "BurlesKaraoke Events",
+      "type": "squarespace_events",
+      "url": "https://www.burleskaraoke.com/events",
+      "city": "Seattle",
+      "state": "WA",
+      "region": "wa_seattle",
+      "priority": 84,
+      "keywords": [
+        "karaoke",
+        "burleskaraoke"
+      ],
+      "emitVenueCompanions": true,
+      "skipPastDays": 45
+    }
+  ]
+}

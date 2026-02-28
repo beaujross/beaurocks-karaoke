@@ -47,6 +47,8 @@
     "seed:directory:import": "node scripts/ingest/import-kitsap-seed.mjs --help",
     "seed:directory:kitsap:rest": "node scripts/ingest/seed-kitsap-directory-rest.mjs --help",
     "seed:directory:kitsap:geocode": "node scripts/ingest/geocode-kitsap-venues.mjs",
+    "seed:directory:seattle-tacoma:scrape": "node scripts/ingest/scrape-seattle-tacoma-sources.mjs --dry-run",
+    "seed:directory:seattle-tacoma:apply": "node scripts/ingest/scrape-seattle-tacoma-sources.mjs --apply",
     "seed:directory:bootstrap": "node scripts/ingest/bootstrap-directory-profiles.mjs --dry-run",
     "preview": "vite preview",
     "deploy:hosting": "npm run build && npx firebase-tools deploy --only hosting",

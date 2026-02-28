@@ -14,6 +14,25 @@ export const formatDateTime = (ms = 0) => {
   }
 };
 
+export const buildGoogleMapsSearchUrl = (parts = []) => {
+  const source = Array.isArray(parts) ? parts : [parts];
+  const query = source
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean)
+    .join(", ");
+  if (!query) return "";
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+};
+
+export const toTelephoneHref = (value = "") => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const hasPlus = raw.startsWith("+");
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length < 7) return "";
+  return `tel:${hasPlus ? "+" : ""}${digits}`;
+};
+
 const MARKETING_IMAGE_FALLBACKS = {
   venue: [
     "/images/marketing/venue-location-fallback.svg",
@@ -67,6 +86,54 @@ export const buildPublicLocationImageUrl = (entity = {}) => {
   // External OSM static-map endpoint has become unreliable for this project.
   // Return an internal fallback image to avoid noisy failed-network requests.
   return "/images/marketing/venue-location-fallback.svg";
+};
+
+const WEEKDAY_ORDER = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAY_ALIAS_TO_LABEL = {
+  sunday: "Sun",
+  sun: "Sun",
+  monday: "Mon",
+  mon: "Mon",
+  tuesday: "Tue",
+  tue: "Tue",
+  wednesday: "Wed",
+  wed: "Wed",
+  thursday: "Thu",
+  thu: "Thu",
+  friday: "Fri",
+  fri: "Fri",
+  saturday: "Sat",
+  sat: "Sat",
+};
+const WEEKDAY_SCAN_RE = /\b(sun(?:day)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?)\b/gi;
+
+export const extractCadenceBadges = ({ karaokeNightsLabel = "", recurringRule = "", startsAtMs = 0, max = 4 } = {}) => {
+  const text = `${String(karaokeNightsLabel || "")} ${String(recurringRule || "")}`.trim();
+  const seen = new Set();
+  const out = [];
+  if (text) {
+    const matches = [...text.matchAll(WEEKDAY_SCAN_RE)];
+    matches.forEach((match) => {
+      const token = String(match?.[1] || "").toLowerCase();
+      const label = WEEKDAY_ALIAS_TO_LABEL[token];
+      if (!label || seen.has(label)) return;
+      seen.add(label);
+      out.push(label);
+    });
+  }
+  if (!out.length) {
+    const starts = Number(startsAtMs || 0);
+    if (Number.isFinite(starts) && starts > 0) {
+      const dayLabel = WEEKDAY_ORDER[new Date(starts).getDay()] || "";
+      if (dayLabel) out.push(dayLabel);
+    }
+  }
+  if (out.length <= 1) return out.slice(0, Math.max(1, Number(max || 4)));
+  const sortIndex = (label = "") => WEEKDAY_ORDER.indexOf(String(label || "").slice(0, 3));
+  return out
+    .slice()
+    .sort((a, b) => sortIndex(a) - sortIndex(b))
+    .slice(0, Math.max(1, Number(max || 4)));
 };
 
 const appendMediaCandidate = (list = [], raw = "") => {

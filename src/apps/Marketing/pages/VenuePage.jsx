@@ -13,7 +13,14 @@ import EntityActionsCard from "./EntityActionsCard";
 import CadenceUpdateCard from "./CadenceUpdateCard";
 import ClaimOwnershipCard from "./ClaimOwnershipCard";
 import EmptyStatePanel from "./EmptyStatePanel";
-import { buildPublicLocationImageUrl, formatDateTime, resolveListingImageCandidates } from "./shared";
+import {
+  buildGoogleMapsSearchUrl,
+  buildPublicLocationImageUrl,
+  extractCadenceBadges,
+  formatDateTime,
+  resolveListingImageCandidates,
+  toTelephoneHref,
+} from "./shared";
 
 const applyImageFallback = (event, fallbackUrl = "/images/marketing/venue-location-fallback.svg") => {
   const target = event?.currentTarget;
@@ -94,6 +101,18 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
     .filter((value, index, array) => String(value || "").trim() && array.indexOf(value) === index);
   const heroImage = allImages[0] || "/images/marketing/venue-location-fallback.svg";
   const listingGallery = allImages.slice(0, 3);
+  const cadenceBadges = extractCadenceBadges({
+    karaokeNightsLabel: venue.karaokeNightsLabel,
+    startsAtMs: nextEvent?.startsAtMs || 0,
+    max: 7,
+  });
+  const websiteUrl = String(venue.websiteUrl || "").trim();
+  const bookingUrl = String(venue.bookingUrl || "").trim();
+  const addressLabel = [venue.address1, venue.city, venue.state, venue.postalCode].filter(Boolean).join(", ");
+  const mapsUrl = String(venue?.externalSources?.google?.mapsUrl || "").trim()
+    || buildGoogleMapsSearchUrl([venue.address1, venue.city, venue.state, venue.postalCode]);
+  const phoneLabel = String(venue.phone || "").trim();
+  const phoneHref = toTelephoneHref(phoneLabel);
 
   return (
     <section className="mk3-page mk3-two-col">
@@ -127,12 +146,20 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
           </article>
         </div>
 
-        {venue.karaokeNightsLabel && (
-          <div className="mk3-status">
-            <strong>Karaoke cadence</strong>
-            <span>{venue.karaokeNightsLabel}</span>
-          </div>
-        )}
+        <div className="mk3-info-module">
+          <strong>Karaoke Times</strong>
+          {!!cadenceBadges.length && (
+            <div className="mk3-day-badge-row">
+              {cadenceBadges.map((label) => (
+                <span key={`venue-day-${label}`} className="mk3-day-badge">{label}</span>
+              ))}
+            </div>
+          )}
+          {venue.karaokeNightsLabel && <span className="mk3-info-note">{venue.karaokeNightsLabel}</span>}
+          {!cadenceBadges.length && !venue.karaokeNightsLabel && (
+            <span className="mk3-info-note">Cadence pending.</span>
+          )}
+        </div>
 
         <div className="mk3-venue-gallery" aria-label="Venue gallery">
           {listingGallery.map((imageUrl, index) => (
@@ -148,11 +175,42 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
         </div>
 
         <p>{venue.description || "No venue description provided yet."}</p>
-        {venue.websiteUrl && (
-          <a className="mk3-venue-link" href={venue.websiteUrl} target="_blank" rel="noreferrer">
-            Venue Website
-          </a>
-        )}
+        <div className="mk3-info-module">
+          <strong>Contact / Info</strong>
+          <div className="mk3-info-link-row">
+            {websiteUrl && (
+              <a className="mk3-venue-link" href={websiteUrl} target="_blank" rel="noreferrer">
+                Website
+              </a>
+            )}
+            {bookingUrl && (
+              <a className="mk3-venue-link" href={bookingUrl} target="_blank" rel="noreferrer">
+                Booking
+              </a>
+            )}
+            {mapsUrl && (
+              <a className="mk3-venue-link" href={mapsUrl} target="_blank" rel="noreferrer">
+                Maps
+              </a>
+            )}
+          </div>
+          <div className="mk3-info-kv-grid">
+            {phoneLabel && (
+              <div className="mk3-info-kv">
+                <span className="mk3-info-kv-label">Phone</span>
+                {phoneHref
+                  ? <a className="mk3-info-kv-value-link" href={phoneHref}>{phoneLabel}</a>
+                  : <span className="mk3-info-kv-value">{phoneLabel}</span>}
+              </div>
+            )}
+            {addressLabel && (
+              <div className="mk3-info-kv">
+                <span className="mk3-info-kv-label">Address</span>
+                <span className="mk3-info-kv-value">{addressLabel}</span>
+              </div>
+            )}
+          </div>
+        </div>
         <div className="mk3-sub-list">
           <h3>Upcoming Karaoke Events</h3>
           {events.length === 0 && <div className="mk3-status">No approved events linked to this venue yet.</div>}

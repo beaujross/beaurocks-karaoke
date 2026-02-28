@@ -8,6 +8,7 @@ import EmptyStatePanel from "./EmptyStatePanel";
 import InlineConversionActions from "./InlineConversionActions";
 import {
   buildPublicLocationImageUrl,
+  extractCadenceBadges,
   formatDateTime,
   getInitials,
   resolveListingImageCandidates,
@@ -260,6 +261,12 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const timeLabel = listingType === "venue"
     ? String(entry?.karaokeNightsLabel || "").trim()
     : startsAtMs > 0 ? formatDateTime(startsAtMs) : "Time TBD";
+  const cadenceBadges = extractCadenceBadges({
+    karaokeNightsLabel: entry?.karaokeNightsLabel,
+    recurringRule: entry?.recurringRule,
+    startsAtMs,
+    max: listingType === "venue" ? 4 : 3,
+  });
   return {
     key: `${listingType}:${entry.id}`,
     id: entry.id,
@@ -288,6 +295,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     hostToken: getHostToken({ hostUid, hostName }),
     performerUid: String(entry?.performerUid || "").trim(),
     timeLabel,
+    cadenceBadges,
     startsAtMs,
     location,
   };
@@ -776,6 +784,19 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const mapBoundsLabel = mapBounds
     ? `${mapBounds.south.toFixed(2)} to ${mapBounds.north.toFixed(2)} lat`
     : "Move map to define bounds";
+  const activeRegionLabel = useMemo(() => {
+    const token = String(region || "").trim().toLowerCase();
+    if (!token) return "Nationwide";
+    if (token === "nationwide") return "Nationwide";
+    return humanizeRegion(token) || token;
+  }, [region]);
+  const activeRegionToken = useMemo(() => {
+    const token = String(region || "").trim().toLowerCase();
+    if (!token) return "nationwide";
+    if (token === "nationwide") return "nationwide";
+    if (token.includes("_")) return token;
+    return "nationwide";
+  }, [region]);
   const hasSearchFilters = !!String(search || "").trim()
     || !!String(region || "").trim()
     || effectiveHostFilter !== "all"
@@ -796,9 +817,14 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     const ranked = Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 14)
-      .map(([id]) => ({ id, label: humanizeRegion(id) || id }));
-    if (!ranked.length) return MARKETING_REGION_PRESETS;
-    return [{ id: "nationwide", label: "Nationwide" }, ...ranked];
+      .map(([id, count]) => ({ id, label: humanizeRegion(id) || id, count }));
+    if (!ranked.length) {
+      return MARKETING_REGION_PRESETS.map((preset) => ({
+        ...preset,
+        count: counts.get(String(preset.id || "").trim().toLowerCase()) || 0,
+      }));
+    }
+    return [{ id: "nationwide", label: "Nationwide", count: source.length }, ...ranked];
   }, [rawData]);
 
   const handleEmptyAction = (action = {}) => {
@@ -830,9 +856,34 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
   return (
     <section className="mk3-page">
+      <nav className="mk3-breadcrumb" aria-label="Finder breadcrumb">
+        <button type="button" onClick={() => navigate("for-fans")}>Home</button>
+        <span className="mk3-breadcrumb-sep">/</span>
+        <span>Discover</span>
+        {activeRegionLabel && activeRegionLabel !== "Nationwide" && (
+          <>
+            <span className="mk3-breadcrumb-sep">/</span>
+            <span className="mk3-breadcrumb-current">{activeRegionLabel}</span>
+          </>
+        )}
+      </nav>
       <div className="mk3-status mk3-zone mk3-zone-finder">
         <strong>BeauRocks Karaoke {FINDER_BRAND} Finder</strong>
         <span>Find your next karaoke night fast, then meet actual humans when you get there.</span>
+        <div className="mk3-finder-cta-row">
+          <button
+            type="button"
+            onClick={() => navigate("submit", "", { intent: "listing_submit", targetType: "venue" })}
+          >
+            Add Karaoke Night
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("geo_region", activeRegionToken, { regionToken: activeRegionToken })}
+          >
+            Open Geo Landing
+          </button>
+        </div>
       </div>
       <div className="mk3-filter-row mk3-discover-filters mk3-zone mk3-zone-filters">
         <label>
@@ -907,6 +958,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             onClick={() => setRegion(preset.id)}
           >
             {preset.label}
+            {Number(preset.count || 0) > 0 && <span className="mk3-filter-chip-count">{preset.count}</span>}
           </button>
         ))}
         {hasSearchFilters && (
@@ -1117,6 +1169,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 <div className="mk3-card-subtitle">{entry.subtitle}</div>
                 {!!entry.distanceLabel && <div className="mk3-card-subtitle">{entry.distanceLabel}</div>}
                 {entry.timeLabel && <div className="mk3-card-time">{entry.timeLabel}</div>}
+                {!!entry.cadenceBadges?.length && (
+                  <div className="mk3-day-badge-row">
+                    {entry.cadenceBadges.map((badge) => (
+                      <span key={`${entry.key}_${badge}`} className="mk3-day-badge">{badge}</span>
+                    ))}
+                  </div>
+                )}
                 {entry.detailLine && <div className="mk3-card-subtitle">{entry.detailLine}</div>}
                 {!!entry.hostName && <div className="mk3-card-subtitle">Host: {entry.hostName}</div>}
                 <div className="mk3-actions-inline">

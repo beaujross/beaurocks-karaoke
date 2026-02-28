@@ -1856,6 +1856,63 @@
   background: linear-gradient(180deg, #ffbf73, #ff4aa8);
 }
 
+.mk3-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.72rem;
+  color: #b9d3ea;
+}
+
+.mk3-breadcrumb button {
+  border: 0;
+  background: transparent;
+  color: #93daf9;
+  font-size: inherit;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0;
+}
+
+.mk3-breadcrumb button:hover {
+  color: #dff4ff;
+  text-decoration: underline;
+}
+
+.mk3-breadcrumb-sep {
+  color: rgba(191, 216, 238, 0.58);
+}
+
+.mk3-breadcrumb-current {
+  color: #ffe3b0;
+}
+
+.mk3-finder-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mk3-finder-cta-row button {
+  border-radius: 999px;
+  border: 1px solid rgba(176, 198, 220, 0.28);
+  background: rgba(9, 18, 27, 0.9);
+  color: #d8e9fa;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  min-height: 36px;
+  padding: 0.34rem 0.74rem;
+  cursor: pointer;
+}
+
+.mk3-finder-cta-row button:hover {
+  border-color: rgba(255, 214, 106, 0.5);
+  background: rgba(13, 22, 32, 0.96);
+}
+
 .mk3-discover-shell {
   display: grid;
   grid-template-columns: 1.15fr 0.85fr;
@@ -2143,6 +2200,20 @@
   color: #fff1cf;
 }
 
+.mk3-filter-chip-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.34rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 215, 106, 0.34);
+  background: rgba(255, 215, 106, 0.14);
+  min-width: 20px;
+  padding: 0.04rem 0.34rem;
+  font-size: 0.62rem;
+  color: #ffeabf;
+}
+
 .mk3-map-marker-selected {
   display: grid;
   gap: 4px;
@@ -2344,6 +2415,23 @@
   font-size: 0.78rem;
 }
 
+.mk3-day-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mk3-day-badge {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 214, 106, 0.28);
+  background: rgba(23, 18, 43, 0.85);
+  color: #ffe7bb;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .mk3-listing-hero,
 .mk3-venue-hero {
   position: relative;
@@ -2517,6 +2605,71 @@
 .mk3-venue-link:hover {
   color: #fff6d9;
   border-color: rgba(255, 215, 106, 0.52);
+}
+
+.mk3-info-module {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 215, 106, 0.2);
+  background: rgba(9, 16, 23, 0.9);
+  padding: 0.62rem 0.7rem;
+  display: grid;
+  gap: 8px;
+}
+
+.mk3-info-module > strong {
+  color: #e7b8df;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.mk3-info-note {
+  color: #d8e4f5;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.mk3-info-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mk3-info-link-row .mk3-venue-link {
+  margin: 0;
+}
+
+.mk3-info-kv-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.mk3-info-kv {
+  display: grid;
+  gap: 2px;
+}
+
+.mk3-info-kv-label {
+  color: #9db4cd;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.62rem;
+}
+
+.mk3-info-kv-value,
+.mk3-info-kv-value-link {
+  color: #eef5ff;
+  font-size: 0.79rem;
+  line-height: 1.35;
+}
+
+.mk3-info-kv-value-link {
+  text-decoration: none;
+}
+
+.mk3-info-kv-value-link:hover {
+  color: #fff6d8;
+  text-decoration: underline;
 }
 
 .mk3-two-col {
