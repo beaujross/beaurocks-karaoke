@@ -142,6 +142,13 @@ const appendMediaCandidate = (list = [], raw = "") => {
     raw.forEach((entry) => appendMediaCandidate(list, entry));
     return;
   }
+  if (raw && typeof raw === "object") {
+    appendMediaCandidate(list, raw.url);
+    appendMediaCandidate(list, raw.src);
+    appendMediaCandidate(list, raw.imageUrl);
+    appendMediaCandidate(list, raw.photoUrl);
+    return;
+  }
   const value = normalizeMediaCandidateUrl(raw);
   if (!value) return;
   if (!list.includes(value)) list.push(value);
@@ -162,8 +169,13 @@ export const resolveListingImageCandidates = (entity = {}, listingType = "defaul
   appendMediaCandidate(next, safe.externalSources?.imageUrl);
   appendMediaCandidate(next, safe.externalSources?.photoUrl);
   appendMediaCandidate(next, safe.externalSources?.google?.photoUrl);
+  appendMediaCandidate(next, safe.externalSources?.google?.imageUrl);
+  appendMediaCandidate(next, safe.externalSources?.google?.photoUrls);
   appendMediaCandidate(next, safe.externalSources?.google?.images);
   appendMediaCandidate(next, safe.externalSources?.yelp?.imageUrl);
+  appendMediaCandidate(next, safe.externalSources?.yelp?.photoUrl);
+  appendMediaCandidate(next, safe.externalSources?.yelp?.images);
+  appendMediaCandidate(next, safe.externalSources?.yelp?.photos);
 
   if (includeFallback) {
     const fallbackKey = String(listingType || "default").trim().toLowerCase();

@@ -18,23 +18,25 @@ import {
 const FINDER_BRAND = "Setlist";
 const MAP_DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
 const MAP_BRAND_STYLES = [
-  { elementType: "geometry", stylers: [{ color: "#1d062b" }] },
+  { elementType: "geometry", stylers: [{ color: "#241335" }] },
   { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
   { elementType: "labels.text.fill", stylers: [{ color: "#f9d58a" }] },
   { elementType: "labels.text.stroke", stylers: [{ color: "#2a0a3a" }] },
-  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#6c2f84" }] },
+  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#694185" }] },
   { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#ffd98c" }] },
-  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#2d0d3f" }] },
-  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#3a114f" }] },
-  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#3b1a58" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#4d1a61" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#7b2f8f" }] },
+  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#2f1744" }] },
+  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#3a1f4f" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#2e2f54" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#5b2a72" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#7f4c98" }] },
   { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#643179" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#8340a0" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#8f4ead" }] },
   { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#f1b85b" }] },
-  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#5a246f" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#2b0f45" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#ffc86a" }] },
+  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#4f356a" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0e3f73" }] },
+  { featureType: "water", elementType: "geometry.stroke", stylers: [{ color: "#1a5a97" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#8fd8ff" }] },
+  { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#08294d" }] },
 ];
 const MAP_TYPE_META = {
   venue: { label: "venue", routePage: "venue", markerColor: "#ff68bf" },
@@ -145,12 +147,20 @@ const normalizeListingType = (value = "") => {
   return "venue";
 };
 
+const toFiniteCoordinate = (value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const normalizeLocation = (entry = {}) => {
   const location = entry?.location || entry?.latLng || entry?.coordinates || {};
-  const lat = Number(location?.lat ?? entry?.lat ?? entry?.latitude);
-  const lng = Number(location?.lng ?? entry?.lon ?? entry?.lng ?? entry?.longitude);
+  const lat = toFiniteCoordinate(location?.lat ?? entry?.lat ?? entry?.latitude);
+  const lng = toFiniteCoordinate(location?.lng ?? entry?.lon ?? entry?.lng ?? entry?.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  if (Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001) return null;
   return { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
 };
 
@@ -265,6 +275,28 @@ const buildStaticMapImageUrl = ({ location = null, mapsApiKey = "" } = {}) => {
   return `https://maps.googleapis.com/maps/api/staticmap?size=960x540&maptype=roadmap&markers=color:0xff68bf%7C${encodeURIComponent(marker)}&style=feature:all%7Csaturation:-60&style=feature:all%7Clightness:-20&key=${encodeURIComponent(key)}`;
 };
 
+const buildGooglePlacePhotoUrls = ({ entry = {}, mapsApiKey = "" } = {}) => {
+  const key = String(mapsApiKey || "").trim();
+  if (!key) return [];
+  const googleExternal = entry?.externalSources?.google || {};
+  const refs = [
+    googleExternal.photoRef,
+    ...(Array.isArray(googleExternal.photoRefs) ? googleExternal.photoRefs : []),
+    ...(Array.isArray(googleExternal.photoReferences) ? googleExternal.photoReferences : []),
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  if (!refs.length) return [];
+  const seen = new Set();
+  const urls = [];
+  refs.forEach((ref) => {
+    if (seen.has(ref)) return;
+    seen.add(ref);
+    urls.push(`https://maps.googleapis.com/maps/api/place/photo?maxwidth=1400&photo_reference=${encodeURIComponent(ref)}&key=${encodeURIComponent(key)}`);
+  });
+  return urls.slice(0, 6);
+};
+
 const getHostToken = ({ hostUid = "", hostName = "" } = {}) => {
   const uid = String(hostUid || "").trim();
   if (uid) return `uid:${uid.toLowerCase()}`;
@@ -339,8 +371,10 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const mapFallbackImageUrl = buildStaticMapImageUrl({ location, mapsApiKey });
   const publicLocationFallbackUrl = buildPublicLocationImageUrl({ location });
   const hardFallbackImageUrl = "/images/marketing/venue-location-fallback.svg";
+  const googlePhotoUrls = buildGooglePlacePhotoUrls({ entry, mapsApiKey });
   const imageCandidates = dedupeUrls([
     ...explicitImageCandidates,
+    ...googlePhotoUrls,
     venueImageUrl,
     mapFallbackImageUrl,
     publicLocationFallbackUrl,
@@ -462,6 +496,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [typeFilter, setTypeFilter] = useState("all");
   const [timeWindow, setTimeWindow] = useState("all");
   const [sortMode, setSortMode] = useState("smart");
+  const [resultsView, setResultsView] = useState("results");
   const [mapFirst, setMapFirst] = useState(true);
   const [boundsOnly, setBoundsOnly] = useState(true);
   const [selectedKey, setSelectedKey] = useState("");
@@ -1062,7 +1097,17 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             className={mobileSurface === "list" ? "active" : ""}
             onClick={() => setMobileSurface("list")}
           >
-            List ({visibleListings.length})
+            Results ({visibleListings.length})
+          </button>
+          <button
+            type="button"
+            className={mobileSurface === "list" && resultsView === "tiles" ? "active" : ""}
+            onClick={() => {
+              setMobileSurface("list");
+              setResultsView("tiles");
+            }}
+          >
+            Tiles
           </button>
           <button
             type="button"
@@ -1291,7 +1336,25 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         <aside className={`mk3-feed-column mk3-zone mk3-zone-rail ${isMobileViewport && mobileSurface !== "list" ? "is-mobile-hidden" : ""}`}>
           <div className="mk3-rail-head">
             <strong>Results rail</strong>
-            <span>{visibleListings.length} shown</span>
+            <div className="mk3-rail-head-meta">
+              <span>{visibleListings.length} shown</span>
+              <div className="mk3-rail-view-toggle" role="group" aria-label="Results display mode">
+                <button
+                  type="button"
+                  className={resultsView === "results" ? "active" : ""}
+                  onClick={() => setResultsView("results")}
+                >
+                  Results
+                </button>
+                <button
+                  type="button"
+                  className={resultsView === "tiles" ? "active" : ""}
+                  onClick={() => setResultsView("tiles")}
+                >
+                  Tiles
+                </button>
+              </div>
+            </div>
             {isMobileViewport && (
               <button type="button" onClick={() => setMobileSurface("map")}>
                 Open map
@@ -1352,7 +1415,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             />
           )}
 
-          <div className="mk3-card-list mk3-card-rail">
+          <div className={`mk3-card-list mk3-card-rail ${resultsView === "tiles" ? "mk3-card-tiles" : "mk3-card-results"}`}>
             {visibleListings.map((entry) => (
               <article
                 key={entry.key}

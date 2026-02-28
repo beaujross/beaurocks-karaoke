@@ -1365,6 +1365,47 @@ const normalizeDirectoryOptionalUrl = (value = "") => {
   return url;
 };
 
+const normalizeDirectoryStringArray = (input = [], maxItems = 8, maxLen = 260) => {
+  const source = Array.isArray(input) ? input : [input];
+  const seen = new Set();
+  const output = [];
+  source.forEach((entry) => {
+    const value = safeDirectoryString(entry, maxLen);
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    output.push(value);
+  });
+  return output.slice(0, Math.max(1, Number(maxItems || 8)));
+};
+
+const normalizeDirectoryUrlArray = (input = [], maxItems = 8) => {
+  const source = Array.isArray(input) ? input : [input];
+  const seen = new Set();
+  const output = [];
+  source.forEach((entry) => {
+    if (entry && typeof entry === "object") {
+      const nested = [
+        entry.url,
+        entry.src,
+        entry.imageUrl,
+        entry.photoUrl,
+      ];
+      nested.forEach((candidate) => {
+        const safeUrl = normalizeDirectoryOptionalUrl(candidate || "");
+        if (!safeUrl || seen.has(safeUrl)) return;
+        seen.add(safeUrl);
+        output.push(safeUrl);
+      });
+      return;
+    }
+    const safeUrl = normalizeDirectoryOptionalUrl(entry || "");
+    if (!safeUrl || seen.has(safeUrl)) return;
+    seen.add(safeUrl);
+    output.push(safeUrl);
+  });
+  return output.slice(0, Math.max(1, Number(maxItems || 8)));
+};
+
 const normalizeDirectoryLatLng = (input = {}) => {
   const lat = Number(input?.lat);
   const lng = Number(input?.lng);
@@ -2132,10 +2173,33 @@ const buildDirectoryExternalLinks = (payload = {}) => {
   if (!external || typeof external !== "object") return {};
   const google = external.google || {};
   const yelp = external.yelp || {};
+  const googlePhotoRefs = normalizeDirectoryStringArray([
+    google.photoRef,
+    ...(Array.isArray(google.photoRefs) ? google.photoRefs : []),
+    ...(Array.isArray(google.photoReferences) ? google.photoReferences : []),
+  ], 8, 320);
+  const googlePhotoUrls = normalizeDirectoryUrlArray([
+    google.photoUrl,
+    google.imageUrl,
+    ...(Array.isArray(google.photoUrls) ? google.photoUrls : []),
+    ...(Array.isArray(google.images) ? google.images : []),
+  ], 8);
+  const yelpImages = normalizeDirectoryUrlArray([
+    yelp.imageUrl,
+    yelp.photoUrl,
+    ...(Array.isArray(yelp.images) ? yelp.images : []),
+    ...(Array.isArray(yelp.photos) ? yelp.photos : []),
+  ], 8);
   return {
     google: {
       placeId: safeDirectoryString(google.placeId || "", 180),
       mapsUrl: normalizeDirectoryOptionalUrl(google.mapsUrl || ""),
+      imageUrl: googlePhotoUrls[0] || "",
+      photoUrl: googlePhotoUrls[0] || "",
+      photoUrls: googlePhotoUrls,
+      photoRef: googlePhotoRefs[0] || "",
+      photoRefs: googlePhotoRefs,
+      address: safeDirectoryString(google.address || "", 220),
       rating: Number(google.rating || 0) || 0,
       reviewCount: Number(google.reviewCount || 0) || 0,
       refreshedAtMs: Number(google.refreshedAtMs || 0) || 0,
@@ -2143,6 +2207,10 @@ const buildDirectoryExternalLinks = (payload = {}) => {
     yelp: {
       businessId: safeDirectoryString(yelp.businessId || "", 180),
       url: normalizeDirectoryOptionalUrl(yelp.url || ""),
+      imageUrl: yelpImages[0] || "",
+      photoUrl: yelpImages[0] || "",
+      images: yelpImages,
+      address: safeDirectoryString(yelp.address || "", 220),
       rating: Number(yelp.rating || 0) || 0,
       reviewCount: Number(yelp.reviewCount || 0) || 0,
       refreshedAtMs: Number(yelp.refreshedAtMs || 0) || 0,
@@ -2267,6 +2335,13 @@ const lookupGoogleVenue = async ({ name = "", locationText = "" }) => {
   const lat = Number(top?.geometry?.location?.lat);
   const lng = Number(top?.geometry?.location?.lng);
   const loc = Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  const photoRefs = normalizeDirectoryStringArray(
+    (Array.isArray(top?.photos) ? top.photos : [])
+      .map((photo) => safeDirectoryString(photo?.photo_reference || "", 320))
+      .filter(Boolean),
+    8,
+    320
+  );
   return {
     provider: "google",
     placeId: safeDirectoryString(top.place_id || "", 180),
@@ -2275,6 +2350,8 @@ const lookupGoogleVenue = async ({ name = "", locationText = "" }) => {
     rating: Number(top.rating || 0) || 0,
     reviewCount: Number(top.user_ratings_total || 0) || 0,
     location: loc,
+    photoRef: photoRefs[0] || "",
+    photoRefs,
     mapsUrl: top.place_id
       ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(String(top.place_id))}`
       : "",
@@ -5191,9 +5268,18 @@ const hydrateIngestionRecordsFromRegions = async (regions = []) => {
 const buildDirectoryExternalSources = ({ googleLookup = null, yelpLookup = null }) => {
   const payload = {};
   if (googleLookup) {
+    const googlePhotoRefs = normalizeDirectoryStringArray([
+      googleLookup.photoRef,
+      ...(Array.isArray(googleLookup.photoRefs) ? googleLookup.photoRefs : []),
+    ], 8, 320);
     payload.google = {
       placeId: safeDirectoryString(googleLookup.placeId || "", 180),
       mapsUrl: normalizeDirectoryOptionalUrl(googleLookup.mapsUrl || ""),
+      photoRef: googlePhotoRefs[0] || "",
+      photoRefs: googlePhotoRefs,
+      imageUrl: normalizeDirectoryOptionalUrl(googleLookup.imageUrl || ""),
+      photoUrl: normalizeDirectoryOptionalUrl(googleLookup.photoUrl || ""),
+      photoUrls: normalizeDirectoryUrlArray(googleLookup.photoUrls || [], 8),
       rating: Number(googleLookup.rating || 0) || 0,
       reviewCount: Number(googleLookup.reviewCount || 0) || 0,
       refreshedAtMs: Date.now(),
@@ -5272,6 +5358,7 @@ const executeDirectoryIngestion = async ({
       venueName: record.venueName || googleLookup?.name || yelpLookup?.name || "",
       websiteUrl: record.websiteUrl || yelpLookup?.url || "",
       bookingUrl: record.bookingUrl || "",
+      imageUrl: record.imageUrl || yelpLookup?.imageUrl || "",
       location: mappedLatLng,
       sourceType: "external",
       externalSources,
