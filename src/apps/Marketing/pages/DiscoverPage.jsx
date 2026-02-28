@@ -1087,7 +1087,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           <button
             type="button"
             className={mobileSurface === "map" ? "active" : ""}
-            onClick={() => setMobileSurface("map")}
+            onClick={() => {
+              setMobileSurface("map");
+              setMobileFiltersExpanded(false);
+            }}
           >
             Map ({mappableListings.length})
           </button>
@@ -1105,11 +1108,6 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           >
             {mobileFiltersExpanded ? "Hide Filters" : "Show Filters"}
           </button>
-          {hasSearchFilters && (
-            <button type="button" onClick={resetDiscoverFilters}>
-              Reset
-            </button>
-          )}
         </div>
       )}
       <div className={`mk3-discover-filter-stack ${isMobileViewport && !mobileFiltersExpanded ? "is-collapsed" : ""}`}>
@@ -1253,18 +1251,22 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         <article className={`mk3-map-card mk3-zone mk3-zone-map ${isMobileViewport && mobileSurface !== "map" ? "is-mobile-hidden" : ""}`}>
           <h2>{FINDER_BRAND} Live Map</h2>
           <div className="mk3-map-badge">Map-first discover view</div>
-          <div className="mk3-map-toolbar">
-            <label className="mk3-inline">
-              <input
-                type="checkbox"
-                checked={boundsOnly}
-                onChange={(event) => setBoundsOnly(event.target.checked)}
-              />
-              Bounds-only list
-            </label>
-            <button type="button" onClick={recenterMap} disabled={!mappableListings.length || !mapsLoaded}>
-              Recenter to markers
-            </button>
+          <div className={`mk3-map-toolbar ${isMobileViewport ? "is-mobile-compact" : ""}`}>
+            {!isMobileViewport && (
+              <label className="mk3-inline">
+                <input
+                  type="checkbox"
+                  checked={boundsOnly}
+                  onChange={(event) => setBoundsOnly(event.target.checked)}
+                />
+                Bounds-only list
+              </label>
+            )}
+            {!isMobileViewport && (
+              <button type="button" onClick={recenterMap} disabled={!mappableListings.length || !mapsLoaded}>
+                Recenter to markers
+              </button>
+            )}
             <button
               type="button"
               onClick={requestUserLocation}
@@ -1311,7 +1313,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           <div className="mk3-map-footer">
               <span>{visibleListings.length} shown in rail</span>
               <span>{featuredListing ? `selected: ${featuredListing.title}` : "select a marker or card"}</span>
-              <span>{mapBoundsLabel}</span>
+              <span className="mk3-map-footer-bounds">{mapBoundsLabel}</span>
             </div>
           </article>
 
