@@ -4417,8 +4417,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     const renderFeedbackModal = () => (
-        <div className="fixed inset-0 bg-black/70 z-[160] flex items-center justify-center p-6 font-saira">
-            <div className="bg-gradient-to-br from-zinc-900 via-zinc-900 to-[#231426] p-6 rounded-3xl w-full max-w-md border border-cyan-400/30 text-left shadow-[0_0_60px_rgba(0,196,217,0.35)] max-h-[85vh] overflow-y-auto custom-scrollbar">
+        <div className="fixed inset-0 bg-black/70 z-[160] flex items-start sm:items-center justify-center p-4 sm:p-6 overflow-y-auto overscroll-contain font-saira">
+            <div className="bg-gradient-to-br from-zinc-900 via-zinc-900 to-[#231426] p-6 rounded-3xl w-full max-w-md border border-cyan-400/30 text-left shadow-[0_0_60px_rgba(0,196,217,0.35)] max-h-[calc(100dvh-2rem)] sm:max-h-[85vh] overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar">
                 <div className="flex items-center justify-between mb-4">
                     <div>
                         <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Feedback</div>
