@@ -4,17 +4,10 @@ import {
   subscribeDocById,
   subscribeOwnDashboard,
   subscribeProfileByUid,
-  subscribeSongCatalog,
   directoryActions,
 } from "../api/directoryApi";
-import { db, doc, setDoc } from "../../../lib/firebase";
 import { formatDateTime } from "./shared";
 import {
-  TIGHT15_MAX,
-  normalizeTight15Entry,
-  getTight15Key,
-  sanitizeTight15List,
-  moveTight15Entry as moveTight15ListEntry,
   collectFollowedHostIds,
 } from "../dashboardUtils";
 
@@ -39,7 +32,6 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     reminders: [],
     performanceHistory: [],
   });
-  const [catalogSongs, setCatalogSongs] = useState([]);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
   const [nextSteps, setNextSteps] = useState([]);
@@ -53,21 +45,6 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     visibility: "public",
     roles: ["fan"],
   });
-  const [tight15Form, setTight15Form] = useState({ songTitle: "", artist: "", albumArtUrl: "" });
-  const [tight15Saving, setTight15Saving] = useState(false);
-  const [tight15Status, setTight15Status] = useState("");
-  const [catalogForm, setCatalogForm] = useState({
-    title: "",
-    artist: "",
-    artworkUrl: "",
-    source: "custom",
-    mediaUrl: "",
-    appleMusicId: "",
-    label: "",
-  });
-  const [catalogSaving, setCatalogSaving] = useState(false);
-  const [catalogStatus, setCatalogStatus] = useState("");
-  const [catalogSearch, setCatalogSearch] = useState("");
   const [followedHostProfiles, setFollowedHostProfiles] = useState([]);
   const [followedHostsLoading, setFollowedHostsLoading] = useState(false);
   const [moderationQueue, setModerationQueue] = useState([]);
@@ -130,18 +107,6 @@ const ProfileDashboardPage = ({ session, navigate }) => {
   }, [canUseDashboard, uid]);
 
   useEffect(() => {
-    if (!canUseDashboard) {
-      setCatalogSongs([]);
-      return () => {};
-    }
-    return subscribeSongCatalog({
-      onData: (songs) => setCatalogSongs(Array.isArray(songs) ? songs : []),
-      onError: () => setCatalogSongs([]),
-      max: 160,
-    });
-  }, [canUseDashboard]);
-
-  useEffect(() => {
     if (!profile) return;
     setForm({
       displayName: profile.displayName || "",
@@ -177,11 +142,6 @@ const ProfileDashboardPage = ({ session, navigate }) => {
       };
     });
   }, [canUseDashboard, inferredDisplayName, profile]);
-
-  const tight15List = useMemo(
-    () => sanitizeTight15List(Array.isArray(userProfile?.tight15) ? userProfile.tight15 : []),
-    [userProfile?.tight15]
-  );
 
   const followedHostIds = useMemo(
     () => collectFollowedHostIds(history.follows),
@@ -346,107 +306,6 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     }
   };
 
-  const persistTight15 = useCallback(async (nextList = []) => {
-    if (!uid) return;
-    setTight15Saving(true);
-    setTight15Status("");
-    try {
-      await setDoc(doc(db, "users", uid), { tight15: sanitizeTight15List(nextList) }, { merge: true });
-      setTight15Status("Tight 15 updated.");
-    } catch (error) {
-      setTight15Status(String(error?.message || "Could not save Tight 15."));
-    } finally {
-      setTight15Saving(false);
-    }
-  }, [uid]);
-
-  const addTight15Entry = async () => {
-    const entry = normalizeTight15Entry(tight15Form);
-    if (!entry) {
-      setTight15Status("Add both song title and artist.");
-      return;
-    }
-    if (tight15List.find((item) => getTight15Key(item) === getTight15Key(entry))) {
-      setTight15Status("That song is already in your Tight 15.");
-      return;
-    }
-    if (tight15List.length >= TIGHT15_MAX) {
-      setTight15Status(`Tight 15 is full (${TIGHT15_MAX}/${TIGHT15_MAX}). Remove one first.`);
-      return;
-    }
-    await persistTight15([...tight15List, entry]);
-    setTight15Form({ songTitle: "", artist: "", albumArtUrl: "" });
-  };
-
-  const removeTight15Entry = async (entryId = "") => {
-    const next = tight15List.filter((entry) => entry.id !== entryId);
-    await persistTight15(next);
-  };
-
-  const moveTight15Entry = async (fromIndex, toIndex) => {
-    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
-    if (fromIndex >= tight15List.length || toIndex >= tight15List.length) return;
-    const next = moveTight15ListEntry(tight15List, fromIndex, toIndex);
-    await persistTight15(next);
-  };
-
-  const addCatalogSongToTight15 = async (song = {}) => {
-    const candidate = normalizeTight15Entry({
-      songTitle: song.title,
-      artist: song.artist,
-      albumArtUrl: song.artworkUrl,
-    });
-    if (!candidate) return;
-    if (tight15List.find((item) => getTight15Key(item) === getTight15Key(candidate))) {
-      setTight15Status("That catalog song is already in your Tight 15.");
-      return;
-    }
-    if (tight15List.length >= TIGHT15_MAX) {
-      setTight15Status(`Tight 15 is full (${TIGHT15_MAX}/${TIGHT15_MAX}). Remove one first.`);
-      return;
-    }
-    await persistTight15([...tight15List, candidate]);
-  };
-
-  const upsertCatalogSong = async () => {
-    const title = String(catalogForm.title || "").trim();
-    const artist = String(catalogForm.artist || "").trim();
-    if (!title || !artist) {
-      setCatalogStatus("Catalog song requires title and artist.");
-      return;
-    }
-    setCatalogSaving(true);
-    setCatalogStatus("");
-    try {
-      const result = await directoryActions.submitCatalogContribution({
-        payload: {
-          title,
-          artist,
-          artworkUrl: String(catalogForm.artworkUrl || "").trim(),
-          source: String(catalogForm.source || "").trim().toLowerCase() || "custom",
-          mediaUrl: String(catalogForm.mediaUrl || "").trim(),
-          appleMusicId: String(catalogForm.appleMusicId || "").trim(),
-          label: String(catalogForm.label || "").trim(),
-          submittedFrom: "marketing_dashboard",
-        },
-      });
-      setCatalogStatus(`Catalog contribution submitted for review (${result?.contributionId || "pending id"}).`);
-      setCatalogForm({
-        title: "",
-        artist: "",
-        artworkUrl: "",
-        source: "custom",
-        mediaUrl: "",
-        appleMusicId: "",
-        label: "",
-      });
-    } catch (error) {
-      setCatalogStatus(String(error?.message || "Could not submit catalog contribution."));
-    } finally {
-      setCatalogSaving(false);
-    }
-  };
-
   const resolveCatalogContributionItem = async (contributionId = "", action = "approve") => {
     if (!session?.isModerator || !contributionId) return;
     setModerationLoading(true);
@@ -465,18 +324,6 @@ const ProfileDashboardPage = ({ session, navigate }) => {
       setModerationLoading(false);
     }
   };
-
-  const filteredCatalogSongs = useMemo(() => {
-    const needle = String(catalogSearch || "").trim().toLowerCase();
-    if (!needle) return catalogSongs.slice(0, 30);
-    return catalogSongs
-      .filter((entry) => {
-        const title = String(entry?.title || "").toLowerCase();
-        const artist = String(entry?.artist || "").toLowerCase();
-        return title.includes(needle) || artist.includes(needle);
-      })
-      .slice(0, 30);
-  }, [catalogSearch, catalogSongs]);
 
   if (!canUseDashboard) {
     return (
@@ -502,8 +349,8 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-chip">account dashboard</div>
-        <h2>Profile + Tight 15 + Catalog</h2>
-        <p>Manage your public profile, your Tight 15 seeds, and songs available to game modes.</p>
+        <h2>Profile Dashboard</h2>
+        <p>Manage your public profile and keep your account details up to date.</p>
 
         <div className="mk3-form-grid">
           <label>
@@ -570,111 +417,6 @@ const ProfileDashboardPage = ({ session, navigate }) => {
             ))}
           </div>
         )}
-
-        <div className="mk3-actions-block">
-          <h4>Tight 15 ({tight15List.length}/{TIGHT15_MAX})</h4>
-          <p>Your favorite 15 songs seed modes like Sweet 16 Bracket.</p>
-          <div className="mk3-form-grid">
-            <label>
-              Song Title
-              <input
-                value={tight15Form.songTitle}
-                onChange={(e) => setTight15Form((prev) => ({ ...prev, songTitle: e.target.value }))}
-                placeholder="Ex: Before He Cheats"
-              />
-            </label>
-            <label>
-              Artist
-              <input
-                value={tight15Form.artist}
-                onChange={(e) => setTight15Form((prev) => ({ ...prev, artist: e.target.value }))}
-                placeholder="Ex: Carrie Underwood"
-              />
-            </label>
-          </div>
-          <div className="mk3-actions-inline">
-            <button type="button" onClick={addTight15Entry} disabled={tight15Saving}>
-              {tight15Saving ? "Saving..." : "Add To Tight 15"}
-            </button>
-          </div>
-          {tight15Status && <div className="mk3-status">{tight15Status}</div>}
-          <div className="mk3-sub-list compact">
-            {tight15List.map((entry, index) => (
-              <div key={entry.id} className="mk3-list-row">
-                <span>{index + 1}. {entry.songTitle} - {entry.artist}</span>
-                <div className="mk3-actions-inline">
-                  <button
-                    type="button"
-                    onClick={() => moveTight15Entry(index, index - 1)}
-                    disabled={tight15Saving || index === 0}
-                  >
-                    Up
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveTight15Entry(index, index + 1)}
-                    disabled={tight15Saving || index >= tight15List.length - 1}
-                  >
-                    Down
-                  </button>
-                  <button type="button" onClick={() => removeTight15Entry(entry.id)} disabled={tight15Saving}>
-                    Remove
-                  </button>
-                </div>
-              </div>
-            ))}
-            {!tight15List.length && <div className="mk3-status">No Tight 15 songs yet. Add your first song above.</div>}
-          </div>
-        </div>
-
-        <div className="mk3-actions-block">
-          <h4>Catalog Contribution (Moderated)</h4>
-          <p>Submit song/track updates for moderation before they become globally available.</p>
-          <div className="mk3-form-grid">
-            <label>
-              Song Title
-              <input value={catalogForm.title} onChange={(e) => setCatalogForm((prev) => ({ ...prev, title: e.target.value }))} />
-            </label>
-            <label>
-              Artist
-              <input value={catalogForm.artist} onChange={(e) => setCatalogForm((prev) => ({ ...prev, artist: e.target.value }))} />
-            </label>
-            <label>
-              Artwork URL
-              <input value={catalogForm.artworkUrl} onChange={(e) => setCatalogForm((prev) => ({ ...prev, artworkUrl: e.target.value }))} />
-            </label>
-            <label>
-              Track Source
-              <select value={catalogForm.source} onChange={(e) => setCatalogForm((prev) => ({ ...prev, source: e.target.value }))}>
-                <option value="custom">Custom</option>
-                <option value="youtube">YouTube</option>
-                <option value="apple">Apple Music</option>
-              </select>
-            </label>
-            <label className="full">
-              Media URL
-              <input
-                value={catalogForm.mediaUrl}
-                onChange={(e) => setCatalogForm((prev) => ({ ...prev, mediaUrl: e.target.value }))}
-                placeholder="YouTube URL or media URL (optional)"
-              />
-            </label>
-            <label>
-              Apple Music ID
-              <input value={catalogForm.appleMusicId} onChange={(e) => setCatalogForm((prev) => ({ ...prev, appleMusicId: e.target.value }))} />
-            </label>
-            <label>
-              Track Label
-              <input value={catalogForm.label} onChange={(e) => setCatalogForm((prev) => ({ ...prev, label: e.target.value }))} />
-            </label>
-          </div>
-          <div className="mk3-actions-inline">
-            <button type="button" onClick={upsertCatalogSong} disabled={catalogSaving}>
-              {catalogSaving ? "Submitting..." : "Submit Catalog Update"}
-            </button>
-          </div>
-          {catalogStatus && <div className="mk3-status">{catalogStatus}</div>}
-        </div>
       </article>
 
       <aside className="mk3-actions-card">
@@ -702,31 +444,6 @@ const ProfileDashboardPage = ({ session, navigate }) => {
               <span>Follow hosts in the Setlist Finder to pin them here for quick profile access.</span>
             </div>
           )}
-        </div>
-
-        <div className="mk3-sub-list compact">
-          <h3>Catalog Browser</h3>
-          <label>
-            Search Catalog
-            <input
-              value={catalogSearch}
-              onChange={(e) => setCatalogSearch(e.target.value)}
-              placeholder="Song or artist"
-            />
-          </label>
-          {filteredCatalogSongs.map((song) => (
-            <div key={song.id} className="mk3-list-row static">
-              <span>{song.title} - {song.artist}</span>
-              <button
-                type="button"
-                onClick={() => addCatalogSongToTight15(song)}
-                disabled={tight15Saving}
-              >
-                Add To Tight 15
-              </button>
-            </div>
-          ))}
-          {!filteredCatalogSongs.length && <div className="mk3-status">No catalog songs found for this search.</div>}
         </div>
 
         {session?.isModerator && (
