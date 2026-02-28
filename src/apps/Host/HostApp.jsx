@@ -4571,6 +4571,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const tvBase = typeof window !== 'undefined' ? getSurfaceBaseHref('tv', window.location) : '';
     const isChatPopout = typeof window !== 'undefined'
         && new URLSearchParams(window.location.search).get('chat') === '1';
+    const isMarketingDemoEmbed = typeof window !== 'undefined'
+        && new URLSearchParams(window.location.search).get('mkDemoEmbed') === '1';
 
     useEffect(() => {
         const prevOverflow = document.body.style.overflow;
@@ -7526,9 +7528,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (autoJoinAttemptKeyRef.current === attemptKey) return;
         autoJoinAttemptKeyRef.current = attemptKey;
         setRoomCodeInput(normalizedInitialCode);
-        joinRoom(normalizedInitialCode, { silent: !uid && !authError });
+        joinRoom(normalizedInitialCode, { silent: (!uid && !authError) || isMarketingDemoEmbed });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [normalizedInitialCode, uid, authError]);
+    }, [normalizedInitialCode, uid, authError, isMarketingDemoEmbed]);
 
     const toggleHowToPlay = async () => {
         const active = !room?.howToPlay?.active;
@@ -13095,7 +13097,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <button
                                         data-admin-sections-toggle
                                         onClick={() => setSettingsNavOpen((prev) => !prev)}
-                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} md:hidden`}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} lg:hidden`}
                                     >
                                         <i className="fa-solid fa-bars"></i>
                                         Sections
@@ -13166,10 +13168,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             showContext={!inAdminWorkspace}
                             fullBleed={inAdminWorkspace}
                         >
-                            <div className="h-full min-h-0 grid grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]">
-                                <aside className={`${settingsNavOpen ? 'block' : 'hidden md:block'} xl:block border-b xl:border-b-0 xl:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar p-3 md:p-4`}>
+                            <div className="h-full min-h-0 grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]">
+                                <aside className={`${settingsNavOpen ? 'block' : 'hidden'} lg:block border-b lg:border-b-0 lg:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar p-3 md:p-4`}>
                                     <div data-admin-sections-rail>
-                                    <div className="mb-2 flex items-center justify-between md:hidden">
+                                    <div className="mb-2 flex items-center justify-between lg:hidden">
                                         <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Sections</div>
                                         <button onClick={() => setSettingsNavOpen(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
                                     </div>

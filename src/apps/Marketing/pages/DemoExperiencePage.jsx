@@ -640,7 +640,7 @@ const DemoExperiencePage = ({ session = {} }) => {
   const launchLinks = useMemo(() => ({
     audience: buildSceneSurfaceUrl("app", { mobile_layout: "native" }),
     tv: buildSceneSurfaceUrl("tv", { mode: "tv" }),
-    host: buildSceneSurfaceUrl("host", { mode: "host" }),
+    host: buildSceneSurfaceUrl("host", { mode: "host", mkDemoEmbed: "1" }),
   }), [buildSceneSurfaceUrl]);
 
   const sceneInteractionTotal = useMemo(

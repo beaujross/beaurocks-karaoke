@@ -15,6 +15,7 @@ import { directoryActions } from "./api/directoryApi";
 import { useDirectorySession } from "./hooks/useDirectorySession";
 import { formatDateTime } from "./pages/shared";
 import { buildSurfaceUrl } from "../../lib/surfaceDomains";
+import { getMarketingNavModel } from "./iaModel";
 import "./marketing.css";
 
 const DiscoverPage = lazy(() => import("./pages/DiscoverPage"));
@@ -43,34 +44,6 @@ const PRODUCT_BRAND = {
   audience: "Party Mic",
   host: "Host Deck",
 };
-
-const PRIMARY_PAGE_OPTIONS = [
-  { id: MARKETING_ROUTE_PAGES.forFans, label: "For Guests" },
-  { id: MARKETING_ROUTE_PAGES.discover, label: "Live Listings" },
-  { id: MARKETING_ROUTE_PAGES.forHosts, label: "For Hosts" },
-];
-
-const LOCKED_PRIMARY_PAGE_OPTIONS = [
-  { id: MARKETING_ROUTE_PAGES.forFans, label: "For Guests" },
-  { id: MARKETING_ROUTE_PAGES.discover, label: "Live Listings" },
-  { id: MARKETING_ROUTE_PAGES.forHosts, label: "For Hosts" },
-];
-
-const HOME_PRIMARY_PAGE_OPTIONS = [
-  { id: MARKETING_ROUTE_PAGES.discover, label: "Find Karaoke" },
-  { id: MARKETING_ROUTE_PAGES.demo, label: "Watch Demo" },
-  { id: MARKETING_ROUTE_PAGES.hostAccess, label: "Founding Access" },
-];
-
-const SECONDARY_PAGE_OPTIONS = [
-  { id: MARKETING_ROUTE_PAGES.demo, label: "Try Live Demo" },
-  { id: MARKETING_ROUTE_PAGES.forVenues, label: "For Venues" },
-  { id: MARKETING_ROUTE_PAGES.forPerformers, label: "For Performers" },
-  { id: MARKETING_ROUTE_PAGES.submit, label: "Submit Listing" },
-  { id: MARKETING_ROUTE_PAGES.profile, label: "Dashboard" },
-  { id: MARKETING_ROUTE_PAGES.join, label: "Join By Code" },
-  { id: MARKETING_ROUTE_PAGES.admin, label: "Marketing Admin" },
-];
 
 const PageShellLoader = () => (
   <div className="mk3-status">
@@ -837,28 +810,17 @@ const MarketingSite = () => {
   const privateAccessUnlocked = !privateTestModeEnabled
     || (hasFullAccount && privateCodeUnlocked);
   const privateAccessLocked = privateTestModeEnabled && !privateAccessUnlocked;
-  const visibleSecondaryOptions = useMemo(
-    () => SECONDARY_PAGE_OPTIONS.filter((item) => item.id !== MARKETING_ROUTE_PAGES.admin || session.isModerator),
-    [session.isModerator]
+  const navModel = useMemo(
+    () => getMarketingNavModel({
+      isGuestsHomePage,
+      privateAccessLocked,
+      hasFullAccount,
+      isModerator: !!session.isModerator,
+    }),
+    [hasFullAccount, isGuestsHomePage, privateAccessLocked, session.isModerator]
   );
-  const visiblePrimaryOptions = useMemo(
-    () => (privateAccessLocked
-      ? LOCKED_PRIMARY_PAGE_OPTIONS
-      : PRIMARY_PAGE_OPTIONS),
-    [privateAccessLocked]
-  );
-  const gatedSecondaryOptions = useMemo(
-    () => visibleSecondaryOptions,
-    [visibleSecondaryOptions]
-  );
-  const navPrimaryOptions = useMemo(
-    () => (isGuestsHomePage ? HOME_PRIMARY_PAGE_OPTIONS : visiblePrimaryOptions),
-    [isGuestsHomePage, visiblePrimaryOptions]
-  );
-  const navSecondaryOptions = useMemo(
-    () => (isGuestsHomePage ? [] : gatedSecondaryOptions),
-    [gatedSecondaryOptions, isGuestsHomePage]
-  );
+  const navPrimaryOptions = navModel.primary;
+  const navSecondaryOptions = navModel.secondary;
   const moreMenuActive = useMemo(
     () => navSecondaryOptions.some((item) => item.id === activePage),
     [activePage, navSecondaryOptions]
@@ -922,7 +884,7 @@ const MarketingSite = () => {
             <button
               type="button"
               className="mk3-brand"
-              onClick={() => navigate(MARKETING_ROUTE_PAGES.forFans, "", withCampaignParams({ utm_content: "nav_brand" }))}
+              onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "nav_brand" }))}
             >
               <img src="/images/logo-library/beaurocks-karaoke-logo-2.png" alt="BeauRocks Karaoke logo" />
               <div>
