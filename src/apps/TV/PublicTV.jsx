@@ -3059,6 +3059,7 @@ const PublicTV = ({ roomCode }) => {
         ? (isVeryShortViewport ? 'min-h-[48vh] md:min-h-[56vh]' : isShortViewport ? 'min-h-[52vh] md:min-h-[60vh]' : 'min-h-[58vh] md:min-h-[66vh]')
         : stageMinHeightClass;
     const sidebarGapClass = isShortViewport ? 'gap-1.5 pb-1' : 'gap-2 pb-2';
+    const isDistanceConstrained = viewportSize.width <= 1680 || viewportSize.height <= 900;
     const compactJoinCardMode = lobbyCompactHudMode || isDistanceConstrained;
     const joinQrSize = compactJoinCardMode
         ? (isVeryShortViewport ? 104 : isShortViewport ? 116 : 128)
@@ -3091,7 +3092,6 @@ const PublicTV = ({ roomCode }) => {
         : isShortViewport
             ? 'clamp(1.05rem, 2vw, 2.3rem)'
             : 'clamp(1.2rem, 2.4vw, 3rem)';
-    const isDistanceConstrained = viewportSize.width <= 1680 || viewportSize.height <= 900;
     const showVerboseJoinUrl = viewportSize.width >= 2100 && !isShortViewport && !lobbyCompactHudMode;
     const showExtendedSpotlightMeta = viewportSize.width >= 1760 && !isShortViewport;
     const chatTvFullscreenActive = !!room?.chatShowOnTv && room?.chatTvMode === 'fullscreen';

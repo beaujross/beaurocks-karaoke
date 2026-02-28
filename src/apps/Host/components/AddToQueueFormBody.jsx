@@ -35,14 +35,14 @@ const AddToQueueFormBody = ({
     appleMusicAuthorized
 }) => (
     <div className="mt-2 pr-1">
-        <div className="relative mb-2 z-30">
-            <div className="rounded-xl border border-cyan-400/25 bg-zinc-950/70 px-2 py-2">
+        <div className="host-autocomplete-shell relative mb-2 z-30">
+            <div className="host-autocomplete-field-wrap rounded-xl border border-cyan-400/25 bg-zinc-950/70 px-2 py-2">
                 <div className="relative">
                     <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
                     <input
                         value={searchQ}
                         onChange={e=>setSearchQ(e.target.value)}
-                        className={`${styles.input} py-2 text-sm pl-8`}
+                        className={`${styles.input} host-autocomplete-input py-2 text-sm pl-8`}
                         placeholder="Search songs (autocomplete source + local library)"
                     />
                 </div>
@@ -104,14 +104,15 @@ const AddToQueueFormBody = ({
                 </div>
             </div>
             {(results.length > 0 || searchQ.length >= 3) && (
-                <div className="absolute top-full mt-2 left-0 right-0 rounded-2xl border border-cyan-400/25 bg-zinc-950/98 z-50 shadow-[0_20px_44px_rgba(0,0,0,0.65)] overflow-hidden">
-                    <div className="px-3 py-2 border-b border-white/10 bg-black/30 flex items-center justify-between gap-2">
-                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">Search Results</div>
+                <div className="host-autocomplete-results absolute top-full mt-2 left-0 right-0 rounded-2xl border border-cyan-400/25 bg-zinc-950/98 z-50">
+                    <div className="host-autocomplete-results-stem" aria-hidden="true"></div>
+                    <div className="host-autocomplete-results-head px-3 py-2 border-b border-white/10 bg-black/30 flex items-center justify-between gap-2">
+                        <div className="text-xs uppercase tracking-[0.18em] text-zinc-300">Search Results</div>
                         <div className="text-[10px] uppercase tracking-[0.12em] text-cyan-200">
                             {results.length > 0 ? `${results.length} match${results.length === 1 ? '' : 'es'}` : 'No matches'}
                         </div>
                     </div>
-                    <div className="max-h-72 overflow-y-auto custom-scrollbar">
+                    <div className="host-autocomplete-results-list max-h-80 overflow-y-auto custom-scrollbar">
                         {results.length > 0 ? results.map((r, idx) => (
                             (() => {
                                 const rowKey = getResultRowKey(r, idx);
@@ -120,7 +121,7 @@ const AddToQueueFormBody = ({
                                     <div
                                         key={rowKey}
                                         onClick={() => handleResultClick(r, idx)}
-                                        className="group grid grid-cols-[52px_minmax(0,1fr)_auto] gap-3 items-center px-3 py-2.5 hover:bg-zinc-900/90 border-b border-white/5 cursor-pointer"
+                                        className="host-autocomplete-result-row group grid grid-cols-[52px_minmax(0,1fr)_auto] gap-3 items-center px-3 py-2.5 hover:bg-zinc-900/90 border-b border-white/5 cursor-pointer"
                                     >
                                         <div className="w-[52px] h-[52px] flex items-center justify-center bg-zinc-900 rounded-lg overflow-hidden border border-white/10 flex-shrink-0">
                                             {r.source === 'local' ? (
