@@ -162,13 +162,13 @@ let appCheck = null;
 const shouldEnableAppCheckClient = () => {
   const explicit = parseOptionalBool(readEnv("VITE_APP_CHECK_ENABLED"));
   if (explicit !== null) return explicit;
-  return !isLocalDevHost();
+  return false;
 };
 
 const shouldRequireLocalAppCheck = () => {
   const explicit = parseOptionalBool(readEnv("VITE_REQUIRE_APP_CHECK"));
   if (explicit !== null) return explicit;
-  return !isLocalDevHost() && !!getAppCheckSiteKey();
+  return false;
 };
 
 const resolveAuthPersistenceMode = () => {
