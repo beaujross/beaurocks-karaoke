@@ -41,7 +41,7 @@ As of 2026-02-08, this is a focused engineering assessment of current technical 
 - Risk: onboarding confusion and duplicate planning effort.
 
 9. Legacy/duplicate files increase ambiguity.
-- Presence of files like `src/main_old.jsx`, `src/App_old.jsx`.
+- Keep legacy scaffolds out of active `src/` paths (archive only).
 - Risk: accidental edits to non-active paths.
 
 ## Priority Plan

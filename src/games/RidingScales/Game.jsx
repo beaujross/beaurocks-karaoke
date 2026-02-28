@@ -155,8 +155,31 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
     useEffect(() => {
         if (!isController) return;
         if (!stateRef.current) return;
+        let cancelled = false;
+        let writeInFlight = false;
+        let queuedState = null;
 
-        const loop = setInterval(async () => {
+        const flushStateWrite = async (nextState) => {
+            if (cancelled) return;
+            if (writeInFlight) {
+                queuedState = nextState;
+                return;
+            }
+            writeInFlight = true;
+            let payload = nextState;
+            while (payload && !cancelled) {
+                try {
+                    await writeState(payload);
+                } catch (e) {
+                    console.error('RidingScales state sync error:', e);
+                }
+                payload = queuedState;
+                queuedState = null;
+            }
+            writeInFlight = false;
+        };
+
+        const loop = setInterval(() => {
             const state = { ...stateRef.current };
             const current = Date.now();
             const displayNote = stableNote !== '-' ? stableNote : note;
@@ -229,10 +252,13 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
 
             state.lastUpdated = current;
             syncState(state);
-            await writeState(state);
+            flushStateWrite(state);
         }, 200);
 
-        return () => clearInterval(loop);
+        return () => {
+            cancelled = true;
+            clearInterval(loop);
+        };
     }, [isController, stableNote, note, confidence, isSinging, maxStrikes, difficulty, holdMs, writeState, syncState]);
 
     useEffect(() => {

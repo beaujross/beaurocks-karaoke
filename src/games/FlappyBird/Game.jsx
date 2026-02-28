@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { usePitch } from '../../hooks/usePitch';
 import { db, doc, onSnapshot, updateDoc, writeBatch } from '../../lib/firebase';
 import { APP_ID, GAME_ASSETS } from '../../lib/assets';
@@ -44,13 +44,13 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
     const prevVolRef = useRef(0);
     const voiceGateRef = useRef(false);
 
-    const triggerFlap = () => {
+    const triggerFlap = useCallback(() => {
         if (!isController || gameStateLocal === 'gameover') return;
         const now = performance.now();
         if (now - lastFlapRef.current < 110) return;
         velocityRef.current = -3.8;
         lastFlapRef.current = now;
-    };
+    }, [isController, gameStateLocal]);
 
     useEffect(() => {
         if (!isController) return undefined;
@@ -62,7 +62,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
         };
         window.addEventListener('keydown', handleKeyDown, { passive: false });
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isController, gameStateLocal]);
+    }, [isController, gameStateLocal, triggerFlap]);
 
     useEffect(() => {
         if (!isController || gameStateLocal !== 'ready' || !startsPlaying) return;
@@ -73,8 +73,14 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
     // 1. SYNC: Player sends state to Firebase
     useEffect(() => { 
         if(!isController) return; 
+        let writeInFlight = false;
         const sync = setInterval(async () => { 
             const syncMark = profilerRef.current.markStart('firebaseSync');
+            if (writeInFlight) {
+                profilerRef.current.markEnd(syncMark);
+                return;
+            }
+            writeInFlight = true;
             try {
                 const batch = writeBatch(db);
                 const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
@@ -96,8 +102,10 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
                 await batch.commit();
             } catch (e) {
                 console.error("Sync error:", e);
+            } finally {
+                writeInFlight = false;
+                profilerRef.current.markEnd(syncMark);
             }
-            profilerRef.current.markEnd(syncMark);
         }, 200); 
         return () => clearInterval(sync); 
     }, [score, lives, gameStateLocal, isController, roomCode, note]);

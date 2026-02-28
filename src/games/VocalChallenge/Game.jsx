@@ -76,6 +76,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     const gainRef = useRef(null);
     const oscRef = useRef(null);
     const lastToneIndexRef = useRef(null);
+    const pitchRef = useRef(pitch);
 
     const difficulty = data.difficulty || 'standard';
     const guideTone = data.guideTone !== false;
@@ -134,13 +135,40 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     }, [isController, data]);
 
     useEffect(() => {
+        pitchRef.current = pitch;
+    }, [pitch]);
+
+    useEffect(() => {
         if (!isController) {
             stateRef.current = null;
             return;
         }
         if (!stateRef.current) return;
+        let cancelled = false;
+        let writeInFlight = false;
+        let queuedState = null;
 
-        const loop = setInterval(async () => {
+        const flushStateWrite = async (nextState) => {
+            if (cancelled) return;
+            if (writeInFlight) {
+                queuedState = nextState;
+                return;
+            }
+            writeInFlight = true;
+            let payload = nextState;
+            while (payload && !cancelled) {
+                try {
+                    await writeState(payload);
+                } catch (e) {
+                    console.error('VocalChallenge state sync error:', e);
+                }
+                payload = queuedState;
+                queuedState = null;
+            }
+            writeInFlight = false;
+        };
+
+        const loop = setInterval(() => {
             const state = { ...stateRef.current };
             const now = Date.now();
             const displayNote = stableNote !== '-' ? stableNote : note;
@@ -163,7 +191,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
 
                 const targetNote = state.sequence[state.targetIndex];
                 const targetFreq = NOTE_FREQ[targetNote] || 0;
-                const centsOff = targetFreq ? centsBetween(pitch || 0, targetFreq) : 9999;
+                const centsOff = targetFreq ? centsBetween(pitchRef.current || 0, targetFreq) : 9999;
                 const inTune = Math.abs(centsOff) <= 95;
                 const nearTune = Math.abs(centsOff) <= 160;
                 const exactNote = (displayNote === targetNote) || (stableNote === targetNote);
@@ -222,10 +250,13 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             state.lastUpdated = now;
             stateRef.current = state;
             setLocalState(state);
-            await writeState(state);
+            flushStateWrite(state);
         }, 200);
 
-        return () => clearInterval(loop);
+        return () => {
+            cancelled = true;
+            clearInterval(loop);
+        };
     }, [isController, stableNote, note, confidence, stability, isSinging, intervalMs, holdMs, minConfidence, minStability, volumeNormalized, writeState]);
 
     useEffect(() => {
@@ -344,7 +375,8 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
         : null;
     const showSummary = localState.phase === 'summary';
     const lastAward = localState.lastAward || null;
-    const lastAwardAgeMs = lastAward?.at ? (Date.now() - Number(lastAward.at || 0)) : Number.POSITIVE_INFINITY;
+    const renderNowMs = Number(localState.lastUpdated || localState.turnEndsAt || 0);
+    const lastAwardAgeMs = lastAward?.at ? Math.max(0, renderNowMs - Number(lastAward.at || 0)) : Number.POSITIVE_INFINITY;
     const showAwardBanner = lastAward && lastAwardAgeMs < 1700;
 
     return (

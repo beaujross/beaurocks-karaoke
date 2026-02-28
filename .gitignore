@@ -35,3 +35,4 @@ GoogleCloudSDKInstaller.exe
 .firebase/
 functions/.env*
 tmp/
+artifacts/
