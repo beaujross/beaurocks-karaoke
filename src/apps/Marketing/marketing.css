@@ -2459,6 +2459,13 @@
   gap: 10px;
 }
 
+.mk3-demo-shell.mk3-demo-shell-testing {
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  grid-template-areas:
+    "host tv"
+    "host audience";
+}
+
 .mk3-demo-surface {
   border: 1px solid rgba(126, 188, 226, 0.24);
   border-radius: 16px;
@@ -2527,6 +2534,18 @@
 .mk3-demo-audience .mk3-demo-frame-wrap,
 .mk3-demo-host .mk3-demo-frame-wrap {
   min-height: 290px;
+}
+
+.mk3-demo-shell.mk3-demo-shell-testing .mk3-demo-host .mk3-demo-frame-wrap {
+  min-height: 720px;
+}
+
+.mk3-demo-shell.mk3-demo-shell-testing .mk3-demo-tv .mk3-demo-frame-wrap {
+  min-height: 360px;
+}
+
+.mk3-demo-shell.mk3-demo-shell-testing .mk3-demo-audience .mk3-demo-frame-wrap {
+  min-height: 340px;
 }
 
 .mk3-demo-iframe {
@@ -2638,6 +2657,12 @@
   padding: 0.5rem;
 }
 
+.mk3-demo-audience .mk3-demo-audience-frame-wrap-live {
+  min-height: 340px;
+  display: block;
+  padding: 0;
+}
+
 .mk3-demo-phone-shell {
   width: min(100%, 345px);
   aspect-ratio: 9 / 19;
@@ -2733,6 +2758,11 @@
 .mk3-demo-host-frame-wrap {
   min-height: 380px;
   padding: 0.55rem;
+}
+
+.mk3-demo-host .mk3-demo-host-frame-wrap-live {
+  min-height: 720px;
+  padding: 0;
 }
 
 .mk3-demo-host-sim {
@@ -3282,6 +3312,14 @@
   }
 
   .mk3-demo-shell {
+    grid-template-areas:
+      "tv"
+      "audience"
+      "host";
+  }
+
+  .mk3-demo-shell.mk3-demo-shell-testing {
+    grid-template-columns: 1fr;
     grid-template-areas:
       "tv"
       "audience"
