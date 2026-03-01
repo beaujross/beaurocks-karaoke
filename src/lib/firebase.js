@@ -65,6 +65,7 @@ import {
   deleteObject
 } from "firebase/storage";
 import { createLogger } from "./logger";
+import { shouldBootstrapAnonymousAuth } from "./authBootstrap";
 
 const firebaseLogger = createLogger("firebase");
 
@@ -561,6 +562,59 @@ const getMarketingReportingSummary = async (payload = {}) => {
   return data || null;
 };
 
+const waitForInitialAuthState = async (timeoutMs = 4000) => {
+  const timeout = Math.max(1000, Number(timeoutMs || 0));
+  try {
+    if (typeof auth?.authStateReady === "function") {
+      await Promise.race([
+        auth.authStateReady(),
+        new Promise((resolve) => setTimeout(resolve, timeout)),
+      ]);
+      return;
+    }
+  } catch (error) {
+    firebaseLogger.debug("authStateReady unavailable; falling back to onAuthStateChanged", error);
+  }
+
+  await new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
+    let unsub = () => {};
+    try {
+      unsub = onAuthStateChanged(
+        auth,
+        () => {
+          try { unsub(); } catch (error) {
+            firebaseLogger.debug("Failed to unsubscribe auth observer", error);
+          }
+          finish();
+        },
+        () => {
+          try { unsub(); } catch (error) {
+            firebaseLogger.debug("Failed to unsubscribe auth observer", error);
+          }
+          finish();
+        }
+      );
+    } catch {
+      finish();
+      return;
+    }
+
+    setTimeout(() => {
+      try { unsub(); } catch (error) {
+        firebaseLogger.debug("Failed to unsubscribe auth observer", error);
+      }
+      finish();
+    }, timeout);
+  });
+};
+
 // Helper for Auth
 const initAuth = async (customToken) => {
   try {
@@ -574,11 +628,23 @@ const initAuth = async (customToken) => {
         firebaseLogger.debug("Auth persistence fallback failed", inner);
       }
     }
+
+    await waitForInitialAuthState();
+
     if (customToken) {
       await signInWithCustomToken(auth, customToken);
-    } else {
-      await signInAnonymously(auth);
+      return { ok: true };
     }
+
+    if (!shouldBootstrapAnonymousAuth({ customToken, currentUser: auth.currentUser })) {
+      return {
+        ok: true,
+        reusedExistingSession: true,
+        isAnonymous: !!auth.currentUser?.isAnonymous,
+      };
+    }
+
+    await signInAnonymously(auth);
     return { ok: true };
   } catch (error) {
     firebaseLogger.error("Auth Error", error);
