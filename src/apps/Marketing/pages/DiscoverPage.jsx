@@ -519,8 +519,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     return window.matchMedia("(max-width: 1120px)").matches;
   });
   const [mobileSurface, setMobileSurface] = useState(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "list";
-    return window.matchMedia("(max-width: 1120px)").matches ? "map" : "list";
+    return "list";
   });
   const [mobileFiltersExpanded, setMobileFiltersExpanded] = useState(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
@@ -538,9 +537,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const permissionError = isPermissionError(error);
   const indexError = isIndexError(error);
   const mapEnabled = !!mapsConfig?.mapEnabled && !!mapsConfig?.apiKey;
+  const shouldLoadMaps = mapEnabled && (!isMobileViewport || mobileSurface === "map");
   const mapsApiKey = mapEnabled ? String(mapsConfig?.apiKey || "") : "";
   const { loaded: mapsLoaded, error: mapsError } = useGoogleMapsScript({
-    enabled: mapEnabled,
+    enabled: shouldLoadMaps,
     apiKey: String(mapsConfig?.apiKey || ""),
   });
   const venueLocationIndex = useMemo(
@@ -564,7 +564,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           setMobileSurface("list");
           return;
         }
-        setMobileSurface("map");
+        setMobileSurface("list");
       };
     const onViewportChange = (event) => syncViewport(event?.matches);
     if (typeof media.addEventListener === "function") {

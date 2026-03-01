@@ -30,7 +30,7 @@ const loadGoogleMapsScript = (apiKey = "") => {
     script.id = SCRIPT_ID;
     script.async = true;
     script.defer = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async`;
     script.onload = () => {
       if (window.google?.maps) {
         resolve(window.google.maps);
