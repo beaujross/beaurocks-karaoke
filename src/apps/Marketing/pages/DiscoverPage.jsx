@@ -506,7 +506,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [sortMode, setSortMode] = useState("smart");
   const [resultsView, setResultsView] = useState("results");
   const [mapFirst, setMapFirst] = useState(true);
-  const [boundsOnly, setBoundsOnly] = useState(true);
+  const [boundsOnly, setBoundsOnly] = useState(false);
   const [selectedKey, setSelectedKey] = useState("");
   const [hostFilter, setHostFilter] = useState("all");
   const [mapBounds, setMapBounds] = useState(null);
