@@ -49,7 +49,8 @@ import {
     getMyUsageInvoiceDraft,
     saveMyUsageInvoiceDraft,
     listMyUsageInvoices,
-    updateRoomAsHost
+    updateRoomAsHost,
+    upsertHostRoomDiscoveryListing
 } from '../../lib/firebase';
 import { ASSETS, AVATARS, APP_ID } from '../../lib/assets';
 import { playSfx, setSfxMasterVolume, stopAllSfx } from '../../lib/utils';
@@ -995,6 +996,14 @@ const getTimestampMs = (value) => {
     if (typeof value?.toMillis === 'function') return value.toMillis();
     if (typeof value?.seconds === 'number') return value.seconds * 1000;
     return 0;
+};
+
+const fromDateTimeLocalInput = (value = '') => {
+    const token = String(value || '').trim();
+    if (!token) return 0;
+    const parsed = Date.parse(token);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return Math.floor(parsed);
 };
 
 const sanitizePopTriviaCacheKey = (value = '') => String(value || '')
@@ -5037,6 +5046,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [recentHostRoomsLoading, setRecentHostRoomsLoading] = useState(false);
     const [recentHostRooms, setRecentHostRooms] = useState([]);
     const [entryError, setEntryError] = useState('');
+    const [quickLaunchDiscovery, setQuickLaunchDiscovery] = useState({
+        publicRoom: false,
+        virtualOnly: false,
+        title: '',
+        description: '',
+        startsAtLocal: '',
+        address1: '',
+        city: '',
+        state: '',
+        lat: '',
+        lng: ''
+    });
     const [hostUpdateDeploymentWarning, setHostUpdateDeploymentWarning] = useState('');
     const hostUpdateWarningToastedRef = useRef(false);
     const [orgContext, setOrgContext] = useState({
@@ -7384,6 +7405,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const logoUrlOverride = typeof options?.logoUrl === 'string' ? options.logoUrl.trim() : '';
         const initialNightPresetId = typeof options?.nightPresetId === 'string' ? options.nightPresetId.trim() : '';
         const shouldOpenNightSetup = options?.openNightSetup !== false;
+        const discoveryDraft = { ...(quickLaunchDiscovery || {}) };
         const nextHostName = hostNameOverride || (hostName || '').trim() || 'Host';
         const nextOrgName = orgNameOverride || `${nextHostName} Workspace`;
         const nextLogoUrl = logoUrlOverride || (logoUrl || '').trim() || ASSETS.logo;
@@ -7515,6 +7537,47 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
             });
             trackEvent('host_room_created', { room_code: c });
+            const shouldSyncDiscovery = !!discoveryDraft.publicRoom
+                || !!String(discoveryDraft.title || '').trim()
+                || !!String(discoveryDraft.description || '').trim()
+                || !!String(discoveryDraft.startsAtLocal || '').trim()
+                || !!String(discoveryDraft.address1 || '').trim()
+                || !!String(discoveryDraft.city || '').trim()
+                || !!String(discoveryDraft.state || '').trim()
+                || !!String(discoveryDraft.lat || '').trim()
+                || !!String(discoveryDraft.lng || '').trim()
+                || !!discoveryDraft.virtualOnly;
+            if (shouldSyncDiscovery) {
+                const startsAtMs = fromDateTimeLocalInput(discoveryDraft.startsAtLocal);
+                const lat = Number(discoveryDraft.lat);
+                const lng = Number(discoveryDraft.lng);
+                const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+                upsertHostRoomDiscoveryListing({
+                    roomCode: c,
+                    listing: {
+                        publicRoom: !!discoveryDraft.publicRoom,
+                        virtualOnly: !!discoveryDraft.virtualOnly,
+                        title: String(discoveryDraft.title || '').trim() || `${nextHostName} Karaoke Room ${c}`,
+                        description: String(discoveryDraft.description || '').trim(),
+                        startsAtMs: startsAtMs || 0,
+                        address1: discoveryDraft.virtualOnly ? '' : String(discoveryDraft.address1 || '').trim(),
+                        city: String(discoveryDraft.city || '').trim(),
+                        state: String(discoveryDraft.state || '').trim(),
+                        location: hasCoords ? { lat, lng } : {},
+                        sessionMode: discoveryDraft.virtualOnly ? 'virtual' : 'karaoke',
+                        venueName: discoveryDraft.virtualOnly ? 'Virtual Room' : '',
+                    },
+                }).then((result) => {
+                    if (result?.isPublicRoom) {
+                        toast('Public discovery listing is live.');
+                        return;
+                    }
+                    toast('Private discovery listing saved.');
+                }).catch((error) => {
+                    hostLogger.warn('Room created but discovery listing sync failed', error);
+                    toast('Room created, but discovery listing sync failed.');
+                });
+            }
             setRoomCode(c);
             setRoomCodeInput(c);
             setView('panel');
@@ -11457,6 +11520,83 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </button>
                 <div className="text-xs text-cyan-100/75 mb-4 text-left">
                     Use this to set host identity, workspace details, branding, and launch defaults in one pass.
+                </div>
+                <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left" data-host-discovery-launch>
+                    <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/70">Discovery + Map Listing</div>
+                    <div className="mt-2 text-[11px] text-cyan-100/75">
+                        Make this room discoverable at launch so guests can find it from the live map.
+                    </div>
+                    <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
+                        <input
+                            type="checkbox"
+                            checked={!!quickLaunchDiscovery.publicRoom}
+                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, publicRoom: e.target.checked }))}
+                        />
+                        Public room (discoverable)
+                    </label>
+                    <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
+                        <input
+                            type="checkbox"
+                            checked={!!quickLaunchDiscovery.virtualOnly}
+                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, virtualOnly: e.target.checked }))}
+                        />
+                        Virtual-only room
+                    </label>
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                            value={quickLaunchDiscovery.title}
+                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, title: e.target.value }))}
+                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
+                            placeholder="Listing title (optional)"
+                        />
+                        <input
+                            type="datetime-local"
+                            value={quickLaunchDiscovery.startsAtLocal}
+                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
+                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
+                        />
+                        {!quickLaunchDiscovery.virtualOnly && (
+                            <>
+                                <input
+                                    value={quickLaunchDiscovery.address1}
+                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, address1: e.target.value }))}
+                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2"
+                                    placeholder="Address (optional)"
+                                />
+                                <input
+                                    value={quickLaunchDiscovery.city}
+                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, city: e.target.value }))}
+                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
+                                    placeholder="City"
+                                />
+                                <input
+                                    value={quickLaunchDiscovery.state}
+                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, state: e.target.value }))}
+                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
+                                    placeholder="State"
+                                />
+                                <input
+                                    value={quickLaunchDiscovery.lat}
+                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lat: e.target.value }))}
+                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
+                                    placeholder="Latitude (optional)"
+                                />
+                                <input
+                                    value={quickLaunchDiscovery.lng}
+                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lng: e.target.value }))}
+                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
+                                    placeholder="Longitude (optional)"
+                                />
+                            </>
+                        )}
+                        <textarea
+                            value={quickLaunchDiscovery.description}
+                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, description: e.target.value }))}
+                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2"
+                            rows={2}
+                            placeholder="Short description (optional)"
+                        />
+                    </div>
                 </div>
                 <button
                     data-host-create-room-primary

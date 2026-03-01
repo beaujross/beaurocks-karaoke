@@ -386,7 +386,13 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const hostName = String(entry?.hostName || "").trim();
   const avatarUrl = resolveProfileAvatarUrl(entry);
   const locationLabel = [city, state, address1].filter(Boolean).join(", ");
-  const subtitle = locationLabel || [city, state].filter(Boolean).join(", ") || "Location pending";
+  const roomCode = String(entry?.roomCode || "").trim().toUpperCase();
+  const virtualOnly = !!entry?.virtualOnly
+    || !!entry?.isVirtualOnly
+    || String(entry?.sessionMode || "").trim().toLowerCase() === "virtual";
+  const subtitle = virtualOnly
+    ? "Virtual session"
+    : locationLabel || [city, state].filter(Boolean).join(", ") || "Location pending";
   const timeLabel = listingType === "venue"
     ? String(entry?.karaokeNightsLabel || "").trim()
     : startsAtMs > 0 ? formatDateTime(startsAtMs) : "Time TBD";
@@ -417,7 +423,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     detailLine: listingType === "event"
       ? [entry?.hostName, entry?.venueName].filter(Boolean).join(" | ")
       : listingType === "room_session"
-        ? [entry?.venueName, entry?.roomCode].filter(Boolean).join(" | ")
+        ? [virtualOnly ? "Virtual" : "", entry?.venueName, roomCode].filter(Boolean).join(" | ")
         : String(entry?.description || "").trim().slice(0, 120),
     hostUid,
     hostName,
@@ -427,6 +433,8 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     cadenceBadges,
     startsAtMs,
     location,
+    roomCode,
+    virtualOnly,
     locationSource: String(options?.locationSource || "").trim() || (location ? "entry" : "missing"),
   };
 };
@@ -750,10 +758,6 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     return visibleListings[0]?.key || "";
   }, [visibleListings, selectedKey]);
 
-  const scheduledCount = useMemo(
-    () => rankedListings.reduce((count, entry) => (entry.startsAtMs > 0 ? count + 1 : count), 0),
-    [rankedListings]
-  );
   const listingTypeCounts = useMemo(() => {
     const counts = { venue: 0, event: 0, room_session: 0 };
     rankedListings.forEach((entry) => {
@@ -1059,26 +1063,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
   return (
     <section className="mk3-page">
-      <nav className="mk3-breadcrumb" aria-label="Finder breadcrumb">
-        <button type="button" onClick={() => navigate("for-fans")}>Home</button>
-        <span className="mk3-breadcrumb-sep">/</span>
-        <span>Discover</span>
-        {activeRegionLabel && activeRegionLabel !== "Nationwide" && (
-          <>
-            <span className="mk3-breadcrumb-sep">/</span>
-            <span className="mk3-breadcrumb-current">{activeRegionLabel}</span>
-          </>
-        )}
-      </nav>
       <div className="mk3-status mk3-zone mk3-zone-finder">
-        <strong>BeauRocks Karaoke {FINDER_BRAND} Finder</strong>
-        <span>Open the map, pick a room, and go. Everything else is optional.</span>
+        <strong>Discover Live Karaoke</strong>
+        <span>{activeRegionLabel} | {visibleListings.length} results</span>
         <div className="mk3-finder-cta-row">
           <button
             type="button"
             onClick={() => navigate("submit", "", { intent: "listing_submit", targetType: "venue" })}
           >
-            Add Karaoke Night
+            List A Public Room
           </button>
         </div>
       </div>
@@ -1228,29 +1221,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       </div>
       {geoError && <div className="mk3-status mk3-status-warning">{geoError}</div>}
 
-      <div className={`mk3-metric-row mk3-zone mk3-zone-metrics ${isMobileViewport ? "mk3-metric-row-mobile" : ""}`}>
-        <div className="mk3-metric">
-          <span>matching listings</span>
-          <strong>{rankedListings.length}</strong>
-        </div>
-        <div className="mk3-metric">
-          <span>with map coords</span>
-          <strong>{mappableListings.length}</strong>
-        </div>
-        <div className="mk3-metric">
-          <span>in current bounds</span>
-          <strong>{listingsInBounds.length}</strong>
-        </div>
-        <div className="mk3-metric">
-          <span>with schedule time</span>
-          <strong>{scheduledCount}</strong>
-        </div>
-      </div>
-
       <div className={`mk3-discover-shell ${mapFirst ? "is-map-first" : "is-balanced"} ${isMobileViewport ? `is-mobile-surface-${mobileSurface}` : ""}`}>
         <article className={`mk3-map-card mk3-zone mk3-zone-map ${isMobileViewport && mobileSurface !== "map" ? "is-mobile-hidden" : ""}`}>
-          <h2>{FINDER_BRAND} Live Map</h2>
-          <div className="mk3-map-badge">Map-first discover view</div>
+          <h2>{FINDER_BRAND} Map</h2>
           <div className={`mk3-map-toolbar ${isMobileViewport ? "is-mobile-compact" : ""}`}>
             {!isMobileViewport && (
               <label className="mk3-inline">
@@ -1435,6 +1408,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 )}
                 {entry.detailLine && <div className="mk3-card-subtitle">{entry.detailLine}</div>}
                 {!!entry.hostName && <div className="mk3-card-subtitle">Host: {entry.hostName}</div>}
+                {entry.virtualOnly && <div className="mk3-chip">Virtual</div>}
                 <div className="mk3-actions-inline">
                   <button
                     type="button"
@@ -1487,6 +1461,24 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                       }}
                     >
                       Host profile
+                    </button>
+                  )}
+                  {entry.listingType === "room_session" && !!entry.roomCode && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        trackEvent("mk_discover_join_room", {
+                          source: "discover_rail",
+                          roomCode: entry.roomCode,
+                        });
+                        navigate("join", entry.roomCode, {
+                          roomCode: entry.roomCode,
+                          src: "discover_join_room",
+                          src_listing_type: entry.listingType,
+                        });
+                      }}
+                    >
+                      Join room
                     </button>
                   )}
                 </div>

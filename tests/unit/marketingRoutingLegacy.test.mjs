@@ -49,7 +49,7 @@ const run = () => {
     pathname: "/",
     search: "",
   });
-  assert.equal(fromRootFallback.page, MARKETING_ROUTE_PAGES.forHosts);
+  assert.equal(fromRootFallback.page, MARKETING_ROUTE_PAGES.discover);
 
   console.log("PASS marketingRoutingLegacy");
 };

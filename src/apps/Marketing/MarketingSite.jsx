@@ -54,7 +54,7 @@ const PageShellLoader = () => (
 
 const normalizePage = (value = "") => {
   const safe = String(value || "").trim().toLowerCase();
-  if (safe === "home") return MARKETING_ROUTE_PAGES.forHosts;
+  if (safe === "home") return MARKETING_ROUTE_PAGES.discover;
   if (safe === "discover") return MARKETING_ROUTE_PAGES.discover;
   if (safe === "demo") return MARKETING_ROUTE_PAGES.demo;
   if (safe === "changelog") return MARKETING_ROUTE_PAGES.changelog;
@@ -74,13 +74,13 @@ const normalizePage = (value = "") => {
   if (safe === "join") return MARKETING_ROUTE_PAGES.join;
   if (safe === "geo_city") return MARKETING_ROUTE_PAGES.geoCity;
   if (safe === "geo_region") return MARKETING_ROUTE_PAGES.geoRegion;
-  return MARKETING_ROUTE_PAGES.forHosts;
+  return MARKETING_ROUTE_PAGES.discover;
 };
 
-const normalizeRouteInput = (pageOrRoute = MARKETING_ROUTE_PAGES.forHosts, id = "", params = {}) => {
+const normalizeRouteInput = (pageOrRoute = MARKETING_ROUTE_PAGES.discover, id = "", params = {}) => {
   if (typeof pageOrRoute === "object" && pageOrRoute) {
     return {
-      page: normalizePage(pageOrRoute.page || MARKETING_ROUTE_PAGES.forHosts),
+      page: normalizePage(pageOrRoute.page || MARKETING_ROUTE_PAGES.discover),
       id: String(pageOrRoute.id || "").trim(),
       params: pageOrRoute.params && typeof pageOrRoute.params === "object" ? pageOrRoute.params : {},
     };
@@ -274,11 +274,11 @@ const MarketingSite = () => {
   }, []);
 
   useEffect(() => {
-    const routeToken = String(route.page || MARKETING_ROUTE_PAGES.forHosts)
+    const routeToken = String(route.page || MARKETING_ROUTE_PAGES.discover)
       .toLowerCase()
       .replace(/[^a-z0-9_]/g, "_");
     trackEvent(`mk_page_view_${routeToken}`, {
-      route: route.page || MARKETING_ROUTE_PAGES.forHosts,
+      route: route.page || MARKETING_ROUTE_PAGES.discover,
       id: route.id || "",
     });
   }, [route.page, route.id]);
@@ -291,7 +291,7 @@ const MarketingSite = () => {
     });
   }, [route.page, route.id, route.params]);
 
-  const navigate = useCallback((pageOrRoute = MARKETING_ROUTE_PAGES.forHosts, id = "", params = {}, options = {}) => {
+  const navigate = useCallback((pageOrRoute = MARKETING_ROUTE_PAGES.discover, id = "", params = {}, options = {}) => {
     if (typeof window === "undefined") return;
     const nextRoute = normalizeRouteInput(pageOrRoute, id, params);
 
@@ -312,7 +312,7 @@ const MarketingSite = () => {
     }
     setRoute(nextRoute);
     setMobileMenuOpen(false);
-    trackEvent("marketing_directory_navigate", { page: nextRoute.page || MARKETING_ROUTE_PAGES.forHosts });
+    trackEvent("marketing_directory_navigate", { page: nextRoute.page || MARKETING_ROUTE_PAGES.discover });
   }, []);
 
   const scrollAuthPanelIntoView = useCallback(() => {
@@ -413,21 +413,6 @@ const MarketingSite = () => {
     }
     return next;
   }, [campaignContext.params]);
-  const goToCampaignRoute = useCallback((page, { cta = "", source = "", utmContent = "" } = {}) => {
-    const params = withCampaignParams({
-      utm_content: utmContent || cta || source,
-    });
-    trackEvent("mk_home_launch_cta_click", {
-      cta: String(cta || "unknown"),
-      source: String(source || "marketing_home"),
-      campaign_variant: campaignContext.variant,
-      utm_source: params.utm_source,
-      utm_medium: params.utm_medium,
-      utm_campaign: params.utm_campaign,
-      utm_content: params.utm_content,
-    });
-    navigate(page, "", params);
-  }, [campaignContext.variant, navigate, withCampaignParams]);
   const hostDashboardHref = useMemo(() => {
     if (typeof window === "undefined") return "";
     return buildSurfaceUrl({
@@ -451,48 +436,19 @@ const MarketingSite = () => {
       || buildSurfaceUrl({ surface: "host", params: { mode: "host" } }, window.location);
     window.location.href = nextHref;
   }, [hasFullAccount, hostDashboardHref]);
-  const openHostPanelDirect = useCallback((source = "marketing_home_host_panel") => {
-    if (typeof window === "undefined") return;
-    trackEvent("mk_nav_host_dashboard_click", {
-      source: String(source || "marketing_home_host_panel"),
-      authed: hasFullAccount ? 1 : 0,
-    });
-    const nextHref = hostDashboardHref
-      || buildSurfaceUrl({
-        surface: "host",
-        params: {
-          mode: "host",
-          hostUiVersion: "v2",
-          view: "ops",
-          section: "ops.room_setup",
-          tab: "admin",
-        },
-      }, window.location);
-    window.location.href = nextHref;
-  }, [hasFullAccount, hostDashboardHref]);
-  const trackHomeConversionAction = useCallback((cta = "", surface = "home") => {
-    trackEvent("mk_home_conversion_click", {
-      cta: String(cta || "unknown"),
-      surface: String(surface || "home"),
-      campaign_variant: campaignContext.variant,
-    });
-  }, [campaignContext.variant]);
-  const homeHeroPrimaryLabel = campaignContext.variant === "paid"
-    ? "Log In To Host With BeauRocks"
-    : campaignContext.variant === "social"
-      ? "Create Your BeauRocks Account"
-      : "Log In With BeauRocks";
-  const homeHeroSubhead = campaignContext.variant === "paid"
-    ? "You found us through launch media. Create or log in with your BeauRocks account to host."
-    : campaignContext.variant === "social"
-      ? "You found us through the social buzz. Jump in with your BeauRocks account."
-      : "Most karaoke software helps manage songs. BeauRocks helps you command the whole room with one account.";
 
   useEffect(() => {
     if (!isHostAccessPage) return;
     if (!route.params?.intent) return;
     scrollAuthPanelIntoView();
   }, [isHostAccessPage, route.params?.intent, scrollAuthPanelIntoView]);
+
+  useEffect(() => {
+    const intent = String(route.params?.intent || "").trim().toLowerCase();
+    if (!isHostAccessPage || !hasFullAccount) return;
+    if (intent !== "host_dashboard_resume") return;
+    openHostDashboard("host_access_resume_after_login");
+  }, [hasFullAccount, isHostAccessPage, openHostDashboard, route.params?.intent]);
 
   const onAuthSubmit = async (event) => {
     event.preventDefault();
@@ -585,7 +541,7 @@ const MarketingSite = () => {
     if (activePage === MARKETING_ROUTE_PAGES.geoCity || activePage === MARKETING_ROUTE_PAGES.geoRegion) {
       return <GeoLandingPage {...pageProps} />;
     }
-    return <ForHostsPage {...pageProps} />;
+    return <DiscoverPage {...pageProps} />;
   }, [activePage, requireFullAuth, route, navigate, mapsConfig, session]);
 
   return (
@@ -596,7 +552,7 @@ const MarketingSite = () => {
             <button
               type="button"
               className="mk3-brand"
-              onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "nav_brand" }))}
+              onClick={() => navigate(MARKETING_ROUTE_PAGES.discover, "", withCampaignParams({ utm_content: "nav_brand" }))}
             >
               <img src="/images/logo-library/beaurocks-karaoke-logo-2.png" alt="BeauRocks Karaoke logo" />
               <div>
@@ -888,129 +844,33 @@ const MarketingSite = () => {
               )}
             </div>
           </section>
-          ) : isGuestsHomePage ? (
-            <>
-              <section className="mk3-home-premium-shell mk3-zone" aria-label="BeauRocks premium launch">
-                <div className="mk3-home-premium-main">
-                  <div className="mk3-home-premium-kicker">Simple Start</div>
-                  <h1>Find a room. Join fast. Run the night.</h1>
-                  <p>
-                    {homeHeroSubhead}
-                    {" "}Start with the live map, then open host tools only when you need them.
-                  </p>
-                  <div className="mk3-home-premium-stats">
-                    <span>{heroStats?.total > 0 ? `${heroStats.total.toLocaleString()} live listings` : "Live listings updating"}</span>
-                    <span>Map-first discovery</span>
-                    <span>One account for host + guest flows</span>
-                  </div>
-                  <div className="mk3-auth-cta-row mk3-home-primary-cta">
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-primary"
-                      onClick={() => {
-                        goToCampaignRoute(MARKETING_ROUTE_PAGES.hostAccess, {
-                          cta: "hero_login_beaurocks_account",
-                          source: "premium_home_hero",
-                          utmContent: "home_hero_primary",
-                        });
-                      }}
-                    >
-                      Open Discover Map
-                    </button>
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-secondary"
-                      onClick={() => {
-                        goToCampaignRoute(MARKETING_ROUTE_PAGES.hostAccess, {
-                          cta: "hero_login_beaurocks_account",
-                          source: "premium_home_hero",
-                          utmContent: "home_hero_primary",
-                        });
-                      }}
-                    >
-                      {homeHeroPrimaryLabel}
-                    </button>
-                  </div>
-                  <div className="mk3-actions-inline">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        trackHomeConversionAction("home_quick_for_hosts", "home_primary_actions");
-                        navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "home_for_hosts_quick" }));
-                      }}
-                    >
-                      For Hosts
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        trackHomeConversionAction("home_quick_for_venues", "home_primary_actions");
-                        navigate(MARKETING_ROUTE_PAGES.forVenues, "", withCampaignParams({ utm_content: "home_for_venues_quick" }));
-                      }}
-                    >
-                      For Venues
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        trackHomeConversionAction("home_quick_for_performers", "home_primary_actions");
-                        navigate(MARKETING_ROUTE_PAGES.forPerformers, "", withCampaignParams({ utm_content: "home_for_performers_quick" }));
-                      }}
-                    >
-                      For Performers
-                    </button>
-                  </div>
-                </div>
-                <aside className="mk3-home-premium-side" aria-label="Quick path">
-                  <strong>Start In 3 Steps</strong>
-                  <div className="mk3-home-premium-side-list">
-                    <span>Open the map and pick a live room.</span>
-                    <span>Tap into details, then join or RSVP.</span>
-                    <span>Need control? Open Host Dashboard.</span>
-                  </div>
-                  <div className="mk3-auth-cta-row">
-                    <button
-                      type="button"
-                      className="mk3-auth-cta-primary"
-                      onClick={() => {
-                        trackHomeConversionAction("home_quick_open_host_panel", "home_fast_lane");
-                        openHostPanelDirect("home_quick_host_panel");
-                      }}
-                    >
-                      Open Host Panel
-                    </button>
-                  </div>
-                </aside>
-              </section>
-            </>
           ) : null}
 
-          {!isGuestsHomePage && (
+          {!isHostAccessPage && (
             <Suspense fallback={<PageShellLoader />}>
               {pageNode}
             </Suspense>
           )}
 
-          <footer className="mk3-site-footer mk3-zone" aria-label="Marketing quick links">
-            <div className="mk3-actions-inline">
-              <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.forVenues)}>
-                For Venues
-              </button>
-              <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.forPerformers)}>
-                For Performers
-              </button>
-              <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.forFans)}>
-                For Guests
-              </button>
-              <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.changelog)}>
-                Product Changelog
-              </button>
-            </div>
-          </footer>
+          {!isHostAccessPage && (
+            <footer className="mk3-site-footer mk3-zone" aria-label="Marketing quick links">
+              <div className="mk3-actions-inline">
+                <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}>
+                  Discover
+                </button>
+                <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.join)}>
+                  Join
+                </button>
+                <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.hostAccess)}>
+                  Host Access
+                </button>
+              </div>
+            </footer>
+          )}
 
         </div>
       </main>
-      {!isHostProductPage && !isGuestsHomePage && (
+      {!isHostProductPage && activePage !== MARKETING_ROUTE_PAGES.discover && (
         <Suspense fallback={null}>
           <GoldenPathRail
             navigate={navigate}

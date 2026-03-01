@@ -25,6 +25,7 @@ const defaultRecordJson = JSON.stringify([
 
 const AdminModerationPage = ({ session }) => {
   const canModerate = !!session?.isModerator;
+  const canManageHostAccess = !!session?.isAdmin;
   const [queue, setQueue] = useState([]);
   const [statusFilter, setStatusFilter] = useState("pending");
   const [sourceType, setSourceType] = useState("");
@@ -42,6 +43,9 @@ const AdminModerationPage = ({ session }) => {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportStatus, setReportStatus] = useState("");
   const [reportSummary, setReportSummary] = useState(null);
+  const [hostAccessTarget, setHostAccessTarget] = useState("");
+  const [hostAccessNotes, setHostAccessNotes] = useState("");
+  const [hostAccessBusy, setHostAccessBusy] = useState(false);
 
   const refreshQueue = async () => {
     if (!canModerate) return;
@@ -200,6 +204,35 @@ const AdminModerationPage = ({ session }) => {
     }
   };
 
+  const setHostAccess = async (enabled = true) => {
+    if (!canManageHostAccess || hostAccessBusy) return;
+    const target = String(hostAccessTarget || "").trim();
+    if (!target) {
+      setStatus("Enter host email or UID before submitting.");
+      return;
+    }
+    setHostAccessBusy(true);
+    setStatus("");
+    try {
+      const payload = await directoryActions.setMarketingPrivateHostAccess({
+        target,
+        enabled,
+        notes: hostAccessNotes,
+        source: "admin_moderation_panel",
+      });
+      const targetLabel = payload?.targetEmail || payload?.targetUid || target;
+      setStatus(`Host access ${enabled ? "granted" : "revoked"} for ${targetLabel}.`);
+      trackEvent("mk_host_access_updated", {
+        action: enabled ? "grant" : "revoke",
+        scope: payload?.mode || "unknown",
+      });
+    } catch (error) {
+      setStatus(String(error?.message || "Host access update failed."));
+    } finally {
+      setHostAccessBusy(false);
+    }
+  };
+
   if (!canModerate) {
     return (
       <section className="mk3-page">
@@ -339,6 +372,42 @@ const AdminModerationPage = ({ session }) => {
       </article>
 
       <aside className="mk3-actions-card">
+        <h4>Host Access Invites</h4>
+        <p>Grant or revoke private host onboarding access by email or UID.</p>
+        {canManageHostAccess ? (
+          <>
+            <label>
+              Host Email or UID
+              <input
+                value={hostAccessTarget}
+                onChange={(e) => setHostAccessTarget(e.target.value)}
+                placeholder="host@example.com or firebase_uid"
+              />
+            </label>
+            <label>
+              Notes (optional)
+              <textarea
+                value={hostAccessNotes}
+                onChange={(e) => setHostAccessNotes(e.target.value)}
+                placeholder="Invite context or source"
+              />
+            </label>
+            <div className="mk3-actions-inline">
+              <button type="button" onClick={() => setHostAccess(true)} disabled={hostAccessBusy}>
+                {hostAccessBusy ? "Working..." : "Grant Host Access"}
+              </button>
+              <button type="button" onClick={() => setHostAccess(false)} disabled={hostAccessBusy}>
+                {hostAccessBusy ? "Working..." : "Revoke Access"}
+              </button>
+            </div>
+            <div className="mk3-status">
+              Email grants can be pre-seeded before account creation. The grant is applied when that email signs in.
+            </div>
+          </>
+        ) : (
+          <div className="mk3-status">Directory admin role required to manage host invites.</div>
+        )}
+        <hr className="mk3-divider" />
         <h4>External Ingestion</h4>
         <p>Google/Yelp candidate ingestion into moderation queue.</p>
         <label>

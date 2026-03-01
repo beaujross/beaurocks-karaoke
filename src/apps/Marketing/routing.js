@@ -77,7 +77,7 @@ const safeToken = (value = "") =>
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-const defaultRoute = () => ({ page: MARKETING_ROUTE_PAGES.forHosts, id: "", params: {} });
+const defaultRoute = () => ({ page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} });
 
 const stripBasePath = (pathname = "") => {
   const clean = `/${trimSlashes(pathname)}`;
@@ -163,7 +163,7 @@ const parseLegacyQueryRoute = (search = "") => {
   const hasLegacyPage = params.has("page");
   if (mode && mode !== "marketing") return null;
   if (!hasLegacyPage && mode !== "marketing") return null;
-  const page = lower(params.get("page") || "for_hosts");
+  const page = lower(params.get("page") || "discover");
   const mapped = LEGACY_PAGE_TO_CANONICAL[page];
   if (!mapped) return defaultRoute();
   const id = String(
@@ -256,7 +256,7 @@ export const parseMarketingRouteFromHref = (href = "") => {
   }
 };
 
-export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.forHosts, id = "", params = {} } = {}) => {
+export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.discover, id = "", params = {} } = {}) => {
   const safeId = String(id || "").trim();
   if (page === MARKETING_ROUTE_PAGES.discover) return applyBasePath("/discover");
   if (page === MARKETING_ROUTE_PAGES.demo) return applyBasePath("/demo");
@@ -288,7 +288,7 @@ export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.forHosts, id =
     const token = safeToken(params.regionToken || safeId || "");
     if (token) return applyBasePath(`/karaoke/${encodeURIComponent(token)}`);
   }
-  return applyBasePath("/for-hosts");
+  return applyBasePath("/discover");
 };
 
 export const buildMarketingSearch = ({ params = {} } = {}) => {
@@ -310,7 +310,7 @@ export const buildMarketingUrl = (route = {}) => {
   return `${path}${search}`;
 };
 
-export const buildLegacyMarketingQuery = ({ page = MARKETING_ROUTE_PAGES.forHosts, id = "" } = {}) => {
+export const buildLegacyMarketingQuery = ({ page = MARKETING_ROUTE_PAGES.discover, id = "" } = {}) => {
   const params = new URLSearchParams();
   params.set("mode", "marketing");
   const pageMap = {
@@ -334,7 +334,7 @@ export const buildLegacyMarketingQuery = ({ page = MARKETING_ROUTE_PAGES.forHost
     [MARKETING_ROUTE_PAGES.geoCity]: "geo_city",
     [MARKETING_ROUTE_PAGES.geoRegion]: "geo_region",
   };
-  params.set("page", pageMap[page] || "for_hosts");
+  params.set("page", pageMap[page] || "discover");
   if (id) params.set("id", id);
   return `${applyBasePath("/")}?${params.toString()}`;
 };

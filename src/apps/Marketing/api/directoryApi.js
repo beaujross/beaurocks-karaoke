@@ -30,12 +30,33 @@ import {
   previewDirectoryRoomSessionByCode,
   submitMarketingWaitlist,
   redeemMarketingPrivateHostAccess,
+  setMarketingPrivateHostAccess,
+  getMyDirectoryAccess,
   runDemoDirectorAction,
   recordMarketingTelemetry,
   getMarketingReportingSummary,
 } from "../../../lib/firebase";
 
 const mapDocs = (snap) => snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+const BASE_ACCESS = Object.freeze({ isModerator: false, isAdmin: false, roles: [] });
+
+const normalizeAccess = (payload = {}) => {
+  const roles = Array.isArray(payload?.roles)
+    ? Array.from(new Set(payload.roles.map((entry) => String(entry || "").trim()).filter(Boolean)))
+    : [];
+  const isAdmin = !!payload?.isAdmin || roles.includes("directory_admin") || roles.includes("super_admin");
+  const isModerator = !!payload?.isModerator || isAdmin || roles.includes("directory_editor");
+  return { isModerator, isAdmin, roles };
+};
+
+const mergeAccess = (first = BASE_ACCESS, second = BASE_ACCESS) => {
+  const primary = normalizeAccess(first);
+  const secondary = normalizeAccess(second);
+  const roles = Array.from(new Set([...(primary.roles || []), ...(secondary.roles || [])]));
+  const isAdmin = primary.isAdmin || secondary.isAdmin || roles.includes("directory_admin") || roles.includes("super_admin");
+  const isModerator = primary.isModerator || secondary.isModerator || isAdmin || roles.includes("directory_editor");
+  return { isModerator, isAdmin, roles };
+};
 
 const isIndexRequiredError = (error) => {
   const message = String(error?.message || "").toLowerCase();
@@ -165,19 +186,45 @@ export const subscribeProfileByUid = ({ uid, onData, onError }) =>
 
 export const subscribeModeratorAccess = ({ uid, onData, onError }) => {
   if (!uid) {
-    onData?.({ isModerator: false, isAdmin: false, roles: [] });
+    onData?.({ ...BASE_ACCESS });
     return () => {};
   }
-  return onSnapshot(
+
+  let disposed = false;
+  let roleDocAccess = { ...BASE_ACCESS };
+  let callableAccess = { ...BASE_ACCESS };
+  const emit = () => {
+    if (disposed) return;
+    onData?.(mergeAccess(roleDocAccess, callableAccess));
+  };
+
+  const stopRoleDoc = onSnapshot(
     doc(db, "directory_roles", uid),
     (snap) => {
       const roles = Array.isArray(snap.data()?.roles) ? snap.data().roles : [];
       const isAdmin = roles.includes("directory_admin");
       const isModerator = isAdmin || roles.includes("directory_editor");
-      onData?.({ isModerator, isAdmin, roles });
+      roleDocAccess = { isModerator, isAdmin, roles };
+      emit();
     },
-    onError
+    (error) => {
+      roleDocAccess = { ...BASE_ACCESS };
+      emit();
+      onError?.(error);
+    }
   );
+
+  getMyDirectoryAccess().then((payload) => {
+    callableAccess = normalizeAccess(payload || {});
+    emit();
+  }).catch(() => {
+    // Keep role-doc access path as fallback if callable fails.
+  });
+
+  return () => {
+    disposed = true;
+    stopRoleDoc();
+  };
 };
 
 export const subscribeOwnDashboard = ({ uid, onData, onError }) => {
@@ -341,6 +388,8 @@ export const directoryActions = {
   previewDirectoryRoomSessionByCode,
   submitMarketingWaitlist,
   redeemMarketingPrivateHostAccess,
+  setMarketingPrivateHostAccess,
+  getMyDirectoryAccess,
   runDemoDirectorAction,
   recordMarketingTelemetry,
   getMarketingReportingSummary,

@@ -20,6 +20,9 @@ const {
   setDirectoryReminderPreferences,
   listDirectoryGeoLanding,
   redeemMarketingPrivateHostAccess,
+  setMarketingPrivateHostAccess,
+  getMyDirectoryAccess,
+  upsertHostRoomDiscoveryListing,
   submitCatalogContribution,
   listCatalogContributionQueue,
   resolveCatalogContribution,
@@ -28,6 +31,7 @@ const {
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
 const MOD_UID = "directory-mod";
+const ADMIN_UID = "directory-admin";
 const USER_UID = "directory-user";
 const OTHER_UID = "directory-other";
 
@@ -38,8 +42,8 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
 process.env.GCLOUD_PROJECT = PROJECT_ID;
 const db = admin.firestore();
 
-const requestFor = (uid, data = {}) => ({
-  auth: uid ? { uid, token: { email: `${uid}@test.local` } } : null,
+const requestFor = (uid, data = {}, options = {}) => ({
+  auth: uid ? { uid, token: { email: options.email || `${uid}@test.local` } } : null,
   app: null,
   data,
   rawRequest: {
@@ -72,6 +76,7 @@ async function resetState() {
     "tracks",
     "users",
     "marketing_private_access",
+    "marketing_private_invites",
   ];
   for (const name of collections) {
     const snap = await db.collection(name).limit(500).get();
@@ -80,8 +85,17 @@ async function resetState() {
     snap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
     await batch.commit();
   }
+  const rootRooms = await db.collection("artifacts").doc("bross-app").collection("public").doc("data").collection("rooms").limit(500).get();
+  if (!rootRooms.empty) {
+    const batch = db.batch();
+    rootRooms.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+    await batch.commit();
+  }
   await db.doc(`directory_roles/${MOD_UID}`).set({
     roles: ["directory_editor"],
+  });
+  await db.doc(`directory_roles/${ADMIN_UID}`).set({
+    roles: ["directory_admin"],
   });
   await db.doc(`users/${USER_UID}`).set({
     uid: USER_UID,
@@ -125,6 +139,83 @@ async function run() {
       const snap = await db.doc(`marketing_private_access/${USER_UID}`).get();
       assert.equal(snap.exists, true);
       assert.equal(!!snap.get("privateHostAccessEnabled"), true);
+    }],
+
+    ["setMarketingPrivateHostAccess denies non-admin moderator", async () => {
+      await expectHttpsError(
+        () => setMarketingPrivateHostAccess.run(
+          requestFor(MOD_UID, { target: "invitee@beaurocks.app", enabled: true })
+        ),
+        "permission-denied"
+      );
+    }],
+
+    ["getMyDirectoryAccess returns moderator/admin flags", async () => {
+      const modAccess = await getMyDirectoryAccess.run(requestFor(MOD_UID));
+      assert.equal(modAccess.ok, true);
+      assert.equal(modAccess.isModerator, true);
+      assert.equal(modAccess.isAdmin, false);
+
+      const adminAccess = await getMyDirectoryAccess.run(requestFor(ADMIN_UID));
+      assert.equal(adminAccess.ok, true);
+      assert.equal(adminAccess.isModerator, true);
+      assert.equal(adminAccess.isAdmin, true);
+    }],
+
+    ["setMarketingPrivateHostAccess email grant unlocks host role update", async () => {
+      const inviteEmail = "invitee@beaurocks.app";
+      const grant = await setMarketingPrivateHostAccess.run(
+        requestFor(ADMIN_UID, {
+          target: inviteEmail,
+          enabled: true,
+          notes: "integration invite",
+        })
+      );
+      assert.equal(grant.ok, true);
+      assert.equal(grant.privateHostAccessEnabled, true);
+      const inviteSnap = await db.doc("marketing_private_invites/wl_invitee_beaurocks_app").get();
+      assert.equal(inviteSnap.exists, true);
+      assert.equal(!!inviteSnap.get("privateHostAccessEnabled"), true);
+
+      const result = await upsertDirectoryProfile.run(
+        requestFor(
+          USER_UID,
+          { profile: { displayName: "Invited Host", roles: ["host"] } },
+          { email: inviteEmail }
+        )
+      );
+      assert.equal(result.ok, true);
+      const accessSnap = await db.doc(`marketing_private_access/${USER_UID}`).get();
+      assert.equal(accessSnap.exists, true);
+      assert.equal(!!accessSnap.get("privateHostAccessEnabled"), true);
+    }],
+
+    ["upsertHostRoomDiscoveryListing creates public room_session listing", async () => {
+      await db.doc("artifacts/bross-app/public/data/rooms/DEMO1").set({
+        hostUid: USER_UID,
+        hostUids: [USER_UID],
+        hostName: "Demo Host",
+      }, { merge: true });
+      const result = await upsertHostRoomDiscoveryListing.run(
+        requestFor(USER_UID, {
+          roomCode: "DEMO1",
+          listing: {
+            publicRoom: true,
+            title: "House Karaoke Friday",
+            city: "Seattle",
+            state: "WA",
+            startsAtMs: Date.now() + 3600000,
+            location: { lat: 47.6062, lng: -122.3321 },
+          },
+        })
+      );
+      assert.equal(result.ok, true);
+      assert.equal(result.isPublicRoom, true);
+      const sessionSnap = await db.doc(`room_sessions/${result.listingId}`).get();
+      assert.equal(sessionSnap.exists, true);
+      assert.equal(String(sessionSnap.get("roomCode")), "DEMO1");
+      assert.equal(String(sessionSnap.get("visibility")), "public");
+      assert.equal(String(sessionSnap.get("status")), "approved");
     }],
 
     ["upsertDirectoryProfile denies host role without private access grant", async () => {

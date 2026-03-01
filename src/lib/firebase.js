@@ -82,12 +82,6 @@ const parseOptionalBool = (raw = "") => {
   return null;
 };
 
-const isLocalDevHost = () => {
-  if (typeof window === "undefined") return true;
-  const host = String(window.location?.hostname || "").trim().toLowerCase();
-  return host === "localhost" || host === "127.0.0.1";
-};
-
 const REQUIRED_FIREBASE_KEYS = [
   "apiKey",
   "authDomain",
@@ -348,6 +342,18 @@ const redeemMarketingPrivateHostAccess = async (payload = {}) => {
   return data || null;
 };
 
+const setMarketingPrivateHostAccess = async (payload = {}) => {
+  await requireAppCheckToken("setMarketingPrivateHostAccess");
+  const data = await callFunction("setMarketingPrivateHostAccess", payload || {});
+  return data || null;
+};
+
+const getMyDirectoryAccess = async (payload = {}) => {
+  await requireAppCheckToken("getMyDirectoryAccess");
+  const data = await callFunction("getMyDirectoryAccess", payload || {});
+  return data || null;
+};
+
 const getDirectoryMapsConfig = async () => {
   const data = await callFunction("getDirectoryMapsConfig", {});
   return data || null;
@@ -362,6 +368,12 @@ const upsertDirectoryProfile = async (payload = {}) => {
 const submitDirectoryListing = async (payload = {}) => {
   await requireAppCheckToken("submitDirectoryListing");
   const data = await callFunction("submitDirectoryListing", payload || {});
+  return data || null;
+};
+
+const upsertHostRoomDiscoveryListing = async (payload = {}) => {
+  await requireAppCheckToken("upsertHostRoomDiscoveryListing");
+  const data = await callFunction("upsertHostRoomDiscoveryListing", payload || {});
   return data || null;
 };
 
@@ -738,9 +750,12 @@ export {
   getGoogleMapsApiKey,
   submitMarketingWaitlist,
   redeemMarketingPrivateHostAccess,
+  setMarketingPrivateHostAccess,
+  getMyDirectoryAccess,
   getDirectoryMapsConfig,
   upsertDirectoryProfile,
   submitDirectoryListing,
+  upsertHostRoomDiscoveryListing,
   updateDirectoryListing,
   followDirectoryEntity,
   unfollowDirectoryEntity,

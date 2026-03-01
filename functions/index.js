@@ -1241,6 +1241,21 @@ const sanitizeWaitlistEmail = (value = "") => {
   return safe;
 };
 
+const sanitizeOptionalWaitlistEmail = (value = "") => {
+  const safe = String(value || "").trim();
+  if (!safe) return "";
+  return sanitizeWaitlistEmail(safe);
+};
+
+const parseBooleanInput = (value, fallback = true) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  const token = String(value || "").trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(token)) return true;
+  if (["0", "false", "no", "off"].includes(token)) return false;
+  return fallback;
+};
+
 const sanitizeWaitlistUseCase = (value = "") => {
   const safe = String(value || "").trim();
   if (MARKETING_WAITLIST_USE_CASES.has(safe)) return safe;
@@ -1886,15 +1901,57 @@ const getDirectoryModeratorAccess = async (uid = "") => {
 const marketingPrivateAccessDocRef = (uid = "") =>
   admin.firestore().collection("marketing_private_access").doc(uid);
 
-const hasMarketingPrivateHostAccess = async (uid = "") => {
+const marketingPrivateInviteDocRef = (email = "") =>
+  admin.firestore().collection("marketing_private_invites").doc(buildWaitlistDocId(normalizeEmailToken(email)));
+
+const hasMarketingPrivateHostAccess = async (uid = "", options = {}) => {
   if (!uid || !MARKETING_PRIVATE_HOST_ACCESS_ENFORCED) {
     return { allowed: true, mode: MARKETING_PRIVATE_HOST_ACCESS_ENFORCED ? "missing_uid" : "disabled" };
   }
+  const normalizedEmail = normalizeEmailToken(options.email || "");
   const snap = await marketingPrivateAccessDocRef(uid).get();
   const enabled = !!snap.data()?.privateHostAccessEnabled;
+  if (enabled) {
+    return {
+      allowed: true,
+      mode: "granted",
+    };
+  }
+  if (normalizedEmail) {
+    const inviteSnap = await marketingPrivateInviteDocRef(normalizedEmail).get();
+    const inviteEnabled = !!inviteSnap.data()?.privateHostAccessEnabled;
+    if (inviteEnabled) {
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const source = sanitizeWaitlistSource(inviteSnap.data()?.source || "email_invite");
+      await Promise.all([
+        marketingPrivateAccessDocRef(uid).set({
+          uid,
+          privateHostAccessEnabled: true,
+          unlockedVia: "email_invite",
+          source,
+          invitedEmail: normalizedEmail,
+          mirroredFromEmailInvite: true,
+          updatedAt: now,
+          createdAt: now,
+        }, { merge: true }),
+        admin.firestore().collection("users").doc(uid).set({
+          marketing: {
+            privateHostAccessEnabled: true,
+            privateHostAccessUpdatedAt: now,
+            privateHostAccessSource: source,
+          },
+          updatedAt: now,
+        }, { merge: true }),
+      ]);
+      return {
+        allowed: true,
+        mode: "email_invite",
+      };
+    }
+  }
   return {
-    allowed: enabled,
-    mode: enabled ? "granted" : "missing_grant",
+    allowed: false,
+    mode: "missing_grant",
   };
 };
 
@@ -1914,7 +1971,7 @@ const requireMarketingPrivateHostAccess = async (uid = "", options = {}) => {
       return { allowed: true, mode: "moderator", roles: modAccess.roles || [] };
     }
   }
-  const access = await hasMarketingPrivateHostAccess(uid);
+  const access = await hasMarketingPrivateHostAccess(uid, { email: options.email || "" });
   if (access.allowed) return access;
   throw new HttpsError(
     "permission-denied",
@@ -5582,6 +5639,112 @@ exports.redeemMarketingPrivateHostAccess = onCall({ cors: true }, async (request
   };
 });
 
+exports.setMarketingPrivateHostAccess = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "set_marketing_private_host_access", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "set_marketing_private_host_access");
+  const requesterUid = requireAuth(request, "Sign in required.");
+  const requesterAccess = await getDirectoryModeratorAccess(requesterUid);
+  if (!requesterAccess.isAdmin) {
+    throw new HttpsError("permission-denied", "Directory admin role required.");
+  }
+
+  const payload = request.data && typeof request.data === "object" ? request.data : {};
+  const enabled = parseBooleanInput(payload.enabled, true);
+  const source = sanitizeWaitlistSource(payload.source || "admin_moderation");
+  const notes = normalizeDirectoryTextBlock(payload.notes || "", 500);
+  const targetToken = String(payload.target || payload.targetId || "").trim();
+
+  let targetUid = normalizeUidToken(payload.uid || payload.targetUid || "");
+  let targetEmail = sanitizeOptionalWaitlistEmail(payload.email || payload.targetEmail || "");
+  if (!targetUid && !targetEmail && targetToken) {
+    if (targetToken.includes("@")) {
+      targetEmail = sanitizeWaitlistEmail(targetToken);
+    } else {
+      targetUid = normalizeUidToken(targetToken);
+    }
+  }
+  if (!targetUid && !targetEmail) {
+    throw new HttpsError("invalid-argument", "Provide uid or email.");
+  }
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const db = admin.firestore();
+  const updates = [];
+  const action = enabled ? "grant" : "revoke";
+
+  if (targetEmail) {
+    updates.push(
+      marketingPrivateInviteDocRef(targetEmail).set({
+        email: targetEmail,
+        privateHostAccessEnabled: enabled,
+        status: enabled ? "granted" : "revoked",
+        source,
+        notes,
+        grantedByUid: requesterUid,
+        grantedByRoles: requesterAccess.roles || [],
+        lastAction: action,
+        updatedAt: now,
+        createdAt: now,
+      }, { merge: true })
+    );
+  }
+
+  if (targetUid) {
+    updates.push(
+      marketingPrivateAccessDocRef(targetUid).set({
+        uid: targetUid,
+        privateHostAccessEnabled: enabled,
+        unlockedVia: enabled ? "admin_grant" : "admin_revoke",
+        source,
+        notes,
+        invitedEmail: targetEmail || "",
+        grantedByUid: requesterUid,
+        updatedAt: now,
+        createdAt: now,
+      }, { merge: true })
+    );
+    updates.push(
+      db.collection("users").doc(targetUid).set({
+        marketing: {
+          privateHostAccessEnabled: enabled,
+          privateHostAccessUpdatedAt: now,
+          privateHostAccessSource: source,
+          privateHostAccessNotes: notes,
+        },
+        updatedAt: now,
+      }, { merge: true })
+    );
+  }
+
+  await Promise.all(updates);
+
+  return {
+    ok: true,
+    privateHostAccessEnabled: enabled,
+    targetUid,
+    targetEmail,
+    mode: targetUid ? "uid_grant" : "email_invite",
+    message: targetUid
+      ? `Host access ${enabled ? "granted" : "revoked"} for uid ${targetUid}.`
+      : `Host access ${enabled ? "granted" : "revoked"} for ${targetEmail}.`,
+  };
+});
+
+exports.getMyDirectoryAccess = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "get_my_directory_access", { perMinute: 60, perHour: 480 });
+  enforceAppCheckIfEnabled(request, "get_my_directory_access");
+  const uid = requireAuth(request, "Sign in required.");
+  const access = await getDirectoryModeratorAccess(uid);
+  return {
+    ok: true,
+    uid,
+    isModerator: !!access.isModerator,
+    isAdmin: !!access.isAdmin,
+    roles: Array.isArray(access.roles) ? access.roles : [],
+    mode: String(access.mode || ""),
+  };
+});
+
 exports.getDirectoryMapsConfig = onCall(
   { cors: true, secrets: [GOOGLE_MAPS_API_KEY] },
   async (request) => {
@@ -5622,6 +5785,7 @@ exports.upsertDirectoryProfile = onCall({ cors: true }, async (request) => {
   if (requestsHostOnboardingRole) {
     await requireMarketingPrivateHostAccess(uid, {
       allowModerator: true,
+      email: normalizeEmailToken(request.auth?.token?.email || ""),
       deniedMessage: "Private host onboarding access required before assigning host roles.",
     });
   }
@@ -5851,6 +6015,158 @@ exports.submitDirectoryListing = onCall(
     };
     await admin.firestore().collection("directory_submissions").doc(submissionId).set(docData, { merge: true });
     return { ok: true, submissionId, status: "pending" };
+  }
+);
+
+exports.upsertHostRoomDiscoveryListing = onCall(
+  { cors: true, secrets: [GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_SERVER_API_KEY] },
+  async (request) => {
+    checkRateLimit(request.rawRequest, "upsert_host_room_discovery_listing", { perMinute: 40, perHour: 320 });
+    enforceAppCheckIfEnabled(request, "upsert_host_room_discovery_listing");
+    const callerUid = requireAuth(request, "Sign in required.");
+    const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+    if (!roomCode) {
+      throw new HttpsError("invalid-argument", "roomCode is required.");
+    }
+
+    const listingInput = request.data?.listing && typeof request.data.listing === "object"
+      ? request.data.listing
+      : request.data || {};
+
+    const { roomRef, roomData, roomCode: safeRoomCode } = await ensureRoomHostAccess({
+      roomCode,
+      callerUid,
+      deniedMessage: "Only room hosts can publish this room to discovery.",
+    });
+
+    const hostUid = safeDirectoryString(roomData.hostUid || callerUid, 180) || callerUid;
+    const hostName = safeDirectoryString(roomData.hostName || "", 120) || "Host";
+    const publicRoom = parseBooleanInput(
+      listingInput.publicRoom ?? listingInput.isPublicRoom ?? listingInput.public ?? false,
+      false
+    );
+    const virtualOnly = parseBooleanInput(
+      listingInput.virtualOnly ?? listingInput.isVirtualOnly ?? false,
+      false
+    );
+    const visibility = publicRoom ? "public" : "private";
+
+    const startsAtMsRaw = Number(listingInput.startsAtMs || 0);
+    let startsAtMs = Number.isFinite(startsAtMsRaw) && startsAtMsRaw > 0 ? Math.floor(startsAtMsRaw) : 0;
+    if (!startsAtMs && String(listingInput.startsAtLocal || "").trim()) {
+      const parsedStartsAt = Date.parse(String(listingInput.startsAtLocal || "").trim());
+      if (Number.isFinite(parsedStartsAt) && parsedStartsAt > 0) {
+        startsAtMs = Math.floor(parsedStartsAt);
+      }
+    }
+
+    const endsAtMsRaw = Number(listingInput.endsAtMs || 0);
+    const endsAtMs = Number.isFinite(endsAtMsRaw) && endsAtMsRaw > startsAtMs ? Math.floor(endsAtMsRaw) : 0;
+    const parsedLat = Number(listingInput.lat ?? listingInput.location?.lat ?? 0);
+    const parsedLng = Number(listingInput.lng ?? listingInput.location?.lng ?? 0);
+    const location = Number.isFinite(parsedLat) && Number.isFinite(parsedLng)
+      ? { lat: parsedLat, lng: parsedLng }
+      : normalizeDirectoryLatLng(listingInput.location || listingInput.latLng || {});
+    const title = safeDirectoryString(
+      listingInput.title || `${hostName} Karaoke Room ${safeRoomCode}`,
+      180
+    ) || `${hostName} Karaoke Room ${safeRoomCode}`;
+    const sessionMode = safeDirectoryString(
+      listingInput.sessionMode || (virtualOnly ? "virtual" : "karaoke"),
+      40
+    ) || (virtualOnly ? "virtual" : "karaoke");
+
+    const basePayload = {
+      title,
+      description: normalizeDirectoryTextBlock(listingInput.description || "", 3000),
+      region: normalizeDirectoryToken(listingInput.region || DIRECTORY_DEFAULT_REGION, 80) || DIRECTORY_DEFAULT_REGION,
+      city: safeDirectoryString(listingInput.city || "", 80),
+      state: safeDirectoryString(listingInput.state || "", 40),
+      country: safeDirectoryString(listingInput.country || DIRECTORY_DEFAULT_COUNTRY, 2).toUpperCase(),
+      timezone: safeDirectoryString(listingInput.timezone || "America/Los_Angeles", 80),
+      address1: virtualOnly ? "" : safeDirectoryString(listingInput.address1 || listingInput.address || "", 180),
+      address2: virtualOnly ? "" : safeDirectoryString(listingInput.address2 || "", 180),
+      location: virtualOnly ? {} : location,
+      startsAtMs,
+      endsAtMs,
+      visibility,
+      status: "approved",
+      websiteUrl: normalizeDirectoryOptionalUrl(listingInput.websiteUrl || ""),
+      bookingUrl: normalizeDirectoryOptionalUrl(listingInput.bookingUrl || ""),
+      imageUrl: normalizeDirectoryOptionalUrl(listingInput.imageUrl || ""),
+      roomCode: safeRoomCode,
+      venueName: safeDirectoryString(listingInput.venueName || "", 120),
+      sessionMode,
+      hostUid,
+      hostName,
+      ownerUid: callerUid,
+      sourceType: "host_room",
+      isPublicRoom: publicRoom,
+      virtualOnly,
+      isVirtualOnly: virtualOnly,
+      externalSources: listingInput.externalSources && typeof listingInput.externalSources === "object"
+        ? listingInput.externalSources
+        : {},
+    };
+
+    const enrichment = await maybeEnrichDirectoryLocation(basePayload);
+    const normalized = normalizeDirectoryListingPayload(
+      "room_session",
+      enrichment.payload || basePayload,
+      callerUid
+    );
+    const listingId = safeDirectoryString(
+      listingInput.listingId || `room_${normalizeDirectoryToken(safeRoomCode, 80) || "session"}`,
+      220
+    ) || `room_${normalizeDirectoryToken(safeRoomCode, 80) || "session"}`;
+    const now = buildDirectoryNow();
+    const roomSessionDoc = {
+      ...normalized,
+      listingType: "room_session",
+      roomCode: safeRoomCode,
+      hostUid,
+      hostName,
+      ownerUid: callerUid,
+      sourceType: "host_room",
+      status: "approved",
+      visibility,
+      isPublicRoom: publicRoom,
+      virtualOnly,
+      isVirtualOnly: virtualOnly,
+      sessionMode,
+      updatedAt: now,
+      updatedBy: callerUid,
+      createdAt: now,
+      createdBy: callerUid,
+    };
+
+    await Promise.all([
+      admin.firestore().collection("room_sessions").doc(listingId).set(roomSessionDoc, { merge: true }),
+      roomRef.set({
+        discover: {
+          listingId,
+          publicRoom,
+          visibility,
+          virtualOnly,
+          sessionMode,
+          title,
+          startsAtMs,
+          updatedAt: now,
+        },
+        updatedAt: now,
+      }, { merge: true }),
+    ]);
+
+    return {
+      ok: true,
+      listingId,
+      roomCode: safeRoomCode,
+      visibility,
+      status: "approved",
+      isPublicRoom: publicRoom,
+      virtualOnly,
+      sourceType: "host_room",
+    };
   }
 );
 

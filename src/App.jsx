@@ -3,7 +3,7 @@ import { ToastProvider } from './context/ToastContext';
 import { auth, onAuthStateChanged, initAuth } from './lib/firebase';
 import { ASSETS } from './lib/assets';
 import { marketingFlags } from './apps/Marketing/featureFlags';
-import { isMarketingPath } from './apps/Marketing/routing';
+import { MARKETING_ROUTE_PAGES, buildLegacyMarketingQuery, isMarketingPath } from './apps/Marketing/routing';
 import { buildSurfaceUrl, inferSurfaceFromHostname } from './lib/surfaceDomains';
 
 // App Views
@@ -95,7 +95,7 @@ const Landing = ({ onJoin, hasBeauRocksAccount = false }) => {
     const marketingHref = typeof window !== 'undefined'
         ? (
             marketingFlags.routePathsEnabled
-                ? buildSurfaceUrl({ surface: 'marketing', path: 'for-hosts' }, window.location)
+                ? buildSurfaceUrl({ surface: 'marketing', path: 'discover' }, window.location)
                 : buildSurfaceUrl({ surface: 'marketing', params: { mode: 'marketing' } }, window.location)
         )
         : '/';
@@ -188,6 +188,7 @@ const App = () => {
     const [uid, setUid] = useState(null);
     const [hasBeauRocksAccount, setHasBeauRocksAccount] = useState(false);
     const [authError, setAuthError] = useState(null);
+    const [authReady, setAuthReady] = useState(false);
     const isKaraokeTerms = typeof window !== 'undefined'
         && window.location.pathname.replace(/\/+$/, '').endsWith('/karaoke/terms');
 
@@ -208,13 +209,30 @@ const App = () => {
                 setUid(user.uid);
                 setHasBeauRocksAccount(!user.isAnonymous);
                 setAuthError(null);
+                setAuthReady(true);
                 return;
             }
             setUid(null);
             setHasBeauRocksAccount(false);
+            setAuthReady(true);
         });
         return () => unsub();
     }, []);
+
+    useEffect(() => {
+        if (view !== 'host') return;
+        if (!authReady || hasBeauRocksAccount || typeof window === 'undefined') return;
+
+        const resumeIntent = 'host_dashboard_resume';
+        const baseHref = buildLegacyMarketingQuery({ page: MARKETING_ROUTE_PAGES.hostAccess });
+        const returnToUrl = new URL(baseHref, window.location.origin);
+        returnToUrl.searchParams.set('intent', resumeIntent);
+        const authGateUrl = new URL(baseHref, window.location.origin);
+        authGateUrl.searchParams.set('intent', resumeIntent);
+        authGateUrl.searchParams.set('targetType', 'host_dashboard');
+        authGateUrl.searchParams.set('return_to', `${returnToUrl.pathname}${returnToUrl.search}`);
+        window.location.replace(`${authGateUrl.pathname}${authGateUrl.search}`);
+    }, [authReady, hasBeauRocksAccount, view]);
     if (canonicalRedirectUrl) return <ViewLoader />;
     if (isKaraokeTerms) return <KaraokeTerms />;
     if (view === 'landing') return <Landing hasBeauRocksAccount={hasBeauRocksAccount} onJoin={(c) => { setRoomCode(c); setView('mobile'); }} />;
@@ -231,13 +249,16 @@ const App = () => {
         }
     };
 
-    if (view === 'host') return (
-        <Suspense fallback={<ViewLoader />}>
-            <ToastProvider>
-                <HostApp roomCode={roomCode} uid={uid} authError={authError} retryAuth={retryAuth} />
-            </ToastProvider>
-        </Suspense>
-    );
+    if (view === 'host') {
+        if (!authReady || !hasBeauRocksAccount) return <ViewLoader />;
+        return (
+            <Suspense fallback={<ViewLoader />}>
+                <ToastProvider>
+                    <HostApp roomCode={roomCode} uid={uid} authError={authError} retryAuth={retryAuth} />
+                </ToastProvider>
+            </Suspense>
+        );
+    }
     if (view === 'recap') return (
         <Suspense fallback={<ViewLoader />}>
             <RecapView roomCode={roomCode} />
