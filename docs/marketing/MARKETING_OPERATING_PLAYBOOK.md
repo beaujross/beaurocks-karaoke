@@ -1,6 +1,6 @@
 # Marketing Operating Playbook
 
-Last updated: 2026-02-28
+Last updated: 2026-03-01
 
 ## Purpose
 - Keep marketing positioning, IA, CTA hierarchy, and analytics naming consistent as pages evolve.
@@ -20,11 +20,12 @@ Last updated: 2026-02-28
   - Any claim implying licensing bypass, exemption, or legal coverage by default.
 
 ## IA + Primary Conversion Intent
-- `/for-hosts`: primary = host product conversion (`Start Hosting` / `Open Host Panel` path).
-- `/for-venues`: primary = venue ownership + recurring cadence conversion.
-- `/for-performers`: primary = quality room discovery + performer account conversion.
-- `/for-fans`: primary = premium night discovery + guest account conversion.
-- `/demo`: product trust/validation layer supporting the above conversions.
+- Primary nav/canonical flow is now discovery-first:
+  - `/discover`: map + listing discovery first, then convert to join/host actions
+  - `/join`: direct room entry by code
+  - `/host-access`: authentication gate before host controls
+- Persona pages (`/for-hosts`, `/for-venues`, `/for-performers`, `/for-fans`) remain available but are secondary.
+- `/demo`: product trust/validation layer supporting conversion.
 
 ## CTA Hierarchy Standard
 - `Primary`: highest-intent conversion for page persona.
@@ -45,14 +46,21 @@ Last updated: 2026-02-28
 - `mk_nav_host_dashboard_click`
   - Scope: host dashboard navigation entry points.
   - Required fields: `source`, `authed`.
+- `mk_discover_join_room`
+  - Scope: discover card CTA for room sessions.
+  - Required fields: `source`, `roomCode`.
+
+## Discover Visibility Defaults
+- `Bounds-only list` defaults to OFF so virtual/no-coordinate public sessions are visible by default.
+- Change reference: commit `4d79612`.
+- Operational note:
+  - when `Bounds-only list` is ON, sessions without coordinates can be filtered out from rail view.
 
 ## Current Conversion Narrative
-- Home page emphasizes two outcomes:
-  - capture qualified host launch intent
-  - route active testers quickly to host controls
-- Persona pages convert by role clarity, not one-size-fits-all messaging.
+- Lead with map discovery and lightweight join path.
+- Route host intent through account-first `/host-access` before host controls.
+- Keep copy minimal; discovery data and room/session actions should carry the page.
 
 ## Technical Debt To Track
 - Build warning: large chunks after minification (notably `HostApp` and firebase vendor chunk).
 - Action: prioritize code-splitting/manual chunking in a dedicated performance pass.
-

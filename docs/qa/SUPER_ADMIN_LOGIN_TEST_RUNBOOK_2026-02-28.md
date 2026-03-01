@@ -1,4 +1,4 @@
-# Super Admin Login + Test Runbook (2026-02-28)
+# Super Admin Login + Test Runbook (2026-03-01)
 
 Scope:
 - Primary super admin account: `hello@beauross.com`
@@ -24,6 +24,15 @@ Important:
 - `isSuperAdminUid` result is cached for up to 10 minutes in-memory.
 - If you fix email verification or env vars, allow cache to expire (or redeploy functions) before retesting.
 
+## 1.1) Auth Bootstrap Guardrail (Regression-Protected)
+
+- Auth bootstrap must be non-destructive:
+  - if a full account is already signed in, initialization must reuse that session
+  - initialization may only create anonymous auth when there is no current user
+- Regression fix reference:
+  - commit `97bf4eb`
+  - unit test: `tests/unit/authBootstrap.test.mjs`
+
 ## 2) One-Time Setup (Firebase Console)
 
 1. Firebase Auth -> Users:
@@ -34,7 +43,7 @@ Important:
    - ensure `SUPER_ADMIN_EMAILS` includes `hello@beauross.com` (or leave default behavior)
    - optional break-glass: add your UID to `SUPER_ADMIN_UIDS`
 
-3. Firestore UI role doc (recommended for moderator UI visibility):
+3. Firestore UI role doc (optional fallback for moderator UI visibility):
    - create/update `directory_roles/{yourUid}` with:
 
 ```json
@@ -45,8 +54,8 @@ Important:
 
 Why this matters:
 - Backend treats super admin as moderator/admin automatically.
-- Frontend moderator nav currently reads only `directory_roles/{uid}` to decide `session.isModerator`.
-- Without this doc, moderation pages can be hidden even if backend would authorize you.
+- Frontend now merges role-doc + callable access. Role doc is no longer the only source.
+- If moderation visibility is inconsistent in-session, adding this doc remains a reliable override.
 
 ## 3) Production Login Flow
 
@@ -82,6 +91,11 @@ Use this pass/fail checklist after login:
    - Action: attempt host onboarding action requiring private access
    - Pass: super admin account is not blocked by private-access server gate
 
+6. Discover visibility for host-created public rooms
+   - Action: create a public room in host controls, then search on `/discover`
+   - Pass: listing appears in discover rail and `Join room` routes to `/join/:roomCode`
+   - Note: if `Bounds-only list` is enabled, no-coordinate rooms can be hidden
+
 ## 5) Optional Automated QA
 
 Run admin workspace smoke against production:
@@ -96,6 +110,10 @@ Optional override:
 $env:QA_BASE_URL="https://beaurocks.app"
 npm run qa:admin:prod
 ```
+
+Automation note:
+- This script can fail if started unauthenticated because host routes are login-first.
+- Authenticate first on `/host-access`, then continue host/admin checks.
 
 ## 6) Troubleshooting
 
@@ -112,3 +130,7 @@ If `/admin/moderation` is missing while signed in:
 If host room creation fails with permission/auth errors:
 - sign out/in again on host surface
 - retest after confirming same UID/email in Firebase Auth
+
+If host routing loops back to `/host-access` after successful login:
+- verify the deployed build includes commit `97bf4eb` (auth bootstrap session-preservation fix)
+- clear site data for `host.beaurocks.app` and repeat sign-in
