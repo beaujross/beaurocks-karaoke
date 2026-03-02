@@ -1717,6 +1717,7 @@
 .mk3-feed-column {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .mk3-map-card {
@@ -3871,12 +3872,24 @@
   }
 
   .mk3-auth-panel,
-  .mk3-discover-shell,
   .mk3-two-col,
   .mk3-filter-row,
   .mk3-metric-row,
   .mk3-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .mk3-discover-shell,
+  .mk3-discover-shell.is-balanced,
+  .mk3-discover-shell.is-map-first,
+  .mk3-discover-shell.is-mobile-surface-list,
+  .mk3-discover-shell.is-mobile-surface-map {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .mk3-discover-shell > * {
+    min-width: 0;
   }
 
   .mk3-host-late-grid {
@@ -3903,7 +3916,7 @@
     flex-wrap: wrap;
     gap: 6px;
     position: sticky;
-    top: 92px;
+    top: 100px;
     z-index: 36;
   }
 
@@ -4073,6 +4086,22 @@
 }
 
 @media (max-width: 640px) {
+  .mk3-nav-inner {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 76px;
+    gap: 8px;
+    padding: 8px 0 6px;
+  }
+
+  .mk3-brand {
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .mk3-brand > div {
+    min-width: 0;
+  }
+
   .mk3-shell {
     width: min(1320px, 94vw);
   }
@@ -4087,13 +4116,19 @@
   }
 
   .mk3-brand span {
-    font-size: 0.7rem;
+    display: none;
   }
 
   .mk3-account-action {
     padding: 0.44rem 0.72rem;
     font-size: 0.7rem;
-    min-height: 44px;
+    min-height: 40px;
+  }
+
+  .mk3-mobile-toggle {
+    min-height: 40px;
+    padding: 0.38rem 0.62rem;
+    font-size: 0.72rem;
   }
 
   .mk3-mobile-link-grid {
@@ -4127,7 +4162,7 @@
   }
 
   .mk3-mobile-discover-switch {
-    top: 84px;
+    top: 92px;
   }
 
   .mk3-mobile-discover-switch button {
