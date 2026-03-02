@@ -810,6 +810,31 @@
   line-height: 1.35;
 }
 
+.mk3-auth-support-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mk3-auth-box .mk3-auth-link {
+  border: 0;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  color: #91defc;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  font-weight: 700;
+}
+
+.mk3-auth-box .mk3-auth-link:hover {
+  transform: none;
+  color: #d7f3ff;
+  text-decoration: underline;
+  background: transparent;
+  border-color: transparent;
+}
+
 .mk3-hero-proof {
   margin-top: 10px;
 }

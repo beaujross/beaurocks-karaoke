@@ -202,6 +202,7 @@ const MarketingSite = () => {
   const [authMode, setAuthMode] = useState("signin");
   const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "" });
   const [authLocalError, setAuthLocalError] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const authPanelRef = useRef(null);
   const { session, actions } = useDirectorySession();
@@ -456,6 +457,7 @@ const MarketingSite = () => {
     const password = String(authForm.password || "");
     const confirmPassword = String(authForm.confirmPassword || "");
     setAuthLocalError("");
+    setAuthNotice("");
     if (!email || !password) return;
     if (authMode === "signup") {
       if (password.length < 6) {
@@ -478,6 +480,21 @@ const MarketingSite = () => {
     if (result?.ok) {
       trackEvent("marketing_account_signin", { source: "marketing_directory" });
       resolvePostAuthReturn();
+    }
+  };
+
+  const onPasswordResetRequest = async () => {
+    const email = String(authForm.email || "").trim();
+    setAuthLocalError("");
+    setAuthNotice("");
+    if (!email) {
+      setAuthLocalError("Enter your account email, then tap Forgot password.");
+      return;
+    }
+    const result = await actions.requestPasswordReset?.({ email });
+    if (result?.ok) {
+      setAuthNotice(`Password reset sent to ${email}. Check inbox and spam.`);
+      trackEvent("marketing_account_password_reset_requested", { source: "marketing_directory" });
     }
   };
 
@@ -767,6 +784,7 @@ const MarketingSite = () => {
                       onClick={() => {
                         setAuthMode("signin");
                         setAuthLocalError("");
+                        setAuthNotice("");
                         actions.clearAuthError?.();
                       }}
                     >
@@ -778,6 +796,7 @@ const MarketingSite = () => {
                       onClick={() => {
                         setAuthMode("signup");
                         setAuthLocalError("");
+                        setAuthNotice("");
                         actions.clearAuthError?.();
                       }}
                     >
@@ -792,6 +811,7 @@ const MarketingSite = () => {
                       onChange={(e) => {
                         setAuthForm((prev) => ({ ...prev, email: e.target.value }));
                         setAuthLocalError("");
+                        setAuthNotice("");
                         actions.clearAuthError?.();
                       }}
                       required
@@ -805,6 +825,7 @@ const MarketingSite = () => {
                       onChange={(e) => {
                         setAuthForm((prev) => ({ ...prev, password: e.target.value }));
                         setAuthLocalError("");
+                        setAuthNotice("");
                         actions.clearAuthError?.();
                       }}
                       required
@@ -816,12 +837,13 @@ const MarketingSite = () => {
                       Confirm Password
                       <input
                         type="password"
-                        value={authForm.confirmPassword}
-                        onChange={(e) => {
-                          setAuthForm((prev) => ({ ...prev, confirmPassword: e.target.value }));
-                          setAuthLocalError("");
-                          actions.clearAuthError?.();
-                        }}
+                          value={authForm.confirmPassword}
+                          onChange={(e) => {
+                            setAuthForm((prev) => ({ ...prev, confirmPassword: e.target.value }));
+                            setAuthLocalError("");
+                            setAuthNotice("");
+                            actions.clearAuthError?.();
+                          }}
                         required
                         minLength={6}
                       />
@@ -837,7 +859,20 @@ const MarketingSite = () => {
                         ? "Create Account"
                         : "Log In"}
                   </button>
+                  {authMode === "signin" && (
+                    <div className="mk3-auth-support-row">
+                      <button
+                        type="button"
+                        className="mk3-auth-link"
+                        onClick={onPasswordResetRequest}
+                        disabled={session.authLoading}
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                  )}
                   <div className="mk3-auth-hint">{postAuthHint}</div>
+                  {authNotice && <div className="mk3-status">{authNotice}</div>}
                   {authLocalError && <div className="mk3-status mk3-status-error">{authLocalError}</div>}
                   {session.authError && <div className="mk3-status mk3-status-error">{session.authError}</div>}
                 </form>

@@ -4,6 +4,7 @@ import {
   onAuthStateChanged,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   EmailAuthProvider,
   linkWithCredential,
   signOut,
@@ -111,6 +112,29 @@ export const useDirectorySession = () => {
     }
   }, []);
 
+  const requestPasswordReset = useCallback(async ({ email }) => {
+    const safeEmail = String(email || "").trim();
+    if (!safeEmail) {
+      setAuthError("Enter your account email first.");
+      return { ok: false, code: "missing-email" };
+    }
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      await sendPasswordResetEmail(auth, safeEmail);
+      return { ok: true };
+    } catch (error) {
+      const code = String(error?.code || "").toLowerCase();
+      if (code.includes("user-not-found")) {
+        return { ok: true };
+      }
+      setAuthError(normalizeAuthError(error));
+      return { ok: false, error };
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
   const session = useMemo(() => ({
     ready,
     user,
@@ -131,6 +155,7 @@ export const useDirectorySession = () => {
       signInWithEmail,
       signUpWithEmail,
       signOutAccount,
+      requestPasswordReset,
       clearAuthError: () => setAuthError(""),
     },
   };
