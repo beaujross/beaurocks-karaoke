@@ -878,7 +878,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   useEffect(() => {
     if (!mapsLoaded || !mapEnabled || mapRef.current || !mapContainerRef.current) return;
     const googleMaps = window.google?.maps;
-    if (!googleMaps) return;
+    if (!googleMaps || typeof googleMaps.Map !== "function") return;
 
     const map = new googleMaps.Map(mapContainerRef.current, {
       center: MAP_DEFAULT_CENTER,

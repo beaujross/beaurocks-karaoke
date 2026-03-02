@@ -2,6 +2,38 @@ import { useEffect, useMemo, useState } from "react";
 
 const SCRIPT_ID = "beaurocks-google-maps-script";
 
+const ensureGoogleMapsReady = async (mapsNs = null) => {
+  const maps = mapsNs || window.google?.maps;
+  if (!maps) {
+    throw new Error("Google Maps namespace missing.");
+  }
+
+  if (typeof maps.Map === "function") {
+    return maps;
+  }
+
+  if (typeof maps.importLibrary === "function") {
+    const mapsLibrary = await maps.importLibrary("maps");
+    if (typeof maps.Map !== "function" && typeof mapsLibrary?.Map === "function") {
+      maps.Map = mapsLibrary.Map;
+    }
+    if (typeof maps.InfoWindow !== "function" && typeof mapsLibrary?.InfoWindow === "function") {
+      maps.InfoWindow = mapsLibrary.InfoWindow;
+    }
+    if (typeof maps.LatLngBounds !== "function" && typeof mapsLibrary?.LatLngBounds === "function") {
+      maps.LatLngBounds = mapsLibrary.LatLngBounds;
+    }
+    if (!maps.SymbolPath && mapsLibrary?.SymbolPath) {
+      maps.SymbolPath = mapsLibrary.SymbolPath;
+    }
+  }
+
+  if (typeof maps.Map !== "function") {
+    throw new Error("Google Maps loaded but Map constructor unavailable.");
+  }
+  return maps;
+};
+
 const loadGoogleMapsScript = (apiKey = "") => {
   if (!apiKey) {
     return Promise.reject(new Error("Google Maps API key missing."));
@@ -10,7 +42,7 @@ const loadGoogleMapsScript = (apiKey = "") => {
     return Promise.reject(new Error("Window unavailable."));
   }
   if (window.google?.maps) {
-    return Promise.resolve(window.google.maps);
+    return ensureGoogleMapsReady(window.google.maps);
   }
   if (window.__beaurocksMapsPromise) {
     return window.__beaurocksMapsPromise;
@@ -20,7 +52,9 @@ const loadGoogleMapsScript = (apiKey = "") => {
     const existing = document.getElementById(SCRIPT_ID);
     if (existing) {
       existing.addEventListener("load", () => {
-        if (window.google?.maps) resolve(window.google.maps);
+        ensureGoogleMapsReady(window.google?.maps)
+          .then(resolve)
+          .catch(reject);
       });
       existing.addEventListener("error", () => reject(new Error("Failed to load Google Maps.")));
       return;
@@ -32,11 +66,9 @@ const loadGoogleMapsScript = (apiKey = "") => {
     script.defer = true;
     script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async`;
     script.onload = () => {
-      if (window.google?.maps) {
-        resolve(window.google.maps);
-        return;
-      }
-      reject(new Error("Google Maps loaded but maps namespace missing."));
+      ensureGoogleMapsReady(window.google?.maps)
+        .then(resolve)
+        .catch(reject);
     };
     script.onerror = () => reject(new Error("Failed to load Google Maps script."));
     document.head.appendChild(script);
