@@ -1,7 +1,6 @@
-import React, { useState } from "react";
-import { trackEvent, trackGoldenPathMilestone } from "../lib/marketingAnalytics";
-import { directoryActions } from "../api/directoryApi";
-import { fromDateTimeLocalInput } from "./shared";
+import React, { useMemo, useState } from "react";
+import { trackEvent } from "../lib/marketingAnalytics";
+import { buildSurfaceUrl } from "../../../lib/surfaceDomains";
 
 const HOST_STACK_BADGES = [
   "Content-Agnostic Control",
@@ -30,6 +29,13 @@ const HOST_OUTCOMES = [
   "More repeatable host operations night to night.",
 ];
 
+const normalizeRoomCode = (value = "") =>
+  String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 10);
+
 const ForHostsPage = ({ navigate, session, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
   const trackPersonaCta = (cta = "") => {
@@ -45,65 +51,64 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
     roomCode: "",
     startsAtLocal: "",
     description: "",
+    publicRoom: false,
+    virtualOnly: false,
+    city: "",
+    state: "",
   });
-  const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
-  const [nextStep, setNextStep] = useState(null);
 
-  const submitPrivateSession = async (event) => {
-    event.preventDefault();
+  const hostSetupHref = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const roomCode = normalizeRoomCode(privateForm.roomCode);
+    return buildSurfaceUrl({
+      surface: "host",
+      params: {
+        mode: "host",
+        hostUiVersion: "v2",
+        view: "ops",
+        section: "ops.room_setup",
+        tab: "admin",
+        onboarding: "1",
+        source: "marketing_for_hosts",
+        ...(roomCode ? { launch_room_code: roomCode } : {}),
+        ...(privateForm.publicRoom ? { launch_public_room: "1" } : {}),
+        ...(privateForm.virtualOnly ? { launch_virtual_only: "1" } : {}),
+        ...(String(privateForm.title || "").trim() ? { launch_title: String(privateForm.title || "").trim() } : {}),
+        ...(String(privateForm.description || "").trim() ? { launch_description: String(privateForm.description || "").trim() } : {}),
+        ...(String(privateForm.startsAtLocal || "").trim() ? { launch_starts_at: String(privateForm.startsAtLocal || "").trim() } : {}),
+        ...(String(privateForm.city || "").trim() ? { launch_city: String(privateForm.city || "").trim() } : {}),
+        ...(String(privateForm.state || "").trim() ? { launch_state: String(privateForm.state || "").trim() } : {}),
+      },
+    }, window.location);
+  }, [privateForm]);
+
+  const openHostSetup = () => {
     if (!canSubmit) {
       authFlow?.requireFullAuth?.({
         intent: "private_session_create",
         targetType: "session",
-        targetId: privateForm.roomCode || "",
+        targetId: normalizeRoomCode(privateForm.roomCode),
         returnRoute: {
           page: "for_hosts",
           params: {
             intent: "private_session_create",
             targetType: "session",
-            targetId: privateForm.roomCode || "",
+            targetId: normalizeRoomCode(privateForm.roomCode),
           },
         },
       });
-      setStatus("Create an account to spin up private sessions.");
+      setStatus("Create an account to launch room setup.");
       return;
     }
-
-    setBusy(true);
-    setStatus("");
-    try {
-      const payload = {
-        title: privateForm.title || `Private Session ${privateForm.roomCode}`,
-        roomCode: String(privateForm.roomCode || "").trim().toUpperCase(),
-        startsAtMs: fromDateTimeLocalInput(privateForm.startsAtLocal),
-        description: privateForm.description || "",
-        visibility: "private",
-      };
-      const result = await directoryActions.submitDirectoryListing({
-        listingType: "room_session",
-        payload,
-      });
-      setStatus(`Private session submitted (${result?.submissionId || "pending"}).`);
-      setNextStep({
-        label: "Next: Open Join By Code",
-        onClick: () => navigate("join", "", { intent: "join_private", targetType: "session", targetId: payload.roomCode }),
-      });
-      trackEvent("mk_listing_created_room_session", {
-        listingType: "room_session",
-        mode: "private",
-        roomCode: payload.roomCode,
-      });
-      trackGoldenPathMilestone({
-        pathId: "host_create_session",
-        workstream: "host_growth",
-        source: "for_hosts_private_quick_start",
-      });
-    } catch (error) {
-      setStatus(String(error?.message || "Could not create that private session."));
-    } finally {
-      setBusy(false);
-    }
+    if (!hostSetupHref) return;
+    trackEvent("mk_host_setup_redirect", {
+      source: "for_hosts_quick_launch",
+      roomCode: normalizeRoomCode(privateForm.roomCode),
+      publicRoom: privateForm.publicRoom ? 1 : 0,
+      virtualOnly: privateForm.virtualOnly ? 1 : 0,
+    });
+    window.location.href = hostSetupHref;
   };
 
   return (
@@ -129,16 +134,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
             type="button"
             onClick={() => {
               trackPersonaCta(canSubmit ? "primary_start_hosting" : "primary_start_hosting_auth_gate");
-              if (canSubmit) {
-                navigate("submit");
-                return;
-              }
-              authFlow?.requireFullAuth?.({
-                intent: "listing_submit",
-                targetType: "event",
-                targetId: "",
-                returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "event" } },
-              });
+              openHostSetup();
             }}
           >
             Start Hosting
@@ -190,77 +186,84 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
         <aside className="mk3-actions-card mk3-host-quick-card">
           <h4>Quick Room Launch</h4>
           <div className="mk3-status">
-            <strong>Fast lane</strong>
-            <span>Create a private session and immediately jump to join-by-code.</span>
+            <strong>Centralized in Host App</strong>
+            <span>Room creation and publish controls now run in host.beaurocks.app.</span>
           </div>
 
-          {canSubmit ? (
-            <form className="mk3-actions-block" onSubmit={submitPrivateSession}>
-              <label>
-                Room Code
-                <input
-                  value={privateForm.roomCode}
-                  onChange={(e) => setPrivateForm((prev) => ({ ...prev, roomCode: String(e.target.value || "").toUpperCase() }))}
-                  placeholder="VIP123"
-                  required
-                />
-              </label>
-              <label>
-                Session Title
-                <input
-                  value={privateForm.title}
-                  onChange={(e) => setPrivateForm((prev) => ({ ...prev, title: e.target.value }))}
-                  placeholder="Friends & Family Karaoke"
-                />
-              </label>
-              <label>
-                Start (optional)
-                <input
-                  type="datetime-local"
-                  value={privateForm.startsAtLocal}
-                  onChange={(e) => setPrivateForm((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
-                />
-              </label>
-              <label>
-                Notes (optional)
-                <textarea
-                  value={privateForm.description}
-                  onChange={(e) => setPrivateForm((prev) => ({ ...prev, description: e.target.value }))}
-                  placeholder="Invite-only room."
-                />
-              </label>
-              <button type="submit" disabled={busy}>
-                {busy ? "Creating..." : "Create Private Room"}
-              </button>
-              {!!status && <div className="mk3-status">{status}</div>}
-              {!!nextStep && (
-                <button type="button" className="mk3-inline-next" onClick={nextStep.onClick}>
-                  {nextStep.label}
-                </button>
-              )}
-            </form>
-          ) : (
-            <div className="mk3-actions-block">
-              <div className="mk3-status">Create an account to unlock room launch.</div>
-              <button
-                type="button"
-                onClick={() => authFlow?.requireFullAuth?.({
-                  intent: "private_session_create",
-                  targetType: "session",
-                  targetId: "",
-                  returnRoute: {
-                    page: "for_hosts",
-                    params: {
-                      intent: "private_session_create",
-                      targetType: "session",
-                    },
-                  },
-                })}
-              >
-                Create Account To Launch
-              </button>
-            </div>
-          )}
+          <div className="mk3-actions-block">
+            <label>
+              Room Code (optional)
+              <input
+                value={privateForm.roomCode}
+                onChange={(e) => setPrivateForm((prev) => ({ ...prev, roomCode: normalizeRoomCode(e.target.value) }))}
+                placeholder="VIP123"
+              />
+            </label>
+            <label>
+              Session Title (optional)
+              <input
+                value={privateForm.title}
+                onChange={(e) => setPrivateForm((prev) => ({ ...prev, title: e.target.value }))}
+                placeholder="Friends & Family Karaoke"
+              />
+            </label>
+            <label>
+              Start (optional)
+              <input
+                type="datetime-local"
+                value={privateForm.startsAtLocal}
+                onChange={(e) => setPrivateForm((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
+              />
+            </label>
+            <label>
+              Notes (optional)
+              <textarea
+                value={privateForm.description}
+                onChange={(e) => setPrivateForm((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Invite-only room."
+              />
+            </label>
+            <label className="mk3-inline">
+              <input
+                type="checkbox"
+                checked={privateForm.publicRoom}
+                onChange={(e) => setPrivateForm((prev) => ({ ...prev, publicRoom: !!e.target.checked }))}
+              />
+              Public room (discoverable)
+            </label>
+            <label className="mk3-inline">
+              <input
+                type="checkbox"
+                checked={privateForm.virtualOnly}
+                onChange={(e) => setPrivateForm((prev) => ({ ...prev, virtualOnly: !!e.target.checked }))}
+              />
+              Virtual-only
+            </label>
+            {!privateForm.virtualOnly && (
+              <>
+                <label>
+                  City (optional)
+                  <input
+                    value={privateForm.city}
+                    onChange={(e) => setPrivateForm((prev) => ({ ...prev, city: e.target.value }))}
+                    placeholder="Seattle"
+                  />
+                </label>
+                <label>
+                  State (optional)
+                  <input
+                    value={privateForm.state}
+                    onChange={(e) => setPrivateForm((prev) => ({ ...prev, state: e.target.value }))}
+                    placeholder="WA"
+                  />
+                </label>
+              </>
+            )}
+            <button type="button" onClick={openHostSetup}>
+              Continue In Host Dashboard
+            </button>
+            {!!status && <div className="mk3-status">{status}</div>}
+          </div>
         </aside>
       </div>
     </section>

@@ -2,18 +2,21 @@ import React, { useEffect, useState } from "react";
 import { directoryActions } from "../api/directoryApi";
 import { formatDateTime } from "./shared";
 import { buildSurfaceUrl } from "../../../lib/surfaceDomains";
+import { getJoinPreviewFallback } from "./joinFallback";
 
 const JoinPage = ({ navigate, id = "" }) => {
   const [roomCode, setRoomCode] = useState(String(id || "").trim().toUpperCase());
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [statusTone, setStatusTone] = useState("error");
   const resolvedJoinCode = String(roomCode || id || "").trim().toUpperCase();
 
   const joinOnMobile = () => {
     const code = String(resolvedJoinCode || "").trim().toUpperCase();
     if (!code) {
       setStatus("Enter a room code first.");
+      setStatusTone("error");
       return;
     }
     window.location.href = buildSurfaceUrl({ surface: "app", params: { room: code } }, window.location);
@@ -35,11 +38,13 @@ const JoinPage = ({ navigate, id = "" }) => {
     if (!token) {
       setPreview(null);
       setStatus("");
+      setStatusTone("error");
       return;
     }
     let cancelled = false;
     setLoading(true);
     setStatus("");
+    setStatusTone("error");
     (async () => {
       try {
         const payload = await directoryActions.previewDirectoryRoomSessionByCode({ roomCode: token });
@@ -47,7 +52,9 @@ const JoinPage = ({ navigate, id = "" }) => {
       } catch (error) {
         if (!cancelled) {
           setPreview(null);
-          setStatus(String(error?.message || "Room code not found."));
+          const fallback = getJoinPreviewFallback({ error, roomCode: token });
+          setStatus(String(fallback?.message || "Room code not found."));
+          setStatusTone(fallback?.tone === "warning" ? "warning" : "error");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -79,7 +86,7 @@ const JoinPage = ({ navigate, id = "" }) => {
           </button>
         </form>
         {loading && <div className="mk3-status">Checking that room code...</div>}
-        {status && <div className="mk3-status mk3-status-error">{status}</div>}
+        {status && <div className={statusTone === "warning" ? "mk3-status mk3-status-warning" : "mk3-status mk3-status-error"}>{status}</div>}
         {!!preview && (
           <div className="mk3-status">
             <strong>{preview.title || "Room session"}</strong>

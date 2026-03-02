@@ -457,6 +457,12 @@ const listDirectoryGeoLanding = async (payload = {}) => {
   return data || null;
 };
 
+const listDirectoryDiscover = async (payload = {}) => {
+  await requireAppCheckToken("listDirectoryDiscover");
+  const data = await callFunction("listDirectoryDiscover", payload || {});
+  return data || null;
+};
+
 const submitCatalogContribution = async (payload = {}) => {
   await requireAppCheckToken("submitCatalogContribution");
   const data = await callFunction("submitCatalogContribution", payload || {});
@@ -836,6 +842,7 @@ export {
   setDirectoryRsvp,
   setDirectoryReminderPreferences,
   listDirectoryGeoLanding,
+  listDirectoryDiscover,
   submitCatalogContribution,
   listCatalogContributionQueue,
   resolveCatalogContribution,

@@ -4,6 +4,14 @@ const AutomationControls = ({
     automationOpen,
     autoDj,
     setAutoDj,
+    autoDjDelaySec,
+    setAutoDjDelaySec,
+    autoEndOnTrackFinish,
+    setAutoEndOnTrackFinish,
+    autoBonusEnabled,
+    setAutoBonusEnabled,
+    autoBonusPoints,
+    setAutoBonusPoints,
     room,
     updateRoom,
     autoBgMusic,
@@ -14,6 +22,8 @@ const AutomationControls = ({
     styles
 }) => {
     const ToggleSwitch = toggleSwitch;
+    const normalizeDelaySec = (value) => Math.max(2, Math.min(45, Number(value || 10) || 10));
+    const normalizeBonusPoints = (value) => Math.max(0, Math.min(1000, Math.round(Number(value || 0) || 0)));
     return (
     <div className={automationOpen ? 'grid grid-cols-2 gap-2' : 'hidden'}>
         <button
@@ -65,6 +75,76 @@ const AutomationControls = ({
         >
             <i className="fa-solid fa-compact-disc mr-2"></i>Auto BG music
         </button>
+        <button
+            onClick={async () => {
+                const next = !autoEndOnTrackFinish;
+                setAutoEndOnTrackFinish(next);
+                try {
+                    await updateRoom({ autoEndOnTrackFinish: next });
+                } catch (error) {
+                    console.error('Failed to toggle auto end on finish', error);
+                    setAutoEndOnTrackFinish(!next);
+                }
+            }}
+            className={`${styles.btnStd} ${autoEndOnTrackFinish ? styles.btnPrimary : styles.btnNeutral}`}
+            title="When enabled, host auto-flow ends a finished performance and starts applause flow"
+        >
+            <i className="fa-solid fa-stopwatch mr-2"></i>Auto end on finish
+        </button>
+        <button
+            onClick={async () => {
+                const next = !autoBonusEnabled;
+                setAutoBonusEnabled(next);
+                try {
+                    await updateRoom({ autoBonusEnabled: next });
+                } catch (error) {
+                    console.error('Failed to toggle auto bonus', error);
+                    setAutoBonusEnabled(!next);
+                }
+            }}
+            className={`${styles.btnStd} ${autoBonusEnabled ? styles.btnPrimary : styles.btnNeutral}`}
+            title="Automatically applies host bonus points when a performance ends with no bonus"
+        >
+            <i className="fa-solid fa-gift mr-2"></i>{autoBonusEnabled ? 'Auto bonus ON' : 'Auto bonus OFF'}
+        </button>
+        <label className="col-span-2 text-xs text-zinc-300 uppercase tracking-[0.2em]">
+            Auto-DJ delay (seconds)
+            <input
+                value={autoDjDelaySec}
+                onChange={(event) => setAutoDjDelaySec(event.target.value)}
+                onBlur={async () => {
+                    const next = normalizeDelaySec(autoDjDelaySec);
+                    setAutoDjDelaySec(next);
+                    try {
+                        await updateRoom({ autoDjDelaySec: next });
+                    } catch (error) {
+                        console.error('Failed to update auto-DJ delay', error);
+                    }
+                }}
+                className={`${styles.input} mt-1`}
+                inputMode="numeric"
+                placeholder="10"
+            />
+        </label>
+        <label className="col-span-2 text-xs text-zinc-300 uppercase tracking-[0.2em]">
+            Auto bonus points
+            <input
+                value={autoBonusPoints}
+                onChange={(event) => setAutoBonusPoints(event.target.value)}
+                onBlur={async () => {
+                    const next = normalizeBonusPoints(autoBonusPoints);
+                    setAutoBonusPoints(next);
+                    try {
+                        await updateRoom({ autoBonusPoints: next });
+                    } catch (error) {
+                        console.error('Failed to update auto bonus points', error);
+                    }
+                }}
+                className={`${styles.input} mt-1`}
+                inputMode="numeric"
+                placeholder="25"
+            />
+        </label>
     </div>
     );
 };

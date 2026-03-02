@@ -376,8 +376,12 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "autoBgFadeInMs",
   "autoBgFadeOutMs",
   "autoBgMixDuringSong",
+  "autoBonusEnabled",
+  "autoBonusPoints",
   "autoBgMusic",
   "autoDj",
+  "autoDjDelaySec",
+  "autoEndOnTrackFinish",
   "autoLyricsOnQueue",
   "autoPlayMedia",
   "bgMusicPlaying",
@@ -501,7 +505,9 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
 ]);
 const HOST_ROOM_BOOLEAN_ROOT_KEYS = new Set([
   "allowSingerTrackSelect",
+  "autoBonusEnabled",
   "autoBgMusic",
+  "autoEndOnTrackFinish",
   "autoDj",
   "autoLyricsOnQueue",
   "autoPlayMedia",
@@ -532,6 +538,8 @@ const HOST_ROOM_NUMBER_ROOT_KEYS = new Set([
   "autoBgFadeInMs",
   "autoBgFadeOutMs",
   "autoBgMixDuringSong",
+  "autoBonusPoints",
+  "autoDjDelaySec",
   "bgMusicVolume",
   "bingoAutoApprovePct",
   "bingoBoardId",
@@ -1377,6 +1385,9 @@ const MARKETING_REPORTING_WORKSTREAMS = new Set([
   "core",
 ]);
 const MARKETING_REPORTING_MAX_BATCH = 25;
+const DIRECTORY_DISCOVER_TIME_WINDOWS = new Set(["all", "now", "tonight", "this_week"]);
+const DIRECTORY_DISCOVER_SORT_MODES = new Set(["smart", "soonest", "recent", "title"]);
+const DIRECTORY_DISCOVER_DEFAULT_LIMIT = 60;
 
 const buildDirectoryNow = () => admin.firestore.FieldValue.serverTimestamp();
 
@@ -1504,6 +1515,119 @@ const normalizeDirectoryDateWindowDays = (value = "14d") => {
   const rawNum = Number(String(token || "").replace(/[^\d]/g, ""));
   if (!Number.isFinite(rawNum)) return 14;
   return Math.max(1, Math.min(60, Math.floor(rawNum)));
+};
+
+const normalizeDirectoryDiscoverTimeWindow = (value = "all") => {
+  const token = normalizeDirectoryToken(value || "all", 30) || "all";
+  if (DIRECTORY_DISCOVER_TIME_WINDOWS.has(token)) return token;
+  return "all";
+};
+
+const normalizeDirectoryDiscoverSortMode = (value = "smart") => {
+  const token = normalizeDirectoryToken(value || "smart", 30) || "smart";
+  if (DIRECTORY_DISCOVER_SORT_MODES.has(token)) return token;
+  return "smart";
+};
+
+const normalizeDirectoryDiscoverCursor = (value = 0) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.floor(parsed));
+};
+
+const normalizeDirectoryDiscoverBounds = (value = null) => {
+  if (!value || typeof value !== "object") return null;
+  const north = Number(value.north);
+  const south = Number(value.south);
+  const east = Number(value.east);
+  const west = Number(value.west);
+  if (![north, south, east, west].every(Number.isFinite)) return null;
+  if (north < south || north > 90 || south < -90 || east > 180 || east < -180 || west > 180 || west < -180) {
+    return null;
+  }
+  return { north, south, east, west };
+};
+
+const isDirectoryLocationInBounds = (location = null, bounds = null) => {
+  if (!location || !bounds) return false;
+  const lat = Number(location.lat);
+  const lng = Number(location.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  const inLat = lat >= bounds.south && lat <= bounds.north;
+  const inLng = bounds.west <= bounds.east
+    ? lng >= bounds.west && lng <= bounds.east
+    : lng >= bounds.west || lng <= bounds.east;
+  return inLat && inLng;
+};
+
+const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
+  const data = docSnap.data() || {};
+  const listingType = forcedType || safeDirectoryString(data.listingType || "", 40);
+  return {
+    id: docSnap.id,
+    listingType,
+    title: safeDirectoryString(data.title || "", 200),
+    description: normalizeDirectoryTextBlock(data.description || "", 400),
+    city: safeDirectoryString(data.city || "", 80),
+    state: safeDirectoryString(data.state || "", 40),
+    region: normalizeDirectoryToken(data.region || "", 80),
+    startsAtMs: Number(data.startsAtMs || 0) || 0,
+    endsAtMs: Number(data.endsAtMs || 0) || 0,
+    venueId: safeDirectoryString(data.venueId || "", 180),
+    venueName: safeDirectoryString(data.venueName || "", 180),
+    hostUid: safeDirectoryString(data.hostUid || "", 180),
+    hostName: safeDirectoryString(data.hostName || "", 180),
+    roomCode: safeDirectoryString(data.roomCode || "", 40),
+    karaokeNightsLabel: safeDirectoryString(data.karaokeNightsLabel || "", 200),
+    location: normalizeDirectoryLatLng(data.location || {}),
+    status: normalizeDirectoryStatus(data.status || "approved", "approved"),
+    visibility: normalizeDirectoryVisibility(data.visibility || "public", "public"),
+    virtualOnly: !!data.virtualOnly || !!data.isVirtualOnly,
+    sessionMode: safeDirectoryString(data.sessionMode || "", 40),
+  };
+};
+
+const matchesDirectoryDiscoverSearch = (item = {}, token = "") => {
+  const searchToken = String(token || "").trim().toLowerCase();
+  if (!searchToken) return true;
+  const haystack = normalizeDirectoryTextBlock([
+    item.title,
+    item.description,
+    item.city,
+    item.state,
+    item.venueName,
+    item.hostName,
+    item.roomCode,
+  ].filter(Boolean).join(" "), 1000).toLowerCase();
+  return haystack.includes(searchToken);
+};
+
+const matchesDirectoryDiscoverTimeWindow = (item = {}, timeWindow = "all", nowMs = Date.now()) => {
+  const startsAtMs = Number(item.startsAtMs || 0);
+  if (timeWindow === "all") return true;
+  if (!startsAtMs) return false;
+  const msPerHour = 60 * 60 * 1000;
+  const liveLookbackMs = 2 * msPerHour;
+  if (timeWindow === "now") {
+    return startsAtMs >= (nowMs - liveLookbackMs) && startsAtMs <= (nowMs + msPerHour);
+  }
+  if (timeWindow === "this_week") {
+    return startsAtMs >= (nowMs - liveLookbackMs) && startsAtMs <= (nowMs + (7 * 24 * msPerHour));
+  }
+  if (timeWindow === "tonight") {
+    const now = new Date(nowMs);
+    const start = new Date(now);
+    start.setHours(17, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    end.setHours(2, 0, 0, 0);
+    if (now.getHours() < 2) {
+      start.setDate(start.getDate() - 1);
+      end.setDate(end.getDate() - 1);
+    }
+    return startsAtMs >= start.getTime() && startsAtMs <= end.getTime();
+  }
+  return true;
 };
 
 const requireDirectoryEntityType = (value = "") => {
@@ -6905,32 +7029,8 @@ exports.listDirectoryGeoLanding = onCall({ cors: true }, async (request) => {
     db.collection("directory_geo_pages").doc(regionToken || "nationwide").get().catch(() => null),
   ]);
 
-  const toPublicListing = (docSnap) => {
-    const data = docSnap.data() || {};
-    return {
-      id: docSnap.id,
-      listingType: data.listingType || "",
-      title: safeDirectoryString(data.title || "", 200),
-      description: normalizeDirectoryTextBlock(data.description || "", 400),
-      city: safeDirectoryString(data.city || "", 80),
-      state: safeDirectoryString(data.state || "", 40),
-      region: normalizeDirectoryToken(data.region || "", 80),
-      startsAtMs: Number(data.startsAtMs || 0) || 0,
-      endsAtMs: Number(data.endsAtMs || 0) || 0,
-      venueId: safeDirectoryString(data.venueId || "", 180),
-      venueName: safeDirectoryString(data.venueName || "", 180),
-      hostUid: safeDirectoryString(data.hostUid || "", 180),
-      hostName: safeDirectoryString(data.hostName || "", 180),
-      roomCode: safeDirectoryString(data.roomCode || "", 40),
-      karaokeNightsLabel: safeDirectoryString(data.karaokeNightsLabel || "", 200),
-      location: normalizeDirectoryLatLng(data.location || {}),
-      status: normalizeDirectoryStatus(data.status || "approved", "approved"),
-      visibility: normalizeDirectoryVisibility(data.visibility || "public", "public"),
-    };
-  };
-
   const events = eventSnap.docs
-    .map((docSnap) => ({ ...toPublicListing(docSnap), listingType: "event" }))
+    .map((docSnap) => buildDirectoryPublicListing(docSnap, "event"))
     .filter((item) => {
       const startsAtMs = Number(item.startsAtMs || 0);
       if (!startsAtMs) return true;
@@ -6938,7 +7038,7 @@ exports.listDirectoryGeoLanding = onCall({ cors: true }, async (request) => {
     })
     .sort((a, b) => Number(a.startsAtMs || 0) - Number(b.startsAtMs || 0));
   const sessions = sessionSnap.docs
-    .map((docSnap) => ({ ...toPublicListing(docSnap), listingType: "room_session" }))
+    .map((docSnap) => buildDirectoryPublicListing(docSnap, "room_session"))
     .filter((item) => {
       const startsAtMs = Number(item.startsAtMs || 0);
       if (!startsAtMs) return true;
@@ -6946,7 +7046,7 @@ exports.listDirectoryGeoLanding = onCall({ cors: true }, async (request) => {
     })
     .sort((a, b) => Number(a.startsAtMs || 0) - Number(b.startsAtMs || 0));
   const venues = venueSnap.docs
-    .map((docSnap) => ({ ...toPublicListing(docSnap), listingType: "venue" }))
+    .map((docSnap) => buildDirectoryPublicListing(docSnap, "venue"))
     .sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
 
   const cacheMeta = cacheSnap && cacheSnap.exists ? (cacheSnap.data() || {}) : null;
@@ -6972,6 +7072,158 @@ exports.listDirectoryGeoLanding = onCall({ cors: true }, async (request) => {
       title: safeDirectoryString(cacheMeta.title || "", 180),
       description: normalizeDirectoryTextBlock(cacheMeta.description || "", 400),
     } : null,
+  };
+});
+
+exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "list_directory_discover", { perMinute: 90, perHour: 1000 });
+  enforceAppCheckIfEnabled(request, "list_directory_discover");
+
+  const regionToken = normalizeDirectoryToken(request.data?.region || request.data?.regionToken || "", 80);
+  const searchToken = normalizeDirectoryTextBlock(request.data?.search || "", 120).toLowerCase();
+  const listingTypeFilterRaw = normalizeDirectoryToken(request.data?.listingType || "all", 40);
+  const listingTypeFilter = ["all", "venue", "event", "room_session"].includes(listingTypeFilterRaw)
+    ? listingTypeFilterRaw
+    : "all";
+  const hostUidFilter = safeDirectoryString(request.data?.hostUid || "", 180);
+  const timeWindow = normalizeDirectoryDiscoverTimeWindow(request.data?.timeWindow || "all");
+  const sortMode = normalizeDirectoryDiscoverSortMode(request.data?.sortMode || "smart");
+  const cursor = normalizeDirectoryDiscoverCursor(request.data?.cursor || 0);
+  const limit = clampNumber(request.data?.limit, 1, 120, DIRECTORY_DISCOVER_DEFAULT_LIMIT);
+  const scanMultiplier = clampNumber(request.data?.scanMultiplier, 2, 8, 4);
+  const scanLimit = clampNumber(limit * scanMultiplier, 80, 420, 240);
+  const bounds = normalizeDirectoryDiscoverBounds(request.data?.bounds || null);
+  const nowMs = Date.now();
+  const db = admin.firestore();
+
+  let venueQuery = db.collection("venues").where("status", "==", "approved").limit(scanLimit);
+  let eventQuery = db.collection("karaoke_events")
+    .where("status", "==", "approved")
+    .limit(scanLimit);
+  let sessionQuery = db.collection("room_sessions")
+    .where("status", "==", "approved")
+    .where("visibility", "==", "public")
+    .limit(scanLimit);
+  if (regionToken && regionToken !== "nationwide") {
+    venueQuery = venueQuery.where("region", "==", regionToken);
+    eventQuery = eventQuery.where("region", "==", regionToken);
+    sessionQuery = sessionQuery.where("region", "==", regionToken);
+  }
+
+  const [venueSnap, eventSnap, sessionSnap] = await Promise.all([
+    venueQuery.get(),
+    eventQuery.get(),
+    sessionQuery.get(),
+  ]);
+
+  const merged = [
+    ...venueSnap.docs.map((docSnap) => buildDirectoryPublicListing(docSnap, "venue")),
+    ...eventSnap.docs.map((docSnap) => buildDirectoryPublicListing(docSnap, "event")),
+    ...sessionSnap.docs.map((docSnap) => buildDirectoryPublicListing(docSnap, "room_session")),
+  ];
+
+  const filtered = merged.filter((item) => {
+    if (item.listingType !== "venue" && String(item.visibility || "public") !== "public") return false;
+    if (listingTypeFilter !== "all" && item.listingType !== listingTypeFilter) return false;
+    if (hostUidFilter && String(item.hostUid || "") !== hostUidFilter) return false;
+    if (!matchesDirectoryDiscoverSearch(item, searchToken)) return false;
+    if (!matchesDirectoryDiscoverTimeWindow(item, timeWindow, nowMs)) return false;
+    if (bounds && !isDirectoryLocationInBounds(item.location, bounds)) return false;
+    return true;
+  });
+
+  const typeRank = { event: 0, room_session: 1, venue: 2 };
+  const sorted = filtered.slice().sort((a, b) => {
+    const aStarts = Number(a.startsAtMs || 0);
+    const bStarts = Number(b.startsAtMs || 0);
+    if (sortMode === "title") {
+      return String(a.title || "").localeCompare(String(b.title || ""));
+    }
+    if (sortMode === "recent") {
+      if (aStarts !== bStarts) return bStarts - aStarts;
+      return String(a.title || "").localeCompare(String(b.title || ""));
+    }
+    if (sortMode === "soonest") {
+      if (aStarts > 0 && bStarts > 0 && aStarts !== bStarts) return aStarts - bStarts;
+      if (aStarts > 0 && bStarts <= 0) return -1;
+      if (aStarts <= 0 && bStarts > 0) return 1;
+      return String(a.title || "").localeCompare(String(b.title || ""));
+    }
+    const aIsLive = aStarts > 0 && aStarts >= (nowMs - (2 * 60 * 60 * 1000)) && aStarts <= (nowMs + (8 * 60 * 60 * 1000));
+    const bIsLive = bStarts > 0 && bStarts >= (nowMs - (2 * 60 * 60 * 1000)) && bStarts <= (nowMs + (8 * 60 * 60 * 1000));
+    if (aIsLive !== bIsLive) return aIsLive ? -1 : 1;
+    if ((typeRank[a.listingType] ?? 99) !== (typeRank[b.listingType] ?? 99)) {
+      return (typeRank[a.listingType] ?? 99) - (typeRank[b.listingType] ?? 99);
+    }
+    if (aStarts > 0 && bStarts > 0 && aStarts !== bStarts) return aStarts - bStarts;
+    if (aStarts > 0 && bStarts <= 0) return -1;
+    if (aStarts <= 0 && bStarts > 0) return 1;
+    return String(a.title || "").localeCompare(String(b.title || ""));
+  });
+
+  const hostFacetsMap = new Map();
+  const regionFacetsMap = new Map();
+  const counts = { venue: 0, event: 0, room_session: 0 };
+  sorted.forEach((item) => {
+    if (item.listingType === "event") counts.event += 1;
+    else if (item.listingType === "room_session") counts.room_session += 1;
+    else counts.venue += 1;
+
+    const hostUid = String(item.hostUid || "").trim();
+    if (hostUid) {
+      const existing = hostFacetsMap.get(hostUid) || {
+        hostUid,
+        hostName: String(item.hostName || "").trim() || "Host",
+        count: 0,
+      };
+      existing.count += 1;
+      hostFacetsMap.set(hostUid, existing);
+    }
+
+    const token = String(item.region || "").trim().toLowerCase();
+    if (token) {
+      regionFacetsMap.set(token, (regionFacetsMap.get(token) || 0) + 1);
+    }
+  });
+
+  const total = sorted.length;
+  const pageItems = sorted.slice(cursor, cursor + limit);
+  const nextCursor = cursor + pageItems.length < total ? String(cursor + pageItems.length) : "";
+  const hostFacets = Array.from(hostFacetsMap.values())
+    .sort((a, b) => {
+      if (a.count !== b.count) return b.count - a.count;
+      return String(a.hostName || "").localeCompare(String(b.hostName || ""));
+    })
+    .slice(0, 24);
+  const regionFacets = Array.from(regionFacetsMap.entries())
+    .map(([id, count]) => ({ id, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 24);
+
+  return {
+    ok: true,
+    generatedAtMs: nowMs,
+    total,
+    cursor: String(cursor),
+    nextCursor,
+    limit,
+    items: pageItems,
+    facets: {
+      host: hostFacets,
+      region: regionFacets,
+      counts: {
+        venue: counts.venue,
+        event: counts.event,
+        room_session: counts.room_session,
+        total,
+      },
+    },
+    scan: {
+      scanLimit,
+      venues: venueSnap.size,
+      events: eventSnap.size,
+      sessions: sessionSnap.size,
+    },
   };
 });
 

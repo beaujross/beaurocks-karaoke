@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { subscribeApprovedListings } from "../api/directoryApi";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { directoryActions } from "../api/directoryApi";
 
-const normalizeSearch = (value = "") => String(value || "").trim().toLowerCase();
 const isIndexError = (message = "") => /requires an index|create_composite/i.test(String(message || ""));
 
 const toDiscoverErrorMessage = (error) => {
@@ -12,65 +11,125 @@ const toDiscoverErrorMessage = (error) => {
   return raw.replace(/https?:\/\/\S+/g, "").trim();
 };
 
-export const useDirectoryDiscover = ({ search = "", region = "" } = {}) => {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [data, setData] = useState({
-    venues: [],
-    events: [],
-    sessions: [],
+const DEFAULT_FACETS = Object.freeze({
+  host: [],
+  region: [],
+  counts: { venue: 0, event: 0, room_session: 0, total: 0 },
+});
+
+const splitByListingType = (items = []) => {
+  const venues = [];
+  const events = [];
+  const sessions = [];
+  (Array.isArray(items) ? items : []).forEach((entry) => {
+    const type = String(entry?.listingType || "").trim().toLowerCase();
+    if (type === "event") {
+      events.push(entry);
+      return;
+    }
+    if (type === "room_session") {
+      sessions.push(entry);
+      return;
+    }
+    venues.push(entry);
   });
+  return { venues, events, sessions };
+};
+
+export const useDirectoryDiscover = ({
+  search = "",
+  region = "",
+  listingType = "all",
+  timeWindow = "all",
+  sortMode = "smart",
+  hostUid = "",
+  bounds = null,
+  limit = 72,
+} = {}) => {
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState("");
+  const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState("");
+  const [facets, setFacets] = useState(DEFAULT_FACETS);
+  const [generatedAtMs, setGeneratedAtMs] = useState(0);
+  const requestIdRef = useRef(0);
+
+  const fetchPage = useCallback(async ({ cursor = "", append = false } = {}) => {
+    const reqId = requestIdRef.current + 1;
+    requestIdRef.current = reqId;
+    if (append) setLoadingMore(true);
+    else setLoading(true);
+    if (!append) {
+      setError("");
+      setNextCursor("");
+    }
+
+    try {
+      const payload = await directoryActions.listDirectoryDiscover({
+        search,
+        region,
+        listingType,
+        timeWindow,
+        sortMode,
+        hostUid,
+        bounds,
+        limit,
+        cursor: append ? cursor : "",
+      });
+      if (requestIdRef.current !== reqId) return;
+      const nextItems = Array.isArray(payload?.items) ? payload.items : [];
+      setItems((prev) => (append ? [...prev, ...nextItems] : nextItems));
+      setTotal(Number(payload?.total || 0) || 0);
+      setNextCursor(String(payload?.nextCursor || "").trim());
+      setFacets(payload?.facets && typeof payload.facets === "object" ? payload.facets : DEFAULT_FACETS);
+      setGeneratedAtMs(Number(payload?.generatedAtMs || 0) || 0);
+      setError("");
+    } catch (err) {
+      if (requestIdRef.current !== reqId) return;
+      if (!append) setItems([]);
+      setError(toDiscoverErrorMessage(err));
+    } finally {
+      if (requestIdRef.current === reqId) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    }
+  }, [bounds, hostUid, limit, listingType, region, search, sortMode, timeWindow]);
 
   useEffect(() => {
-    const stop = subscribeApprovedListings({
-      onData: (next) => {
-        setData(next);
-        setError("");
-        setLoading(false);
-      },
-      onError: (err) => {
-        setError(toDiscoverErrorMessage(err));
-        setLoading(false);
-      },
-    });
-    return () => stop();
-  }, []);
+    fetchPage({ cursor: "", append: false });
+  }, [fetchPage]);
 
-  const searchToken = normalizeSearch(search);
-  const regionToken = normalizeSearch(region);
+  const loadMore = useCallback(async () => {
+    const cursor = String(nextCursor || "").trim();
+    if (!cursor || loading || loadingMore) return;
+    await fetchPage({ cursor, append: true });
+  }, [fetchPage, loading, loadingMore, nextCursor]);
 
-  const filtered = useMemo(() => {
-    const applyFilters = (items) =>
-      items.filter((item) => {
-        const text = normalizeSearch([
-          item.title,
-          item.venueName,
-          item.hostName,
-          item.city,
-          item.state,
-          item.description,
-        ].filter(Boolean).join(" "));
-        const itemRegion = normalizeSearch(item.region || "");
-        const searchOk = !searchToken || text.includes(searchToken);
-        const regionOk = !regionToken || itemRegion.includes(regionToken);
-        return searchOk && regionOk;
-      });
+  const refresh = useCallback(async () => {
+    await fetchPage({ cursor: "", append: false });
+  }, [fetchPage]);
 
-    const venues = applyFilters(data.venues);
-    const events = applyFilters(data.events);
-    const sessions = applyFilters(data.sessions);
-    return {
-      venues,
-      events,
-      sessions,
-      combined: [...events, ...sessions, ...venues],
-    };
-  }, [data, searchToken, regionToken]);
+  const grouped = useMemo(() => splitByListingType(items), [items]);
 
   return {
     loading,
+    loadingMore,
     error,
-    data: filtered,
-    rawData: data,
+    data: {
+      ...grouped,
+      combined: items,
+    },
+    rawData: grouped,
+    items,
+    total,
+    facets,
+    generatedAtMs,
+    nextCursor,
+    hasMore: !!String(nextCursor || "").trim(),
+    loadMore,
+    refresh,
   };
 };

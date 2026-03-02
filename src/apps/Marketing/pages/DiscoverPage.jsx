@@ -1,16 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useDirectoryDiscover } from "../hooks/useDirectoryDiscover";
 import { useGoogleMapsScript } from "../hooks/useGoogleMapsScript";
 import { MARKETING_REGION_PRESETS } from "../geoPresets";
 import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
 import { trackEvent } from "../lib/marketingAnalytics";
 import EmptyStatePanel from "./EmptyStatePanel";
-import InlineConversionActions from "./InlineConversionActions";
+import DiscoverListingCard from "./DiscoverListingCard";
+import { createDiscoverViewState, reduceDiscoverViewState } from "./discoverViewState";
 import {
   buildPublicLocationImageUrl,
   extractCadenceBadges,
   formatDateTime,
-  getInitials,
   resolveListingImageCandidates,
   resolveProfileAvatarUrl,
 } from "./shared";
@@ -104,40 +104,6 @@ const scoreSearchRelevance = (entry = {}, searchQuery = "") => {
   if (subtitle.includes(query)) return 12;
   if (detail.includes(query)) return 8;
   return 0;
-};
-
-const getTonightWindowMs = (nowMs = Date.now()) => {
-  const now = new Date(nowMs);
-  const start = new Date(now);
-  start.setHours(17, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  end.setHours(2, 0, 0, 0);
-  if (now.getHours() < 2) {
-    start.setDate(start.getDate() - 1);
-    end.setDate(end.getDate() - 1);
-  }
-  return {
-    startMs: start.getTime(),
-    endMs: end.getTime(),
-  };
-};
-
-const matchesTimeWindow = (entry = {}, timeWindow = "all", nowMs = Date.now()) => {
-  const startsAtMs = Number(entry?.startsAtMs || 0);
-  if (timeWindow === "all") return true;
-  if (startsAtMs <= 0) return false;
-  if (timeWindow === "now") {
-    return startsAtMs >= (nowMs - LIVE_LOOKBACK_MS) && startsAtMs <= (nowMs + MS_PER_HOUR);
-  }
-  if (timeWindow === "tonight") {
-    const tonight = getTonightWindowMs(nowMs);
-    return startsAtMs >= tonight.startMs && startsAtMs <= tonight.endMs;
-  }
-  if (timeWindow === "this_week") {
-    return startsAtMs >= (nowMs - LIVE_LOOKBACK_MS) && startsAtMs <= (nowMs + (7 * MS_PER_DAY));
-  }
-  return true;
 };
 
 const normalizeListingType = (value = "") => {
@@ -499,12 +465,14 @@ const humanizeRegion = (token = "") => {
 };
 
 const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
+  const initialIsMobile = typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(max-width: 1120px)").matches;
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [timeWindow, setTimeWindow] = useState("all");
   const [sortMode, setSortMode] = useState("smart");
-  const [resultsView, setResultsView] = useState("results");
   const [mapFirst, setMapFirst] = useState(true);
   const [boundsOnly, setBoundsOnly] = useState(false);
   const [selectedKey, setSelectedKey] = useState("");
@@ -514,26 +482,46 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState("");
   const [rankingNowMs, setRankingNowMs] = useState(() => Date.now());
-  const [isMobileViewport, setIsMobileViewport] = useState(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-    return window.matchMedia("(max-width: 1120px)").matches;
-  });
-  const [mobileSurface, setMobileSurface] = useState(() => {
-    return "list";
-  });
-  const [mobileFiltersExpanded, setMobileFiltersExpanded] = useState(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
-    return !window.matchMedia("(max-width: 1120px)").matches;
-  });
+  const [isMobileViewport, setIsMobileViewport] = useState(initialIsMobile);
+  const [viewState, dispatchView] = useReducer(
+    reduceDiscoverViewState,
+    { isMobile: initialIsMobile },
+    createDiscoverViewState
+  );
+  const { resultsView, mobileSurface, mobileFiltersExpanded } = viewState;
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const selectedInfoWindowRef = useRef(null);
   const markerMapRef = useRef(new Map());
   const cardRefs = useRef(new Map());
+  const cardRailRef = useRef(null);
   const hasAutoFitRef = useRef(false);
+  const [virtualRange, setVirtualRange] = useState({
+    start: 0,
+    end: 0,
+    padTop: 0,
+    padBottom: 0,
+  });
 
-  const { loading, error, data, rawData } = useDirectoryDiscover({ search, region });
+  const {
+    loading,
+    loadingMore,
+    error,
+    data,
+    rawData,
+    facets,
+    total,
+    hasMore,
+    loadMore,
+  } = useDirectoryDiscover({
+    search,
+    region,
+    listingType: typeFilter,
+    timeWindow,
+    sortMode: sortMode === "nearest" ? "smart" : sortMode,
+    hostUid: "",
+  });
   const permissionError = isPermissionError(error);
   const indexError = isIndexError(error);
   const mapEnabled = !!mapsConfig?.mapEnabled && !!mapsConfig?.apiKey;
@@ -556,16 +544,11 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
     const media = window.matchMedia("(max-width: 1120px)");
-      const syncViewport = (matches) => {
-        const isMobile = !!matches;
-        setIsMobileViewport(isMobile);
-        if (!isMobile) {
-          setMobileFiltersExpanded(true);
-          setMobileSurface("list");
-          return;
-        }
-        setMobileSurface("list");
-      };
+    const syncViewport = (matches) => {
+      const isMobile = !!matches;
+      setIsMobileViewport(isMobile);
+      dispatchView({ type: "viewport_changed", isMobile });
+    };
     const onViewportChange = (event) => syncViewport(event?.matches);
     if (typeof media.addEventListener === "function") {
       media.addEventListener("change", onViewportChange);
@@ -607,44 +590,45 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     return next;
   }, [data.events, data.sessions, data.venues, mapsApiKey, venueLocationIndex]);
 
-  const filteredByType = useMemo(() => {
-    if (typeFilter === "all") return allListings;
-    return allListings.filter((entry) => entry.listingType === typeFilter);
-  }, [allListings, typeFilter]);
-
-  const filteredByTimeWindow = useMemo(
-    () => filteredByType.filter((entry) => matchesTimeWindow(entry, timeWindow, rankingNowMs)),
-    [filteredByType, timeWindow, rankingNowMs]
-  );
   const hostFacetOptions = useMemo(() => {
+    const fromServer = Array.isArray(facets?.host) ? facets.host : [];
+    if (fromServer.length) {
+      return fromServer
+        .map((entry) => ({
+          id: String(entry?.hostUid || "").trim(),
+          hostUid: String(entry?.hostUid || "").trim(),
+          hostName: String(entry?.hostName || "").trim() || "Host",
+          count: Number(entry?.count || 0) || 0,
+        }))
+        .filter((entry) => !!entry.id)
+        .slice(0, 16);
+    }
+
     const byHost = new Map();
-    filteredByTimeWindow.forEach((entry) => {
-      const hostToken = String(entry?.hostToken || "").trim();
-      if (!hostToken) return;
-      const existing = byHost.get(hostToken) || {
-        id: hostToken,
-        hostUid: String(entry?.hostUid || "").trim(),
+    allListings.forEach((entry) => {
+      const hostUid = String(entry?.hostUid || "").trim();
+      if (!hostUid) return;
+      const existing = byHost.get(hostUid) || {
+        id: hostUid,
+        hostUid,
         hostName: String(entry?.hostName || "").trim() || "Host",
         count: 0,
       };
       existing.count += 1;
-      byHost.set(hostToken, existing);
+      byHost.set(hostUid, existing);
     });
     return Array.from(byHost.values())
-      .sort((a, b) => {
-        if (a.count !== b.count) return b.count - a.count;
-        return String(a.hostName || "").localeCompare(String(b.hostName || ""));
-      })
+      .sort((a, b) => b.count - a.count)
       .slice(0, 16);
-  }, [filteredByTimeWindow]);
+  }, [allListings, facets]);
   const effectiveHostFilter = useMemo(() => {
     if (hostFilter === "all") return "all";
     return hostFacetOptions.some((entry) => entry.id === hostFilter) ? hostFilter : "all";
   }, [hostFacetOptions, hostFilter]);
   const filteredByHost = useMemo(() => {
-    if (effectiveHostFilter === "all") return filteredByTimeWindow;
-    return filteredByTimeWindow.filter((entry) => entry.hostToken === effectiveHostFilter);
-  }, [filteredByTimeWindow, effectiveHostFilter]);
+    if (effectiveHostFilter === "all") return allListings;
+    return allListings.filter((entry) => String(entry?.hostUid || "").trim() === effectiveHostFilter);
+  }, [allListings, effectiveHostFilter]);
 
   const rankedListings = useMemo(() => {
     const withSignals = filteredByHost.map((entry) => {
@@ -773,6 +757,71 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     [visibleListings, effectiveSelectedKey]
   );
   const featuredListing = selectedListing;
+
+  const recomputeVirtualRange = useCallback(() => {
+    const rail = cardRailRef.current;
+    const totalItems = visibleListings.length;
+    if (!rail || totalItems <= 0) {
+      setVirtualRange({ start: 0, end: 0, padTop: 0, padBottom: 0 });
+      return;
+    }
+    const estimatedRowHeight = resultsView === "tiles" ? 360 : 412;
+    const itemMinWidth = resultsView === "tiles" ? 250 : 9999;
+    const columns = resultsView === "tiles"
+      ? Math.max(1, Math.floor((rail.clientWidth + 10) / itemMinWidth))
+      : 1;
+    const totalRows = Math.ceil(totalItems / columns);
+    const viewportHeight = Math.max(320, rail.clientHeight || 640);
+    const scrollTop = Math.max(0, rail.scrollTop || 0);
+    const overscanRows = 3;
+    const startRow = Math.max(0, Math.floor(scrollTop / estimatedRowHeight) - overscanRows);
+    const endRow = Math.min(
+      totalRows,
+      Math.ceil((scrollTop + viewportHeight) / estimatedRowHeight) + overscanRows
+    );
+    const start = startRow * columns;
+    const end = Math.min(totalItems, endRow * columns);
+    setVirtualRange({
+      start,
+      end,
+      padTop: startRow * estimatedRowHeight,
+      padBottom: Math.max(0, (totalRows - endRow) * estimatedRowHeight),
+    });
+  }, [resultsView, visibleListings.length]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return () => {};
+    const raf = window.requestAnimationFrame(() => recomputeVirtualRange());
+    return () => window.cancelAnimationFrame(raf);
+  }, [recomputeVirtualRange, isMobileViewport]);
+
+  useEffect(() => {
+    const rail = cardRailRef.current;
+    if (!rail) return () => {};
+
+    const onScroll = () => {
+      recomputeVirtualRange();
+      if (hasMore && !loadingMore && (rail.scrollTop + rail.clientHeight >= rail.scrollHeight - 320)) {
+        loadMore();
+      }
+    };
+    const onResize = () => recomputeVirtualRange();
+    rail.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onResize);
+    onScroll();
+    return () => {
+      rail.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [hasMore, loadMore, loadingMore, recomputeVirtualRange]);
+
+  const virtualListings = useMemo(() => {
+    if (!visibleListings.length) return [];
+    const start = Math.max(0, Number(virtualRange.start || 0));
+    const end = Math.max(start, Number(virtualRange.end || 0));
+    if (!end || end >= visibleListings.length) return visibleListings.slice(start);
+    return visibleListings.slice(start, end);
+  }, [visibleListings, virtualRange.end, virtualRange.start]);
 
   const resetDiscoverFilters = useCallback(() => {
     setSearch("");
@@ -1014,29 +1063,26 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     || sortMode !== "smart"
     || timeWindow !== "all";
   const dynamicRegionPresets = useMemo(() => {
-    const source = [
-      ...(Array.isArray(rawData?.venues) ? rawData.venues : []),
-      ...(Array.isArray(rawData?.events) ? rawData.events : []),
-      ...(Array.isArray(rawData?.sessions) ? rawData.sessions : []),
-    ];
-    const counts = new Map();
-    source.forEach((item) => {
-      const token = String(item?.region || "").trim().toLowerCase();
-      if (!token || token === "nationwide") return;
-      counts.set(token, (counts.get(token) || 0) + 1);
-    });
-    const ranked = Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 14)
-      .map(([id, count]) => ({ id, label: humanizeRegion(id) || id, count }));
+    const regionFacets = Array.isArray(facets?.region) ? facets.region : [];
+    const ranked = regionFacets
+      .map((entry) => {
+        const id = String(entry?.id || "").trim().toLowerCase();
+        return {
+          id,
+          label: humanizeRegion(id) || id,
+          count: Number(entry?.count || 0) || 0,
+        };
+      })
+      .filter((entry) => !!entry.id && entry.id !== "nationwide")
+      .slice(0, 14);
     if (!ranked.length) {
       return MARKETING_REGION_PRESETS.map((preset) => ({
         ...preset,
-        count: counts.get(String(preset.id || "").trim().toLowerCase()) || 0,
+        count: 0,
       }));
     }
-    return [{ id: "nationwide", label: "Nationwide", count: source.length }, ...ranked];
-  }, [rawData]);
+    return [{ id: "nationwide", label: "Nationwide", count: total }, ...ranked];
+  }, [facets, total]);
 
   const handleEmptyAction = (action = {}) => {
     const intent = String(action.intent || "");
@@ -1065,7 +1111,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     <section className="mk3-page">
       <div className="mk3-status mk3-zone mk3-zone-finder">
         <strong>Discover Live Karaoke</strong>
-        <span>{activeRegionLabel} | {visibleListings.length} results</span>
+        <span>{activeRegionLabel} | {(Number(total || 0) || visibleListings.length)} results</span>
         <div className="mk3-finder-cta-row">
           <button
             type="button"
@@ -1081,8 +1127,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             type="button"
             className={mobileSurface === "map" ? "active" : ""}
             onClick={() => {
-              setMobileSurface("map");
-              setMobileFiltersExpanded(false);
+              dispatchView({ type: "show_map" });
             }}
           >
             Map ({mappableListings.length})
@@ -1090,14 +1135,14 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           <button
             type="button"
             className={mobileSurface === "list" ? "active" : ""}
-            onClick={() => setMobileSurface("list")}
+            onClick={() => dispatchView({ type: "show_list" })}
           >
             Results ({visibleListings.length})
           </button>
           <button
             type="button"
             className={mobileFiltersExpanded ? "active" : ""}
-            onClick={() => setMobileFiltersExpanded((prev) => !prev)}
+            onClick={() => dispatchView({ type: "toggle_filters" })}
           >
             {mobileFiltersExpanded ? "Hide Filters" : "Show Filters"}
           </button>
@@ -1248,7 +1293,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
               {geoLoading ? "Locating..." : userLocation ? "Refresh my location" : "Use my location"}
             </button>
             {isMobileViewport ? (
-              <button type="button" onClick={() => setMobileSurface("list")}>
+              <button type="button" onClick={() => dispatchView({ type: "show_list" })}>
                 Show list
               </button>
             ) : (
@@ -1294,26 +1339,26 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           <div className="mk3-rail-head">
             <strong>Results rail</strong>
             <div className="mk3-rail-head-meta">
-              <span>{visibleListings.length} shown</span>
+              <span>{visibleListings.length} shown{Number(total || 0) > visibleListings.length ? ` of ${Number(total || 0)}` : ""}</span>
               <div className="mk3-rail-view-toggle" role="group" aria-label="Results display mode">
                 <button
                   type="button"
                   className={resultsView === "results" ? "active" : ""}
-                  onClick={() => setResultsView("results")}
+                  onClick={() => dispatchView({ type: "set_results_view", value: "results" })}
                 >
                   Results
                 </button>
                 <button
                   type="button"
                   className={resultsView === "tiles" ? "active" : ""}
-                  onClick={() => setResultsView("tiles")}
+                  onClick={() => dispatchView({ type: "set_results_view", value: "tiles" })}
                 >
                   Tiles
                 </button>
               </div>
             </div>
             {isMobileViewport && (
-              <button type="button" onClick={() => setMobileSurface("map")}>
+              <button type="button" onClick={() => dispatchView({ type: "show_map" })}>
                 Open map
               </button>
             )}
@@ -1372,124 +1417,80 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             />
           )}
 
-          <div className={`mk3-card-list mk3-card-rail ${resultsView === "tiles" ? "mk3-card-tiles" : "mk3-card-results"}`}>
-            {visibleListings.map((entry) => (
-              <article
+          <div
+            ref={cardRailRef}
+            className={`mk3-card-list mk3-card-rail ${resultsView === "tiles" ? "mk3-card-tiles" : "mk3-card-results"}`}
+          >
+            {virtualRange.padTop > 0 && <div style={{ height: `${virtualRange.padTop}px` }} aria-hidden="true" />}
+            {virtualListings.map((entry) => (
+              <DiscoverListingCard
                 key={entry.key}
-                ref={(node) => registerCardRef(entry.key, node)}
-                className={entry.key === effectiveSelectedKey ? "mk3-discover-card is-selected" : "mk3-discover-card"}
-              >
-                <div className="mk3-discover-media">
-                  <img
-                    src={entry.imageUrl}
-                    alt={`${entry.title} venue visual`}
-                    loading="lazy"
-                    onError={(event) => applyFallbackImage(event, entry.imageFallbackUrls)}
-                  />
-                  <div className="mk3-discover-media-top">
-                    <div className="mk3-chip">{entry.typeLabel}</div>
-                    <div className="mk3-discover-avatar" aria-hidden="true">
-                      {entry.avatarUrl
-                        ? <img src={entry.avatarUrl} alt={`${entry.avatarLabel} avatar`} loading="lazy" />
-                        : <span>{getInitials(entry.avatarLabel || entry.title)}</span>}
-                    </div>
-                  </div>
-                </div>
-                <h3>{entry.title}</h3>
-                <div className="mk3-card-subtitle">{entry.subtitle}</div>
-                {!!entry.distanceLabel && <div className="mk3-card-subtitle">{entry.distanceLabel}</div>}
-                {entry.timeLabel && <div className="mk3-card-time">{entry.timeLabel}</div>}
-                {!!entry.cadenceBadges?.length && (
-                  <div className="mk3-day-badge-row">
-                    {entry.cadenceBadges.map((badge) => (
-                      <span key={`${entry.key}_${badge}`} className="mk3-day-badge">{badge}</span>
-                    ))}
-                  </div>
-                )}
-                {entry.detailLine && <div className="mk3-card-subtitle">{entry.detailLine}</div>}
-                {!!entry.hostName && <div className="mk3-card-subtitle">Host: {entry.hostName}</div>}
-                {entry.virtualOnly && <div className="mk3-chip">Virtual</div>}
-                <div className="mk3-actions-inline">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isMobileViewport) setMobileSurface("map");
-                      focusListing(entry, { pan: true, zoom: true });
-                      trackEvent("mk_discover_focus_marker", {
-                        source: "discover_rail",
-                        listingType: entry.listingType,
-                        listingId: entry.id,
-                        sortMode,
-                      });
-                    }}
-                    disabled={!entry.location || !mapsLoaded}
-                  >
-                    {isMobileViewport ? "Focus on map" : "Focus marker"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      trackEvent("mk_discover_open_details", {
-                        source: "discover_rail",
-                        listingType: entry.listingType,
-                        listingId: entry.id,
-                        sortMode,
-                      });
-                      navigate(entry.routePage, entry.id, {
-                        src: "discover",
-                        src_listing_type: entry.listingType,
-                        src_sort_mode: sortMode,
-                      });
-                    }}
-                  >
-                    Open details
-                  </button>
-                  {!!entry.hostUid && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        trackEvent("mk_discover_open_host", {
-                          source: "discover_rail",
-                          hostUid: entry.hostUid,
-                          listingType: entry.listingType,
-                        });
-                        navigate("host", entry.hostUid, {
-                          src: "discover_host",
-                          src_listing_type: entry.listingType,
-                          src_sort_mode: sortMode,
-                        });
-                      }}
-                    >
-                      Host profile
-                    </button>
-                  )}
-                  {entry.listingType === "room_session" && !!entry.roomCode && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        trackEvent("mk_discover_join_room", {
-                          source: "discover_rail",
-                          roomCode: entry.roomCode,
-                        });
-                        navigate("join", entry.roomCode, {
-                          roomCode: entry.roomCode,
-                          src: "discover_join_room",
-                          src_listing_type: entry.listingType,
-                        });
-                      }}
-                    >
-                      Join room
-                    </button>
-                  )}
-                </div>
-                <InlineConversionActions
-                  entry={entry}
-                  session={session}
-                  navigate={navigate}
-                  authFlow={authFlow}
-                />
-              </article>
+                entry={entry}
+                isSelected={entry.key === effectiveSelectedKey}
+                isMobileViewport={isMobileViewport}
+                mapsLoaded={mapsLoaded}
+                registerCardRef={registerCardRef}
+                onImageError={applyFallbackImage}
+                onFocus={(item) => {
+                  if (isMobileViewport) dispatchView({ type: "show_map" });
+                  focusListing(item, { pan: true, zoom: true });
+                  trackEvent("mk_discover_focus_marker", {
+                    source: "discover_rail",
+                    listingType: item.listingType,
+                    listingId: item.id,
+                    sortMode,
+                  });
+                }}
+                onOpenDetails={(item) => {
+                  trackEvent("mk_discover_open_details", {
+                    source: "discover_rail",
+                    listingType: item.listingType,
+                    listingId: item.id,
+                    sortMode,
+                  });
+                  navigate(item.routePage, item.id, {
+                    src: "discover",
+                    src_listing_type: item.listingType,
+                    src_sort_mode: sortMode,
+                  });
+                }}
+                onOpenHost={(item) => {
+                  trackEvent("mk_discover_open_host", {
+                    source: "discover_rail",
+                    hostUid: item.hostUid,
+                    listingType: item.listingType,
+                  });
+                  navigate("host", item.hostUid, {
+                    src: "discover_host",
+                    src_listing_type: item.listingType,
+                    src_sort_mode: sortMode,
+                  });
+                }}
+                onJoinRoom={(item) => {
+                  trackEvent("mk_discover_join_room", {
+                    source: "discover_rail",
+                    roomCode: item.roomCode,
+                  });
+                  navigate("join", item.roomCode, {
+                    roomCode: item.roomCode,
+                    src: "discover_join_room",
+                    src_listing_type: item.listingType,
+                  });
+                }}
+                session={session}
+                navigate={navigate}
+                authFlow={authFlow}
+              />
             ))}
+            {virtualRange.padBottom > 0 && <div style={{ height: `${virtualRange.padBottom}px` }} aria-hidden="true" />}
+            {loadingMore && <div className="mk3-status">Loading more listings...</div>}
+            {hasMore && !loadingMore && (
+              <div className="mk3-actions-inline">
+                <button type="button" onClick={loadMore}>
+                  Load more
+                </button>
+              </div>
+            )}
           </div>
         </aside>
       </div>

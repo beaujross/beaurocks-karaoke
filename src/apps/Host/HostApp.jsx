@@ -334,6 +334,10 @@ const HOST_NIGHT_PRESETS = {
             autoDj: true,
             autoBgMusic: true,
             autoPlayMedia: true,
+            autoEndOnTrackFinish: true,
+            autoBonusEnabled: true,
+            autoBonusPoints: 25,
+            autoDjDelaySec: 10,
             showVisualizerTv: true,
             showLyricsTv: false,
             showScoring: false,
@@ -373,6 +377,10 @@ const HOST_NIGHT_PRESETS = {
             autoDj: false,
             autoBgMusic: false,
             autoPlayMedia: true,
+            autoEndOnTrackFinish: true,
+            autoBonusEnabled: true,
+            autoBonusPoints: 25,
+            autoDjDelaySec: 8,
             showVisualizerTv: false,
             showLyricsTv: true,
             showScoring: true,
@@ -412,6 +420,10 @@ const HOST_NIGHT_PRESETS = {
             autoDj: false,
             autoBgMusic: true,
             autoPlayMedia: true,
+            autoEndOnTrackFinish: true,
+            autoBonusEnabled: true,
+            autoBonusPoints: 25,
+            autoDjDelaySec: 10,
             showVisualizerTv: false,
             showLyricsTv: false,
             showScoring: false,
@@ -452,6 +464,10 @@ const HOST_NIGHT_PRESETS = {
             autoDj: false,
             autoBgMusic: true,
             autoPlayMedia: false,
+            autoEndOnTrackFinish: true,
+            autoBonusEnabled: true,
+            autoBonusPoints: 25,
+            autoDjDelaySec: 10,
             showVisualizerTv: false,
             showLyricsTv: false,
             showScoring: true,
@@ -2854,7 +2870,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoDjDelaySec, setAutoDjDelaySec, autoEndOnTrackFinish, setAutoEndOnTrackFinish, autoBonusEnabled, setAutoBonusEnabled, autoBonusPoints, setAutoBonusPoints, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3703,7 +3719,17 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                     hostLogger.warn('Could not load latest song snapshot for recap; using in-memory fallback', error);
                 }
                 const latestHypeScore = Math.max(0, Math.round(Number(latestSong?.hypeScore || 0)));
-                const resolvedHostBonus = Math.max(0, Math.round(Number(latestSong?.hostBonus || 0)));
+                let resolvedHostBonus = Math.max(0, Math.round(Number(latestSong?.hostBonus || 0)));
+                const autoBonusActive = room?.autoBonusEnabled !== false;
+                const autoBonusValue = Math.max(0, Math.min(1000, Math.round(Number(room?.autoBonusPoints ?? 25) || 0)));
+                if (autoBonusActive && resolvedHostBonus <= 0 && autoBonusValue > 0) {
+                    resolvedHostBonus = autoBonusValue;
+                    try {
+                        await updateDoc(songRef, { hostBonus: resolvedHostBonus });
+                    } catch (error) {
+                        hostLogger.warn('Auto bonus sync failed; recap will still use auto bonus value', error);
+                    }
+                }
                 let reconciled = null;
                 try {
                     const reconciledData = await callFunction('reconcilePerformanceRecap', {
@@ -3884,6 +3910,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
 
     useEffect(() => {
         if (!autoDj) return;
+        if (room?.autoEndOnTrackFinish === false) return;
         if (!current?.id) return;
         if (autoDjApplausePendingSongRef.current) return;
         if (String(room?.activeMode || '').trim().toLowerCase() !== 'karaoke') return;
@@ -3911,6 +3938,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
         current?.appleMusicId,
         current?.duration,
         room?.activeMode,
+        room?.autoEndOnTrackFinish,
         room?.appleMusicPlayback?.status,
         room?.appleMusicPlayback?.startedAt,
         room?.videoPlaying,
@@ -4390,6 +4418,14 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                             automationOpen={automationOpen}
                             autoDj={autoDj}
                             setAutoDj={setAutoDj}
+                            autoDjDelaySec={autoDjDelaySec}
+                            setAutoDjDelaySec={setAutoDjDelaySec}
+                            autoEndOnTrackFinish={autoEndOnTrackFinish}
+                            setAutoEndOnTrackFinish={setAutoEndOnTrackFinish}
+                            autoBonusEnabled={autoBonusEnabled}
+                            setAutoBonusEnabled={setAutoBonusEnabled}
+                            autoBonusPoints={autoBonusPoints}
+                            setAutoBonusPoints={setAutoBonusPoints}
                             room={room}
                             updateRoom={updateRoom}
                             autoBgMusic={autoBgMusic}
@@ -4833,6 +4869,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [autoBgMusic, setAutoBgMusic] = useState(false);
     const [autoDj, setAutoDj] = useState(false);
     const [autoPlayMedia, setAutoPlayMedia] = useState(true);
+    const [autoDjDelaySec, setAutoDjDelaySec] = useState(10);
+    const [autoEndOnTrackFinish, setAutoEndOnTrackFinish] = useState(true);
+    const [autoBonusEnabled, setAutoBonusEnabled] = useState(true);
+    const [autoBonusPoints, setAutoBonusPoints] = useState(25);
     const [autoDjCountdown, setAutoDjCountdown] = useState(0);
     const [bgVolume, setBgVolume] = useState(0.3);
     const [mixFader, setMixFader] = useState(50);
@@ -5989,6 +6029,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (normalized === 'doodle_oke' || normalized === 'doodle-oke') return 'doodle_oke';
         return normalized;
     };
+    const parseLaunchBoolParam = (value = '') => {
+        const token = String(value || '').trim().toLowerCase();
+        return token === '1' || token === 'true' || token === 'yes' || token === 'on';
+    };
+    const normalizeLaunchRoomCode = (value = '') =>
+        String(value || '')
+            .trim()
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, '')
+            .slice(0, 10);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -5997,6 +6047,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const chat = params.get('chat');
         const onboarding = String(params.get('onboarding') || '').toLowerCase();
         const plan = String(params.get('plan') || '').trim();
+        const launchRoomCode = normalizeLaunchRoomCode(params.get('launch_room_code'));
+        const launchPublicRoom = parseLaunchBoolParam(params.get('launch_public_room'));
+        const launchVirtualOnly = parseLaunchBoolParam(params.get('launch_virtual_only'));
+        const launchTitle = String(params.get('launch_title') || '').trim();
+        const launchDescription = String(params.get('launch_description') || '').trim();
+        const launchStartsAt = String(params.get('launch_starts_at') || '').trim();
+        const launchCity = String(params.get('launch_city') || '').trim();
+        const launchState = String(params.get('launch_state') || '').trim();
         const view = (params.get('view') || '').trim().toLowerCase();
         const section = (params.get('section') || '').trim().toLowerCase();
         const g = normalizeGameParam(params.get('game'));
@@ -6052,10 +6110,43 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setShowOnboardingWizard(true);
             consumedMarketingOnboardingParams = true;
         }
+        if (
+            launchRoomCode
+            || launchPublicRoom
+            || launchVirtualOnly
+            || launchTitle
+            || launchDescription
+            || launchStartsAt
+            || launchCity
+            || launchState
+        ) {
+            if (launchRoomCode) {
+                setRoomCodeInput(launchRoomCode);
+            }
+            setQuickLaunchDiscovery((prev) => ({
+                ...prev,
+                ...(launchTitle ? { title: launchTitle } : {}),
+                ...(launchDescription ? { description: launchDescription } : {}),
+                ...(launchStartsAt ? { startsAtLocal: launchStartsAt } : {}),
+                ...(launchCity ? { city: launchCity } : {}),
+                ...(launchState ? { state: launchState } : {}),
+                ...(launchPublicRoom ? { publicRoom: true } : {}),
+                ...(launchVirtualOnly ? { virtualOnly: true } : {}),
+            }));
+            consumedMarketingOnboardingParams = true;
+        }
         if (consumedMarketingOnboardingParams) {
             params.delete('onboarding');
             params.delete('plan');
             params.delete('source');
+            params.delete('launch_room_code');
+            params.delete('launch_public_room');
+            params.delete('launch_virtual_only');
+            params.delete('launch_title');
+            params.delete('launch_description');
+            params.delete('launch_starts_at');
+            params.delete('launch_city');
+            params.delete('launch_state');
             const nextQuery = params.toString();
             const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
             window.history.replaceState({}, '', nextUrl);
@@ -6109,6 +6200,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         if (room.autoDj !== undefined && room.autoDj !== null) setAutoDj(!!room.autoDj);
         if (room.autoPlayMedia !== undefined && room.autoPlayMedia !== null) setAutoPlayMedia(!!room.autoPlayMedia);
+        if (room.autoDjDelaySec !== undefined && room.autoDjDelaySec !== null) {
+            setAutoDjDelaySec(Math.max(2, Math.min(45, Number(room.autoDjDelaySec || 10) || 10)));
+        }
+        if (room.autoEndOnTrackFinish !== undefined && room.autoEndOnTrackFinish !== null) {
+            setAutoEndOnTrackFinish(room.autoEndOnTrackFinish !== false);
+        }
+        if (room.autoBonusEnabled !== undefined && room.autoBonusEnabled !== null) {
+            setAutoBonusEnabled(room.autoBonusEnabled !== false);
+        }
+        if (room.autoBonusPoints !== undefined && room.autoBonusPoints !== null) {
+            setAutoBonusPoints(Math.max(0, Math.min(1000, Number(room.autoBonusPoints || 0) || 0)));
+        }
         if (room.appleMusicAutoPlaylistId !== undefined && room.appleMusicAutoPlaylistId !== null) {
             const roomPlaylistId = parseAppleMusicPlaylistId(String(room.appleMusicAutoPlaylistId || ''));
             if (roomPlaylistId) {
@@ -6157,7 +6260,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.popTriviaEnabled !== undefined && room?.popTriviaEnabled !== null) {
             setPopTriviaEnabled(room.popTriviaEnabled !== false);
         }
-    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.autoDj, room?.autoPlayMedia, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
+    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
     useEffect(() => {
         if (room?.autoLyricsOnQueue === undefined || room?.autoLyricsOnQueue === null) return;
         setAutoLyricsOnQueue(!!room.autoLyricsOnQueue);
@@ -6328,11 +6431,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const lastTs = getTimestampMs(room.lastPerformance.timestamp);
         if (lastAutoDjTsRef.current === lastTs) return;
         lastAutoDjTsRef.current = lastTs;
+        const configuredDelaySec = Math.max(2, Math.min(45, Number(room?.autoDjDelaySec || 10) || 10));
+        const configuredDelayMs = configuredDelaySec * 1000;
         const elapsed = nowMs() - lastTs;
-        const delay = Math.max(0, 10500 - elapsed);
+        const delay = Math.max(0, configuredDelayMs - elapsed);
         setAutoDjCountdown(Math.ceil(delay / 1000));
         const tick = setInterval(() => {
-            const remaining = Math.max(0, Math.ceil((lastTs + 10500 - nowMs()) / 1000));
+            const remaining = Math.max(0, Math.ceil((lastTs + configuredDelayMs - nowMs()) / 1000));
             setAutoDjCountdown(remaining);
             if (remaining <= 0) clearInterval(tick);
         }, 500);
@@ -6348,7 +6453,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
             clearInterval(tick);
         };
-    }, [room?.autoDj, room?.lastPerformance?.timestamp, startNextFromQueue]);
+    }, [room?.autoDj, room?.autoDjDelaySec, room?.lastPerformance?.timestamp, startNextFromQueue]);
     useEffect(() => {
         if (!roomCode) return;
         const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
@@ -7096,6 +7201,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             autoDj: !!legacyPresetSettings.autoDj,
             autoBgMusic: !!legacyPresetSettings.autoBgMusic,
             autoPlayMedia: !!nightSetupAutoPlayMedia,
+            autoEndOnTrackFinish: legacyPresetSettings.autoEndOnTrackFinish !== false,
+            autoBonusEnabled: legacyPresetSettings.autoBonusEnabled !== false,
+            autoBonusPoints: Math.max(0, Math.min(1000, Number(legacyPresetSettings.autoBonusPoints ?? 25) || 25)),
+            autoDjDelaySec: Math.max(2, Math.min(45, Number(legacyPresetSettings.autoDjDelaySec ?? 10) || 10)),
             showVisualizerTv: !!legacyPresetSettings.showVisualizerTv,
             showLyricsTv: !!legacyPresetSettings.showLyricsTv,
             showScoring: !!nightSetupShowScoring,
@@ -7158,6 +7267,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setAutoDj(!!payload.autoDj);
             setAutoBgMusic(!!payload.autoBgMusic);
             setAutoPlayMedia(!!payload.autoPlayMedia);
+            setAutoEndOnTrackFinish(payload.autoEndOnTrackFinish !== false);
+            setAutoBonusEnabled(payload.autoBonusEnabled !== false);
+            setAutoBonusPoints(Math.max(0, Math.min(1000, Number(payload.autoBonusPoints ?? 25) || 25)));
+            setAutoDjDelaySec(Math.max(2, Math.min(45, Number(payload.autoDjDelaySec ?? 10) || 10)));
             setQueueLimitMode(payload.queueSettings.limitMode);
             setQueueLimitCount(payload.queueSettings.limitCount);
             setQueueRotation(payload.queueSettings.rotation);
@@ -7509,6 +7622,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 autoBgFadeInMs: 900,
                 autoBgMixDuringSong: 0,
                 autoPlayMedia: true,
+                autoDjDelaySec: 10,
+                autoEndOnTrackFinish: true,
+                autoBonusEnabled: true,
+                autoBonusPoints: 25,
                 hostName: nextHostName,
                 hostUid: activeUid,
                 hostUids: [activeUid],
@@ -8151,6 +8268,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             autoDj: !!presetSettings.autoDj,
             autoBgMusic: !!presetSettings.autoBgMusic,
             autoPlayMedia: !!presetSettings.autoPlayMedia,
+            autoEndOnTrackFinish: presetSettings.autoEndOnTrackFinish !== false,
+            autoBonusEnabled: presetSettings.autoBonusEnabled !== false,
+            autoBonusPoints: Math.max(0, Math.min(1000, Number(presetSettings.autoBonusPoints ?? 25) || 25)),
+            autoDjDelaySec: Math.max(2, Math.min(45, Number(presetSettings.autoDjDelaySec ?? 10) || 10)),
             showVisualizerTv: !!presetSettings.showVisualizerTv,
             showLyricsTv: !!presetSettings.showLyricsTv,
             showScoring: !!presetSettings.showScoring,
@@ -8187,6 +8308,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setAutoDj(!!payload.autoDj);
             setAutoBgMusic(!!payload.autoBgMusic);
             setAutoPlayMedia(!!payload.autoPlayMedia);
+            setAutoEndOnTrackFinish(payload.autoEndOnTrackFinish !== false);
+            setAutoBonusEnabled(payload.autoBonusEnabled !== false);
+            setAutoBonusPoints(Math.max(0, Math.min(1000, Number(payload.autoBonusPoints ?? 25) || 25)));
+            setAutoDjDelaySec(Math.max(2, Math.min(45, Number(payload.autoDjDelaySec ?? 10) || 10)));
             setQueueLimitMode(payload.queueSettings.limitMode);
             setQueueLimitCount(payload.queueSettings.limitCount);
             setQueueRotation(payload.queueSettings.rotation);
@@ -8281,6 +8406,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 autoBgFadeOutMs: Math.max(200, Number(autoBgFadeOutMs || 900)),
                 autoBgFadeInMs: Math.max(200, Number(autoBgFadeInMs || 900)),
                 autoBgMixDuringSong: Math.max(0, Math.min(100, Number(autoBgMixDuringSong ?? 0))),
+                autoDjDelaySec: Math.max(2, Math.min(45, Number(autoDjDelaySec || 10) || 10)),
+                autoEndOnTrackFinish: autoEndOnTrackFinish !== false,
+                autoBonusEnabled: autoBonusEnabled !== false,
+                autoBonusPoints: Math.max(0, Math.min(1000, Number(autoBonusPoints || 0) || 0)),
                 readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10)),
                 readyCheckRewardPoints: Math.max(0, Number(readyCheckRewardPoints || 0)),
                 showScoring: !!showScoring,
@@ -12319,6 +12448,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         autoBgFadeOutMs: Math.max(200, Number(autoBgFadeOutMs || 900)),
         autoBgFadeInMs: Math.max(200, Number(autoBgFadeInMs || 900)),
         autoBgMixDuringSong: Math.max(0, Math.min(100, Number(autoBgMixDuringSong ?? 0))),
+        autoDjDelaySec: Math.max(2, Math.min(45, Number(autoDjDelaySec || 10) || 10)),
+        autoEndOnTrackFinish: autoEndOnTrackFinish !== false,
+        autoBonusEnabled: autoBonusEnabled !== false,
+        autoBonusPoints: Math.max(0, Math.min(1000, Number(autoBonusPoints || 0) || 0)),
         readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10)),
         readyCheckRewardPoints: Math.max(0, Number(readyCheckRewardPoints || 0)),
         showScoring: !!showScoring,
@@ -12349,6 +12482,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             autoBgFadeOutMs: Math.max(200, Number(room.autoBgFadeOutMs || 900)),
             autoBgFadeInMs: Math.max(200, Number(room.autoBgFadeInMs || 900)),
             autoBgMixDuringSong: Math.max(0, Math.min(100, Number(room.autoBgMixDuringSong ?? 0))),
+            autoDjDelaySec: Math.max(2, Math.min(45, Number(room.autoDjDelaySec || 10) || 10)),
+            autoEndOnTrackFinish: room.autoEndOnTrackFinish !== false,
+            autoBonusEnabled: room.autoBonusEnabled !== false,
+            autoBonusPoints: Math.max(0, Math.min(1000, Number(room.autoBonusPoints || 0) || 0)),
             readyCheckDurationSec: Math.max(3, Number(room.readyCheckDurationSec || 10)),
             readyCheckRewardPoints: Math.max(0, Number(room.readyCheckRewardPoints || 0)),
             showScoring: room.showScoring !== false,
@@ -12581,6 +12718,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         persistYtIndex,
         autoDj,
         setAutoDj,
+        autoDjDelaySec,
+        setAutoDjDelaySec,
+        autoEndOnTrackFinish,
+        setAutoEndOnTrackFinish,
+        autoBonusEnabled,
+        setAutoBonusEnabled,
+        autoBonusPoints,
+        setAutoBonusPoints,
         autoBgMusic,
         setAutoBgMusic,
         playingBg,
@@ -13994,6 +14139,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         {autoPlayMedia ? 'Auto stage playback ON' : 'Auto stage playback OFF'}
                                     </button>
                                     <button
+                                        onClick={async () => {
+                                            const next = !autoEndOnTrackFinish;
+                                            setAutoEndOnTrackFinish(next);
+                                            await updateRoom({ autoEndOnTrackFinish: next });
+                                            toast(next ? 'Auto end on finish enabled' : 'Auto end on finish disabled');
+                                        }}
+                                        className={`${STYLES.btnStd} ${autoEndOnTrackFinish ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-stopwatch"></i>
+                                        {autoEndOnTrackFinish ? 'Auto end on finish ON' : 'Auto end on finish OFF'}
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            const next = !autoBonusEnabled;
+                                            setAutoBonusEnabled(next);
+                                            await updateRoom({ autoBonusEnabled: next });
+                                            toast(next ? 'Auto bonus enabled' : 'Auto bonus disabled');
+                                        }}
+                                        className={`${STYLES.btnStd} ${autoBonusEnabled ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-gift"></i>
+                                        {autoBonusEnabled ? 'Auto bonus ON' : 'Auto bonus OFF'}
+                                    </button>
+                                    <button
                                         onClick={() => startReadyCheck?.()}
                                         className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
                                     >
@@ -14015,6 +14184,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <label className="text-sm text-zinc-300">
                                             Fade in (ms)
                                             <input value={autoBgFadeInMs} onChange={e => setAutoBgFadeInMs(e.target.value)} className={`${STYLES.input} mt-1`} />
+                                        </label>
+                                        <label className="text-sm text-zinc-300">
+                                            Auto-DJ delay (sec)
+                                            <input
+                                                value={autoDjDelaySec}
+                                                onChange={e => setAutoDjDelaySec(e.target.value)}
+                                                onBlur={async () => {
+                                                    const next = Math.max(2, Math.min(45, Number(autoDjDelaySec || 10) || 10));
+                                                    setAutoDjDelaySec(next);
+                                                    await updateRoom({ autoDjDelaySec: next });
+                                                }}
+                                                className={`${STYLES.input} mt-1`}
+                                            />
+                                        </label>
+                                        <label className="text-sm text-zinc-300">
+                                            Auto bonus points
+                                            <input
+                                                value={autoBonusPoints}
+                                                onChange={e => setAutoBonusPoints(e.target.value)}
+                                                onBlur={async () => {
+                                                    const next = Math.max(0, Math.min(1000, Number(autoBonusPoints || 0) || 0));
+                                                    setAutoBonusPoints(next);
+                                                    await updateRoom({ autoBonusPoints: next });
+                                                }}
+                                                className={`${STYLES.input} mt-1`}
+                                            />
                                         </label>
                                     </div>
                                 </div>

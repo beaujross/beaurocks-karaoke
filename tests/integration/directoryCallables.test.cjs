@@ -19,6 +19,7 @@ const {
   setDirectoryRsvp,
   setDirectoryReminderPreferences,
   listDirectoryGeoLanding,
+  listDirectoryDiscover,
   redeemMarketingPrivateHostAccess,
   setMarketingPrivateHostAccess,
   getMyDirectoryAccess,
@@ -666,6 +667,59 @@ async function run() {
       assert.equal(result.ok, true);
       assert.equal(result.roomCode, "VIP123");
       assert.equal(result.session?.id, "session_by_code");
+    }],
+
+    ["listDirectoryDiscover paginates and filters by search", async () => {
+      await db.doc("venues/discover_venue_1").set({
+        title: "Neon Karaoke House",
+        status: "approved",
+        visibility: "public",
+        city: "Seattle",
+        state: "WA",
+        region: "wa_seattle",
+      });
+      await db.doc("karaoke_events/discover_event_1").set({
+        title: "Friday Neon Party",
+        status: "approved",
+        visibility: "public",
+        city: "Seattle",
+        state: "WA",
+        region: "wa_seattle",
+        startsAtMs: Date.now() + 3600000,
+      });
+      await db.doc("room_sessions/discover_session_1").set({
+        title: "Neon Session",
+        status: "approved",
+        visibility: "public",
+        city: "Seattle",
+        state: "WA",
+        region: "wa_seattle",
+        roomCode: "NEON1",
+      });
+      const first = await listDirectoryDiscover.run(
+        requestFor("", {
+          search: "neon",
+          region: "wa_seattle",
+          limit: 2,
+        })
+      );
+      assert.equal(first.ok, true);
+      assert.equal(Array.isArray(first.items), true);
+      assert.equal(first.items.length, 2);
+      assert.equal(Number(first.total || 0) >= 3, true);
+      assert.equal(!!String(first.nextCursor || "").trim(), true);
+
+      const second = await listDirectoryDiscover.run(
+        requestFor("", {
+          search: "neon",
+          region: "wa_seattle",
+          limit: 2,
+          cursor: first.nextCursor,
+        })
+      );
+      assert.equal(second.ok, true);
+      assert.equal(Array.isArray(second.items), true);
+      assert.equal(second.items.length >= 1, true);
     }],
   ];
 
