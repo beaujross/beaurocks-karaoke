@@ -1358,6 +1358,9 @@ const MARKETING_SMS_REMINDERS_ENABLED = String(process.env.MARKETING_SMS_REMINDE
 const MARKETING_GEO_PAGES_ENABLED = String(process.env.MARKETING_GEO_PAGES_ENABLED || "true")
   .trim()
   .toLowerCase() === "true";
+const MARKETING_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED = String(process.env.MARKETING_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED || "false")
+  .trim()
+  .toLowerCase() === "true";
 const MARKETING_PRIVATE_HOST_ACCESS_ENFORCED = String(process.env.MARKETING_PRIVATE_HOST_ACCESS_ENFORCED || "true")
   .trim()
   .toLowerCase() === "true";
@@ -5955,6 +5958,7 @@ exports.getDirectoryMapsConfig = onCall(
         marketing_rsvp_enabled: MARKETING_RSVP_ENABLED,
         marketing_sms_reminders_enabled: MARKETING_SMS_REMINDERS_ENABLED,
         marketing_geo_pages_enabled: MARKETING_GEO_PAGES_ENABLED,
+        marketing_discover_google_static_images_enabled: MARKETING_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED,
       },
     };
   }

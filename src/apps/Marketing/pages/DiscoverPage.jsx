@@ -54,6 +54,9 @@ const MS_PER_HOUR = 60 * 60 * 1000;
 const MS_PER_DAY = 24 * MS_PER_HOUR;
 const LIVE_LOOKBACK_MS = 2 * MS_PER_HOUR;
 const SOON_LOOKAHEAD_MS = 8 * MS_PER_HOUR;
+const ENV_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED = typeof import.meta !== "undefined" && import.meta?.env
+  ? String(import.meta.env.VITE_MARKETING_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED || "")
+  : "";
 
 const toRadians = (value = 0) => (Number(value || 0) * Math.PI) / 180;
 
@@ -345,11 +348,13 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const googlePhotoUrls = allowGoogleImageApis
     ? buildGooglePlacePhotoUrls({ entry, mapsApiKey })
     : [];
-  const imageCandidates = dedupeUrls([
-    ...explicitImageCandidates,
+  const googleImageCandidates = dedupeUrls([
     ...googlePhotoUrls,
     venueImageUrl,
     mapFallbackImageUrl,
+  ]);
+  const imageCandidates = dedupeUrls([
+    ...explicitImageCandidates,
     publicLocationFallbackUrl,
     hardFallbackImageUrl,
   ]).filter((url) => !isScreenPlaceholderImage(url) || url === hardFallbackImageUrl);
@@ -386,6 +391,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     imageUrl,
     imageFallbackUrl: hardFallbackImageUrl,
     imageFallbackUrls,
+    googleImageCandidates,
     avatarUrl,
     avatarLabel: listingType === "event"
       ? String(entry?.hostName || entry?.venueName || entry?.title || "").trim()
@@ -455,6 +461,14 @@ const isPermissionError = (message = "") =>
   /permission|missing or insufficient permissions|permission-denied/i.test(String(message || ""));
 const isIndexError = (message = "") =>
   /indexing|requires an index|create_composite/i.test(String(message || ""));
+const toBooleanFlag = (value, fallback = false) => {
+  if (typeof value === "boolean") return value;
+  const token = String(value || "").trim().toLowerCase();
+  if (!token) return fallback;
+  if (["1", "true", "yes", "on"].includes(token)) return true;
+  if (["0", "false", "no", "off"].includes(token)) return false;
+  return fallback;
+};
 
 const humanizeRegion = (token = "") => {
   const safe = String(token || "").trim().toLowerCase();
@@ -538,8 +552,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     enabled: shouldLoadMaps,
     apiKey: String(mapsConfig?.apiKey || ""),
   });
-  // Defer Google photo/static image traffic until the interactive map script is ready.
-  const allowGoogleImageApis = mapEnabled && mapsLoaded;
+  const discoverGoogleStaticImagesEnabled = useMemo(() => {
+    const serverFlag = mapsConfig?.featureFlags?.marketing_discover_google_static_images_enabled;
+    if (typeof serverFlag === "boolean" || String(serverFlag || "").trim()) {
+      return toBooleanFlag(serverFlag, false);
+    }
+    return toBooleanFlag(ENV_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED, false);
+  }, [mapsConfig]);
+  // Keep static imagery traffic off unless explicitly enabled.
+  const allowGoogleImageApis = mapEnabled && mapsLoaded && discoverGoogleStaticImagesEnabled;
   const venueLocationIndex = useMemo(
     () => buildVenueLocationIndex(Array.isArray(rawData?.venues) ? rawData.venues : []),
     [rawData]
@@ -768,6 +789,12 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     () => visibleListings.find((entry) => entry.key === effectiveSelectedKey) || null,
     [visibleListings, effectiveSelectedKey]
   );
+  const googleImageEligibleKeys = useMemo(() => {
+    const next = new Set();
+    if (!allowGoogleImageApis) return next;
+    if (effectiveSelectedKey) next.add(effectiveSelectedKey);
+    return next;
+  }, [allowGoogleImageApis, effectiveSelectedKey]);
   const featuredListing = selectedListing;
 
   const recomputeVirtualRange = useCallback(() => {
@@ -1434,10 +1461,26 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             className={`mk3-card-list mk3-card-rail ${resultsView === "tiles" ? "mk3-card-tiles" : "mk3-card-results"}`}
           >
             {virtualRange.padTop > 0 && <div style={{ height: `${virtualRange.padTop}px` }} aria-hidden="true" />}
-            {virtualListings.map((entry) => (
-              <DiscoverListingCard
+            {virtualListings.map((entry) => {
+              const googleCandidates = Array.isArray(entry.googleImageCandidates)
+                ? entry.googleImageCandidates
+                : [];
+              const useGoogleImages = googleImageEligibleKeys.has(entry.key) && googleCandidates.length > 0;
+              const cardEntry = useGoogleImages
+                ? {
+                  ...entry,
+                  imageUrl: googleCandidates[0],
+                  imageFallbackUrls: dedupeUrls([
+                    ...googleCandidates.slice(1),
+                    entry.imageUrl,
+                    ...(Array.isArray(entry.imageFallbackUrls) ? entry.imageFallbackUrls : []),
+                  ]),
+                }
+                : entry;
+              return (
+                <DiscoverListingCard
                 key={entry.key}
-                entry={entry}
+                entry={cardEntry}
                 isSelected={entry.key === effectiveSelectedKey}
                 isMobileViewport={isMobileViewport}
                 mapsLoaded={mapsLoaded}
@@ -1493,7 +1536,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 navigate={navigate}
                 authFlow={authFlow}
               />
-            ))}
+              );
+            })}
             {virtualRange.padBottom > 0 && <div style={{ height: `${virtualRange.padBottom}px` }} aria-hidden="true" />}
             {loadingMore && <div className="mk3-status">Loading more listings...</div>}
             {hasMore && !loadingMore && (
