@@ -3915,9 +3915,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    position: sticky;
-    top: 100px;
-    z-index: 36;
+    position: static;
   }
 
   .mk3-mobile-discover-switch button {
@@ -4159,10 +4157,6 @@
 
   .mk3-map-stage-overlay {
     padding: 8px;
-  }
-
-  .mk3-mobile-discover-switch {
-    top: 92px;
   }
 
   .mk3-mobile-discover-switch button {
