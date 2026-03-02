@@ -6,6 +6,21 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function authSignInProvider() {
+      return (
+        request.auth.token.keys().hasAny(['firebase'])
+        && request.auth.token.firebase is map
+        && request.auth.token.firebase.keys().hasAny(['sign_in_provider'])
+        && request.auth.token.firebase.sign_in_provider is string
+      )
+        ? request.auth.token.firebase.sign_in_provider
+        : '';
+    }
+
+    function isNonAnonymousAuthed() {
+      return isAuthed() && authSignInProvider() != 'anonymous';
+    }
+
     function isSuperAdmin() {
       return isAuthed()
         && (
@@ -35,6 +50,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/artifacts/bross-app/public/data/rooms/$(roomCode);
     }
 
+    function userDocPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
     function roomExists(roomCode) {
       return roomCode is string && exists(roomDocPath(roomCode));
     }
@@ -62,6 +81,182 @@ service cloud.firestore {
 
     function asNumberOrZero(v) {
       return v is number ? v : 0;
+    }
+
+    function roomUserPhoneNotIntroducedOrModified(prevData, nextData) {
+      return !nextData.diff(prevData).affectedKeys().hasAny(['phone'])
+        || !nextData.keys().hasAny(['phone']);
+    }
+
+    function roomUserCreateAllowedKeys() {
+      return [
+        'uid',
+        'roomCode',
+        'name',
+        'avatar',
+        'isVip',
+        'vipLevel',
+        'fameLevel',
+        'totalFamePoints',
+        'lastActiveAt',
+        'points',
+        'totalEmojis',
+        'lastSeen',
+        'visits',
+        'isReady',
+        'tight15Temp'
+      ];
+    }
+
+    function roomUserSelfWritableKeys() {
+      return [
+        'name',
+        'avatar',
+        'isVip',
+        'vipLevel',
+        'fameLevel',
+        'totalFamePoints',
+        'lastActiveAt',
+        'lastSeen',
+        'points',
+        'totalEmojis',
+        'lastPerformanceId',
+        'performancePointsGifted',
+        'totalPointsGifted',
+        'guitarSessionId',
+        'guitarHits',
+        'strobeSessionId',
+        'strobeTaps',
+        'stormLayerHits',
+        'lastStormLayer',
+        'lastVibeAt',
+        'tight15Temp',
+        'isReady',
+        'visits',
+        'bingoVotesBySession'
+      ];
+    }
+
+    function roomUserSelfChangedKeysAllowed(prevData, nextData) {
+      return nextData.diff(prevData).affectedKeys().hasOnly(roomUserSelfWritableKeys());
+    }
+
+    function roomUserPointsDeltaWithinLimit(prevData, nextData) {
+      return !nextData.diff(prevData).affectedKeys().hasAny(['points'])
+        || (
+          nextData.points is number
+          && nextData.points <= asNumberOrZero(prevData.points) + 10000
+          && nextData.points >= asNumberOrZero(prevData.points) - 10000
+        );
+    }
+
+    function canonicalVipLevel(uid) {
+      return uid is string
+        && exists(userDocPath(uid))
+        && get(userDocPath(uid)).data.vipLevel is number
+        ? get(userDocPath(uid)).data.vipLevel
+        : 0;
+    }
+
+    function canonicalFameLevel(uid) {
+      return uid is string
+        && exists(userDocPath(uid))
+        && (
+          get(userDocPath(uid)).data.currentLevel is number
+          || get(userDocPath(uid)).data.fameLevel is number
+        )
+        ? (
+          get(userDocPath(uid)).data.currentLevel is number
+            ? get(userDocPath(uid)).data.currentLevel
+            : get(userDocPath(uid)).data.fameLevel
+        )
+        : 0;
+    }
+
+    function canonicalTotalFamePoints(uid) {
+      return uid is string
+        && exists(userDocPath(uid))
+        && get(userDocPath(uid)).data.totalFamePoints is number
+        ? get(userDocPath(uid)).data.totalFamePoints
+        : 0;
+    }
+
+    function roomUserPrivilegeProjectionWithinAccount(uid, nextData) {
+      return (
+        !nextData.keys().hasAny(['vipLevel'])
+        || (
+          nextData.vipLevel is number
+          && nextData.vipLevel >= 0
+          && nextData.vipLevel <= canonicalVipLevel(uid)
+        )
+      )
+        && (
+          !nextData.keys().hasAny(['isVip'])
+          || (
+            nextData.isVip is bool
+            && (
+              nextData.isVip == false
+              || canonicalVipLevel(uid) > 0
+            )
+          )
+        )
+        && (
+          !nextData.keys().hasAny(['fameLevel'])
+          || (
+            nextData.fameLevel is number
+            && nextData.fameLevel >= 0
+            && nextData.fameLevel <= canonicalFameLevel(uid)
+          )
+        )
+        && (
+          !nextData.keys().hasAny(['totalFamePoints'])
+          || (
+            nextData.totalFamePoints is number
+            && nextData.totalFamePoints >= 0
+            && nextData.totalFamePoints <= canonicalTotalFamePoints(uid)
+          )
+        );
+    }
+
+    function activityAllowedKeys() {
+      return [
+        'roomCode',
+        'uid',
+        'user',
+        'text',
+        'icon',
+        'timestamp'
+      ];
+    }
+
+    function reactionAllowedKeys() {
+      return [
+        'roomCode',
+        'type',
+        'count',
+        'uid',
+        'userName',
+        'avatar',
+        'isVip',
+        'multiplier',
+        'performanceId',
+        'performanceSongId',
+        'performanceSingerUid',
+        'performanceSingerName',
+        'performanceStartedAtMs',
+        'timestamp',
+        'layer',
+        'url',
+        'storagePath',
+        'mode',
+        'val',
+        'questionId',
+        'songId',
+        'sessionId',
+        'team',
+        'isFree',
+        'isVote'
+      ];
     }
 
     function hasSafeClientSubscriptionDefaults(data) {
@@ -111,6 +306,64 @@ service cloud.firestore {
             !data.organization.keys().hasAny(['updatedAt'])
             || data.organization.updatedAt == null
           )
+        );
+    }
+
+    function userPrivilegeManagedKeys() {
+      return [
+        'vipLevel',
+        'isVip',
+        'fameLevel',
+        'totalFamePoints',
+        'currentLevel',
+        'levelProgress',
+        'unlockedBadges',
+        'unlockedAvatars',
+        'lastPerformanceScore',
+        'phone'
+      ];
+    }
+
+    function userPrivilegeFieldsUnchanged(prevData, nextData) {
+      return (
+        !nextData.keys().hasAny(['vipLevel'])
+        || (prevData.keys().hasAny(['vipLevel']) && nextData.vipLevel == prevData.vipLevel)
+      )
+        && (
+          !nextData.keys().hasAny(['isVip'])
+          || (prevData.keys().hasAny(['isVip']) && nextData.isVip == prevData.isVip)
+        )
+        && (
+          !nextData.keys().hasAny(['fameLevel'])
+          || (prevData.keys().hasAny(['fameLevel']) && nextData.fameLevel == prevData.fameLevel)
+        )
+        && (
+          !nextData.keys().hasAny(['totalFamePoints'])
+          || (prevData.keys().hasAny(['totalFamePoints']) && nextData.totalFamePoints == prevData.totalFamePoints)
+        )
+        && (
+          !nextData.keys().hasAny(['currentLevel'])
+          || (prevData.keys().hasAny(['currentLevel']) && nextData.currentLevel == prevData.currentLevel)
+        )
+        && (
+          !nextData.keys().hasAny(['levelProgress'])
+          || (prevData.keys().hasAny(['levelProgress']) && nextData.levelProgress == prevData.levelProgress)
+        )
+        && (
+          !nextData.keys().hasAny(['unlockedBadges'])
+          || (prevData.keys().hasAny(['unlockedBadges']) && nextData.unlockedBadges == prevData.unlockedBadges)
+        )
+        && (
+          !nextData.keys().hasAny(['unlockedAvatars'])
+          || (prevData.keys().hasAny(['unlockedAvatars']) && nextData.unlockedAvatars == prevData.unlockedAvatars)
+        )
+        && (
+          !nextData.keys().hasAny(['lastPerformanceScore'])
+          || (prevData.keys().hasAny(['lastPerformanceScore']) && nextData.lastPerformanceScore == prevData.lastPerformanceScore)
+        )
+        && (
+          !nextData.keys().hasAny(['phone'])
+          || (prevData.keys().hasAny(['phone']) && nextData.phone == prevData.phone)
         );
     }
 
@@ -185,7 +438,11 @@ service cloud.firestore {
 
     // User profiles
     match /users/{uid} {
-      allow read: if isAuthed();
+      allow read: if isAuthed()
+        && (
+          request.auth.uid == uid
+          || isDirectoryModerator()
+        );
       allow create: if isAuthed()
         && request.auth.uid == uid
         && (
@@ -195,11 +452,14 @@ service cloud.firestore {
             && request.resource.data.uid == uid
           )
         )
+        && !request.resource.data.keys().hasAny(userPrivilegeManagedKeys())
         && hasSafeClientSubscriptionDefaults(request.resource.data)
         && hasSafeClientOrganizationDefaults(request.resource.data);
       allow update: if isAuthed()
         && request.auth.uid == uid
-        && !request.resource.data.diff(resource.data).changedKeys().hasAny(['subscription', 'organization']);
+        && !request.resource.data.diff(resource.data).changedKeys().hasAny(['subscription', 'organization'])
+        && !request.resource.data.diff(resource.data).changedKeys().hasAny(userPrivilegeManagedKeys())
+        && userPrivilegeFieldsUnchanged(resource.data, request.resource.data);
       allow delete: if false;
     }
 
@@ -480,15 +740,24 @@ service cloud.firestore {
           && isAuthed()
           && isValidRoomUserId(roomUserId, request.resource.data.roomCode, request.resource.data.uid)
           && request.resource.data.uid == request.auth.uid
-          && roomExists(request.resource.data.roomCode);
+          && roomExists(request.resource.data.roomCode)
+          && request.resource.data.keys().hasOnly(roomUserCreateAllowedKeys())
+          && roomUserPrivilegeProjectionWithinAccount(request.auth.uid, request.resource.data)
+          && !request.resource.data.keys().hasAny(['phone']);
 
         allow update: if isBrossApp(appId)
           && isAuthed()
           && isValidRoomUserId(roomUserId, request.resource.data.roomCode, request.resource.data.uid)
           && request.resource.data.roomCode == resource.data.roomCode
           && request.resource.data.uid == resource.data.uid
+          && roomUserPhoneNotIntroducedOrModified(resource.data, request.resource.data)
           && (
-            request.auth.uid == resource.data.uid
+            (
+              request.auth.uid == resource.data.uid
+              && roomUserSelfChangedKeysAllowed(resource.data, request.resource.data)
+              && roomUserPointsDeltaWithinLimit(resource.data, request.resource.data)
+              && roomUserPrivilegeProjectionWithinAccount(request.auth.uid, request.resource.data)
+            )
             || isRoomHost(resource.data.roomCode)
           );
 
@@ -573,22 +842,190 @@ service cloud.firestore {
 
       match /chat_messages/{docId} {
         allow create: if isBrossApp(appId)
-          && isAuthed()
-          && request.resource.data.roomCode is string;
+          && isNonAnonymousAuthed()
+          && request.resource.data.roomCode is string
+          && roomExists(request.resource.data.roomCode)
+          && request.resource.data.uid is string
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.user is string
+          && request.resource.data.user.size() > 0
+          && request.resource.data.user.size() <= 80
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 300
+          && (
+            !request.resource.data.keys().hasAny(['channel'])
+            || (
+              request.resource.data.channel is string
+              && request.resource.data.channel in ['lounge', 'host', 'dm']
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['toUid'])
+            || (
+              request.resource.data.toUid is string
+              && request.resource.data.toUid.size() > 0
+              && request.resource.data.toUid.size() <= 180
+            )
+          );
         allow update, delete: if false;
       }
 
       match /activities/{docId} {
         allow create: if isBrossApp(appId)
           && isAuthed()
-          && request.resource.data.roomCode is string;
+          && request.resource.data.roomCode is string
+          && roomExists(request.resource.data.roomCode)
+          && request.resource.data.keys().hasOnly(activityAllowedKeys())
+          && request.resource.data.user is string
+          && request.resource.data.user.size() > 0
+          && request.resource.data.user.size() <= 80
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 300
+          && (
+            !request.resource.data.keys().hasAny(['icon'])
+            || (
+              request.resource.data.icon is string
+              && request.resource.data.icon.size() > 0
+              && request.resource.data.icon.size() <= 32
+            )
+          )
+          && (
+            isRoomHost(request.resource.data.roomCode)
+            || (
+              request.resource.data.keys().hasAny(['uid'])
+              && request.resource.data.uid is string
+              && request.resource.data.uid == request.auth.uid
+            )
+          );
         allow update, delete: if false;
       }
 
       match /reactions/{docId} {
         allow create: if isBrossApp(appId)
           && isAuthed()
-          && request.resource.data.roomCode is string;
+          && request.resource.data.roomCode is string
+          && roomExists(request.resource.data.roomCode)
+          && request.resource.data.keys().hasOnly(reactionAllowedKeys())
+          && request.resource.data.type is string
+          && request.resource.data.type.size() > 0
+          && request.resource.data.type.size() <= 64
+          && request.resource.data.userName is string
+          && request.resource.data.userName.size() > 0
+          && request.resource.data.userName.size() <= 80
+          && (
+            !request.resource.data.keys().hasAny(['count'])
+            || (
+              request.resource.data.count is number
+              && request.resource.data.count >= 0
+              && request.resource.data.count <= 500
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['uid'])
+            || (
+              request.resource.data.uid == null
+              || (
+                request.resource.data.uid is string
+                && (
+                  request.resource.data.uid == request.auth.uid
+                  || isRoomHost(request.resource.data.roomCode)
+                )
+              )
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['avatar'])
+            || (
+              request.resource.data.avatar is string
+              && request.resource.data.avatar.size() > 0
+              && request.resource.data.avatar.size() <= 64
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['layer'])
+            || (
+              request.resource.data.layer is string
+              && request.resource.data.layer.size() > 0
+              && request.resource.data.layer.size() <= 64
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['url'])
+            || (
+              request.resource.data.url is string
+              && request.resource.data.url.size() > 0
+              && request.resource.data.url.size() <= 4096
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['storagePath'])
+            || (
+              request.resource.data.storagePath is string
+              && request.resource.data.storagePath.size() > 0
+              && request.resource.data.storagePath.size() <= 512
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['mode'])
+            || (
+              request.resource.data.mode is string
+              && request.resource.data.mode.size() > 0
+              && request.resource.data.mode.size() <= 64
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['questionId'])
+            || (
+              request.resource.data.questionId is string
+              && request.resource.data.questionId.size() > 0
+              && request.resource.data.questionId.size() <= 180
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['sessionId'])
+            || (
+              request.resource.data.sessionId is string
+              && request.resource.data.sessionId.size() > 0
+              && request.resource.data.sessionId.size() <= 180
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['team'])
+            || (
+              request.resource.data.team is string
+              && request.resource.data.team in ['left', 'right']
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['isFree'])
+            || request.resource.data.isFree is bool
+          )
+          && (
+            !request.resource.data.keys().hasAny(['isVote'])
+            || request.resource.data.isVote is bool
+          )
+          && (
+            !request.resource.data.keys().hasAny(['isVip'])
+            || request.resource.data.isVip is bool
+          )
+          && (
+            !request.resource.data.keys().hasAny(['multiplier'])
+            || (
+              request.resource.data.multiplier is number
+              && request.resource.data.multiplier >= 1
+              && request.resource.data.multiplier <= 100
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(['val'])
+            || (
+              request.resource.data.val is int
+              && request.resource.data.val >= -1
+              && request.resource.data.val <= 32
+            )
+          );
         allow update: if false;
         allow delete: if false;
       }

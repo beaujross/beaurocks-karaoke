@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+    auth,
     db,
     collection,
     query,
@@ -152,12 +153,18 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
     const sendHostChatMessage = useCallback(async (text) => {
         const message = (text ?? chatDraft).trim();
         if (!message || !roomCode) return;
+        const senderUid = String(auth?.currentUser?.uid || '').trim();
+        if (!senderUid) {
+            toast('Host account session required for chat');
+            return;
+        }
         try {
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'), {
                 roomCode,
                 text: message,
                 user: hostName || 'Host',
                 avatar: EMOJI.mic,
+                uid: senderUid,
                 isHost: true,
                 timestamp: serverTimestamp()
             });
@@ -175,12 +182,18 @@ const useHostChat = ({ roomCode, room, settingsTab, hostName, toast }) => {
     const sendHostDmMessage = useCallback(async (targetUid, text) => {
         const message = (text ?? '').trim();
         if (!message || !roomCode || !targetUid) return;
+        const senderUid = String(auth?.currentUser?.uid || '').trim();
+        if (!senderUid) {
+            toast('Host account session required for chat');
+            return;
+        }
         try {
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chat_messages'), {
                 roomCode,
                 text: message,
                 user: hostName || 'Host',
                 avatar: EMOJI.mic,
+                uid: senderUid,
                 isHost: true,
                 toUid: targetUid,
                 channel: 'dm',

@@ -125,7 +125,7 @@ const EntityActionsCard = ({
     );
   }, [canAct, canRsvp, uid, targetType, targetId]);
 
-  const requireAuthMessage = "Create an account to follow, RSVP, check in, and review.";
+  const requireAuthMessage = "Create your BeauRocks account to follow, RSVP, check in, and review.";
   const requireAuth = (intent = "continue", target = targetType, id = targetId) => {
     if (canAct) return true;
     return !!authFlow?.requireFullAuth?.({
@@ -143,7 +143,7 @@ const EntityActionsCard = ({
     return (
       <aside className="mk3-actions-card">
         <h4>Social Actions</h4>
-        <p>Create an account to unlock follow, RSVP, check-ins, reviews, and reminders.</p>
+        <p>Create your BeauRocks account to unlock follow, RSVP, check-ins, reviews, and reminders.</p>
         <button
           type="button"
           onClick={() => authFlow?.requireFullAuth?.({
@@ -160,7 +160,7 @@ const EntityActionsCard = ({
             },
           })}
         >
-          Create Account For Social Actions
+          Create BeauRocks Account
         </button>
       </aside>
     );

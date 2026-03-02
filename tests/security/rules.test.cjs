@@ -22,6 +22,12 @@ let testEnv;
 
 const roomPath = (roomCode = ROOM_CODE) => `${ROOT}/rooms/${roomCode}`;
 const roomUserPath = (roomCode, uid) => `${ROOT}/room_users/${roomCode}_${uid}`;
+const nonAnonymousContext = (uid) => testEnv.authenticatedContext(uid, {
+  firebase: { sign_in_provider: "password" },
+});
+const anonymousContext = (uid) => testEnv.authenticatedContext(uid, {
+  firebase: { sign_in_provider: "anonymous" },
+});
 
 async function resetState() {
   await testEnv.clearFirestore();
@@ -83,6 +89,32 @@ async function run() {
       await assertFails(db.doc(`users/${GUEST_UID}`).get());
     }],
 
+    ["firestore: user can read own profile", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(`users/${GUEST_UID}`).set({
+          uid: GUEST_UID,
+          name: "Guest",
+          vipLevel: 0,
+        });
+      });
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(db.doc(`users/${GUEST_UID}`).get());
+    }],
+
+    ["firestore: user cannot read another user's profile", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(`users/${HOST_UID}`).set({
+          uid: HOST_UID,
+          name: "Host",
+          vipLevel: 1,
+        });
+      });
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(db.doc(`users/${HOST_UID}`).get());
+    }],
+
     ["firestore: public can read canonical song lyrics", async () => {
       await testEnv.withSecurityRulesDisabled(async (context) => {
         const db = context.firestore();
@@ -110,7 +142,29 @@ async function run() {
       await assertSucceeds(
         db.doc(`users/${GUEST_UID}`).set({
           name: "Guest",
+          avatar: "😀",
+        })
+      );
+    }],
+
+    ["firestore: user cannot set own vipLevel directly", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`users/${GUEST_UID}`).set({
+          name: "Guest",
           vipLevel: 1,
+          isVip: true,
+        })
+      );
+    }],
+
+    ["firestore: user cannot set own fame fields directly", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`users/${GUEST_UID}`).set({
+          name: "Guest",
+          totalFamePoints: 9000,
+          currentLevel: 12,
         })
       );
     }],
@@ -398,6 +452,70 @@ async function run() {
       );
     }],
 
+    ["firestore: user cannot self-escalate room_user VIP projection", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          name: "Guest",
+          isVip: true,
+          vipLevel: 1,
+        })
+      );
+    }],
+
+    ["firestore: user cannot update room_user with unknown field", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          name: "Guest",
+          points: 100,
+        })
+      );
+      await assertFails(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).update({
+          adminOverride: true,
+        })
+      );
+    }],
+
+    ["firestore: user can update room_user points within delta limit", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          name: "Guest",
+          points: 100,
+        })
+      );
+      await assertSucceeds(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).update({
+          points: 9500,
+        })
+      );
+    }],
+
+    ["firestore: user cannot update room_user points with extreme jump", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          name: "Guest",
+          points: 100,
+        })
+      );
+      await assertFails(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).update({
+          points: 30000,
+        })
+      );
+    }],
+
     ["firestore: host can delete another user in room", async () => {
       await testEnv.withSecurityRulesDisabled(async (context) => {
         const db = context.firestore();
@@ -409,6 +527,181 @@ async function run() {
       });
       const db = testEnv.authenticatedContext(HOST_UID).firestore();
       await assertSucceeds(db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).delete());
+    }],
+
+    ["firestore: non-anonymous account can create chat message", async () => {
+      const db = nonAnonymousContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`${ROOT}/chat_messages/chat_1`).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          user: "Guest",
+          text: "Hello room",
+          channel: "lounge",
+        })
+      );
+    }],
+
+    ["firestore: user cannot create room_user doc with phone field", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          name: "Guest",
+          phone: "+12065550101",
+        })
+      );
+    }],
+
+    ["firestore: audience user can create activity with matching uid", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`${ROOT}/activities/activity_1`).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          user: "Guest",
+          text: "joined the party",
+          icon: "wave",
+        })
+      );
+    }],
+
+    ["firestore: audience user cannot create activity without uid", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/activities/activity_2`).set({
+          roomCode: ROOM_CODE,
+          user: "Guest",
+          text: "joined the party",
+          icon: "wave",
+        })
+      );
+    }],
+
+    ["firestore: audience user cannot spoof activity uid", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/activities/activity_3`).set({
+          roomCode: ROOM_CODE,
+          uid: OTHER_UID,
+          user: "Guest",
+          text: "joined the party",
+          icon: "wave",
+        })
+      );
+    }],
+
+    ["firestore: host can create activity without uid", async () => {
+      const db = testEnv.authenticatedContext(HOST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`${ROOT}/activities/activity_host`).set({
+          roomCode: ROOM_CODE,
+          user: "HOST",
+          text: "triggered a mode change",
+          icon: "GAME",
+        })
+      );
+    }],
+
+    ["firestore: audience user can create reaction with matching uid", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`${ROOT}/reactions/reaction_1`).set({
+          roomCode: ROOM_CODE,
+          type: "heart",
+          count: 1,
+          uid: GUEST_UID,
+          userName: "Guest",
+          avatar: "😀",
+          isFree: true,
+        })
+      );
+    }],
+
+    ["firestore: audience user cannot spoof reaction uid", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/reactions/reaction_2`).set({
+          roomCode: ROOM_CODE,
+          type: "heart",
+          count: 1,
+          uid: OTHER_UID,
+          userName: "Guest",
+          avatar: "😀",
+          isFree: true,
+        })
+      );
+    }],
+
+    ["firestore: reaction requires existing room", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/reactions/reaction_3`).set({
+          roomCode: "MISSING",
+          type: "heart",
+          count: 1,
+          uid: GUEST_UID,
+          userName: "Guest",
+          avatar: "😀",
+          isFree: true,
+        })
+      );
+    }],
+
+    ["firestore: reaction unknown key is denied", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/reactions/reaction_4`).set({
+          roomCode: ROOM_CODE,
+          type: "heart",
+          count: 1,
+          uid: GUEST_UID,
+          userName: "Guest",
+          avatar: "😀",
+          isFree: true,
+          pointsGranted: 5000,
+        })
+      );
+    }],
+
+    ["firestore: anonymous auth cannot create chat message", async () => {
+      const db = anonymousContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/chat_messages/chat_anon`).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          user: "Guest",
+          text: "Hi from anon",
+          channel: "lounge",
+        })
+      );
+    }],
+
+    ["firestore: chat sender uid must match authenticated uid", async () => {
+      const db = nonAnonymousContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/chat_messages/chat_spoof`).set({
+          roomCode: ROOM_CODE,
+          uid: OTHER_UID,
+          user: "Spoof",
+          text: "I should not send this",
+          channel: "lounge",
+        })
+      );
+    }],
+
+    ["firestore: chat requires an existing room", async () => {
+      const db = nonAnonymousContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/chat_messages/chat_missing_room`).set({
+          roomCode: "MISSING",
+          uid: GUEST_UID,
+          user: "Guest",
+          text: "No room",
+          channel: "lounge",
+        })
+      );
     }],
 
     ["storage: host can upload allowed audio/video", async () => {

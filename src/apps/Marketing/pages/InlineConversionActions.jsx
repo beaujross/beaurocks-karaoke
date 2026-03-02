@@ -181,7 +181,7 @@ const InlineConversionActions = ({ entry = {}, session, navigate, authFlow }) =>
             },
           })}
         >
-          Create Account
+          Create BeauRocks Account
         </button>
       </div>
     );

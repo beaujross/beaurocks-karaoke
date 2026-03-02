@@ -9853,17 +9853,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const getRoomUserTight15 = async (roomUser = {}) => {
         const fallback = sanitizeTight15List(roomUser?.tight15 || roomUser?.tight15Temp || []);
-        const uid = resolveRoomUserUid(roomUser);
-        if (!uid) return fallback;
-        try {
-            const snap = await getDoc(doc(db, 'users', uid));
-            if (!snap.exists()) return fallback;
-            const profileList = sanitizeTight15List(snap.data()?.tight15 || []);
-            return profileList.length ? profileList : fallback;
-        } catch (error) {
-            hostLogger.debug('Failed to load singer Tight 15', error);
-            return fallback;
-        }
+        return fallback;
     };
 
     const queueTight15EntryForSinger = async ({ roomUser, entry, sourceLabel = 'Tight 15' }) => {

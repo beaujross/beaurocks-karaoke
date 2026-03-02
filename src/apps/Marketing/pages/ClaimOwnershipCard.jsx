@@ -43,7 +43,7 @@ const ClaimOwnershipCard = ({ listingType = "venue", listingId = "", session, au
           },
         },
       });
-      setStatus("Create an account to submit claim requests.");
+      setStatus("Create your BeauRocks account to submit claim requests.");
       return;
     }
     setBusy(true);
@@ -83,7 +83,7 @@ const ClaimOwnershipCard = ({ listingType = "venue", listingId = "", session, au
     return (
       <aside className="mk3-actions-card">
         <h4>Claim This Listing</h4>
-        <p>Create an account to submit ownership claims and unlock publish privileges.</p>
+        <p>Create your BeauRocks account to submit ownership claims and unlock publish privileges.</p>
         <button
           type="button"
           onClick={() => authFlow?.requireFullAuth?.({
@@ -96,7 +96,7 @@ const ClaimOwnershipCard = ({ listingType = "venue", listingId = "", session, au
             },
           })}
         >
-          Create Account To Claim
+          Create BeauRocks Account
         </button>
       </aside>
     );

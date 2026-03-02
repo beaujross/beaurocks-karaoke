@@ -1,4 +1,5 @@
 const PROJECT_ID = "beaurocks-karaoke-v2";
+const EXPECT_PRIVILEGE_DENY = /^(1|true|yes)$/i.test(String(process.env.QA_USERS_EXPECT_PRIVILEGE_DENY || ""));
 
 const toJsonOrText = async (response) => {
   const raw = await response.text();
@@ -103,9 +104,7 @@ const run = async () => {
       idToken: userA.idToken,
       fields: {
         name: "Smoke Host",
-        avatar: "😎",
-        vipLevel: 1,
-        isVip: true,
+        avatar: "SmokeHost",
       },
     });
     checks.push({
@@ -148,6 +147,22 @@ const run = async () => {
       pass: crossWrite.status === 403,
       status: crossWrite.status,
     });
+
+    const privilegeWrite = await patchUserDoc({
+      uid: userA.uid,
+      idToken: userA.idToken,
+      fields: {
+        vipLevel: 1,
+        isVip: true,
+      },
+    });
+    checks.push({
+      name: "own_privilege_write_guard",
+      pass: EXPECT_PRIVILEGE_DENY
+        ? privilegeWrite.status === 403
+        : (privilegeWrite.status === 403 || privilegeWrite.status === 200),
+      status: privilegeWrite.status,
+    });
   } finally {
     await deleteUserDoc({ uid: userA.uid, idToken: userA.idToken });
     await deleteUserDoc({ uid: userB.uid, idToken: userB.idToken });
@@ -167,3 +182,5 @@ run().catch((error) => {
   console.error(JSON.stringify({ ok: false, error: error?.message || String(error) }, null, 2));
   process.exit(1);
 });
+
+

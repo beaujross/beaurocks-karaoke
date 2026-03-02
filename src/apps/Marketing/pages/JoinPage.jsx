@@ -47,8 +47,14 @@ const JoinPage = ({ navigate, id = "" }) => {
     setStatusTone("error");
     (async () => {
       try {
-        const payload = await directoryActions.previewDirectoryRoomSessionByCode({ roomCode: token });
-        if (!cancelled) setPreview(payload?.session || null);
+        const payload = await directoryActions.resolveJoinRoomCodePreview({ roomCode: token });
+        if (!cancelled) {
+          setPreview(payload || null);
+          if (payload?.previewType === "active_room") {
+            setStatus("Active room found. You can join now.");
+            setStatusTone("warning");
+          }
+        }
       } catch (error) {
         if (!cancelled) {
           setPreview(null);
@@ -93,9 +99,11 @@ const JoinPage = ({ navigate, id = "" }) => {
             <span>{preview.startsAtMs ? formatDateTime(preview.startsAtMs) : "Time TBD"}</span>
             <span>{preview.venueName || preview.hostName || preview.visibility || "Private session"}</span>
             <div className="mk3-actions-inline">
-              <button type="button" onClick={() => navigate("session", preview.id)}>
-                Open Session Details
-              </button>
+              {preview.previewType === "directory_session" && preview.id ? (
+                <button type="button" onClick={() => navigate("session", preview.id)}>
+                  Open Session Details
+                </button>
+              ) : null}
               <button type="button" onClick={joinOnMobile}>Join On Mobile</button>
             </div>
           </div>

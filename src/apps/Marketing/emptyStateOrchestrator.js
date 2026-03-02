@@ -16,7 +16,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
       title: "Some listings are private right now.",
       description: "Sign in to keep going, or switch to broad public filters.",
       actions: [
-        { id: "auth", label: canUseRestrictedActions ? "Open Dashboard" : "Create account to continue", intent: "auth" },
+        { id: "auth", label: canUseRestrictedActions ? "Open Dashboard" : "Create BeauRocks account to continue", intent: "auth" },
         { id: "discover_reset", label: "Retry with public scope", intent: "discover_reset" },
       ],
     };
@@ -31,7 +31,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
         { id: "discover_reset", label: "Show all listings", intent: "discover_reset" },
         canUseRestrictedActions
           ? { id: "submit_listing", label: "Submit listing", intent: "submit_listing" }
-          : { id: "auth", label: "Create account to submit", intent: "auth" },
+          : { id: "auth", label: "Create BeauRocks account to submit", intent: "auth" },
       ],
     };
   }
@@ -43,7 +43,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
         { id: "discover", label: "Open discover", intent: "discover" },
         canUseRestrictedActions
           ? { id: "submit_listing", label: "Submit listing", intent: "submit_listing" }
-          : { id: "auth", label: "Create account to submit", intent: "auth" },
+          : { id: "auth", label: "Create BeauRocks account to submit", intent: "auth" },
       ],
     };
   }
@@ -55,7 +55,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
         { id: "discover", label: "Open discover", intent: "discover" },
         canUseRestrictedActions
           ? { id: "submit_listing", label: "Submit venue", intent: "submit_listing" }
-          : { id: "auth", label: "Create account to submit", intent: "auth" },
+          : { id: "auth", label: "Create BeauRocks account to submit", intent: "auth" },
       ],
     };
   }
@@ -77,7 +77,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
         { id: "discover", label: "Open discover", intent: "discover" },
         canUseRestrictedActions
           ? { id: "profile", label: "Open dashboard", intent: "profile" }
-          : { id: "auth", label: "Create account", intent: "auth" },
+          : { id: "auth", label: "Create BeauRocks account", intent: "auth" },
       ],
     };
   }
@@ -99,7 +99,7 @@ export const getEmptyStateConfig = ({ context = "", hasFilters = false, session 
         { id: "discover", label: "Open discover", intent: "discover" },
         canUseRestrictedActions
           ? { id: "profile", label: "Open dashboard", intent: "profile" }
-          : { id: "auth", label: "Create account", intent: "auth" },
+          : { id: "auth", label: "Create BeauRocks account", intent: "auth" },
       ],
     };
   }

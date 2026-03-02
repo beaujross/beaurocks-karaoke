@@ -319,6 +319,7 @@ const escapeHtml = (value = "") =>
 
 const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const mapsApiKey = String(options?.mapsApiKey || "").trim();
+  const allowGoogleImageApis = options?.allowGoogleImageApis !== false;
   const listingType = normalizeListingType(entry?.listingType || fallbackType);
   const meta = MAP_TYPE_META[listingType] || MAP_TYPE_META.venue;
   const location = options?.resolvedLocation || normalizeLocation(entry);
@@ -333,11 +334,17 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const explicitImageCandidates = resolveListingImageCandidates(entry, mediaType, { includeFallback: false })
     .filter((url) => !isScreenPlaceholderImage(url));
   const addressLine = toAddressLine({ address1, city, state, postalCode, country });
-  const venueImageUrl = buildStreetViewImageUrl({ location, addressLine, mapsApiKey });
-  const mapFallbackImageUrl = buildStaticMapImageUrl({ location, mapsApiKey });
+  const venueImageUrl = allowGoogleImageApis
+    ? buildStreetViewImageUrl({ location, addressLine, mapsApiKey })
+    : "";
+  const mapFallbackImageUrl = allowGoogleImageApis
+    ? buildStaticMapImageUrl({ location, mapsApiKey })
+    : "";
   const publicLocationFallbackUrl = buildPublicLocationImageUrl({ location });
   const hardFallbackImageUrl = "/images/marketing/venue-location-fallback.svg";
-  const googlePhotoUrls = buildGooglePlacePhotoUrls({ entry, mapsApiKey });
+  const googlePhotoUrls = allowGoogleImageApis
+    ? buildGooglePlacePhotoUrls({ entry, mapsApiKey })
+    : [];
   const imageCandidates = dedupeUrls([
     ...explicitImageCandidates,
     ...googlePhotoUrls,
@@ -531,6 +538,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     enabled: shouldLoadMaps,
     apiKey: String(mapsConfig?.apiKey || ""),
   });
+  // Defer Google photo/static image traffic until the interactive map script is ready.
+  const allowGoogleImageApis = mapEnabled && mapsLoaded;
   const venueLocationIndex = useMemo(
     () => buildVenueLocationIndex(Array.isArray(rawData?.venues) ? rawData.venues : []),
     [rawData]
@@ -564,6 +573,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       const resolved = resolveListingLocationData(entry, venueLocationIndex);
       next.push(toListing(entry, "event", {
         mapsApiKey,
+        allowGoogleImageApis,
         resolvedLocation: resolved.location,
         resolvedLocationFields: resolved.locationFields,
         locationSource: resolved.locationSource,
@@ -573,6 +583,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       const resolved = resolveListingLocationData(entry, venueLocationIndex);
       next.push(toListing(entry, "room_session", {
         mapsApiKey,
+        allowGoogleImageApis,
         resolvedLocation: resolved.location,
         resolvedLocationFields: resolved.locationFields,
         locationSource: resolved.locationSource,
@@ -582,13 +593,14 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       const resolved = resolveListingLocationData(entry, venueLocationIndex);
       next.push(toListing(entry, "venue", {
         mapsApiKey,
+        allowGoogleImageApis,
         resolvedLocation: resolved.location,
         resolvedLocationFields: resolved.locationFields,
         locationSource: resolved.locationSource,
       }));
     });
     return next;
-  }, [data.events, data.sessions, data.venues, mapsApiKey, venueLocationIndex]);
+  }, [data.events, data.sessions, data.venues, mapsApiKey, allowGoogleImageApis, venueLocationIndex]);
 
   const hostFacetOptions = useMemo(() => {
     const fromServer = Array.isArray(facets?.host) ? facets.host : [];

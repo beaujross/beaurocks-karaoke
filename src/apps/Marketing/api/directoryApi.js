@@ -40,6 +40,7 @@ import {
 
 const mapDocs = (snap) => snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
 const BASE_ACCESS = Object.freeze({ isModerator: false, isAdmin: false, roles: [] });
+const APP_ROOM_ROOT = ["artifacts", "bross-app", "public", "data", "rooms"];
 
 const normalizeAccess = (payload = {}) => {
   const roles = Array.isArray(payload?.roles)
@@ -66,6 +67,47 @@ const isIndexRequiredError = (error) => {
     message.includes("requires an index")
     || (code.includes("failed-precondition") && message.includes("index"))
   );
+};
+
+const normalizeJoinRoomCode = (value = "") =>
+  String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, "")
+    .slice(0, 32);
+
+const asMillis = (value) => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value && typeof value.toMillis === "function") {
+    const ms = Number(value.toMillis());
+    return Number.isFinite(ms) ? ms : 0;
+  }
+  const seconds = Number(value?.seconds ?? value?._seconds ?? 0);
+  const nanos = Number(value?.nanoseconds ?? value?._nanoseconds ?? 0);
+  if (!Number.isFinite(seconds)) return 0;
+  return Math.max(0, Math.round((seconds * 1000) + (nanos / 1e6)));
+};
+
+const buildActiveRoomJoinPreview = ({ roomCode = "", roomData = {} } = {}) => {
+  const code = normalizeJoinRoomCode(roomCode);
+  const mode = String(roomData?.activeMode || "karaoke").trim() || "karaoke";
+  const isPaused = Boolean(roomData?.paused || roomData?.isPaused || mode.toLowerCase() === "paused");
+  return {
+    id: `room:${code}`,
+    title: roomData?.title || roomData?.name || `Room ${code}`,
+    description: "",
+    startsAtMs: asMillis(roomData?.updatedAt || roomData?.createdAt),
+    endsAtMs: 0,
+    hostUid: String(roomData?.hostUid || ""),
+    hostName: String(roomData?.hostName || ""),
+    venueId: "",
+    venueName: isPaused ? "Paused room" : `Live ${mode.replace(/_/g, " ")}`,
+    visibility: "private",
+    roomCode: code,
+    previewType: "active_room",
+    activeMode: mode,
+    isPaused,
+  };
 };
 
 const subscribeWithFallback = ({
@@ -366,6 +408,39 @@ export const fetchEntityDoc = async ({ collectionName, id }) => {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 };
 
+export const resolveJoinRoomCodePreview = async ({ roomCode = "" } = {}) => {
+  const code = normalizeJoinRoomCode(roomCode);
+  if (!code) {
+    const err = new Error("roomCode is required.");
+    err.code = "invalid-argument";
+    throw err;
+  }
+  try {
+    const payload = await previewDirectoryRoomSessionByCode({ roomCode: code });
+    if (payload?.session) {
+      return {
+        ...payload.session,
+        roomCode: code,
+        previewType: "directory_session",
+      };
+    }
+  } catch (previewError) {
+    const roomSnap = await getDoc(doc(db, ...APP_ROOM_ROOT, code));
+    if (roomSnap.exists()) {
+      return buildActiveRoomJoinPreview({ roomCode: code, roomData: roomSnap.data() || {} });
+    }
+    throw previewError;
+  }
+
+  const roomSnap = await getDoc(doc(db, ...APP_ROOM_ROOT, code));
+  if (roomSnap.exists()) {
+    return buildActiveRoomJoinPreview({ roomCode: code, roomData: roomSnap.data() || {} });
+  }
+  const err = new Error("Room code not found.");
+  err.code = "not-found";
+  throw err;
+};
+
 export const directoryActions = {
   getDirectoryMapsConfig,
   upsertDirectoryProfile,
@@ -388,6 +463,7 @@ export const directoryActions = {
   listCatalogContributionQueue,
   resolveCatalogContribution,
   previewDirectoryRoomSessionByCode,
+  resolveJoinRoomCodePreview,
   submitMarketingWaitlist,
   redeemMarketingPrivateHostAccess,
   setMarketingPrivateHostAccess,

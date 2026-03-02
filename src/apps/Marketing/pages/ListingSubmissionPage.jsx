@@ -54,7 +54,7 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
           },
         },
       });
-      setStatus("Create an account to submit listings.");
+      setStatus("Create your BeauRocks account to submit listings.");
       return;
     }
     setBusy(true);
@@ -117,7 +117,7 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
         </p>
         {!canSubmit && (
           <div className="mk3-actions-block">
-            <div className="mk3-status">Create an account to submit and manage listings.</div>
+            <div className="mk3-status">Create your BeauRocks account to submit and manage listings.</div>
             <button
               type="button"
               onClick={() => authFlow?.requireFullAuth?.({
@@ -133,7 +133,7 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
                 },
               })}
             >
-              Create Account To Submit
+              Create BeauRocks Account
             </button>
           </div>
         )}

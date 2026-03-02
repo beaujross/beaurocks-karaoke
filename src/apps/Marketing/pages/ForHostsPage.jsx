@@ -98,7 +98,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
           },
         },
       });
-      setStatus("Create an account to launch room setup.");
+      setStatus("Create your BeauRocks account to launch room setup.");
       return;
     }
     if (!hostSetupHref) return;

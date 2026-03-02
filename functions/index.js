@@ -5891,6 +5891,48 @@ exports.getMyDirectoryAccess = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.setMyVipAccountStatus = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "set_my_vip_account_status", { perMinute: 24, perHour: 160 });
+  enforceAppCheckIfEnabled(request, "set_my_vip_account_status");
+  const uid = requireAuth(request, "Sign in required.");
+  const source = normalizeDirectoryToken(request.data?.source || "audience_app", 60) || "audience_app";
+  const qaBypass = !!request.data?.qaBypass;
+  const vipLevel = clampNumber(request.data?.vipLevel, 1, 5, 1);
+
+  let phone = "";
+  if (qaBypass) {
+    const isSuper = await isSuperAdminUid(uid);
+    if (!isSuper) {
+      throw new HttpsError("permission-denied", "QA VIP bypass requires super admin.");
+    }
+  } else {
+    const userRecord = await admin.auth().getUser(uid);
+    phone = normalizeDirectoryPhone(userRecord?.phoneNumber || "");
+    if (!phone) {
+      throw new HttpsError("failed-precondition", "Phone verification required before VIP unlock.");
+    }
+  }
+
+  await admin.firestore().collection("users").doc(uid).set({
+    vipLevel,
+    isVip: vipLevel > 0,
+    ...(phone ? { phone } : {}),
+    vipStatusSource: source,
+    vipStatusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return {
+    ok: true,
+    uid,
+    vipLevel,
+    isVip: vipLevel > 0,
+    phoneVerified: !!phone,
+    mode: qaBypass ? "qa_bypass" : "phone_verified",
+    source,
+  };
+});
+
 exports.getDirectoryMapsConfig = onCall(
   { cors: true, secrets: [GOOGLE_MAPS_API_KEY] },
   async (request) => {

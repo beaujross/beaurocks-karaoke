@@ -101,7 +101,7 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
           },
         },
       });
-      setStatus("Create an account to suggest or update cadence.");
+      setStatus("Create your BeauRocks account to suggest or update cadence.");
       return;
     }
     setBusy(true);
@@ -158,7 +158,7 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
       </div>
       {!canSubmit && (
         <div className="mk3-actions-block">
-          <div className="mk3-status">Create an account to submit cadence updates.</div>
+          <div className="mk3-status">Create your BeauRocks account to submit cadence updates.</div>
           <button
             type="button"
             onClick={() => authFlow?.requireFullAuth?.({
@@ -175,7 +175,7 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
               },
             })}
           >
-            Create Account To Update
+            Create BeauRocks Account
           </button>
         </div>
       )}

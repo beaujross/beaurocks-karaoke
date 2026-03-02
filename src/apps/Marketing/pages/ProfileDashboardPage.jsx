@@ -268,7 +268,7 @@ const ProfileDashboardPage = ({ session, navigate }) => {
 
   const saveProfile = async () => {
     if (!canUseDashboard) {
-      setStatus("Create an account to edit your profile.");
+      setStatus("Create your BeauRocks account to edit your profile.");
       return;
     }
     const safeDisplayName = String(form.displayName || "").trim();

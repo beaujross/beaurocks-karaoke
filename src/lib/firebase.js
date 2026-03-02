@@ -356,6 +356,12 @@ const getMyDirectoryAccess = async (payload = {}) => {
   return data || null;
 };
 
+const setMyVipAccountStatus = async (payload = {}) => {
+  await requireAppCheckToken("setMyVipAccountStatus");
+  const data = await callFunction("setMyVipAccountStatus", payload || {});
+  return data || null;
+};
+
 const getDirectoryMapsConfig = async () => {
   const data = await callFunction("getDirectoryMapsConfig", {});
   return data || null;
@@ -677,18 +683,10 @@ const ensureUserProfile = async (uid, opts = {}) => {
         name,
         avatar,
         tight15: [],
-        vipLevel: 0,
         unlockedEmojis: [],
         firstPerformanceUnlocked: false,
         createdAt: serverTimestamp(),
-        
-        // Fame System Fields
-        totalFamePoints: 0,
-        currentLevel: 0,
-        levelProgress: 0,
-        unlockedBadges: [],
-        unlockedAvatars: [],
-        
+
         // Subscription (no pay-to-win multipliers - only convenience/features)
         subscription: {
           tier: 'free', // 'free' | 'vip' | 'host' | 'host_plus'
@@ -735,19 +733,6 @@ const ensureUserProfile = async (uid, opts = {}) => {
           favoriteGenre: false,
           socialLinks: [],
           recordLabel: false
-        },
-        
-        // Last Performance (for display/leaderboard)
-        lastPerformanceScore: {
-          gameType: null,
-          hypePoints: 0,
-          decibelScore: 0,
-          hostBonus: 1.0,
-          totalFame: 0,
-          timestamp: null,
-          levelUpOccurred: false,
-          previousLevel: 0,
-          newLevel: 0
         }
       });
       return;
@@ -756,17 +741,9 @@ const ensureUserProfile = async (uid, opts = {}) => {
     const data = snap.data() || {};
     const updates = { uid, name, avatar };
     if (!('tight15' in data)) updates.tight15 = [];
-    if (!('vipLevel' in data)) updates.vipLevel = 0;
     if (!('unlockedEmojis' in data)) updates.unlockedEmojis = [];
     if (!('firstPerformanceUnlocked' in data)) updates.firstPerformanceUnlocked = false;
     if (!('createdAt' in data)) updates.createdAt = serverTimestamp();
-    
-    // Add Fame System fields if not present
-    if (!('totalFamePoints' in data)) updates.totalFamePoints = 0;
-    if (!('currentLevel' in data)) updates.currentLevel = 0;
-    if (!('levelProgress' in data)) updates.levelProgress = 0;
-    if (!('unlockedBadges' in data)) updates.unlockedBadges = [];
-    if (!('unlockedAvatars' in data)) updates.unlockedAvatars = [];
     if (!('vipProfile' in data)) updates.vipProfile = {
       location: '',
       birthMonth: '',
@@ -794,17 +771,6 @@ const ensureUserProfile = async (uid, opts = {}) => {
       socialLinks: [],
       recordLabel: false
     };
-    if (!('lastPerformanceScore' in data)) updates.lastPerformanceScore = {
-      gameType: null,
-      hypePoints: 0,
-      decibelScore: 0,
-      hostBonus: 1.0,
-      totalFame: 0,
-      timestamp: null,
-      levelUpOccurred: false,
-      previousLevel: 0,
-      newLevel: 0
-    };
     
     await setDoc(userRef, updates, { merge: true });
   } catch (e) {
@@ -825,6 +791,7 @@ export {
   redeemMarketingPrivateHostAccess,
   setMarketingPrivateHostAccess,
   getMyDirectoryAccess,
+  setMyVipAccountStatus,
   getDirectoryMapsConfig,
   upsertDirectoryProfile,
   submitDirectoryListing,

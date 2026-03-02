@@ -29,8 +29,9 @@ const run = () => {
   assertIncludes(singerApp, "new RecaptchaVerifier(auth, targetContainerId", "recaptcha_verifier_initialized_per_container", results);
   assertIncludes(singerApp, "code.includes('too-many-requests')", "maps_too_many_requests_error", results);
   assertIncludes(singerApp, "code.includes('invalid-phone-number')", "maps_invalid_phone_error", results);
-  assertIncludes(singerApp, "setDoc(doc(db, 'users', auth.currentUser.uid), { phone: phoneNumber, vipLevel: 1 }, { merge: true })", "writes_phone_and_vip_level_to_users_doc", results);
-  assertIncludes(singerApp, "setDoc(doc(db, 'users', auth.currentUser.uid), { vipLevel: 1, isVip: true }, { merge: true })", "writes_vip_state_on_skip", results);
+  assertIncludes(singerApp, "setMyVipAccountStatus({", "uses_vip_status_callable", results);
+  assertIncludes(singerApp, "source: 'audience_phone_verify'", "uses_verified_phone_vip_source", results);
+  assertIncludes(singerApp, "qaBypass: true", "qa_bypass_requires_callable_flag", results);
 
   const hasRecaptchaSiteKey = /VITE_RECAPTCHA_V3_SITE_KEY\s*=.+/.test(envLocal);
   results.push({ check: "env_has_recaptcha_site_key", pass: hasRecaptchaSiteKey, needle: "VITE_RECAPTCHA_V3_SITE_KEY" });

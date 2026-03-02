@@ -8,7 +8,8 @@ import {
     RecaptchaVerifier, signInWithPhoneNumber, PhoneAuthProvider,
     trackEvent,
     callFunction,
-    ensureAppCheckToken
+    ensureAppCheckToken,
+    setMyVipAccountStatus
 } from '../../lib/firebase';
 import { APP_ID, ASSETS, STORM_SFX } from '../../lib/assets';
 import { emoji, EMOJI } from '../../lib/emoji';
@@ -274,6 +275,15 @@ const sanitizeTight15List = (list = []) => {
         cleaned.push(normalized);
     });
     return cleaned.slice(0, TIGHT15_MAX);
+};
+
+const areTight15ListsEqual = (a = [], b = []) => {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+        if (getTight15Key(a[i]) !== getTight15Key(b[i])) return false;
+    }
+    return true;
 };
 
 const VIP_TOS_SUMMARY = [
@@ -629,6 +639,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [tab, setTab] = useState('home');
     const currentSinger = useMemo(() => songs.find(s => s.status === 'performing'), [songs]);
     const isAnon = !!auth?.currentUser?.isAnonymous;
+    const canSaveTight15 = !isAnon;
     const isVipAccount = !!user?.isVip || !!profile?.isVip || (profile?.vipLevel || 0) > 0;
     const [songsTab, setSongsTab] = useState('requests');
     const [socialTab, setSocialTab] = useState('lounge'); // Sub-tab for Social
@@ -723,9 +734,6 @@ const SingerApp = ({ roomCode, uid }) => {
                 totalFamePoints,
                 lastActiveAt: serverTimestamp()
             };
-            if (overrides.phone !== undefined) {
-                projection.phone = overrides.phone || '';
-            }
             if (overrides.totalEmojis !== undefined) {
                 projection.totalEmojis = Math.max(0, Number(overrides.totalEmojis) || 0);
             }
@@ -765,7 +773,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [popTriviaVotes, setPopTriviaVotes] = useState([]);
     const [popTriviaSubmitting, setPopTriviaSubmitting] = useState(false);
 
-    // Phone/SMS VIP state
+    // Phone/SMS account + VIP state
     const [showPhoneModal, setShowPhoneModal] = useState(false);
     const [phoneNumber, setPhoneNumber] = useState('');
     const [smsSent, setSmsSent] = useState(false);
@@ -2443,8 +2451,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     // Helper: Log Activity
     const logActivity = async (text, icon) => {
         try {
+            const actorUid = String(auth.currentUser?.uid || uid || '').trim();
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
                 roomCode, 
+                uid: actorUid || null,
                 user: user?.name || form.name, 
                 text, 
                 icon, 
@@ -2681,7 +2691,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             try {
                 const merged = sanitizeTight15List([...savedList, ...tempList]);
                 await setDoc(doc(db, 'users', uid), { tight15: merged }, { merge: true });
-                await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { tight15Temp: [] }, { merge: true });
+                await setDoc(
+                    doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`),
+                    { tight15Temp: merged },
+                    { merge: true }
+                );
                 if (!cancelled) toast('Tight 15 migrated to your account.');
             } catch (error) {
                 console.error('Tight 15 migration failed', error);
@@ -2694,6 +2708,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             cancelled = true;
         };
     }, [uid, isAnon, user, profile, roomCode, toast]);
+
+    useEffect(() => {
+        if (!uid || !canSaveTight15) return;
+        const savedList = sanitizeTight15List(profile?.tight15 || []);
+        if (!savedList.length) return;
+        const roomList = sanitizeTight15List(user?.tight15Temp || []);
+        if (areTight15ListsEqual(savedList, roomList)) return;
+        setDoc(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`),
+            { tight15Temp: savedList },
+            { merge: true }
+        ).catch(() => {});
+    }, [uid, roomCode, canSaveTight15, profile?.tight15, user?.tight15Temp]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -3235,6 +3262,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const message = String(rawMessage ?? '').trim();
         if (!message) return;
         if (!roomCode || !user) return;
+        if (isAnon) {
+            toast('Create or log in to your BeauRocks account to use chat.');
+            setShowPhoneModal(true);
+            return;
+        }
+        const senderUid = String(auth.currentUser?.uid || uid || '').trim();
+        if (!senderUid) {
+            toast('Account session is still connecting. Try again.');
+            return;
+        }
         if (room?.chatEnabled === false) {
             toast('Chat is off right now');
             return;
@@ -3247,7 +3284,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
         const isLounge = chatTab === 'lounge';
         if (isLounge && room?.chatAudienceMode === 'vip' && !isVipAccount) {
-            toast('VIP-only chat is live right now');
+            toast('VIP-only chat is live. Create or verify your BeauRocks account to unlock access.');
             return;
         }
         if (user?.chatMuted) {
@@ -3279,7 +3316,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             text: message,
             user: user.name,
             avatar: user.avatar,
-            uid,
+            uid: senderUid,
             isVip: !!user.isVip || (profile?.vipLevel || 0) > 0,
             toHost: !isLounge,
             channel: isLounge ? 'lounge' : 'host',
@@ -4012,25 +4049,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         setShowProfile(true);
     };
 
-    const openPublicProfile = async (u) => {
+    const openPublicProfile = (u) => {
         if (!u) return;
         setPublicProfileOpen(true);
         setPublicProfileLoading(true);
         setPublicProfileUser(u);
-        setPublicProfileData(null);
-        try {
-            if (u.uid) {
-                const snap = await getDoc(doc(db, 'users', u.uid));
-                if (snap.exists()) setPublicProfileData(snap.data());
-            }
-        } catch (e) {
-            console.warn('Failed to load profile', e);
-        } finally {
-            setPublicProfileLoading(false);
-        }
+        // Public profile card should use room-projected data only.
+        setPublicProfileData(u || null);
+        setPublicProfileLoading(false);
     };
 
-    const canSaveTight15 = !isAnon;
     const getTight15List = () => {
         const persistent = Array.isArray(profile?.tight15) ? profile.tight15 : [];
         const temporary = Array.isArray(user?.tight15Temp) ? user.tight15Temp : [];
@@ -4048,6 +4076,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             return;
         }
         await setDoc(doc(db, 'users', uid), { tight15: sanitized }, { merge: true });
+        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { tight15Temp: sanitized }, { merge: true });
     };
 
     const addToTight15 = async (item) => {
@@ -4275,7 +4304,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
     };
 
-    // Phone/SMS VIP flow: send SMS and link phone to current (anonymous) user
+    // Phone/SMS account + VIP flow: send SMS and upgrade current anonymous session.
     const startPhoneAuth = async (containerId) => {
         const normalizedPhone = normalizePhoneNumber(phoneNumber);
         if (!/^\+\d{7,15}$/.test(normalizedPhone)) {
@@ -4340,16 +4369,22 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             await linkWithCredential(auth.currentUser, cred);
             // persist VIP state and phone
             const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`);
+            const vipStatus = await setMyVipAccountStatus({
+                source: 'audience_phone_verify',
+                vipLevel: 1
+            });
             await updateDoc(roomUserRef, {
-                ...getRoomUserProjection({ isVip: true, vipLevel: 1, phone: phoneNumber }),
+                ...getRoomUserProjection({
+                    isVip: !!vipStatus?.isVip,
+                    vipLevel: Math.max(1, Number(vipStatus?.vipLevel || 1))
+                }),
                 points: increment(5000)
             });
-            await setDoc(doc(db, 'users', auth.currentUser.uid), { phone: phoneNumber, vipLevel: 1 }, { merge: true });
             setShowPhoneModal(false);
             setShowVipOnboarding(true);
             setTab('request');
             setSongsTab('tight15');
-            showRewardToast('Phone linked - VIP unlocked! +5000 PTS', 5000, { durationMs: 3600 });
+            showRewardToast('BeauRocks account verified - VIP unlocked! +5000 PTS', 5000, { durationMs: 3600 });
         } catch (e) {
             console.error('confirm error', e);
             toast('Verification failed');
@@ -4360,18 +4395,25 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         try {
             if (!auth.currentUser) return toast('No active session');
             const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`);
+            const vipStatus = await setMyVipAccountStatus({
+                source: 'audience_qa_bypass',
+                qaBypass: true,
+                vipLevel: 1
+            });
             await updateDoc(roomUserRef, {
-                ...getRoomUserProjection({ isVip: true, vipLevel: 1 }),
+                ...getRoomUserProjection({
+                    isVip: !!vipStatus?.isVip,
+                    vipLevel: Math.max(1, Number(vipStatus?.vipLevel || 1))
+                }),
                 points: increment(5000)
             });
-            await setDoc(doc(db, 'users', auth.currentUser.uid), { vipLevel: 1, isVip: true }, { merge: true });
             setShowPhoneModal(false);
             setSmsSent(false);
             setSmsCode('');
             setShowVipOnboarding(true);
             setTab('request');
             setSongsTab('tight15');
-            showRewardToast('VIP unlocked (bypass) +5000 PTS', 5000, { durationMs: 3600 });
+            showRewardToast('BeauRocks account unlocked (bypass) +5000 PTS', 5000, { durationMs: 3600 });
         } catch (e) {
             console.error('Bypass error', e);
             toast('Bypass failed');
@@ -5770,7 +5812,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         <div className="fixed inset-0 bg-zinc-900 z-[110] p-6 flex flex-col text-white font-saira">
             <div className="flex items-center justify-between mb-6">
                 <div>
-                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">VIP Account</div>
+                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">BeauRocks Account</div>
                     <div className="text-3xl font-bebas text-cyan-300">Your Performance History</div>
                 </div>
                 <button onClick={() => setShowAccount(false)} className="bg-zinc-800 px-4 py-2 rounded-full text-sm font-bold">Close</button>
@@ -5778,7 +5820,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             <div className="grid gap-4">
                 <div className="bg-zinc-800/70 border border-zinc-700 rounded-2xl p-4">
                     <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Account</div>
-                    <div className="text-lg font-bold">{user?.name || 'VIP'}</div>
+                    <div className="text-lg font-bold">{user?.name || 'Guest'}</div>
                     <div className="text-sm text-zinc-400">VIP Level: {profile?.vipLevel || 1}</div>
                     <div className="text-sm text-zinc-400">Phone: {profile?.phone || user?.phone || 'Not linked'}</div>
                     <div className="mt-3 flex gap-3 text-sm">
@@ -5985,7 +6027,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     )}
                     {isVipAccount && (
                         <button onClick={() => setShowAccount(true)} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] py-3 rounded-xl font-bold">
-                            VIP Account & History
+                            BeauRocks Account & History
                         </button>
                     )}
                     <div className="flex gap-2">
@@ -6210,8 +6252,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     if (showPhoneModal) return (
         <div className="fixed inset-0 bg-black/80 z-[130] flex items-center justify-center p-6">
             <div className="bg-zinc-900 p-6 rounded-xl w-full max-w-md">
-                <h2 className="text-2xl font-bold mb-2">Unlock VIP via SMS</h2>
-                <p className="text-sm text-zinc-400 mb-4">Enter your phone number (include country code). We'll text a verification code. Alerts only send if you opt in.</p>
+                <h2 className="text-2xl font-bold mb-2">Create BeauRocks Account via SMS</h2>
+                <p className="text-sm text-zinc-400 mb-4">Enter your phone number (include country code). We will text a verification code to create your BeauRocks account and unlock VIP perks. In BeauRocks, your VIP account is your verified BeauRocks account.</p>
                 <input value={phoneNumber} onChange={e=>setPhoneNumber(e.target.value)} placeholder="+1 555 555 5555" className="w-full p-3 mb-3 rounded bg-zinc-800 border border-zinc-700" />
                 {!smsSent ? (
                     <div className="flex gap-2">
@@ -6402,13 +6444,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
                                 <div className="flex items-center gap-3 text-lg text-zinc-100 mt-2">
                                     <span className="text-2xl">{EMOJI.star}</span>
-                                    VIP unlock = +5000 PTS boost.
+                                    Create BeauRocks account = VIP unlock +5000 PTS boost.
                                 </div>
                                 <button
                                     onClick={() => openVipUpgrade()}
                                     className="mt-3 w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl font-bold text-base"
                                 >
-                                    Upgrade to VIP
+                                    Create BeauRocks Account
                                 </button>
                             </div>
                             <div className="bg-black/30 border border-cyan-400/40 rounded-2xl p-4">
@@ -6752,12 +6794,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const chatTitle = socialTab === 'host' ? 'DM Host' : 'VIP Lounge';
     const chatStatusLabel = !room?.chatEnabled
         ? 'Chat paused'
+        : isAnon
+            ? 'BeauRocks account required'
         : socialTab === 'host'
             ? 'Private DM'
             : room?.chatAudienceMode === 'vip'
                 ? 'VIP only'
                 : 'Public lounge';
     const chatInputDisabled = room?.chatEnabled === false
+        || isAnon
         || (chatTab === 'lounge' && chatLocked)
         || (socialTab === 'lounge' && room?.chatAudienceMode === 'vip' && !isVipAccount);
     const quickActionMessages = socialTab === 'host'
@@ -7421,7 +7466,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          </button>
                                      );
                                  })}</div>
-                                 {!user.isVip && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">UNLOCK VIP ACCOUNT +5000 PTS {EMOJI.phone}</button>}
+                                 {!user.isVip && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">CREATE BEAUROCKS ACCOUNT +5000 PTS {EMOJI.phone}</button>}
                              </>
                          )}
                          {room?.multiplier >= 4 && <button onClick={()=>submitSong("Secret Track", "The Host", "")} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 p-4 rounded-xl font-bold animate-pulse shadow-lg border-2 border-white">SECRET SONG UNLOCKED! {EMOJI.gift}</button>}
@@ -7465,11 +7510,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="text-sm uppercase tracking-widest text-pink-200">{chatTitle}</div>
                                         <div className="text-xs text-zinc-300">{chatStatusLabel}</div>
                                     </div>
-                                    {chatTab === 'lounge' && chatLocked ? (
+                                    {isAnon ? (
+                                        <div className="mb-3 bg-cyan-500/10 border border-cyan-400/40 rounded-xl p-4 text-left">
+                                            <div className="text-xs uppercase tracking-widest text-cyan-200 mb-1">BeauRocks Account</div>
+                                            <div className="text-base text-zinc-100">Create or log in to your BeauRocks account to start chatting.</div>
+                                            <button onClick={() => setShowPhoneModal(true)} className="mt-2 w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-2 rounded-lg font-bold text-sm">Create BeauRocks Account</button>
+                                        </div>
+                                    ) : chatTab === 'lounge' && chatLocked ? (
                                         <div className="mb-3 bg-pink-500/10 border border-pink-400/40 rounded-xl p-4 text-left">
                                             <div className="text-xs uppercase tracking-widest text-pink-200 mb-1">VIP Lounge</div>
-                                            <div className="text-base text-zinc-100">VIP-only chat is live. Join the exclusive club to see the lounge.</div>
-                                            <button onClick={() => openVipUpgrade()} className="mt-2 w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-2 rounded-lg font-bold text-sm">Become a VIP</button>
+                                            <div className="text-base text-zinc-100">VIP-only chat is live. Create or verify your BeauRocks account to unlock lounge access.</div>
+                                            <button onClick={() => openVipUpgrade()} className="mt-2 w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-2 rounded-lg font-bold text-sm">Create BeauRocks Account</button>
                                         </div>
                                     ) : null}
                                     {!chatLocked && (
@@ -7532,7 +7583,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             }
                                         }}
                                         className="flex-1 bg-zinc-800 border border-zinc-600 rounded-xl p-3 text-sm text-white placeholder:text-zinc-300"
-                                        placeholder={socialTab === 'host' ? 'Send a private note to the host...' : 'Say something to the VIP lounge...'}
+                                        placeholder={isAnon ? 'Create a BeauRocks account to chat...' : (socialTab === 'host' ? 'Send a private note to the host...' : 'Say something to the VIP lounge...')}
                                         disabled={chatInputDisabled}
                                     />
                                     <button
@@ -7698,7 +7749,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 </button>
                                             </div>
                                         ) : (
-                                            <div className="bg-black/30 px-3 py-2 rounded-xl">Unlock VIP to show your profile details.</div>
+                                            <div className="bg-black/30 px-3 py-2 rounded-xl">Create or verify your BeauRocks account to unlock VIP profile details.</div>
                                         )}
                                     </div>
                                 )}
@@ -7730,10 +7781,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <button onClick={openEditProfile} className="w-full bg-zinc-800 border border-zinc-600 py-2 rounded-xl text-zinc-200 text-sm">Change Name/Emoji</button>
                                     <button onClick={() => openPublicProfile({ ...user, uid, isVip: isVipAccount })} className="w-full bg-zinc-800 border border-zinc-600 py-2 rounded-xl text-zinc-200 text-sm">View Public Profile</button>
                                     {isVipAccount && (
-                                        <button onClick={() => setShowAccount(true)} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] py-2 rounded-xl text-sm font-bold">VIP Account & History</button>
+                                        <button onClick={() => setShowAccount(true)} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] py-2 rounded-xl text-sm font-bold">BeauRocks Account & History</button>
                                     )}
                                     {!isVipAccount && (
-                                        <button onClick={() => openVipUpgrade()} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl text-sm font-bold">Unlock VIP</button>
+                                        <button onClick={() => openVipUpgrade()} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl text-sm font-bold">Create BeauRocks Account</button>
                                     )}
                                     <button onClick={() => { setTab('request'); setSongsTab('tight15'); }} className="w-full bg-zinc-800 border border-zinc-600 py-2 rounded-xl text-zinc-200 text-sm">Edit Tight 15</button>
                                 </div>
@@ -7801,8 +7852,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-[#00C4D9]/20 text-cyan-300 text-[12px] font-black tracking-[0.3em] mb-3">
                                     VIP ACCESS
                                 </div>
-                                <h3 className="text-2xl font-bold text-cyan-300 mb-2">Upgrade to VIP</h3>
-                                <p className="mb-4 text-zinc-300">Go full spotlight mode. VIPs get the loudest reactions, the flashiest visuals, and exclusive perks.</p>
+                                <h3 className="text-2xl font-bold text-cyan-300 mb-2">Create Your BeauRocks Account</h3>
+                                <p className="mb-4 text-zinc-300">Your BeauRocks account is your VIP account. Verify once to unlock premium reactions, visuals, and account carryover perks.</p>
                                 <div className="bg-black/50 border border-cyan-500/30 rounded-xl p-4 mb-4 text-left">
                                     <div className="text-xs uppercase tracking-[0.35em] text-cyan-300 mb-3">VIP Benefits</div>
                                     <ul className="space-y-2 text-sm text-zinc-200">
@@ -8365,7 +8416,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
 
                                 {!canSaveTight15 && (
-                                    <button onClick={()=>setShowPhoneModal(true)} className="w-full bg-[#00C4D9] text-black py-3 rounded-xl font-bold mt-4">Create Account to Save Across Rooms</button>
+                                    <button onClick={()=>setShowPhoneModal(true)} className="w-full bg-[#00C4D9] text-black py-3 rounded-xl font-bold mt-4">Create BeauRocks Account to Save Across Rooms</button>
                                 )}
                             </div>
                         )}

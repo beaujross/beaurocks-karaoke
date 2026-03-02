@@ -1,6 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
 
 const SCRIPT_ID = "beaurocks-google-maps-script";
+const PRECONNECT_ID = "beaurocks-google-maps-preconnect";
+
+const warmGoogleMapsConnections = () => {
+  if (typeof document === "undefined") return;
+  if (document.getElementById(PRECONNECT_ID)) return;
+
+  const holder = document.createElement("meta");
+  holder.id = PRECONNECT_ID;
+  holder.setAttribute("data-owner", "beaurocks");
+  document.head.appendChild(holder);
+
+  [
+    { rel: "preconnect", href: "https://maps.googleapis.com" },
+    { rel: "preconnect", href: "https://maps.gstatic.com", crossOrigin: "anonymous" },
+    { rel: "dns-prefetch", href: "https://maps.googleapis.com" },
+    { rel: "dns-prefetch", href: "https://maps.gstatic.com" },
+  ].forEach((entry) => {
+    const link = document.createElement("link");
+    link.rel = entry.rel;
+    link.href = entry.href;
+    if (entry.crossOrigin) {
+      link.crossOrigin = entry.crossOrigin;
+    }
+    document.head.appendChild(link);
+  });
+};
 
 const ensureGoogleMapsReady = async (mapsNs = null) => {
   const maps = mapsNs || window.google?.maps;
@@ -41,6 +67,7 @@ const loadGoogleMapsScript = (apiKey = "") => {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("Window unavailable."));
   }
+  warmGoogleMapsConnections();
   if (window.google?.maps) {
     return ensureGoogleMapsReady(window.google.maps);
   }
@@ -51,12 +78,18 @@ const loadGoogleMapsScript = (apiKey = "") => {
   window.__beaurocksMapsPromise = new Promise((resolve, reject) => {
     const existing = document.getElementById(SCRIPT_ID);
     if (existing) {
+      if (existing.dataset.loaded === "true") {
+        ensureGoogleMapsReady(window.google?.maps)
+          .then(resolve)
+          .catch(reject);
+        return;
+      }
       existing.addEventListener("load", () => {
         ensureGoogleMapsReady(window.google?.maps)
           .then(resolve)
           .catch(reject);
-      });
-      existing.addEventListener("error", () => reject(new Error("Failed to load Google Maps.")));
+      }, { once: true });
+      existing.addEventListener("error", () => reject(new Error("Failed to load Google Maps.")), { once: true });
       return;
     }
 
@@ -64,8 +97,9 @@ const loadGoogleMapsScript = (apiKey = "") => {
     script.id = SCRIPT_ID;
     script.async = true;
     script.defer = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async&libraries=maps`;
     script.onload = () => {
+      script.dataset.loaded = "true";
       ensureGoogleMapsReady(window.google?.maps)
         .then(resolve)
         .catch(reject);

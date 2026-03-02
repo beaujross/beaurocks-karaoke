@@ -77,7 +77,7 @@ export const HOW_TO_PLAY = {
         {
             title: 'VIP and Tips',
             items: [
-                'Unlock VIP for bonus points and special reactions.',
+                'Create your BeauRocks account to unlock VIP bonus points and special reactions.',
                 'Tip the host to show support.',
                 'VIPs get extra perks and boosts.'
             ]

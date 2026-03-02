@@ -52,6 +52,37 @@ const PageShellLoader = () => (
   </div>
 );
 
+const MAPS_CONFIG_CACHE_KEY = "mk3_maps_config_cache_v1";
+const MAPS_CONFIG_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+const readCachedMapsConfig = () => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(MAPS_CONFIG_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const fetchedAtMs = Number(parsed?.fetchedAtMs || 0);
+    const data = parsed?.data && typeof parsed.data === "object" ? parsed.data : null;
+    if (!data) return null;
+    if (!Number.isFinite(fetchedAtMs) || (Date.now() - fetchedAtMs) > MAPS_CONFIG_CACHE_TTL_MS) return null;
+    return data;
+  } catch {
+    return null;
+  }
+};
+
+const cacheMapsConfig = (config = null) => {
+  if (typeof window === "undefined" || !config || typeof config !== "object") return;
+  try {
+    window.localStorage.setItem(MAPS_CONFIG_CACHE_KEY, JSON.stringify({
+      fetchedAtMs: Date.now(),
+      data: config,
+    }));
+  } catch {
+    // Ignore storage write failures.
+  }
+};
+
 const normalizePage = (value = "") => {
   const safe = String(value || "").trim().toLowerCase();
   if (safe === "home") return MARKETING_ROUTE_PAGES.discover;
@@ -196,7 +227,7 @@ const pickCampaignParams = (params = {}) => {
 
 const MarketingSite = () => {
   const [route, setRoute] = useState(() => readRouteFromWindow());
-  const [mapsConfig, setMapsConfig] = useState(null);
+  const [mapsConfig, setMapsConfig] = useState(() => readCachedMapsConfig());
   const [mapsConfigError, setMapsConfigError] = useState("");
   const [heroStats, setHeroStats] = useState(null);
   const [authMode, setAuthMode] = useState("signin");
@@ -241,9 +272,13 @@ const MarketingSite = () => {
     (async () => {
       try {
         const config = await directoryActions.getDirectoryMapsConfig();
-        if (!cancelled) setMapsConfig(config || null);
+        if (cancelled) return;
+        setMapsConfig(config || null);
+        setMapsConfigError("");
+        cacheMapsConfig(config || null);
       } catch (error) {
-        if (!cancelled) setMapsConfigError(String(error?.message || "Map config unavailable."));
+        if (cancelled) return;
+        setMapsConfigError(String(error?.message || "Map config unavailable."));
       }
     })();
     return () => {
@@ -800,7 +835,7 @@ const MarketingSite = () => {
                         actions.clearAuthError?.();
                       }}
                     >
-                      Create Account
+                      Create BeauRocks Account
                     </button>
                   </div>
                   <label>
@@ -856,7 +891,7 @@ const MarketingSite = () => {
                     {session.authLoading
                       ? "Working..."
                       : authMode === "signup"
-                        ? "Create Account"
+                        ? "Create BeauRocks Account"
                         : "Log In"}
                   </button>
                   {authMode === "signin" && (
