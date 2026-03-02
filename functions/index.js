@@ -388,16 +388,22 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "bingoBoardId",
   "bingoData",
   "bingoFocus",
+  "bingoIncludeHost",
   "bingoMode",
+  "bingoMysteryRng",
   "bingoPickerName",
   "bingoPickerUid",
   "bingoRevealed",
+  "bingoSessionId",
   "bingoShowTv",
   "bingoSize",
+  "bingoSponsorLogo",
+  "bingoSponsorName",
   "bingoSuggestions",
   "bingoTurnIndex",
   "bingoTurnOrder",
   "bingoTurnPick",
+  "bingoVictory",
   "bingoVotingMode",
   "bingoWin",
   "bonusDrop",
@@ -411,11 +417,13 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "currentApplauseLevel",
   "doodleOke",
   "doodleOkeConfig",
+  "doodleOkeIndex",
   "featuredPhotoId",
   "gameData",
   "gameDefaults",
   "gameParticipantMode",
   "gameParticipants",
+  "gamePreviewAt",
   "gamePreviewId",
   "gameRulesId",
   "guitarSessionId",
@@ -499,6 +507,7 @@ const HOST_ROOM_BOOLEAN_ROOT_KEYS = new Set([
   "autoPlayMedia",
   "bgMusicPlaying",
   "bingoAudienceReopenEnabled",
+  "bingoIncludeHost",
   "bingoShowTv",
   "bouncerMode",
   "chatEnabled",
@@ -530,6 +539,8 @@ const HOST_ROOM_NUMBER_ROOT_KEYS = new Set([
   "bingoTurnIndex",
   "closedAt",
   "currentApplauseLevel",
+  "doodleOkeIndex",
+  "gamePreviewAt",
   "gameRulesId",
   "guitarSessionId",
   "marqueeDurationMs",
@@ -561,6 +572,9 @@ const HOST_ROOM_STRING_ROOT_KEYS = new Set([
   "bingoMode",
   "bingoPickerName",
   "bingoPickerUid",
+  "bingoSessionId",
+  "bingoSponsorLogo",
+  "bingoSponsorName",
   "bingoVotingMode",
   "chatAudienceMode",
   "chatTvMode",
@@ -590,11 +604,12 @@ const HOST_ROOM_ARRAY_ROOT_KEYS = new Set([
 const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "announcement",
   "appleMusicPlayback",
-  "bingoData",
   "bingoFocus",
+  "bingoMysteryRng",
   "bingoRevealed",
   "bingoSuggestions",
   "bingoTurnPick",
+  "bingoVictory",
   "bingoWin",
   "bonusDrop",
   "bracketLastSummary",
@@ -731,17 +746,24 @@ const validateHostRoomUpdateType = (key, value) => {
   if (HOST_ROOM_BOOLEAN_ROOT_KEYS.has(key) && typeof value !== "boolean") {
     throw new HttpsError("invalid-argument", `Room field "${key}" must be a boolean.`);
   }
-  if (HOST_ROOM_NUMBER_ROOT_KEYS.has(key) && !isFiniteNumber(value)) {
-    throw new HttpsError("invalid-argument", `Room field "${key}" must be a finite number.`);
+  if (HOST_ROOM_NUMBER_ROOT_KEYS.has(key) && !(value === null || isFiniteNumber(value))) {
+    throw new HttpsError("invalid-argument", `Room field "${key}" must be a finite number or null.`);
   }
   if (HOST_ROOM_STRING_ROOT_KEYS.has(key) && !(value === null || typeof value === "string")) {
     throw new HttpsError("invalid-argument", `Room field "${key}" must be a string or null.`);
   }
-  if (HOST_ROOM_ARRAY_ROOT_KEYS.has(key) && !Array.isArray(value)) {
-    throw new HttpsError("invalid-argument", `Room field "${key}" must be an array.`);
+  if (HOST_ROOM_ARRAY_ROOT_KEYS.has(key) && !(value === null || Array.isArray(value))) {
+    throw new HttpsError("invalid-argument", `Room field "${key}" must be an array or null.`);
   }
   if (HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS.has(key) && !(value === null || isPlainObject(value))) {
     throw new HttpsError("invalid-argument", `Room field "${key}" must be an object or null.`);
+  }
+
+  if (key === "bingoData") {
+    const valid = value === null || isPlainObject(value) || Array.isArray(value);
+    if (!valid) {
+      throw new HttpsError("invalid-argument", "Room field \"bingoData\" must be an object, array, or null.");
+    }
   }
 
   if (key === "featuredPhotoId") {

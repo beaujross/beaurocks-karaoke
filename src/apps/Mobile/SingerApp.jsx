@@ -694,6 +694,13 @@ const SingerApp = ({ roomCode, uid }) => {
     const clampName = (value) => value.slice(0, NAME_LIMIT);
     const getRoomUserProjection = useMemo(() => {
         return (overrides = {}) => {
+            const projectionUid = String(
+                overrides.uid
+                || auth.currentUser?.uid
+                || authReadyUid
+                || uid
+                || ''
+            ).trim();
             const rawName = overrides.name ?? user?.name ?? form.name ?? 'Guest';
             const safeName = clampName(String(rawName || '').trim()) || 'Guest';
             const safeAvatar = overrides.avatar ?? user?.avatar ?? form.emoji ?? DEFAULT_EMOJI;
@@ -706,7 +713,7 @@ const SingerApp = ({ roomCode, uid }) => {
             const rawVipLevel = Number(overrides.vipLevel ?? profile?.vipLevel ?? (isVipAccount ? 1 : 0));
             const vipLevel = Number.isFinite(rawVipLevel) ? Math.max(0, Math.floor(rawVipLevel)) : 0;
             const projection = {
-                uid,
+                uid: projectionUid,
                 roomCode,
                 name: safeName,
                 avatar: safeAvatar || DEFAULT_EMOJI,
@@ -730,7 +737,7 @@ const SingerApp = ({ roomCode, uid }) => {
             }
             return projection;
         };
-    }, [uid, roomCode, user?.name, user?.avatar, form.name, form.emoji, profile?.totalFamePoints, profile?.currentLevel, profile?.vipLevel, isVipAccount]);
+    }, [authReadyUid, uid, roomCode, user?.name, user?.avatar, form.name, form.emoji, profile?.totalFamePoints, profile?.currentLevel, profile?.vipLevel, isVipAccount]);
     
     // UI State
     const [searchQ, setSearchQ] = useState('');
@@ -3184,11 +3191,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const rawEmoji = override?.emoji ?? form.emoji;
         const safeName = clampName(rawName.trim());
         if(!safeName) return;
+        const activeUid = String(auth.currentUser?.uid || authReadyUid || uid || '').trim();
+        if (!activeUid) {
+            toast('Session is still connecting. Try again.');
+            return;
+        }
         markActive();
         const selectedStatus = getAvatarStatus(AVATAR_CATALOG.find(a => a.emoji === rawEmoji) || AVATAR_CATALOG[0]);
         const finalEmoji = selectedStatus.locked ? DEFAULT_EMOJI : rawEmoji;
-        const userRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`);
+        const userRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`);
         await setDoc(userRef, getRoomUserProjection({
+            uid: activeUid,
             name: safeName,
             avatar: finalEmoji,
             points: 100,
@@ -3433,8 +3446,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             throw err;
         }
         const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${authUid}`);
-        const roomUserSnap = await getDoc(roomUserRef);
-        if (!roomUserSnap.exists()) {
+        const ensureRoomUserMembership = async () => {
             await setDoc(roomUserRef, {
                 uid: authUid,
                 roomCode,
@@ -3446,15 +3458,39 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 totalFamePoints: Math.max(0, Number(profile?.totalFamePoints || user?.totalFamePoints || 0)),
                 lastActiveAt: serverTimestamp()
             }, { merge: true });
+            const roomUserSnap = await getDoc(roomUserRef);
+            return roomUserSnap.exists();
+        };
+        const tryUploadOnce = async () => {
+            const storagePath = `room_photos/${roomCode}/${authUid}/${Date.now()}_${suffix}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+            const fileRef = storageRef(storage, storagePath);
+            const task = uploadBytesResumable(fileRef, blob, { contentType: 'image/jpeg' });
+            await new Promise((resolve, reject) => {
+                task.on('state_changed', undefined, reject, resolve);
+            });
+            const url = await getDownloadURL(task.snapshot.ref);
+            return { url, storagePath };
+        };
+
+        let lastErr = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+                await ensureRoomUserMembership();
+                if (attempt > 0) {
+                    await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+                }
+                return await tryUploadOnce();
+            } catch (error) {
+                lastErr = error;
+                const code = String(error?.code || '').toLowerCase();
+                const message = String(error?.message || '').toLowerCase();
+                const retryableUnauthorized = code.includes('storage/unauthorized') || message.includes('unauthorized') || message.includes('403');
+                if (!retryableUnauthorized || attempt >= 2) {
+                    throw error;
+                }
+            }
         }
-        const storagePath = `room_photos/${roomCode}/${authUid}/${Date.now()}_${suffix}_${Math.random().toString(36).slice(2, 8)}.jpg`;
-        const fileRef = storageRef(storage, storagePath);
-        const task = uploadBytesResumable(fileRef, blob, { contentType: 'image/jpeg' });
-        await new Promise((resolve, reject) => {
-            task.on('state_changed', undefined, reject, resolve);
-        });
-        const url = await getDownloadURL(task.snapshot.ref);
-        return { url, storagePath };
+        throw lastErr || new Error('Selfie upload failed');
     };
 
     const captureAndUploadSelfie = async ({ quality = 0.6, suffix = 'selfie' } = {}) => {
@@ -3586,11 +3622,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const submitSelfieChallenge = async () => {
         if (!videoRef.current || !user || !room?.selfieChallenge?.promptId) return;
         try {
+            const activeUid = String(auth.currentUser?.uid || authReadyUid || uid || '').trim();
+            if (!activeUid) throw new Error('Sign in required');
             const photo = await captureAndUploadSelfie({ quality: 0.5, suffix: 'challenge' });
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'), {
                 roomCode,
                 promptId: room.selfieChallenge.promptId,
-                uid,
+                uid: activeUid,
                 userName: user.name,
                 avatar: user.avatar,
                 url: photo.url,

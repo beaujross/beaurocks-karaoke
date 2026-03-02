@@ -8,6 +8,16 @@ const JoinPage = ({ navigate, id = "" }) => {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const resolvedJoinCode = String(roomCode || id || "").trim().toUpperCase();
+
+  const joinOnMobile = () => {
+    const code = String(resolvedJoinCode || "").trim().toUpperCase();
+    if (!code) {
+      setStatus("Enter a room code first.");
+      return;
+    }
+    window.location.href = buildSurfaceUrl({ surface: "app", params: { room: code } }, window.location);
+  };
 
   const onSubmit = (event) => {
     event.preventDefault();
@@ -64,6 +74,9 @@ const JoinPage = ({ navigate, id = "" }) => {
             />
           </label>
           <button type="submit">Open Join Page</button>
+          <button type="button" onClick={joinOnMobile}>
+            Join On Mobile
+          </button>
         </form>
         {loading && <div className="mk3-status">Checking that room code...</div>}
         {status && <div className="mk3-status mk3-status-error">{status}</div>}
@@ -76,16 +89,7 @@ const JoinPage = ({ navigate, id = "" }) => {
               <button type="button" onClick={() => navigate("session", preview.id)}>
                 Open Session Details
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const code = String(roomCode || id).trim().toUpperCase();
-                  if (!code) return;
-                  window.location.href = buildSurfaceUrl({ surface: "app", params: { room: code } }, window.location);
-                }}
-              >
-                Join On Mobile
-              </button>
+              <button type="button" onClick={joinOnMobile}>Join On Mobile</button>
             </div>
           </div>
         )}

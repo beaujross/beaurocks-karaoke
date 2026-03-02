@@ -168,6 +168,21 @@ const StageNowPlayingPanel = ({
                         </div>
                     </div>
                 )}
+                <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-3">
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <div className="text-sm uppercase tracking-[0.3em] text-zinc-400">Auto Lyrics</div>
+                            <div className="text-[11px] text-zinc-500 mt-1">Generate lyrics when a queued song has none.</div>
+                        </div>
+                        <button
+                            onClick={() => updateRoom({ autoLyricsOnQueue: !room?.autoLyricsOnQueue })}
+                            className={`${styles.btnStd} ${room?.autoLyricsOnQueue ? styles.btnHighlight : styles.btnNeutral} whitespace-nowrap`}
+                            title="Toggle auto lyric generation for queue adds"
+                        >
+                            {room?.autoLyricsOnQueue ? 'On' : 'Off'}
+                        </button>
+                    </div>
+                </div>
                 {currentUsesAppleBacking && appleMusicStatus ? (
                     <div className="mt-1 mb-3 text-sm text-zinc-400">{appleMusicStatus}</div>
                 ) : null}
@@ -208,8 +223,9 @@ const StageNowPlayingPanel = ({
                             updateStatus(current.id, 'performed');
                         }}
                         className={`${styles.btnStd} ${styles.btnSecondary}`}
+                        title={Number(current?.hostBonus || 0) > 0 ? 'End performance' : 'No host bonus added yet'}
                     >
-                        <i className="fa-solid fa-flag-checkered mr-2"></i>End performance
+                        <i className="fa-solid fa-flag-checkered mr-2"></i>{Number(current?.hostBonus || 0) > 0 ? 'End performance' : 'End (bonus?)'}
                     </button>
                 </div>
             </div>

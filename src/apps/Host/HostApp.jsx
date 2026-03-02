@@ -2941,6 +2941,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
     const hallOfFameTimerRef = useRef(null);
     const autoDjApplausePendingSongRef = useRef('');
     const autoDjApplauseFallbackTimerRef = useRef(null);
+    const autoDjAutoEndKeyRef = useRef('');
     const updateStatusRef = useRef(null);
     const mediaOverrideStopRef = useRef('');
     const commandInputRef = useRef(null);
@@ -3880,6 +3881,42 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                 hostLogger.warn('Auto-DJ applause finalization failed', error);
             });
     }, [autoDj, clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
+
+    useEffect(() => {
+        if (!autoDj) return;
+        if (!current?.id) return;
+        if (autoDjApplausePendingSongRef.current) return;
+        if (String(room?.activeMode || '').trim().toLowerCase() !== 'karaoke') return;
+        const appleStatus = String(room?.appleMusicPlayback?.status || '').trim().toLowerCase();
+        const applePlaying = !!current?.appleMusicId && appleStatus === 'playing';
+        const mediaRunning = applePlaying || !!room?.videoPlaying;
+        if (!mediaRunning) return;
+        const startedAt = applePlaying
+            ? Number(room?.appleMusicPlayback?.startedAt || 0)
+            : Number(room?.videoStartTimestamp || 0);
+        const durationSec = Number(current?.duration || 0);
+        if (!Number.isFinite(startedAt) || startedAt <= 0) return;
+        if (!Number.isFinite(durationSec) || durationSec < 20) return;
+        const elapsedSec = (nowMs() - startedAt) / 1000;
+        if (elapsedSec < durationSec + 1.5) return;
+        const autoEndKey = `${current.id}:${startedAt}`;
+        if (autoDjAutoEndKeyRef.current === autoEndKey) return;
+        autoDjAutoEndKeyRef.current = autoEndKey;
+        handleEndPerformance(current.id).catch((error) => {
+            hostLogger.warn('Auto-DJ timed end-performance trigger failed', error);
+        });
+    }, [
+        autoDj,
+        current?.id,
+        current?.appleMusicId,
+        current?.duration,
+        room?.activeMode,
+        room?.appleMusicPlayback?.status,
+        room?.appleMusicPlayback?.startedAt,
+        room?.videoPlaying,
+        room?.videoStartTimestamp,
+        handleEndPerformance
+    ]);
 
     useEffect(() => {
         const activeMode = String(room?.activeMode || '');
@@ -6230,6 +6267,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const startNextFromQueue = useCallback(async () => {
         const activeRoom = roomRef.current;
         if (!activeRoom?.autoDj) return;
+        const activeMode = String(activeRoom?.activeMode || '').trim().toLowerCase();
+        const applauseFlowActive = activeMode === 'applause_countdown' || activeMode === 'applause' || activeMode === 'applause_result';
+        if (applauseFlowActive) return;
+        if (activeMode && activeMode !== 'karaoke') return;
         const list = songsRef.current || [];
         const performing = list.find(s => s.status === 'performing');
         if (performing) return;
@@ -6376,6 +6417,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             autoDjKickoffRef.current = '';
             return;
         }
+        const activeMode = String(room?.activeMode || '').trim().toLowerCase();
+        if (activeMode && activeMode !== 'karaoke') return;
+        const lastPerfTs = getTimestampMs(room?.lastPerformance?.timestamp);
+        if (lastPerfTs && nowMs() - lastPerfTs < 12000) return;
         if (performingCount > 0 || queuedCount <= 0) return;
         const queued = (songsRef.current || [])
             .filter((song) => song.status === 'requested')
@@ -6391,7 +6436,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         }, 450);
         return () => clearTimeout(timer);
-    }, [room?.autoDj, queuedCount, performingCount, startNextFromQueue]);
+    }, [room?.autoDj, room?.activeMode, room?.lastPerformance?.timestamp, queuedCount, performingCount, startNextFromQueue]);
     useEffect(() => {
         if (!room?.autoDj) return;
         if (queuedCount > 0 || performingCount > 0) return;
