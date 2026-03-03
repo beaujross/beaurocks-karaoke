@@ -673,13 +673,13 @@ const MarketingSite = () => {
                   }
                   trackEvent("mk_nav_host_access_click", { source: "nav_login_host_room_create" });
                   requireFullAuth({
-                    intent: "private_session_create",
+                    intent: "host_dashboard_resume",
                     targetType: "session",
                     returnRoute: {
                       page: MARKETING_ROUTE_PAGES.forHosts,
                       params: {
                         ...withCampaignParams({ utm_content: "nav_login_host_room_create" }),
-                        intent: "private_session_create",
+                        intent: "host_dashboard_resume",
                         targetType: "session",
                       },
                     },

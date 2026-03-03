@@ -14,8 +14,8 @@ import { toRoomManagerEntryFromData } from "./hostRoomManagerUtils";
 
 const HOST_STACK_BADGES = [
   "Simple 4-button host flow",
-  "Room manager built in",
-  "Works with your current setup",
+  "Room manager first",
+  "One login, one control surface",
 ];
 
 const HOST_QUICK_STEPS = [
@@ -25,7 +25,7 @@ const HOST_QUICK_STEPS = [
   },
   {
     title: "Launch",
-    detail: "Create or open a room with room code defaults already filled.",
+    detail: "Open Host Dashboard and launch from Room Setup in one place.",
   },
   {
     title: "Run show",
@@ -53,18 +53,6 @@ const toRoomManagerEntry = (docSnap) => {
 
 const ForHostsPage = ({ navigate, route, session, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
-  const [privateForm, setPrivateForm] = useState({
-    title: "",
-    roomCode: "",
-    startsAtLocal: "",
-    description: "",
-    publicRoom: false,
-    virtualOnly: false,
-    city: "",
-    state: "",
-  });
-  const [status, setStatus] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [roomFilter, setRoomFilter] = useState("active");
   const autoLaunchIntentRef = useRef("");
   const roomManagerRef = useRef(null);
@@ -85,7 +73,6 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
 
   const hostSetupHref = useMemo(() => {
     if (typeof window === "undefined") return "";
-    const roomCode = normalizeRoomCode(privateForm.roomCode);
     return buildSurfaceUrl({
       surface: "host",
       params: {
@@ -94,63 +81,45 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
         view: "ops",
         section: "ops.room_setup",
         tab: "admin",
-        onboarding: "1",
         source: "marketing_for_hosts",
-        ...(roomCode ? { launch_room_code: roomCode } : {}),
-        ...(privateForm.publicRoom ? { launch_public_room: "1" } : {}),
-        ...(privateForm.virtualOnly ? { launch_virtual_only: "1" } : {}),
-        ...(String(privateForm.title || "").trim() ? { launch_title: String(privateForm.title || "").trim() } : {}),
-        ...(String(privateForm.description || "").trim() ? { launch_description: String(privateForm.description || "").trim() } : {}),
-        ...(String(privateForm.startsAtLocal || "").trim() ? { launch_starts_at: String(privateForm.startsAtLocal || "").trim() } : {}),
-        ...(String(privateForm.city || "").trim() ? { launch_city: String(privateForm.city || "").trim() } : {}),
-        ...(String(privateForm.state || "").trim() ? { launch_state: String(privateForm.state || "").trim() } : {}),
       },
     }, window.location);
-  }, [privateForm]);
+  }, []);
 
   const openHostSetup = useCallback(() => {
     if (!canSubmit) {
       authFlow?.requireFullAuth?.({
-        intent: "private_session_create",
+        intent: "host_dashboard_resume",
         targetType: "session",
-        targetId: normalizeRoomCode(privateForm.roomCode),
         returnRoute: {
           page: "for_hosts",
           params: {
-            intent: "private_session_create",
+            intent: "host_dashboard_resume",
             targetType: "session",
-            targetId: normalizeRoomCode(privateForm.roomCode),
           },
         },
       });
-      setStatus("Sign in with your BeauRocks account to launch room setup.");
       return;
     }
     if (!hostSetupHref) return;
     trackEvent("mk_host_setup_redirect", {
-      source: "for_hosts_wizard_launch",
-      roomCode: normalizeRoomCode(privateForm.roomCode),
-      publicRoom: privateForm.publicRoom ? 1 : 0,
-      virtualOnly: privateForm.virtualOnly ? 1 : 0,
+      source: "for_hosts_room_manager_launch",
     });
     window.location.href = hostSetupHref;
-  }, [authFlow, canSubmit, hostSetupHref, privateForm.publicRoom, privateForm.roomCode, privateForm.virtualOnly]);
+  }, [authFlow, canSubmit, hostSetupHref]);
 
   useEffect(() => {
     const intent = String(route?.params?.intent || "").trim().toLowerCase();
     if (!canSubmit) return;
-    if (intent !== "private_session_create") return;
+    if (intent !== "host_dashboard_resume") return;
     const runKey = `${intent}:${String(session?.uid || "")}`;
     if (autoLaunchIntentRef.current === runKey) return;
     autoLaunchIntentRef.current = runKey;
     trackEvent("mk_host_setup_redirect", {
       source: "for_hosts_resume_after_login",
-      roomCode: normalizeRoomCode(privateForm.roomCode),
-      publicRoom: privateForm.publicRoom ? 1 : 0,
-      virtualOnly: privateForm.virtualOnly ? 1 : 0,
     });
     window.location.href = hostSetupHref;
-  }, [canSubmit, hostSetupHref, privateForm.publicRoom, privateForm.roomCode, privateForm.virtualOnly, route?.params?.intent, session?.uid]);
+  }, [canSubmit, hostSetupHref, route?.params?.intent, session?.uid]);
 
   const loadRoomManagerData = useCallback(async () => {
     if (!canSubmit || !session?.uid) {
@@ -325,8 +294,7 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
         <div className="mk3-host-kicker">host room control</div>
         <h1>Simple host workflow: log in, launch room, run show, review recap.</h1>
         <p>
-          This page is now focused on the fast path. Keep room setup simple here, then hand off to Host Dashboard for
-          live operations.
+          This page is now the fast path into Host Dashboard Room Setup and your room manager history.
         </p>
         <div className="mk3-status mk3-status-warning">
           <strong>Account required to host</strong>
@@ -345,7 +313,7 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
               openHostSetup();
             }}
           >
-            Start New Room
+            Open Host Dashboard
           </button>
           <button
             type="button"
@@ -397,99 +365,20 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
 
       <div className="mk3-two-col mk3-host-rebuild-grid">
         <aside className="mk3-actions-card mk3-host-setup-card">
-          <h4>Room Launch Wizard</h4>
+          <h4>Host Dashboard Entry</h4>
           <p className="mk3-host-setup-subcopy">
-            Keep this short. Only room code and title are optional. Advanced fields are available if you need them.
+            Room creation now lives directly in Host Dashboard Room Setup. This page is for access and room management.
           </p>
           <div className="mk3-actions-block">
-            <label>
-              Room Code (optional)
-              <input
-                value={privateForm.roomCode}
-                onChange={(e) => setPrivateForm((prev) => ({ ...prev, roomCode: normalizeRoomCode(e.target.value) }))}
-                placeholder="VIP123"
-              />
-            </label>
-            <label>
-              Session Title (optional)
-              <input
-                value={privateForm.title}
-                onChange={(e) => setPrivateForm((prev) => ({ ...prev, title: e.target.value }))}
-                placeholder="Friday Main Room"
-              />
-            </label>
-            <div className="mk3-host-toggle-grid">
-              <label className="mk3-inline">
-                <input
-                  type="checkbox"
-                  checked={privateForm.publicRoom}
-                  onChange={(e) => setPrivateForm((prev) => ({ ...prev, publicRoom: !!e.target.checked }))}
-                />
-                Public room (discoverable)
-              </label>
-              <label className="mk3-inline">
-                <input
-                  type="checkbox"
-                  checked={privateForm.virtualOnly}
-                  onChange={(e) => setPrivateForm((prev) => ({ ...prev, virtualOnly: !!e.target.checked }))}
-                />
-                Virtual-only room
-              </label>
-            </div>
             <button type="button" onClick={openHostSetup}>
-              Continue In Host Dashboard
+              Open Host Dashboard
             </button>
             <button type="button" onClick={() => navigate("join")}>
               Open Join By Code
             </button>
-            <button
-              type="button"
-              className={showAdvanced ? "is-secondary-active" : ""}
-              onClick={() => setShowAdvanced((value) => !value)}
-            >
-              {showAdvanced ? "Hide Advanced Fields" : "Show Advanced Fields"}
-            </button>
-            {showAdvanced && (
-              <div className="mk3-host-advanced-grid">
-                <label>
-                  Start Time (optional)
-                  <input
-                    type="datetime-local"
-                    value={privateForm.startsAtLocal}
-                    onChange={(e) => setPrivateForm((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
-                  />
-                </label>
-                {!privateForm.virtualOnly && (
-                  <>
-                    <label>
-                      City (optional)
-                      <input
-                        value={privateForm.city}
-                        onChange={(e) => setPrivateForm((prev) => ({ ...prev, city: e.target.value }))}
-                        placeholder="Seattle"
-                      />
-                    </label>
-                    <label>
-                      State (optional)
-                      <input
-                        value={privateForm.state}
-                        onChange={(e) => setPrivateForm((prev) => ({ ...prev, state: e.target.value }))}
-                        placeholder="WA"
-                      />
-                    </label>
-                  </>
-                )}
-                <label>
-                  Notes (optional)
-                  <textarea
-                    value={privateForm.description}
-                    onChange={(e) => setPrivateForm((prev) => ({ ...prev, description: e.target.value }))}
-                    placeholder="Invite-only, private event, etc."
-                  />
-                </label>
-              </div>
-            )}
-            {!!status && <div className="mk3-status">{status}</div>}
+            <div className="mk3-status">
+              Room history, recap access, and quick launch actions are all managed below.
+            </div>
           </div>
         </aside>
 
