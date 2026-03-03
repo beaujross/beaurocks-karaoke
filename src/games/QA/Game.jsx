@@ -387,7 +387,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
         if (isPlayer) {
             return (
                 <div data-qa-player-view="wyr" className="h-full flex flex-col justify-center p-6 bg-gradient-to-br from-black via-[#12001f] to-[#0b0b18] text-white font-saira text-center">
-                    <div className="text-xl font-bold mb-6 text-[#EC4899] uppercase tracking-widest">WOULD YOU RATHER...</div>
+                    <div className="text-2xl font-black mb-6 text-[#EC4899] uppercase tracking-[0.2em]">WOULD YOU RATHER...</div>
                     {!isReveal && timerSecRemaining !== null && (
                         <div className="mb-4 inline-flex self-center items-center gap-2 text-xs uppercase tracking-[0.3em] bg-black/40 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
                             <i className="fa-regular fa-clock"></i>
@@ -416,20 +416,22 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                                 data-wyr-choice="A"
                                 onClick={() => castVote('A')}
                                 disabled={isSubmittingVote}
-                                className={`flex-1 bg-[#EC4899] border-4 border-white/20 rounded-2xl text-2xl font-black shadow-lg transition-transform flex items-center justify-center p-4 leading-tight ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-95'}`}
+                                className={`flex-1 bg-gradient-to-br from-[#EC4899] to-[#c0267c] border-4 border-white/20 rounded-3xl text-3xl font-black shadow-[0_14px_38px_rgba(236,72,153,0.45)] transition-transform flex flex-col items-center justify-center p-5 leading-tight min-h-[150px] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-[0.98]'}`}
                             >
+                                <span className="text-xs uppercase tracking-[0.3em] mb-2 text-pink-100/90">Choice A</span>
                                 {gameState.optionA}
                             </button>
-                            <div className="text-xl font-bold opacity-50 py-2">OR</div>
+                            <div className="text-xl font-black opacity-70 py-1 tracking-[0.2em]">OR</div>
                             <button
                                 data-wyr-choice="B"
                                 onClick={() => castVote('B')}
                                 disabled={isSubmittingVote}
-                                className={`flex-1 bg-[#00C4D9] border-4 border-white/20 rounded-2xl text-2xl font-black shadow-lg transition-transform flex items-center justify-center p-4 leading-tight ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-95'}`}
+                                className={`flex-1 bg-gradient-to-br from-[#00C4D9] to-[#0f8ea7] border-4 border-white/20 rounded-3xl text-3xl font-black shadow-[0_14px_38px_rgba(0,196,217,0.45)] transition-transform flex flex-col items-center justify-center p-5 leading-tight min-h-[150px] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-[0.98]'}`}
                             >
+                                <span className="text-xs uppercase tracking-[0.3em] mb-2 text-cyan-100/90">Choice B</span>
                                 {gameState.optionB}
                             </button>
-                            {voteError && <div className="text-sm text-rose-300 mt-2">{voteError}</div>}
+                            {voteError && <div className="text-base text-rose-300 mt-2 font-semibold">{voteError}</div>}
                         </div>
                     )}
                 </div>
@@ -455,8 +457,8 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                         <div className="w-full max-w-[96vw] px-6 md:px-10">
                             <div className="relative overflow-hidden rounded-3xl border border-fuchsia-200/40 bg-gradient-to-r from-[#180017]/95 via-[#2a0630]/96 to-[#103046]/95 px-7 py-5 text-center shadow-[0_16px_52px_rgba(0,0,0,0.62)] backdrop-blur-sm">
                                 <div className="pointer-events-none absolute inset-0 opacity-35 bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.55),transparent_52%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.5),transparent_58%)]" />
-                                <div className="relative text-[clamp(0.9rem,1.5vw,1.25rem)] uppercase tracking-[0.26em] text-fuchsia-100/90 mb-3 font-bold">Prompt</div>
-                                <div className="relative text-[clamp(1.6rem,3.25vw,3.4rem)] font-black leading-[1.08] text-white whitespace-pre-wrap break-words drop-shadow-[0_3px_10px_rgba(0,0,0,0.5)]">
+                                <div className="relative text-[clamp(1rem,1.8vw,1.45rem)] uppercase tracking-[0.24em] text-fuchsia-100/90 mb-3 font-bold">Prompt</div>
+                                <div className="relative text-[clamp(2.2rem,4.4vw,4.8rem)] font-black leading-[1.08] text-white whitespace-pre-wrap break-words drop-shadow-[0_3px_10px_rgba(0,0,0,0.5)]">
                                     {wyrPrompt}
                                 </div>
                             </div>

@@ -795,7 +795,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const [verificationId, setVerificationId] = useState(null);
     const [smsCode, setSmsCode] = useState('');
     const [phoneLoading, setPhoneLoading] = useState(false);
-    const [smsBypassEnabled, setSmsBypassEnabled] = useState(false);
     const [showAbout, setShowAbout] = useState(false);
     const [showFeedbackForm, setShowFeedbackForm] = useState(false);
     const [feedbackSending, setFeedbackSending] = useState(false);
@@ -1599,14 +1598,6 @@ const SingerApp = ({ roomCode, uid }) => {
         })),
         []
     );
-
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        const params = new URLSearchParams(window.location.search);
-        const isDevHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-        const bypass = isDevHost && (params.has('sms_bypass') || localStorage.getItem('bross_sms_bypass') === '1');
-        setSmsBypassEnabled(bypass);
-    }, []);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -2657,11 +2648,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [popTriviaVotes, popTriviaQuestion?.options?.length]);
     const popTriviaMyVote = useMemo(() => {
         if (!popTriviaVotes.length) return null;
-        const mine = popTriviaVotes.find((vote) => (vote?.uid && uid ? vote.uid === uid : false));
+        const voteName = String(user?.name || form.name || 'Guest').trim() || 'Guest';
+        const voteAvatar = String(user?.avatar || form.emoji || DEFAULT_EMOJI);
+        const mine = popTriviaVotes.find((vote) => {
+            if (vote?.uid && uid) return vote.uid === uid;
+            return String(vote?.userName || 'Guest') === voteName
+                && String(vote?.avatar || DEFAULT_EMOJI) === voteAvatar;
+        });
         if (!mine) return null;
         const val = Number(mine.val);
         return Number.isInteger(val) ? val : null;
-    }, [popTriviaVotes, uid]);
+    }, [form.emoji, form.name, popTriviaVotes, uid, user?.avatar, user?.name]);
     const karaokePerformanceVotingOpen = !!currentSinger && (!room?.activeMode || room.activeMode === 'karaoke');
     const showPerformanceVotingPromptCta = karaokePerformanceVotingOpen && tab !== 'home';
     const showPopTriviaPromptCta = !!popTriviaQuestion && !['home', 'request', 'social'].includes(tab);
@@ -3879,7 +3876,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 existingSnap.docs.map((docSnap) => docSnap.data()),
                 POP_TRIVIA_VOTE_TYPE
             );
-            const alreadyVoted = deduped.some((vote) => vote?.uid && uid && vote.uid === uid);
+            const voteName = String(user?.name || form.name || 'Guest').trim() || 'Guest';
+            const voteAvatar = String(user?.avatar || form.emoji || DEFAULT_EMOJI);
+            const alreadyVoted = deduped.some((vote) => {
+                if (vote?.uid && uid) return vote.uid === uid;
+                return String(vote?.userName || 'Guest') === voteName
+                    && String(vote?.avatar || DEFAULT_EMOJI) === voteAvatar;
+            });
             if (alreadyVoted) {
                 toast('Answer already locked.');
                 return;
@@ -3896,8 +3899,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 performanceSingerUid: currentSinger?.singerUid || null,
                 performanceSingerName: currentSinger?.singerName || null,
                 performanceStartedAtMs: timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || null,
-                userName: user.name || 'Player',
-                avatar: user.avatar || DEFAULT_EMOJI,
+                userName: voteName,
+                avatar: voteAvatar,
                 uid: uid || null,
                 isVote: true,
                 timestamp: serverTimestamp()
@@ -4392,11 +4395,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             if (auth.settings && (host === 'localhost' || host === '127.0.0.1')) {
                 auth.settings.appVerificationDisabledForTesting = true;
             }
-            const bypassActive = !!auth.settings?.appVerificationDisabledForTesting;
             let appVerifier = null;
-            if (!bypassActive) {
-                console.warn('App verification bypass is off; reCAPTCHA required.');
-            }
             const ready = await initRecaptchaVerifier(containerId);
             if (!ready) {
                 toast('reCAPTCHA failed to initialize. Reload and try again.');
@@ -4454,40 +4453,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setShowVipOnboarding(true);
             setTab('request');
             setSongsTab('tight15');
-            showRewardToast('BeauRocks account verified - VIP unlocked! +5000 PTS', 5000, { durationMs: 3600 });
+            showRewardToast('BeauRocks account verified - VIP perks unlocked! +5000 PTS', 5000, { durationMs: 3600 });
         } catch (e) {
             console.error('confirm error', e);
             toast('Verification failed');
         } finally { setPhoneLoading(false); }
-    };
-
-    const bypassSmsVip = async () => {
-        try {
-            if (!auth.currentUser) return toast('No active session');
-            const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`);
-            const vipStatus = await setMyVipAccountStatus({
-                source: 'audience_qa_bypass',
-                qaBypass: true,
-                vipLevel: 1
-            });
-            await updateDoc(roomUserRef, {
-                ...getRoomUserProjection({
-                    isVip: !!vipStatus?.isVip,
-                    vipLevel: Math.max(1, Number(vipStatus?.vipLevel || 1))
-                }),
-                points: increment(5000)
-            });
-            setShowPhoneModal(false);
-            setSmsSent(false);
-            setSmsCode('');
-            setShowVipOnboarding(true);
-            setTab('request');
-            setSongsTab('tight15');
-            showRewardToast('BeauRocks account unlocked (bypass) +5000 PTS', 5000, { durationMs: 3600 });
-        } catch (e) {
-            console.error('Bypass error', e);
-            toast('Bypass failed');
-        }
     };
 
     const feedbackOptions = {
@@ -6323,7 +6293,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         <div className="fixed inset-0 bg-black/80 z-[130] flex items-center justify-center p-6">
             <div className="bg-zinc-900 p-6 rounded-xl w-full max-w-md">
                 <h2 className="text-2xl font-bold mb-2">Create BeauRocks Account via SMS</h2>
-                <p className="text-sm text-zinc-400 mb-4">Enter your phone number (include country code). We will text a verification code to create your BeauRocks account and unlock VIP perks. In BeauRocks, your VIP account is your verified BeauRocks account.</p>
+                <p className="text-sm text-zinc-400 mb-4">Enter your phone number (include country code). We will text a verification code to create your BeauRocks account and unlock VIP perks. Your VIP status is part of your BeauRocks account.</p>
                 <input value={phoneNumber} onChange={e=>setPhoneNumber(e.target.value)} placeholder="+1 555 555 5555" className="w-full p-3 mb-3 rounded bg-zinc-800 border border-zinc-700" />
                 {!smsSent ? (
                     <div className="flex gap-2">
@@ -6339,8 +6309,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         </div>
                     </>
                 )}
-
-                <button onClick={bypassSmsVip} className="mt-4 text-xs text-cyan-300 underline underline-offset-4">Skip SMS for QA</button>
 
                 {/* reCAPTCHA container for invisible verifier */}
                 <div id="recap-container-modal" className="mt-4"></div>
@@ -6514,7 +6482,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
                                 <div className="flex items-center gap-3 text-lg text-zinc-100 mt-2">
                                     <span className="text-2xl">{EMOJI.star}</span>
-                                    Create BeauRocks account = VIP unlock +5000 PTS boost.
+                                    Create a BeauRocks account to unlock VIP perks and +5000 PTS.
                                 </div>
                                 <button
                                     onClick={() => openVipUpgrade()}
@@ -6525,7 +6493,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             </div>
                             <div className="bg-black/30 border border-cyan-400/40 rounded-2xl p-4">
                                 <div className="text-base uppercase tracking-widest text-cyan-200 mb-2">Carry over?</div>
-                                <div className="text-lg text-zinc-100">VIP points carry between sessions. Guest points stay in the room.</div>
+                                <div className="text-lg text-zinc-100">Account points carry between sessions. Guest points stay in the room.</div>
                             </div>
                         </div>
                         <div className="flex flex-col gap-2 mt-4">
@@ -7297,13 +7265,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                 )}
                                 {popTriviaQuestion && (
-                                    <div className="mt-3 rounded-2xl border border-cyan-400/40 bg-black/55 backdrop-blur p-3">
-                                        <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.28em] text-cyan-200">
+                                    <div className="mt-3 rounded-3xl border-2 border-cyan-300/55 bg-gradient-to-br from-[#070b1a]/95 via-[#11162b]/95 to-[#180a1f]/95 shadow-[0_16px_44px_rgba(0,0,0,0.45)] backdrop-blur p-4">
+                                        <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-[0.22em] text-cyan-100">
                                             <span>Pop-up Trivia</span>
-                                            <span>{popTriviaState?.index + 1}/{popTriviaState?.total} | {popTriviaState?.timeLeftSec}s</span>
+                                            <span className="font-bold">{popTriviaState?.index + 1}/{popTriviaState?.total} | {popTriviaState?.timeLeftSec}s</span>
                                         </div>
-                                        <div className="mt-2 text-sm font-bold text-white leading-snug">{popTriviaQuestion.q}</div>
-                                        <div className="mt-3 grid grid-cols-2 gap-2">
+                                        <div className="mt-2 text-base font-black text-white leading-snug">{popTriviaQuestion.q}</div>
+                                        <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                                             {popTriviaQuestion.options?.map((option, idx) => {
                                                 const isSelected = popTriviaMyVote === idx;
                                                 const optionVotes = popTriviaVoteCounts[idx] || 0;
@@ -7312,22 +7280,22 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                         key={`${popTriviaQuestion.id}_${idx}`}
                                                         onClick={() => submitPopTriviaVote(idx)}
                                                         disabled={popTriviaMyVote !== null || popTriviaSubmitting}
-                                                        className={`rounded-xl border px-3 py-2 text-left transition-all ${
+                                                        className={`rounded-2xl border-2 px-3 py-3 text-left transition-all min-h-[72px] ${
                                                             isSelected
-                                                                ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100'
-                                                                : 'border-white/15 bg-black/35 text-white hover:border-cyan-400/60'
-                                                        } ${(popTriviaMyVote !== null || popTriviaSubmitting) ? 'opacity-90' : ''}`}
+                                                                ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.25)]'
+                                                                : 'border-white/20 bg-black/45 text-white hover:border-cyan-300/75 hover:bg-black/60'
+                                                        } ${(popTriviaMyVote !== null || popTriviaSubmitting) ? 'opacity-90' : 'active:scale-[0.99]'}`}
                                                     >
                                                         <div className="flex items-center justify-between gap-2">
-                                                            <span className="text-[10px] font-bold tracking-[0.22em] text-cyan-300">{String.fromCharCode(65 + idx)}</span>
-                                                            <span className="text-[11px] font-mono text-zinc-400">{optionVotes}</span>
+                                                            <span className="text-xs font-black tracking-[0.24em] text-cyan-300">{String.fromCharCode(65 + idx)}</span>
+                                                            <span className="text-xs font-mono text-zinc-300">{optionVotes}</span>
                                                         </div>
-                                                        <div className="mt-1 text-xs font-semibold leading-snug">{option}</div>
+                                                        <div className="mt-1.5 text-sm font-bold leading-snug">{option}</div>
                                                     </button>
                                                 );
                                             })}
                                         </div>
-                                        <div className="mt-2 text-[10px] uppercase tracking-[0.25em] text-zinc-300">
+                                        <div className="mt-2 text-xs uppercase tracking-[0.22em] text-zinc-300">
                                             {popTriviaMyVote !== null ? 'Answer locked' : 'Tap an answer to join the recap'}
                                         </div>
                                     </div>
@@ -7936,7 +7904,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     VIP ACCESS
                                 </div>
                                 <h3 className="text-2xl font-bold text-cyan-300 mb-2">Create Your BeauRocks Account</h3>
-                                <p className="mb-4 text-zinc-300">Your BeauRocks account is your VIP account. Verify once to unlock premium reactions, visuals, and account carryover perks.</p>
+                                <p className="mb-4 text-zinc-300">VIP is unlocked through your BeauRocks account. Verify once to unlock premium reactions, visuals, and account carryover perks.</p>
                                 <div className="bg-black/50 border border-cyan-500/30 rounded-xl p-4 mb-4 text-left">
                                     <div className="text-xs uppercase tracking-[0.35em] text-cyan-300 mb-3">VIP Benefits</div>
                                     <ul className="space-y-2 text-sm text-zinc-200">
@@ -7964,9 +7932,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     )}
                                     <div id="recap-container-vip" className="mt-3"></div>
                                 </div>
-                                {smsBypassEnabled && (
-                                    <button onClick={bypassSmsVip} className="w-full bg-zinc-700 text-white py-3 rounded-lg font-bold mb-3">Bypass SMS (QA)</button>
-                                )}
                                 <p className="text-xs text-zinc-400 mb-3">Fast SMS verification. No password needed.</p>
                                 <button onClick={()=>setTab('home')} className="text-zinc-500 underline block">Maybe Later</button>
                             </>

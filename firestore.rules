@@ -259,6 +259,46 @@ service cloud.firestore {
       ];
     }
 
+    function guestVoteReactionAllowedTypes() {
+      return [
+        'vote_wyr',
+        'vote_trivia',
+        'vote_popup_trivia'
+      ];
+    }
+
+    function guestVoteReactionAllowedKeys() {
+      return [
+        'roomCode',
+        'type',
+        'userName',
+        'avatar',
+        'uid',
+        'timestamp',
+        'val',
+        'questionId',
+        'songId',
+        'isVote',
+        'performanceId',
+        'performanceSongId',
+        'performanceSingerUid',
+        'performanceSingerName',
+        'performanceStartedAtMs'
+      ];
+    }
+
+    function isGuestVoteReactionCreate(data) {
+      return data.type is string
+        && data.type in guestVoteReactionAllowedTypes()
+        && data.keys().hasOnly(guestVoteReactionAllowedKeys())
+        && data.keys().hasAny(['isVote'])
+        && data.isVote == true
+        && (
+          !data.keys().hasAny(['uid'])
+          || data.uid == null
+        );
+    }
+
     function hasSafeClientSubscriptionDefaults(data) {
       return !data.keys().hasAny(['subscription'])
         || (
@@ -904,7 +944,10 @@ service cloud.firestore {
 
       match /reactions/{docId} {
         allow create: if isBrossApp(appId)
-          && isAuthed()
+          && (
+            isAuthed()
+            || isGuestVoteReactionCreate(request.resource.data)
+          )
           && request.resource.data.roomCode is string
           && roomExists(request.resource.data.roomCode)
           && request.resource.data.keys().hasOnly(reactionAllowedKeys())

@@ -243,7 +243,11 @@ const HostTopChrome = ({
         Promise.resolve(updateRoom?.(patch)).catch(() => {});
     }, [updateRoom]);
     const blockRangeWheelDefault = React.useCallback((event) => {
-        event.currentTarget.blur();
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.currentTarget === document.activeElement) {
+            event.currentTarget.blur();
+        }
     }, []);
 
     React.useEffect(() => {
@@ -371,6 +375,52 @@ const HostTopChrome = ({
         setSfxVolumeDraftPct(nextPct);
         setSfxVolume?.(nextPct / 100);
     }, [sfxVolumeDraftPct, setSfxVolume]);
+
+    React.useEffect(() => {
+        const flushSliderDrafts = () => {
+            if (visualizerSliderDraggingRef.current.sensitivity) {
+                commitVisualizerSliderChange('visualizerSensitivity', visualizerSensitivityDraft);
+            }
+            if (visualizerSliderDraggingRef.current.smoothing) {
+                commitVisualizerSliderChange('visualizerSmoothing', visualizerSmoothingDraft);
+            }
+            if (sliderDraggingRef.current.stage) {
+                commitStageVolumeChange(stageVolumeDraft);
+            }
+            if (sliderDraggingRef.current.bg) {
+                commitBgVolumeChange(bgVolumeDraftPct);
+            }
+            if (sliderDraggingRef.current.mix) {
+                commitMixFaderChange(mixFaderDraft);
+            }
+            if (sliderDraggingRef.current.sfx) {
+                commitSfxVolumeChange(sfxVolumeDraftPct);
+            }
+        };
+
+        window.addEventListener('pointerup', flushSliderDrafts, { passive: true });
+        window.addEventListener('pointercancel', flushSliderDrafts, { passive: true });
+        window.addEventListener('mouseup', flushSliderDrafts, { passive: true });
+        window.addEventListener('touchend', flushSliderDrafts, { passive: true });
+        return () => {
+            window.removeEventListener('pointerup', flushSliderDrafts);
+            window.removeEventListener('pointercancel', flushSliderDrafts);
+            window.removeEventListener('mouseup', flushSliderDrafts);
+            window.removeEventListener('touchend', flushSliderDrafts);
+        };
+    }, [
+        bgVolumeDraftPct,
+        commitBgVolumeChange,
+        commitMixFaderChange,
+        commitSfxVolumeChange,
+        commitStageVolumeChange,
+        commitVisualizerSliderChange,
+        mixFaderDraft,
+        sfxVolumeDraftPct,
+        stageVolumeDraft,
+        visualizerSensitivityDraft,
+        visualizerSmoothingDraft,
+    ]);
 
     React.useEffect(() => {
         if (

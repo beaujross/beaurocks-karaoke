@@ -1440,7 +1440,7 @@ const MARKETING_REPORTING_WORKSTREAMS = new Set([
 const MARKETING_REPORTING_MAX_BATCH = 25;
 const DIRECTORY_DISCOVER_TIME_WINDOWS = new Set(["all", "now", "tonight", "this_week"]);
 const DIRECTORY_DISCOVER_SORT_MODES = new Set(["smart", "soonest", "recent", "title"]);
-const DIRECTORY_DISCOVER_DEFAULT_LIMIT = 60;
+const DIRECTORY_DISCOVER_DEFAULT_LIMIT = 40;
 const DIRECTORY_DISCOVER_HOST_INSIGHTS_CACHE_TTL_MS = Math.max(
   15000,
   Number(process.env.DIRECTORY_DISCOVER_HOST_INSIGHTS_CACHE_TTL_MS || 90000)
@@ -7853,8 +7853,8 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
   const sortMode = normalizeDirectoryDiscoverSortMode(request.data?.sortMode || "smart");
   const cursor = normalizeDirectoryDiscoverCursor(request.data?.cursor || 0);
   const limit = clampNumber(request.data?.limit, 1, 120, DIRECTORY_DISCOVER_DEFAULT_LIMIT);
-  const scanMultiplier = clampNumber(request.data?.scanMultiplier, 2, 8, 3);
-  const scanLimit = clampNumber(limit * scanMultiplier, 60, 360, 180);
+  const scanMultiplier = clampNumber(request.data?.scanMultiplier, 2, 6, 2);
+  const scanLimit = clampNumber(limit * scanMultiplier, 48, 300, 120);
   const bounds = normalizeDirectoryDiscoverBounds(request.data?.bounds || null);
   const nowMs = Date.now();
   const db = admin.firestore();

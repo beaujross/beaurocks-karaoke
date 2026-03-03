@@ -661,7 +661,7 @@ const MarketingSite = () => {
                 className="mk3-account-link"
                 onClick={() => openHostDashboard("marketing_nav_host_dashboard")}
               >
-                Host Dashboard
+                {hasFullAccount ? "Host Dashboard" : "Host Access"}
               </button>
               <button
                 type="button"
@@ -686,7 +686,7 @@ const MarketingSite = () => {
                   });
                 }}
               >
-                {hasFullAccount ? "Sign out" : "Log In"}
+                {hasFullAccount ? "Sign out" : "Host Log In"}
               </button>
               <button
                 type="button"
@@ -798,7 +798,7 @@ const MarketingSite = () => {
                     scrollAuthPanelIntoView();
                   }}
                 >
-                  {hasFullAccount ? "Open Host Room Manager" : "Log In With BeauRocks"}
+                  {hasFullAccount ? "Open Host Room Manager" : "Host Log In"}
                 </button>
                 <button
                   type="button"

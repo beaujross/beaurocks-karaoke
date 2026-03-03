@@ -59,6 +59,8 @@ const SOON_LOOKAHEAD_MS = 8 * MS_PER_HOUR;
 const ENV_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED = typeof import.meta !== "undefined" && import.meta?.env
   ? String(import.meta.env.VITE_MARKETING_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED || "")
   : "";
+const DISCOVER_DEFAULT_LIMIT_DESKTOP = 40;
+const DISCOVER_DEFAULT_LIMIT_MOBILE = 24;
 
 const toRadians = (value = 0) => (Number(value || 0) * Math.PI) / 180;
 
@@ -325,6 +327,7 @@ const escapeHtml = (value = "") =>
 const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const mapsApiKey = String(options?.mapsApiKey || "").trim();
   const allowGoogleImageApis = options?.allowGoogleImageApis !== false;
+  const allowGoogleStaticFallback = options?.allowGoogleStaticFallback === true;
   const listingType = normalizeListingType(entry?.listingType || fallbackType);
   const meta = MAP_TYPE_META[listingType] || MAP_TYPE_META.venue;
   const location = options?.resolvedLocation || normalizeLocation(entry);
@@ -339,10 +342,10 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const explicitImageCandidates = resolveListingImageCandidates(entry, mediaType, { includeFallback: false })
     .filter((url) => !isScreenPlaceholderImage(url));
   const addressLine = toAddressLine({ address1, city, state, postalCode, country });
-  const venueImageUrl = allowGoogleImageApis
+  const venueImageUrl = allowGoogleImageApis && allowGoogleStaticFallback
     ? buildStreetViewImageUrl({ location, addressLine, mapsApiKey })
     : "";
-  const mapFallbackImageUrl = allowGoogleImageApis
+  const mapFallbackImageUrl = allowGoogleImageApis && allowGoogleStaticFallback
     ? buildStaticMapImageUrl({ location, mapsApiKey })
     : "";
   const publicLocationFallbackUrl = buildPublicLocationImageUrl({ location });
@@ -352,8 +355,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     : [];
   const googleImageCandidates = dedupeUrls([
     ...googlePhotoUrls,
-    venueImageUrl,
-    mapFallbackImageUrl,
+    ...(allowGoogleStaticFallback ? [venueImageUrl, mapFallbackImageUrl] : []),
   ]);
   const imageCandidates = dedupeUrls([
     ...explicitImageCandidates,
@@ -582,6 +584,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     sortMode: sortMode === "nearest" ? "smart" : sortMode,
     hostUid: "",
     officialRoomOnly: officialRoomFilter === "official",
+    limit: isMobileViewport ? DISCOVER_DEFAULT_LIMIT_MOBILE : DISCOVER_DEFAULT_LIMIT_DESKTOP,
   });
   const permissionError = isPermissionError(error);
   const indexError = isIndexError(error);
@@ -598,6 +601,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       return toBooleanFlag(serverFlag, false);
     }
     return toBooleanFlag(ENV_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED, false);
+  }, [mapsConfig]);
+  const discoverGoogleStaticFallbackEnabled = useMemo(() => {
+    const serverFlag = mapsConfig?.featureFlags?.marketing_discover_google_static_fallback_enabled;
+    if (typeof serverFlag === "boolean" || String(serverFlag || "").trim()) {
+      return toBooleanFlag(serverFlag, false);
+    }
+    return false;
   }, [mapsConfig]);
   // Keep static imagery traffic off unless explicitly enabled.
   const allowGoogleImageApis = mapEnabled && mapsLoaded && discoverGoogleStaticImagesEnabled;
@@ -635,6 +645,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       next.push(toListing(entry, "event", {
         mapsApiKey,
         allowGoogleImageApis,
+        allowGoogleStaticFallback: discoverGoogleStaticFallbackEnabled,
         resolvedLocation: resolved.location,
         resolvedLocationFields: resolved.locationFields,
         locationSource: resolved.locationSource,
@@ -645,6 +656,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       next.push(toListing(entry, "room_session", {
         mapsApiKey,
         allowGoogleImageApis,
+        allowGoogleStaticFallback: discoverGoogleStaticFallbackEnabled,
         resolvedLocation: resolved.location,
         resolvedLocationFields: resolved.locationFields,
         locationSource: resolved.locationSource,
@@ -655,13 +667,14 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       next.push(toListing(entry, "venue", {
         mapsApiKey,
         allowGoogleImageApis,
+        allowGoogleStaticFallback: discoverGoogleStaticFallbackEnabled,
         resolvedLocation: resolved.location,
         resolvedLocationFields: resolved.locationFields,
         locationSource: resolved.locationSource,
       }));
     });
     return next;
-  }, [data.events, data.sessions, data.venues, mapsApiKey, allowGoogleImageApis, venueLocationIndex]);
+  }, [allowGoogleImageApis, data.events, data.sessions, data.venues, discoverGoogleStaticFallbackEnabled, mapsApiKey, venueLocationIndex]);
 
   const hostFacetOptions = useMemo(() => {
     const fromServer = Array.isArray(facets?.host) ? facets.host : [];
@@ -1315,6 +1328,39 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
               <option value="host_first">Host-first</option>
             </select>
           </label>
+        </div>
+        <div className="mk3-filter-chips mk3-zone mk3-zone-time mk3-discover-filter-advanced">
+          <span className="mk3-filter-chip-label">Quick filters</span>
+          <button
+            type="button"
+            className={officialRoomFilter === "official" ? "active" : ""}
+            onClick={() => {
+              setTypeFilter("room_session");
+              setOfficialRoomFilter("official");
+              trackEvent("mk_discover_official_room_filter_change", {
+                source: "discover_quick_filters",
+                mode: "official_only",
+              });
+            }}
+          >
+            Official BeauRocks Rooms
+            {officialBeauRocksRoomCount > 0 && <span className="mk3-filter-chip-count"> ({officialBeauRocksRoomCount})</span>}
+          </button>
+          <button
+            type="button"
+            className={roomAccessFilter === "joinable" ? "active" : ""}
+            onClick={() => {
+              setTypeFilter("room_session");
+              setRoomAccessFilter("joinable");
+              trackEvent("mk_discover_room_access_filter_change", {
+                source: "discover_quick_filters",
+                mode: "joinable_only",
+              });
+            }}
+          >
+            Joinable by code
+            {joinableRoomCount > 0 && <span className="mk3-filter-chip-count"> ({joinableRoomCount})</span>}
+          </button>
         </div>
         <div className="mk3-filter-chips mk3-zone mk3-zone-time mk3-discover-filter-advanced">
           {TIME_WINDOW_OPTIONS.map((option) => (

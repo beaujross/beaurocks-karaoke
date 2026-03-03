@@ -45,7 +45,7 @@ export const useDirectoryDiscover = ({
   hostUid = "",
   officialRoomOnly = false,
   bounds = null,
-  limit = 60,
+  limit = 36,
 } = {}) => {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
