@@ -288,7 +288,6 @@ const LOBBY_TIER_CHIP_CAP = 8;
 const LOBBY_ORB_EVENT_CAP = 14;
 const LOBBY_PARTICLE_MAX = 24;
 const LOBBY_ORB_MIN_TOP_PCT = 24;
-const LOBBY_ORB_IDLE_TOP_PCT = 66;
 const LOBBY_GROUND_LINE_TOP_PCT = 92;
 const GUITAR_SYNC_DECAY_PER_SECOND = 14;
 const GUITAR_SYNC_GAIN_PER_HIT = 11;
@@ -355,16 +354,26 @@ const getLobbyOrbMeterValue = (state = null, now = nowMs()) => {
     return clampLobby(liveEnergy, 0, 100);
 };
 
-const getLobbyOrbTopPct = ({ hasStreak = false, streakDecayPct = 0, groundTopPct = LOBBY_GROUND_LINE_TOP_PCT }) => {
+const getLobbyOrbTopPct = ({
+    hasStreak = false,
+    streakDecayPct = 0,
+    groundTopPct = LOBBY_GROUND_LINE_TOP_PCT,
+    restCenterTopPct = null
+}) => {
     const safeGroundTopPct = clampLobby(groundTopPct, LOBBY_ORB_MIN_TOP_PCT + 8, 99);
-    if (!hasStreak) return LOBBY_ORB_IDLE_TOP_PCT;
+    const resolvedRestCenterTopPct = clampLobby(
+        Number(restCenterTopPct ?? (safeGroundTopPct - 8)),
+        LOBBY_ORB_MIN_TOP_PCT,
+        safeGroundTopPct - 1
+    );
+    if (!hasStreak) return resolvedRestCenterTopPct;
     const decay = clampLobby(streakDecayPct, 0, 100);
     const fallProgress = 1 - (decay / 100);
-    const maxTravel = Math.max(0, (safeGroundTopPct - LOBBY_ORB_MIN_TOP_PCT) - 4);
+    const maxTravel = Math.max(0, resolvedRestCenterTopPct - LOBBY_ORB_MIN_TOP_PCT);
     return clampLobby(
         LOBBY_ORB_MIN_TOP_PCT + (fallProgress * maxTravel),
         LOBBY_ORB_MIN_TOP_PCT,
-        safeGroundTopPct - 4
+        resolvedRestCenterTopPct
     );
 };
 
@@ -2554,8 +2563,19 @@ const PublicTV = ({ roomCode }) => {
         ? roomUsers.find(u => u.uid === current.singerUid || u.name === current.singerName)
         : null;
     const currentSingerIsVip = !!currentSinger?.isVip || (currentSinger?.vipLevel || 0) > 0;
+    const currentPerformanceCrowdPoints = useMemo(() => {
+        const activePerformanceId = String(current?.id || '').trim();
+        if (!activePerformanceId) return 0;
+        return roomUsers.reduce((sum, userEntry) => {
+            if (String(userEntry?.lastPerformanceId || '').trim() !== activePerformanceId) return sum;
+            return sum + Math.max(0, Number(userEntry?.performancePointsGifted || 0));
+        }, 0);
+    }, [current?.id, roomUsers]);
+    const currentPerformanceHypeScore = current
+        ? Math.max(0, Number(current?.hypeScore || 0), Math.round(currentPerformanceCrowdPoints))
+        : 0;
     const currentPerformancePoints = current
-        ? (current.hypeScore || 0) + (current.applauseScore || 0) + (current.hostBonus || 0)
+        ? currentPerformanceHypeScore + Math.max(0, Number(current?.applauseScore || 0)) + Math.max(0, Number(current?.hostBonus || 0))
         : 0;
     const showScoring = room?.showScoring !== false;
     const isVipSong = (song) => {
@@ -2582,7 +2602,7 @@ const PublicTV = ({ roomCode }) => {
     const lobbyObjectiveMode = lobbyForcedObjectiveMode || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
     const lobbyObjectiveIsTeamPong = lobbyObjectiveMode?.id === 'team_pong';
     const lobbyObjectiveLabel = lobbyObjectiveMode?.label || 'Volley Orb';
-    const lobbyObjectiveBannerGoal = lobbyObjectiveMode?.tvBannerGoal || 'Keep Orb Above Ground';
+    const lobbyObjectiveBannerGoal = lobbyObjectiveMode?.tvBannerGoal || 'Keep The Volley Alive';
     const lobbyPromptPool = Array.isArray(lobbyObjectiveMode?.prompts) && lobbyObjectiveMode.prompts.length
         ? lobbyObjectiveMode.prompts
         : ['Goal: keep the crowd objective active.'];
@@ -2616,6 +2636,10 @@ const PublicTV = ({ roomCode }) => {
     const lobbyRelayObjective = deriveRelayObjective(lobbyVolleyState, lobbyNow);
     const lobbyRelayEffect = getLobbyPlayEffectByInteractionType(lobbyRelayObjective?.targetType || '');
     const lobbyRelayRemainingSec = Math.max(0, Math.ceil(Number(lobbyRelayObjective?.remainingMs || 0) / 100) / 10);
+    const lobbyBuilderSequenceLabel = LOBBY_PLAY_GUIDE
+        .map((guide) => (guide?.action || '').toUpperCase())
+        .filter(Boolean)
+        .join(' -> ');
     const lobbyCurrentTierMeta = getLobbyTierDefinition(lobbyVolleyState?.currentTier || 0);
     const motionSafeFx = !!room?.reduceMotionFx;
     const lobbyOrbSkinUrl = useMemo(() => {
@@ -2632,18 +2656,32 @@ const PublicTV = ({ roomCode }) => {
         100
     );
     const lobbyHasActiveVolley = Number(lobbyVolleyState?.streakCount || 0) > 0 && Number(lobbyVolleyState?.lastInteractionAtMs || 0) > 0;
+    const lobbyOrbDiameterPx = clampLobby((Number(viewportSize?.width || 1920) * 0.2), 198, 292);
+    const lobbyOrbRadiusPct = (lobbyOrbDiameterPx * 0.5 / Math.max(1, Number(viewportSize?.height || 1080))) * 100;
+    const lobbyOrbRestCenterTopPct = clampLobby(
+        lobbyGroundLineTopPct - lobbyOrbRadiusPct,
+        LOBBY_ORB_MIN_TOP_PCT,
+        lobbyGroundLineTopPct - 1
+    );
     const lobbyOrbTopPct = getLobbyOrbTopPct({
         hasStreak: lobbyHasActiveVolley,
         streakDecayPct: lobbyStreakDecayPct,
-        groundTopPct: lobbyGroundLineTopPct
+        groundTopPct: lobbyGroundLineTopPct,
+        restCenterTopPct: lobbyOrbRestCenterTopPct
     });
     const lobbyOrbFloatDrift = useMemo(() => {
+        if (!lobbyHasActiveVolley) {
+            return {
+                driftX: motionSafeFx ? 0 : Math.sin((lobbyNow / 1000) * 0.42) * 0.8,
+                driftY: 0
+            };
+        }
         const seed = String(roomCode || '')
             .split('')
             .reduce((sum, char, index) => sum + (char.charCodeAt(0) * (index + 1)), 17);
         const tSec = lobbyNow / 1000;
         const motionDamp = motionSafeFx ? 0.56 : 1;
-        const streakScale = lobbyHasActiveVolley ? 1 : 0.66;
+        const streakScale = 1;
         const energyScale = 0.72 + (Math.max(0, Math.min(100, Number(lobbyOrbEnergy || 0))) / 185);
         const ampX = (3.8 + (seededUnit(seed + 23) * 2.5)) * motionDamp * streakScale * energyScale;
         const ampY = (1.6 + (seededUnit(seed + 37) * 1.4)) * motionDamp * streakScale * (0.82 + (Math.max(0, Math.min(100, Number(lobbyOrbEnergy || 0))) / 230));
@@ -2665,7 +2703,7 @@ const PublicTV = ({ roomCode }) => {
     const lobbyOrbRenderTopPct = clampLobby(
         lobbyOrbTopPct + lobbyOrbFloatDrift.driftY,
         LOBBY_ORB_MIN_TOP_PCT - 2,
-        lobbyGroundLineTopPct - 4
+        lobbyOrbRestCenterTopPct
     );
     const lobbyPongState = useMemo(() => {
         const seed = String(roomCode || '')
@@ -4187,7 +4225,7 @@ const PublicTV = ({ roomCode }) => {
                                             <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-cyan-300">LOBBY PLAYGROUND</h3>
                                         </div>
                                         <div className={`${lobbyCompactHudMode ? 'text-[11px] md:text-xs mb-2' : 'text-xs md:text-sm mb-3'} text-zinc-200/90 uppercase tracking-[0.12em]`}>
-                                            Phones drive the room. Keep the orb alive.
+                                            Volley mode: take turns and hit the highlighted builder.
                                         </div>
                                         <div className={`rounded-2xl border border-emerald-300/35 bg-emerald-500/10 px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'}`}>
                                             <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-100 mb-1">{lobbyObjectiveLabel} Goal</div>
@@ -4198,6 +4236,13 @@ const PublicTV = ({ roomCode }) => {
                                         <div className={`rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'}`}>
                                             <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200 mb-1">Try This</div>
                                             <div className={`${lobbyCompactHudMode ? 'text-sm md:text-base' : 'text-sm md:text-lg'} font-semibold text-white leading-tight`}>{lobbyPrompt}</div>
+                                        </div>
+                                        <div className={`rounded-2xl border border-white/20 bg-black/35 px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'}`}>
+                                            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-200">Builder Sequence</div>
+                                            <div className={`${lobbyCompactHudMode ? 'text-xs md:text-sm' : 'text-sm md:text-base'} font-bold text-white mt-1`}>
+                                                {lobbyBuilderSequenceLabel}
+                                            </div>
+                                            <div className="text-[11px] text-zinc-200 mt-1">Different teammate must hit the highlighted next builder.</div>
                                         </div>
                                         <div className={`rounded-2xl border border-fuchsia-300/35 bg-gradient-to-r from-cyan-500/14 via-indigo-500/14 to-fuchsia-500/16 px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'}`}>
                                             <div className="flex items-center justify-between gap-2">
@@ -4789,17 +4834,28 @@ const PublicTV = ({ roomCode }) => {
                                     style={{ top: `${lobbyOrbRenderTopPct}%`, left: `${lobbyOrbRenderLeftPct}%` }}
                                 >
                                     <div
-                                        className={`lobby-volley-orb-shell ${motionSafeFx ? 'lobby-volley-orb-shell-safe' : ''}`}
+                                        className={`lobby-volley-orb-shell ${motionSafeFx ? 'lobby-volley-orb-shell-safe' : ''} ${lobbyOrbSkinUrl ? 'lobby-volley-orb-shell-custom' : ''}`}
                                         style={{ '--orb-energy-norm': `${Math.max(0, Math.min(1, lobbyOrbEnergy / 100))}` }}
                                     >
-                                        <div className="lobby-volley-orb-slat-overlay" aria-hidden="true">
-                                            <span className="lobby-volley-orb-seam lobby-volley-orb-seam-main" />
-                                            <span className="lobby-volley-orb-seam lobby-volley-orb-seam-left" />
-                                            <span className="lobby-volley-orb-seam lobby-volley-orb-seam-right" />
-                                            <span className="lobby-volley-orb-seam lobby-volley-orb-seam-band" />
-                                            <span className="lobby-volley-orb-seam lobby-volley-orb-seam-top" />
-                                            <span className="lobby-volley-orb-seam lobby-volley-orb-seam-bottom" />
-                                        </div>
+                                        {!!lobbyOrbSkinUrl && (
+                                            <img
+                                                src={lobbyOrbSkinUrl}
+                                                alt="Orb skin"
+                                                className="lobby-volley-orb-shell-skin"
+                                                loading="lazy"
+                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                            />
+                                        )}
+                                        {!lobbyOrbSkinUrl && (
+                                            <div className="lobby-volley-orb-slat-overlay" aria-hidden="true">
+                                                <span className="lobby-volley-orb-seam lobby-volley-orb-seam-main" />
+                                                <span className="lobby-volley-orb-seam lobby-volley-orb-seam-left" />
+                                                <span className="lobby-volley-orb-seam lobby-volley-orb-seam-right" />
+                                                <span className="lobby-volley-orb-seam lobby-volley-orb-seam-band" />
+                                                <span className="lobby-volley-orb-seam lobby-volley-orb-seam-top" />
+                                                <span className="lobby-volley-orb-seam lobby-volley-orb-seam-bottom" />
+                                            </div>
+                                        )}
                                         <div
                                             className={`lobby-volley-orb-core ${lobbyOrbSkinUrl ? 'lobby-volley-orb-core-custom' : ''}`}
                                             style={{
@@ -4807,18 +4863,6 @@ const PublicTV = ({ roomCode }) => {
                                                 '--orb-scale': `${1 + (lobbyOrbEnergy / 360)}`
                                             }}
                                         >
-                                            {!!lobbyOrbSkinUrl && (
-                                                <>
-                                                    <img
-                                                        src={lobbyOrbSkinUrl}
-                                                        alt="Orb skin"
-                                                        className="lobby-volley-orb-skin"
-                                                        loading="lazy"
-                                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                                    />
-                                                    <div className="lobby-volley-orb-skin-overlay" aria-hidden="true" />
-                                                </>
-                                            )}
                                             <div className="lobby-volley-orb-core-content">
                                                 <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100">{lobbyObjectiveLabel}</div>
                                                 <div className="text-3xl md:text-4xl font-bebas text-white leading-none">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
@@ -5397,6 +5441,22 @@ const PublicTV = ({ roomCode }) => {
               .lobby-volley-orb-shell-safe {
                 animation-duration: 4.5s;
               }
+              .lobby-volley-orb-shell-custom {
+                background:
+                  radial-gradient(circle at 24% 16%, rgba(255,255,255,0.54), rgba(255,255,255,0.08) 36%, rgba(0,0,0,0) 56%),
+                  radial-gradient(circle at 70% 78%, rgba(7,10,26,0.28), rgba(7,10,26,0.06) 48%, rgba(0,0,0,0) 74%);
+                border-color: rgba(236,253,255,0.9);
+              }
+              .lobby-volley-orb-shell-skin {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                z-index: 0;
+                transform: scale(1.01);
+                filter: saturate(1.08) contrast(1.04);
+              }
               .lobby-volley-orb-slat-overlay {
                 position: absolute;
                 inset: 0;
@@ -5504,23 +5564,6 @@ const PublicTV = ({ roomCode }) => {
               }
               .lobby-volley-orb-core-custom {
                 background: radial-gradient(circle at 50% 28%, rgba(16,24,56,0.62), rgba(4,6,18,0.88));
-              }
-              .lobby-volley-orb-skin {
-                position: absolute;
-                inset: 0;
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                transform: scale(1.03);
-                z-index: 0;
-              }
-              .lobby-volley-orb-skin-overlay {
-                position: absolute;
-                inset: 0;
-                background:
-                  radial-gradient(circle at 20% 16%, rgba(255,255,255,0.26), rgba(255,255,255,0) 44%),
-                  linear-gradient(180deg, rgba(2,6,23,0.16), rgba(2,6,23,0.58));
-                z-index: 1;
               }
               .lobby-volley-orb-core-content {
                 position: relative;

@@ -1819,8 +1819,9 @@ const SingerApp = ({ roomCode, uid }) => {
                 osc.start(toneAt);
                 osc.stop(toneAt + Math.max(0.06, durationSec + 0.04));
             };
-            scheduleTone(relayHit ? 698 : 622, relayHit ? 0.15 : 0.12, 0, relayHit ? 0.07 : 0.05, 'triangle');
-            scheduleTone(relayHit ? 988 : 831, relayHit ? 0.2 : 0.16, relayHit ? 0.05 : 0.04, relayHit ? 0.048 : 0.038, 'sine');
+            scheduleTone(relayHit ? 698 : 622, relayHit ? 0.16 : 0.13, 0, relayHit ? 0.082 : 0.058, 'triangle');
+            scheduleTone(relayHit ? 988 : 831, relayHit ? 0.22 : 0.17, relayHit ? 0.05 : 0.04, relayHit ? 0.056 : 0.04, 'sine');
+            scheduleTone(relayHit ? 1175 : 880, relayHit ? 0.14 : 0.11, relayHit ? 0.1 : 0.09, relayHit ? 0.045 : 0.03, relayHit ? 'square' : 'triangle');
         } catch {
             // Audio feedback is best effort only.
         }
@@ -6828,7 +6829,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const lobbyForcedObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
     const lobbyObjectiveMode = lobbyForcedObjectiveMode || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
     const _lobbyObjectiveLabel = lobbyObjectiveMode?.label || 'Volley Orb';
-    const lobbyObjectiveMobileGoal = lobbyObjectiveMode?.mobileGoal || 'Keep the orb airborne';
+    const lobbyObjectiveMobileGoal = lobbyObjectiveMode?.mobileGoal || 'Keep the volley alive';
     const lobbyObjectiveStreakLabel = lobbyObjectiveMode?.id === 'team_pong' ? 'Rally' : 'Streak';
     const lobbyVolleyModeForced = isCrowdObjectiveLightMode(room?.lightMode);
     const lobbyVolleySceneActive = noSingerOnStage
@@ -6857,6 +6858,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const lobbyRelayObjective = deriveRelayObjective(lobbyVolleyPreview, lobbyVolleyNowMs);
     const lobbyRelayTarget = LOBBY_PLAYGROUND_INTERACTIONS.find((interaction) => interaction.id === lobbyRelayObjective?.targetType) || null;
     const lobbyRelayRemainingSec = Math.max(0, Math.ceil(Number(lobbyRelayObjective?.remainingMs || 0) / 100) / 10);
+    const lobbyBuilderSequenceLabel = LOBBY_PLAYGROUND_INTERACTIONS
+        .map((interaction) => (interaction.actionLabel || interaction.label || '').toUpperCase())
+        .filter(Boolean)
+        .join(' -> ');
     const chatTitle = socialTab === 'host' ? 'DM Host' : 'VIP Lounge';
     const chatStatusLabel = !room?.chatEnabled
         ? 'Chat paused'
@@ -7392,8 +7397,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                              <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-3 space-y-3 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
                                  <div className="flex items-center justify-between gap-2">
                                      <div className="min-w-0">
-                                         <div className="text-xs uppercase tracking-[0.18em] text-cyan-200">Lobby Playground</div>
-                                         <div className="text-sm font-bold text-white/90 leading-tight">{lobbyObjectiveMobileGoal}</div>
+                                         <div className="text-xs uppercase tracking-[0.18em] text-cyan-200">Volley Orb</div>
+                                         <div className="text-base font-black text-white leading-tight">{lobbyObjectiveMobileGoal}</div>
                                      </div>
                                      <div className="flex items-center gap-1">
                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] bg-cyan-400/20 border border-cyan-300/45 text-cyan-100">FREE</span>
@@ -7423,62 +7428,70 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          {lobbyPlayRemaining}/{lobbyPlayMaxPerMinute}
                                      </span>
                                  </div>
-                                 <div className="grid grid-cols-2 gap-3">
-                                      {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction, idx) => {
-                                           const impactLabel = formatLobbyInteractionImpact(interaction.id);
-                                           const isRelayTarget = lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType;
-                                           const interactionStatusLabel = lobbyPlaygroundPaused
-                                               ? 'Paused by host'
-                                               : lobbyPlayRateLimited
-                                                   ? 'Cooling down...'
-                                                   : isRelayTarget
-                                                       ? 'Relay target: teammate tap now'
-                                                       : (interaction.timingLabel || interaction.hint);
-                                           return (
-                                               <button
-                                                   key={interaction.id}
-                                                   onClick={() => triggerLobbyPlayInteraction(interaction.id)}
-                                                   disabled={lobbyPlayInteractionDisabled}
-                                                   className={`relative overflow-hidden rounded-2xl border-2 px-3 py-3 flex flex-col items-center text-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${
-                                                       isRelayTarget
-                                                           ? 'border-emerald-300 bg-gradient-to-b from-emerald-500/26 via-emerald-500/12 to-black/60 shadow-[0_0_18px_rgba(52,211,153,0.28)]'
-                                                           : `bg-gradient-to-b ${interaction.accentCard} ${interaction.accentBorder}`
-                                                   } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
-                                               >
-                                                   <div className="w-full flex items-center justify-between gap-2">
-                                                       <span className={`text-[11px] font-bold tracking-[0.18em] ${interaction.accentText}`}>TAP {String.fromCharCode(65 + idx)}</span>
-                                                       <span className="text-[11px] font-mono text-zinc-200">FREE</span>
-                                                   </div>
-                                                   <span className="mt-1 text-5xl leading-none">{interaction.emoji}</span>
-                                                   <span className={`mt-1 text-base font-black uppercase leading-none ${interaction.accentText}`}>{interaction.actionLabel || interaction.label}</span>
-                                                   <span className={`mt-1 text-sm font-semibold leading-none ${interaction.accentText}`}>{interaction.label}</span>
-                                                   <div className={`mt-2 inline-flex w-fit px-2 py-0.5 rounded-full border text-[11px] font-black ${interaction.accentPill}`}>
-                                                       {interaction.boost.replace('Role: ', '')}
-                                                   </div>
-                                                   <div className="mt-2 text-sm font-semibold text-white/90 leading-tight">
-                                                       {interaction.effectLabel || impactLabel || interaction.hint}
-                                                   </div>
-                                                   <div className={`mt-2 text-xs font-semibold ${
-                                                       isRelayTarget ? 'text-emerald-100' : 'text-zinc-200'
-                                                   }`}>
-                                                       {interactionStatusLabel}
-                                                   </div>
-                                               </button>
+                                 <div className="rounded-xl border border-white/15 bg-black/35 px-3 py-2">
+                                     <div className="text-[11px] uppercase tracking-[0.16em] text-cyan-200">Builder sequence</div>
+                                     <div className="text-sm font-bold text-white mt-1">{lobbyBuilderSequenceLabel}</div>
+                                     <div className="text-xs text-zinc-200 mt-1">Follow the highlighted target with a different teammate to extend the volley.</div>
+                                 </div>
+                                  <div className="grid grid-cols-2 gap-3">
+                                       {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction, idx) => {
+                                            const impactLabel = formatLobbyInteractionImpact(interaction.id);
+                                            const isRelayTarget = lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType;
+                                            const interactionStatusLabel = lobbyPlaygroundPaused
+                                                ? 'Paused by host'
+                                                : lobbyPlayRateLimited
+                                                    ? 'Cooling down...'
+                                                    : isRelayTarget
+                                                        ? 'Relay target now'
+                                                        : 'Ready';
+                                            return (
+                                                <button
+                                                    key={interaction.id}
+                                                    onClick={() => triggerLobbyPlayInteraction(interaction.id)}
+                                                    disabled={lobbyPlayInteractionDisabled}
+                                                    className={`relative overflow-hidden rounded-2xl border-2 px-3 py-3 flex flex-col items-center text-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${
+                                                        isRelayTarget
+                                                            ? 'border-emerald-300 bg-gradient-to-b from-emerald-500/26 via-emerald-500/12 to-black/60 shadow-[0_0_18px_rgba(52,211,153,0.28)]'
+                                                            : `bg-gradient-to-b ${interaction.accentCard} ${interaction.accentBorder}`
+                                                    } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
+                                                >
+                                                    <div className="w-full flex items-center justify-between gap-2">
+                                                        <span className={`text-[11px] font-bold tracking-[0.18em] ${interaction.accentText}`}>TAP {String.fromCharCode(65 + idx)}</span>
+                                                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full border ${
+                                                            isRelayTarget
+                                                                ? 'border-emerald-200/60 bg-emerald-500/25 text-emerald-50'
+                                                                : 'border-white/25 bg-black/35 text-zinc-100'
+                                                        }`}>
+                                                            {isRelayTarget ? 'TARGET' : 'FREE'}
+                                                        </span>
+                                                    </div>
+                                                    <span className="mt-1 text-5xl leading-none">{interaction.emoji}</span>
+                                                    <span className={`mt-1 text-lg font-black uppercase leading-none ${interaction.accentText}`}>{interaction.actionLabel || interaction.label}</span>
+                                                    <span className={`mt-1 text-sm font-semibold leading-none ${interaction.accentText}`}>{impactLabel || interaction.label}</span>
+                                                    <div className={`mt-2 text-sm font-semibold ${
+                                                        isRelayTarget ? 'text-emerald-100' : 'text-zinc-200'
+                                                    }`}>
+                                                        {interactionStatusLabel}
+                                                    </div>
+                                                </button>
                                            );
                                        })}
                                   </div>
-                                 <div className="flex flex-wrap items-center gap-1 text-[10px] text-zinc-200">
+                                 <div className="flex flex-wrap items-center gap-1 text-[11px] text-zinc-200">
                                      <span className={`px-2 py-0.5 rounded-full border ${
                                          lobbyRelayObjective.active
                                              ? 'border-emerald-300/45 bg-emerald-500/12 text-emerald-100'
                                              : 'border-white/15 bg-black/35 text-zinc-300'
                                      }`}>
                                          {lobbyRelayObjective.active
-                                             ? `${lobbyRelayTarget?.emoji || DEFAULT_EMOJI} teammate tap ${lobbyRelayTarget?.label || lobbyRelayObjective?.targetType || 'wave'} in ${lobbyRelayRemainingSec}s`
-                                             : 'Relay unlocks when a different teammate catches the next target'}
+                                             ? `${lobbyRelayTarget?.emoji || DEFAULT_EMOJI} next: different teammate taps ${lobbyRelayTarget?.actionLabel || lobbyRelayTarget?.label || lobbyRelayObjective?.targetType || 'wave'} in ${lobbyRelayRemainingSec}s`
+                                             : 'Relay unlocks when a different teammate hits the next builder'}
                                      </span>
                                      <span className="px-2 py-0.5 rounded-full border border-white/15 bg-black/35 text-zinc-300">
                                          Cooldown {lobbyPlayCooldownMs}ms
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded-full border border-cyan-300/35 bg-cyan-500/12 text-cyan-100">
+                                         Hit builder = encouragement chime
                                      </span>
                                  </div>
                                  <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#27d3f7] to-[#26D7E8] text-black py-2.5 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">

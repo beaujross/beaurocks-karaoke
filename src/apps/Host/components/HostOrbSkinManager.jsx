@@ -13,6 +13,20 @@ const HostOrbSkinManager = ({
     removeCustomOrbSkin
 }) => {
     const activeUrl = (orbSkinUrl || '').trim();
+    const [applyingChoiceId, setApplyingChoiceId] = React.useState('');
+
+    const applySelectedSkin = async (url, choiceId = '') => {
+        const normalized = (url || '').trim();
+        setOrbSkinUrl(normalized);
+        setApplyingChoiceId(choiceId || normalized || 'default');
+        try {
+            await saveOrbSkinUrl(normalized);
+        } catch {
+            // Parent handlers surface errors via toast/logging.
+        } finally {
+            setApplyingChoiceId('');
+        }
+    };
 
     return (
         <div className="space-y-2">
@@ -46,12 +60,14 @@ const HostOrbSkinManager = ({
                 <div className="flex flex-wrap gap-2">
                     <button
                         onClick={() => saveOrbSkinUrl(orbSkinUrl)}
+                        disabled={!!applyingChoiceId}
                         className={`${styles.btnStd} ${styles.btnSecondary}`}
                     >
                         Apply URL Now
                     </button>
                     <button
                         onClick={() => saveOrbSkinUrl('')}
+                        disabled={!!applyingChoiceId}
                         className={`${styles.btnStd} ${styles.btnNeutral}`}
                     >
                         Reset to Default
@@ -72,18 +88,21 @@ const HostOrbSkinManager = ({
                     />
                 </div>
                 <div className="host-form-helper">Orb skin is optional. If blank, the default animated orb appears.</div>
+                <div className="host-form-helper">Choosing a skin from the gallery applies it immediately.</div>
                 <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
                     {orbSkinChoices.map((item) => {
                         const normalizedItemUrl = (item?.url || '').trim();
                         const active = activeUrl === normalizedItemUrl;
                         const isCustom = item.id.startsWith('custom-');
+                        const applyingThisChoice = applyingChoiceId === item.id;
                         return (
                             <div
                                 key={item.id}
                                 className={`rounded-lg border p-2 bg-zinc-900/70 ${active ? 'border-[#00C4D9]' : 'border-zinc-700'}`}
                             >
                                 <button
-                                    onClick={() => setOrbSkinUrl(normalizedItemUrl)}
+                                    onClick={() => applySelectedSkin(normalizedItemUrl, item.id)}
+                                    disabled={!!applyingChoiceId}
                                     className="w-full text-left"
                                     title={item.label}
                                 >
@@ -104,14 +123,16 @@ const HostOrbSkinManager = ({
                                 </button>
                                 <div className="mt-2 flex gap-1">
                                     <button
-                                        onClick={() => saveOrbSkinUrl(normalizedItemUrl)}
+                                        onClick={() => applySelectedSkin(normalizedItemUrl, item.id)}
+                                        disabled={!!applyingChoiceId}
                                         className={`${styles.btnStd} ${styles.btnSecondary} flex-1`}
                                     >
-                                        Use
+                                        {applyingThisChoice ? 'Applying...' : (active ? 'Applied' : 'Apply')}
                                     </button>
                                     {isCustom && (
                                         <button
                                             onClick={() => removeCustomOrbSkin(normalizedItemUrl)}
+                                            disabled={!!applyingChoiceId}
                                             className={`${styles.btnStd} ${styles.btnDanger} px-2`}
                                             title="Remove from custom orb skins"
                                         >

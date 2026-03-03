@@ -7,16 +7,14 @@ const MODE_LIST = Object.freeze([
         label: 'Volley Orb',
         shortLabel: 'Volley',
         icon: 'fa-bullseye',
-        tvGoal: 'Keep the Volley Orb in the air. Do not let it touch the ground line at the bottom.',
-        tvBannerGoal: 'Keep Orb Above Ground',
-        mobileGoal: 'Keep the orb airborne',
+        tvGoal: 'Keep the orb in play. Build a volley and hit the next highlighted builder in sequence.',
+        tvBannerGoal: 'Keep The Volley Alive',
+        mobileGoal: 'Keep the volley alive',
         prompts: [
-            'Goal: keep the Volley Orb above the ground line.',
-            'Trade turns on your phones to keep the orb airborne.',
-            'Pass the orb: different teammate + next target effect inside the relay window.',
-            'Mix wave + laser + echo + confetti for combo links.',
-            'Send a chat message and see it land on the room feed.',
-            'Update your emoji/avatar and spot your card instantly.'
+            'Build a volley first: any builder gets the orb moving.',
+            'Follow the sequence: wave -> laser -> echo -> confetti.',
+            'Relay rule: a different teammate must hit the highlighted next builder.',
+            'Miss the relay timer and the chain resets. Keep it moving.'
         ]
     })
 ]);

@@ -1235,6 +1235,12 @@ const HostTopChrome = ({
                                             </button>
                                         );
                                     })}
+                                    {volleyActive && (
+                                        <button onClick={() => runLiveEffect('volley')} className={`${styles.btnStd} ${styles.btnDanger} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
+                                            <i className="fa-solid fa-circle-stop"></i>
+                                            End Orb Mode
+                                        </button>
+                                    )}
                                     <button onClick={() => runLiveEffect('selfie_cam')} className={`${styles.btnStd} ${selfieCamActive ? styles.btnHighlight : styles.btnNeutral} h-10 py-2 text-sm normal-case tracking-[0.03em]`}>
                                         <i className="fa-solid fa-camera"></i>
                                         {selfieCamActive ? 'Selfie Cam ON' : 'Selfie Cam'}

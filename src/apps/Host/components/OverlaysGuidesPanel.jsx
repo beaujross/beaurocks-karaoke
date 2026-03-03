@@ -108,6 +108,15 @@ const OverlaysGuidesPanel = ({
                         <i className={`fa-solid ${mode.icon}`}></i> {mode.shortLabel}
                     </button>
                 ))}
+                {CROWD_OBJECTIVE_MODES.some((mode) => room?.lightMode === mode.lightMode) && (
+                    <button
+                        onClick={() => updateRoom({ lightMode: 'off' })}
+                        className="flex items-center justify-center gap-2 py-2 rounded-lg border bg-rose-500/20 text-rose-100 border-rose-300/40 hover:bg-rose-500/30"
+                        title="Turn off orb sync mode"
+                    >
+                        <i className="fa-solid fa-circle-stop"></i> Orb Off
+                    </button>
+                )}
                 <button
                     onClick={() => (room?.lightMode === 'storm' ? stopStormSequence() : startStormSequence())}
                     className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.lightMode === 'storm' ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`}
