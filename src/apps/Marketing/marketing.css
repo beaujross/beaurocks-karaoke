@@ -2235,6 +2235,26 @@
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
 }
 
+.mk3-card-results .mk3-discover-card {
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+}
+
+.mk3-card-results .mk3-discover-card > :not(.mk3-discover-media) {
+  grid-column: 2;
+}
+
+.mk3-card-results .mk3-discover-media {
+  grid-column: 1;
+  grid-row: 1 / span 12;
+  min-height: 156px;
+}
+
+.mk3-card-results .mk3-discover-media img {
+  min-height: 156px;
+}
+
 .mk3-card-rail {
   max-height: 640px;
   min-height: 0;
@@ -4001,6 +4021,25 @@
   .mk3-map-footer {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .mk3-card-results .mk3-discover-card {
+    grid-template-columns: 1fr;
+    column-gap: 0;
+  }
+
+  .mk3-card-results .mk3-discover-card > :not(.mk3-discover-media) {
+    grid-column: 1;
+  }
+
+  .mk3-card-results .mk3-discover-media {
+    grid-column: 1;
+    grid-row: auto;
+    min-height: 124px;
+  }
+
+  .mk3-card-results .mk3-discover-media img {
+    min-height: 124px;
   }
 
   .mk3-map-footer-bounds {
