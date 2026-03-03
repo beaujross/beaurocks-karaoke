@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 
 const SCRIPT_ID = "beaurocks-google-maps-script";
 const PRECONNECT_ID = "beaurocks-google-maps-preconnect";
+const CALLBACK_NAME = "__beaurocksMapsInit";
+const CONSTRUCTOR_WAIT_TIMEOUT_MS = 4000;
+const CONSTRUCTOR_WAIT_STEP_MS = 60;
 
 const warmGoogleMapsConnections = () => {
   if (typeof document === "undefined") return;
@@ -28,6 +31,20 @@ const warmGoogleMapsConnections = () => {
   });
 };
 
+const sleep = (ms = 0) => new Promise((resolve) => {
+  window.setTimeout(resolve, Math.max(0, Number(ms) || 0));
+});
+
+const waitForMapConstructor = async (maps, timeoutMs = CONSTRUCTOR_WAIT_TIMEOUT_MS) => {
+  const timeout = Math.max(250, Number(timeoutMs) || CONSTRUCTOR_WAIT_TIMEOUT_MS);
+  const startedAt = Date.now();
+  while ((Date.now() - startedAt) < timeout) {
+    if (typeof maps?.Map === "function") return true;
+    await sleep(CONSTRUCTOR_WAIT_STEP_MS);
+  }
+  return typeof maps?.Map === "function";
+};
+
 const ensureGoogleMapsReady = async (mapsNs = null) => {
   const maps = mapsNs || window.google?.maps;
   if (!maps) {
@@ -38,24 +55,36 @@ const ensureGoogleMapsReady = async (mapsNs = null) => {
     return maps;
   }
 
+  let importLibraryError = null;
   if (typeof maps.importLibrary === "function") {
-    const mapsLibrary = await maps.importLibrary("maps");
-    if (typeof maps.Map !== "function" && typeof mapsLibrary?.Map === "function") {
-      maps.Map = mapsLibrary.Map;
-    }
-    if (typeof maps.InfoWindow !== "function" && typeof mapsLibrary?.InfoWindow === "function") {
-      maps.InfoWindow = mapsLibrary.InfoWindow;
-    }
-    if (typeof maps.LatLngBounds !== "function" && typeof mapsLibrary?.LatLngBounds === "function") {
-      maps.LatLngBounds = mapsLibrary.LatLngBounds;
-    }
-    if (!maps.SymbolPath && mapsLibrary?.SymbolPath) {
-      maps.SymbolPath = mapsLibrary.SymbolPath;
+    try {
+      const mapsLibrary = await maps.importLibrary("maps");
+      if (typeof maps.Map !== "function" && typeof mapsLibrary?.Map === "function") {
+        maps.Map = mapsLibrary.Map;
+      }
+      if (typeof maps.InfoWindow !== "function" && typeof mapsLibrary?.InfoWindow === "function") {
+        maps.InfoWindow = mapsLibrary.InfoWindow;
+      }
+      if (typeof maps.LatLngBounds !== "function" && typeof mapsLibrary?.LatLngBounds === "function") {
+        maps.LatLngBounds = mapsLibrary.LatLngBounds;
+      }
+      if (!maps.SymbolPath && mapsLibrary?.SymbolPath) {
+        maps.SymbolPath = mapsLibrary.SymbolPath;
+      }
+    } catch (error) {
+      importLibraryError = error;
     }
   }
 
+  if (typeof maps.Map !== "function" && await waitForMapConstructor(maps)) {
+    return maps;
+  }
+
   if (typeof maps.Map !== "function") {
-    throw new Error("Google Maps loaded but Map constructor unavailable.");
+    const suffix = importLibraryError
+      ? ` (${String(importLibraryError?.message || importLibraryError)})`
+      : "";
+    throw new Error(`Google Maps loaded but Map constructor unavailable${suffix}.`);
   }
   return maps;
 };
@@ -94,17 +123,36 @@ const loadGoogleMapsScript = (apiKey = "") => {
     }
 
     const script = document.createElement("script");
+    let settled = false;
+    const settleResolve = (mapsNs) => {
+      if (settled) return;
+      settled = true;
+      resolve(mapsNs);
+    };
+    const settleReject = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    const callback = () => {
+      script.dataset.loaded = "true";
+      ensureGoogleMapsReady(window.google?.maps)
+        .then(settleResolve)
+        .catch(settleReject);
+    };
+    window[CALLBACK_NAME] = callback;
+
     script.id = SCRIPT_ID;
     script.async = true;
     script.defer = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async&libraries=maps`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async&callback=${encodeURIComponent(CALLBACK_NAME)}`;
     script.onload = () => {
       script.dataset.loaded = "true";
       ensureGoogleMapsReady(window.google?.maps)
-        .then(resolve)
-        .catch(reject);
+        .then(settleResolve)
+        .catch(settleReject);
     };
-    script.onerror = () => reject(new Error("Failed to load Google Maps script."));
+    script.onerror = () => settleReject(new Error("Failed to load Google Maps script."));
     document.head.appendChild(script);
   });
 
