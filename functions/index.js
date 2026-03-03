@@ -1441,6 +1441,30 @@ const MARKETING_REPORTING_MAX_BATCH = 25;
 const DIRECTORY_DISCOVER_TIME_WINDOWS = new Set(["all", "now", "tonight", "this_week"]);
 const DIRECTORY_DISCOVER_SORT_MODES = new Set(["smart", "soonest", "recent", "title"]);
 const DIRECTORY_DISCOVER_DEFAULT_LIMIT = 60;
+const DIRECTORY_DISCOVER_HOST_INSIGHTS_CACHE_TTL_MS = Math.max(
+  15000,
+  Number(process.env.DIRECTORY_DISCOVER_HOST_INSIGHTS_CACHE_TTL_MS || 90000)
+);
+const DIRECTORY_DISCOVER_HOST_INSIGHTS_ROOM_LIMIT = Math.max(
+  120,
+  Math.min(1000, Number(process.env.DIRECTORY_DISCOVER_HOST_INSIGHTS_ROOM_LIMIT || 480))
+);
+const DIRECTORY_DISCOVER_MAX_HOST_META_IDS = Math.max(
+  20,
+  Math.min(220, Number(process.env.DIRECTORY_DISCOVER_MAX_HOST_META_IDS || 140))
+);
+const DIRECTORY_DISCOVER_MAX_VENUE_META_IDS = Math.max(
+  20,
+  Math.min(260, Number(process.env.DIRECTORY_DISCOVER_MAX_VENUE_META_IDS || 180))
+);
+const DIRECTORY_DISCOVER_HOST_PLAN_TIERS = new Set(["host", "host_plus", "pro", "business", "enterprise"]);
+
+let directoryDiscoverHostInsightsCache = {
+  expiresAtMs: 0,
+  byHostUid: new Map(),
+  rankByHostUid: new Map(),
+  sampleSize: 0,
+};
 
 const buildDirectoryNow = () => admin.firestore.FieldValue.serverTimestamp();
 
@@ -1626,10 +1650,211 @@ const isOfficialBeauRocksRoomListing = (listing = {}) => {
   return hasBeauRocksBrandHint(listing?.title, listing?.hostName, listing?.venueName);
 };
 
+const getDirectoryDiscoverVenueId = (listing = {}) => {
+  const listingType = String(listing?.listingType || "").trim().toLowerCase();
+  if (listingType === "venue") return safeDirectoryString(listing?.id || "", 180);
+  return safeDirectoryString(listing?.venueId || "", 180);
+};
+
+const listDirectoryDiscoverHostUids = (items = []) => {
+  const out = [];
+  const seen = new Set();
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const primary = safeDirectoryString(item?.hostUid || "", 180);
+    const fallback = safeDirectoryString(item?.ownerUid || "", 180);
+    const uid = primary || fallback;
+    if (!uid || seen.has(uid)) return;
+    seen.add(uid);
+    out.push(uid);
+  });
+  return out;
+};
+
+const fetchDirectoryDiscoverHostInsights = async () => {
+  const now = Date.now();
+  const cached = directoryDiscoverHostInsightsCache;
+  if (cached.expiresAtMs > now) return cached;
+
+  const roomsRef = getRootRef().collection("rooms");
+  let roomSnap = null;
+  try {
+    roomSnap = await roomsRef
+      .orderBy("updatedAt", "desc")
+      .limit(DIRECTORY_DISCOVER_HOST_INSIGHTS_ROOM_LIMIT)
+      .get();
+  } catch (_error) {
+    roomSnap = await roomsRef
+      .limit(DIRECTORY_DISCOVER_HOST_INSIGHTS_ROOM_LIMIT)
+      .get();
+  }
+
+  const byHostUid = new Map();
+  roomSnap.docs.forEach((docSnap) => {
+    const room = docSnap.data() || {};
+    const hostUid = safeDirectoryString(room.hostUid || "", 180);
+    if (!hostUid) return;
+    const recap = room.recap && typeof room.recap === "object" ? room.recap : null;
+    const songs = Math.max(0, Number(recap?.totalSongs || 0) || 0);
+    const users = Math.max(0, Number(recap?.totalUsers || 0) || 0);
+    const existing = byHostUid.get(hostUid) || {
+      hostUid,
+      hostedRooms: 0,
+      recapCount: 0,
+      totalSongs: 0,
+      totalUsers: 0,
+      score: 0,
+    };
+    existing.hostedRooms += 1;
+    if (recap) {
+      existing.recapCount += 1;
+      existing.totalSongs += songs;
+      existing.totalUsers += users;
+    }
+    existing.score = Math.round(
+      (existing.recapCount * 25)
+      + (existing.totalSongs * 3)
+      + existing.totalUsers
+      + (existing.hostedRooms * 2)
+    );
+    byHostUid.set(hostUid, existing);
+  });
+
+  const rankedHosts = Array.from(byHostUid.values())
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.recapCount !== a.recapCount) return b.recapCount - a.recapCount;
+      return String(a.hostUid || "").localeCompare(String(b.hostUid || ""));
+    });
+  const rankByHostUid = new Map();
+  rankedHosts.forEach((entry, index) => {
+    rankByHostUid.set(entry.hostUid, index + 1);
+  });
+
+  const nextCache = {
+    expiresAtMs: now + DIRECTORY_DISCOVER_HOST_INSIGHTS_CACHE_TTL_MS,
+    byHostUid,
+    rankByHostUid,
+    sampleSize: roomSnap.size,
+  };
+  directoryDiscoverHostInsightsCache = nextCache;
+  return nextCache;
+};
+
+const fetchDirectoryDiscoverHostAccountMeta = async (db, hostUids = []) => {
+  const safeHostUids = Array.from(new Set((Array.isArray(hostUids) ? hostUids : [])
+    .map((uid) => safeDirectoryString(uid || "", 180))
+    .filter(Boolean)))
+    .slice(0, DIRECTORY_DISCOVER_MAX_HOST_META_IDS);
+  const byHostUid = new Map();
+  if (!safeHostUids.length) return byHostUid;
+
+  const profileRefs = safeHostUids.map((uid) => db.collection("directory_profiles").doc(uid));
+  const userRefs = safeHostUids.map((uid) => db.collection("users").doc(uid));
+  const [profileSnaps, userSnaps] = await Promise.all([
+    db.getAll(...profileRefs),
+    db.getAll(...userRefs),
+  ]);
+
+  safeHostUids.forEach((uid, index) => {
+    const profileData = profileSnaps[index]?.exists ? (profileSnaps[index].data() || {}) : {};
+    const userData = userSnaps[index]?.exists ? (userSnaps[index].data() || {}) : {};
+    const roles = Array.isArray(profileData.roles)
+      ? profileData.roles.map((entry) => normalizeDirectoryToken(entry, 40)).filter(Boolean)
+      : [];
+    const tier = normalizeDirectoryToken(userData?.subscription?.tier || "", 40);
+    const hasHostRole = roles.includes("host") || roles.includes("venue_owner") || roles.includes("directory_admin");
+    const hasHostPlan = !!tier && DIRECTORY_DISCOVER_HOST_PLAN_TIERS.has(tier);
+    byHostUid.set(uid, {
+      hasAccount: !!(profileSnaps[index]?.exists || userSnaps[index]?.exists),
+      hasHostRole,
+      hasHostPlan,
+      tier,
+    });
+  });
+  return byHostUid;
+};
+
+const fetchDirectoryDiscoverVenueEngagementMeta = async (db, venueIds = []) => {
+  const safeVenueIds = Array.from(new Set((Array.isArray(venueIds) ? venueIds : [])
+    .map((id) => safeDirectoryString(id || "", 180))
+    .filter(Boolean)))
+    .slice(0, DIRECTORY_DISCOVER_MAX_VENUE_META_IDS);
+  const byVenueId = new Map();
+  if (!safeVenueIds.length) return byVenueId;
+
+  const reviewRefs = safeVenueIds.map((id) =>
+    db.collection("review_totals").doc(buildDirectoryCheckinTotalDocId("venue", id))
+  );
+  const checkinRefs = safeVenueIds.map((id) =>
+    db.collection("checkin_totals").doc(buildDirectoryCheckinTotalDocId("venue", id))
+  );
+  const [reviewSnaps, checkinSnaps] = await Promise.all([
+    db.getAll(...reviewRefs),
+    db.getAll(...checkinRefs),
+  ]);
+
+  safeVenueIds.forEach((venueId, index) => {
+    const reviewData = reviewSnaps[index]?.exists ? (reviewSnaps[index].data() || {}) : {};
+    const checkinData = checkinSnaps[index]?.exists ? (checkinSnaps[index].data() || {}) : {};
+    const reviewCount = Math.max(0, Number(reviewData.reviewCount || 0) || 0);
+    const ratingSum = Math.max(0, Number(reviewData.ratingSum || 0) || 0);
+    const averageRating = reviewCount > 0 ? Number((ratingSum / reviewCount).toFixed(2)) : 0;
+    const checkinCount = Math.max(0, Number(checkinData.totalCount || 0) || 0);
+    const leaderboardScore = Math.round(
+      (averageRating * 20)
+      + (Math.min(checkinCount, 120) * 0.8)
+      + (Math.min(reviewCount, 80) * 1.5)
+    );
+    byVenueId.set(venueId, {
+      reviewCount,
+      averageRating,
+      checkinCount,
+      leaderboardScore,
+    });
+  });
+  return byVenueId;
+};
+
+const listDirectoryDiscoverVenueIds = (items = []) => {
+  const out = [];
+  const seen = new Set();
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const venueId = getDirectoryDiscoverVenueId(item);
+    if (!venueId || seen.has(venueId)) return;
+    seen.add(venueId);
+    out.push(venueId);
+  });
+  return out;
+};
+
+const rankDirectoryDiscoverVenues = (byVenueId = new Map()) => {
+  const ranked = Array.from(byVenueId.entries())
+    .map(([venueId, meta]) => ({
+      venueId,
+      leaderboardScore: Math.max(0, Number(meta?.leaderboardScore || 0) || 0),
+      checkinCount: Math.max(0, Number(meta?.checkinCount || 0) || 0),
+      reviewCount: Math.max(0, Number(meta?.reviewCount || 0) || 0),
+      averageRating: Math.max(0, Number(meta?.averageRating || 0) || 0),
+    }))
+    .sort((a, b) => {
+      if (b.leaderboardScore !== a.leaderboardScore) return b.leaderboardScore - a.leaderboardScore;
+      if (b.checkinCount !== a.checkinCount) return b.checkinCount - a.checkinCount;
+      if (b.reviewCount !== a.reviewCount) return b.reviewCount - a.reviewCount;
+      if (b.averageRating !== a.averageRating) return b.averageRating - a.averageRating;
+      return String(a.venueId || "").localeCompare(String(b.venueId || ""));
+    });
+  const rankByVenueId = new Map();
+  ranked.forEach((entry, index) => {
+    rankByVenueId.set(entry.venueId, index + 1);
+  });
+  return rankByVenueId;
+};
+
 const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
   const data = docSnap.data() || {};
   const listingType = forcedType || safeDirectoryString(data.listingType || "", 40);
   const hostUid = safeDirectoryString(data.hostUid || "", 180);
+  const ownerUid = safeDirectoryString(data.ownerUid || "", 180);
   const roomCode = safeDirectoryString(data.roomCode || "", 40);
   const title = safeDirectoryString(data.title || "", 200);
   const hostName = safeDirectoryString(data.hostName || "", 180);
@@ -1643,6 +1868,7 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     title,
     hostUid,
     hostName,
+    ownerUid,
     venueName,
     roomCode,
     isOfficialBeauRocksRoom: explicitOfficial,
@@ -1661,7 +1887,9 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     venueName,
     hostUid,
     hostName,
+    ownerUid,
     roomCode,
+    recurringRule: safeDirectoryString(data.recurringRule || "", 160),
     karaokeNightsLabel: safeDirectoryString(data.karaokeNightsLabel || "", 200),
     location: normalizeDirectoryLatLng(data.location || {}),
     status: normalizeDirectoryStatus(data.status || "approved", "approved"),
@@ -1669,6 +1897,10 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     virtualOnly: !!data.virtualOnly || !!data.isVirtualOnly,
     sessionMode: safeDirectoryString(data.sessionMode || "", 40),
     sourceType: normalizeDirectoryToken(data.sourceType || "", 20),
+    imageUrl: normalizeDirectoryOptionalUrl(data.imageUrl || ""),
+    externalSources: data.externalSources && typeof data.externalSources === "object"
+      ? data.externalSources
+      : {},
     isOfficialBeauRocksRoom: isOfficialBeauRocksRoomListing(baseListing),
   };
 };
@@ -7693,16 +7925,93 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     return String(a.title || "").localeCompare(String(b.title || ""));
   });
 
+  const hostUidsForMeta = listDirectoryDiscoverHostUids(sorted);
+  const venueIdsForMeta = listDirectoryDiscoverVenueIds(sorted);
+  let hostInsights = { byHostUid: new Map(), rankByHostUid: new Map(), sampleSize: 0 };
+  let hostAccountMetaByUid = new Map();
+  let venueMetaById = new Map();
+  let venueRankById = new Map();
+  try {
+    [
+      hostInsights,
+      hostAccountMetaByUid,
+      venueMetaById,
+    ] = await Promise.all([
+      fetchDirectoryDiscoverHostInsights(),
+      fetchDirectoryDiscoverHostAccountMeta(db, hostUidsForMeta),
+      fetchDirectoryDiscoverVenueEngagementMeta(db, venueIdsForMeta),
+    ]);
+    venueRankById = rankDirectoryDiscoverVenues(venueMetaById);
+  } catch (error) {
+    console.warn("[directory/discover] metadata enrichment failed", String(error?.message || error || ""));
+    hostInsights = { byHostUid: new Map(), rankByHostUid: new Map(), sampleSize: 0 };
+    hostAccountMetaByUid = new Map();
+    venueMetaById = new Map();
+    venueRankById = new Map();
+  }
+
+  const enrichedSorted = sorted.map((item) => {
+    const hostUid = safeDirectoryString(item.hostUid || item.ownerUid || "", 180);
+    const venueId = getDirectoryDiscoverVenueId(item);
+    const hostInsightsMeta = hostUid ? (hostInsights.byHostUid.get(hostUid) || null) : null;
+    const hostAccountMeta = hostUid ? (hostAccountMetaByUid.get(hostUid) || null) : null;
+    const venueMeta = venueId ? (venueMetaById.get(venueId) || null) : null;
+    const hostLeaderboardRank = hostUid
+      ? Math.max(0, Number(hostInsights.rankByHostUid.get(hostUid) || 0) || 0)
+      : 0;
+    const venueLeaderboardRank = venueId
+      ? Math.max(0, Number(venueRankById.get(venueId) || 0) || 0)
+      : 0;
+    const hostTier = normalizeDirectoryToken(hostAccountMeta?.tier || "", 40);
+    const hasBeauRocksHostAccount = !!hostAccountMeta?.hasAccount && (
+      !!hostAccountMeta?.hasHostRole || !!hostAccountMeta?.hasHostPlan
+    );
+    const beauRocksElevatedReasons = [];
+    if (item.isOfficialBeauRocksRoom) beauRocksElevatedReasons.push("official_room");
+    if (hasBeauRocksHostAccount) beauRocksElevatedReasons.push("host_account");
+    if (hostAccountMeta?.hasHostPlan) beauRocksElevatedReasons.push("host_plan");
+    if (hostLeaderboardRank > 0 && hostLeaderboardRank <= 25) beauRocksElevatedReasons.push("host_leaderboard");
+    if (venueLeaderboardRank > 0 && venueLeaderboardRank <= 25) beauRocksElevatedReasons.push("venue_leaderboard");
+    const isBeauRocksElevated = beauRocksElevatedReasons.length > 0;
+    return {
+      ...item,
+      hasBeauRocksHostAccount,
+      hasBeauRocksHostRole: !!hostAccountMeta?.hasHostRole,
+      hasBeauRocksHostPlan: !!hostAccountMeta?.hasHostPlan,
+      beauRocksHostTier: hostTier,
+      hostLeaderboardRank,
+      hostLeaderboardScore: Math.max(0, Number(hostInsightsMeta?.score || 0) || 0),
+      hostHostedRooms: Math.max(0, Number(hostInsightsMeta?.hostedRooms || 0) || 0),
+      hostRecapCount: Math.max(0, Number(hostInsightsMeta?.recapCount || 0) || 0),
+      hostTotalSongs: Math.max(0, Number(hostInsightsMeta?.totalSongs || 0) || 0),
+      hostTotalUsers: Math.max(0, Number(hostInsightsMeta?.totalUsers || 0) || 0),
+      venueLeaderboardRank,
+      venueLeaderboardScore: Math.max(0, Number(venueMeta?.leaderboardScore || 0) || 0),
+      venueAverageRating: Math.max(0, Number(venueMeta?.averageRating || 0) || 0),
+      venueReviewCount: Math.max(0, Number(venueMeta?.reviewCount || 0) || 0),
+      venueCheckinCount: Math.max(0, Number(venueMeta?.checkinCount || 0) || 0),
+      isBeauRocksElevated,
+      beauRocksElevatedReasons,
+    };
+  });
+
   const hostFacetsMap = new Map();
   const regionFacetsMap = new Map();
-  const counts = { venue: 0, event: 0, room_session: 0, officialBeauRocksRooms: 0 };
-  sorted.forEach((item) => {
+  const counts = {
+    venue: 0,
+    event: 0,
+    room_session: 0,
+    officialBeauRocksRooms: 0,
+    beaurocksElevated: 0,
+  };
+  enrichedSorted.forEach((item) => {
     if (item.listingType === "event") counts.event += 1;
     else if (item.listingType === "room_session") counts.room_session += 1;
     else counts.venue += 1;
     if (item.isOfficialBeauRocksRoom) counts.officialBeauRocksRooms += 1;
+    if (item.isBeauRocksElevated) counts.beaurocksElevated += 1;
 
-    const hostUid = String(item.hostUid || "").trim();
+    const hostUid = safeDirectoryString(item.hostUid || item.ownerUid || "", 180);
     if (hostUid) {
       const existing = hostFacetsMap.get(hostUid) || {
         hostUid,
@@ -7719,8 +8028,8 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     }
   });
 
-  const total = sorted.length;
-  const pageItems = sorted.slice(cursor, cursor + limit);
+  const total = enrichedSorted.length;
+  const pageItems = enrichedSorted.slice(cursor, cursor + limit);
   const nextCursor = cursor + pageItems.length < total ? String(cursor + pageItems.length) : "";
   const hostFacets = Array.from(hostFacetsMap.values())
     .sort((a, b) => {
@@ -7749,6 +8058,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
         event: counts.event,
         room_session: counts.room_session,
         officialBeauRocksRooms: counts.officialBeauRocksRooms,
+        beaurocksElevated: counts.beaurocksElevated,
         total,
       },
     },
@@ -7757,6 +8067,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
       venues: venueSnap.size,
       events: eventSnap.size,
       sessions: sessionSnap.size,
+      hostInsightsSample: Math.max(0, Number(hostInsights.sampleSize || 0) || 0),
     },
   };
 });

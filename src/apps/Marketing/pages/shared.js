@@ -56,6 +56,17 @@ const MARKETING_IMAGE_FALLBACKS = {
   ],
 };
 
+const MARKETING_PLACEHOLDER_IMAGE_TOKENS = [
+  "/images/marketing/venue-location-fallback.svg",
+  "/images/marketing/app-landing-live.png",
+  "/images/marketing/audience-surface-live.png",
+  "/images/marketing/tv-surface-live.png",
+  "/images/marketing/beaurocks-hostpanel.png",
+  "/images/marketing/beaurocks-audienceapp.png",
+  "/images/logo-library/beaurocks-karaoke-logo-2.png",
+  "/images/logo-library/bross-entertainment",
+];
+
 const normalizeMediaCandidateUrl = (raw = "") => {
   const value = String(raw || "").trim();
   if (!value) return "";
@@ -65,6 +76,12 @@ const normalizeMediaCandidateUrl = (raw = "") => {
     return value.replace(/^http:\/\//i, "https://");
   }
   return "";
+};
+
+const isPlaceholderMediaCandidate = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  if (!token) return false;
+  return MARKETING_PLACEHOLDER_IMAGE_TOKENS.some((entry) => token.includes(entry));
 };
 
 const normalizeLocation = (entity = {}) => {
@@ -157,25 +174,29 @@ const appendMediaCandidate = (list = [], raw = "") => {
 export const resolveListingImageCandidates = (entity = {}, listingType = "default", options = {}) => {
   const safe = entity && typeof entity === "object" ? entity : {};
   const includeFallback = options?.includeFallback !== false;
-  const next = [];
-  appendMediaCandidate(next, safe.heroImageUrl);
-  appendMediaCandidate(next, safe.coverImageUrl);
-  appendMediaCandidate(next, safe.imageUrl);
-  appendMediaCandidate(next, safe.photoUrl);
-  appendMediaCandidate(next, safe.bannerUrl);
-  appendMediaCandidate(next, safe.imageUrls);
-  appendMediaCandidate(next, safe.galleryUrls);
-  appendMediaCandidate(next, safe.photos);
-  appendMediaCandidate(next, safe.externalSources?.imageUrl);
-  appendMediaCandidate(next, safe.externalSources?.photoUrl);
-  appendMediaCandidate(next, safe.externalSources?.google?.photoUrl);
-  appendMediaCandidate(next, safe.externalSources?.google?.imageUrl);
-  appendMediaCandidate(next, safe.externalSources?.google?.photoUrls);
-  appendMediaCandidate(next, safe.externalSources?.google?.images);
-  appendMediaCandidate(next, safe.externalSources?.yelp?.imageUrl);
-  appendMediaCandidate(next, safe.externalSources?.yelp?.photoUrl);
-  appendMediaCandidate(next, safe.externalSources?.yelp?.images);
-  appendMediaCandidate(next, safe.externalSources?.yelp?.photos);
+  const rawCandidates = [];
+  appendMediaCandidate(rawCandidates, safe.heroImageUrl);
+  appendMediaCandidate(rawCandidates, safe.coverImageUrl);
+  appendMediaCandidate(rawCandidates, safe.imageUrl);
+  appendMediaCandidate(rawCandidates, safe.photoUrl);
+  appendMediaCandidate(rawCandidates, safe.bannerUrl);
+  appendMediaCandidate(rawCandidates, safe.imageUrls);
+  appendMediaCandidate(rawCandidates, safe.galleryUrls);
+  appendMediaCandidate(rawCandidates, safe.photos);
+  appendMediaCandidate(rawCandidates, safe.externalSources?.imageUrl);
+  appendMediaCandidate(rawCandidates, safe.externalSources?.photoUrl);
+  appendMediaCandidate(rawCandidates, safe.externalSources?.google?.photoUrl);
+  appendMediaCandidate(rawCandidates, safe.externalSources?.google?.imageUrl);
+  appendMediaCandidate(rawCandidates, safe.externalSources?.google?.photoUrls);
+  appendMediaCandidate(rawCandidates, safe.externalSources?.google?.images);
+  appendMediaCandidate(rawCandidates, safe.externalSources?.yelp?.imageUrl);
+  appendMediaCandidate(rawCandidates, safe.externalSources?.yelp?.photoUrl);
+  appendMediaCandidate(rawCandidates, safe.externalSources?.yelp?.images);
+  appendMediaCandidate(rawCandidates, safe.externalSources?.yelp?.photos);
+
+  const primaryCandidates = rawCandidates.filter((url) => !isPlaceholderMediaCandidate(url));
+  const placeholderCandidates = rawCandidates.filter((url) => isPlaceholderMediaCandidate(url));
+  const next = includeFallback ? [...primaryCandidates, ...placeholderCandidates] : primaryCandidates;
 
   if (includeFallback) {
     const fallbackKey = String(listingType || "default").trim().toLowerCase();

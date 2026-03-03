@@ -2028,6 +2028,11 @@
   color: #e3d5ff;
 }
 
+.mk3-map-legend-item.is-elevated {
+  border-color: rgba(90, 243, 202, 0.58);
+  color: #bbffed;
+}
+
 .mk3-map-legend-item.is-you {
   border-color: rgba(95, 218, 243, 0.52);
   color: #c6f3ff;
@@ -2329,6 +2334,19 @@
   font-weight: 800;
 }
 
+.mk3-map-marker-selected-badge {
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid rgba(90, 243, 202, 0.58);
+  background: rgba(16, 45, 38, 0.72);
+  color: #b7ffea;
+  padding: 0.18rem 0.46rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.56rem;
+  font-weight: 700;
+}
+
 .mk3-map-marker-selected strong {
   font-size: 0.84rem;
   line-height: 1.2;
@@ -2444,6 +2462,20 @@
     0 10px 28px rgba(4, 15, 25, 0.45);
 }
 
+.mk3-discover-card.is-elevated {
+  border-color: rgba(90, 243, 202, 0.5);
+  background:
+    radial-gradient(circle at 86% 0%, rgba(90, 243, 202, 0.12), transparent 36%),
+    radial-gradient(circle at 0% 100%, rgba(255, 209, 118, 0.08), transparent 42%),
+    rgba(10, 16, 24, 0.9);
+}
+
+.mk3-discover-card.is-selected.is-elevated {
+  box-shadow:
+    0 0 0 1px rgba(90, 243, 202, 0.3),
+    0 12px 28px rgba(4, 15, 25, 0.5);
+}
+
 .mk3-discover-media {
   position: relative;
   border-radius: 12px;
@@ -2481,6 +2513,12 @@
   align-items: flex-start;
 }
 
+.mk3-discover-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .mk3-discover-avatar {
   width: 34px;
   height: 34px;
@@ -2515,6 +2553,12 @@
   padding: 0.26rem 0.5rem;
 }
 
+.mk3-chip.mk3-chip-elevated {
+  border-color: rgba(90, 243, 202, 0.58);
+  background: linear-gradient(112deg, rgba(23, 76, 64, 0.58), rgba(30, 113, 95, 0.56));
+  color: #baffef;
+}
+
 .mk3-card-subtitle,
 .mk3-detail-meta {
   color: var(--mk3-muted);
@@ -2530,6 +2574,24 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.mk3-leaderboard-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mk3-leaderboard-pill {
+  border-radius: 999px;
+  border: 1px solid rgba(90, 243, 202, 0.34);
+  background: rgba(17, 28, 39, 0.82);
+  color: #cbfff3;
+  padding: 0.2rem 0.48rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
 }
 
 .mk3-day-badge {

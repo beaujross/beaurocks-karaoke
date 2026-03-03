@@ -16,11 +16,17 @@ const DiscoverListingCard = ({
   session = null,
   navigate = null,
   authFlow = null,
-}) => (
+}) => {
+  const cardClasses = [
+    "mk3-discover-card",
+    isSelected ? "is-selected" : "",
+    entry?.isBeauRocksElevated ? "is-elevated" : "",
+  ].filter(Boolean).join(" ");
+  return (
   <article
     key={entry.key}
     ref={(node) => registerCardRef?.(entry.key, node)}
-    className={isSelected ? "mk3-discover-card is-selected" : "mk3-discover-card"}
+    className={cardClasses}
   >
     <div className="mk3-discover-media">
       <img
@@ -30,7 +36,10 @@ const DiscoverListingCard = ({
         onError={(event) => onImageError?.(event, entry.imageFallbackUrls)}
       />
       <div className="mk3-discover-media-top">
-        <div className="mk3-chip">{entry.typeLabel}</div>
+        <div className="mk3-discover-chip-row">
+          <div className="mk3-chip">{entry.typeLabel}</div>
+          {entry.isBeauRocksElevated && <div className="mk3-chip mk3-chip-elevated">BeauRocks elevated</div>}
+        </div>
         <div className="mk3-discover-avatar" aria-hidden="true">
           {entry.avatarUrl
             ? <img src={entry.avatarUrl} alt={`${entry.avatarLabel} avatar`} loading="lazy" />
@@ -51,6 +60,32 @@ const DiscoverListingCard = ({
     )}
     {entry.detailLine && <div className="mk3-card-subtitle">{entry.detailLine}</div>}
     {!!entry.hostName && <div className="mk3-card-subtitle">Host: {entry.hostName}</div>}
+    {entry.hasBeauRocksHostAccount && (
+      <div className="mk3-card-subtitle">
+        BeauRocks host account{entry.beauRocksHostTier ? ` (${entry.beauRocksHostTier})` : ""}
+      </div>
+    )}
+    {(entry.hostLeaderboardRank > 0
+      || entry.venueLeaderboardRank > 0
+      || (entry.venueAverageRating > 0 && entry.venueReviewCount > 0)
+      || entry.venueCheckinCount > 0) && (
+      <div className="mk3-leaderboard-row">
+        {entry.hostLeaderboardRank > 0 && (
+          <span className="mk3-leaderboard-pill">Host #{entry.hostLeaderboardRank}</span>
+        )}
+        {entry.venueLeaderboardRank > 0 && (
+          <span className="mk3-leaderboard-pill">Venue #{entry.venueLeaderboardRank}</span>
+        )}
+        {entry.venueAverageRating > 0 && entry.venueReviewCount > 0 && (
+          <span className="mk3-leaderboard-pill">
+            {entry.venueAverageRating.toFixed(1)} stars ({entry.venueReviewCount})
+          </span>
+        )}
+        {entry.venueCheckinCount > 0 && (
+          <span className="mk3-leaderboard-pill">{entry.venueCheckinCount} check-ins</span>
+        )}
+      </div>
+    )}
     {entry.isOfficialBeauRocksRoom && <div className="mk3-chip">Official BeauRocks Room</div>}
     {entry.virtualOnly && <div className="mk3-chip">Virtual</div>}
     <div className="mk3-actions-inline">
@@ -82,6 +117,7 @@ const DiscoverListingCard = ({
       authFlow={authFlow}
     />
   </article>
-);
+  );
+};
 
 export default DiscoverListingCard;
