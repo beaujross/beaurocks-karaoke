@@ -368,6 +368,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const virtualOnly = !!entry?.virtualOnly
     || !!entry?.isVirtualOnly
     || String(entry?.sessionMode || "").trim().toLowerCase() === "virtual";
+  const isOfficialBeauRocksRoom = listingType === "room_session" && !!entry?.isOfficialBeauRocksRoom;
   const subtitle = virtualOnly
     ? "Virtual session"
     : locationLabel || [city, state].filter(Boolean).join(", ") || "Location pending";
@@ -414,6 +415,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     location,
     roomCode,
     virtualOnly,
+    isOfficialBeauRocksRoom,
     locationSource: String(options?.locationSource || "").trim() || (location ? "entry" : "missing"),
   };
 };
@@ -498,6 +500,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [boundsOnly, setBoundsOnly] = useState(false);
   const [selectedKey, setSelectedKey] = useState("");
   const [hostFilter, setHostFilter] = useState("all");
+  const [officialRoomFilter, setOfficialRoomFilter] = useState("all");
   const [mapBounds, setMapBounds] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -542,6 +545,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     timeWindow,
     sortMode: sortMode === "nearest" ? "smart" : sortMode,
     hostUid: "",
+    officialRoomOnly: officialRoomFilter === "official",
   });
   const permissionError = isPermissionError(error);
   const indexError = isIndexError(error);
@@ -869,6 +873,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     setTimeWindow("all");
     setSortMode("smart");
     setHostFilter("all");
+    setOfficialRoomFilter("all");
   }, []);
 
   const registerCardRef = useCallback((key, node) => {
@@ -1096,11 +1101,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (token === "nationwide") return "Nationwide";
     return humanizeRegion(token) || token;
   }, [region]);
+  const officialBeauRocksRoomCount = Number(facets?.counts?.officialBeauRocksRooms || 0) || 0;
   const hasSearchFilters = !!String(search || "").trim()
     || !!String(region || "").trim()
     || effectiveHostFilter !== "all"
     || sortMode !== "smart"
-    || timeWindow !== "all";
+    || timeWindow !== "all"
+    || officialRoomFilter !== "all";
   const dynamicRegionPresets = useMemo(() => {
     const regionFacets = Array.isArray(facets?.region) ? facets.region : [];
     const ranked = regionFacets
@@ -1273,6 +1280,30 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             </button>
           )}
         </div>
+        <div className="mk3-filter-chips mk3-zone mk3-zone-host mk3-discover-filter-advanced">
+          <span className="mk3-filter-chip-label">Room lane</span>
+          <button
+            type="button"
+            className={officialRoomFilter === "all" ? "active" : ""}
+            onClick={() => setOfficialRoomFilter("all")}
+          >
+            All rooms
+          </button>
+          <button
+            type="button"
+            className={officialRoomFilter === "official" ? "active" : ""}
+            onClick={() => {
+              setOfficialRoomFilter("official");
+              trackEvent("mk_discover_official_room_filter_change", {
+                source: "discover_filters",
+                mode: "official_only",
+              });
+            }}
+          >
+            Official BeauRocks Rooms
+            {officialBeauRocksRoomCount > 0 && <span className="mk3-filter-chip-count"> ({officialBeauRocksRoomCount})</span>}
+          </button>
+        </div>
         {hostFacetOptions.length > 0 && (
           <div className="mk3-filter-chips mk3-zone mk3-zone-host mk3-discover-filter-advanced">
             <span className="mk3-filter-chip-label">Browse by host</span>
@@ -1423,6 +1454,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                     setTimeWindow("all");
                     setSortMode("smart");
                     setHostFilter("all");
+                    setOfficialRoomFilter("all");
                   }}
                 >
                   Use broad filters

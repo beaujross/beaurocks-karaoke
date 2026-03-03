@@ -14,7 +14,7 @@ const toDiscoverErrorMessage = (error) => {
 const DEFAULT_FACETS = Object.freeze({
   host: [],
   region: [],
-  counts: { venue: 0, event: 0, room_session: 0, total: 0 },
+  counts: { venue: 0, event: 0, room_session: 0, officialBeauRocksRooms: 0, total: 0 },
 });
 
 const splitByListingType = (items = []) => {
@@ -43,8 +43,9 @@ export const useDirectoryDiscover = ({
   timeWindow = "all",
   sortMode = "smart",
   hostUid = "",
+  officialRoomOnly = false,
   bounds = null,
-  limit = 72,
+  limit = 60,
 } = {}) => {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -74,6 +75,7 @@ export const useDirectoryDiscover = ({
         timeWindow,
         sortMode,
         hostUid,
+        officialRoomOnly,
         bounds,
         limit,
         cursor: append ? cursor : "",
@@ -96,7 +98,7 @@ export const useDirectoryDiscover = ({
         setLoadingMore(false);
       }
     }
-  }, [bounds, hostUid, limit, listingType, region, search, sortMode, timeWindow]);
+  }, [bounds, hostUid, limit, listingType, officialRoomOnly, region, search, sortMode, timeWindow]);
 
   useEffect(() => {
     fetchPage({ cursor: "", append: false });

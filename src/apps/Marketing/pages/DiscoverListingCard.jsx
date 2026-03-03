@@ -51,6 +51,7 @@ const DiscoverListingCard = ({
     )}
     {entry.detailLine && <div className="mk3-card-subtitle">{entry.detailLine}</div>}
     {!!entry.hostName && <div className="mk3-card-subtitle">Host: {entry.hostName}</div>}
+    {entry.isOfficialBeauRocksRoom && <div className="mk3-chip">Official BeauRocks Room</div>}
     {entry.virtualOnly && <div className="mk3-chip">Virtual</div>}
     <div className="mk3-actions-inline">
       <button

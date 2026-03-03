@@ -11,12 +11,17 @@ import {
   collectFollowedHostIds,
 } from "../dashboardUtils";
 
-const ROLE_OPTIONS = [
-  { id: "host", label: "Host" },
-  { id: "venue_owner", label: "Venue Owner" },
-  { id: "performer", label: "Performer" },
-  { id: "fan", label: "Fan" },
-];
+const toNameParts = (value = "") => {
+  const token = String(value || "").trim();
+  if (!token) return { firstName: "", lastName: "" };
+  const parts = token.split(/\s+/).filter(Boolean);
+  if (!parts.length) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+  };
+};
 
 const ProfileDashboardPage = ({ session, navigate }) => {
   const uid = session?.uid || "";
@@ -36,14 +41,13 @@ const ProfileDashboardPage = ({ session, navigate }) => {
   const [status, setStatus] = useState("");
   const [nextSteps, setNextSteps] = useState([]);
   const [form, setForm] = useState({
-    displayName: "",
-    handle: "",
+    firstName: "",
+    lastName: "",
     bio: "",
     city: "",
     state: "",
     country: "US",
     visibility: "public",
-    roles: ["fan"],
   });
   const [followedHostProfiles, setFollowedHostProfiles] = useState([]);
   const [followedHostsLoading, setFollowedHostsLoading] = useState(false);
@@ -108,23 +112,23 @@ const ProfileDashboardPage = ({ session, navigate }) => {
 
   useEffect(() => {
     if (!profile) return;
+    const fallbackName = toNameParts(profile.displayName || "");
     setForm({
-      displayName: profile.displayName || "",
-      handle: profile.handle || "",
+      firstName: profile.firstName || fallbackName.firstName || "",
+      lastName: profile.lastName || fallbackName.lastName || "",
       bio: profile.bio || "",
       city: profile.city || "",
       state: profile.state || "",
       country: profile.country || "US",
       visibility: profile.visibility || "public",
-      roles: Array.isArray(profile.roles) && profile.roles.length ? profile.roles : ["fan"],
     });
   }, [profile]);
 
-  const inferredDisplayName = useMemo(() => {
+  const inferredFirstName = useMemo(() => {
     const fromDirectory = String(profile?.displayName || "").trim();
-    if (fromDirectory) return fromDirectory;
+    if (fromDirectory) return toNameParts(fromDirectory).firstName;
     const fromUserDoc = String(userProfile?.name || "").trim();
-    if (fromUserDoc) return fromUserDoc;
+    if (fromUserDoc) return toNameParts(fromUserDoc).firstName;
     const email = String(session?.email || "").trim();
     if (email.includes("@")) return email.split("@")[0];
     return "";
@@ -132,16 +136,15 @@ const ProfileDashboardPage = ({ session, navigate }) => {
 
   useEffect(() => {
     if (!canUseDashboard || profile) return;
-    if (!inferredDisplayName) return;
+    if (!inferredFirstName) return;
     setForm((prev) => {
-      if (String(prev.displayName || "").trim()) return prev;
+      if (String(prev.firstName || "").trim()) return prev;
       return {
         ...prev,
-        displayName: inferredDisplayName,
-        handle: String(prev.handle || "").trim() ? prev.handle : inferredDisplayName.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+        firstName: inferredFirstName,
       };
     });
-  }, [canUseDashboard, inferredDisplayName, profile]);
+  }, [canUseDashboard, inferredFirstName, profile]);
 
   const followedHostIds = useMemo(
     () => collectFollowedHostIds(history.follows),
@@ -211,17 +214,6 @@ const ProfileDashboardPage = ({ session, navigate }) => {
     loadCatalogModerationQueue();
   }, [canUseDashboard, loadCatalogModerationQueue, session?.isModerator]);
 
-  const toggleRole = (roleId) => {
-    setForm((prev) => {
-      const hasRole = prev.roles.includes(roleId);
-      if (hasRole) {
-        const next = prev.roles.filter((item) => item !== roleId);
-        return { ...prev, roles: next.length ? next : ["fan"] };
-      }
-      return { ...prev, roles: [...prev.roles, roleId] };
-    });
-  };
-
   const summary = useMemo(() => ({
     follows: history.follows.length,
     checkins: history.checkins.length,
@@ -271,9 +263,11 @@ const ProfileDashboardPage = ({ session, navigate }) => {
       setStatus("Create your BeauRocks account to edit your profile.");
       return;
     }
-    const safeDisplayName = String(form.displayName || "").trim();
-    if (!safeDisplayName) {
-      setStatus("Display name is required before saving profile.");
+    const safeFirstName = String(form.firstName || "").trim();
+    const safeLastName = String(form.lastName || "").trim();
+    const safeDisplayName = [safeFirstName, safeLastName].filter(Boolean).join(" ").trim();
+    if (!safeFirstName) {
+      setStatus("First name is required before saving profile.");
       return;
     }
     setSaving(true);
@@ -282,8 +276,9 @@ const ProfileDashboardPage = ({ session, navigate }) => {
       await directoryActions.upsertDirectoryProfile({
         profile: {
           ...form,
+          firstName: safeFirstName,
+          lastName: safeLastName,
           displayName: safeDisplayName,
-          handle: String(form.handle || "").trim() || safeDisplayName.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
         },
       });
       setStatus("Profile updated.");
@@ -354,12 +349,12 @@ const ProfileDashboardPage = ({ session, navigate }) => {
 
         <div className="mk3-form-grid">
           <label>
-            Display Name
-            <input value={form.displayName} onChange={(e) => setForm((prev) => ({ ...prev, displayName: e.target.value }))} />
+            First Name
+            <input value={form.firstName} onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))} />
           </label>
           <label>
-            Handle
-            <input value={form.handle} onChange={(e) => setForm((prev) => ({ ...prev, handle: e.target.value }))} />
+            Last Name
+            <input value={form.lastName} onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))} />
           </label>
           <label className="full">
             Bio
@@ -386,25 +381,15 @@ const ProfileDashboardPage = ({ session, navigate }) => {
           </label>
         </div>
 
-        <div className="mk3-tag-pills">
-          {ROLE_OPTIONS.map((role) => (
-            <button
-              type="button"
-              key={role.id}
-              className={form.roles.includes(role.id) ? "mk3-tag active" : "mk3-tag"}
-              onClick={() => toggleRole(role.id)}
-            >
-              {role.label}
-            </button>
-          ))}
+        {!!profile?.displayName && <div className="mk3-status">Public profile name: {profile.displayName}</div>}
+        {!!profile?.handle && <div className="mk3-status">Public handle: @{profile.handle}</div>}
+        <div className="mk3-status">
+          Roles are managed by BeauRocks account permissions and can&apos;t be changed from this form.
         </div>
 
         <div className="mk3-actions-inline">
           <button type="button" onClick={saveProfile} disabled={saving}>
             {saving ? "Saving..." : "Save Profile"}
-          </button>
-          <button type="button" onClick={() => navigate("submit")}>
-            Submit Listing
           </button>
         </div>
         {status && <div className="mk3-status">{status}</div>}

@@ -1323,6 +1323,32 @@ const parseMarketingPrivateInviteCodes = (value = "") => {
   return out;
 };
 
+const parseMarketingUidSet = (value = "") => {
+  const raw = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[,\n;|]/g);
+  const out = new Set();
+  raw.forEach((entry) => {
+    const token = String(entry || "").trim().slice(0, 180);
+    if (!token) return;
+    out.add(token);
+  });
+  return out;
+};
+
+const parseMarketingRoomCodeSet = (value = "") => {
+  const raw = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[,\n;|]/g);
+  const out = new Set();
+  raw.forEach((entry) => {
+    const token = normalizeRoomCode(entry);
+    if (!token) return;
+    out.add(token);
+  });
+  return out;
+};
+
 const DIRECTORY_MODERATOR_ROLES = new Set(["directory_editor", "directory_admin"]);
 const DIRECTORY_ENTITY_TYPES = new Set(["host", "venue", "performer", "event", "session"]);
 const DIRECTORY_LISTING_TYPES = new Set(["venue", "event", "room_session"]);
@@ -1361,6 +1387,12 @@ const MARKETING_GEO_PAGES_ENABLED = String(process.env.MARKETING_GEO_PAGES_ENABL
 const MARKETING_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED = String(process.env.MARKETING_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED || "false")
   .trim()
   .toLowerCase() === "true";
+const MARKETING_DISCOVER_OFFICIAL_HOST_UIDS = parseMarketingUidSet(
+  process.env.MARKETING_DISCOVER_OFFICIAL_HOST_UIDS || ""
+);
+const MARKETING_DISCOVER_OFFICIAL_ROOM_CODES = parseMarketingRoomCodeSet(
+  process.env.MARKETING_DISCOVER_OFFICIAL_ROOM_CODES || ""
+);
 const MARKETING_PRIVATE_HOST_ACCESS_ENFORCED = String(process.env.MARKETING_PRIVATE_HOST_ACCESS_ENFORCED || "true")
   .trim()
   .toLowerCase() === "true";
@@ -1563,13 +1595,44 @@ const isDirectoryLocationInBounds = (location = null, bounds = null) => {
   return inLat && inLng;
 };
 
+const hasBeauRocksBrandHint = (...parts) =>
+  parts.some((value) => String(value || "").toLowerCase().includes("beaurocks"));
+
+const isOfficialBeauRocksRoomListing = (listing = {}) => {
+  if (String(listing?.listingType || "") !== "room_session") return false;
+  if (listing?.isOfficialBeauRocksRoom === true) return true;
+  const hostUid = String(listing?.hostUid || "").trim();
+  const roomCode = normalizeRoomCode(listing?.roomCode || "");
+  if (hostUid && MARKETING_DISCOVER_OFFICIAL_HOST_UIDS.has(hostUid)) return true;
+  if (roomCode && MARKETING_DISCOVER_OFFICIAL_ROOM_CODES.has(roomCode)) return true;
+  return hasBeauRocksBrandHint(listing?.title, listing?.hostName, listing?.venueName);
+};
+
 const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
   const data = docSnap.data() || {};
   const listingType = forcedType || safeDirectoryString(data.listingType || "", 40);
+  const hostUid = safeDirectoryString(data.hostUid || "", 180);
+  const roomCode = safeDirectoryString(data.roomCode || "", 40);
+  const title = safeDirectoryString(data.title || "", 200);
+  const hostName = safeDirectoryString(data.hostName || "", 180);
+  const venueName = safeDirectoryString(data.venueName || "", 180);
+  const explicitOfficial = parseBooleanInput(
+    data.isOfficialBeauRocksRoom ?? data.officialBeauRocksRoom ?? data.isOfficialRoom,
+    false
+  );
+  const baseListing = {
+    listingType,
+    title,
+    hostUid,
+    hostName,
+    venueName,
+    roomCode,
+    isOfficialBeauRocksRoom: explicitOfficial,
+  };
   return {
     id: docSnap.id,
     listingType,
-    title: safeDirectoryString(data.title || "", 200),
+    title,
     description: normalizeDirectoryTextBlock(data.description || "", 400),
     city: safeDirectoryString(data.city || "", 80),
     state: safeDirectoryString(data.state || "", 40),
@@ -1577,16 +1640,18 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     startsAtMs: Number(data.startsAtMs || 0) || 0,
     endsAtMs: Number(data.endsAtMs || 0) || 0,
     venueId: safeDirectoryString(data.venueId || "", 180),
-    venueName: safeDirectoryString(data.venueName || "", 180),
-    hostUid: safeDirectoryString(data.hostUid || "", 180),
-    hostName: safeDirectoryString(data.hostName || "", 180),
-    roomCode: safeDirectoryString(data.roomCode || "", 40),
+    venueName,
+    hostUid,
+    hostName,
+    roomCode,
     karaokeNightsLabel: safeDirectoryString(data.karaokeNightsLabel || "", 200),
     location: normalizeDirectoryLatLng(data.location || {}),
     status: normalizeDirectoryStatus(data.status || "approved", "approved"),
     visibility: normalizeDirectoryVisibility(data.visibility || "public", "public"),
     virtualOnly: !!data.virtualOnly || !!data.isVirtualOnly,
     sessionMode: safeDirectoryString(data.sessionMode || "", 40),
+    sourceType: normalizeDirectoryToken(data.sourceType || "", 20),
+    isOfficialBeauRocksRoom: isOfficialBeauRocksRoomListing(baseListing),
   };
 };
 
@@ -2053,81 +2118,6 @@ const marketingPrivateAccessDocRef = (uid = "") =>
 const marketingPrivateInviteDocRef = (email = "") =>
   admin.firestore().collection("marketing_private_invites").doc(buildWaitlistDocId(normalizeEmailToken(email)));
 
-const hasMarketingPrivateHostAccess = async (uid = "", options = {}) => {
-  if (!uid || !MARKETING_PRIVATE_HOST_ACCESS_ENFORCED) {
-    return { allowed: true, mode: MARKETING_PRIVATE_HOST_ACCESS_ENFORCED ? "missing_uid" : "disabled" };
-  }
-  const normalizedEmail = normalizeEmailToken(options.email || "");
-  const snap = await marketingPrivateAccessDocRef(uid).get();
-  const enabled = !!snap.data()?.privateHostAccessEnabled;
-  if (enabled) {
-    return {
-      allowed: true,
-      mode: "granted",
-    };
-  }
-  if (normalizedEmail) {
-    const inviteSnap = await marketingPrivateInviteDocRef(normalizedEmail).get();
-    const inviteEnabled = !!inviteSnap.data()?.privateHostAccessEnabled;
-    if (inviteEnabled) {
-      const now = admin.firestore.FieldValue.serverTimestamp();
-      const source = sanitizeWaitlistSource(inviteSnap.data()?.source || "email_invite");
-      await Promise.all([
-        marketingPrivateAccessDocRef(uid).set({
-          uid,
-          privateHostAccessEnabled: true,
-          unlockedVia: "email_invite",
-          source,
-          invitedEmail: normalizedEmail,
-          mirroredFromEmailInvite: true,
-          updatedAt: now,
-          createdAt: now,
-        }, { merge: true }),
-        admin.firestore().collection("users").doc(uid).set({
-          marketing: {
-            privateHostAccessEnabled: true,
-            privateHostAccessUpdatedAt: now,
-            privateHostAccessSource: source,
-          },
-          updatedAt: now,
-        }, { merge: true }),
-      ]);
-      return {
-        allowed: true,
-        mode: "email_invite",
-      };
-    }
-  }
-  return {
-    allowed: false,
-    mode: "missing_grant",
-  };
-};
-
-const requireMarketingPrivateHostAccess = async (uid = "", options = {}) => {
-  if (!uid) {
-    throw new HttpsError("unauthenticated", options.authMessage || "Sign in required.");
-  }
-  if (await isSuperAdminUid(uid)) {
-    return { allowed: true, mode: "super_admin" };
-  }
-  if (!MARKETING_PRIVATE_HOST_ACCESS_ENFORCED) {
-    return { allowed: true, mode: "disabled" };
-  }
-  if (options.allowModerator) {
-    const modAccess = await getDirectoryModeratorAccess(uid);
-    if (modAccess.isModerator) {
-      return { allowed: true, mode: "moderator", roles: modAccess.roles || [] };
-    }
-  }
-  const access = await hasMarketingPrivateHostAccess(uid, { email: options.email || "" });
-  if (access.allowed) return access;
-  throw new HttpsError(
-    "permission-denied",
-    options.deniedMessage || "Private host onboarding access required."
-  );
-};
-
 const requireDirectoryModerator = async (request, options = {}) => {
   const uid = requireAuth(request, options.authMessage || "Sign in required.");
   const access = await getDirectoryModeratorAccess(uid);
@@ -2181,13 +2171,18 @@ const requireCatalogContributor = async (request, options = {}) => {
 };
 
 const normalizeDirectoryProfilePayload = (payload = {}) => {
-  const displayName = safeDirectoryString(payload?.displayName || payload?.name || "", 120);
+  const firstName = safeDirectoryString(payload?.firstName || "", 80);
+  const lastName = safeDirectoryString(payload?.lastName || "", 80);
+  const computedDisplayName = [firstName, lastName].filter(Boolean).join(" ").trim();
+  const displayName = safeDirectoryString(payload?.displayName || payload?.name || computedDisplayName || "", 120);
   if (!displayName) {
     throw new HttpsError("invalid-argument", "displayName is required.");
   }
   return {
     displayName,
-    handle: normalizeDirectoryToken(payload?.handle || displayName, 40),
+    firstName,
+    lastName,
+    handle: normalizeDirectoryToken(payload?.handle || "", 40),
     bio: normalizeDirectoryTextBlock(payload?.bio || "", 500),
     roles: normalizeDirectoryRoles(payload?.roles || []),
     city: safeDirectoryString(payload?.city || "", 80),
@@ -5972,22 +5967,22 @@ exports.upsertDirectoryProfile = onCall({ cors: true }, async (request) => {
     ? request.data.profile
     : request.data;
   const normalized = normalizeDirectoryProfilePayload(profileInput || {});
-  const requestsHostOnboardingRole = Array.isArray(normalized.roles)
-    && normalized.roles.some((role) => role === "host" || role === "venue_owner");
-  if (requestsHostOnboardingRole) {
-    await requireMarketingPrivateHostAccess(uid, {
-      allowModerator: true,
-      email: normalizeEmailToken(request.auth?.token?.email || ""),
-      deniedMessage: "Private host onboarding access required before assigning host roles.",
-    });
-  }
   const db = admin.firestore();
-  const userSnap = await db.collection("users").doc(uid).get();
+  const [userSnap, existingProfileSnap] = await Promise.all([
+    db.collection("users").doc(uid).get(),
+    db.collection("directory_profiles").doc(uid).get(),
+  ]);
   const userData = userSnap.data() || {};
+  const existingProfile = existingProfileSnap.data() || {};
+  const preservedRoles = normalizeDirectoryRoles(existingProfile.roles || []);
+  const effectiveHandle = normalized.handle
+    || normalizeDirectoryToken(existingProfile.handle || normalized.displayName, 40);
   const now = buildDirectoryNow();
   const payload = {
     uid,
     ...normalized,
+    handle: effectiveHandle,
+    roles: preservedRoles,
     status: "approved",
     vipLevel: Number(userData.vipLevel || 0) || 0,
     totalFamePoints: Number(userData.totalFamePoints || 0) || 0,
@@ -7132,12 +7127,13 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     ? listingTypeFilterRaw
     : "all";
   const hostUidFilter = safeDirectoryString(request.data?.hostUid || "", 180);
+  const officialRoomOnly = parseBooleanInput(request.data?.officialRoomOnly, false);
   const timeWindow = normalizeDirectoryDiscoverTimeWindow(request.data?.timeWindow || "all");
   const sortMode = normalizeDirectoryDiscoverSortMode(request.data?.sortMode || "smart");
   const cursor = normalizeDirectoryDiscoverCursor(request.data?.cursor || 0);
   const limit = clampNumber(request.data?.limit, 1, 120, DIRECTORY_DISCOVER_DEFAULT_LIMIT);
-  const scanMultiplier = clampNumber(request.data?.scanMultiplier, 2, 8, 4);
-  const scanLimit = clampNumber(limit * scanMultiplier, 80, 420, 240);
+  const scanMultiplier = clampNumber(request.data?.scanMultiplier, 2, 8, 3);
+  const scanLimit = clampNumber(limit * scanMultiplier, 60, 360, 180);
   const bounds = normalizeDirectoryDiscoverBounds(request.data?.bounds || null);
   const nowMs = Date.now();
   const db = admin.firestore();
@@ -7172,6 +7168,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     if (item.listingType !== "venue" && String(item.visibility || "public") !== "public") return false;
     if (listingTypeFilter !== "all" && item.listingType !== listingTypeFilter) return false;
     if (hostUidFilter && String(item.hostUid || "") !== hostUidFilter) return false;
+    if (officialRoomOnly && !item.isOfficialBeauRocksRoom) return false;
     if (!matchesDirectoryDiscoverSearch(item, searchToken)) return false;
     if (!matchesDirectoryDiscoverTimeWindow(item, timeWindow, nowMs)) return false;
     if (bounds && !isDirectoryLocationInBounds(item.location, bounds)) return false;
@@ -7209,11 +7206,12 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
 
   const hostFacetsMap = new Map();
   const regionFacetsMap = new Map();
-  const counts = { venue: 0, event: 0, room_session: 0 };
+  const counts = { venue: 0, event: 0, room_session: 0, officialBeauRocksRooms: 0 };
   sorted.forEach((item) => {
     if (item.listingType === "event") counts.event += 1;
     else if (item.listingType === "room_session") counts.room_session += 1;
     else counts.venue += 1;
+    if (item.isOfficialBeauRocksRoom) counts.officialBeauRocksRooms += 1;
 
     const hostUid = String(item.hostUid || "").trim();
     if (hostUid) {
@@ -7261,6 +7259,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
         venue: counts.venue,
         event: counts.event,
         room_session: counts.room_session,
+        officialBeauRocksRooms: counts.officialBeauRocksRooms,
         total,
       },
     },

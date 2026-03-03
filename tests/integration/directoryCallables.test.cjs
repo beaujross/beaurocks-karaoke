@@ -219,20 +219,17 @@ async function run() {
       assert.equal(String(sessionSnap.get("status")), "approved");
     }],
 
-    ["upsertDirectoryProfile denies host role without private access grant", async () => {
-      await expectHttpsError(
-        () => upsertDirectoryProfile.run(
-          requestFor(USER_UID, { profile: { displayName: "Neon Host", roles: ["host"] } })
-        ),
-        "permission-denied"
+    ["upsertDirectoryProfile ignores client role escalation attempts", async () => {
+      const result = await upsertDirectoryProfile.run(
+        requestFor(USER_UID, { profile: { displayName: "Neon Host", roles: ["host"] } })
       );
+      assert.equal(result.ok, true);
+      const snap = await db.doc(`directory_profiles/${USER_UID}`).get();
+      assert.equal(snap.exists, true);
+      assert.deepEqual(snap.get("roles"), ["fan"]);
     }],
 
     ["upsertDirectoryProfile writes profile for caller", async () => {
-      await db.doc(`marketing_private_access/${USER_UID}`).set({
-        uid: USER_UID,
-        privateHostAccessEnabled: true,
-      });
       const result = await upsertDirectoryProfile.run(
         requestFor(USER_UID, { profile: { displayName: "Neon Host", roles: ["host"] } })
       );
@@ -240,6 +237,22 @@ async function run() {
       const snap = await db.doc(`directory_profiles/${USER_UID}`).get();
       assert.equal(snap.exists, true);
       assert.equal(snap.get("displayName"), "Neon Host");
+      assert.deepEqual(snap.get("roles"), ["fan"]);
+    }],
+
+    ["upsertDirectoryProfile preserves existing server-assigned roles", async () => {
+      await db.doc(`directory_profiles/${USER_UID}`).set({
+        uid: USER_UID,
+        displayName: "Neon Host",
+        roles: ["host"],
+        status: "approved",
+      }, { merge: true });
+      const result = await upsertDirectoryProfile.run(
+        requestFor(USER_UID, { profile: { displayName: "Neon Host", roles: ["fan"] } })
+      );
+      assert.equal(result.ok, true);
+      const snap = await db.doc(`directory_profiles/${USER_UID}`).get();
+      assert.deepEqual(snap.get("roles"), ["host"]);
     }],
 
     ["ensureSong denies non-host direct catalog writes", async () => {
