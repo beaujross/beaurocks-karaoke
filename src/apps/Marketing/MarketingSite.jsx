@@ -746,15 +746,14 @@ const MarketingSite = () => {
           {isHostAccessPage ? (
           <section className="mk3-auth-panel" ref={authPanelRef}>
             <div>
-              <h1>Host Access</h1>
+              <h1>Host Login + Room Manager</h1>
               <p>
-                Log in with your BeauRocks account to launch host controls, run your room, and keep your setup synced
-                across host, TV, and audience surfaces.
+                Keep host setup simple: log in once, create or reopen a room, then launch host controls.
               </p>
               <div className="mk3-private-pill-row">
-                <span className="mk3-private-pill">Account-first access</span>
-                <span className="mk3-private-pill">Host dashboard ready</span>
-                <span className="mk3-private-pill">Cross-surface control</span>
+                <span className="mk3-private-pill">BeauRocks account required</span>
+                <span className="mk3-private-pill">4-button launch flow</span>
+                <span className="mk3-private-pill">Room history built in</span>
               </div>
               <div className="mk3-permission-grid">
                 <article>
@@ -763,15 +762,15 @@ const MarketingSite = () => {
                 </article>
                 <article>
                   <strong>Step 2</strong>
-                  <span>Open Host Dashboard and configure room setup.</span>
+                  <span>Start a room or resume one from Room Manager.</span>
                 </article>
                 <article>
                   <strong>Step 3</strong>
-                  <span>Launch your room across TV, audience, and host control surfaces.</span>
+                  <span>Run your show in Host Dashboard with TV and audience links.</span>
                 </article>
                 <article>
-                  <strong>Not hosting?</strong>
-                  <span>Use Live Listings to find premium karaoke nights by host, venue, or vibe.</span>
+                  <strong>Step 4</strong>
+                  <span>Review room history and open recap links after the show.</span>
                 </article>
               </div>
               {heroStats?.total > 0 && (
@@ -781,8 +780,8 @@ const MarketingSite = () => {
                 </div>
               )}
               <div className="mk3-value-points">
-                <span>Technology got us here. We use it to bring people back together in real rooms.</span>
-                <span>Your phone stays useful, but now it upgrades connection instead of replacing it.</span>
+                <span>Guests can still join with a room code, but hosting always stays account-backed.</span>
+                <span>Use the Host Room Manager page for the fastest path to new and previous rooms.</span>
               </div>
               <div className="mk3-auth-cta-row">
                 <button
@@ -790,7 +789,7 @@ const MarketingSite = () => {
                   className="mk3-auth-cta-primary"
                   onClick={() => {
                     if (hasFullAccount) {
-                      openHostDashboard("host_access_primary");
+                      navigate(MARKETING_ROUTE_PAGES.forHosts);
                       return;
                     }
                     setAuthMode("signin");
@@ -799,14 +798,14 @@ const MarketingSite = () => {
                     scrollAuthPanelIntoView();
                   }}
                 >
-                  {hasFullAccount ? "Open Host Dashboard" : "Log In With BeauRocks"}
+                  {hasFullAccount ? "Open Host Room Manager" : "Log In With BeauRocks"}
                 </button>
                 <button
                   type="button"
                   className="mk3-auth-cta-secondary"
-                  onClick={() => navigate(MARKETING_ROUTE_PAGES.demo, "", withCampaignParams({ utm_content: "host_access_demo" }))}
+                  onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "host_access_for_hosts" }))}
                 >
-                  Watch Demo Walkthrough
+                  Open Host Room Manager
                 </button>
               </div>
             </div>

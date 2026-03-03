@@ -1021,9 +1021,15 @@ service cloud.firestore {
           && (
             !request.resource.data.keys().hasAny(['val'])
             || (
-              request.resource.data.val is int
-              && request.resource.data.val >= -1
-              && request.resource.data.val <= 32
+              (
+                request.resource.data.val is int
+                && request.resource.data.val >= -1
+                && request.resource.data.val <= 32
+              )
+              || (
+                request.resource.data.val is string
+                && request.resource.data.val in ['A', 'B', 'C', 'D']
+              )
             )
           );
         allow update: if false;

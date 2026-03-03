@@ -3013,6 +3013,25 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
         }
         toast(`UI feature check passed (${HOST_UI_FEATURE_CHECKLIST.length} controls).`);
     };
+    const describeQueueLyricsStatus = useCallback((song = {}) => {
+        const status = String(song?.lyricsGenerationStatus || '').trim().toLowerCase();
+        const hasTimed = Array.isArray(song?.lyricsTimed) && song.lyricsTimed.length > 0;
+        const hasLyrics = !!String(song?.lyrics || '').trim();
+        if (status === 'pending') return 'Queued. Finalizing lyrics...';
+        if (status === 'needs_user_token') return 'Queued. Apple lyrics need host Apple Music authorization.';
+        if (status === 'capability_blocked') return 'Queued. AI fallback is blocked by workspace entitlement.';
+        if (status === 'error') return 'Queued. Lyrics provider error; retry from queue actions.';
+        if (status === 'disabled') return 'Queued. Lyrics pipeline is disabled for this room.';
+        if (status === 'resolved') {
+            if (hasTimed) return 'Queue enrichment complete: timed lyrics ready.';
+            if (hasLyrics) return 'Queue enrichment complete: lyrics ready.';
+            return 'Queue enrichment complete.';
+        }
+        if (status === 'no_match') return 'Queued. No lyrics match found yet.';
+        if (hasTimed) return 'Queue enrichment complete: timed lyrics ready.';
+        if (hasLyrics) return 'Queue enrichment complete: lyrics ready.';
+        return 'Queued.';
+    }, []);
     useEffect(() => {
         try {
             localStorage.setItem('bross_quick_add_on_result_click', quickAddOnResultClick ? '1' : '0');
@@ -3022,9 +3041,35 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
     }, [quickAddOnResultClick]);
     useEffect(() => {
         if (!quickAddNotice) return;
-        const timeout = setTimeout(() => setQuickAddNotice(null), 8000);
+        const status = String(quickAddNotice?.lyricsGenerationStatus || '').trim().toLowerCase();
+        const timeoutMs = status === 'pending' ? 18000 : 8000;
+        const timeout = setTimeout(() => setQuickAddNotice(null), timeoutMs);
         return () => clearTimeout(timeout);
     }, [quickAddNotice, setQuickAddNotice]);
+    useEffect(() => {
+        if (!quickAddNotice?.id || !roomCode) return;
+        const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', quickAddNotice.id);
+        const unsub = onSnapshot(songRef, (snap) => {
+            if (!snap.exists()) {
+                setQuickAddNotice((prev) => (prev?.id === quickAddNotice.id ? null : prev));
+                return;
+            }
+            const song = snap.data() || {};
+            setQuickAddNotice((prev) => {
+                if (!prev || prev.id !== quickAddNotice.id) return prev;
+                return {
+                    ...prev,
+                    lyrics: song.lyrics || '',
+                    lyricsTimed: song.lyricsTimed || null,
+                    lyricsSource: song.lyricsSource || '',
+                    lyricsGenerationStatus: song.lyricsGenerationStatus || prev.lyricsGenerationStatus || '',
+                    lyricsGenerationResolution: song.lyricsGenerationResolution || prev.lyricsGenerationResolution || '',
+                    statusText: describeQueueLyricsStatus(song)
+                };
+            });
+        });
+        return () => unsub();
+    }, [quickAddNotice?.id, roomCode, setQuickAddNotice, describeQueueLyricsStatus]);
     useEffect(() => {
         if (autoDj) return;
         autoDjObservedSongRef.current = '';
@@ -3213,7 +3258,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
         saveEdit,
         generateLyrics,
         syncEditDuration,
-        addBonusToCurrent
+        addBonusToCurrent,
+        retryLyricsForSong,
+        fetchTimedLyricsForSong
     } = useQueueSongActions({
         roomCode,
         room,
@@ -3365,6 +3412,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                         lyricsTimed: queued.lyricsTimed || null,
                         appleMusicId: queued.appleMusicId || '',
                         duration: queued.duration || 180,
+                        lyricsGenerationStatus: queued.lyricsGenerationStatus || '',
+                        lyricsGenerationResolution: queued.lyricsGenerationResolution || '',
                         statusText: queued.statusText || 'Queued'
                     });
                 }
@@ -4202,6 +4251,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                 handleTouchEnd={handleTouchEnd}
                 updateStatus={updateStatus}
                 startEdit={startEdit}
+                onRetryLyrics={retryLyricsForSong}
+                onFetchTimedLyrics={fetchTimedLyricsForSong}
                 statusPill={statusPill}
                 styles={STYLES}
             />
@@ -5069,6 +5120,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [hostNightPreset, setHostNightPreset] = useState('custom');
     const [audienceBingoReopenEnabled, setAudienceBingoReopenEnabled] = useState(true);
     const [autoLyricsOnQueue, setAutoLyricsOnQueue] = useState(false);
+    const [lyricsPipelineV2Enabled, setLyricsPipelineV2Enabled] = useState(false);
+    const [lyricsPipelineV2Touched, setLyricsPipelineV2Touched] = useState(false);
     const [popTriviaEnabled, setPopTriviaEnabled] = useState(true);
     const [audiencePreviewVisible, setAudiencePreviewVisible] = useState(() => {
         try {
@@ -6293,6 +6346,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.autoLyricsOnQueue === undefined || room?.autoLyricsOnQueue === null) return;
         setAutoLyricsOnQueue(!!room.autoLyricsOnQueue);
     }, [roomCode, room?.autoLyricsOnQueue]);
+    useEffect(() => {
+        if (room?.lyricsPipelineV2Enabled === undefined || room?.lyricsPipelineV2Enabled === null) return;
+        setLyricsPipelineV2Enabled(!!room.lyricsPipelineV2Enabled);
+        setLyricsPipelineV2Touched(false);
+    }, [roomCode, room?.lyricsPipelineV2Enabled]);
     useEffect(() => {
         if (!uid || !accountMusicPrefsReady) return;
         if (!accountMusicPrefsRef.current?.appleAutoConnect) return;
@@ -7964,15 +8022,37 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await updateRoom({ logoUrl: trimmed || null });
         toast('Logo updated');
     };
+    const normalizeOrbSkinUrl = (rawValue = '') => {
+        const raw = String(rawValue || '').trim();
+        if (!raw) return '';
+        const slashNormalized = raw.replace(/\\/g, '/');
+        if (/^javascript:/i.test(slashNormalized)) return '';
+        const publicIndex = slashNormalized.toLowerCase().indexOf('/public/');
+        if (publicIndex >= 0) {
+            const fromPublic = slashNormalized.slice(publicIndex + '/public'.length);
+            const normalizedPath = fromPublic.startsWith('/') ? fromPublic : `/${fromPublic}`;
+            return encodeURI(normalizedPath);
+        }
+        if (/^[a-z]:\//i.test(slashNormalized)) return '';
+        if (/^https?:\/\//i.test(slashNormalized) || slashNormalized.startsWith('/')) {
+            return encodeURI(slashNormalized);
+        }
+        return '';
+    };
     const saveOrbSkinUrl = async (nextOrbSkinUrl = orbSkinUrl) => {
-        const trimmed = (nextOrbSkinUrl || '').trim();
-        setOrbSkinUrl(trimmed);
+        const raw = (nextOrbSkinUrl || '').trim();
+        const normalized = normalizeOrbSkinUrl(raw);
+        if (raw && !normalized) {
+            toast('Orb skin must be a public URL or a /images/... path');
+            return;
+        }
+        setOrbSkinUrl(normalized);
         if (!roomCode) {
             toast('Create or open a room first');
             return;
         }
-        await updateRoom({ lobbyOrbSkinUrl: trimmed || null });
-        toast(trimmed ? 'Orb skin updated' : 'Orb skin reset');
+        await updateRoom({ lobbyOrbSkinUrl: normalized || null });
+        toast(normalized ? 'Orb skin updated' : 'Orb skin reset');
     };
     const clearStormTimers = () => {
         stormTimersRef.current.forEach(t => clearTimeout(t));
@@ -8075,7 +8155,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             fadeMixFader(restore, fadeInMs);
         }
     }, [autoBgMusic, currentSong, autoBgFadeOutMs, autoBgFadeInMs, autoBgMixDuringSong, fadeMixFader, mixFader]);
-    const handleMixFaderChange = (val) => {
+    const handleMixFaderChange = (val, options = {}) => {
+        const shouldCommit = options?.commit !== false;
         let clamped = normalizePercent(val, normalizePercent(mixFader, 50));
         if (Math.abs(clamped - 50) <= 3) {
             clamped = 50;
@@ -8084,7 +8165,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const song = 1 - bg;
         setMixFader(clamped);
         setBgVolume(bg);
-        updateRoom({ mixFader: clamped, bgMusicVolume: bg, videoVolume: Math.round(song * 100) });
+        if (shouldCommit) {
+            updateRoom({ mixFader: clamped, bgMusicVolume: bg, videoVolume: Math.round(song * 100) });
+        }
     };
     const toggleSongMute = () => {
         const currentVol = room?.videoVolume ?? 100;
@@ -8439,7 +8522,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 tipQrUrl: tipSettings.qr.trim() || null,
                 hostName: hostName || 'Host',
                 logoUrl: logoUrl?.trim() || null,
-                lobbyOrbSkinUrl: orbSkinUrl?.trim() || null,
+                lobbyOrbSkinUrl: normalizeOrbSkinUrl(orbSkinUrl) || null,
                 tipCrates: normalizeTipCratesForSave(tipCrates),
                 appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId),
                 appleMusicAutoPlaylistTitle: (appleMusicAutoPlaylistTitle || '').trim(),
@@ -8458,6 +8541,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 hostNightPreset: hostNightPreset || 'custom',
                 bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
                 autoLyricsOnQueue: !!autoLyricsOnQueue,
+                ...(shouldIncludeLyricsPipelineV2 ? { lyricsPipelineV2Enabled: !!lyricsPipelineV2Enabled } : {}),
                 popTriviaEnabled: popTriviaEnabled !== false,
                 queueSettings: {
                     limitMode: queueLimitMode || 'none',
@@ -12551,6 +12635,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         .map((tab) => ({ key: tab, ...(HOST_SETTINGS_META[tab] || { label: tab, icon: 'fa-gear' }) }))
         .slice(0, 4);
     const canSaveRoomSettings = !['billing', 'qa', 'live_effects'].includes(settingsTab);
+    const shouldIncludeLyricsPipelineV2 = lyricsPipelineV2Touched
+        || typeof room?.lyricsPipelineV2Enabled === 'boolean';
     const draftRoomSettingsPayload = {
         tipUrl: (tipSettings.link || '').trim() || null,
         tipQrUrl: (tipSettings.qr || '').trim() || null,
@@ -12574,6 +12660,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         hostNightPreset: hostNightPreset || 'custom',
         bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
         autoLyricsOnQueue: !!autoLyricsOnQueue,
+        ...(shouldIncludeLyricsPipelineV2 ? { lyricsPipelineV2Enabled: !!lyricsPipelineV2Enabled } : {}),
         popTriviaEnabled: popTriviaEnabled !== false,
         queueSettings: {
             limitMode: queueLimitMode || 'none',
@@ -12608,6 +12695,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hostNightPreset: room.hostNightPreset || 'custom',
             bingoAudienceReopenEnabled: room.bingoAudienceReopenEnabled !== false,
             autoLyricsOnQueue: !!room.autoLyricsOnQueue,
+            ...(typeof room?.lyricsPipelineV2Enabled === 'boolean'
+                ? { lyricsPipelineV2Enabled: !!room.lyricsPipelineV2Enabled }
+                : {}),
             popTriviaEnabled: room.popTriviaEnabled !== false,
             queueSettings: {
                 limitMode: room.queueSettings?.limitMode || 'none',
@@ -14031,6 +14121,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                   {canUseAiTools
                                       ? 'When no lyrics are available, generate fallback lyrics for queued songs.'
                                       : 'Saved now; this activates when AI tools are enabled for the workspace (or demo bypass is on).'}
+                              </div>
+                              <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
+                                  <input
+                                      type="checkbox"
+                                      checked={lyricsPipelineV2Enabled}
+                                      onChange={e => {
+                                          setLyricsPipelineV2Enabled(e.target.checked);
+                                          setLyricsPipelineV2Touched(true);
+                                      }}
+                                      className="accent-[#00C4D9]"
+                                  />
+                                  Lyrics Pipeline V2 (status + retry controls)
+                              </label>
+                              <div className="host-form-helper">
+                                  Uses callable-based lyrics resolution with queue status chips, host retry, and timed-lyrics fetch actions.
                               </div>
                               <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
                                   <input

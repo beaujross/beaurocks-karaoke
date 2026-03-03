@@ -16,6 +16,8 @@ const QueueSongCard = ({
     handleTouchEnd,
     updateStatus,
     startEdit,
+    onRetryLyrics,
+    onFetchTimedLyrics,
     statusPill,
     styles
 }) => {
@@ -26,6 +28,42 @@ const QueueSongCard = ({
     const queueMediaUrl = queueBacking.mediaUrl;
     const queueUsesAppleBacking = queueBacking.usesAppleBacking;
     const queueIsYouTube = queueBacking.isYouTube;
+    const hasTimedLyrics = Array.isArray(song?.lyricsTimed) && song.lyricsTimed.length > 0;
+    const hasLyrics = !!String(song?.lyrics || '').trim();
+    const lyricsStatus = String(song?.lyricsGenerationStatus || '').trim().toLowerCase();
+    const lyricsResolution = String(song?.lyricsGenerationResolution || '').trim();
+    let lyricsChipLabel = 'No Lyrics';
+    let lyricsChipTone = '';
+    if (lyricsStatus === 'pending') {
+        lyricsChipLabel = 'Lyrics: Pending';
+        lyricsChipTone = ' border-cyan-300/40 text-cyan-100 bg-cyan-500/10';
+    } else if (lyricsStatus === 'resolved') {
+        lyricsChipLabel = hasTimedLyrics ? 'Timed' : 'Lyrics';
+        lyricsChipTone = hasTimedLyrics
+            ? ' border-emerald-300/40 text-emerald-100 bg-emerald-500/10'
+            : ' border-sky-300/40 text-sky-100 bg-sky-500/10';
+    } else if (lyricsStatus === 'needs_user_token') {
+        lyricsChipLabel = 'Needs Apple Auth';
+        lyricsChipTone = ' border-amber-300/45 text-amber-100 bg-amber-500/10';
+    } else if (lyricsStatus === 'capability_blocked') {
+        lyricsChipLabel = 'Capability Blocked';
+        lyricsChipTone = ' border-rose-300/45 text-rose-100 bg-rose-500/10';
+    } else if (lyricsStatus === 'error') {
+        lyricsChipLabel = 'Error';
+        lyricsChipTone = ' border-rose-300/45 text-rose-100 bg-rose-500/10';
+    } else if (lyricsStatus === 'no_match') {
+        lyricsChipLabel = 'No Match';
+        lyricsChipTone = ' border-zinc-500/45 text-zinc-300 bg-zinc-800/40';
+    } else if (lyricsStatus === 'disabled') {
+        lyricsChipLabel = 'Disabled';
+        lyricsChipTone = ' border-zinc-500/45 text-zinc-300 bg-zinc-800/40';
+    } else if (hasTimedLyrics) {
+        lyricsChipLabel = 'Timed';
+        lyricsChipTone = ' border-emerald-300/40 text-emerald-100 bg-emerald-500/10';
+    } else if (hasLyrics) {
+        lyricsChipLabel = 'Lyrics';
+        lyricsChipTone = ' border-sky-300/40 text-sky-100 bg-sky-500/10';
+    }
 
     return (
         <div
@@ -59,26 +97,45 @@ const QueueSongCard = ({
                             ) : (
                                 <span className={statusPill}><i className="fa-solid fa-file-audio mr-1"></i>No Track</span>
                             )}
-                            {song.lyricsTimed?.length ? (
-                                <span className={statusPill}><i className="fa-solid fa-clock mr-1"></i>Timed</span>
-                            ) : song.lyrics ? (
-                                <span className={statusPill}><i className="fa-solid fa-closed-captioning mr-1"></i>Lyrics</span>
-                            ) : (
-                                <span className={statusPill}><i className="fa-solid fa-comment-slash mr-1"></i>No Lyrics</span>
-                            )}
+                            <span className={`${statusPill}${lyricsChipTone}`} title={lyricsResolution || 'lyrics status'}>
+                                <i className={`fa-solid ${
+                                    hasTimedLyrics
+                                        ? 'fa-clock'
+                                        : (hasLyrics ? 'fa-closed-captioning' : 'fa-comment-slash')
+                                } mr-1`}></i>
+                                {lyricsChipLabel}
+                            </span>
                         </div>
                     </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => updateStatus(song.id, 'performing')} className={`${styles.btnStd} ${styles.btnPrimary} px-2 py-1 text-[10px] min-h-[28px]`}>
-                        <i className="fa-solid fa-play mr-1"></i>Play
-                    </button>
-                    <button onClick={() => startEdit(song)} className={`${styles.btnStd} ${styles.btnSecondary} px-2 py-1 text-[10px] min-h-[28px]`}>
-                        <i className="fa-solid fa-pen-to-square"></i>
-                    </button>
-                    <button onClick={() => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id))} className={`${styles.btnStd} ${styles.btnDanger} px-2 py-1 text-[10px] min-h-[28px]`}>
-                        <i className="fa-solid fa-trash"></i>
-                    </button>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                    <div className="flex items-center gap-1">
+                        <button onClick={() => updateStatus(song.id, 'performing')} className={`${styles.btnStd} ${styles.btnPrimary} px-2 py-1 text-[10px] min-h-[28px]`}>
+                            <i className="fa-solid fa-play mr-1"></i>Play
+                        </button>
+                        <button onClick={() => startEdit(song)} className={`${styles.btnStd} ${styles.btnSecondary} px-2 py-1 text-[10px] min-h-[28px]`}>
+                            <i className="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button onClick={() => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id))} className={`${styles.btnStd} ${styles.btnDanger} px-2 py-1 text-[10px] min-h-[28px]`}>
+                            <i className="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => onRetryLyrics?.(song)}
+                            className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-[10px] min-h-[26px]`}
+                            title="Retry lyrics resolution"
+                        >
+                            Retry Lyrics
+                        </button>
+                        <button
+                            onClick={() => onFetchTimedLyrics?.(song)}
+                            className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-[10px] min-h-[26px]`}
+                            title="Fetch timed lyrics only"
+                        >
+                            Fetch Timed
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

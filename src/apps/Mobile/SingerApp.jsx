@@ -196,7 +196,10 @@ const isCatalogPermissionDeniedError = (error) => {
     const message = String(error?.message || '').toLowerCase();
     return (
         code.includes('permission-denied')
+        || code.includes('forbidden')
         || message.includes('permission-denied')
+        || message.includes('forbidden')
+        || message.includes('403')
         || message.includes('host or moderator access required')
         || message.includes('catalog song')
         || message.includes('catalog track')

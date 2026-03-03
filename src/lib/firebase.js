@@ -557,6 +557,12 @@ const updateRoomAsHost = async (roomCode = "", updates = {}) => {
   return data || null;
 };
 
+const resolveQueueSongLyrics = async (payload = {}) => {
+  await requireAppCheckToken("resolveQueueSongLyrics");
+  const data = await callFunction("resolveQueueSongLyrics", payload || {});
+  return data || null;
+};
+
 const runDemoDirectorAction = async (payload = {}) => {
   await requireAppCheckToken("runDemoDirectorAction");
   const data = await callFunction("runDemoDirectorAction", payload || {});
@@ -824,6 +830,7 @@ export {
   listMyUsageInvoices,
   assertRoomHostAccess,
   updateRoomAsHost,
+  resolveQueueSongLyrics,
   runDemoDirectorAction,
   recordMarketingTelemetry,
   getMarketingReportingSummary,

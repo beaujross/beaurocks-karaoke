@@ -3,12 +3,14 @@ import {
     addDoc,
     collection,
     doc,
+    getDoc,
     writeBatch,
     updateDoc,
     serverTimestamp,
     increment,
     callFunction,
-    ensureAppCheckToken
+    ensureAppCheckToken,
+    resolveQueueSongLyrics as resolveQueueSongLyricsCallable
 } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
 import { EMOJI } from '../../../lib/emoji';
@@ -288,6 +290,202 @@ const useQueueSongActions = ({
         }
     };
 
+    const resolveQueueLyrics = async ({
+        title,
+        artist,
+        allowAiFallback = false
+    }) => {
+        const safeTitle = String(title || '').trim();
+        const safeArtist = String(artist || '').trim();
+        if (!safeTitle) {
+            return {
+                hasLyrics: false,
+                hasTimedLyrics: false,
+                lyrics: '',
+                lyricsTimed: null,
+                lyricsSource: '',
+                appleMusicId: '',
+                resolution: 'missing_title',
+                message: '',
+                needsUserToken: false
+            };
+        }
+
+        const fetchedAppleLyrics = await fetchAppleTimedLyrics(safeTitle, safeArtist);
+        if (fetchedAppleLyrics) {
+            const hasTimedLyrics = Array.isArray(fetchedAppleLyrics.lyricsTimed) && fetchedAppleLyrics.lyricsTimed.length > 0;
+            const hasPlainLyrics = !!String(fetchedAppleLyrics.lyrics || '').trim();
+            if (hasTimedLyrics || hasPlainLyrics) {
+                return {
+                    hasLyrics: hasPlainLyrics,
+                    hasTimedLyrics,
+                    lyrics: fetchedAppleLyrics.lyrics || '',
+                    lyricsTimed: hasTimedLyrics ? fetchedAppleLyrics.lyricsTimed : null,
+                    lyricsSource: fetchedAppleLyrics.lyricsSource || 'apple',
+                    appleMusicId: String(fetchedAppleLyrics.appleMusicId || '').trim(),
+                    resolution: fetchedAppleLyrics.resolution || (hasTimedLyrics ? 'apple_timed' : 'apple_text'),
+                    message: fetchedAppleLyrics.message || '',
+                    needsUserToken: false
+                };
+            }
+        }
+
+        if (allowAiFallback) {
+            const generatedLyrics = await fetchAiLyricsFallback(safeTitle, safeArtist);
+            if (generatedLyrics?.lyrics) {
+                return {
+                    hasLyrics: true,
+                    hasTimedLyrics: false,
+                    lyrics: generatedLyrics.lyrics,
+                    lyricsTimed: null,
+                    lyricsSource: generatedLyrics.lyricsSource || 'ai',
+                    appleMusicId: String(fetchedAppleLyrics?.appleMusicId || '').trim(),
+                    resolution: 'ai_text',
+                    message: '',
+                    needsUserToken: false
+                };
+            }
+        }
+
+        return {
+            hasLyrics: false,
+            hasTimedLyrics: false,
+            lyrics: '',
+            lyricsTimed: null,
+            lyricsSource: '',
+            appleMusicId: String(fetchedAppleLyrics?.appleMusicId || '').trim(),
+            resolution: fetchedAppleLyrics?.resolution || 'no_match',
+            message: fetchedAppleLyrics?.message || '',
+            needsUserToken: !!fetchedAppleLyrics?.needsUserToken
+        };
+    };
+
+    const buildLyricsToastFromResult = (result = {}, timedOnly = false) => {
+        const status = String(result?.status || '').trim().toLowerCase();
+        const resolution = String(result?.resolution || '').trim().toLowerCase();
+        const hasTimedLyrics = !!result?.hasTimedLyrics;
+        const hasLyrics = !!result?.hasLyrics;
+        if (hasTimedLyrics) return 'Timed lyrics ready.';
+        if (hasLyrics) return 'Lyrics ready.';
+        if (status === 'needs_user_token' || resolution === 'needs_user_token') {
+            return 'Apple lyrics need host Apple Music authorization.';
+        }
+        if (status === 'capability_blocked' || resolution === 'capability_blocked') {
+            return 'AI fallback blocked by current workspace entitlement.';
+        }
+        if (status === 'disabled' || resolution === 'pipeline_v2_disabled') {
+            return 'Lyrics pipeline is disabled for this room.';
+        }
+        if (status === 'error') return 'Lyrics lookup hit a provider error.';
+        if (timedOnly) return 'No timed lyrics found yet.';
+        return 'No lyrics match found yet.';
+    };
+
+    const applyLocalLyricsFallbackToDoc = async ({
+        songDocRef,
+        title,
+        artist,
+        timedOnly = false
+    }) => {
+        let lyricsResult = {
+            hasLyrics: false,
+            hasTimedLyrics: false,
+            lyrics: '',
+            lyricsTimed: null,
+            lyricsSource: '',
+            resolution: 'no_match',
+            message: '',
+            needsUserToken: false
+        };
+        try {
+            lyricsResult = await resolveQueueLyrics({
+                title,
+                artist,
+                allowAiFallback: !timedOnly
+            });
+        } catch (error) {
+            console.warn('Local queue lyrics fallback failed', error);
+            lyricsResult = {
+                hasLyrics: false,
+                hasTimedLyrics: false,
+                lyrics: '',
+                lyricsTimed: null,
+                lyricsSource: '',
+                resolution: 'fetch_error',
+                message: error?.message || '',
+                needsUserToken: false
+            };
+        }
+
+        const songSnap = await getDoc(songDocRef);
+        const currentSongData = songSnap.exists() ? (songSnap.data() || {}) : {};
+        const hasExistingTimedLyrics = Array.isArray(currentSongData?.lyricsTimed) && currentSongData.lyricsTimed.length > 0;
+        const hasExistingLyrics = !!String(currentSongData?.lyrics || '').trim();
+        const songUpdates = {
+            lyricsGenerationUpdatedAt: serverTimestamp(),
+            lyricsGenerationResolution: lyricsResult.resolution || '',
+            lyricsGenerationStatus: (
+                lyricsResult.hasTimedLyrics || lyricsResult.hasLyrics
+                    ? 'resolved'
+                    : lyricsResult.needsUserToken
+                        ? 'needs_user_token'
+                        : (lyricsResult.resolution === 'fetch_error' ? 'error' : 'no_match')
+            )
+        };
+        if (!hasExistingTimedLyrics && !hasExistingLyrics && (lyricsResult.hasTimedLyrics || lyricsResult.hasLyrics)) {
+            songUpdates.lyrics = lyricsResult.lyrics || '';
+            songUpdates.lyricsTimed = lyricsResult.lyricsTimed || null;
+            songUpdates.lyricsSource = lyricsResult.lyricsSource || '';
+        }
+        await updateDoc(songDocRef, songUpdates);
+
+        return {
+            status: songUpdates.lyricsGenerationStatus,
+            resolution: songUpdates.lyricsGenerationResolution,
+            hasLyrics: !!lyricsResult.hasLyrics || hasExistingLyrics,
+            hasTimedLyrics: !!lyricsResult.hasTimedLyrics || hasExistingTimedLyrics,
+            needsUserToken: !!lyricsResult.needsUserToken
+        };
+    };
+
+    const resolveQueuedSongLyrics = async ({
+        songDocId,
+        title,
+        artist,
+        timedOnly = false,
+        force = true
+    }) => {
+        if (!roomCode || !songDocId) return null;
+        const songDocRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songDocId);
+        try {
+            await ensureAppCheckToken(false).catch(() => false);
+            const callableResult = await resolveQueueSongLyricsCallable({
+                roomCode,
+                songId: songDocId,
+                timedOnly: !!timedOnly,
+                force: force !== false,
+                musicUserToken: getAppleMusicUserToken?.() || ''
+            });
+            return {
+                ...callableResult,
+                toastMessage: buildLyricsToastFromResult(callableResult, timedOnly)
+            };
+        } catch (error) {
+            console.warn('resolveQueueSongLyrics callable failed, using local fallback', error);
+            const fallback = await applyLocalLyricsFallbackToDoc({
+                songDocRef,
+                title,
+                artist,
+                timedOnly
+            });
+            return {
+                ...fallback,
+                toastMessage: buildLyricsToastFromResult(fallback, timedOnly),
+                localFallback: true
+            };
+        }
+    };
+
     const addSong = async () => {
         const playlistId = parseYouTubePlaylistId(manual.url || '');
         if (playlistId) {
@@ -337,6 +535,9 @@ const useQueueSongActions = ({
                             appleMusicId: '',
                             musicSource: '',
                             lyricsSource: '',
+                            lyricsGenerationStatus: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
+                            lyricsGenerationResolution: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
+                            lyricsGenerationUpdatedAt: serverTimestamp(),
                             duration: 180,
                             status: 'requested',
                             timestamp: serverTimestamp(),
@@ -382,24 +583,7 @@ const useQueueSongActions = ({
             });
             const manualUrl = manualBacking.mediaUrl;
             const resolvedAppleMusicId = manualBacking.appleMusicId;
-            let songId = buildSongKey(manualTitle, manualArtist);
-            try {
-                const songRecord = await ensureSong({
-                    title: manualTitle,
-                    artist: manualArtist,
-                    artworkUrl: manual.art || '',
-                    appleMusicId: resolvedAppleMusicId,
-                    verifyMeta: manual.art ? {} : false,
-                    verifiedBy: hostName || 'host'
-                });
-                songId = songRecord?.songId || songId;
-            } catch (err) {
-                if (isCatalogPermissionDeniedError(err)) {
-                    logCatalogPermissionSkip('manual.ensureSong');
-                } else {
-                    console.warn('manual ensureSong failed', err);
-                }
-            }
+            const initialSongId = buildSongKey(manualTitle, manualArtist);
             const youtubeId = extractYouTubeId(manualUrl);
             const trackSource = resolvedAppleMusicId
                 ? 'apple'
@@ -408,60 +592,35 @@ const useQueueSongActions = ({
                     : manualUrl
                         ? 'custom'
                         : '';
-            let trackRecord = null;
-            if (trackSource) {
-                try {
-                    trackRecord = await ensureTrack({
-                        songId,
-                        source: trackSource,
-                        mediaUrl: manualUrl || '',
-                        appleMusicId: resolvedAppleMusicId,
-                        duration: manual.duration ? Math.round(manual.duration) : null,
-                        audioOnly: manual.audioOnly || isAudioUrl(manualUrl),
-                        backingOnly: !!manual.backingAudioOnly,
-                        addedBy: hostName || 'Host'
-                    });
-                } catch (err) {
-                    if (isCatalogPermissionDeniedError(err)) {
-                        logCatalogPermissionSkip('manual.ensureTrack');
-                    } else {
-                        console.warn('manual ensureTrack failed', err);
-                    }
-                }
-            }
-            let resolvedLyrics = manual.lyrics || '';
-            let resolvedTimedLyrics = manual.lyricsTimed || null;
-            let resolvedLyricsSource = manual.lyricsTimed ? 'apple' : (manual.lyrics ? 'manual' : '');
-            if (!resolvedLyrics && !resolvedTimedLyrics && resolvedAppleMusicId) {
-                const fetched = await fetchAppleTimedLyrics(manualTitle, manualArtist);
-                if (fetched) {
-                    resolvedLyrics = fetched.lyrics || '';
-                    resolvedTimedLyrics = fetched.lyricsTimed || null;
-                    resolvedLyricsSource = fetched.lyricsSource || '';
-                }
-            }
-            if (!resolvedLyrics && !resolvedTimedLyrics) {
-                const generated = await fetchAiLyricsFallback(manualTitle, manualArtist);
-                if (generated) {
-                    resolvedLyrics = generated.lyrics || '';
-                    resolvedLyricsSource = generated.lyricsSource || 'ai';
-                }
-            }
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
+            const hasManualTimedLyrics = Array.isArray(manual.lyricsTimed) && manual.lyricsTimed.length > 0;
+            const hasManualLyrics = !!String(manual.lyrics || '').trim();
+            const shouldAttemptLyricsEnrichment = !hasManualTimedLyrics && !hasManualLyrics && !!room?.autoLyricsOnQueue;
+            const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
                 roomCode,
-                songId,
-                trackId: trackRecord?.trackId || null,
+                songId: initialSongId,
+                trackId: null,
                 trackSource: trackSource || null,
                 songTitle: manualTitle,
                 artist: manualArtist,
                 singerName: manual.singer,
                 mediaUrl: manualUrl,
                 albumArtUrl: manual.art || '',
-                lyrics: resolvedLyrics,
-                lyricsTimed: resolvedTimedLyrics,
+                lyrics: hasManualLyrics ? String(manual.lyrics || '') : '',
+                lyricsTimed: hasManualTimedLyrics ? manual.lyricsTimed : null,
                 appleMusicId: resolvedAppleMusicId,
                 musicSource: resolvedAppleMusicId ? 'apple' : '',
-                lyricsSource: resolvedLyricsSource,
+                lyricsSource: hasManualLyrics || hasManualTimedLyrics ? 'manual' : '',
+                lyricsGenerationStatus: (
+                    hasManualLyrics || hasManualTimedLyrics
+                        ? 'resolved'
+                        : (shouldAttemptLyricsEnrichment ? 'pending' : 'disabled')
+                ),
+                lyricsGenerationResolution: (
+                    hasManualLyrics || hasManualTimedLyrics
+                        ? 'manual'
+                        : (shouldAttemptLyricsEnrichment ? 'pending' : 'disabled')
+                ),
+                lyricsGenerationUpdatedAt: serverTimestamp(),
                 duration: manual.duration ? Math.round(manual.duration) : 180,
                 status: 'requested',
                 timestamp: serverTimestamp(),
@@ -470,6 +629,77 @@ const useQueueSongActions = ({
                 backingAudioOnly: manual.backingAudioOnly || false,
                 audioOnly: manual.audioOnly || isAudioUrl(manualUrl)
             });
+
+            toast(
+                hasManualLyrics || hasManualTimedLyrics
+                    ? 'Song Added!'
+                    : 'Song Added! Resolving lyrics...'
+            );
+
+            void (async () => {
+                let resolvedSongId = initialSongId;
+                try {
+                    const songRecord = await ensureSong({
+                        title: manualTitle,
+                        artist: manualArtist,
+                        artworkUrl: manual.art || '',
+                        appleMusicId: resolvedAppleMusicId,
+                        verifyMeta: manual.art ? {} : false,
+                        verifiedBy: hostName || 'host'
+                    });
+                    resolvedSongId = songRecord?.songId || resolvedSongId;
+                } catch (err) {
+                    if (isCatalogPermissionDeniedError(err)) {
+                        logCatalogPermissionSkip('manual.ensureSong');
+                    } else {
+                        console.warn('manual ensureSong failed', err);
+                    }
+                }
+
+                let trackRecord = null;
+                if (trackSource) {
+                    try {
+                        trackRecord = await ensureTrack({
+                            songId: resolvedSongId,
+                            source: trackSource,
+                            mediaUrl: manualUrl || '',
+                            appleMusicId: resolvedAppleMusicId,
+                            duration: manual.duration ? Math.round(manual.duration) : null,
+                            audioOnly: manual.audioOnly || isAudioUrl(manualUrl),
+                            backingOnly: !!manual.backingAudioOnly,
+                            addedBy: hostName || 'Host'
+                        });
+                    } catch (err) {
+                        if (isCatalogPermissionDeniedError(err)) {
+                            logCatalogPermissionSkip('manual.ensureTrack');
+                        } else {
+                            console.warn('manual ensureTrack failed', err);
+                        }
+                    }
+                }
+
+                try {
+                    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', docRef.id), {
+                        songId: resolvedSongId,
+                        trackId: trackRecord?.trackId || null
+                    });
+                } catch (error) {
+                    console.warn('Failed to persist manual queue song metadata', error);
+                }
+
+                if (!shouldAttemptLyricsEnrichment) return;
+                const enrichment = await resolveQueuedSongLyrics({
+                    songDocId: docRef.id,
+                    title: manualTitle,
+                    artist: manualArtist,
+                    timedOnly: false,
+                    force: true
+                });
+                if (enrichment?.toastMessage) {
+                    toast(enrichment.toastMessage);
+                }
+            })();
+
             setManual({
                 song: '',
                 artist: '',
@@ -484,7 +714,6 @@ const useQueueSongActions = ({
                 audioOnly: false
             });
             setSearchQ('');
-            toast('Song Added!');
         } catch (err) {
             console.warn('Failed to add manual song', err);
             toast(getQueueWriteErrorMessage(err, 'Could not add song right now.'));
@@ -533,6 +762,9 @@ const useQueueSongActions = ({
                 appleMusicId: nextSong.appleMusicId,
                 musicSource: nextSong.appleMusicId ? 'apple' : '',
                 lyricsSource: '',
+                lyricsGenerationStatus: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
+                lyricsGenerationResolution: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
+                lyricsGenerationUpdatedAt: serverTimestamp(),
                 duration: nextSong.duration ? Math.round(nextSong.duration) : 180,
                 status: 'requested',
                 timestamp: serverTimestamp(),
@@ -590,11 +822,26 @@ const useQueueSongActions = ({
                     }
                 }
 
+                const shouldAttemptLyricsEnrichment = !!room?.autoLyricsOnQueue;
                 try {
-                    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', docRef.id), {
+                    const songDocRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', docRef.id);
+                    await updateDoc(songDocRef, {
                         songId,
                         trackId: trackRecord?.trackId || null
                     });
+
+                    if (shouldAttemptLyricsEnrichment) {
+                        const enrichment = await resolveQueuedSongLyrics({
+                            songDocId: docRef.id,
+                            title: nextSong.song,
+                            artist: nextSong.artist,
+                            timedOnly: false,
+                            force: true
+                        });
+                        if (enrichment?.toastMessage) {
+                            toast(enrichment.toastMessage);
+                        }
+                    }
                 } catch (err) {
                     console.warn('Failed to apply queued song enrichment', err);
                 }
@@ -612,8 +859,8 @@ const useQueueSongActions = ({
                 appleMusicId: nextSong.appleMusicId || '',
                 duration: nextSong.duration ? Math.round(nextSong.duration) : 180,
                 statusText,
-                lyricsResolution: '',
-                lyricsMessage: ''
+                lyricsGenerationStatus: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
+                lyricsGenerationResolution: room?.autoLyricsOnQueue ? 'pending' : 'disabled'
             };
         } catch (err) {
             console.warn('Failed to queue song', err);
@@ -697,6 +944,30 @@ const useQueueSongActions = ({
         toast(`Added ${amt} Bonus Pts!`);
     };
 
+    const retryLyricsForSong = async (song) => {
+        if (!song?.id) return;
+        const result = await resolveQueuedSongLyrics({
+            songDocId: song.id,
+            title: song.songTitle || song.title || '',
+            artist: song.artist || '',
+            timedOnly: false,
+            force: true
+        });
+        if (result?.toastMessage) toast(result.toastMessage);
+    };
+
+    const fetchTimedLyricsForSong = async (song) => {
+        if (!song?.id) return;
+        const result = await resolveQueuedSongLyrics({
+            songDocId: song.id,
+            title: song.songTitle || song.title || '',
+            artist: song.artist || '',
+            timedOnly: true,
+            force: true
+        });
+        if (result?.toastMessage) toast(result.toastMessage);
+    };
+
     return {
         addSong,
         addSongFromResult,
@@ -704,7 +975,9 @@ const useQueueSongActions = ({
         saveEdit,
         generateLyrics,
         syncEditDuration,
-        addBonusToCurrent
+        addBonusToCurrent,
+        retryLyricsForSong,
+        fetchTimedLyricsForSong
     };
 };
 

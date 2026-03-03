@@ -214,6 +214,20 @@ const getLobbyPlayEffectByInteractionType = (interactionType = '') => {
     return getLobbyPlayEffect(`lobby_play_${key}`);
 };
 
+const getReactionScoreContribution = (reaction = {}, fallbackMultiplier = 1) => {
+    const type = String(reaction?.type || '').trim().toLowerCase();
+    if (!type || type.startsWith('vote_')) return 0;
+    const unitCost = Number(REACTION_COSTS[type] || 0);
+    if (!Number.isFinite(unitCost) || unitCost <= 0) return 0;
+    const rawCount = Number(reaction?.count || 1);
+    const count = Math.max(1, Math.floor(Number.isFinite(rawCount) ? rawCount : 1));
+    const rawMultiplier = Number(reaction?.multiplier);
+    const multiplier = Number.isFinite(rawMultiplier) && rawMultiplier > 0
+        ? rawMultiplier
+        : Math.max(1, Number(fallbackMultiplier || 1));
+    return Math.max(0, unitCost * count * multiplier);
+};
+
 const getLobbyScreenFxDurationMs = (motion = 'wave') => {
     if (motion === 'laser') return 1900;
     if (motion === 'confetti') return 2600;
@@ -787,6 +801,7 @@ const PublicTV = ({ roomCode }) => {
     const [popTriviaNow, setPopTriviaNow] = useState(nowMs());
     const [previewNowMs, setPreviewNowMs] = useState(nowMs());
     const [previewSession, setPreviewSession] = useState({ key: '', startMs: 0 });
+    const [reactionScoreVersion, setReactionScoreVersion] = useState(0);
     const [viewportSize, setViewportSize] = useState(() => ({
         width: typeof window !== 'undefined' ? window.innerWidth : 1920,
         height: typeof window !== 'undefined' ? window.innerHeight : 1080
@@ -833,6 +848,8 @@ const PublicTV = ({ roomCode }) => {
     const lobbyPausedRef = useRef(false);
     const lobbyVisualOnlyRef = useRef(false);
     const lobbyVolleyEnabledRef = useRef(true);
+    const reactionScoreByDocRef = useRef(new Map());
+    const reactionScoreTotalsByPerformanceRef = useRef(new Map());
     const lobbyTransitionTimerRef = useRef(null);
     const chatFullscreenScrollRef = useRef(null);
     const chatSidebarScrollRef = useRef(null);
@@ -867,6 +884,37 @@ const PublicTV = ({ roomCode }) => {
                 .filter((entry) => (eventTs - Number(entry.timestampMs || 0)) < 90000)
                 .slice(0, 12);
         });
+    }, []);
+    const upsertReactionScoreContribution = useCallback((change) => {
+        const docId = String(change?.doc?.id || '');
+        if (!docId || change?.type === 'removed') return false;
+        const prevEntry = reactionScoreByDocRef.current.get(docId) || null;
+        const prevPerformanceId = String(prevEntry?.performanceId || '').trim();
+        const prevPoints = Math.max(0, Number(prevEntry?.points || 0));
+        const nextData = change.doc.data() || {};
+        const nextPerformanceId = String(nextData?.performanceId || '').trim();
+        const nextPoints = nextPerformanceId
+            ? getReactionScoreContribution(nextData, multiplierRef.current)
+            : 0;
+        if (prevPerformanceId === nextPerformanceId && prevPoints === nextPoints) return false;
+        if (prevPerformanceId && prevPoints > 0) {
+            const prevTotal = Math.max(0, Number(reactionScoreTotalsByPerformanceRef.current.get(prevPerformanceId) || 0) - prevPoints);
+            if (prevTotal > 0) {
+                reactionScoreTotalsByPerformanceRef.current.set(prevPerformanceId, prevTotal);
+            } else {
+                reactionScoreTotalsByPerformanceRef.current.delete(prevPerformanceId);
+            }
+        }
+        reactionScoreByDocRef.current.delete(docId);
+        if (nextPerformanceId && nextPoints > 0) {
+            reactionScoreByDocRef.current.set(docId, {
+                performanceId: nextPerformanceId,
+                points: nextPoints
+            });
+            const nextTotal = Math.max(0, Number(reactionScoreTotalsByPerformanceRef.current.get(nextPerformanceId) || 0) + nextPoints);
+            reactionScoreTotalsByPerformanceRef.current.set(nextPerformanceId, nextTotal);
+        }
+        return true;
     }, []);
     const doodleRequireReview = !!room?.doodleOke?.requireReview;
     const approvedDoodleUids = useMemo(
@@ -1360,6 +1408,9 @@ const PublicTV = ({ roomCode }) => {
     useEffect(() => {
         if(!roomCode) return;
         trackEvent('tv_view', { room_code: roomCode });
+        reactionScoreByDocRef.current = new Map();
+        reactionScoreTotalsByPerformanceRef.current = new Map();
+        setReactionScoreVersion((prev) => prev + 1);
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => setRoom(s.data()));
         const unsubSongs = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), where('roomCode', '==', roomCode)), s => setSongs(s.docs.map(d => ({id:d.id, ...d.data()}))));
         
@@ -1368,8 +1419,21 @@ const PublicTV = ({ roomCode }) => {
              setActivities(sorted);
         });
 
-        const unsubReact = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', roomCode), limit(50)), s => {
+        const reactionsCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions');
+        const reactionsQuery = query(
+            reactionsCol,
+            where('roomCode', '==', roomCode),
+            orderBy('timestamp', 'desc'),
+            limit(250)
+        );
+        const reactionsFallbackQuery = query(
+            reactionsCol,
+            where('roomCode', '==', roomCode)
+        );
+        const handleReactionSnapshot = (s) => {
+            let scoreChanged = false;
             s.docChanges().forEach(c => {
+                if (upsertReactionScoreContribution(c)) scoreChanged = true;
                 if(c.type === 'added') {
                     const d = c.doc.data();
                     // Filter old reactions (prevent flood on reload)
@@ -1850,7 +1914,23 @@ const PublicTV = ({ roomCode }) => {
                     }
                 }
             });
-        });
+            if (scoreChanged) {
+                setReactionScoreVersion((prev) => prev + 1);
+            }
+        };
+        let unsubReactFallback = null;
+        const unsubReact = watchQuerySnapshot(
+            reactionsQuery,
+            handleReactionSnapshot,
+            {
+                label: `tv:reactions:${roomCode}`,
+                onFallback: (error) => {
+                    if (String(error?.code || '') !== 'failed-precondition') return;
+                    if (typeof unsubReactFallback === 'function') return;
+                    unsubReactFallback = onSnapshot(reactionsFallbackQuery, handleReactionSnapshot);
+                }
+            }
+        );
 
         // Live listener to room_users so we can show vibe racers during guitar mode
         const unsubVibe = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode)), s => {
@@ -1888,13 +1968,14 @@ const PublicTV = ({ roomCode }) => {
             unsubRoom();
             unsubSongs();
             unsubReact();
+            if (typeof unsubReactFallback === 'function') unsubReactFallback();
             unsubMsg();
             unsubActivity();
             unsubVibe();
             messageTimeoutsRef.current.forEach(t => clearTimeout(t));
             messageTimeoutsRef.current = [];
         };
-    }, [roomCode, pushLobbyLiveEvent, awardRoomPointsOnce]);
+    }, [roomCode, pushLobbyLiveEvent, awardRoomPointsOnce, upsertReactionScoreContribution]);
 
     useEffect(() => {
         if (!roomCode || !room?.chatShowOnTv) {
@@ -2571,8 +2652,21 @@ const PublicTV = ({ roomCode }) => {
             return sum + Math.max(0, Number(userEntry?.performancePointsGifted || 0));
         }, 0);
     }, [current?.id, roomUsers]);
+    const currentPerformanceReactionPoints = useMemo(() => {
+        const activePerformanceId = String(current?.id || '').trim();
+        if (!activePerformanceId) return 0;
+        return Math.max(
+            0,
+            Math.round(Number(reactionScoreTotalsByPerformanceRef.current.get(activePerformanceId) || 0))
+        );
+    }, [current?.id, reactionScoreVersion]);
     const currentPerformanceHypeScore = current
-        ? Math.max(0, Number(current?.hypeScore || 0), Math.round(currentPerformanceCrowdPoints))
+        ? Math.max(
+            0,
+            Number(current?.hypeScore || 0),
+            Math.round(currentPerformanceCrowdPoints),
+            currentPerformanceReactionPoints
+        )
         : 0;
     const currentPerformancePoints = current
         ? currentPerformanceHypeScore + Math.max(0, Number(current?.applauseScore || 0)) + Math.max(0, Number(current?.hostBonus || 0))
@@ -4863,6 +4957,18 @@ const PublicTV = ({ roomCode }) => {
                                                 '--orb-scale': `${1 + (lobbyOrbEnergy / 360)}`
                                             }}
                                         >
+                                            {!!lobbyOrbSkinUrl && (
+                                                <>
+                                                    <img
+                                                        src={lobbyOrbSkinUrl}
+                                                        alt="Orb core skin"
+                                                        className="lobby-volley-orb-core-skin"
+                                                        loading="lazy"
+                                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                    />
+                                                    <div className="lobby-volley-orb-core-skin-overlay" aria-hidden="true" />
+                                                </>
+                                            )}
                                             <div className="lobby-volley-orb-core-content">
                                                 <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100">{lobbyObjectiveLabel}</div>
                                                 <div className="text-3xl md:text-4xl font-bebas text-white leading-none">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
@@ -5215,9 +5321,13 @@ const PublicTV = ({ roomCode }) => {
                         ) : previewGameId === 'wyr' ? (
                             <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4">
                                 <div className="text-sm uppercase tracking-widest text-zinc-400 mb-2">Would You Rather</div>
-                                <div className="grid grid-cols-2 gap-3 text-lg text-white">
-                                    <div className="bg-black/40 border border-white/10 rounded-xl px-4 py-6 text-center">Sing every duet</div>
-                                    <div className="bg-black/40 border border-white/10 rounded-xl px-4 py-6 text-center">Run the DJ booth</div>
+                                <div className="rounded-2xl border border-fuchsia-200/30 bg-gradient-to-r from-[#1c001b]/95 via-[#2f0b36]/95 to-[#0f2b44]/95 px-5 py-4 mb-3 shadow-[0_12px_30px_rgba(0,0,0,0.45)]">
+                                    <div className="text-xs uppercase tracking-[0.22em] text-fuchsia-100/90 mb-2">Prompt</div>
+                                    <div className="text-[clamp(1.1rem,2vw,1.8rem)] font-black leading-tight text-white">Pick your side before timer ends</div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 text-xl text-white">
+                                    <div className="bg-[#ec4899]/25 border border-[#ec4899]/40 rounded-xl px-4 py-6 text-center font-bold">Sing every duet</div>
+                                    <div className="bg-[#22d3ee]/20 border border-[#22d3ee]/40 rounded-xl px-4 py-6 text-center font-bold">Run the DJ booth</div>
                                 </div>
                             </div>
                         ) : (
@@ -5452,10 +5562,11 @@ const PublicTV = ({ roomCode }) => {
                 inset: 0;
                 width: 100%;
                 height: 100%;
-                object-fit: cover;
+                padding: 2.5%;
+                object-fit: contain;
                 z-index: 0;
                 transform: scale(1.01);
-                filter: saturate(1.08) contrast(1.04);
+                filter: saturate(1.12) contrast(1.05) drop-shadow(0 0 12px rgba(236,72,153,0.35));
               }
               .lobby-volley-orb-slat-overlay {
                 position: absolute;
@@ -5563,7 +5674,25 @@ const PublicTV = ({ roomCode }) => {
                 z-index: 2;
               }
               .lobby-volley-orb-core-custom {
-                background: radial-gradient(circle at 50% 28%, rgba(16,24,56,0.62), rgba(4,6,18,0.88));
+                background: radial-gradient(circle at 50% 24%, rgba(18,34,74,0.34), rgba(3,6,18,0.5));
+                border-color: rgba(236,253,255,0.8);
+              }
+              .lobby-volley-orb-core-skin {
+                position: absolute;
+                inset: 6%;
+                width: 88%;
+                height: 88%;
+                object-fit: contain;
+                z-index: 0;
+                filter: saturate(1.14) contrast(1.06);
+              }
+              .lobby-volley-orb-core-skin-overlay {
+                position: absolute;
+                inset: 0;
+                z-index: 1;
+                background:
+                  radial-gradient(circle at 22% 18%, rgba(255,255,255,0.32), rgba(255,255,255,0) 48%),
+                  linear-gradient(180deg, rgba(2,6,23,0.06), rgba(2,6,23,0.28));
               }
               .lobby-volley-orb-core-content {
                 position: relative;

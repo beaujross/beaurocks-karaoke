@@ -443,7 +443,7 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
         const perA = Math.round((votesA.length / total) * 100);
         const wyrPrompt = String(gameState?.question || '').trim();
 
-        const topRailPadding = wyrPrompt ? 'clamp(210px, 29vh, 360px)' : 'clamp(150px, 20vh, 250px)';
+        const topRailPadding = wyrPrompt ? 'clamp(260px, 34vh, 430px)' : 'clamp(150px, 20vh, 250px)';
 
         return (
             <div data-qa-tv-view="wyr" className="h-full w-full bg-gradient-to-br from-[#090014] via-[#120026] to-black text-white font-saira relative overflow-hidden z-[100]">
@@ -452,10 +452,11 @@ const QAGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
                         WOULD YOU RATHER...
                     </h1>
                     {wyrPrompt && (
-                        <div className="w-full max-w-[94vw] px-8">
-                            <div className="bg-black/68 border border-white/15 rounded-2xl px-6 py-4 text-center shadow-[0_0_24px_rgba(0,0,0,0.45)]">
-                                <div className="text-base uppercase tracking-[0.22em] text-zinc-300 mb-2">Prompt</div>
-                                <div className="text-[clamp(1rem,2vw,1.85rem)] font-black leading-tight text-white whitespace-pre-wrap break-words">
+                        <div className="w-full max-w-[96vw] px-6 md:px-10">
+                            <div className="relative overflow-hidden rounded-3xl border border-fuchsia-200/40 bg-gradient-to-r from-[#180017]/95 via-[#2a0630]/96 to-[#103046]/95 px-7 py-5 text-center shadow-[0_16px_52px_rgba(0,0,0,0.62)] backdrop-blur-sm">
+                                <div className="pointer-events-none absolute inset-0 opacity-35 bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.55),transparent_52%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,0.5),transparent_58%)]" />
+                                <div className="relative text-[clamp(0.9rem,1.5vw,1.25rem)] uppercase tracking-[0.26em] text-fuchsia-100/90 mb-3 font-bold">Prompt</div>
+                                <div className="relative text-[clamp(1.6rem,3.25vw,3.4rem)] font-black leading-[1.08] text-white whitespace-pre-wrap break-words drop-shadow-[0_3px_10px_rgba(0,0,0,0.5)]">
                                     {wyrPrompt}
                                 </div>
                             </div>

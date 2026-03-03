@@ -185,6 +185,14 @@ async function run() {
       assert.equal(snap.get("tvPresentationProfile"), "simple");
     }],
 
+    ["host can toggle lyrics pipeline v2 rollout field", async () => {
+      await updateRoomAsHost.run(requestFor(HOST_UID, {
+        lyricsPipelineV2Enabled: true,
+      }));
+      const snap = await roomRef.get();
+      assert.equal(snap.get("lyricsPipelineV2Enabled"), true);
+    }],
+
     ["guest cannot update room as host", async () => {
       await expectHttpsError(
         () => updateRoomAsHost.run(requestFor(GUEST_UID, { activeMode: "bingo" })),

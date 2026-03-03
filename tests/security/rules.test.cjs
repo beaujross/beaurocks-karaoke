@@ -665,6 +665,38 @@ async function run() {
       );
     }],
 
+    ["firestore: audience user can create WYR vote reaction with letter val", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`${ROOT}/reactions/reaction_vote_wyr`).set({
+          roomCode: ROOM_CODE,
+          type: "vote_wyr",
+          val: "A",
+          questionId: "wyr_1",
+          uid: GUEST_UID,
+          userName: "Guest",
+          avatar: "😀",
+          isVote: true,
+        })
+      );
+    }],
+
+    ["firestore: reaction vote val rejects invalid string", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/reactions/reaction_vote_invalid`).set({
+          roomCode: ROOM_CODE,
+          type: "vote_wyr",
+          val: "LEFT",
+          questionId: "wyr_1",
+          uid: GUEST_UID,
+          userName: "Guest",
+          avatar: "😀",
+          isVote: true,
+        })
+      );
+    }],
+
     ["firestore: anonymous auth cannot create chat message", async () => {
       const db = anonymousContext(GUEST_UID).firestore();
       await assertFails(

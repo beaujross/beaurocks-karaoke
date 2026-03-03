@@ -13,30 +13,28 @@ import { formatDateTime } from "./shared";
 import { toRoomManagerEntryFromData } from "./hostRoomManagerUtils";
 
 const HOST_STACK_BADGES = [
-  "Content-Agnostic Control",
-  "Works With Existing Tools",
-  "Built For Live Flow",
+  "Simple 4-button host flow",
+  "Room manager built in",
+  "Works with your current setup",
 ];
 
 const HOST_QUICK_STEPS = [
   {
-    title: "Set room defaults",
-    detail: "Configure queue, moderation, and overlays in one place.",
+    title: "Log in",
+    detail: "Use your BeauRocks account once and stay in host mode.",
   },
   {
-    title: "Run a unified queue",
-    detail: "Use your current sources without changing your stack.",
+    title: "Launch",
+    detail: "Create or open a room with room code defaults already filled.",
   },
   {
-    title: "Close with clean recap",
-    detail: "Finish with consistent room data instead of manual cleanup.",
+    title: "Run show",
+    detail: "Use Host, TV, and audience links from one manager surface.",
   },
-];
-
-const HOST_OUTCOMES = [
-  "Less dead air between singers.",
-  "Cleaner transitions across host, TV, and audience devices.",
-  "More repeatable host operations night to night.",
+  {
+    title: "Review recap",
+    detail: "Jump back into room history and recaps in one click.",
+  },
 ];
 
 const normalizeRoomCode = (value = "") =>
@@ -55,14 +53,6 @@ const toRoomManagerEntry = (docSnap) => {
 
 const ForHostsPage = ({ navigate, route, session, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
-  const trackPersonaCta = (cta = "") => {
-    trackEvent("mk_persona_cta_click", {
-      persona: "host",
-      page: "for_hosts",
-      cta: String(cta || ""),
-    });
-  };
-
   const [privateForm, setPrivateForm] = useState({
     title: "",
     roomCode: "",
@@ -74,13 +64,24 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
     state: "",
   });
   const [status, setStatus] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [roomFilter, setRoomFilter] = useState("active");
   const autoLaunchIntentRef = useRef("");
+  const roomManagerRef = useRef(null);
   const [managedRooms, setManagedRooms] = useState([]);
   const [managedRoomsLoading, setManagedRoomsLoading] = useState(false);
   const [managedRoomsError, setManagedRoomsError] = useState("");
   const [publishedSessions, setPublishedSessions] = useState([]);
   const [publishedSessionsLoading, setPublishedSessionsLoading] = useState(false);
   const [roomManagerStatus, setRoomManagerStatus] = useState("");
+
+  const trackPersonaCta = (cta = "") => {
+    trackEvent("mk_persona_cta_click", {
+      persona: "host",
+      page: "for_hosts",
+      cta: String(cta || ""),
+    });
+  };
 
   const hostSetupHref = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -107,7 +108,7 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
     }, window.location);
   }, [privateForm]);
 
-  const openHostSetup = () => {
+  const openHostSetup = useCallback(() => {
     if (!canSubmit) {
       authFlow?.requireFullAuth?.({
         intent: "private_session_create",
@@ -122,18 +123,18 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
           },
         },
       });
-      setStatus("Sign in to launch room setup.");
+      setStatus("Sign in with your BeauRocks account to launch room setup.");
       return;
     }
     if (!hostSetupHref) return;
     trackEvent("mk_host_setup_redirect", {
-      source: "for_hosts_quick_launch",
+      source: "for_hosts_wizard_launch",
       roomCode: normalizeRoomCode(privateForm.roomCode),
       publicRoom: privateForm.publicRoom ? 1 : 0,
       virtualOnly: privateForm.virtualOnly ? 1 : 0,
     });
     window.location.href = hostSetupHref;
-  };
+  }, [authFlow, canSubmit, hostSetupHref, privateForm.publicRoom, privateForm.roomCode, privateForm.virtualOnly]);
 
   useEffect(() => {
     const intent = String(route?.params?.intent || "").trim().toLowerCase();
@@ -223,15 +224,30 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
     () => managedRooms.filter((entry) => entry.isClosed || entry.isArchived),
     [managedRooms]
   );
+  const filteredRooms = useMemo(() => {
+    if (roomFilter === "history") return roomHistory;
+    if (roomFilter === "all") return managedRooms;
+    return activeRooms;
+  }, [activeRooms, managedRooms, roomFilter, roomHistory]);
   const roomManagerSummary = useMemo(
     () => ({
       total: managedRooms.length,
       active: activeRooms.length,
       history: roomHistory.length,
       recaps: managedRooms.filter((entry) => entry.hasRecap).length,
+      published: publishedSessions.length,
     }),
-    [activeRooms.length, managedRooms, roomHistory.length]
+    [activeRooms.length, managedRooms, publishedSessions.length, roomHistory.length]
   );
+  const latestActiveRoomCode = useMemo(
+    () => String(activeRooms[0]?.code || "").trim().toUpperCase(),
+    [activeRooms]
+  );
+
+  const focusRoomManager = useCallback((nextFilter = "active") => {
+    setRoomFilter(nextFilter);
+    roomManagerRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }, []);
 
   const openManagedRoom = (roomCode = "") => {
     const safeCode = normalizeRoomCode(roomCode);
@@ -304,56 +320,70 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
   };
 
   return (
-    <section className="mk3-page mk3-host-command">
-      <article className="mk3-detail-card mk3-host-hero mk3-zone">
-        <div className="mk3-host-kicker">for hosts</div>
-        <h1>Run a stronger karaoke night with less setup noise.</h1>
+    <section className="mk3-page mk3-host-command mk3-host-rebuild">
+      <article className="mk3-detail-card mk3-host-hero mk3-zone mk3-host-hero-rebuild">
+        <div className="mk3-host-kicker">host room control</div>
+        <h1>Simple host workflow: log in, launch room, run show, review recap.</h1>
         <p>
-          BeauRocks is a control layer, not a catalog lock-in. Keep your existing content tools and run cleaner room
-          flow across host, TV, and audience surfaces.
+          This page is now focused on the fast path. Keep room setup simple here, then hand off to Host Dashboard for
+          live operations.
         </p>
         <div className="mk3-status mk3-status-warning">
-          <strong>Content-agnostic by design</strong>
-          <span>Hosts remain responsible for music-rights compliance.</span>
+          <strong>Account required to host</strong>
+          <span>Guests can join rooms without an account, but creating and running rooms requires a BeauRocks account.</span>
         </div>
         <div className="mk3-host-badge-row">
           {HOST_STACK_BADGES.map((badge) => (
             <span key={badge}>{badge}</span>
           ))}
         </div>
-        <div className="mk3-actions-inline">
+        <div className="mk3-host-primary-actions">
           <button
             type="button"
             onClick={() => {
-              trackPersonaCta(canSubmit ? "primary_start_hosting" : "primary_start_hosting_auth_gate");
+              trackPersonaCta(canSubmit ? "hero_start_new_room" : "hero_start_new_room_auth_gate");
               openHostSetup();
             }}
           >
-            Start Hosting
+            Start New Room
           </button>
           <button
             type="button"
             onClick={() => {
-              trackPersonaCta("secondary_watch_demo");
+              trackPersonaCta("hero_resume_last_room");
+              if (latestActiveRoomCode) {
+                openManagedRoom(latestActiveRoomCode);
+                return;
+              }
+              focusRoomManager("active");
+            }}
+            disabled={!latestActiveRoomCode && managedRoomsLoading}
+          >
+            {latestActiveRoomCode ? `Resume ${latestActiveRoomCode}` : "Open Active Rooms"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              trackPersonaCta("hero_room_history");
+              focusRoomManager("history");
+            }}
+          >
+            Room History
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              trackPersonaCta("hero_watch_demo");
               navigate("demo");
             }}
           >
             Watch Demo
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              trackPersonaCta("tertiary_open_discover");
-              navigate("discover");
-            }}
-          >
-            Open Discover Map
-          </button>
         </div>
       </article>
 
       <section className="mk3-detail-card mk3-host-flow mk3-zone" aria-label="Host flow overview">
-        <h2>Host Flow In 3 Steps</h2>
+        <h2>Host Flow</h2>
         <div className="mk3-host-flow-grid">
           {HOST_QUICK_STEPS.map((step, index) => (
             <article key={step.title}>
@@ -365,35 +395,12 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
         </div>
       </section>
 
-      <div className="mk3-two-col mk3-host-late-grid">
-        <article className="mk3-detail-card">
-          <h2>Why Hosts Use It</h2>
-          <ul className="mk3-plain-list">
-            {HOST_OUTCOMES.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </article>
-
-        <aside className="mk3-actions-card mk3-host-quick-card">
-          <h4>Room Manager + Quick Launch</h4>
-          <div className="mk3-status">
-            <strong>Centralized in Host App</strong>
-            <span>Room creation and publish controls now run in host.beaurocks.app.</span>
-          </div>
-          <div className="mk3-actions-inline">
-            <button type="button" onClick={() => loadRoomManagerData()} disabled={managedRoomsLoading || publishedSessionsLoading}>
-              {managedRoomsLoading || publishedSessionsLoading ? "Refreshing..." : "Refresh Rooms"}
-            </button>
-          </div>
-          <div className="mk3-metric-row mk3-metric-row-mobile">
-            <article className="mk3-metric"><span>Total Rooms</span><strong>{roomManagerSummary.total}</strong></article>
-            <article className="mk3-metric"><span>Active</span><strong>{roomManagerSummary.active}</strong></article>
-            <article className="mk3-metric"><span>History</span><strong>{roomManagerSummary.history}</strong></article>
-            <article className="mk3-metric"><span>Recaps</span><strong>{roomManagerSummary.recaps}</strong></article>
-          </div>
-          {!!roomManagerStatus && <div className="mk3-status">{roomManagerStatus}</div>}
-
+      <div className="mk3-two-col mk3-host-rebuild-grid">
+        <aside className="mk3-actions-card mk3-host-setup-card">
+          <h4>Room Launch Wizard</h4>
+          <p className="mk3-host-setup-subcopy">
+            Keep this short. Only room code and title are optional. Advanced fields are available if you need them.
+          </p>
           <div className="mk3-actions-block">
             <label>
               Room Code (optional)
@@ -408,161 +415,207 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
               <input
                 value={privateForm.title}
                 onChange={(e) => setPrivateForm((prev) => ({ ...prev, title: e.target.value }))}
-                placeholder="Friends & Family Karaoke"
+                placeholder="Friday Main Room"
               />
             </label>
-            <label>
-              Start (optional)
-              <input
-                type="datetime-local"
-                value={privateForm.startsAtLocal}
-                onChange={(e) => setPrivateForm((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
-              />
-            </label>
-            <label>
-              Notes (optional)
-              <textarea
-                value={privateForm.description}
-                onChange={(e) => setPrivateForm((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="Invite-only room."
-              />
-            </label>
-            <label className="mk3-inline">
-              <input
-                type="checkbox"
-                checked={privateForm.publicRoom}
-                onChange={(e) => setPrivateForm((prev) => ({ ...prev, publicRoom: !!e.target.checked }))}
-              />
-              Public room (discoverable)
-            </label>
-            <label className="mk3-inline">
-              <input
-                type="checkbox"
-                checked={privateForm.virtualOnly}
-                onChange={(e) => setPrivateForm((prev) => ({ ...prev, virtualOnly: !!e.target.checked }))}
-              />
-              Virtual-only
-            </label>
-            {!privateForm.virtualOnly && (
-              <>
-                <label>
-                  City (optional)
-                  <input
-                    value={privateForm.city}
-                    onChange={(e) => setPrivateForm((prev) => ({ ...prev, city: e.target.value }))}
-                    placeholder="Seattle"
-                  />
-                </label>
-                <label>
-                  State (optional)
-                  <input
-                    value={privateForm.state}
-                    onChange={(e) => setPrivateForm((prev) => ({ ...prev, state: e.target.value }))}
-                    placeholder="WA"
-                  />
-                </label>
-              </>
-            )}
+            <div className="mk3-host-toggle-grid">
+              <label className="mk3-inline">
+                <input
+                  type="checkbox"
+                  checked={privateForm.publicRoom}
+                  onChange={(e) => setPrivateForm((prev) => ({ ...prev, publicRoom: !!e.target.checked }))}
+                />
+                Public room (discoverable)
+              </label>
+              <label className="mk3-inline">
+                <input
+                  type="checkbox"
+                  checked={privateForm.virtualOnly}
+                  onChange={(e) => setPrivateForm((prev) => ({ ...prev, virtualOnly: !!e.target.checked }))}
+                />
+                Virtual-only room
+              </label>
+            </div>
             <button type="button" onClick={openHostSetup}>
               Continue In Host Dashboard
             </button>
+            <button type="button" onClick={() => navigate("join")}>
+              Open Join By Code
+            </button>
+            <button
+              type="button"
+              className={showAdvanced ? "is-secondary-active" : ""}
+              onClick={() => setShowAdvanced((value) => !value)}
+            >
+              {showAdvanced ? "Hide Advanced Fields" : "Show Advanced Fields"}
+            </button>
+            {showAdvanced && (
+              <div className="mk3-host-advanced-grid">
+                <label>
+                  Start Time (optional)
+                  <input
+                    type="datetime-local"
+                    value={privateForm.startsAtLocal}
+                    onChange={(e) => setPrivateForm((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
+                  />
+                </label>
+                {!privateForm.virtualOnly && (
+                  <>
+                    <label>
+                      City (optional)
+                      <input
+                        value={privateForm.city}
+                        onChange={(e) => setPrivateForm((prev) => ({ ...prev, city: e.target.value }))}
+                        placeholder="Seattle"
+                      />
+                    </label>
+                    <label>
+                      State (optional)
+                      <input
+                        value={privateForm.state}
+                        onChange={(e) => setPrivateForm((prev) => ({ ...prev, state: e.target.value }))}
+                        placeholder="WA"
+                      />
+                    </label>
+                  </>
+                )}
+                <label>
+                  Notes (optional)
+                  <textarea
+                    value={privateForm.description}
+                    onChange={(e) => setPrivateForm((prev) => ({ ...prev, description: e.target.value }))}
+                    placeholder="Invite-only, private event, etc."
+                  />
+                </label>
+              </div>
+            )}
             {!!status && <div className="mk3-status">{status}</div>}
           </div>
+        </aside>
 
-          <div className="mk3-sub-list compact">
-            <h3>Your Rooms (All)</h3>
-            {managedRoomsLoading && <div className="mk3-status">Loading your room manager...</div>}
-            {!!managedRoomsError && <div className="mk3-status mk3-status-error">{managedRoomsError}</div>}
-            {!managedRoomsLoading && !managedRoomsError && managedRooms.length === 0 && (
-              <div className="mk3-status">
-                No rooms found yet. Create your first room above and it will appear here.
-              </div>
-            )}
-            {!managedRoomsLoading && managedRooms.map((room) => {
-              const statusLabel = room.isArchived ? "Archived" : room.isClosed ? "Closed" : "Active";
-              return (
-                <article key={room.id} className="mk3-host-room-row">
-                  <div className="mk3-host-room-row-head">
-                    <strong>{room.title}</strong>
-                    <span>{statusLabel}</span>
-                  </div>
-                  <div className="mk3-host-room-row-meta">
-                    <span>Code: {room.code || room.id}</span>
-                    <span>Mode: {room.activeMode || "karaoke"}</span>
-                    <span>Updated: {formatDateTime(room.updatedAtMs)}</span>
-                    {room.hasRecap && <span>Recap: {formatDateTime(room.recapAtMs || room.closedAtMs)}</span>}
-                  </div>
-                  <div className="mk3-actions-inline mk3-host-room-actions">
-                    <button type="button" onClick={() => openManagedRoom(room.code)}>
-                      Open Host
-                    </button>
-                    <button type="button" onClick={() => openManagedTv(room.code)}>
-                      Open TV
-                    </button>
-                    <button type="button" onClick={() => openManagedAudienceJoin(room.code)}>
-                      Join Room
-                    </button>
-                    <button type="button" onClick={() => copyManagedRoomCode(room.code)}>
-                      Copy Code
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openManagedAudienceRecap(room.code)}
-                      disabled={!room.hasRecap}
-                    >
-                      View Recap
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
+        <section className="mk3-detail-card mk3-host-manager-card" ref={roomManagerRef}>
+          <div className="mk3-host-manager-head">
+            <h2>Room Manager</h2>
+            <div className="mk3-actions-inline">
+              <button type="button" onClick={() => loadRoomManagerData()} disabled={managedRoomsLoading || publishedSessionsLoading}>
+                {managedRoomsLoading || publishedSessionsLoading ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
           </div>
-
-          <div className="mk3-sub-list compact">
-            <h3>Published Room Listings</h3>
-            {publishedSessionsLoading && (
-              <div className="mk3-status">
-                Loading published listings...
-              </div>
-            )}
-            {!publishedSessionsLoading && !publishedSessions.length && (
-              <div className="mk3-status">
-                No room sessions published yet.
-              </div>
-            )}
-            {publishedSessions.map((sessionItem) => (
-              <article key={sessionItem.id} className="mk3-host-room-row">
+          <div className="mk3-metric-row mk3-metric-row-mobile">
+            <article className="mk3-metric"><span>Total Rooms</span><strong>{roomManagerSummary.total}</strong></article>
+            <article className="mk3-metric"><span>Active</span><strong>{roomManagerSummary.active}</strong></article>
+            <article className="mk3-metric"><span>History</span><strong>{roomManagerSummary.history}</strong></article>
+            <article className="mk3-metric"><span>Recaps</span><strong>{roomManagerSummary.recaps}</strong></article>
+            <article className="mk3-metric"><span>Listings</span><strong>{roomManagerSummary.published}</strong></article>
+          </div>
+          <div className="mk3-host-filter-row" role="tablist" aria-label="Room filters">
+            <button type="button" className={roomFilter === "active" ? "active" : ""} onClick={() => setRoomFilter("active")}>
+              Active
+            </button>
+            <button type="button" className={roomFilter === "history" ? "active" : ""} onClick={() => setRoomFilter("history")}>
+              History
+            </button>
+            <button type="button" className={roomFilter === "all" ? "active" : ""} onClick={() => setRoomFilter("all")}>
+              All
+            </button>
+          </div>
+          {!!roomManagerStatus && <div className="mk3-status">{roomManagerStatus}</div>}
+          {managedRoomsLoading && <div className="mk3-status">Loading your room manager...</div>}
+          {!!managedRoomsError && <div className="mk3-status mk3-status-error">{managedRoomsError}</div>}
+          {!managedRoomsLoading && !managedRoomsError && !filteredRooms.length && (
+            <div className="mk3-status">
+              {canSubmit
+                ? "No rooms in this filter yet. Start a room and it will appear here."
+                : "Log in with a BeauRocks account to load your rooms."}
+            </div>
+          )}
+          {!managedRoomsLoading && filteredRooms.map((room) => {
+            const statusLabel = room.isArchived ? "Archived" : room.isClosed ? "Closed" : "Active";
+            return (
+              <article key={room.id} className="mk3-host-room-row">
                 <div className="mk3-host-room-row-head">
-                  <strong>{sessionItem.title || sessionItem.id}</strong>
-                  <span>{String(sessionItem.status || "unknown").toLowerCase()}</span>
+                  <strong>{room.title}</strong>
+                  <span>{statusLabel}</span>
                 </div>
                 <div className="mk3-host-room-row-meta">
-                  <span>Visibility: {String(sessionItem.visibility || "public").toLowerCase()}</span>
-                  <span>Start: {formatDateTime(sessionItem.startsAtMs)}</span>
-                  {sessionItem.roomCode && <span>Code: {String(sessionItem.roomCode || "").trim().toUpperCase()}</span>}
-                  <span>Type: Room session</span>
+                  <span>Code: {room.code || room.id}</span>
+                  <span>Mode: {room.activeMode || "karaoke"}</span>
+                  <span>Updated: {formatDateTime(room.updatedAtMs)}</span>
+                  {room.hasRecap && <span>Recap: {formatDateTime(room.recapAtMs || room.closedAtMs)}</span>}
                 </div>
                 <div className="mk3-actions-inline mk3-host-room-actions">
+                  <button type="button" onClick={() => openManagedRoom(room.code)}>
+                    Open Host
+                  </button>
+                  <button type="button" onClick={() => openManagedTv(room.code)}>
+                    Open TV
+                  </button>
+                  <button type="button" onClick={() => openManagedAudienceJoin(room.code)}>
+                    Join Room
+                  </button>
+                  <button type="button" onClick={() => copyManagedRoomCode(room.code)}>
+                    Copy Code
+                  </button>
                   <button
                     type="button"
-                    onClick={() => navigate("session", sessionItem.id)}
+                    onClick={() => openManagedAudienceRecap(room.code)}
+                    disabled={!room.hasRecap}
                   >
-                    Open Listing
+                    View Recap
                   </button>
-                  {!!sessionItem.roomCode && (
-                    <button
-                      type="button"
-                      onClick={() => openManagedAudienceJoin(sessionItem.roomCode)}
-                    >
-                      Join Room
-                    </button>
-                  )}
                 </div>
               </article>
-            ))}
-          </div>
-        </aside>
+            );
+          })}
+        </section>
       </div>
+
+      <section className="mk3-detail-card">
+        <h2>Published Room Listings</h2>
+        {publishedSessionsLoading && (
+          <div className="mk3-status">
+            Loading published listings...
+          </div>
+        )}
+        {!publishedSessionsLoading && !publishedSessions.length && (
+          <div className="mk3-status">
+            No room sessions published yet.
+          </div>
+        )}
+        <div className="mk3-sub-list compact">
+          {publishedSessions.map((sessionItem) => (
+            <article key={sessionItem.id} className="mk3-host-room-row">
+              <div className="mk3-host-room-row-head">
+                <strong>{sessionItem.title || sessionItem.id}</strong>
+                <span>{String(sessionItem.status || "unknown").toLowerCase()}</span>
+              </div>
+              <div className="mk3-host-room-row-meta">
+                <span>Visibility: {String(sessionItem.visibility || "public").toLowerCase()}</span>
+                <span>Start: {formatDateTime(sessionItem.startsAtMs)}</span>
+                {sessionItem.roomCode && <span>Code: {String(sessionItem.roomCode || "").trim().toUpperCase()}</span>}
+                <span>Type: Room session</span>
+              </div>
+              <div className="mk3-actions-inline mk3-host-room-actions">
+                <button
+                  type="button"
+                  onClick={() => navigate("session", sessionItem.id)}
+                >
+                  Open Listing
+                </button>
+                {!!sessionItem.roomCode && (
+                  <button
+                    type="button"
+                    onClick={() => openManagedAudienceJoin(sessionItem.roomCode)}
+                  >
+                    Join Room
+                  </button>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
     </section>
   );
 };

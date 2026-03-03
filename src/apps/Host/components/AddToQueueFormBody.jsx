@@ -187,6 +187,11 @@ const AddToQueueFormBody = ({
                     Queued: {quickAddNotice.songTitle}
                 </div>
                 <div className="text-xs text-zinc-300 mt-1">{quickAddNotice.statusText}</div>
+                {!!quickAddNotice.lyricsGenerationResolution && (
+                    <div className="text-[10px] uppercase tracking-[0.1em] text-emerald-100/80 mt-1">
+                        Resolution: {quickAddNotice.lyricsGenerationResolution}
+                    </div>
+                )}
                 <div className="flex flex-wrap gap-2 mt-2">
                     <button
                         onClick={onUndoQuickAdd}

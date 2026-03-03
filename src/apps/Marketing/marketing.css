@@ -1208,6 +1208,103 @@
   padding: 0.26rem 0.56rem;
 }
 
+.mk3-host-rebuild {
+  gap: 14px;
+}
+
+.mk3-host-hero-rebuild {
+  gap: 12px;
+}
+
+.mk3-host-primary-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mk3-host-primary-actions button {
+  min-height: 48px;
+}
+
+.mk3-host-rebuild-grid {
+  align-items: start;
+}
+
+.mk3-host-setup-card {
+  gap: 10px;
+}
+
+.mk3-host-setup-subcopy {
+  margin: 0;
+  color: #d2e4f5;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.mk3-host-toggle-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.mk3-host-advanced-grid {
+  border: 1px solid rgba(124, 206, 245, 0.22);
+  border-radius: 10px;
+  background: rgba(7, 14, 22, 0.72);
+  padding: 0.58rem;
+  display: grid;
+  gap: 8px;
+}
+
+.mk3-host-advanced-grid textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.mk3-host-setup-card .is-secondary-active {
+  border-color: rgba(255, 198, 117, 0.42);
+  color: #fff1cf;
+}
+
+.mk3-host-manager-card {
+  gap: 10px;
+}
+
+.mk3-host-manager-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.mk3-host-manager-head h2 {
+  margin: 0;
+}
+
+.mk3-host-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mk3-host-filter-row button {
+  min-height: 38px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  padding: 0.4rem 0.72rem;
+}
+
+.mk3-host-filter-row button.active {
+  border-color: rgba(255, 184, 120, 0.55);
+  color: #1a0b2f;
+  background:
+    linear-gradient(112deg, #ffc56e 5%, #ff79c9 58%, #5ce9ff 98%) padding-box,
+    linear-gradient(rgba(255, 121, 201, 0.6), rgba(255, 121, 201, 0.6)) border-box;
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
+}
+
 .mk3-host-proof-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3951,6 +4048,10 @@
     grid-template-columns: 1fr;
   }
 
+  .mk3-host-primary-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .mk3-host-flow-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -3990,6 +4091,11 @@
 
   .mk3-host-late-grid {
     grid-template-columns: 1fr;
+  }
+
+  .mk3-host-manager-head {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .mk3-persona-late-grid {
@@ -4352,6 +4458,10 @@
 
   .mk3-host-hero h1 {
     font-size: clamp(1.2rem, 8vw, 1.64rem);
+  }
+
+  .mk3-host-primary-actions {
+    grid-template-columns: 1fr;
   }
 
   .mk3-host-flow-grid {

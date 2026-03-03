@@ -166,10 +166,18 @@ const HostTopChrome = ({
     const visualizerSyncLightMode = !!room?.visualizerSyncLightMode;
     const roomVisualizerSensitivity = clampNumber(room?.visualizerSensitivity, 0.5, 2.5, 1);
     const roomVisualizerSmoothing = clampNumber(room?.visualizerSmoothing, 0, 0.95, 0.35);
+    const roomVideoVolume = Math.round(clampNumber(room?.videoVolume, 0, 100, 100));
+    const roomBgVolumePct = Math.round(clampNumber((Number(bgVolume) || 0.3) * 100, 0, 100, 30));
+    const roomMixFader = Math.round(clampNumber(mixFader, 0, 100, 50));
+    const roomSfxVolumePct = Math.round(clampNumber((Number(sfxVolume) || 0.5) * 100, 0, 100, 50));
     const [visualizerSensitivityDraft, setVisualizerSensitivityDraft] = React.useState(roomVisualizerSensitivity);
     const [visualizerSmoothingDraft, setVisualizerSmoothingDraft] = React.useState(roomVisualizerSmoothing);
-    const visualizerSliderTimerRef = React.useRef({ sensitivity: null, smoothing: null });
+    const [stageVolumeDraft, setStageVolumeDraft] = React.useState(roomVideoVolume);
+    const [bgVolumeDraftPct, setBgVolumeDraftPct] = React.useState(roomBgVolumePct);
+    const [mixFaderDraft, setMixFaderDraft] = React.useState(roomMixFader);
+    const [sfxVolumeDraftPct, setSfxVolumeDraftPct] = React.useState(roomSfxVolumePct);
     const visualizerSliderDraggingRef = React.useRef({ sensitivity: false, smoothing: false });
+    const sliderDraggingRef = React.useRef({ stage: false, bg: false, mix: false, sfx: false });
     const activeVibeLabel = selfieCamActive
         ? 'Selfie Cam'
         : stormActive
@@ -231,6 +239,12 @@ const HostTopChrome = ({
         setShowLaunchMenu(false);
         setShowNavMenu(false);
     }, [closeAllDeckMenus, setShowLaunchMenu, setShowNavMenu]);
+    const commitRoomPatch = React.useCallback((patch) => {
+        Promise.resolve(updateRoom?.(patch)).catch(() => {});
+    }, [updateRoom]);
+    const blockRangeWheelDefault = React.useCallback((event) => {
+        event.currentTarget.blur();
+    }, []);
 
     React.useEffect(() => {
         if (!visualizerSliderDraggingRef.current.sensitivity) {
@@ -245,56 +259,118 @@ const HostTopChrome = ({
     }, [roomVisualizerSmoothing]);
 
     React.useEffect(() => {
-        const timerMap = visualizerSliderTimerRef.current;
-        return () => {
-            Object.values(timerMap).forEach((timerId) => {
-                if (timerId) clearTimeout(timerId);
-            });
-        };
-    }, []);
+        if (!sliderDraggingRef.current.stage) {
+            setStageVolumeDraft(roomVideoVolume);
+        }
+    }, [roomVideoVolume]);
 
-    const queueVisualizerRoomUpdate = React.useCallback((field, value, { flush = false } = {}) => {
-        const timerKey = field === 'visualizerSensitivity' ? 'sensitivity' : 'smoothing';
-        const timerMap = visualizerSliderTimerRef.current;
-        if (timerMap[timerKey]) {
-            clearTimeout(timerMap[timerKey]);
-            timerMap[timerKey] = null;
+    React.useEffect(() => {
+        if (!sliderDraggingRef.current.bg) {
+            setBgVolumeDraftPct(roomBgVolumePct);
         }
-        if (flush) {
-            updateRoom({ [field]: value });
-            return;
+    }, [roomBgVolumePct]);
+
+    React.useEffect(() => {
+        if (!sliderDraggingRef.current.mix) {
+            setMixFaderDraft(roomMixFader);
         }
-        timerMap[timerKey] = setTimeout(() => {
-            timerMap[timerKey] = null;
-            updateRoom({ [field]: value });
-        }, 120);
-    }, [updateRoom]);
+    }, [roomMixFader]);
+
+    React.useEffect(() => {
+        if (!sliderDraggingRef.current.sfx) {
+            setSfxVolumeDraftPct(roomSfxVolumePct);
+        }
+    }, [roomSfxVolumePct]);
 
     const handleVisualizerSliderDraftChange = React.useCallback((field, rawValue) => {
         if (field === 'visualizerSensitivity') {
             const next = clampNumber(rawValue, 0.5, 2.5, visualizerSensitivityDraft);
             setVisualizerSensitivityDraft(next);
-            queueVisualizerRoomUpdate('visualizerSensitivity', next);
+            if (!visualizerSliderDraggingRef.current.sensitivity) {
+                commitRoomPatch({ visualizerSensitivity: next });
+            }
             return;
         }
         const next = clampNumber(rawValue, 0, 0.95, visualizerSmoothingDraft);
         setVisualizerSmoothingDraft(next);
-        queueVisualizerRoomUpdate('visualizerSmoothing', next);
-    }, [queueVisualizerRoomUpdate, visualizerSensitivityDraft, visualizerSmoothingDraft]);
+        if (!visualizerSliderDraggingRef.current.smoothing) {
+            commitRoomPatch({ visualizerSmoothing: next });
+        }
+    }, [visualizerSensitivityDraft, visualizerSmoothingDraft, commitRoomPatch]);
 
     const commitVisualizerSliderChange = React.useCallback((field, rawValue) => {
         if (field === 'visualizerSensitivity') {
             visualizerSliderDraggingRef.current.sensitivity = false;
             const next = clampNumber(rawValue, 0.5, 2.5, visualizerSensitivityDraft);
             setVisualizerSensitivityDraft(next);
-            queueVisualizerRoomUpdate('visualizerSensitivity', next, { flush: true });
+            commitRoomPatch({ visualizerSensitivity: next });
             return;
         }
         visualizerSliderDraggingRef.current.smoothing = false;
         const next = clampNumber(rawValue, 0, 0.95, visualizerSmoothingDraft);
         setVisualizerSmoothingDraft(next);
-        queueVisualizerRoomUpdate('visualizerSmoothing', next, { flush: true });
-    }, [queueVisualizerRoomUpdate, visualizerSensitivityDraft, visualizerSmoothingDraft]);
+        commitRoomPatch({ visualizerSmoothing: next });
+    }, [visualizerSensitivityDraft, visualizerSmoothingDraft, commitRoomPatch]);
+
+    const handleStageVolumeDraftChange = React.useCallback((rawValue) => {
+        const next = Math.round(clampNumber(rawValue, 0, 100, stageVolumeDraft));
+        setStageVolumeDraft(next);
+        if (!sliderDraggingRef.current.stage) {
+            commitRoomPatch({ videoVolume: next });
+        }
+    }, [stageVolumeDraft, commitRoomPatch]);
+
+    const commitStageVolumeChange = React.useCallback((rawValue) => {
+        sliderDraggingRef.current.stage = false;
+        const next = Math.round(clampNumber(rawValue, 0, 100, stageVolumeDraft));
+        setStageVolumeDraft(next);
+        commitRoomPatch({ videoVolume: next });
+    }, [stageVolumeDraft, commitRoomPatch]);
+
+    const handleBgVolumeDraftChange = React.useCallback((rawValue) => {
+        const nextPct = Math.round(clampNumber(rawValue, 0, 100, bgVolumeDraftPct));
+        const nextValue = nextPct / 100;
+        setBgVolumeDraftPct(nextPct);
+        setBgVolume(nextValue);
+        if (!sliderDraggingRef.current.bg) {
+            commitRoomPatch({ bgMusicVolume: nextValue });
+        }
+    }, [bgVolumeDraftPct, setBgVolume, commitRoomPatch]);
+
+    const commitBgVolumeChange = React.useCallback((rawValue) => {
+        sliderDraggingRef.current.bg = false;
+        const nextPct = Math.round(clampNumber(rawValue, 0, 100, bgVolumeDraftPct));
+        const nextValue = nextPct / 100;
+        setBgVolumeDraftPct(nextPct);
+        setBgVolume(nextValue);
+        commitRoomPatch({ bgMusicVolume: nextValue });
+    }, [bgVolumeDraftPct, setBgVolume, commitRoomPatch]);
+
+    const handleMixFaderDraftChange = React.useCallback((rawValue) => {
+        const next = Math.round(clampNumber(rawValue, 0, 100, mixFaderDraft));
+        setMixFaderDraft(next);
+        handleMixFaderChange(next, { commit: !sliderDraggingRef.current.mix });
+    }, [mixFaderDraft, handleMixFaderChange]);
+
+    const commitMixFaderChange = React.useCallback((rawValue) => {
+        sliderDraggingRef.current.mix = false;
+        const next = Math.round(clampNumber(rawValue, 0, 100, mixFaderDraft));
+        setMixFaderDraft(next);
+        handleMixFaderChange(next, { commit: true });
+    }, [mixFaderDraft, handleMixFaderChange]);
+
+    const handleSfxVolumeDraftChange = React.useCallback((rawValue) => {
+        const nextPct = Math.round(clampNumber(rawValue, 0, 100, sfxVolumeDraftPct));
+        setSfxVolumeDraftPct(nextPct);
+        setSfxVolume?.(nextPct / 100);
+    }, [sfxVolumeDraftPct, setSfxVolume]);
+
+    const commitSfxVolumeChange = React.useCallback((rawValue) => {
+        sliderDraggingRef.current.sfx = false;
+        const nextPct = Math.round(clampNumber(rawValue, 0, 100, sfxVolumeDraftPct));
+        setSfxVolumeDraftPct(nextPct);
+        setSfxVolume?.(nextPct / 100);
+    }, [sfxVolumeDraftPct, setSfxVolume]);
 
     React.useEffect(() => {
         if (
@@ -944,7 +1020,9 @@ const HostTopChrome = ({
                                             onPointerDown={() => { visualizerSliderDraggingRef.current.sensitivity = true; }}
                                             onChange={(e) => handleVisualizerSliderDraftChange('visualizerSensitivity', e.target.value)}
                                             onPointerUp={(e) => commitVisualizerSliderChange('visualizerSensitivity', e.target.value)}
+                                            onPointerCancel={(e) => commitVisualizerSliderChange('visualizerSensitivity', e.target.value)}
                                             onBlur={(e) => commitVisualizerSliderChange('visualizerSensitivity', e.target.value)}
+                                            onWheelCapture={blockRangeWheelDefault}
                                             className="w-full accent-[#00C4D9] mt-1 h-2.5"
                                         />
                                     </label>
@@ -959,7 +1037,9 @@ const HostTopChrome = ({
                                             onPointerDown={() => { visualizerSliderDraggingRef.current.smoothing = true; }}
                                             onChange={(e) => handleVisualizerSliderDraftChange('visualizerSmoothing', e.target.value)}
                                             onPointerUp={(e) => commitVisualizerSliderChange('visualizerSmoothing', e.target.value)}
+                                            onPointerCancel={(e) => commitVisualizerSliderChange('visualizerSmoothing', e.target.value)}
                                             onBlur={(e) => commitVisualizerSliderChange('visualizerSmoothing', e.target.value)}
+                                            onWheelCapture={blockRangeWheelDefault}
                                             className="w-full accent-[#00C4D9] mt-1 h-2.5"
                                         />
                                     </label>
@@ -1159,10 +1239,15 @@ const HostTopChrome = ({
                                         min="0"
                                         max="100"
                                         step="1"
-                                        value={Math.round((sfxVolume || 0) * 100)}
-                                        onChange={(event) => setSfxVolume?.(parseInt(event.target.value, 10) / 100)}
+                                        value={sfxVolumeDraftPct}
+                                        onPointerDown={() => { sliderDraggingRef.current.sfx = true; }}
+                                        onChange={(event) => handleSfxVolumeDraftChange(event.target.value)}
+                                        onPointerUp={(event) => commitSfxVolumeChange(event.target.value)}
+                                        onPointerCancel={(event) => commitSfxVolumeChange(event.target.value)}
+                                        onBlur={(event) => commitSfxVolumeChange(event.target.value)}
+                                        onWheelCapture={blockRangeWheelDefault}
                                         className="flex-1 h-2.5 bg-zinc-800 accent-[#00C4D9] rounded-lg appearance-none cursor-pointer"
-                                        style={{ background: `linear-gradient(90deg, #00E5FF ${Math.round((sfxVolume || 0) * 100)}%, #27272a ${Math.round((sfxVolume || 0) * 100)}%)` }}
+                                        style={{ background: `linear-gradient(90deg, #00E5FF ${sfxVolumeDraftPct}%, #27272a ${sfxVolumeDraftPct}%)` }}
                                     />
                                 </div>
                                 <div className="mt-2.5 space-y-1.5 max-h-52 overflow-y-auto custom-scrollbar pr-1">
@@ -1307,18 +1392,23 @@ const HostTopChrome = ({
                                     <i className={`fa-solid ${stageMicError ? 'fa-microphone-slash' : 'fa-microphone'} w-4 text-center`}></i>
                                 </button>
                             )}
-                            <button onClick={toggleSongMute} className={`${styles.btnStd} ${(room?.videoVolume ?? 100) === 0 ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}>
-                                <i className={`fa-solid ${(room?.videoVolume ?? 100) === 0 ? 'fa-volume-xmark' : 'fa-volume-high'} w-4 text-center`}></i>
+                            <button onClick={toggleSongMute} className={`${styles.btnStd} ${stageVolumeDraft === 0 ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}>
+                                <i className={`fa-solid ${stageVolumeDraft === 0 ? 'fa-volume-xmark' : 'fa-volume-high'} w-4 text-center`}></i>
                             </button>
                             <input
                                 type="range"
                                 min="0"
                                 max="100"
                                 step="1"
-                                value={room?.videoVolume ?? 100}
-                                onChange={e => updateRoom({ videoVolume: parseInt(e.target.value, 10) })}
+                                value={stageVolumeDraft}
+                                onPointerDown={() => { sliderDraggingRef.current.stage = true; }}
+                                onChange={e => handleStageVolumeDraftChange(e.target.value)}
+                                onPointerUp={e => commitStageVolumeChange(e.target.value)}
+                                onPointerCancel={e => commitStageVolumeChange(e.target.value)}
+                                onBlur={e => commitStageVolumeChange(e.target.value)}
+                                onWheelCapture={blockRangeWheelDefault}
                                 className="w-32 h-3 bg-zinc-800 accent-pink-500 rounded-lg appearance-none cursor-pointer stage-volume-slider"
-                                style={{ background: `linear-gradient(90deg, #00C4D9 ${room?.videoVolume ?? 100}%, #27272a ${room?.videoVolume ?? 100}%)` }}
+                                style={{ background: `linear-gradient(90deg, #00C4D9 ${stageVolumeDraft}%, #27272a ${stageVolumeDraft}%)` }}
                             />
                         </div>
                         <div className="flex items-center gap-3 bg-zinc-900/80 px-3 py-3 rounded-xl border border-white/10 h-14">
@@ -1350,14 +1440,15 @@ const HostTopChrome = ({
                                 min="0"
                                 max="100"
                                 step="1"
-                                value={Math.round(bgVolume * 100)}
-                                onChange={e => {
-                                    const val = parseInt(e.target.value, 10) / 100;
-                                    setBgVolume(val);
-                                    updateRoom({ bgMusicVolume: val });
-                                }}
+                                value={bgVolumeDraftPct}
+                                onPointerDown={() => { sliderDraggingRef.current.bg = true; }}
+                                onChange={e => handleBgVolumeDraftChange(e.target.value)}
+                                onPointerUp={e => commitBgVolumeChange(e.target.value)}
+                                onPointerCancel={e => commitBgVolumeChange(e.target.value)}
+                                onBlur={e => commitBgVolumeChange(e.target.value)}
+                                onWheelCapture={blockRangeWheelDefault}
                                 className="w-32 h-3 bg-zinc-800 accent-cyan-500 rounded-lg appearance-none cursor-pointer bg-volume-slider"
-                                style={{ background: `linear-gradient(90deg, #EC4899 ${Math.round(bgVolume * 100)}%, #27272a ${Math.round(bgVolume * 100)}%)` }}
+                                style={{ background: `linear-gradient(90deg, #EC4899 ${bgVolumeDraftPct}%, #27272a ${bgVolumeDraftPct}%)` }}
                             />
                             <div className="text-sm text-zinc-400 truncate max-w-[120px]">
                                 <i className="fa-solid fa-music mr-1"></i>
@@ -1375,15 +1466,20 @@ const HostTopChrome = ({
                                     min="0"
                                     max="100"
                                     step="1"
-                                    value={mixFader}
-                                    onChange={e => handleMixFaderChange(parseInt(e.target.value, 10))}
+                                    value={mixFaderDraft}
+                                    onPointerDown={() => { sliderDraggingRef.current.mix = true; }}
+                                    onChange={e => handleMixFaderDraftChange(e.target.value)}
+                                    onPointerUp={e => commitMixFaderChange(e.target.value)}
+                                    onPointerCancel={e => commitMixFaderChange(e.target.value)}
+                                    onBlur={e => commitMixFaderChange(e.target.value)}
+                                    onWheelCapture={blockRangeWheelDefault}
                                     className="mix-slider w-full relative z-10"
-                                    style={{ '--mix-split': `${mixFader}%` }}
+                                    style={{ '--mix-split': `${mixFaderDraft}%` }}
                                 />
                             </div>
                             <div className="flex items-center justify-between text-sm text-zinc-400">
-                                <span className="text-[#00C4D9]">BG Music {mixFader}%</span>
-                                <span className="text-pink-300">Stage Audio {100 - mixFader}%</span>
+                                <span className="text-[#00C4D9]">BG Music {mixFaderDraft}%</span>
+                                <span className="text-pink-300">Stage Audio {100 - mixFaderDraft}%</span>
                             </div>
                         </div>
                     </div>

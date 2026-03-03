@@ -16,6 +16,7 @@ const {
   resolveUsageMeterQuota,
   buildUsageMeterSummary,
 } = require("./lib/entitlementsUsage");
+const { resolveLyricsForSong } = require("./lib/lyrics/resolveLyricsForSong");
 const REACTION_POINT_COSTS = require("./lib/reactionPointCosts.json");
 
 admin.initializeApp();
@@ -45,6 +46,12 @@ const REMINDER_SMS_WEBHOOK_URL = defineSecret("REMINDER_SMS_WEBHOOK_URL");
 const GEMINI_LYRICS_MODEL = "gemini-2.5-flash-preview-09-2025";
 const GEMINI_LYRICS_INPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_INPUT_USD_PER_1M || "0.3");
 const GEMINI_LYRICS_OUTPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_OUTPUT_USD_PER_1M || "2.5");
+const LYRICS_PIPELINE_V2_ENABLED_DEFAULT = String(process.env.LYRICS_PIPELINE_V2_ENABLED || "false")
+  .trim()
+  .toLowerCase() === "true";
+const LYRICS_TIMED_ADAPTER_ENABLED_DEFAULT = String(process.env.LYRICS_TIMED_ADAPTER_ENABLED || "false")
+  .trim()
+  .toLowerCase() === "true";
 
 const rateState = new Map();
 const GLOBAL_LIMITS = { perMinute: 120, perHour: 1000 };
@@ -343,6 +350,13 @@ const getRootRef = () =>
     .doc("data");
 
 const normalizeRoomCode = (value = "") => String(value || "").trim().toUpperCase();
+const parseRoomCodeEnvSet = (value = "") =>
+  new Set(
+    parseCsvEnvTokens(value)
+      .map((entry) => normalizeRoomCode(entry))
+      .filter(Boolean)
+  );
+const LYRICS_TIMED_ADAPTER_ROOM_CODES = parseRoomCodeEnvSet(process.env.LYRICS_TIMED_ADAPTER_ROOM_CODES || "");
 const HOST_UPDATE_OP_FIELD = "__hostOp";
 const HOST_UPDATE_SERVER_TIMESTAMP = "serverTimestamp";
 const HOST_UPDATE_MAX_DEPTH = 8;
@@ -445,6 +459,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "lastPerformance",
   "layoutMode",
   "lightMode",
+  "lyricsPipelineV2Enabled",
   "lobbyOrbSkinUrl",
   "logoUrl",
   "lyricsMode",
@@ -523,6 +538,7 @@ const HOST_ROOM_BOOLEAN_ROOT_KEYS = new Set([
   "hideLogo",
   "hideOverlay",
   "hideWaveform",
+  "lyricsPipelineV2Enabled",
   "marqueeEnabled",
   "popTriviaEnabled",
   "reduceMotionFx",
@@ -3785,6 +3801,69 @@ const normalizeTimedLyrics = (timedLyrics = []) => {
   return normalized;
 };
 
+const isRoomAiDemoBypassEnabled = (roomData = {}) => {
+  const missionControl = isPlainObject(roomData?.missionControl)
+    ? roomData.missionControl
+    : {};
+  if (missionControl?.aiDemoBypass !== true) return false;
+  const untilRaw = Number(missionControl?.aiDemoBypassUntil || 0);
+  const untilMs = Number.isFinite(untilRaw) && untilRaw > 0 ? untilRaw : 0;
+  return !untilMs || untilMs > Date.now();
+};
+
+const isLyricsPipelineV2EnabledForRoom = (roomData = {}) => {
+  if (typeof roomData?.lyricsPipelineV2Enabled === "boolean") {
+    return roomData.lyricsPipelineV2Enabled;
+  }
+  return LYRICS_PIPELINE_V2_ENABLED_DEFAULT;
+};
+
+const isTimedAdapterEnabledForRoom = (roomCode = "") => {
+  if (!LYRICS_TIMED_ADAPTER_ENABLED_DEFAULT) return false;
+  if (!LYRICS_TIMED_ADAPTER_ROOM_CODES.size) return true;
+  return LYRICS_TIMED_ADAPTER_ROOM_CODES.has(normalizeRoomCode(roomCode));
+};
+
+const compactLyricsProviderTrace = (trace = []) =>
+  (Array.isArray(trace) ? trace : [])
+    .slice(0, 8)
+    .map((entry) => ({
+      provider: String(entry?.provider || "").trim().slice(0, 40) || "unknown",
+      status: String(entry?.status || "").trim().slice(0, 32) || "miss",
+      latencyMs: Math.max(0, Math.round(Number(entry?.latencyMs || 0))),
+      detail: String(entry?.detail || "").trim().slice(0, 140),
+    }));
+
+const normalizeLyricsGenerationStatus = ({
+  hasLyrics = false,
+  hasTimedLyrics = false,
+  needsUserToken = false,
+  resolution = "",
+} = {}) => {
+  if (hasLyrics || hasTimedLyrics) return "resolved";
+  if (needsUserToken) return "needs_user_token";
+  const token = String(resolution || "").trim().toLowerCase();
+  if (token === "disabled") return "disabled";
+  if (token === "capability_blocked") return "capability_blocked";
+  if (token.includes("error")) return "error";
+  return "no_match";
+};
+
+const buildLyricsResolverDeps = ({
+  timedAdapterEnabled = false,
+} = {}) => ({
+  db: admin.firestore(),
+  buildSongKey,
+  normalizeLyricsText,
+  normalizeTimedLyrics,
+  fetchImpl: fetch,
+  getAppleMusicToken,
+  parseTtml,
+  fetchAiLyricsFallbackText,
+  timedAdapterEnabled: !!timedAdapterEnabled,
+  resolveTimedLyrics: null,
+});
+
 const toMillisSafe = (value) => {
   if (!value) return 0;
   if (typeof value === "number") return value;
@@ -4861,6 +4940,224 @@ const cacheSongLyricsFromQueueDoc = async (data = {}, verifiedBy = "queue") => {
   };
 };
 
+const runLyricsResolverForQueueSong = async ({
+  songData = {},
+  roomCode = "",
+  roomData = {},
+  timedOnly = false,
+  musicUserToken = "",
+} = {}) => {
+  const safeTitle = normalizeLyricsText(songData?.songTitle || songData?.title || "");
+  const safeArtist = normalizeLyricsText(songData?.artist || "Unknown") || "Unknown";
+  if (!safeTitle) {
+    return {
+      hasLyrics: false,
+      hasTimedLyrics: false,
+      lyrics: "",
+      lyricsTimed: null,
+      lyricsSource: "",
+      resolution: "missing_title",
+      needsUserToken: false,
+      songId: "",
+      appleMusicId: "",
+      providerTrace: [],
+      providerMeta: null,
+      aiCapabilityBlocked: false,
+    };
+  }
+
+  const safeRoomCode = normalizeRoomCode(roomCode || songData?.roomCode || "");
+  const orgId = String(roomData?.orgId || "").trim();
+  let entitlements = null;
+  if (orgId) {
+    try {
+      entitlements = await readOrganizationEntitlements(orgId);
+    } catch (error) {
+      console.warn("lyrics resolver entitlements lookup failed", error?.message || error);
+    }
+  }
+
+  const aiCapabilityEnabled = !!entitlements?.capabilities?.["ai.generate_content"];
+  const demoBypassEnabled = isRoomAiDemoBypassEnabled(roomData);
+  const allowAiFallback = !timedOnly && (aiCapabilityEnabled || demoBypassEnabled);
+  const timedAdapterEnabled = isTimedAdapterEnabledForRoom(safeRoomCode);
+  let aiCapabilityBlocked = !timedOnly && !allowAiFallback;
+  let aiMeterReserved = false;
+
+  const deps = buildLyricsResolverDeps({ timedAdapterEnabled });
+  deps.fetchAiLyricsFallbackText = async (title, artist) => {
+    if (timedOnly) return null;
+    if (!aiCapabilityEnabled && !demoBypassEnabled) {
+      aiCapabilityBlocked = true;
+      return null;
+    }
+    if (aiCapabilityEnabled && !aiMeterReserved) {
+      try {
+        await reserveOrganizationUsageUnits({
+          orgId,
+          entitlements,
+          meterId: "ai_generate_content",
+          units: 1,
+        });
+        aiMeterReserved = true;
+      } catch (error) {
+        const code = String(error?.code || "").toLowerCase();
+        if (code.includes("resource-exhausted") || code.includes("permission-denied")) {
+          aiCapabilityBlocked = true;
+          if (!demoBypassEnabled) return null;
+        } else if (!demoBypassEnabled) {
+          console.warn("lyrics resolver AI meter reserve failed", error?.message || error);
+          return null;
+        }
+      }
+    }
+    return fetchAiLyricsFallbackText(title, artist);
+  };
+
+  let resolved;
+  try {
+    resolved = await resolveLyricsForSong(
+      {
+        songId: String(songData?.songId || "").trim(),
+        title: safeTitle,
+        artist: safeArtist,
+        storefront: String(songData?.storefront || "us").trim() || "us",
+        musicUserToken: String(musicUserToken || "").trim(),
+        allowAiFallback,
+        allowTimedAdapter: timedAdapterEnabled,
+        durationSec: Math.max(0, Number(songData?.duration || 0)),
+        languageHint: "en",
+      },
+      deps
+    );
+  } catch (error) {
+    return {
+      hasLyrics: false,
+      hasTimedLyrics: false,
+      lyrics: "",
+      lyricsTimed: null,
+      lyricsSource: "",
+      resolution: "provider_error",
+      needsUserToken: false,
+      songId: "",
+      appleMusicId: "",
+      providerTrace: [{
+        provider: "resolver",
+        status: "error",
+        latencyMs: 0,
+        detail: String(error?.message || error?.code || "resolver_failed").slice(0, 120),
+      }],
+      providerMeta: null,
+      aiCapabilityBlocked,
+    };
+  }
+
+  let finalResolution = String(resolved?.resolution || "").trim() || "no_match";
+  if (!resolved?.hasLyrics && !resolved?.hasTimedLyrics && !resolved?.needsUserToken && !timedOnly && aiCapabilityBlocked) {
+    finalResolution = "capability_blocked";
+  }
+
+  return {
+    ...resolved,
+    resolution: finalResolution,
+    aiCapabilityBlocked,
+  };
+};
+
+const applyLyricsResolutionToQueueSong = async ({
+  songRef,
+  resolved = {},
+  actorTag = "queue",
+} = {}) => {
+  if (!songRef) {
+    throw new HttpsError("invalid-argument", "songRef is required.");
+  }
+
+  const normalizedResolvedLyrics = normalizeLyricsText(resolved?.lyrics || "");
+  const normalizedResolvedTimed = normalizeTimedLyrics(resolved?.lyricsTimed || []);
+  const resolvedHasTimed = normalizedResolvedTimed.length > 0;
+  const resolvedHasLyrics = !!normalizedResolvedLyrics;
+  const resolvedSource = String(resolved?.lyricsSource || "").trim();
+  const resolvedAppleMusicId = String(resolved?.appleMusicId || "").trim();
+  const providerTrace = compactLyricsProviderTrace(resolved?.providerTrace || []);
+  const resolutionToken = String(resolved?.resolution || "").trim() || "no_match";
+  const needsUserToken = !!resolved?.needsUserToken;
+
+  const txResult = await admin.firestore().runTransaction(async (tx) => {
+    const latestSnap = await tx.get(songRef);
+    if (!latestSnap.exists) {
+      throw new HttpsError("not-found", "Song not found.");
+    }
+    const latest = latestSnap.data() || {};
+    const existingTimed = normalizeTimedLyrics(latest?.lyricsTimed || []);
+    const existingLyrics = normalizeLyricsText(latest?.lyrics || "");
+    const hasExistingTimed = existingTimed.length > 0;
+    const hasExistingLyrics = !!existingLyrics;
+
+    const shouldWriteTimed = !hasExistingTimed && resolvedHasTimed;
+    const shouldWriteLyrics = !hasExistingLyrics && resolvedHasLyrics;
+    const nextTimed = shouldWriteTimed ? normalizedResolvedTimed : existingTimed;
+    const nextLyrics = shouldWriteLyrics ? normalizedResolvedLyrics : existingLyrics;
+    const nextHasTimed = nextTimed.length > 0;
+    const nextHasLyrics = !!nextLyrics;
+    const status = normalizeLyricsGenerationStatus({
+      hasLyrics: nextHasLyrics,
+      hasTimedLyrics: nextHasTimed,
+      needsUserToken,
+      resolution: resolutionToken,
+    });
+
+    const updates = {
+      lyricsGenerationStatus: status,
+      lyricsGenerationResolution: resolutionToken,
+      lyricsGenerationUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      lyricsProviderTrace: providerTrace,
+    };
+    if (shouldWriteLyrics) updates.lyrics = normalizedResolvedLyrics;
+    if (shouldWriteTimed) updates.lyricsTimed = normalizedResolvedTimed;
+    if ((shouldWriteLyrics || shouldWriteTimed) && !String(latest?.lyricsSource || "").trim() && resolvedSource) {
+      updates.lyricsSource = resolvedSource;
+    }
+    if (!String(latest?.appleMusicId || "").trim() && resolvedAppleMusicId) {
+      updates.appleMusicId = resolvedAppleMusicId;
+    }
+
+    tx.set(songRef, updates, { merge: true });
+
+    const mergedSong = {
+      ...latest,
+      ...(shouldWriteLyrics ? { lyrics: normalizedResolvedLyrics } : {}),
+      ...(shouldWriteTimed ? { lyricsTimed: normalizedResolvedTimed } : {}),
+      ...(updates.lyricsSource ? { lyricsSource: updates.lyricsSource } : {}),
+      ...(updates.appleMusicId ? { appleMusicId: updates.appleMusicId } : {}),
+      lyricsGenerationStatus: status,
+      lyricsGenerationResolution: resolutionToken,
+      lyricsProviderTrace: providerTrace,
+    };
+
+    return {
+      mergedSong,
+      status,
+      resolution: resolutionToken,
+      needsUserToken,
+      wroteLyrics: shouldWriteLyrics,
+      wroteTimedLyrics: shouldWriteTimed,
+      hasLyrics: nextHasLyrics,
+      hasTimedLyrics: nextHasTimed,
+    };
+  });
+
+  if (txResult.hasLyrics || txResult.hasTimedLyrics) {
+    try {
+      await cacheSongLyricsFromQueueDoc(txResult.mergedSong, actorTag);
+    } catch (error) {
+      console.warn("lyrics resolver canonical cache update failed", error?.message || error);
+    }
+  }
+
+  return txResult;
+};
+
 exports.resolveSongCatalog = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "resolve_song_catalog", { perMinute: 45, perHour: 500 });
   requireAuth(request);
@@ -5137,6 +5434,130 @@ exports.appleMusicLyrics = onCall(
   }
 );
 
+exports.resolveQueueSongLyrics = onCall(
+  {
+    cors: true,
+    secrets: [APPLE_MUSIC_TEAM_ID, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_PRIVATE_KEY, GEMINI_API_KEY],
+  },
+  async (request) => {
+    checkRateLimit(request.rawRequest, "resolve_queue_song_lyrics", { perMinute: 90, perHour: 900 });
+    const callerUid = requireAuth(request);
+    if (!hasAppCheck(request)) {
+      throw new HttpsError("failed-precondition", "App Check token required.");
+    }
+
+    const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+    const songId = String(request.data?.songId || "").trim();
+    const timedOnly = request.data?.timedOnly === true;
+    const force = request.data?.force === true;
+    const musicUserToken = String(request.data?.musicUserToken || "").trim();
+    if (!roomCode) {
+      throw new HttpsError("invalid-argument", "roomCode is required.");
+    }
+    if (!songId) {
+      throw new HttpsError("invalid-argument", "songId is required.");
+    }
+
+    const rootRef = getRootRef();
+    const { roomData, roomCode: safeRoomCode } = await ensureRoomHostAccess({
+      rootRef,
+      roomCode,
+      callerUid,
+      deniedMessage: "Only room hosts can resolve queue lyrics.",
+    });
+    if (!isLyricsPipelineV2EnabledForRoom(roomData)) {
+      return {
+        ok: true,
+        roomCode: safeRoomCode,
+        songId,
+        alreadyResolved: false,
+        hasLyrics: false,
+        hasTimedLyrics: false,
+        lyricsSource: "",
+        resolution: "pipeline_v2_disabled",
+        status: "disabled",
+        needsUserToken: false,
+        providerTrace: [],
+      };
+    }
+
+    const songRef = rootRef.collection("karaoke_songs").doc(songId);
+    const songSnap = await songRef.get();
+    if (!songSnap.exists) {
+      throw new HttpsError("not-found", "Queued song not found.");
+    }
+    const songData = songSnap.data() || {};
+    const songRoomCode = normalizeRoomCode(songData?.roomCode || "");
+    if (songRoomCode && songRoomCode !== safeRoomCode) {
+      throw new HttpsError("permission-denied", "Queued song does not belong to this room.");
+    }
+
+    const existingTimed = normalizeTimedLyrics(songData?.lyricsTimed || []);
+    const existingLyrics = normalizeLyricsText(songData?.lyrics || "");
+    const hasExistingTimed = existingTimed.length > 0;
+    const hasExistingLyrics = !!existingLyrics;
+    if (!force && ((timedOnly && hasExistingTimed) || (!timedOnly && (hasExistingTimed || hasExistingLyrics)))) {
+      await songRef.set({
+        lyricsGenerationStatus: "resolved",
+        lyricsGenerationResolution: timedOnly ? "already_timed" : "already_resolved",
+        lyricsGenerationUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return {
+        ok: true,
+        roomCode: safeRoomCode,
+        songId,
+        alreadyResolved: true,
+        hasLyrics: hasExistingLyrics,
+        hasTimedLyrics: hasExistingTimed,
+        lyricsSource: String(songData?.lyricsSource || "").trim() || "",
+        resolution: timedOnly ? "already_timed" : "already_resolved",
+        status: "resolved",
+      };
+    }
+
+    const resolved = await runLyricsResolverForQueueSong({
+      songData: {
+        ...songData,
+        roomCode: safeRoomCode,
+      },
+      roomCode: safeRoomCode,
+      roomData,
+      timedOnly,
+      musicUserToken,
+    });
+
+    const actorTag = timedOnly ? "callable_timed_only" : "callable_retry";
+    const applied = await applyLyricsResolutionToQueueSong({
+      songRef,
+      resolved,
+      actorTag,
+    });
+    console.info("[lyrics-pipeline-v2] callable", {
+      roomCode: safeRoomCode,
+      songId,
+      status: applied.status,
+      resolution: applied.resolution,
+      hasLyrics: applied.hasLyrics,
+      hasTimedLyrics: applied.hasTimedLyrics,
+      timedOnly,
+    });
+
+    return {
+      ok: true,
+      roomCode: safeRoomCode,
+      songId,
+      alreadyResolved: false,
+      hasLyrics: applied.hasLyrics,
+      hasTimedLyrics: applied.hasTimedLyrics,
+      lyricsSource: String(applied.mergedSong?.lyricsSource || "").trim() || "",
+      resolution: applied.resolution,
+      status: applied.status,
+      needsUserToken: applied.needsUserToken,
+      providerTrace: compactLyricsProviderTrace(resolved?.providerTrace || []),
+    };
+  }
+);
+
 exports.autoAppleLyrics = onDocumentCreated(
   {
     document: `artifacts/${APP_ID}/public/data/karaoke_songs/{songId}`,
@@ -5145,6 +5566,72 @@ exports.autoAppleLyrics = onDocumentCreated(
   async (event) => {
     const data = event.data?.data();
     if (!data) return;
+    const initialRoomCode = normalizeRoomCode(data.roomCode || "");
+    let initialRoomData = {};
+    if (initialRoomCode) {
+      try {
+        const roomSnap = await getRootRef().collection("rooms").doc(initialRoomCode).get();
+        initialRoomData = roomSnap.data() || {};
+      } catch (error) {
+        console.warn("autoAppleLyrics room lookup failed", error?.message || error);
+      }
+    }
+
+    if (isLyricsPipelineV2EnabledForRoom(initialRoomData)) {
+      if (data.lyricsTimed?.length || data.lyrics) {
+        try {
+          await cacheSongLyricsFromQueueDoc(data, "auto_queue_seed");
+        } catch (error) {
+          console.warn("autoAppleLyrics queue seed cache failed", error?.message || error);
+        }
+        try {
+          await event.data.ref.set({
+            lyricsGenerationStatus: "resolved",
+            lyricsGenerationResolution: "seed_existing",
+            lyricsGenerationUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lyricsProviderTrace: [],
+          }, { merge: true });
+        } catch (_error) {
+          // Best-effort status stamp.
+        }
+        return;
+      }
+
+      if (data.lyricsSource) {
+        try {
+          await event.data.ref.set({
+            lyricsGenerationStatus: "resolved",
+            lyricsGenerationResolution: "source_existing",
+            lyricsGenerationUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lyricsProviderTrace: [],
+          }, { merge: true });
+        } catch (_error) {
+          // Best-effort status stamp.
+        }
+        return;
+      }
+
+      const resolved = await runLyricsResolverForQueueSong({
+        songData: data,
+        roomCode: initialRoomCode,
+        roomData: initialRoomData,
+        timedOnly: false,
+      });
+      await applyLyricsResolutionToQueueSong({
+        songRef: event.data.ref,
+        resolved,
+        actorTag: "auto_pipeline_v2",
+      });
+      console.info("[lyrics-pipeline-v2] trigger", {
+        roomCode: initialRoomCode || normalizeRoomCode(data.roomCode || ""),
+        songId: event.params?.songId || "",
+        resolution: resolved?.resolution || "",
+        hasLyrics: !!resolved?.hasLyrics,
+        hasTimedLyrics: !!resolved?.hasTimedLyrics,
+      });
+      return;
+    }
+
     if (data.lyricsTimed?.length || data.lyrics) {
       try {
         await cacheSongLyricsFromQueueDoc(data, "auto_queue_seed");

@@ -17,6 +17,8 @@ const QueueListPanel = ({
     handleTouchEnd,
     updateStatus,
     startEdit,
+    onRetryLyrics,
+    onFetchTimedLyrics,
     statusPill,
     styles
 }) => {
@@ -64,6 +66,8 @@ const QueueListPanel = ({
                     handleTouchEnd={handleTouchEnd}
                     updateStatus={updateStatus}
                     startEdit={startEdit}
+                    onRetryLyrics={onRetryLyrics}
+                    onFetchTimedLyrics={onFetchTimedLyrics}
                     statusPill={statusPill}
                     styles={styles}
                 />
