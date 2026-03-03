@@ -1392,6 +1392,57 @@
   gap: 10px;
 }
 
+.mk3-host-room-row {
+  border: 1px solid rgba(126, 198, 240, 0.22);
+  border-radius: 12px;
+  background: rgba(8, 15, 24, 0.74);
+  padding: 0.58rem 0.64rem;
+  display: grid;
+  gap: 6px;
+}
+
+.mk3-host-room-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.mk3-host-room-row-head strong {
+  color: #f1f7ff;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+}
+
+.mk3-host-room-row-head span {
+  border: 1px solid rgba(164, 219, 255, 0.34);
+  border-radius: 999px;
+  background: rgba(123, 206, 255, 0.14);
+  color: #dff1ff;
+  font-size: 0.58rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 800;
+  padding: 0.14rem 0.44rem;
+  white-space: nowrap;
+}
+
+.mk3-host-room-row-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 8px;
+}
+
+.mk3-host-room-row-meta span {
+  color: #bed4e8;
+  font-size: 0.68rem;
+  line-height: 1.32;
+}
+
+.mk3-host-room-actions {
+  justify-content: flex-start;
+}
+
 .mk3-host-checklist {
   border: 1px solid rgba(255, 186, 112, 0.26);
   border-radius: 10px;

@@ -22,12 +22,6 @@ const InlineConversionActions = ({ entry = {}, session, navigate, authFlow }) =>
   const listingType = String(entry.listingType || "").trim().toLowerCase();
   const targetId = String(entry.id || "").trim();
   const routePage = String(entry.routePage || "").trim();
-  const entryTargetType = listingType === "room_session"
-    ? "session"
-    : listingType === "event"
-      ? "event"
-      : "venue";
-
   const submitQuickRsvp = async () => {
     const targetType = listingType === "room_session" ? "session" : "event";
     if (!requireAuth({
@@ -162,29 +156,7 @@ const InlineConversionActions = ({ entry = {}, session, navigate, authFlow }) =>
   };
 
   if (!canAct) {
-    return (
-      <div className="mk3-inline-conversions">
-        <button
-          type="button"
-          onClick={() => requireAuth({
-            intent: listingType === "venue" ? "claim" : "rsvp",
-            targetType: entryTargetType,
-            targetId,
-            returnRoute: {
-              page: routePage,
-              id: targetId,
-              params: {
-                intent: listingType === "venue" ? "claim" : "rsvp",
-                targetType: entryTargetType,
-                targetId,
-              },
-            },
-          })}
-        >
-          Create BeauRocks Account
-        </button>
-      </div>
-    );
+    return null;
   }
 
   return (

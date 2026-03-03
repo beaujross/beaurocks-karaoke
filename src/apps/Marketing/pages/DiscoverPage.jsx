@@ -7,6 +7,7 @@ import { trackEvent } from "../lib/marketingAnalytics";
 import EmptyStatePanel from "./EmptyStatePanel";
 import DiscoverListingCard from "./DiscoverListingCard";
 import { createDiscoverViewState, reduceDiscoverViewState } from "./discoverViewState";
+import { countJoinableRoomListings, isJoinableRoomListing } from "./discoverFilters";
 import {
   buildPublicLocationImageUrl,
   extractCadenceBadges,
@@ -501,6 +502,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [selectedKey, setSelectedKey] = useState("");
   const [hostFilter, setHostFilter] = useState("all");
   const [officialRoomFilter, setOfficialRoomFilter] = useState("all");
+  const [roomAccessFilter, setRoomAccessFilter] = useState("all");
   const [mapBounds, setMapBounds] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -666,9 +668,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (effectiveHostFilter === "all") return allListings;
     return allListings.filter((entry) => String(entry?.hostUid || "").trim() === effectiveHostFilter);
   }, [allListings, effectiveHostFilter]);
+  const filteredByRoomAccess = useMemo(() => {
+    if (roomAccessFilter !== "joinable") return filteredByHost;
+    return filteredByHost.filter((entry) => isJoinableRoomListing(entry));
+  }, [filteredByHost, roomAccessFilter]);
 
   const rankedListings = useMemo(() => {
-    const withSignals = filteredByHost.map((entry) => {
+    const withSignals = filteredByRoomAccess.map((entry) => {
       const distanceMiles = calculateDistanceMiles(userLocation, entry.location);
       const distanceScore = Number.isFinite(distanceMiles)
         ? Math.max(0, 32 - (distanceMiles * 1.8))
@@ -760,7 +766,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       if (a.score !== b.score) return b.score - a.score;
       return sortListings(a, b);
     });
-  }, [filteredByHost, sortMode, userLocation, search, rankingNowMs]);
+  }, [filteredByRoomAccess, sortMode, userLocation, search, rankingNowMs]);
 
   const mappableListings = useMemo(
     () => rankedListings.filter((entry) => !!entry.location),
@@ -874,6 +880,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     setSortMode("smart");
     setHostFilter("all");
     setOfficialRoomFilter("all");
+    setRoomAccessFilter("all");
   }, []);
 
   const registerCardRef = useCallback((key, node) => {
@@ -1102,12 +1109,17 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     return humanizeRegion(token) || token;
   }, [region]);
   const officialBeauRocksRoomCount = Number(facets?.counts?.officialBeauRocksRooms || 0) || 0;
+  const joinableRoomCount = useMemo(
+    () => countJoinableRoomListings(filteredByHost),
+    [filteredByHost]
+  );
   const hasSearchFilters = !!String(search || "").trim()
     || !!String(region || "").trim()
     || effectiveHostFilter !== "all"
     || sortMode !== "smart"
     || timeWindow !== "all"
-    || officialRoomFilter !== "all";
+    || officialRoomFilter !== "all"
+    || roomAccessFilter !== "all";
   const dynamicRegionPresets = useMemo(() => {
     const regionFacets = Array.isArray(facets?.region) ? facets.region : [];
     const ranked = regionFacets
@@ -1214,7 +1226,16 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           </label>
           <label className="mk3-discover-filter-advanced-field">
             Type
-            <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+            <select
+              value={typeFilter}
+              onChange={(event) => {
+                const nextType = event.target.value;
+                setTypeFilter(nextType);
+                if (nextType !== "room_session" && roomAccessFilter === "joinable") {
+                  setRoomAccessFilter("all");
+                }
+              }}
+            >
               <option value="all">All</option>
               <option value="event">Events</option>
               <option value="venue">Venues</option>
@@ -1302,6 +1323,31 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           >
             Official BeauRocks Rooms
             {officialBeauRocksRoomCount > 0 && <span className="mk3-filter-chip-count"> ({officialBeauRocksRoomCount})</span>}
+          </button>
+        </div>
+        <div className="mk3-filter-chips mk3-zone mk3-zone-host mk3-discover-filter-advanced">
+          <span className="mk3-filter-chip-label">Room access</span>
+          <button
+            type="button"
+            className={roomAccessFilter === "all" ? "active" : ""}
+            onClick={() => setRoomAccessFilter("all")}
+          >
+            Any listing
+          </button>
+          <button
+            type="button"
+            className={roomAccessFilter === "joinable" ? "active" : ""}
+            onClick={() => {
+              setRoomAccessFilter("joinable");
+              setTypeFilter("room_session");
+              trackEvent("mk_discover_room_access_filter_change", {
+                source: "discover_filters",
+                mode: "joinable_only",
+              });
+            }}
+          >
+            Joinable by code
+            {joinableRoomCount > 0 && <span className="mk3-filter-chip-count"> ({joinableRoomCount})</span>}
           </button>
         </div>
         {hostFacetOptions.length > 0 && (
