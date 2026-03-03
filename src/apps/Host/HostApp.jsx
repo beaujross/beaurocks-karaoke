@@ -12,6 +12,7 @@ import QueueListPanel from './components/QueueListPanel';
 import QueueYouTubeSearchModal from './components/QueueYouTubeSearchModal';
 import QueueEditSongModal from './components/QueueEditSongModal';
 import HostLogoManager from './components/HostLogoManager';
+import HostOrbSkinManager from './components/HostOrbSkinManager';
 import ChatSettingsPanel from './components/ChatSettingsPanel';
 import HostTopChrome from './components/HostTopChrome';
 import ModerationInboxDrawer from './components/ModerationInboxDrawer';
@@ -72,6 +73,7 @@ import {
 } from '../../lib/popTrivia';
 import {
     DEFAULT_LOGO_PRESETS,
+    DEFAULT_ORB_SKIN_PRESETS,
     DEFAULT_MARQUEE_ITEMS,
     DEFAULT_TIP_CRATES,
     HOST_ONBOARDING_PLAN_OPTIONS,
@@ -5042,10 +5044,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [hostName, setHostName] = useState(localStorage.getItem('bross_host_name') || 'Host');
     const [logoUrl, setLogoUrl] = useState('');
     const [logoLibrary, setLogoLibrary] = useState([]);
+    const [orbSkinUrl, setOrbSkinUrl] = useState('');
+    const [orbSkinLibrary, setOrbSkinLibrary] = useState([]);
     const [popTriviaSongCache, setPopTriviaSongCache] = useState({});
     const [logoUploading, setLogoUploading] = useState(false);
     const [logoUploadProgress, setLogoUploadProgress] = useState(0);
+    const [orbSkinUploading, setOrbSkinUploading] = useState(false);
+    const [orbSkinUploadProgress, setOrbSkinUploadProgress] = useState(0);
     const logoInputRef = useRef(null);
+    const orbSkinInputRef = useRef(null);
     const autoJoinAttemptKeyRef = useRef('');
     const [marqueeEnabled, setMarqueeEnabled] = useState(false);
     const [marqueeDurationSec, setMarqueeDurationSec] = useState(12);
@@ -5313,6 +5320,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return true;
         });
     }, [logoLibrary]);
+    const orbSkinChoices = useMemo(() => {
+        const merged = [...DEFAULT_ORB_SKIN_PRESETS];
+        (orbSkinLibrary || []).forEach((url, idx) => {
+            if (typeof url !== 'string') return;
+            const cleaned = url.trim();
+            if (!cleaned) return;
+            merged.push({
+                id: `custom-${idx}-${cleaned.slice(-24)}`,
+                label: `Custom ${idx + 1}`,
+                url: cleaned
+            });
+        });
+        const seen = new Set();
+        return merged.filter((item) => {
+            const normalizedUrl = String(item?.url || '').trim();
+            if (seen.has(normalizedUrl)) return false;
+            seen.add(normalizedUrl);
+            return true;
+        });
+    }, [orbSkinLibrary]);
 
     useEffect(() => {
         let cancelled = false;
@@ -6189,6 +6216,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         if (room.hostName) setHostName(room.hostName);
         setLogoUrl(room.logoUrl || '');
+        setOrbSkinUrl(room.lobbyOrbSkinUrl || '');
         if (room.autoBgFadeOutMs !== undefined && room.autoBgFadeOutMs !== null) {
             setAutoBgFadeOutMs(room.autoBgFadeOutMs);
         }
@@ -6260,7 +6288,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.popTriviaEnabled !== undefined && room?.popTriviaEnabled !== null) {
             setPopTriviaEnabled(room.popTriviaEnabled !== false);
         }
-    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
+    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
     useEffect(() => {
         if (room?.autoLyricsOnQueue === undefined || room?.autoLyricsOnQueue === null) return;
         setAutoLyricsOnQueue(!!room.autoLyricsOnQueue);
@@ -7632,6 +7660,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 orgId: activeOrgId || null,
                 orgName: nextOrgName,
                 logoUrl: nextLogoUrl,
+                lobbyOrbSkinUrl: null,
                 autoDj: false,
                 marqueeEnabled: false,
                 marqueeDurationMs: 12000,
@@ -7750,7 +7779,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast(`Room ${c} created`);
             setDoc(
                 doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', c),
-                { ytIndex: [], logoLibrary: [], updatedAt: serverTimestamp() },
+                { ytIndex: [], logoLibrary: [], orbSkinLibrary: [], updatedAt: serverTimestamp() },
                 { merge: true }
             ).catch((seedErr) => {
                 hostLogger.warn('Room created but host library seed failed', seedErr);
@@ -7934,6 +7963,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         await updateRoom({ logoUrl: trimmed || null });
         toast('Logo updated');
+    };
+    const saveOrbSkinUrl = async (nextOrbSkinUrl = orbSkinUrl) => {
+        const trimmed = (nextOrbSkinUrl || '').trim();
+        setOrbSkinUrl(trimmed);
+        if (!roomCode) {
+            toast('Create or open a room first');
+            return;
+        }
+        await updateRoom({ lobbyOrbSkinUrl: trimmed || null });
+        toast(trimmed ? 'Orb skin updated' : 'Orb skin reset');
     };
     const clearStormTimers = () => {
         stormTimersRef.current.forEach(t => clearTimeout(t));
@@ -8400,6 +8439,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 tipQrUrl: tipSettings.qr.trim() || null,
                 hostName: hostName || 'Host',
                 logoUrl: logoUrl?.trim() || null,
+                lobbyOrbSkinUrl: orbSkinUrl?.trim() || null,
                 tipCrates: normalizeTipCratesForSave(tipCrates),
                 appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId),
                 appleMusicAutoPlaylistTitle: (appleMusicAutoPlaylistTitle || '').trim(),
@@ -8447,6 +8487,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await setDoc(
             doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode),
             { logoLibrary: cleaned, updatedAt: serverTimestamp() },
+            { merge: true }
+        );
+    };
+    const persistOrbSkinLibrary = async (next) => {
+        const cleaned = Array.from(new Set((next || [])
+            .filter((url) => typeof url === 'string')
+            .map((url) => url.trim())
+            .filter(Boolean)))
+            .slice(0, 24);
+        setOrbSkinLibrary(cleaned);
+        if (!roomCode) return;
+        await setDoc(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode),
+            { orbSkinLibrary: cleaned, updatedAt: serverTimestamp() },
             { merge: true }
         );
     };
@@ -8503,6 +8557,58 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (logoInputRef.current) logoInputRef.current.value = '';
         }
     };
+    const uploadOrbSkinFile = async (file) => {
+        if (!roomCode) {
+            toast('Create or open a room first');
+            return;
+        }
+        if (!file) return;
+        if (!file.type?.startsWith('image/')) {
+            toast('Please select an image file');
+            return;
+        }
+        const maxBytes = 12 * 1024 * 1024;
+        if (file.size > maxBytes) {
+            toast('Orb skin is too large (max 12 MB)');
+            return;
+        }
+        setOrbSkinUploading(true);
+        setOrbSkinUploadProgress(0);
+        try {
+            const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+            const stem = (file.name.replace(/\.[^/.]+$/, '') || 'orb-skin')
+                .toLowerCase()
+                .replace(/[^a-z0-9_-]+/g, '-')
+                .replace(/-+/g, '-')
+                .slice(0, 60);
+            const storagePath = `room_branding/${roomCode}/orb-skins/${nowMs()}-${stem}.${ext}`;
+            const fileRef = storageRef(storage, storagePath);
+            const task = uploadBytesResumable(fileRef, file, {
+                contentType: file.type,
+                cacheControl: 'public,max-age=604800'
+            });
+            await new Promise((resolve, reject) => {
+                task.on('state_changed', (snap) => {
+                    const progress = snap.totalBytes
+                        ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100)
+                        : 0;
+                    setOrbSkinUploadProgress(progress);
+                }, reject, resolve);
+            });
+            const url = await getDownloadURL(fileRef);
+            setOrbSkinUrl(url);
+            await persistOrbSkinLibrary([url, ...orbSkinLibrary]);
+            await updateRoom({ lobbyOrbSkinUrl: url });
+            toast('Orb skin uploaded and applied');
+        } catch (e) {
+            hostLogger.error('Orb skin upload failed', e);
+            toast('Orb skin upload failed');
+        } finally {
+            setOrbSkinUploading(false);
+            setOrbSkinUploadProgress(0);
+            if (orbSkinInputRef.current) orbSkinInputRef.current.value = '';
+        }
+    };
 
     const removeCustomLogo = async (url) => {
         if (!url) return;
@@ -8513,6 +8619,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await updateRoom({ logoUrl: null });
         }
         toast('Custom logo removed');
+    };
+    const removeCustomOrbSkin = async (url) => {
+        if (!url) return;
+        const next = orbSkinLibrary.filter((item) => item !== url);
+        await persistOrbSkinLibrary(next);
+        if ((orbSkinUrl || '').trim() === url) {
+            setOrbSkinUrl('');
+            await updateRoom({ lobbyOrbSkinUrl: null });
+        }
+        toast('Custom orb skin removed');
     };
 
     useEffect(() => {
@@ -8527,6 +8643,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     .filter(Boolean));
             } else {
                 setLogoLibrary([]);
+            }
+            if (Array.isArray(data.orbSkinLibrary)) {
+                setOrbSkinLibrary(data.orbSkinLibrary
+                    .filter((url) => typeof url === 'string')
+                    .map((url) => url.trim())
+                    .filter(Boolean));
+            } else {
+                setOrbSkinLibrary([]);
             }
             setPopTriviaSongCache(normalizePopTriviaSongCache(data?.[POP_TRIVIA_CACHE_FIELD]));
         });
@@ -13744,6 +13868,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     logoChoices={logoChoices}
                                     removeCustomLogo={removeCustomLogo}
                                     assets={ASSETS}
+                                />
+                                <HostOrbSkinManager
+                                    styles={STYLES}
+                                    orbSkinUrl={orbSkinUrl}
+                                    setOrbSkinUrl={setOrbSkinUrl}
+                                    orbSkinUploading={orbSkinUploading}
+                                    orbSkinUploadProgress={orbSkinUploadProgress}
+                                    orbSkinInputRef={orbSkinInputRef}
+                                    uploadOrbSkinFile={uploadOrbSkinFile}
+                                    saveOrbSkinUrl={saveOrbSkinUrl}
+                                    orbSkinChoices={orbSkinChoices}
+                                    removeCustomOrbSkin={removeCustomOrbSkin}
                                 />
                             </div>
                             <div className="space-y-2">

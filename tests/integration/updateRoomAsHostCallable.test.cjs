@@ -76,13 +76,18 @@ async function run() {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         activeMode: "bingo",
         autoDj: true,
+        lobbyOrbSkinUrl: "https://example.com/orb.png",
       }));
       assert.equal(result.ok, true);
-      assert.deepEqual(new Set(result.updatedKeys), new Set(["activeMode", "autoDj"]));
+      assert.deepEqual(
+        new Set(result.updatedKeys),
+        new Set(["activeMode", "autoDj", "lobbyOrbSkinUrl"])
+      );
 
       const snap = await roomRef.get();
       assert.equal(snap.get("activeMode"), "bingo");
       assert.equal(snap.get("autoDj"), true);
+      assert.equal(snap.get("lobbyOrbSkinUrl"), "https://example.com/orb.png");
     }],
 
     ["host can update approved dotted paths", async () => {

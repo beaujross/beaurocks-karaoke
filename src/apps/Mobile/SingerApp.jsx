@@ -105,6 +105,9 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
         label: 'Wave Tunnel',
         emoji: emoji(0x1F44B),
         hint: 'Best for saving a falling orb.',
+        actionLabel: 'Stabilize',
+        effectLabel: 'Slows orb decay and buys recovery time.',
+        timingLabel: 'Use when the orb is falling fast.',
         accentCard: 'from-cyan-500/22 via-sky-500/12 to-black/55',
         accentBorder: 'border-cyan-300/80',
         accentText: 'text-cyan-100',
@@ -116,6 +119,9 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
         label: 'Laser Pop',
         emoji: emoji(0x2728),
         hint: 'Best for quick power jumps.',
+        actionLabel: 'Boost Power',
+        effectLabel: 'Adds a fast energy jump to lift tier progress.',
+        timingLabel: 'Use when the orb is stable and climbing.',
         accentCard: 'from-fuchsia-500/24 via-cyan-500/10 to-black/55',
         accentBorder: 'border-fuchsia-300/80',
         accentText: 'text-fuchsia-100',
@@ -127,6 +133,9 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
         label: 'Echo Ring',
         emoji: emoji(0x1F30A),
         hint: 'Best when relay timer is low.',
+        actionLabel: 'Extend Relay',
+        effectLabel: 'Adds relay window time for teammate catch-ups.',
+        timingLabel: 'Use when relay timer is almost out.',
         accentCard: 'from-indigo-500/22 via-blue-500/14 to-black/55',
         accentBorder: 'border-indigo-300/80',
         accentText: 'text-indigo-100',
@@ -138,6 +147,9 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
         label: 'Confetti',
         emoji: emoji(0x1F389),
         hint: 'Best for climbing tiers fast.',
+        actionLabel: 'Stack Streak',
+        effectLabel: 'Increases streak momentum and pushes tier gains.',
+        timingLabel: 'Use during active streak chains.',
         accentCard: 'from-pink-500/24 via-yellow-400/15 to-black/55',
         accentBorder: 'border-pink-300/80',
         accentText: 'text-pink-100',
@@ -867,6 +879,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const [isStandaloneDisplay, setIsStandaloneDisplay] = useState(() => isStandaloneDisplayMode());
     const stormAudioRef = useRef(null);
     const stormAudioCtxRef = useRef(null);
+    const lobbySuccessAudioCtxRef = useRef(null);
+    const lobbySuccessLastChimeRef = useRef(0);
     const stormAnalyserRef = useRef(null);
     const stormSourceRef = useRef(null);
     const stormRafRef = useRef(null);
@@ -1772,6 +1786,45 @@ const SingerApp = ({ roomCode, uid }) => {
     const markActive = () => {
         lastActiveAtRef.current = Date.now();
     };
+    const getActiveUid = useCallback(() => (
+        String(auth.currentUser?.uid || authReadyUid || uid || '').trim()
+    ), [authReadyUid, uid]);
+    const playLobbySuccessChime = useCallback(({ relayHit = false } = {}) => {
+        const now = Date.now();
+        const minGap = relayHit ? 100 : 130;
+        if (now - Number(lobbySuccessLastChimeRef.current || 0) < minGap) return;
+        lobbySuccessLastChimeRef.current = now;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        try {
+            if (!lobbySuccessAudioCtxRef.current) {
+                lobbySuccessAudioCtxRef.current = new AudioCtx();
+            }
+            const ctx = lobbySuccessAudioCtxRef.current;
+            if (ctx.state === 'suspended') {
+                ctx.resume().catch(() => {});
+            }
+            const startAt = ctx.currentTime;
+            const scheduleTone = (freq, durationSec, offsetSec, gainAmount, type = 'triangle') => {
+                const toneAt = startAt + offsetSec;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(Math.max(120, Number(freq || 440)), toneAt);
+                gain.gain.setValueAtTime(0.0001, toneAt);
+                gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, Number(gainAmount || 0.04)), toneAt + 0.008);
+                gain.gain.exponentialRampToValueAtTime(0.0001, toneAt + Math.max(0.04, durationSec));
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(toneAt);
+                osc.stop(toneAt + Math.max(0.06, durationSec + 0.04));
+            };
+            scheduleTone(relayHit ? 698 : 622, relayHit ? 0.15 : 0.12, 0, relayHit ? 0.07 : 0.05, 'triangle');
+            scheduleTone(relayHit ? 988 : 831, relayHit ? 0.2 : 0.16, relayHit ? 0.05 : 0.04, relayHit ? 0.048 : 0.038, 'sine');
+        } catch {
+            // Audio feedback is best effort only.
+        }
+    }, []);
     const pruneLobbyPlayWindow = useCallback((now = Date.now()) => {
         const cutoff = now - LOBBY_PLAYGROUND_WINDOW_MS;
         const next = lobbyPlayWindowRef.current.filter((timestamp) => Number(timestamp || 0) > cutoff);
@@ -3744,17 +3797,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
         }
         try {
+            const relayTargetHit = !!lobbyRelayObjective?.active && lobbyRelayObjective?.targetType === key;
+            const activeUid = getActiveUid();
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
                 roomCode,
                 type: `lobby_play_${key}`,
                 count: 1,
                 userName: user.name,
                 avatar: user.avatar,
-                uid: uid || null,
+                uid: activeUid || null,
                 isVip: !!user.isVip || (profile?.vipLevel || 0) > 0,
                 isFree: true,
                 timestamp: serverTimestamp()
             });
+            playLobbySuccessChime({ relayHit: relayTargetHit });
             trackEvent('lobby_play_interaction', { room_code: roomCode, interaction: key });
         } catch (error) {
             console.error(error);
@@ -3766,6 +3822,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 pruneLobbyPlayWindow(Date.now());
             }
             toast('Could not send interaction');
+        }
+    };
+
+    const handleExitGuitarMode = async () => {
+        if (!roomCode) return;
+        try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { lightMode: 'off' });
+        } catch (error) {
+            console.error(error);
+            toast('Only the host can exit this mode.');
         }
     };
 
@@ -5062,7 +5128,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         {secondsSinceHit === null ? 'Hit any string to start your combo.' : `Last strum ${secondsSinceHit}s ago`}
                     </div>
                 </div>
-                <button onClick={() => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { lightMode: 'off' })} className="absolute bottom-10 left-1/2 transform -translate-x-1/2 bg-[#EC4899] text-black px-4 py-2 rounded-full z-50 text-xs font-bold">EXIT MODE</button>
+                <button onClick={handleExitGuitarMode} className="absolute bottom-10 left-1/2 transform -translate-x-1/2 bg-[#EC4899] text-black px-4 py-2 rounded-full z-50 text-xs font-bold">EXIT MODE</button>
             </div>
         );
     }
@@ -7323,11 +7389,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 {tab === 'home' && (
                     <div className="space-y-5">
                          {lobbyVolleySceneActive && lobbyVolleyEnabled ? (
-                             <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-2.5 space-y-2 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
+                             <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-3 space-y-3 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
                                  <div className="flex items-center justify-between gap-2">
                                      <div className="min-w-0">
-                                         <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Lobby Playground</div>
-                                         <div className="text-[11px] font-bold text-white/90 leading-none truncate">{lobbyObjectiveMobileGoal}</div>
+                                         <div className="text-xs uppercase tracking-[0.18em] text-cyan-200">Lobby Playground</div>
+                                         <div className="text-sm font-bold text-white/90 leading-tight">{lobbyObjectiveMobileGoal}</div>
                                      </div>
                                      <div className="flex items-center gap-1">
                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] bg-cyan-400/20 border border-cyan-300/45 text-cyan-100">FREE</span>
@@ -7357,48 +7423,49 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          {lobbyPlayRemaining}/{lobbyPlayMaxPerMinute}
                                      </span>
                                  </div>
-                                 <div className="grid grid-cols-2 gap-2">
+                                 <div className="grid grid-cols-2 gap-3">
                                       {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction, idx) => {
-                                          const impactLabel = formatLobbyInteractionImpact(interaction.id);
-                                          const isRelayTarget = lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType;
-                                          const interactionStatusLabel = lobbyPlaygroundPaused
-                                              ? 'Paused by host'
-                                              : lobbyPlayRateLimited
-                                                  ? 'Cooling down...'
-                                                  : isRelayTarget
-                                                      ? 'Pass target: teammate tap now'
-                                                      : interaction.hint;
-                                          return (
-                                              <button
-                                                  key={interaction.id}
-                                                  onClick={() => triggerLobbyPlayInteraction(interaction.id)}
-                                                  disabled={lobbyPlayInteractionDisabled}
-                                                  className={`rounded-xl border px-3 py-2 text-left transition-all ${
-                                                      isRelayTarget
-                                                          ? 'border-emerald-300 bg-emerald-500/15 shadow-[0_0_18px_rgba(52,211,153,0.28)]'
-                                                          : `${interaction.accentBorder} bg-gradient-to-b ${interaction.accentCard}`
-                                                  } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95 hover:border-cyan-400/60'}`}
-                                              >
-                                                  <div className="flex items-center justify-between gap-2">
-                                                      <span className={`text-[10px] font-bold tracking-[0.22em] ${interaction.accentText}`}>{String.fromCharCode(65 + idx)}</span>
-                                                      <span className="text-[10px] font-mono text-zinc-300">FREE</span>
-                                                  </div>
-                                                  <div className="mt-1 flex items-center gap-2">
-                                                      <span className="text-2xl leading-none">{interaction.emoji}</span>
-                                                      <span className={`text-[13px] font-semibold leading-none ${interaction.accentText}`}>{interaction.label}</span>
-                                                  </div>
-                                                  <div className={`mt-1 inline-flex w-fit px-1.5 py-0.5 rounded-md border text-[10px] font-black ${interaction.accentPill}`}>
-                                                      {interaction.boost.replace('Role: ', '')}
-                                                  </div>
-                                                  <div className="mt-1 text-[11px] font-semibold text-white/90 truncate">
-                                                      {impactLabel || interaction.hint}
-                                                  </div>
-                                                  <div className="mt-0.5 text-[10px] text-zinc-300 truncate">
-                                                      {interactionStatusLabel}
-                                                  </div>
-                                              </button>
-                                          );
-                                      })}
+                                           const impactLabel = formatLobbyInteractionImpact(interaction.id);
+                                           const isRelayTarget = lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType;
+                                           const interactionStatusLabel = lobbyPlaygroundPaused
+                                               ? 'Paused by host'
+                                               : lobbyPlayRateLimited
+                                                   ? 'Cooling down...'
+                                                   : isRelayTarget
+                                                       ? 'Relay target: teammate tap now'
+                                                       : (interaction.timingLabel || interaction.hint);
+                                           return (
+                                               <button
+                                                   key={interaction.id}
+                                                   onClick={() => triggerLobbyPlayInteraction(interaction.id)}
+                                                   disabled={lobbyPlayInteractionDisabled}
+                                                   className={`relative overflow-hidden rounded-2xl border-2 px-3 py-3 flex flex-col items-center text-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${
+                                                       isRelayTarget
+                                                           ? 'border-emerald-300 bg-gradient-to-b from-emerald-500/26 via-emerald-500/12 to-black/60 shadow-[0_0_18px_rgba(52,211,153,0.28)]'
+                                                           : `bg-gradient-to-b ${interaction.accentCard} ${interaction.accentBorder}`
+                                                   } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
+                                               >
+                                                   <div className="w-full flex items-center justify-between gap-2">
+                                                       <span className={`text-[11px] font-bold tracking-[0.18em] ${interaction.accentText}`}>TAP {String.fromCharCode(65 + idx)}</span>
+                                                       <span className="text-[11px] font-mono text-zinc-200">FREE</span>
+                                                   </div>
+                                                   <span className="mt-1 text-5xl leading-none">{interaction.emoji}</span>
+                                                   <span className={`mt-1 text-base font-black uppercase leading-none ${interaction.accentText}`}>{interaction.actionLabel || interaction.label}</span>
+                                                   <span className={`mt-1 text-sm font-semibold leading-none ${interaction.accentText}`}>{interaction.label}</span>
+                                                   <div className={`mt-2 inline-flex w-fit px-2 py-0.5 rounded-full border text-[11px] font-black ${interaction.accentPill}`}>
+                                                       {interaction.boost.replace('Role: ', '')}
+                                                   </div>
+                                                   <div className="mt-2 text-sm font-semibold text-white/90 leading-tight">
+                                                       {interaction.effectLabel || impactLabel || interaction.hint}
+                                                   </div>
+                                                   <div className={`mt-2 text-xs font-semibold ${
+                                                       isRelayTarget ? 'text-emerald-100' : 'text-zinc-200'
+                                                   }`}>
+                                                       {interactionStatusLabel}
+                                                   </div>
+                                               </button>
+                                           );
+                                       })}
                                   </div>
                                  <div className="flex flex-wrap items-center gap-1 text-[10px] text-zinc-200">
                                      <span className={`px-2 py-0.5 rounded-full border ${

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
 import { buildSurfaceUrl } from "../../../lib/surfaceDomains";
 
@@ -36,7 +36,7 @@ const normalizeRoomCode = (value = "") =>
     .replace(/[^A-Z0-9]/g, "")
     .slice(0, 10);
 
-const ForHostsPage = ({ navigate, session, authFlow }) => {
+const ForHostsPage = ({ navigate, route, session, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
   const trackPersonaCta = (cta = "") => {
     trackEvent("mk_persona_cta_click", {
@@ -57,6 +57,7 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
     state: "",
   });
   const [status, setStatus] = useState("");
+  const autoLaunchIntentRef = useRef("");
 
   const hostSetupHref = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -110,6 +111,22 @@ const ForHostsPage = ({ navigate, session, authFlow }) => {
     });
     window.location.href = hostSetupHref;
   };
+
+  useEffect(() => {
+    const intent = String(route?.params?.intent || "").trim().toLowerCase();
+    if (!canSubmit) return;
+    if (intent !== "private_session_create") return;
+    const runKey = `${intent}:${String(session?.uid || "")}`;
+    if (autoLaunchIntentRef.current === runKey) return;
+    autoLaunchIntentRef.current = runKey;
+    trackEvent("mk_host_setup_redirect", {
+      source: "for_hosts_resume_after_login",
+      roomCode: normalizeRoomCode(privateForm.roomCode),
+      publicRoom: privateForm.publicRoom ? 1 : 0,
+      virtualOnly: privateForm.virtualOnly ? 1 : 0,
+    });
+    window.location.href = hostSetupHref;
+  }, [canSubmit, hostSetupHref, privateForm.publicRoom, privateForm.roomCode, privateForm.virtualOnly, route?.params?.intent, session?.uid]);
 
   return (
     <section className="mk3-page mk3-host-command">

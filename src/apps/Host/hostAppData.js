@@ -28,6 +28,11 @@ export const DEFAULT_LOGO_PRESETS = Object.freeze([
     { id: 'chatgpt-2026-02-08-115558pm', label: 'ChatGPT Concept 11:55 PM', url: '/images/logo-library/chatgpt-2026-02-08-115558pm.png' }
 ]);
 
+export const DEFAULT_ORB_SKIN_PRESETS = Object.freeze([
+    { id: 'default-orb', label: 'Default Orb', url: '' },
+    { id: 'aahf-2026-badge', label: 'AAHF 2026 Base Badge', url: '/images/logo-library/AAHF%202026%20Base%20Badge.png' }
+]);
+
 export const HOST_ONBOARDING_STEPS = Object.freeze([
     { key: 'identity', label: 'Identity' },
     { key: 'plan', label: 'Plan' },

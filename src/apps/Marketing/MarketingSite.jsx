@@ -671,8 +671,19 @@ const MarketingSite = () => {
                     actions.signOutAccount();
                     return;
                   }
-                  trackEvent("mk_nav_host_access_click", { source: "nav_login_beaurocks_account" });
-                  navigate(MARKETING_ROUTE_PAGES.hostAccess, "", withCampaignParams({ utm_content: "nav_login" }));
+                  trackEvent("mk_nav_host_access_click", { source: "nav_login_host_room_create" });
+                  requireFullAuth({
+                    intent: "private_session_create",
+                    targetType: "session",
+                    returnRoute: {
+                      page: MARKETING_ROUTE_PAGES.forHosts,
+                      params: {
+                        ...withCampaignParams({ utm_content: "nav_login_host_room_create" }),
+                        intent: "private_session_create",
+                        targetType: "session",
+                      },
+                    },
+                  });
                 }}
               >
                 {hasFullAccount ? "Sign out" : "Log In"}
