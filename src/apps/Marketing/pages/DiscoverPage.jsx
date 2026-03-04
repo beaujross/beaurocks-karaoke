@@ -51,6 +51,16 @@ const TIME_WINDOW_OPTIONS = [
   { id: "tonight", label: "Tonight" },
   { id: "this_week", label: "This Week" },
 ];
+const TYPE_FILTER_LABELS = Object.freeze({
+  event: "Events",
+  venue: "Venues",
+  room_session: "Room sessions",
+});
+const SORT_MODE_LABELS = Object.freeze({
+  soonest: "Soonest start time",
+  nearest: "Nearest to me",
+  host_first: "Host-first",
+});
 const EARTH_RADIUS_MILES = 3958.8;
 const MS_PER_HOUR = 60 * 60 * 1000;
 const MS_PER_DAY = 24 * MS_PER_HOUR;
@@ -545,6 +555,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [geoError, setGeoError] = useState("");
   const [rankingNowMs, setRankingNowMs] = useState(() => Date.now());
   const [isMobileViewport, setIsMobileViewport] = useState(initialIsMobile);
+  const [advancedFiltersExpanded, setAdvancedFiltersExpanded] = useState(false);
   const [viewState, dispatchView] = useReducer(
     reduceDiscoverViewState,
     { isMobile: initialIsMobile },
@@ -637,6 +648,11 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     media.addListener(onViewportChange);
     return () => media.removeListener(onViewportChange);
   }, []);
+  useEffect(() => {
+    if (isMobileViewport) {
+      setAdvancedFiltersExpanded(false);
+    }
+  }, [isMobileViewport]);
 
   const allListings = useMemo(() => {
     const next = [];
@@ -1179,14 +1195,64 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     () => countJoinableRoomListings(filteredByBeauRocks),
     [filteredByBeauRocks]
   );
+  const hasFullAccount = !!session?.isAuthed && !session?.isAnonymous;
+  const resultCount = (Number(total || 0) || visibleListings.length);
   const hasSearchFilters = !!String(search || "").trim()
     || !!String(region || "").trim()
+    || typeFilter !== "all"
     || effectiveHostFilter !== "all"
     || beauRocksFilter !== "all"
     || sortMode !== "smart"
     || timeWindow !== "all"
     || officialRoomFilter !== "all"
     || roomAccessFilter !== "all";
+  const activeFilterBadges = useMemo(() => {
+    const next = [];
+    const searchToken = String(search || "").trim();
+    if (searchToken) {
+      const clipped = searchToken.length > 24 ? `${searchToken.slice(0, 24)}...` : searchToken;
+      next.push(`Search: "${clipped}"`);
+    }
+    const regionToken = String(region || "").trim().toLowerCase();
+    if (regionToken && regionToken !== "nationwide") {
+      next.push(`Region: ${activeRegionLabel}`);
+    }
+    if (typeFilter !== "all" && TYPE_FILTER_LABELS[typeFilter]) {
+      next.push(`Type: ${TYPE_FILTER_LABELS[typeFilter]}`);
+    }
+    if (sortMode !== "smart" && SORT_MODE_LABELS[sortMode]) {
+      next.push(`Rank: ${SORT_MODE_LABELS[sortMode]}`);
+    }
+    if (timeWindow !== "all") {
+      const timeLabel = TIME_WINDOW_OPTIONS.find((option) => option.id === timeWindow)?.label || timeWindow;
+      next.push(`Time: ${timeLabel}`);
+    }
+    if (beauRocksFilter === "elevated") next.push("Featured: BeauRocks elevated");
+    if (officialRoomFilter === "official") next.push("Room: Official");
+    if (roomAccessFilter === "joinable") next.push("Access: Joinable by code");
+    if (effectiveHostFilter !== "all") {
+      const hostName = hostFacetOptions.find((host) => host.id === effectiveHostFilter)?.hostName || "Selected host";
+      next.push(`Host: ${hostName}`);
+    }
+    return next;
+  }, [
+    activeRegionLabel,
+    beauRocksFilter,
+    effectiveHostFilter,
+    hostFacetOptions,
+    officialRoomFilter,
+    region,
+    roomAccessFilter,
+    search,
+    sortMode,
+    timeWindow,
+    typeFilter,
+  ]);
+  const filterStackClasses = [
+    "mk3-discover-filter-stack",
+    isMobileViewport && !mobileFiltersExpanded ? "is-collapsed" : "",
+    !isMobileViewport && !advancedFiltersExpanded ? "is-advanced-collapsed" : "",
+  ].filter(Boolean).join(" ");
   const dynamicRegionPresets = useMemo(() => {
     const regionFacets = Array.isArray(facets?.region) ? facets.region : [];
     const ranked = regionFacets
@@ -1234,12 +1300,40 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
   return (
     <section className="mk3-page">
-      <div className="mk3-status mk3-zone mk3-zone-finder">
-        <strong>Discover Live Karaoke</strong>
-        <span>{activeRegionLabel} | {(Number(total || 0) || visibleListings.length)} results</span>
-        <div className="mk3-finder-cta-row">
+      <div className="mk3-status mk3-zone mk3-zone-finder mk3-discover-hero">
+        <div className="mk3-discover-hero-main">
+          <strong>Find Live Karaoke Fast</strong>
+          <span>{resultCount.toLocaleString()} listings in {activeRegionLabel}. Launch hosting or join with a code.</span>
+          <div className="mk3-discover-hero-stats">
+            <span>{resultCount.toLocaleString()} results</span>
+            {officialBeauRocksRoomCount > 0 && <span>{officialBeauRocksRoomCount} official rooms</span>}
+            {joinableRoomCount > 0 && <span>{joinableRoomCount} joinable by code</span>}
+          </div>
+        </div>
+        <div className="mk3-finder-cta-row mk3-discover-hero-actions">
           <button
             type="button"
+            className="mk3-discover-hero-cta-primary"
+            onClick={() => {
+              trackEvent("mk_discover_hero_host_access_click", { source: "discover_hero" });
+              navigate("host_access");
+            }}
+          >
+            {hasFullAccount ? "Open Host Access" : "Host Access"}
+          </button>
+          <button
+            type="button"
+            className="mk3-discover-hero-cta-secondary"
+            onClick={() => {
+              trackEvent("mk_discover_hero_join_click", { source: "discover_hero" });
+              navigate("join");
+            }}
+          >
+            Join With Code
+          </button>
+          <button
+            type="button"
+            className="mk3-discover-hero-cta-tertiary"
             onClick={() => navigate("submit", "", { intent: "listing_submit", targetType: "venue" })}
           >
             List A Public Room
@@ -1273,7 +1367,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           </button>
         </div>
       )}
-      <div className={`mk3-discover-filter-stack ${isMobileViewport && !mobileFiltersExpanded ? "is-collapsed" : ""}`}>
+      <div className={filterStackClasses}>
         <div className="mk3-filter-row mk3-discover-filters mk3-zone mk3-zone-filters">
           <label className="mk3-discover-filter-basic">
             Search
@@ -1328,40 +1422,81 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
               <option value="host_first">Host-first</option>
             </select>
           </label>
+          {!isMobileViewport && (
+            <div className="mk3-discover-filter-meta">
+              <button
+                type="button"
+                className={`mk3-discover-filter-toggle ${advancedFiltersExpanded ? "active" : ""}`}
+                onClick={() => {
+                  setAdvancedFiltersExpanded((prev) => !prev);
+                  trackEvent("mk_discover_advanced_toggle", {
+                    source: "discover_filters",
+                    expanded: !advancedFiltersExpanded,
+                  });
+                }}
+              >
+                {advancedFiltersExpanded ? "Less filters" : "More filters"}
+              </button>
+              {hasSearchFilters && (
+                <button
+                  type="button"
+                  className="mk3-discover-filter-clear"
+                  onClick={resetDiscoverFilters}
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+          )}
+          <div className="mk3-discover-fast-start">
+            <span className="mk3-filter-chip-label">Fast start</span>
+            <button
+              type="button"
+              className={`mk3-discover-fast-chip ${officialRoomFilter === "official" ? "active" : ""}`}
+              onClick={() => {
+                setTypeFilter("room_session");
+                setOfficialRoomFilter("official");
+                trackEvent("mk_discover_official_room_filter_change", {
+                  source: "discover_quick_filters",
+                  mode: "official_only",
+                });
+              }}
+            >
+              Official BeauRocks Rooms
+              {officialBeauRocksRoomCount > 0 && <span className="mk3-filter-chip-count"> ({officialBeauRocksRoomCount})</span>}
+            </button>
+            <button
+              type="button"
+              className={`mk3-discover-fast-chip ${roomAccessFilter === "joinable" ? "active" : ""}`}
+              onClick={() => {
+                setTypeFilter("room_session");
+                setRoomAccessFilter("joinable");
+                trackEvent("mk_discover_room_access_filter_change", {
+                  source: "discover_quick_filters",
+                  mode: "joinable_only",
+                });
+              }}
+            >
+              Joinable by code
+              {joinableRoomCount > 0 && <span className="mk3-filter-chip-count"> ({joinableRoomCount})</span>}
+            </button>
+          </div>
         </div>
-        <div className="mk3-filter-chips mk3-zone mk3-zone-time mk3-discover-filter-advanced">
-          <span className="mk3-filter-chip-label">Quick filters</span>
-          <button
-            type="button"
-            className={officialRoomFilter === "official" ? "active" : ""}
-            onClick={() => {
-              setTypeFilter("room_session");
-              setOfficialRoomFilter("official");
-              trackEvent("mk_discover_official_room_filter_change", {
-                source: "discover_quick_filters",
-                mode: "official_only",
-              });
-            }}
-          >
-            Official BeauRocks Rooms
-            {officialBeauRocksRoomCount > 0 && <span className="mk3-filter-chip-count"> ({officialBeauRocksRoomCount})</span>}
-          </button>
-          <button
-            type="button"
-            className={roomAccessFilter === "joinable" ? "active" : ""}
-            onClick={() => {
-              setTypeFilter("room_session");
-              setRoomAccessFilter("joinable");
-              trackEvent("mk_discover_room_access_filter_change", {
-                source: "discover_quick_filters",
-                mode: "joinable_only",
-              });
-            }}
-          >
-            Joinable by code
-            {joinableRoomCount > 0 && <span className="mk3-filter-chip-count"> ({joinableRoomCount})</span>}
-          </button>
-        </div>
+        {hasSearchFilters && (
+          <div className="mk3-filter-chips mk3-zone mk3-zone-time mk3-discover-active-row">
+            <span className="mk3-filter-chip-label">Active filters</span>
+            {activeFilterBadges.map((badge) => (
+              <span key={badge} className="mk3-discover-active-chip">{badge}</span>
+            ))}
+            <button
+              type="button"
+              className="mk3-discover-active-clear"
+              onClick={resetDiscoverFilters}
+            >
+              Clear all
+            </button>
+          </div>
+        )}
         <div className="mk3-filter-chips mk3-zone mk3-zone-time mk3-discover-filter-advanced">
           {TIME_WINDOW_OPTIONS.map((option) => (
             <button
@@ -1392,17 +1527,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
               {Number(preset.count || 0) > 0 && <span className="mk3-filter-chip-count">{preset.count}</span>}
             </button>
           ))}
-          {hasSearchFilters && (
-            <button
-              type="button"
-              onClick={resetDiscoverFilters}
-            >
-              Clear filters
-            </button>
-          )}
         </div>
         <div className="mk3-filter-chips mk3-zone mk3-zone-host mk3-discover-filter-advanced">
-          <span className="mk3-filter-chip-label">BeauRocks lane</span>
+          <span className="mk3-filter-chip-label">Featured</span>
           <button
             type="button"
             className={beauRocksFilter === "all" ? "active" : ""}
@@ -1426,11 +1553,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           </button>
         </div>
         <div className="mk3-filter-chips mk3-zone mk3-zone-host mk3-discover-filter-advanced">
-          <span className="mk3-filter-chip-label">Room lane</span>
+          <span className="mk3-filter-chip-label">Room filters</span>
           <button
             type="button"
-            className={officialRoomFilter === "all" ? "active" : ""}
-            onClick={() => setOfficialRoomFilter("all")}
+            className={typeFilter === "room_session" && officialRoomFilter === "all" && roomAccessFilter === "all" ? "active" : ""}
+            onClick={() => {
+              setTypeFilter("room_session");
+              setOfficialRoomFilter("all");
+              setRoomAccessFilter("all");
+            }}
           >
             All rooms
           </button>
@@ -1438,6 +1569,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             type="button"
             className={officialRoomFilter === "official" ? "active" : ""}
             onClick={() => {
+              setTypeFilter("room_session");
               setOfficialRoomFilter("official");
               trackEvent("mk_discover_official_room_filter_change", {
                 source: "discover_filters",
@@ -1448,15 +1580,12 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             Official BeauRocks Rooms
             {officialBeauRocksRoomCount > 0 && <span className="mk3-filter-chip-count"> ({officialBeauRocksRoomCount})</span>}
           </button>
-        </div>
-        <div className="mk3-filter-chips mk3-zone mk3-zone-host mk3-discover-filter-advanced">
-          <span className="mk3-filter-chip-label">Room access</span>
           <button
             type="button"
             className={roomAccessFilter === "all" ? "active" : ""}
             onClick={() => setRoomAccessFilter("all")}
           >
-            Any listing
+            Any access
           </button>
           <button
             type="button"
@@ -1476,7 +1605,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         </div>
         {hostFacetOptions.length > 0 && (
           <div className="mk3-filter-chips mk3-zone mk3-zone-host mk3-discover-filter-advanced">
-            <span className="mk3-filter-chip-label">Browse by host</span>
+            <span className="mk3-filter-chip-label">Host</span>
             <button
               type="button"
               className={effectiveHostFilter === "all" ? "active" : ""}

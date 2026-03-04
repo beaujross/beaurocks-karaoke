@@ -152,13 +152,11 @@ export const MARKETING_NAV_CONFIG = Object.freeze({
   publicPrimary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
     navItem(MARKETING_ROUTE_PAGES.join, "Join"),
-    navItem(MARKETING_ROUTE_PAGES.hostAccess, "Host Access"),
   ]),
   publicSecondary: Object.freeze([]),
   homePrimary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
     navItem(MARKETING_ROUTE_PAGES.join, "Join"),
-    navItem(MARKETING_ROUTE_PAGES.hostAccess, "Host Access"),
   ]),
   homeSecondary: Object.freeze([]),
   authenticatedSecondary: Object.freeze([
