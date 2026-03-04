@@ -85,6 +85,69 @@ const getLobbyReactionLabel = (type = '') => {
         .join(' ');
 };
 
+const decodeUriComponentSafe = (value = '') => {
+    try {
+        return decodeURIComponent(String(value || ''));
+    } catch {
+        return String(value || '');
+    }
+};
+
+const decodeUriComponentLoop = (value = '', maxPasses = 3) => {
+    let current = String(value || '');
+    for (let pass = 0; pass < maxPasses; pass += 1) {
+        const decoded = decodeUriComponentSafe(current);
+        if (decoded === current) break;
+        current = decoded;
+    }
+    return current;
+};
+
+const normalizeLobbyOrbPathname = (pathname = '') => {
+    const rawPath = String(pathname || '').replace(/\\/g, '/');
+    const segments = rawPath.split('/').map((segment, idx) => {
+        if (idx === 0 && segment === '') return '';
+        const decoded = decodeUriComponentLoop(segment);
+        return encodeURIComponent(decoded);
+    });
+    const joined = segments.join('/');
+    if (!joined) return '/';
+    return joined.startsWith('/') ? joined : `/${joined}`;
+};
+
+const normalizeLobbyOrbSkinUrl = (rawValue = '') => {
+    const raw = String(rawValue || '').trim();
+    if (!raw) return '';
+    const slashNormalized = raw.replace(/\\/g, '/');
+    if (/^javascript:/i.test(slashNormalized) || /^data:/i.test(slashNormalized)) return '';
+    let candidate = slashNormalized;
+    const publicIndex = candidate.toLowerCase().indexOf('/public/');
+    if (publicIndex >= 0) {
+        const fromPublic = candidate.slice(publicIndex + '/public'.length);
+        candidate = fromPublic.startsWith('/') ? fromPublic : `/${fromPublic}`;
+    }
+    if (/^[a-z]:\//i.test(candidate)) return '';
+    if (/^https?:\/\//i.test(candidate)) {
+        try {
+            const parsed = new URL(candidate);
+            const normalizedPathname = normalizeLobbyOrbPathname(parsed.pathname || '/');
+            return `${parsed.origin}${normalizedPathname}${parsed.search}${parsed.hash}`;
+        } catch {
+            return '';
+        }
+    }
+    if (candidate.startsWith('/')) {
+        try {
+            const parsed = new URL(candidate, 'https://beaurocks.local');
+            const normalizedPathname = normalizeLobbyOrbPathname(parsed.pathname || '/');
+            return `${normalizedPathname}${parsed.search}${parsed.hash}`;
+        } catch {
+            return '';
+        }
+    }
+    return '';
+};
+
 const TV_EXPLORE_STORAGE_KEY = 'bross.tv.exploreProfile';
 
 const normalizeTvExploreProfile = (value = '') => {
@@ -2736,12 +2799,10 @@ const PublicTV = ({ roomCode }) => {
         .join(' -> ');
     const lobbyCurrentTierMeta = getLobbyTierDefinition(lobbyVolleyState?.currentTier || 0);
     const motionSafeFx = !!room?.reduceMotionFx;
-    const lobbyOrbSkinUrl = useMemo(() => {
-        const raw = String(room?.lobbyOrbSkinUrl || '').trim();
-        if (!raw) return '';
-        if (/^javascript:/i.test(raw)) return '';
-        return raw;
-    }, [room?.lobbyOrbSkinUrl]);
+    const lobbyOrbSkinUrl = useMemo(
+        () => normalizeLobbyOrbSkinUrl(room?.lobbyOrbSkinUrl || ''),
+        [room?.lobbyOrbSkinUrl]
+    );
     const lobbyStreakTimeoutMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.STREAK_TIMEOUT_MS || 6200);
     const lobbyStreakAgeMs = Math.max(0, lobbyNow - Number(lobbyVolleyState?.lastInteractionAtMs || 0));
     const lobbyStreakDecayPct = clampLobby(

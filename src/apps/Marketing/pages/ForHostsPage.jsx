@@ -18,25 +18,6 @@ const HOST_STACK_BADGES = [
   "One login, one control surface",
 ];
 
-const HOST_QUICK_STEPS = [
-  {
-    title: "Log in",
-    detail: "Use your BeauRocks account once and stay in host mode.",
-  },
-  {
-    title: "Launch",
-    detail: "Open Host Dashboard and launch from Room Setup in one place.",
-  },
-  {
-    title: "Run show",
-    detail: "Use Host, TV, and audience links from one manager surface.",
-  },
-  {
-    title: "Review recap",
-    detail: "Jump back into room history and recaps in one click.",
-  },
-];
-
 const normalizeRoomCode = (value = "") =>
   String(value || "")
     .trim()
@@ -208,16 +189,6 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
     }),
     [activeRooms.length, managedRooms, publishedSessions.length, roomHistory.length]
   );
-  const latestActiveRoomCode = useMemo(
-    () => String(activeRooms[0]?.code || "").trim().toUpperCase(),
-    [activeRooms]
-  );
-
-  const focusRoomManager = useCallback((nextFilter = "active") => {
-    setRoomFilter(nextFilter);
-    roomManagerRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-  }, []);
-
   const openManagedRoom = (roomCode = "") => {
     const safeCode = normalizeRoomCode(roomCode);
     if (!safeCode) return;
@@ -263,205 +234,120 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
     window.open(href, "_blank", "noopener,noreferrer");
   };
 
-  const openManagedTv = (roomCode = "") => {
-    const safeCode = normalizeRoomCode(roomCode);
-    if (!safeCode) return;
-    const href = buildSurfaceUrl({
-      surface: "tv",
-      params: {
-        room: safeCode,
-        mode: "tv",
-        source: "marketing_host_room_manager_tv",
-      },
-    }, window.location);
-    window.open(href, "_blank", "noopener,noreferrer");
-  };
-
-  const copyManagedRoomCode = async (roomCode = "") => {
-    const safeCode = normalizeRoomCode(roomCode);
-    if (!safeCode) return;
-    try {
-      await navigator.clipboard.writeText(safeCode);
-      setRoomManagerStatus(`Copied room code ${safeCode}.`);
-    } catch {
-      setRoomManagerStatus(`Room code: ${safeCode}`);
-    }
-  };
-
   return (
     <section className="mk3-page mk3-host-command mk3-host-rebuild">
-      <article className="mk3-detail-card mk3-host-hero mk3-zone mk3-host-hero-rebuild">
-        <div className="mk3-host-kicker">host room control</div>
-        <h1>Simple host workflow: log in, launch room, run show, review recap.</h1>
-        <p>
+      <article className="mk3-detail-card mk3-host-hero mk3-zone mk3-host-hero-rebuild mk3-host-canon-surface">
+        <div className="mk3-host-kicker mk3-host-canon-kicker">host room control</div>
+        <h1 className="mk3-host-canon-title is-xl">Simple host workflow: log in, launch room, run show, review recap.</h1>
+        <p className="mk3-host-canon-copy">
           This page is now the fast path into Host Dashboard Room Setup and your room manager history.
         </p>
         <div className="mk3-status mk3-status-warning">
           <strong>Account required to host</strong>
           <span>Guests can join rooms without an account, but creating and running rooms requires a BeauRocks account.</span>
         </div>
-        <div className="mk3-host-badge-row">
+        <div className="mk3-host-badge-row mk3-host-canon-chip-row">
           {HOST_STACK_BADGES.map((badge) => (
-            <span key={badge}>{badge}</span>
+            <span key={badge} className="mk3-host-canon-chip">{badge}</span>
           ))}
         </div>
         <div className="mk3-host-primary-actions">
           <button
+            className="mk3-host-canon-button is-primary"
             type="button"
             onClick={() => {
-              trackPersonaCta(canSubmit ? "hero_start_new_room" : "hero_start_new_room_auth_gate");
+              trackPersonaCta(canSubmit ? "hero_open_host_dashboard" : "hero_host_auth_gate");
               openHostSetup();
             }}
           >
-            Open Host Dashboard
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              trackPersonaCta("hero_resume_last_room");
-              if (latestActiveRoomCode) {
-                openManagedRoom(latestActiveRoomCode);
-                return;
-              }
-              focusRoomManager("active");
-            }}
-            disabled={!latestActiveRoomCode && managedRoomsLoading}
-          >
-            {latestActiveRoomCode ? `Resume ${latestActiveRoomCode}` : "Open Active Rooms"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              trackPersonaCta("hero_room_history");
-              focusRoomManager("history");
-            }}
-          >
-            Room History
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              trackPersonaCta("hero_watch_demo");
-              navigate("demo");
-            }}
-          >
-            Watch Demo
+            {canSubmit ? "Open Host Dashboard" : "Host Log In"}
           </button>
         </div>
       </article>
 
-      <section className="mk3-detail-card mk3-host-flow mk3-zone" aria-label="Host flow overview">
-        <h2>Host Flow</h2>
-        <div className="mk3-host-flow-grid">
-          {HOST_QUICK_STEPS.map((step, index) => (
-            <article key={step.title}>
-              <span>{`Step ${index + 1}`}</span>
-              <strong>{step.title}</strong>
-              <p>{step.detail}</p>
-            </article>
-          ))}
+      <section className="mk3-detail-card mk3-host-manager-card mk3-host-canon-surface is-muted" ref={roomManagerRef}>
+        <div className="mk3-host-manager-head">
+          <h2 className="mk3-host-canon-title is-md">Room Manager</h2>
+          <div className="mk3-actions-inline">
+            <button className="mk3-host-canon-button" type="button" onClick={() => loadRoomManagerData()} disabled={managedRoomsLoading || publishedSessionsLoading}>
+              {managedRoomsLoading || publishedSessionsLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
         </div>
+        <div className="mk3-metric-row mk3-metric-row-mobile">
+          <article className="mk3-metric"><span>Total Rooms</span><strong>{roomManagerSummary.total}</strong></article>
+          <article className="mk3-metric"><span>Active</span><strong>{roomManagerSummary.active}</strong></article>
+          <article className="mk3-metric"><span>History</span><strong>{roomManagerSummary.history}</strong></article>
+          <article className="mk3-metric"><span>Recaps</span><strong>{roomManagerSummary.recaps}</strong></article>
+          <article className="mk3-metric"><span>Listings</span><strong>{roomManagerSummary.published}</strong></article>
+        </div>
+        <div className="mk3-host-filter-row" role="tablist" aria-label="Room filters">
+          <button
+            type="button"
+            className={`mk3-host-canon-button is-pill ${roomFilter === "active" ? "active" : ""}`}
+            onClick={() => setRoomFilter("active")}
+          >
+            Active
+          </button>
+          <button
+            type="button"
+            className={`mk3-host-canon-button is-pill ${roomFilter === "history" ? "active" : ""}`}
+            onClick={() => setRoomFilter("history")}
+          >
+            History
+          </button>
+          <button
+            type="button"
+            className={`mk3-host-canon-button is-pill ${roomFilter === "all" ? "active" : ""}`}
+            onClick={() => setRoomFilter("all")}
+          >
+            All
+          </button>
+        </div>
+        {!!roomManagerStatus && <div className="mk3-status">{roomManagerStatus}</div>}
+        {managedRoomsLoading && <div className="mk3-status">Loading your room manager...</div>}
+        {!!managedRoomsError && <div className="mk3-status mk3-status-error">{managedRoomsError}</div>}
+        {!managedRoomsLoading && !managedRoomsError && !filteredRooms.length && (
+          <div className="mk3-status">
+            {canSubmit
+              ? "No rooms in this filter yet. Start a room and it will appear here."
+              : "Log in with a BeauRocks account to load your rooms."}
+          </div>
+        )}
+        {!managedRoomsLoading && filteredRooms.map((room) => {
+          const statusLabel = room.isArchived ? "Archived" : room.isClosed ? "Closed" : "Active";
+          const roomCode = room.code || room.id;
+          const roomIsActive = !room.isClosed && !room.isArchived;
+          const actionLabel = roomIsActive ? "Open Host" : room.hasRecap ? "View Recap" : "Join Room";
+          const handleAction = roomIsActive
+            ? () => openManagedRoom(roomCode)
+            : room.hasRecap
+              ? () => openManagedAudienceRecap(roomCode)
+              : () => openManagedAudienceJoin(roomCode);
+          return (
+            <article key={room.id} className="mk3-host-room-row">
+              <div className="mk3-host-room-row-head">
+                <strong>{room.title}</strong>
+                <span>{statusLabel}</span>
+              </div>
+              <div className="mk3-host-room-row-meta">
+                <span>Code: {room.code || room.id}</span>
+                <span>Mode: {room.activeMode || "karaoke"}</span>
+                <span>Updated: {formatDateTime(room.updatedAtMs)}</span>
+                {room.hasRecap && <span>Recap: {formatDateTime(room.recapAtMs || room.closedAtMs)}</span>}
+              </div>
+              <div className="mk3-actions-inline mk3-host-room-actions">
+                <button className="mk3-host-canon-button is-primary" type="button" onClick={handleAction}>
+                  {actionLabel}
+                </button>
+              </div>
+            </article>
+          );
+        })}
       </section>
 
-      <div className="mk3-two-col mk3-host-rebuild-grid">
-        <aside className="mk3-actions-card mk3-host-setup-card">
-          <h4>Host Dashboard Entry</h4>
-          <p className="mk3-host-setup-subcopy">
-            Room creation now lives directly in Host Dashboard Room Setup. This page is for access and room management.
-          </p>
-          <div className="mk3-actions-block">
-            <button type="button" onClick={openHostSetup}>
-              Open Host Dashboard
-            </button>
-            <button type="button" onClick={() => navigate("join")}>
-              Open Join By Code
-            </button>
-            <div className="mk3-status">
-              Room history, recap access, and quick launch actions are all managed below.
-            </div>
-          </div>
-        </aside>
-
-        <section className="mk3-detail-card mk3-host-manager-card" ref={roomManagerRef}>
-          <div className="mk3-host-manager-head">
-            <h2>Room Manager</h2>
-            <div className="mk3-actions-inline">
-              <button type="button" onClick={() => loadRoomManagerData()} disabled={managedRoomsLoading || publishedSessionsLoading}>
-                {managedRoomsLoading || publishedSessionsLoading ? "Refreshing..." : "Refresh"}
-              </button>
-            </div>
-          </div>
-          <div className="mk3-metric-row mk3-metric-row-mobile">
-            <article className="mk3-metric"><span>Total Rooms</span><strong>{roomManagerSummary.total}</strong></article>
-            <article className="mk3-metric"><span>Active</span><strong>{roomManagerSummary.active}</strong></article>
-            <article className="mk3-metric"><span>History</span><strong>{roomManagerSummary.history}</strong></article>
-            <article className="mk3-metric"><span>Recaps</span><strong>{roomManagerSummary.recaps}</strong></article>
-            <article className="mk3-metric"><span>Listings</span><strong>{roomManagerSummary.published}</strong></article>
-          </div>
-          <div className="mk3-host-filter-row" role="tablist" aria-label="Room filters">
-            <button type="button" className={roomFilter === "active" ? "active" : ""} onClick={() => setRoomFilter("active")}>
-              Active
-            </button>
-            <button type="button" className={roomFilter === "history" ? "active" : ""} onClick={() => setRoomFilter("history")}>
-              History
-            </button>
-            <button type="button" className={roomFilter === "all" ? "active" : ""} onClick={() => setRoomFilter("all")}>
-              All
-            </button>
-          </div>
-          {!!roomManagerStatus && <div className="mk3-status">{roomManagerStatus}</div>}
-          {managedRoomsLoading && <div className="mk3-status">Loading your room manager...</div>}
-          {!!managedRoomsError && <div className="mk3-status mk3-status-error">{managedRoomsError}</div>}
-          {!managedRoomsLoading && !managedRoomsError && !filteredRooms.length && (
-            <div className="mk3-status">
-              {canSubmit
-                ? "No rooms in this filter yet. Start a room and it will appear here."
-                : "Log in with a BeauRocks account to load your rooms."}
-            </div>
-          )}
-          {!managedRoomsLoading && filteredRooms.map((room) => {
-            const statusLabel = room.isArchived ? "Archived" : room.isClosed ? "Closed" : "Active";
-            return (
-              <article key={room.id} className="mk3-host-room-row">
-                <div className="mk3-host-room-row-head">
-                  <strong>{room.title}</strong>
-                  <span>{statusLabel}</span>
-                </div>
-                <div className="mk3-host-room-row-meta">
-                  <span>Code: {room.code || room.id}</span>
-                  <span>Mode: {room.activeMode || "karaoke"}</span>
-                  <span>Updated: {formatDateTime(room.updatedAtMs)}</span>
-                  {room.hasRecap && <span>Recap: {formatDateTime(room.recapAtMs || room.closedAtMs)}</span>}
-                </div>
-                <div className="mk3-actions-inline mk3-host-room-actions">
-                  <button type="button" onClick={() => openManagedRoom(room.code)}>
-                    Open Host
-                  </button>
-                  <button type="button" onClick={() => openManagedTv(room.code)}>
-                    Open TV
-                  </button>
-                  <button type="button" onClick={() => openManagedAudienceJoin(room.code)}>
-                    Join Room
-                  </button>
-                  <button type="button" onClick={() => copyManagedRoomCode(room.code)}>
-                    Copy Code
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openManagedAudienceRecap(room.code)}
-                    disabled={!room.hasRecap}
-                  >
-                    View Recap
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-        </section>
-      </div>
-
-      <section className="mk3-detail-card">
-        <h2>Published Room Listings</h2>
+      <section className="mk3-detail-card mk3-host-canon-surface is-muted">
+        <h2 className="mk3-host-canon-title is-md">Published Room Listings</h2>
         {publishedSessionsLoading && (
           <div className="mk3-status">
             Loading published listings...
@@ -487,19 +373,18 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
               </div>
               <div className="mk3-actions-inline mk3-host-room-actions">
                 <button
+                  className="mk3-host-canon-button"
                   type="button"
-                  onClick={() => navigate("session", sessionItem.id)}
+                  onClick={() => {
+                    if (sessionItem.roomCode) {
+                      openManagedAudienceJoin(sessionItem.roomCode);
+                      return;
+                    }
+                    navigate("session", sessionItem.id);
+                  }}
                 >
-                  Open Listing
+                  {sessionItem.roomCode ? "Join Room" : "Open Listing"}
                 </button>
-                {!!sessionItem.roomCode && (
-                  <button
-                    type="button"
-                    onClick={() => openManagedAudienceJoin(sessionItem.roomCode)}
-                  >
-                    Join Room
-                  </button>
-                )}
               </div>
             </article>
           ))}

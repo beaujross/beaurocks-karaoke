@@ -647,38 +647,17 @@ const MarketingSite = () => {
                 className="mk3-account-action"
                 onClick={() => {
                   if (hasFullAccount) {
-                    navigate(MARKETING_ROUTE_PAGES.profile);
+                    openHostDashboard("marketing_nav_host_dashboard_primary");
                     return;
                   }
-                  trackEvent("mk_persona_cta_click", { persona: "all", cta: "nav_explore_live_map" });
-                  navigate(MARKETING_ROUTE_PAGES.discover, "", withCampaignParams({ utm_content: "nav_explore" }));
-                }}
-              >
-                {hasFullAccount ? "Dashboard" : "Explore"}
-              </button>
-              <button
-                type="button"
-                className="mk3-account-link"
-                onClick={() => openHostDashboard("marketing_nav_host_dashboard")}
-              >
-                {hasFullAccount ? "Host Dashboard" : "Host Access"}
-              </button>
-              <button
-                type="button"
-                className="mk3-account-link"
-                onClick={() => {
-                  if (hasFullAccount) {
-                    actions.signOutAccount();
-                    return;
-                  }
-                  trackEvent("mk_nav_host_access_click", { source: "nav_login_host_room_create" });
+                  trackEvent("mk_nav_host_access_click", { source: "nav_primary_host_access" });
                   requireFullAuth({
                     intent: "host_dashboard_resume",
                     targetType: "session",
                     returnRoute: {
                       page: MARKETING_ROUTE_PAGES.forHosts,
                       params: {
-                        ...withCampaignParams({ utm_content: "nav_login_host_room_create" }),
+                        ...withCampaignParams({ utm_content: "nav_primary_host_access" }),
                         intent: "host_dashboard_resume",
                         targetType: "session",
                       },
@@ -686,7 +665,7 @@ const MarketingSite = () => {
                   });
                 }}
               >
-                {hasFullAccount ? "Sign out" : "Host Log In"}
+                {hasFullAccount ? "Host Dashboard" : "Host Access"}
               </button>
               <button
                 type="button"
@@ -721,12 +700,6 @@ const MarketingSite = () => {
                   {item.label}
                 </button>
               ))}
-              <button
-                type="button"
-                onClick={() => openHostDashboard("marketing_mobile_menu_host_dashboard")}
-              >
-                Host Dashboard
-              </button>
             </div>
           </div>
         </div>
@@ -744,33 +717,33 @@ const MarketingSite = () => {
           )}
 
           {isHostAccessPage ? (
-          <section className="mk3-auth-panel" ref={authPanelRef}>
+          <section className="mk3-auth-panel mk3-host-canon-surface" ref={authPanelRef}>
             <div>
-              <h1>Host Login + Room Manager</h1>
-              <p>
+              <h1 className="mk3-host-canon-title is-xl">Host Login + Room Manager</h1>
+              <p className="mk3-host-canon-copy">
                 Keep host setup simple: log in once, create or reopen a room, then launch host controls.
               </p>
-              <div className="mk3-private-pill-row">
-                <span className="mk3-private-pill">BeauRocks account required</span>
-                <span className="mk3-private-pill">4-button launch flow</span>
-                <span className="mk3-private-pill">Room history built in</span>
+              <div className="mk3-private-pill-row mk3-host-canon-chip-row">
+                <span className="mk3-private-pill mk3-host-canon-chip">BeauRocks account required</span>
+                <span className="mk3-private-pill mk3-host-canon-chip">4-button launch flow</span>
+                <span className="mk3-private-pill mk3-host-canon-chip">Room history built in</span>
               </div>
               <div className="mk3-permission-grid">
-                <article>
-                  <strong>Step 1</strong>
-                  <span>Log in with your BeauRocks account.</span>
+                <article className="mk3-host-canon-step">
+                  <strong className="mk3-host-canon-step-kicker">Step 1</strong>
+                  <span className="mk3-host-canon-step-copy">Log in with your BeauRocks account.</span>
                 </article>
-                <article>
-                  <strong>Step 2</strong>
-                  <span>Start a room or resume one from Room Manager.</span>
+                <article className="mk3-host-canon-step">
+                  <strong className="mk3-host-canon-step-kicker">Step 2</strong>
+                  <span className="mk3-host-canon-step-copy">Start a room or resume one from Room Manager.</span>
                 </article>
-                <article>
-                  <strong>Step 3</strong>
-                  <span>Run your show in Host Dashboard with TV and audience links.</span>
+                <article className="mk3-host-canon-step">
+                  <strong className="mk3-host-canon-step-kicker">Step 3</strong>
+                  <span className="mk3-host-canon-step-copy">Run your show in Host Dashboard with TV and audience links.</span>
                 </article>
-                <article>
-                  <strong>Step 4</strong>
-                  <span>Review room history and open recap links after the show.</span>
+                <article className="mk3-host-canon-step">
+                  <strong className="mk3-host-canon-step-kicker">Step 4</strong>
+                  <span className="mk3-host-canon-step-copy">Review room history and open recap links after the show.</span>
                 </article>
               </div>
               {heroStats?.total > 0 && (
@@ -786,7 +759,7 @@ const MarketingSite = () => {
               <div className="mk3-auth-cta-row">
                 <button
                   type="button"
-                  className="mk3-auth-cta-primary"
+                  className="mk3-auth-cta-primary mk3-host-canon-button is-primary"
                   onClick={() => {
                     if (hasFullAccount) {
                       navigate(MARKETING_ROUTE_PAGES.forHosts);
@@ -800,23 +773,18 @@ const MarketingSite = () => {
                 >
                   {hasFullAccount ? "Open Host Room Manager" : "Host Log In"}
                 </button>
-                <button
-                  type="button"
-                  className="mk3-auth-cta-secondary"
-                  onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: "host_access_for_hosts" }))}
-                >
-                  Open Host Room Manager
-                </button>
               </div>
             </div>
-            <div className="mk3-auth-box">
+            <div className="mk3-auth-box mk3-host-canon-surface is-muted">
               {hasFullAccount ? (
                 <div className="mk3-auth-state">
                   <div>Signed in as {session.email || session.uid}.</div>
                   <div className="mk3-actions-inline">
-                    <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.profile)}>Open Dashboard</button>
-                    <button type="button" onClick={actions.signOutAccount} disabled={session.authLoading}>
-                      {session.authLoading ? "Signing out..." : "Sign Out"}
+                    <button className="mk3-host-canon-button is-primary" type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts)}>Open Host Room Manager</button>
+                  </div>
+                  <div className="mk3-auth-support-row">
+                    <button className="mk3-auth-link" type="button" onClick={actions.signOutAccount} disabled={session.authLoading}>
+                      {session.authLoading ? "Signing out..." : "Sign out"}
                     </button>
                   </div>
                 </div>
@@ -935,14 +903,17 @@ const MarketingSite = () => {
           {!isHostAccessPage && (
             <footer className="mk3-site-footer mk3-zone" aria-label="Marketing quick links">
               <div className="mk3-actions-inline">
-                <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.discover)}>
-                  Discover
-                </button>
-                <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.join)}>
-                  Join
-                </button>
-                <button type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.hostAccess)}>
-                  Host Access
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (hasFullAccount) {
+                      openHostDashboard("marketing_footer_host_dashboard");
+                      return;
+                    }
+                    navigate(MARKETING_ROUTE_PAGES.hostAccess, "", withCampaignParams({ utm_content: "footer_host_access" }));
+                  }}
+                >
+                  {hasFullAccount ? "Open Host Dashboard" : "Host Access"}
                 </button>
               </div>
             </footer>

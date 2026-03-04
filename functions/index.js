@@ -350,6 +350,292 @@ const getRootRef = () =>
     .doc("data");
 
 const normalizeRoomCode = (value = "") => String(value || "").trim().toUpperCase();
+const ROOM_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ123456789";
+const ROOM_CODE_DEFAULT_LENGTH = 4;
+const ROOM_CODE_MIN_LENGTH = 4;
+const ROOM_CODE_MAX_LENGTH = 10;
+const ROOM_CODE_GENERATION_ATTEMPTS = 24;
+const ROOM_PROVISION_REQUEST_ID_MAX_LEN = 96;
+const TIP_POINTS_PER_DOLLAR = 100;
+const MISSION_CONTROL_VERSION = 1;
+const MISSION_DEFAULT_ASSIST_LEVEL = "smart_assist";
+const PROVISION_DEFAULT_PUBLIC_ORIGIN = "https://beaurocks.app";
+const DEFAULT_MARQUEE_ITEMS = Object.freeze([
+  "Welcome to BROSS Karaoke - scan the QR to join!",
+  "Send reactions to hype the singer and light up the stage.",
+  "Request a song anytime - the host will pull you up next.",
+  "Tip the host to unlock bonus points and VIP perks.",
+  "Ready Check incoming - tap READY to earn points.",
+  "Share the room code with friends and fill the queue.",
+]);
+const DEFAULT_TIP_CRATES = Object.freeze([
+  { id: "crate_small", label: "Quick Boost", amount: 5, points: 1000, rewardScope: "buyer", awardBadge: false },
+  { id: "crate_mid", label: "Crowd Energy", amount: 10, points: 2500, rewardScope: "room", awardBadge: false },
+  { id: "crate_big", label: "Room Rager", amount: 20, points: 6000, rewardScope: "room", awardBadge: true },
+]);
+const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
+  casual: Object.freeze({
+    hostNightPreset: "casual",
+    autoDj: true,
+    autoBgMusic: true,
+    autoPlayMedia: true,
+    autoEndOnTrackFinish: true,
+    showScoring: false,
+    showFameLevel: false,
+    allowSingerTrackSelect: true,
+    marqueeEnabled: true,
+    marqueeShowMode: "idle",
+    chatShowOnTv: false,
+    autoLyricsOnQueue: false,
+    queueSettings: {
+      limitMode: "none",
+      limitCount: 0,
+      rotation: "round_robin",
+      firstTimeBoost: true,
+    },
+  }),
+  competition: Object.freeze({
+    hostNightPreset: "competition",
+    autoDj: false,
+    autoBgMusic: false,
+    autoPlayMedia: true,
+    autoEndOnTrackFinish: true,
+    showScoring: true,
+    showFameLevel: true,
+    allowSingerTrackSelect: false,
+    marqueeEnabled: false,
+    marqueeShowMode: "idle",
+    chatShowOnTv: false,
+    autoLyricsOnQueue: true,
+    queueSettings: {
+      limitMode: "per_night",
+      limitCount: 2,
+      rotation: "round_robin",
+      firstTimeBoost: false,
+    },
+  }),
+  bingo: Object.freeze({
+    hostNightPreset: "bingo",
+    autoDj: false,
+    autoBgMusic: true,
+    autoPlayMedia: true,
+    autoEndOnTrackFinish: true,
+    showScoring: false,
+    showFameLevel: false,
+    allowSingerTrackSelect: true,
+    marqueeEnabled: true,
+    marqueeShowMode: "always",
+    chatShowOnTv: true,
+    autoLyricsOnQueue: false,
+    gamePreviewId: "bingo",
+  }),
+  trivia: Object.freeze({
+    hostNightPreset: "trivia",
+    autoDj: false,
+    autoBgMusic: true,
+    autoPlayMedia: false,
+    autoEndOnTrackFinish: true,
+    showScoring: true,
+    showFameLevel: false,
+    allowSingerTrackSelect: false,
+    marqueeEnabled: false,
+    marqueeShowMode: "idle",
+    chatShowOnTv: false,
+    autoLyricsOnQueue: false,
+    gamePreviewId: "trivia_pop",
+  }),
+});
+const normalizeProvisionRoomCode = (value = "") =>
+  normalizeRoomCode(value)
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, ROOM_CODE_MAX_LENGTH);
+const normalizeProvisionPresetId = (value = "") =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "")
+    .slice(0, 40);
+const normalizeProvisionRequestId = (value = "") =>
+  sanitizeSecurityToken(value, ROOM_PROVISION_REQUEST_ID_MAX_LEN);
+const buildProvisioningJobDocId = (uid = "", requestId = "") => {
+  const safeUid = normalizeUidToken(uid).slice(0, 120);
+  const safeRequestId = normalizeProvisionRequestId(requestId);
+  if (!safeUid || !safeRequestId) return "";
+  return `${safeUid}_${safeRequestId}`;
+};
+const generateRoomCodeCandidate = (length = ROOM_CODE_DEFAULT_LENGTH) => {
+  const safeLength = clampNumber(length, ROOM_CODE_MIN_LENGTH, ROOM_CODE_MAX_LENGTH, ROOM_CODE_DEFAULT_LENGTH);
+  let code = "";
+  for (let idx = 0; idx < safeLength; idx += 1) {
+    code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
+  }
+  return code;
+};
+const resolveProvisionPresetOverrides = (presetId = "") => {
+  const token = normalizeProvisionPresetId(presetId);
+  return HOST_PROVISION_PRESET_OVERRIDES[token] || {};
+};
+const buildDefaultMissionControlPayload = () => ({
+  version: MISSION_CONTROL_VERSION,
+  enabled: false,
+  setupDraft: {
+    archetype: "casual",
+    flowRule: "balanced",
+    spotlightMode: "karaoke",
+    assistLevel: MISSION_DEFAULT_ASSIST_LEVEL,
+  },
+  advancedOverrides: {},
+  party: {
+    karaokeFirst: true,
+    minSingingSharePct: 70,
+    maxBreakDurationSec: 20,
+    maxConsecutiveNonKaraokeModes: 1,
+    queueDepthGuardThreshold: 8,
+    state: {
+      singingMs: 0,
+      groupMs: 0,
+      songsSinceLastGroupMoment: 0,
+      consecutiveNonKaraokeModes: 0,
+      lastGroupMode: "",
+    },
+  },
+  lastAppliedAt: admin.firestore.FieldValue.serverTimestamp(),
+  lastSuggestedAction: "",
+});
+const buildProvisionedRoomData = ({
+  hostUid = "",
+  hostName = "Host",
+  orgId = "",
+  orgName = "",
+  logoUrl = "",
+  presetId = "custom",
+} = {}) => {
+  const presetOverrides = resolveProvisionPresetOverrides(presetId);
+  const resolvedHostName = normalizeOptionalName(hostName, "Host");
+  const resolvedOrgName = String(orgName || "").trim().slice(0, 120) || `${resolvedHostName} Workspace`;
+  const resolvedLogoUrl = typeof logoUrl === "string"
+    ? logoUrl.trim().slice(0, 2048)
+    : "";
+  const baseData = {
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    activeMode: "karaoke",
+    hideWaveform: false,
+    hideOverlay: true,
+    videoVolume: 100,
+    bgMusicVolume: 0.3,
+    bgMusicPlaying: false,
+    mixFader: 50,
+    autoBgFadeOutMs: 900,
+    autoBgFadeInMs: 900,
+    autoBgMixDuringSong: 0,
+    autoPlayMedia: true,
+    autoDjDelaySec: 10,
+    autoEndOnTrackFinish: true,
+    autoBonusEnabled: true,
+    autoBonusPoints: 25,
+    hostName: resolvedHostName,
+    hostUid,
+    hostUids: [hostUid],
+    orgId: orgId || null,
+    orgName: resolvedOrgName,
+    logoUrl: resolvedLogoUrl || null,
+    lobbyOrbSkinUrl: null,
+    autoDj: false,
+    marqueeEnabled: false,
+    marqueeDurationMs: 12000,
+    marqueeIntervalMs: 20000,
+    marqueeItems: DEFAULT_MARQUEE_ITEMS,
+    marqueeShowMode: "idle",
+    tipPointRate: TIP_POINTS_PER_DOLLAR,
+    tipCrates: DEFAULT_TIP_CRATES,
+    audienceVideoMode: "off",
+    showLyricsTv: false,
+    showVisualizerTv: false,
+    visualizerMode: "ribbon",
+    visualizerSource: "auto",
+    visualizerPreset: "neon",
+    visualizerSensitivity: 1,
+    visualizerSmoothing: 0.35,
+    visualizerSyncLightMode: false,
+    lobbyPlaygroundPaused: false,
+    lobbyPlaygroundVisualOnly: false,
+    lobbyPlaygroundStrictMode: false,
+    lobbyPlaygroundPerUserCooldownMs: 220,
+    lobbyPlaygroundMaxPerMinute: 12,
+    reduceMotionFx: false,
+    showLyricsSinger: false,
+    hideCornerOverlay: false,
+    howToPlay: { active: false, id: nowMs() },
+    gameRulesId: 0,
+    showScoring: true,
+    showFameLevel: true,
+    allowSingerTrackSelect: false,
+    hostNightPreset: "custom",
+    bingoAudienceReopenEnabled: true,
+    autoLyricsOnQueue: false,
+    popTriviaEnabled: true,
+    gameDefaults: {
+      triviaRoundSec: 20,
+      triviaAutoReveal: true,
+      bingoVotingMode: "host+votes",
+      bingoAutoApprovePct: 50,
+    },
+    queueSettings: {
+      limitMode: "none",
+      limitCount: 0,
+      rotation: "round_robin",
+      firstTimeBoost: true,
+    },
+    chatEnabled: true,
+    chatShowOnTv: false,
+    chatTvMode: "auto",
+    chatSlowModeSec: 0,
+    chatAudienceMode: "all",
+    missionControl: buildDefaultMissionControlPayload(),
+  };
+  return {
+    ...baseData,
+    ...presetOverrides,
+    queueSettings: {
+      ...(baseData.queueSettings || {}),
+      ...(presetOverrides.queueSettings || {}),
+    },
+    gameDefaults: {
+      ...(baseData.gameDefaults || {}),
+      ...(presetOverrides.gameDefaults || {}),
+    },
+    hostUids: [hostUid],
+    hostUid,
+    hostName: resolvedHostName,
+    orgId: orgId || null,
+    orgName: resolvedOrgName,
+    logoUrl: resolvedLogoUrl || null,
+  };
+};
+const shouldSyncHostRoomDiscovery = (listingInput = {}) => {
+  if (!listingInput || typeof listingInput !== "object") return false;
+  const data = listingInput;
+  return !!data.publicRoom
+    || !!String(data.title || "").trim()
+    || !!String(data.description || "").trim()
+    || !!String(data.startsAtLocal || "").trim()
+    || !!String(data.address1 || "").trim()
+    || !!String(data.city || "").trim()
+    || !!String(data.state || "").trim()
+    || !!String(data.lat || "").trim()
+    || !!String(data.lng || "").trim()
+    || !!data.virtualOnly;
+};
+const buildProvisionLaunchUrls = ({ origin = PROVISION_DEFAULT_PUBLIC_ORIGIN, roomCode = "" } = {}) => {
+  const base = String(origin || PROVISION_DEFAULT_PUBLIC_ORIGIN).trim().replace(/\/+$/, "")
+    || PROVISION_DEFAULT_PUBLIC_ORIGIN;
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  return {
+    hostUrl: `${base}/?mode=host&room=${encodeURIComponent(safeRoomCode)}`,
+    tvUrl: `${base}/?mode=tv&room=${encodeURIComponent(safeRoomCode)}`,
+    audienceUrl: `${base}/?room=${encodeURIComponent(safeRoomCode)}`,
+  };
+};
 const parseRoomCodeEnvSet = (value = "") =>
   new Set(
     parseCsvEnvTokens(value)
@@ -6926,6 +7212,168 @@ exports.submitDirectoryListing = onCall(
   }
 );
 
+const upsertHostRoomDiscoveryListingInternal = async ({
+  callerUid = "",
+  roomCode = "",
+  listingInput = {},
+  roomAccess = null,
+} = {}) => {
+  const safeCallerUid = safeDirectoryString(callerUid || "", 180);
+  if (!safeCallerUid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+  const safeRoomCode = normalizeRoomCode(roomCode || "");
+  if (!safeRoomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  const nextListingInput = listingInput && typeof listingInput === "object"
+    ? listingInput
+    : {};
+  const access = roomAccess?.roomRef && roomAccess?.roomData
+    ? {
+      roomRef: roomAccess.roomRef,
+      roomData: roomAccess.roomData,
+      roomCode: normalizeRoomCode(roomAccess.roomCode || safeRoomCode),
+    }
+    : await ensureRoomHostAccess({
+      roomCode: safeRoomCode,
+      callerUid: safeCallerUid,
+      deniedMessage: "Only room hosts can publish this room to discovery.",
+    });
+  const roomRef = access.roomRef;
+  const roomData = access.roomData || {};
+  const resolvedRoomCode = normalizeRoomCode(access.roomCode || safeRoomCode);
+
+  const hostUid = safeDirectoryString(roomData.hostUid || safeCallerUid, 180) || safeCallerUid;
+  const hostName = safeDirectoryString(roomData.hostName || "", 120) || "Host";
+  const publicRoom = parseBooleanInput(
+    nextListingInput.publicRoom ?? nextListingInput.isPublicRoom ?? nextListingInput.public ?? false,
+    false
+  );
+  const virtualOnly = parseBooleanInput(
+    nextListingInput.virtualOnly ?? nextListingInput.isVirtualOnly ?? false,
+    false
+  );
+  const visibility = publicRoom ? "public" : "private";
+
+  const startsAtMsRaw = Number(nextListingInput.startsAtMs || 0);
+  let startsAtMs = Number.isFinite(startsAtMsRaw) && startsAtMsRaw > 0 ? Math.floor(startsAtMsRaw) : 0;
+  if (!startsAtMs && String(nextListingInput.startsAtLocal || "").trim()) {
+    const parsedStartsAt = Date.parse(String(nextListingInput.startsAtLocal || "").trim());
+    if (Number.isFinite(parsedStartsAt) && parsedStartsAt > 0) {
+      startsAtMs = Math.floor(parsedStartsAt);
+    }
+  }
+
+  const endsAtMsRaw = Number(nextListingInput.endsAtMs || 0);
+  const endsAtMs = Number.isFinite(endsAtMsRaw) && endsAtMsRaw > startsAtMs ? Math.floor(endsAtMsRaw) : 0;
+  const parsedLat = Number(nextListingInput.lat ?? nextListingInput.location?.lat ?? 0);
+  const parsedLng = Number(nextListingInput.lng ?? nextListingInput.location?.lng ?? 0);
+  const location = Number.isFinite(parsedLat) && Number.isFinite(parsedLng)
+    ? { lat: parsedLat, lng: parsedLng }
+    : normalizeDirectoryLatLng(nextListingInput.location || nextListingInput.latLng || {});
+  const title = safeDirectoryString(
+    nextListingInput.title || `${hostName} Karaoke Room ${resolvedRoomCode}`,
+    180
+  ) || `${hostName} Karaoke Room ${resolvedRoomCode}`;
+  const sessionMode = safeDirectoryString(
+    nextListingInput.sessionMode || (virtualOnly ? "virtual" : "karaoke"),
+    40
+  ) || (virtualOnly ? "virtual" : "karaoke");
+
+  const basePayload = {
+    title,
+    description: normalizeDirectoryTextBlock(nextListingInput.description || "", 3000),
+    region: normalizeDirectoryToken(nextListingInput.region || DIRECTORY_DEFAULT_REGION, 80) || DIRECTORY_DEFAULT_REGION,
+    city: safeDirectoryString(nextListingInput.city || "", 80),
+    state: safeDirectoryString(nextListingInput.state || "", 40),
+    country: safeDirectoryString(nextListingInput.country || DIRECTORY_DEFAULT_COUNTRY, 2).toUpperCase(),
+    timezone: safeDirectoryString(nextListingInput.timezone || "America/Los_Angeles", 80),
+    address1: virtualOnly ? "" : safeDirectoryString(nextListingInput.address1 || nextListingInput.address || "", 180),
+    address2: virtualOnly ? "" : safeDirectoryString(nextListingInput.address2 || "", 180),
+    location: virtualOnly ? {} : location,
+    startsAtMs,
+    endsAtMs,
+    visibility,
+    status: "approved",
+    websiteUrl: normalizeDirectoryOptionalUrl(nextListingInput.websiteUrl || ""),
+    bookingUrl: normalizeDirectoryOptionalUrl(nextListingInput.bookingUrl || ""),
+    imageUrl: normalizeDirectoryOptionalUrl(nextListingInput.imageUrl || ""),
+    roomCode: resolvedRoomCode,
+    venueName: safeDirectoryString(nextListingInput.venueName || "", 120),
+    sessionMode,
+    hostUid,
+    hostName,
+    ownerUid: safeCallerUid,
+    sourceType: "host_room",
+    isPublicRoom: publicRoom,
+    virtualOnly,
+    isVirtualOnly: virtualOnly,
+    externalSources: nextListingInput.externalSources && typeof nextListingInput.externalSources === "object"
+      ? nextListingInput.externalSources
+      : {},
+  };
+
+  const enrichment = await maybeEnrichDirectoryLocation(basePayload);
+  const normalized = normalizeDirectoryListingPayload(
+    "room_session",
+    enrichment.payload || basePayload,
+    safeCallerUid
+  );
+  const listingId = safeDirectoryString(
+    nextListingInput.listingId || `room_${normalizeDirectoryToken(resolvedRoomCode, 80) || "session"}`,
+    220
+  ) || `room_${normalizeDirectoryToken(resolvedRoomCode, 80) || "session"}`;
+  const now = buildDirectoryNow();
+  const roomSessionDoc = {
+    ...normalized,
+    listingType: "room_session",
+    roomCode: resolvedRoomCode,
+    hostUid,
+    hostName,
+    ownerUid: safeCallerUid,
+    sourceType: "host_room",
+    status: "approved",
+    visibility,
+    isPublicRoom: publicRoom,
+    virtualOnly,
+    isVirtualOnly: virtualOnly,
+    sessionMode,
+    updatedAt: now,
+    updatedBy: safeCallerUid,
+    createdAt: now,
+    createdBy: safeCallerUid,
+  };
+
+  await Promise.all([
+    admin.firestore().collection("room_sessions").doc(listingId).set(roomSessionDoc, { merge: true }),
+    roomRef.set({
+      discover: {
+        listingId,
+        publicRoom,
+        visibility,
+        virtualOnly,
+        sessionMode,
+        title,
+        startsAtMs,
+        updatedAt: now,
+      },
+      updatedAt: now,
+    }, { merge: true }),
+  ]);
+
+  return {
+    ok: true,
+    listingId,
+    roomCode: resolvedRoomCode,
+    visibility,
+    status: "approved",
+    isPublicRoom: publicRoom,
+    virtualOnly,
+    sourceType: "host_room",
+  };
+};
+
 exports.upsertHostRoomDiscoveryListing = onCall(
   { cors: true, secrets: [GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_SERVER_API_KEY] },
   async (request) => {
@@ -6936,145 +7384,14 @@ exports.upsertHostRoomDiscoveryListing = onCall(
     if (!roomCode) {
       throw new HttpsError("invalid-argument", "roomCode is required.");
     }
-
     const listingInput = request.data?.listing && typeof request.data.listing === "object"
       ? request.data.listing
       : request.data || {};
-
-    const { roomRef, roomData, roomCode: safeRoomCode } = await ensureRoomHostAccess({
-      roomCode,
+    return upsertHostRoomDiscoveryListingInternal({
       callerUid,
-      deniedMessage: "Only room hosts can publish this room to discovery.",
+      roomCode,
+      listingInput,
     });
-
-    const hostUid = safeDirectoryString(roomData.hostUid || callerUid, 180) || callerUid;
-    const hostName = safeDirectoryString(roomData.hostName || "", 120) || "Host";
-    const publicRoom = parseBooleanInput(
-      listingInput.publicRoom ?? listingInput.isPublicRoom ?? listingInput.public ?? false,
-      false
-    );
-    const virtualOnly = parseBooleanInput(
-      listingInput.virtualOnly ?? listingInput.isVirtualOnly ?? false,
-      false
-    );
-    const visibility = publicRoom ? "public" : "private";
-
-    const startsAtMsRaw = Number(listingInput.startsAtMs || 0);
-    let startsAtMs = Number.isFinite(startsAtMsRaw) && startsAtMsRaw > 0 ? Math.floor(startsAtMsRaw) : 0;
-    if (!startsAtMs && String(listingInput.startsAtLocal || "").trim()) {
-      const parsedStartsAt = Date.parse(String(listingInput.startsAtLocal || "").trim());
-      if (Number.isFinite(parsedStartsAt) && parsedStartsAt > 0) {
-        startsAtMs = Math.floor(parsedStartsAt);
-      }
-    }
-
-    const endsAtMsRaw = Number(listingInput.endsAtMs || 0);
-    const endsAtMs = Number.isFinite(endsAtMsRaw) && endsAtMsRaw > startsAtMs ? Math.floor(endsAtMsRaw) : 0;
-    const parsedLat = Number(listingInput.lat ?? listingInput.location?.lat ?? 0);
-    const parsedLng = Number(listingInput.lng ?? listingInput.location?.lng ?? 0);
-    const location = Number.isFinite(parsedLat) && Number.isFinite(parsedLng)
-      ? { lat: parsedLat, lng: parsedLng }
-      : normalizeDirectoryLatLng(listingInput.location || listingInput.latLng || {});
-    const title = safeDirectoryString(
-      listingInput.title || `${hostName} Karaoke Room ${safeRoomCode}`,
-      180
-    ) || `${hostName} Karaoke Room ${safeRoomCode}`;
-    const sessionMode = safeDirectoryString(
-      listingInput.sessionMode || (virtualOnly ? "virtual" : "karaoke"),
-      40
-    ) || (virtualOnly ? "virtual" : "karaoke");
-
-    const basePayload = {
-      title,
-      description: normalizeDirectoryTextBlock(listingInput.description || "", 3000),
-      region: normalizeDirectoryToken(listingInput.region || DIRECTORY_DEFAULT_REGION, 80) || DIRECTORY_DEFAULT_REGION,
-      city: safeDirectoryString(listingInput.city || "", 80),
-      state: safeDirectoryString(listingInput.state || "", 40),
-      country: safeDirectoryString(listingInput.country || DIRECTORY_DEFAULT_COUNTRY, 2).toUpperCase(),
-      timezone: safeDirectoryString(listingInput.timezone || "America/Los_Angeles", 80),
-      address1: virtualOnly ? "" : safeDirectoryString(listingInput.address1 || listingInput.address || "", 180),
-      address2: virtualOnly ? "" : safeDirectoryString(listingInput.address2 || "", 180),
-      location: virtualOnly ? {} : location,
-      startsAtMs,
-      endsAtMs,
-      visibility,
-      status: "approved",
-      websiteUrl: normalizeDirectoryOptionalUrl(listingInput.websiteUrl || ""),
-      bookingUrl: normalizeDirectoryOptionalUrl(listingInput.bookingUrl || ""),
-      imageUrl: normalizeDirectoryOptionalUrl(listingInput.imageUrl || ""),
-      roomCode: safeRoomCode,
-      venueName: safeDirectoryString(listingInput.venueName || "", 120),
-      sessionMode,
-      hostUid,
-      hostName,
-      ownerUid: callerUid,
-      sourceType: "host_room",
-      isPublicRoom: publicRoom,
-      virtualOnly,
-      isVirtualOnly: virtualOnly,
-      externalSources: listingInput.externalSources && typeof listingInput.externalSources === "object"
-        ? listingInput.externalSources
-        : {},
-    };
-
-    const enrichment = await maybeEnrichDirectoryLocation(basePayload);
-    const normalized = normalizeDirectoryListingPayload(
-      "room_session",
-      enrichment.payload || basePayload,
-      callerUid
-    );
-    const listingId = safeDirectoryString(
-      listingInput.listingId || `room_${normalizeDirectoryToken(safeRoomCode, 80) || "session"}`,
-      220
-    ) || `room_${normalizeDirectoryToken(safeRoomCode, 80) || "session"}`;
-    const now = buildDirectoryNow();
-    const roomSessionDoc = {
-      ...normalized,
-      listingType: "room_session",
-      roomCode: safeRoomCode,
-      hostUid,
-      hostName,
-      ownerUid: callerUid,
-      sourceType: "host_room",
-      status: "approved",
-      visibility,
-      isPublicRoom: publicRoom,
-      virtualOnly,
-      isVirtualOnly: virtualOnly,
-      sessionMode,
-      updatedAt: now,
-      updatedBy: callerUid,
-      createdAt: now,
-      createdBy: callerUid,
-    };
-
-    await Promise.all([
-      admin.firestore().collection("room_sessions").doc(listingId).set(roomSessionDoc, { merge: true }),
-      roomRef.set({
-        discover: {
-          listingId,
-          publicRoom,
-          visibility,
-          virtualOnly,
-          sessionMode,
-          title,
-          startsAtMs,
-          updatedAt: now,
-        },
-        updatedAt: now,
-      }, { merge: true }),
-    ]);
-
-    return {
-      ok: true,
-      listingId,
-      roomCode: safeRoomCode,
-      visibility,
-      status: "approved",
-      isPublicRoom: publicRoom,
-      virtualOnly,
-      sourceType: "host_room",
-    };
   }
 );
 
@@ -8792,6 +9109,224 @@ exports.listMyUsageInvoices = onCall({ cors: true }, async (request) => {
     invoices,
   };
 });
+
+const pickProvisionRoomCode = async ({
+  tx,
+  rootRef = getRootRef(),
+  preferredRoomCode = "",
+} = {}) => {
+  const preferred = normalizeProvisionRoomCode(preferredRoomCode);
+  if (preferred) {
+    if (preferred.length < ROOM_CODE_MIN_LENGTH) {
+      throw new HttpsError(
+        "invalid-argument",
+        `roomCode must be at least ${ROOM_CODE_MIN_LENGTH} characters.`
+      );
+    }
+    const preferredRef = rootRef.collection("rooms").doc(preferred);
+    const preferredSnap = await tx.get(preferredRef);
+    if (preferredSnap.exists) {
+      throw new HttpsError("already-exists", `Room code ${preferred} already exists.`);
+    }
+    return preferred;
+  }
+
+  for (let attempt = 0; attempt < ROOM_CODE_GENERATION_ATTEMPTS; attempt += 1) {
+    const candidate = generateRoomCodeCandidate(ROOM_CODE_DEFAULT_LENGTH);
+    const roomRef = rootRef.collection("rooms").doc(candidate);
+    const snap = await tx.get(roomRef);
+    if (!snap.exists) return candidate;
+  }
+  throw new HttpsError("resource-exhausted", "Could not reserve a room code. Retry.");
+};
+
+exports.provisionHostRoom = onCall(
+  { cors: true, secrets: [GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_SERVER_API_KEY] },
+  async (request) => {
+    checkRateLimit(request.rawRequest, "provision_host_room", { perMinute: 30, perHour: 240 });
+    enforceAppCheckIfEnabled(request, "provision_host_room");
+    const callerUid = requireAuth(request, "Sign in required.");
+    const payload = isPlainObject(request.data) ? request.data : {};
+    const rootRef = getRootRef();
+    const db = admin.firestore();
+    const requestId = normalizeProvisionRequestId(payload.requestId || payload.actionId || "");
+    const jobDocId = buildProvisioningJobDocId(callerUid, requestId);
+    const jobRef = jobDocId ? rootRef.collection("room_provisioning_jobs").doc(jobDocId) : null;
+    const launchOrigin = resolveOrigin(request.rawRequest, payload.origin);
+    const hostName = normalizeOptionalName(payload.hostName, "Host");
+    const orgNameInput = typeof payload.orgName === "string" ? payload.orgName : "";
+    const orgName = normalizeOrgName(orgNameInput, callerUid);
+    const logoUrl = typeof payload.logoUrl === "string"
+      ? payload.logoUrl.trim().slice(0, 2048)
+      : "";
+    const preferredRoomCode = normalizeProvisionRoomCode(
+      payload.roomCode || payload.preferredRoomCode || payload.launchRoomCode || ""
+    );
+    const presetId = normalizeProvisionPresetId(
+      payload.nightPresetId || payload.hostNightPreset || "custom"
+    ) || "custom";
+    const listingInput = payload.discoveryListing && typeof payload.discoveryListing === "object"
+      ? payload.discoveryListing
+      : (payload.listing && typeof payload.listing === "object" ? payload.listing : {});
+    const shouldSyncDiscovery = shouldSyncHostRoomDiscovery(listingInput);
+
+    if (jobRef) {
+      const existingJobSnap = await jobRef.get();
+      if (existingJobSnap.exists) {
+        const existingJob = existingJobSnap.data() || {};
+        const existingRoomCode = normalizeRoomCode(existingJob.roomCode || "");
+        if (existingRoomCode) {
+          const launchUrls = buildProvisionLaunchUrls({
+            origin: launchOrigin,
+            roomCode: existingRoomCode,
+          });
+          return {
+            ok: true,
+            idempotent: true,
+            created: false,
+            roomCode: existingRoomCode,
+            orgId: existingJob.orgId || "",
+            role: existingJob.role || "owner",
+            hostName: existingJob.hostName || hostName,
+            orgName: existingJob.orgName || orgName,
+            launchUrls,
+            discovery: existingJob.discovery || null,
+            warnings: Array.isArray(existingJob.warnings) ? existingJob.warnings : [],
+          };
+        }
+      }
+    }
+
+    const ensured = await ensureOrganizationForUser({ uid: callerUid, orgName: orgNameInput });
+    const roomData = buildProvisionedRoomData({
+      hostUid: callerUid,
+      hostName,
+      orgId: ensured.orgId,
+      orgName,
+      logoUrl,
+      presetId,
+    });
+    const provisioning = await db.runTransaction(async (tx) => {
+      if (jobRef) {
+        const existingJob = await tx.get(jobRef);
+        if (existingJob.exists) {
+          const existingRoomCode = normalizeRoomCode(existingJob.data()?.roomCode || "");
+          if (existingRoomCode) {
+            return {
+              idempotent: true,
+              created: false,
+              roomCode: existingRoomCode,
+            };
+          }
+        }
+      }
+      const roomCode = await pickProvisionRoomCode({
+        tx,
+        rootRef,
+        preferredRoomCode,
+      });
+      const roomRef = rootRef.collection("rooms").doc(roomCode);
+      tx.set(roomRef, roomData, { merge: false });
+      tx.set(
+        rootRef.collection("host_libraries").doc(roomCode),
+        {
+          ytIndex: [],
+          logoLibrary: [],
+          orbSkinLibrary: [],
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      if (jobRef) {
+        tx.set(
+          jobRef,
+          {
+            requestId,
+            roomCode,
+            callerUid,
+            hostName,
+            orgId: ensured.orgId,
+            orgName,
+            role: ensured.role,
+            presetId,
+            status: "room_created",
+            warnings: [],
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+      return {
+        idempotent: false,
+        created: true,
+        roomCode,
+      };
+    });
+
+    const roomCode = normalizeRoomCode(provisioning.roomCode || "");
+    if (!roomCode) {
+      throw new HttpsError("internal", "Room provisioning failed to return a room code.");
+    }
+    const launchUrls = buildProvisionLaunchUrls({
+      origin: launchOrigin,
+      roomCode,
+    });
+
+    let discovery = null;
+    const warnings = [];
+    if (shouldSyncDiscovery) {
+      try {
+        discovery = await upsertHostRoomDiscoveryListingInternal({
+          callerUid,
+          roomCode,
+          listingInput,
+          roomAccess: {
+            roomRef: rootRef.collection("rooms").doc(roomCode),
+            roomData: {
+              hostUid: callerUid,
+              hostUids: [callerUid],
+              hostName,
+            },
+            roomCode,
+          },
+        });
+      } catch (error) {
+        console.warn("provisionHostRoom discovery sync failed", error?.message || error);
+        warnings.push("discovery_sync_failed");
+      }
+    }
+
+    if (jobRef) {
+      await jobRef.set(
+        {
+          roomCode,
+          launchUrls,
+          discovery: discovery || null,
+          status: warnings.length ? "ready_with_warnings" : "ready",
+          warnings,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+
+    return {
+      ok: true,
+      idempotent: !!provisioning.idempotent,
+      created: !!provisioning.created,
+      roomCode,
+      orgId: ensured.orgId,
+      role: ensured.role,
+      hostName,
+      orgName,
+      presetId,
+      launchUrls,
+      discovery,
+      warnings,
+    };
+  }
+);
 
 exports.assertRoomHostAccess = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "assert_room_host_access", { perMinute: 60, perHour: 720 });

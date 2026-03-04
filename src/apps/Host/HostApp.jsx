@@ -51,7 +51,7 @@ import {
     saveMyUsageInvoiceDraft,
     listMyUsageInvoices,
     updateRoomAsHost,
-    upsertHostRoomDiscoveryListing
+    provisionHostRoom
 } from '../../lib/firebase';
 import { ASSETS, AVATARS, APP_ID } from '../../lib/assets';
 import { playSfx, setSfxMasterVolume, stopAllSfx } from '../../lib/utils';
@@ -119,6 +119,7 @@ import {
     deriveAutoDjStepItems,
     describeAutoDjSequenceState
 } from './autoDjStateMachine';
+import { normalizeHostPermissionLevel, canQuickStartForRole } from './launchAccess';
 
 // --- CONSTANTS & CONFIG ---
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || '';
@@ -134,6 +135,7 @@ let itunesBackoffUntil = 0;
 const nowMs = () => Date.now();
 const hostLogger = createLogger('HostApp');
 const HOST_UPDATE_DEPLOYMENT_WARNING = "Host control updates are unavailable because the backend callable `updateRoomAsHost` is not deployed. Deploy functions and reload Host.";
+const HOST_ROOM_PROVISION_DEPLOYMENT_WARNING = "Room provisioning is unavailable because the backend callable `provisionHostRoom` is not deployed. Deploy functions and reload Host.";
 const HOST_UPDATE_OP_FIELD = '__hostOp';
 const HOST_UPDATE_SERVER_TIMESTAMP = 'serverTimestamp';
 const POP_TRIVIA_CACHE_FIELD = 'popTriviaSongCache';
@@ -850,6 +852,21 @@ const parseAppleMusicPlaylistId = (value = '') => {
     return trimmed;
 };
 
+const isProvisionHostRoomCallableUnavailableError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    if (code.includes('not-found') || code.includes('unimplemented')) return true;
+    return (
+        message.includes('provisionhostroom')
+        && (
+            message.includes('does not exist')
+            || message.includes('not found')
+            || message.includes('not deployed')
+            || message.includes('no function')
+        )
+    );
+};
+
 const DEFAULT_HOST_MUSIC_PREFS = Object.freeze({
     appleAutoConnect: false,
     applePlaylistUrl: '',
@@ -1024,6 +1041,64 @@ const fromDateTimeLocalInput = (value = '') => {
     return Math.floor(parsed);
 };
 
+const buildHostProvisionRequestId = (prefix = 'host_launch') => {
+    const safePrefix = String(prefix || 'host_launch')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '')
+        .slice(0, 24) || 'host_launch';
+    const nonce = Math.random().toString(36).slice(2, 10);
+    return `${safePrefix}_${Date.now().toString(36)}_${nonce}`.slice(0, 80);
+};
+
+const buildProvisionDiscoveryPayload = (draft = {}) => {
+    const startsAtMs = fromDateTimeLocalInput(draft?.startsAtLocal);
+    const lat = Number(draft?.lat);
+    const lng = Number(draft?.lng);
+    const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+    const virtualOnly = !!draft?.virtualOnly;
+    return {
+        publicRoom: !!draft?.publicRoom,
+        virtualOnly,
+        title: String(draft?.title || '').trim(),
+        description: String(draft?.description || '').trim(),
+        startsAtMs: startsAtMs || 0,
+        startsAtLocal: String(draft?.startsAtLocal || '').trim(),
+        address1: virtualOnly ? '' : String(draft?.address1 || '').trim(),
+        city: String(draft?.city || '').trim(),
+        state: String(draft?.state || '').trim(),
+        lat: String(draft?.lat || '').trim(),
+        lng: String(draft?.lng || '').trim(),
+        location: hasCoords ? { lat, lng } : {},
+        sessionMode: virtualOnly ? 'virtual' : 'karaoke',
+        venueName: virtualOnly ? 'Virtual Room' : '',
+    };
+};
+
+const normalizeLaunchHttpUrl = (value = '') => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+        const baseOrigin = typeof window !== 'undefined'
+            ? window.location.origin
+            : 'https://beaurocks.app';
+        const parsed = new URL(raw, baseOrigin);
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '';
+        return parsed.toString();
+    } catch {
+        return '';
+    }
+};
+
+const normalizeProvisionLaunchUrls = (value = {}) => {
+    const input = value && typeof value === 'object' ? value : {};
+    return {
+        hostUrl: normalizeLaunchHttpUrl(input.hostUrl),
+        tvUrl: normalizeLaunchHttpUrl(input.tvUrl),
+        audienceUrl: normalizeLaunchHttpUrl(input.audienceUrl),
+    };
+};
+
 const sanitizePopTriviaCacheKey = (value = '') => String(value || '')
     .trim()
     .toLowerCase()
@@ -1170,7 +1245,6 @@ const deriveBracketUiState = (room) => {
     };
 };
 
-const ROOM_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ123456789";
 const DEFAULT_QA_YT_PLAYLIST_URL = 'https://www.youtube.com/playlist?list=PL_3exKsBlHnEbbmolJlfODkelxx_1UMAP';
 const TIGHT15_MAX = 15;
 
@@ -1429,14 +1503,6 @@ const advanceBracketState = (bracket = {}) => {
             toRoundName: nextRound?.name || `Round ${rounds.length + 1}`
         }
     };
-};
-
-const generateRoomCode = (length = 4) => {
-    let code = "";
-    for (let i = 0; i < length; i += 1) {
-        code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
-    }
-    return code;
 };
 
 const SmallWaveform = ({ level = 0, className = "h-6 w-28", color = 'rgba(0,196,217,0.9)' }) => {
@@ -1967,7 +2033,7 @@ const IncomingModerationQueuePanel = ({
     );
 };
 
-const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase }) => {
+const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaunchUrl = '' }) => {
     const toast = useToast() || console.log;
     const [doodleSubmissions, setDoodleSubmissions] = useState([]);
     const [selfieSubmissions, setSelfieSubmissions] = useState([]);
@@ -2149,7 +2215,8 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase }) => {
 
     const openTv = () => {
         if (!roomCode) return;
-        window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer');
+        const url = String(tvLaunchUrl || '').trim() || `${tvBase}?room=${roomCode}&mode=tv`;
+        window.open(url, '_blank', 'noopener,noreferrer');
     };
 
     const closeGameMode = async () => {
@@ -2756,6 +2823,7 @@ const AudienceMiniPreview = ({
     room,
     roomCode,
     tvBase,
+    tvLaunchUrl = '',
     currentSong,
     queueCount,
     collapsed = false,
@@ -2783,7 +2851,7 @@ const AudienceMiniPreview = ({
     };
     const modeLabel = modeLabelMap[room?.activeMode] || (room?.activeMode || 'Karaoke');
     const layoutLabel = room?.layoutMode || 'standard';
-    const viewHref = `${tvBase}?room=${roomCode}&mode=tv`;
+    const viewHref = String(tvLaunchUrl || '').trim() || `${tvBase}?room=${roomCode}&mode=tv`;
     return (
         <div className="fixed right-3 bottom-3 z-[35] w-[320px] max-w-[calc(100vw-24px)]">
             <div className="bg-zinc-950/95 border border-white/15 rounded-2xl shadow-[0_20px_45px_rgba(0,0,0,0.55)] overflow-hidden backdrop-blur-sm">
@@ -2872,7 +2940,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoDjDelaySec, setAutoDjDelaySec, autoEndOnTrackFinish, setAutoEndOnTrackFinish, autoBonusEnabled, setAutoBonusEnabled, autoBonusPoints, setAutoBonusPoints, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoDjDelaySec, setAutoDjDelaySec, autoEndOnTrackFinish, setAutoEndOnTrackFinish, autoBonusEnabled, setAutoBonusEnabled, autoBonusPoints, setAutoBonusPoints, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -4091,7 +4159,10 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, updateRoom, logActi
                 enabled: !!roomCode,
                 hint: roomCode ? `Room ${roomCode}` : 'No room code',
                 keywords: 'tv display public open',
-                run: async () => { window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer'); }
+                run: async () => {
+                    const url = String(tvLaunchUrl || '').trim() || `${tvBase}?room=${roomCode}&mode=tv`;
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                }
             },
             {
                 id: 'chat-settings',
@@ -5105,6 +5176,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const logoInputRef = useRef(null);
     const orbSkinInputRef = useRef(null);
     const autoJoinAttemptKeyRef = useRef('');
+    const roomProvisionRequestIdRef = useRef('');
+    const [lastProvisionedLaunchUrls, setLastProvisionedLaunchUrls] = useState({
+        roomCode: '',
+        hostUrl: '',
+        tvUrl: '',
+        audienceUrl: '',
+        updatedAtMs: 0,
+    });
     const [marqueeEnabled, setMarqueeEnabled] = useState(false);
     const [marqueeDurationSec, setMarqueeDurationSec] = useState(12);
     const [marqueeIntervalSec, setMarqueeIntervalSec] = useState(20);
@@ -5292,6 +5371,38 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             </button>
         </div>
     ) : null;
+    const resolveLaunchUrlsForRoomCode = useCallback((candidateCode = '') => {
+        const normalizedCode = String(candidateCode || '').trim().toUpperCase();
+        if (!normalizedCode) {
+            return {
+                roomCode: '',
+                hostUrl: '',
+                tvUrl: '',
+                audienceUrl: '',
+                provisioned: false,
+            };
+        }
+        const fallbackUrls = {
+            roomCode: normalizedCode,
+            hostUrl: `${hostBase}?mode=host&room=${encodeURIComponent(normalizedCode)}`,
+            tvUrl: `${tvBase}?room=${encodeURIComponent(normalizedCode)}&mode=tv`,
+            audienceUrl: `${audienceBase}?room=${encodeURIComponent(normalizedCode)}`,
+            provisioned: false,
+        };
+        const provisionedRoomCode = String(lastProvisionedLaunchUrls?.roomCode || '').trim().toUpperCase();
+        if (provisionedRoomCode !== normalizedCode) return fallbackUrls;
+        return {
+            roomCode: normalizedCode,
+            hostUrl: lastProvisionedLaunchUrls.hostUrl || fallbackUrls.hostUrl,
+            tvUrl: lastProvisionedLaunchUrls.tvUrl || fallbackUrls.tvUrl,
+            audienceUrl: lastProvisionedLaunchUrls.audienceUrl || fallbackUrls.audienceUrl,
+            provisioned: true,
+        };
+    }, [hostBase, tvBase, audienceBase, lastProvisionedLaunchUrls]);
+    const activeRoomLaunchUrls = useMemo(
+        () => resolveLaunchUrlsForRoomCode(roomCode),
+        [resolveLaunchUrlsForRoomCode, roomCode]
+    );
     const planLabel = useMemo(() => {
         return getSubscriptionPlanLabel(orgContext?.planId || 'free');
     }, [orgContext?.planId]);
@@ -5765,11 +5876,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
         }).catch((error) => hostLogger.debug('Mission recommendation state write skipped', error));
     }, [missionControlEnabled, roomCode, hostMissionRecommendation?.id, room?.missionControl, updateRoom, room]);
-    const hostPermissionLevel = useMemo(() => {
-        const normalizedRole = String(orgContext?.role || '').toLowerCase();
-        if (['owner', 'admin', 'member'].includes(normalizedRole)) return normalizedRole;
-        return 'unknown';
-    }, [orgContext?.role]);
+    const hostPermissionLevel = useMemo(
+        () => normalizeHostPermissionLevel(orgContext?.role || ''),
+        [orgContext?.role]
+    );
     const hostAuthSessionReady = !!(uid || auth.currentUser?.uid);
     const recentActivities = (activities || []).filter(a => toMs(a.timestamp) > nowMs() - 5 * 60 * 1000);
     const lastActivity = activities?.[0];
@@ -6269,7 +6379,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         if (room.hostName) setHostName(room.hostName);
         setLogoUrl(room.logoUrl || '');
-        setOrbSkinUrl(room.lobbyOrbSkinUrl || '');
+        setOrbSkinUrl(normalizeOrbSkinUrl(room.lobbyOrbSkinUrl || ''));
         if (room.autoBgFadeOutMs !== undefined && room.autoBgFadeOutMs !== null) {
             setAutoBgFadeOutMs(room.autoBgFadeOutMs);
         }
@@ -7443,21 +7553,60 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setChatShowOnTv
     ]);
 
+    const openActiveRoomTv = useCallback(() => {
+        if (!roomCode) {
+            toast('Open a room first.');
+            return false;
+        }
+        const url = String(activeRoomLaunchUrls?.tvUrl || '').trim();
+        if (!url) {
+            toast('TV link is unavailable right now.');
+            return false;
+        }
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return true;
+    }, [roomCode, activeRoomLaunchUrls?.tvUrl, toast]);
+
+    const copyActiveRoomAudienceLink = useCallback(async () => {
+        if (!roomCode) {
+            toast('Open a room first.');
+            return false;
+        }
+        const url = String(activeRoomLaunchUrls?.audienceUrl || '').trim();
+        if (!url) {
+            toast('Audience link is unavailable right now.');
+            return false;
+        }
+        try {
+            await navigator.clipboard.writeText(url);
+            toast('Audience join link copied.');
+        } catch {
+            toast(url);
+        }
+        return true;
+    }, [roomCode, activeRoomLaunchUrls?.audienceUrl, toast]);
+
     const launchNightSetupPackage = useCallback(async () => {
         if (!roomCode) {
             toast('Open a room first.');
             return;
         }
-        const tvUrl = `${tvBase}?room=${encodeURIComponent(roomCode)}&mode=tv`;
+        const tvUrl = String(activeRoomLaunchUrls?.tvUrl || '').trim();
         try {
-            window.open(tvUrl, '_blank', 'noopener,noreferrer');
+            if (tvUrl) {
+                window.open(tvUrl, '_blank', 'noopener,noreferrer');
+            }
         } catch (_err) {
             // ignore popup-block issues
         }
         const applied = await applyNightSetupWizard({ intent: 'start_match' });
         if (!applied) return;
 
-        const joinUrl = `${audienceBase}?room=${encodeURIComponent(roomCode)}`;
+        const joinUrl = String(activeRoomLaunchUrls?.audienceUrl || '').trim();
+        if (!joinUrl) {
+            toast('Launch package complete. Audience link is unavailable right now.');
+            return;
+        }
         try {
             await navigator.clipboard.writeText(joinUrl);
             toast('Launch package complete: TV opened and join link copied.');
@@ -7472,8 +7621,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
     }, [
         roomCode,
-        audienceBase,
-        tvBase,
+        activeRoomLaunchUrls?.audienceUrl,
+        activeRoomLaunchUrls?.tvUrl,
         applyNightSetupWizard,
         toast,
         nightSetupPresetId,
@@ -7648,11 +7797,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const orgNameOverride = typeof options?.orgName === 'string' ? options.orgName.trim() : '';
         const logoUrlOverride = typeof options?.logoUrl === 'string' ? options.logoUrl.trim() : '';
         const initialNightPresetId = typeof options?.nightPresetId === 'string' ? options.nightPresetId.trim() : '';
+        const requestIdOverride = typeof options?.requestId === 'string' ? options.requestId.trim() : '';
         const shouldOpenNightSetup = options?.openNightSetup !== false;
         const discoveryDraft = { ...(quickLaunchDiscovery || {}) };
         const nextHostName = hostNameOverride || (hostName || '').trim() || 'Host';
         const nextOrgName = orgNameOverride || `${nextHostName} Workspace`;
         const nextLogoUrl = logoUrlOverride || (logoUrl || '').trim() || ASSETS.logo;
+        const requestId = requestIdOverride
+            || roomProvisionRequestIdRef.current
+            || buildHostProvisionRequestId('host_launch');
+        roomProvisionRequestIdRef.current = requestId;
         setCreatingRoom(true);
         setEntryError('');
         try {
@@ -7660,201 +7814,98 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (!activeUid) {
                 toast('Could not establish auth. Please retry.');
                 setEntryError('Could not establish auth. Retry and create room again.');
+                roomProvisionRequestIdRef.current = '';
                 return;
             }
             setHostName(nextHostName);
             setLogoUrl(nextLogoUrl);
             localStorage.setItem('bross_host_name', nextHostName);
 
-            let c = '';
-            let attempts = 0;
-            while (attempts < 12) {
-                const candidate = generateRoomCode(4);
-                const snap = await getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', candidate));
-                if (!snap.exists()) {
-                    c = candidate;
-                    break;
-                }
-                attempts += 1;
-            }
-            if (!c) {
-                toast('Room code collision. Please try again.');
-                setEntryError('Room code collision. Please try again.');
-                return;
-            }
-
-            let activeOrgId = orgContext?.orgId || '';
-            if (!activeOrgId) {
-                try {
-                    await ensureOrganization(nextOrgName || 'BROSS Workspace');
-                    const entitlements = await getMyEntitlements();
-                    activeOrgId = entitlements?.orgId || '';
-                    syncOrgContextFromEntitlements(entitlements);
-                } catch (orgErr) {
-                    hostLogger.debug('Organization bootstrap failed during room create', orgErr);
-                }
-            }
-
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', c), {
-                createdAt: serverTimestamp(),
-                activeMode: 'karaoke',
-                hideWaveform: false,
-                hideOverlay: true,
-                videoVolume: 100,
-                bgMusicVolume: 0.3,
-                bgMusicPlaying: false,
-                mixFader: 50,
-                autoBgFadeOutMs: 900,
-                autoBgFadeInMs: 900,
-                autoBgMixDuringSong: 0,
-                autoPlayMedia: true,
-                autoDjDelaySec: 10,
-                autoEndOnTrackFinish: true,
-                autoBonusEnabled: true,
-                autoBonusPoints: 25,
+            const result = await provisionHostRoom({
+                requestId,
                 hostName: nextHostName,
-                hostUid: activeUid,
-                hostUids: [activeUid],
-                orgId: activeOrgId || null,
                 orgName: nextOrgName,
                 logoUrl: nextLogoUrl,
-                lobbyOrbSkinUrl: null,
-                autoDj: false,
-                marqueeEnabled: false,
-                marqueeDurationMs: 12000,
-                marqueeIntervalMs: 20000,
-                marqueeItems: DEFAULT_MARQUEE_ITEMS,
-                marqueeShowMode: 'idle',
-                tipPointRate: TIP_POINTS_PER_DOLLAR,
-                tipCrates: DEFAULT_TIP_CRATES,
-                audienceVideoMode: 'off',
-                showLyricsTv: false,
-                showVisualizerTv: false,
-                visualizerMode: 'ribbon',
-                visualizerSource: 'auto',
-                visualizerPreset: 'neon',
-                visualizerSensitivity: 1,
-                visualizerSmoothing: 0.35,
-                visualizerSyncLightMode: false,
-                lobbyPlaygroundPaused: false,
-                lobbyPlaygroundVisualOnly: false,
-                lobbyPlaygroundStrictMode: false,
-                lobbyPlaygroundPerUserCooldownMs: 220,
-                lobbyPlaygroundMaxPerMinute: 12,
-                reduceMotionFx: false,
-                showLyricsSinger: false,
-                hideCornerOverlay: false,
-                howToPlay: { active: false, id: nowMs() },
-                gameRulesId: 0,
-                showScoring: true,
-                showFameLevel: true,
-                allowSingerTrackSelect: false,
-                hostNightPreset: 'custom',
-                bingoAudienceReopenEnabled: true,
-                autoLyricsOnQueue: false,
-                popTriviaEnabled: true,
-                gameDefaults: {
-                    triviaRoundSec: 20,
-                    triviaAutoReveal: true,
-                    bingoVotingMode: 'host+votes',
-                    bingoAutoApprovePct: 50
-                },
-                queueSettings: {
-                    limitMode: 'none',
-                    limitCount: 0,
-                    rotation: 'round_robin',
-                    firstTimeBoost: true
-                },
-                chatEnabled: true,
-                chatShowOnTv: false,
-                chatTvMode: 'auto',
-                chatSlowModeSec: 0,
-                chatAudienceMode: 'all',
-                missionControl: {
-                    version: MISSION_CONTROL_VERSION,
-                    enabled: false,
-                    setupDraft: {
-                        archetype: 'casual',
-                        flowRule: 'balanced',
-                        spotlightMode: 'karaoke',
-                        assistLevel: MISSION_DEFAULT_ASSIST_LEVEL
-                    },
-                    advancedOverrides: {},
-                    party: buildMissionPartyPayload(),
-                    lastAppliedAt: serverTimestamp(),
-                    lastSuggestedAction: ''
-                }
+                nightPresetId: initialNightPresetId || (hostNightPreset && hostNightPreset !== 'custom' ? hostNightPreset : 'casual'),
+                discoveryListing: buildProvisionDiscoveryPayload(discoveryDraft),
             });
-            trackEvent('host_room_created', { room_code: c });
-            const shouldSyncDiscovery = !!discoveryDraft.publicRoom
-                || !!String(discoveryDraft.title || '').trim()
-                || !!String(discoveryDraft.description || '').trim()
-                || !!String(discoveryDraft.startsAtLocal || '').trim()
-                || !!String(discoveryDraft.address1 || '').trim()
-                || !!String(discoveryDraft.city || '').trim()
-                || !!String(discoveryDraft.state || '').trim()
-                || !!String(discoveryDraft.lat || '').trim()
-                || !!String(discoveryDraft.lng || '').trim()
-                || !!discoveryDraft.virtualOnly;
-            if (shouldSyncDiscovery) {
-                const startsAtMs = fromDateTimeLocalInput(discoveryDraft.startsAtLocal);
-                const lat = Number(discoveryDraft.lat);
-                const lng = Number(discoveryDraft.lng);
-                const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
-                upsertHostRoomDiscoveryListing({
-                    roomCode: c,
-                    listing: {
-                        publicRoom: !!discoveryDraft.publicRoom,
-                        virtualOnly: !!discoveryDraft.virtualOnly,
-                        title: String(discoveryDraft.title || '').trim() || `${nextHostName} Karaoke Room ${c}`,
-                        description: String(discoveryDraft.description || '').trim(),
-                        startsAtMs: startsAtMs || 0,
-                        address1: discoveryDraft.virtualOnly ? '' : String(discoveryDraft.address1 || '').trim(),
-                        city: String(discoveryDraft.city || '').trim(),
-                        state: String(discoveryDraft.state || '').trim(),
-                        location: hasCoords ? { lat, lng } : {},
-                        sessionMode: discoveryDraft.virtualOnly ? 'virtual' : 'karaoke',
-                        venueName: discoveryDraft.virtualOnly ? 'Virtual Room' : '',
-                    },
-                }).then((result) => {
-                    if (result?.isPublicRoom) {
-                        toast('Public discovery listing is live.');
-                        return;
-                    }
-                    toast('Private discovery listing saved.');
-                }).catch((error) => {
-                    hostLogger.warn('Room created but discovery listing sync failed', error);
-                    toast('Room created, but discovery listing sync failed.');
-                });
+            const nextRoomCode = String(result?.roomCode || '').trim().toUpperCase();
+            if (!nextRoomCode) {
+                throw new Error('Room provisioning did not return a room code.');
             }
-            setRoomCode(c);
-            setRoomCodeInput(c);
+            const normalizedLaunchUrls = normalizeProvisionLaunchUrls(result?.launchUrls || {});
+            setLastProvisionedLaunchUrls({
+                roomCode: nextRoomCode,
+                hostUrl: normalizedLaunchUrls.hostUrl,
+                tvUrl: normalizedLaunchUrls.tvUrl,
+                audienceUrl: normalizedLaunchUrls.audienceUrl,
+                updatedAtMs: nowMs(),
+            });
+            trackEvent('host_room_created', {
+                room_code: nextRoomCode,
+                provisioned: true,
+                created: !!result?.created,
+                idempotent: !!result?.idempotent,
+            });
+            try {
+                const entitlements = await getMyEntitlements();
+                syncOrgContextFromEntitlements(entitlements);
+            } catch (orgSyncError) {
+                hostLogger.debug('Entitlements refresh after room provision failed', orgSyncError);
+            }
+            setRoomCode(nextRoomCode);
+            setRoomCodeInput(nextRoomCode);
             setView('panel');
             setShowOnboardingWizard(false);
+            roomProvisionRequestIdRef.current = '';
             if (shouldOpenNightSetup) {
-                openNightSetupWizard(initialNightPresetId || 'casual');
+                openNightSetupWizard(
+                    initialNightPresetId
+                    || String(result?.presetId || '').trim()
+                    || 'casual'
+                );
             }
-            toast(`Room ${c} created`);
-            setDoc(
-                doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', c),
-                { ytIndex: [], logoLibrary: [], orbSkinLibrary: [], updatedAt: serverTimestamp() },
-                { merge: true }
-            ).catch((seedErr) => {
-                hostLogger.warn('Room created but host library seed failed', seedErr);
-            });
+            if (Array.isArray(result?.warnings) && result.warnings.includes('discovery_sync_failed')) {
+                toast(`Room ${nextRoomCode} created. Discovery listing sync needs retry.`);
+            } else if (result?.discovery?.isPublicRoom) {
+                toast('Room created and public discovery listing is live.');
+            } else if (result?.discovery) {
+                toast('Room created and private discovery listing saved.');
+            } else {
+                toast(`Room ${nextRoomCode} created`);
+            }
         } catch (e) {
             hostLogger.error('Failed to create room', {
                 error: e,
                 propUid: uid || null,
                 authUid: auth.currentUser?.uid || null
             });
-            const code = e?.code || '';
+            const code = String(e?.code || '');
+            const codeLower = code.toLowerCase();
+            const shouldReuseRequestId = (
+                codeLower.includes('unavailable')
+                || codeLower.includes('network')
+                || codeLower.includes('deadline-exceeded')
+                || codeLower.includes('aborted')
+                || codeLower.includes('internal')
+            );
+            if (!shouldReuseRequestId) {
+                roomProvisionRequestIdRef.current = '';
+            }
+            if (isProvisionHostRoomCallableUnavailableError(e)) {
+                toast(HOST_ROOM_PROVISION_DEPLOYMENT_WARNING);
+                setEntryError(HOST_ROOM_PROVISION_DEPLOYMENT_WARNING);
+                return;
+            }
             if (code.includes('permission-denied')) {
                 toast('Permission denied while creating room. Re-authenticate and try again.');
                 setEntryError('Permission denied while creating room. Re-authenticate and try again.');
             } else if (code.includes('unauthenticated')) {
                 toast('You are signed out. Please retry auth, then create room again.');
                 setEntryError('You are signed out. Retry auth, then create room again.');
+            } else if (code.includes('already-exists')) {
+                toast('Requested room code already exists. Please retry.');
+                setEntryError('Requested room code already exists. Please retry.');
             } else if (code.includes('unavailable') || code.includes('network')) {
                 toast('Network issue while creating room. Please retry.');
                 setEntryError('Network issue while creating room. Please retry.');
@@ -8022,20 +8073,62 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await updateRoom({ logoUrl: trimmed || null });
         toast('Logo updated');
     };
+    const decodeUriComponentSafe = (value = '') => {
+        try {
+            return decodeURIComponent(String(value || ''));
+        } catch {
+            return String(value || '');
+        }
+    };
+    const decodeUriComponentLoop = (value = '', maxPasses = 3) => {
+        let current = String(value || '');
+        for (let pass = 0; pass < maxPasses; pass += 1) {
+            const decoded = decodeUriComponentSafe(current);
+            if (decoded === current) break;
+            current = decoded;
+        }
+        return current;
+    };
+    const normalizeOrbPathname = (pathname = '') => {
+        const rawPath = String(pathname || '').replace(/\\/g, '/');
+        const segments = rawPath.split('/').map((segment, idx) => {
+            if (idx === 0 && segment === '') return '';
+            const decoded = decodeUriComponentLoop(segment);
+            return encodeURIComponent(decoded);
+        });
+        const joined = segments.join('/');
+        if (!joined) return '/';
+        return joined.startsWith('/') ? joined : `/${joined}`;
+    };
     const normalizeOrbSkinUrl = (rawValue = '') => {
         const raw = String(rawValue || '').trim();
         if (!raw) return '';
         const slashNormalized = raw.replace(/\\/g, '/');
-        if (/^javascript:/i.test(slashNormalized)) return '';
-        const publicIndex = slashNormalized.toLowerCase().indexOf('/public/');
+        if (/^javascript:/i.test(slashNormalized) || /^data:/i.test(slashNormalized)) return '';
+        let candidate = slashNormalized;
+        const publicIndex = candidate.toLowerCase().indexOf('/public/');
         if (publicIndex >= 0) {
-            const fromPublic = slashNormalized.slice(publicIndex + '/public'.length);
-            const normalizedPath = fromPublic.startsWith('/') ? fromPublic : `/${fromPublic}`;
-            return encodeURI(normalizedPath);
+            const fromPublic = candidate.slice(publicIndex + '/public'.length);
+            candidate = fromPublic.startsWith('/') ? fromPublic : `/${fromPublic}`;
         }
-        if (/^[a-z]:\//i.test(slashNormalized)) return '';
-        if (/^https?:\/\//i.test(slashNormalized) || slashNormalized.startsWith('/')) {
-            return encodeURI(slashNormalized);
+        if (/^[a-z]:\//i.test(candidate)) return '';
+        if (/^https?:\/\//i.test(candidate)) {
+            try {
+                const parsed = new URL(candidate);
+                const normalizedPathname = normalizeOrbPathname(parsed.pathname || '/');
+                return `${parsed.origin}${normalizedPathname}${parsed.search}${parsed.hash}`;
+            } catch {
+                return '';
+            }
+        }
+        if (candidate.startsWith('/')) {
+            try {
+                const parsed = new URL(candidate, 'https://beaurocks.local');
+                const normalizedPathname = normalizeOrbPathname(parsed.pathname || '/');
+                return `${normalizedPathname}${parsed.search}${parsed.hash}`;
+            } catch {
+                return '';
+            }
         }
         return '';
     };
@@ -8577,7 +8670,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const persistOrbSkinLibrary = async (next) => {
         const cleaned = Array.from(new Set((next || [])
             .filter((url) => typeof url === 'string')
-            .map((url) => url.trim())
+            .map((url) => normalizeOrbSkinUrl(url))
             .filter(Boolean)))
             .slice(0, 24);
         setOrbSkinLibrary(cleaned);
@@ -8731,7 +8824,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (Array.isArray(data.orbSkinLibrary)) {
                 setOrbSkinLibrary(data.orbSkinLibrary
                     .filter((url) => typeof url === 'string')
-                    .map((url) => url.trim())
+                    .map((url) => normalizeOrbSkinUrl(url))
                     .filter(Boolean));
             } else {
                 setOrbSkinLibrary([]);
@@ -11736,7 +11829,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     if(view === 'landing') {
         const hasWorkspaceIdentity = Boolean(String(orgContext?.orgId || '').trim());
         const hasHostIdentity = Boolean(String(hostName || '').trim());
-        const quickStartRoleAllowed = new Set(['owner', 'moderator', 'captain']).has(String(hostPermissionLevel || '').toLowerCase());
+        const quickStartRoleAllowed = canQuickStartForRole(hostPermissionLevel);
         const canQuickStartRoom = hasWorkspaceIdentity && hasHostIdentity && quickStartRoleAllowed;
         const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
         const authHealthLabel = authError
@@ -11804,7 +11897,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setEntryError('Enter a valid room code first.');
             return '';
         };
-        const launchAudienceUrl = hasLaunchRoomCode ? `${audienceBase}?room=${encodeURIComponent(launchRoomCodeCandidate)}` : '';
+        const launchUrls = hasLaunchRoomCode
+            ? resolveLaunchUrlsForRoomCode(launchRoomCodeCandidate)
+            : { hostUrl: '', tvUrl: '', audienceUrl: '', provisioned: false };
+        const launchAudienceUrl = launchUrls.audienceUrl;
         const retryLastHostAction = async () => {
             if (creatingRoom || joiningRoom || roomManagerBusyCode) return;
             if (hasLaunchRoomCode) {
@@ -11856,7 +11952,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     />
                     <div className="max-w-xl">
                         <h1 className="text-[1.85rem] md:text-[2.65rem] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] via-[#84e7f4] to-[#EC4899] leading-tight">Open Your Karaoke Room In Seconds</h1>
-                        <div className="text-sm text-cyan-100/85 mt-2">Hosts and captains run setup here. Singers and audience join from their own mobile view using the room code.</div>
+                        <div className="text-sm text-cyan-100/85 mt-2">Workspace owners and admins run setup here. Singers and audience join from their own mobile view using the room code.</div>
                     </div>
                 </div>
                 <div className="text-[11px] uppercase tracking-[0.2em] text-fuchsia-100/60 mb-4">Recommended path: guided setup first, then launch.</div>
@@ -12058,7 +12154,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             onClick={() => {
                                 const code = resolveLaunchRoomCode();
                                 if (!code) return;
-                                window.open(`${audienceBase}?room=${encodeURIComponent(code)}`, '_blank', 'noopener,noreferrer');
+                                window.open(launchUrls.audienceUrl, '_blank', 'noopener,noreferrer');
                             }}
                             disabled={!hasLaunchRoomCode}
                             className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -12070,12 +12166,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             onClick={async () => {
                                 const code = resolveLaunchRoomCode();
                                 if (!code) return;
-                                const audienceUrl = `${audienceBase}?room=${encodeURIComponent(code)}`;
                                 try {
-                                    await navigator.clipboard.writeText(audienceUrl);
+                                    await navigator.clipboard.writeText(launchUrls.audienceUrl);
                                     toast('Audience join link copied.');
                                 } catch {
-                                    toast(audienceUrl);
+                                    toast(launchUrls.audienceUrl);
                                 }
                             }}
                             disabled={!hasLaunchRoomCode}
@@ -12088,7 +12183,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             onClick={() => {
                                 const code = resolveLaunchRoomCode();
                                 if (!code) return;
-                                window.open(`${tvBase}?room=${encodeURIComponent(code)}&mode=tv`, '_blank', 'noopener,noreferrer');
+                                window.open(launchUrls.tvUrl, '_blank', 'noopener,noreferrer');
                             }}
                             disabled={!hasLaunchRoomCode}
                             className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -12120,14 +12215,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             onClick={async () => {
                                 const code = resolveLaunchRoomCode();
                                 if (!code) return;
-                                const audienceUrl = `${audienceBase}?room=${encodeURIComponent(code)}`;
                                 try {
-                                    await navigator.clipboard.writeText(audienceUrl);
+                                    await navigator.clipboard.writeText(launchUrls.audienceUrl);
                                     toast('Audience join link copied.');
                                 } catch {
-                                    toast(audienceUrl);
+                                    toast(launchUrls.audienceUrl);
                                 }
-                                window.open(audienceUrl, '_blank', 'noopener,noreferrer');
+                                window.open(launchUrls.audienceUrl, '_blank', 'noopener,noreferrer');
                             }}
                             disabled={!hasLaunchRoomCode}
                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -12139,7 +12233,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             onClick={async () => {
                                 const code = resolveLaunchRoomCode();
                                 if (!code) return;
-                                window.open(`${tvBase}?room=${encodeURIComponent(code)}&mode=tv`, '_blank', 'noopener,noreferrer');
+                                window.open(launchUrls.tvUrl, '_blank', 'noopener,noreferrer');
                                 await openExistingRoomWorkspace(code, 'advanced.diagnostics');
                             }}
                             disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode}
@@ -12840,7 +12934,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <div className="mt-2 divide-y divide-zinc-900 rounded-md border border-zinc-800 overflow-hidden">
                     <button
                         data-feature-id="quick-open-tv"
-                        onClick={() => window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                        onClick={openActiveRoomTv}
                         className="w-full bg-zinc-900/70 px-3 py-2.5 text-left text-sm text-zinc-100 hover:bg-zinc-900"
                     >
                         <span className="inline-flex items-center gap-2">
@@ -12849,15 +12943,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </span>
                     </button>
                     <button
-                        onClick={async () => {
-                            const audienceUrl = `${audienceBase}?room=${roomCode}`;
-                            try {
-                                await navigator.clipboard.writeText(audienceUrl);
-                                toast('Audience join link copied.');
-                            } catch {
-                                toast(audienceUrl);
-                            }
-                        }}
+                        onClick={copyActiveRoomAudienceLink}
                         className="w-full bg-zinc-900/70 px-3 py-2.5 text-left text-sm text-zinc-100 hover:bg-zinc-900"
                     >
                         <span className="inline-flex items-center gap-2">
@@ -12899,6 +12985,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         roomCode,
         hostBase,
         tvBase,
+        tvLaunchUrl: activeRoomLaunchUrls.tvUrl,
         updateRoom,
         logActivity,
         localLibrary,
@@ -13036,6 +13123,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     hostBase={hostBase}
                     audienceBase={audienceBase}
                     tvBase={tvBase}
+                    launchUrls={activeRoomLaunchUrls}
                     roomCode={roomCode}
                     gamesMeta={GAMES_META}
                     tab={tab}
@@ -13170,6 +13258,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         updateRoom={updateRoom}
                         setTab={setTab}
                         tvBase={tvBase}
+                        tvLaunchUrl={activeRoomLaunchUrls.tvUrl}
                     />
                 )}
                 {tab === 'stage' && (
@@ -13607,6 +13696,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         room={room}
                         roomCode={roomCode}
                         tvBase={tvBase}
+                        tvLaunchUrl={activeRoomLaunchUrls.tvUrl}
                         currentSong={currentSong}
                         queueCount={queuedSongs.length}
                         collapsed={audiencePreviewCollapsed}
@@ -13800,7 +13890,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         {inAdminWorkspace && (
                                             <div className="ml-auto flex items-center gap-2 text-xs text-zinc-300">
                                                 <button
-                                                    onClick={() => window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                                                    onClick={openActiveRoomTv}
                                                     className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-2.5 py-1 hover:bg-cyan-500/20"
                                                 >
                                                     <i className="fa-solid fa-tv text-[11px]"></i> TV
@@ -13822,7 +13912,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <div className="text-sm text-zinc-300 mt-1">{activeSettingsMeta.description || 'Configure room behavior and host controls.'}</div>
                                             <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-300">
                                                 <button
-                                                    onClick={() => window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                                                    onClick={openActiveRoomTv}
                                                     className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-3 py-1.5 hover:bg-cyan-500/20"
                                                 >
                                                     <i className="fa-solid fa-tv text-[11px]"></i> Open TV
@@ -13869,21 +13959,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     1. Queue + Room Setup
                                 </button>
                                 <button
-                                    onClick={() => window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')}
+                                    onClick={openActiveRoomTv}
                                     className={`${STYLES.btnStd} ${STYLES.btnInfo} justify-start`}
                                 >
                                     2. Open Public TV
                                 </button>
                                 <button
-                                    onClick={async () => {
-                                        const audienceUrl = `${audienceBase}?room=${roomCode}`;
-                                        try {
-                                            await navigator.clipboard.writeText(audienceUrl);
-                                            toast('Audience join link copied.');
-                                        } catch {
-                                            toast(audienceUrl);
-                                        }
-                                    }}
+                                    onClick={copyActiveRoomAudienceLink}
                                     className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
                                 >
                                     3. Copy Join Link
@@ -14259,7 +14341,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <i className="fa-solid fa-microphone-lines"></i>
                                             Stage Controls (Exit Admin)
                                         </button>
-                                        <button onClick={() => window.open(`${tvBase}?room=${roomCode}&mode=tv`, '_blank', 'noopener,noreferrer')} className={`${STYLES.btnStd} ${STYLES.btnInfo} justify-start`}>
+                                        <button onClick={openActiveRoomTv} className={`${STYLES.btnStd} ${STYLES.btnInfo} justify-start`}>
                                             <i className="fa-solid fa-tv"></i>
                                             Open Public TV
                                         </button>

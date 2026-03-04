@@ -22,8 +22,7 @@ const PERFORMER_STEPS = [
   },
 ];
 
-const ForPerformersPage = ({ navigate, session, authFlow }) => {
-  const canUseDashboard = !!session?.uid && !session?.isAnonymous;
+const ForPerformersPage = ({ navigate }) => {
   const trackPersonaCta = (cta = "") => {
     trackEvent("mk_persona_cta_click", {
       persona: "performer",
@@ -52,24 +51,6 @@ const ForPerformersPage = ({ navigate, session, authFlow }) => {
             }}
           >
             Open Discover Map
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              trackPersonaCta(canUseDashboard ? "secondary_open_dashboard" : "secondary_create_account");
-              if (canUseDashboard) {
-                navigate("profile");
-                return;
-              }
-              authFlow?.requireFullAuth?.({
-                intent: "profile",
-                targetType: "profile",
-                targetId: "",
-                returnRoute: { page: "profile" },
-              });
-            }}
-          >
-            {canUseDashboard ? "Open Performer Dashboard" : "Create Performer Account"}
           </button>
         </div>
       </article>

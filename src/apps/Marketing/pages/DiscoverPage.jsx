@@ -1616,22 +1616,6 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 <button type="button" onClick={() => window.location.reload()}>
                   Refresh now
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRegion("nationwide");
-                    setSearch("");
-                    setTypeFilter("all");
-                    setTimeWindow("all");
-                    setSortMode("smart");
-                    setHostFilter("all");
-                    setBeauRocksFilter("all");
-                    setOfficialRoomFilter("all");
-                    setRoomAccessFilter("all");
-                  }}
-                >
-                  Use broad filters
-                </button>
               </div>
             </div>
           )}
@@ -1714,18 +1698,6 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                     src_sort_mode: sortMode,
                   });
                 }}
-                onOpenHost={(item) => {
-                  trackEvent("mk_discover_open_host", {
-                    source: "discover_rail",
-                    hostUid: item.hostUid,
-                    listingType: item.listingType,
-                  });
-                  navigate("host", item.hostUid, {
-                    src: "discover_host",
-                    src_listing_type: item.listingType,
-                    src_sort_mode: sortMode,
-                  });
-                }}
                 onJoinRoom={(item) => {
                   trackEvent("mk_discover_join_room", {
                     source: "discover_rail",
@@ -1737,9 +1709,6 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                     src_listing_type: item.listingType,
                   });
                 }}
-                session={session}
-                navigate={navigate}
-                authFlow={authFlow}
               />
               );
             })}

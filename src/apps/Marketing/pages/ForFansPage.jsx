@@ -22,8 +22,7 @@ const FAN_STEPS = [
   },
 ];
 
-const ForFansPage = ({ navigate, session, authFlow }) => {
-  const canUseDashboard = !!session?.uid && !session?.isAnonymous;
+const ForFansPage = ({ navigate }) => {
   const trackPersonaCta = (cta = "") => {
     trackEvent("mk_persona_cta_click", {
       persona: "fan",
@@ -52,24 +51,6 @@ const ForFansPage = ({ navigate, session, authFlow }) => {
             }}
           >
             Open Discover Map
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              trackPersonaCta(canUseDashboard ? "secondary_open_dashboard" : "secondary_create_account");
-              if (canUseDashboard) {
-                navigate("profile");
-                return;
-              }
-              authFlow?.requireFullAuth?.({
-                intent: "profile",
-                targetType: "profile",
-                targetId: "",
-                returnRoute: { page: "profile" },
-              });
-            }}
-          >
-            {canUseDashboard ? "Open Guest Dashboard" : "Create Guest Account"}
           </button>
         </div>
       </article>

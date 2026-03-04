@@ -1,5 +1,4 @@
 import React from "react";
-import InlineConversionActions from "./InlineConversionActions";
 import { getInitials } from "./shared";
 
 const DiscoverListingCard = ({
@@ -11,17 +10,34 @@ const DiscoverListingCard = ({
   onImageError = null,
   onFocus = null,
   onOpenDetails = null,
-  onOpenHost = null,
   onJoinRoom = null,
-  session = null,
-  navigate = null,
-  authFlow = null,
 }) => {
   const cardClasses = [
     "mk3-discover-card",
     isSelected ? "is-selected" : "",
     entry?.isBeauRocksElevated ? "is-elevated" : "",
   ].filter(Boolean).join(" ");
+  const primaryAction = (() => {
+    if (entry.listingType === "room_session" && entry.roomCode) {
+      return {
+        label: "Join room",
+        onClick: () => onJoinRoom?.(entry),
+        disabled: false,
+      };
+    }
+    if (typeof onOpenDetails === "function") {
+      return {
+        label: "Open details",
+        onClick: () => onOpenDetails?.(entry),
+        disabled: false,
+      };
+    }
+    return {
+      label: isMobileViewport ? "Focus on map" : "Focus marker",
+      onClick: () => onFocus?.(entry),
+      disabled: !entry.location || !mapsLoaded,
+    };
+  })();
   return (
   <article
     key={entry.key}
@@ -89,33 +105,10 @@ const DiscoverListingCard = ({
     {entry.isOfficialBeauRocksRoom && <div className="mk3-chip">Official BeauRocks Room</div>}
     {entry.virtualOnly && <div className="mk3-chip">Virtual</div>}
     <div className="mk3-actions-inline">
-      <button
-        type="button"
-        onClick={() => onFocus?.(entry)}
-        disabled={!entry.location || !mapsLoaded}
-      >
-        {isMobileViewport ? "Focus on map" : "Focus marker"}
+      <button type="button" onClick={primaryAction.onClick} disabled={primaryAction.disabled}>
+        {primaryAction.label}
       </button>
-      <button type="button" onClick={() => onOpenDetails?.(entry)}>
-        Open details
-      </button>
-      {!!entry.hostUid && (
-        <button type="button" onClick={() => onOpenHost?.(entry)}>
-          Host profile
-        </button>
-      )}
-      {entry.listingType === "room_session" && !!entry.roomCode && (
-        <button type="button" onClick={() => onJoinRoom?.(entry)}>
-          Join room
-        </button>
-      )}
     </div>
-    <InlineConversionActions
-      entry={entry}
-      session={session}
-      navigate={navigate}
-      authFlow={authFlow}
-    />
   </article>
   );
 };

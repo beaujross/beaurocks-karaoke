@@ -5,7 +5,7 @@ const EmptyStatePanel = ({ title = "", description = "", actions = [], onAction 
     <strong>{title || "Nothing here yet."}</strong>
     <span>{description || "Try a different route or action."}</span>
     <div className="mk3-actions-inline">
-      {(Array.isArray(actions) ? actions : []).map((action) => (
+      {(Array.isArray(actions) ? actions : []).slice(0, 1).map((action) => (
         <button key={action.id || action.label} type="button" onClick={() => onAction?.(action)}>
           {action.label || "Continue"}
         </button>

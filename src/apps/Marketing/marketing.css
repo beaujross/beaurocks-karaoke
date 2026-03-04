@@ -22,6 +22,26 @@
     linear-gradient(rgba(255, 93, 184, 0.6), rgba(255, 93, 184, 0.6)) border-box;
   --mk3-safe-bottom: env(safe-area-inset-bottom, 0px);
   --mk3-rail-space: 96px;
+  --mk3-host-font-display: "Archivo Black", "Impact", sans-serif;
+  --mk3-host-font-ui: "Space Grotesk", "Segoe UI", sans-serif;
+  --mk3-host-border: rgba(109, 201, 246, 0.34);
+  --mk3-host-surface:
+    radial-gradient(circle at 10% 8%, rgba(255, 198, 116, 0.2), transparent 44%),
+    radial-gradient(circle at 82% 14%, rgba(255, 96, 191, 0.2), transparent 42%),
+    radial-gradient(circle at 70% 76%, rgba(91, 226, 255, 0.16), transparent 40%),
+    linear-gradient(142deg, rgba(11, 17, 29, 0.9), rgba(22, 11, 36, 0.84));
+  --mk3-host-surface-muted:
+    linear-gradient(144deg, rgba(9, 16, 27, 0.86), rgba(24, 11, 36, 0.76));
+  --mk3-host-chip-border: rgba(129, 205, 243, 0.4);
+  --mk3-host-chip-bg: rgba(9, 18, 30, 0.74);
+  --mk3-host-chip-ink: #d0e7fd;
+  --mk3-host-copy: #d7e7f8;
+  --mk3-host-copy-muted: #c3d7ec;
+  --mk3-host-kicker-border: rgba(255, 205, 117, 0.48);
+  --mk3-host-kicker-bg: rgba(28, 17, 40, 0.72);
+  --mk3-host-kicker-ink: #ffe7ba;
+  --mk3-host-focus-ring: rgba(132, 229, 238, 0.8);
+  --mk3-host-shadow: 0 14px 30px rgba(6, 14, 24, 0.32);
   position: relative;
   isolation: isolate;
   height: 100%;
@@ -1144,6 +1164,163 @@
 .mk3-page {
   display: grid;
   gap: 12px;
+}
+
+.mk3-host-canon-surface {
+  border-color: var(--mk3-host-border);
+  background: var(--mk3-host-surface);
+  box-shadow: var(--mk3-host-shadow);
+}
+
+.mk3-host-canon-surface.is-muted {
+  background: var(--mk3-host-surface-muted);
+}
+
+.mk3-host-canon-kicker {
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid var(--mk3-host-kicker-border);
+  background: var(--mk3-host-kicker-bg);
+  color: var(--mk3-host-kicker-ink);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 800;
+  padding: 0.24rem 0.56rem;
+}
+
+.mk3-host-canon-title {
+  margin: 0;
+  font-family: var(--mk3-host-font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 0.95;
+  color: #f8f7ff;
+}
+
+.mk3-host-canon-title.is-xl {
+  font-size: clamp(1.38rem, 3vw, 2.35rem);
+}
+
+.mk3-host-canon-title.is-md {
+  font-size: clamp(1.02rem, 2.2vw, 1.24rem);
+  letter-spacing: 0.04em;
+}
+
+.mk3-host-canon-copy {
+  margin: 0;
+  color: var(--mk3-host-copy);
+  line-height: 1.54;
+  font-size: 0.95rem;
+}
+
+.mk3-host-canon-copy.is-muted {
+  color: var(--mk3-host-copy-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.mk3-host-canon-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.mk3-host-canon-chip {
+  border-radius: 999px;
+  border: 1px solid var(--mk3-host-chip-border);
+  background: var(--mk3-host-chip-bg);
+  color: var(--mk3-host-chip-ink);
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  padding: 0.26rem 0.56rem;
+}
+
+.mk3-host-canon-step {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(8, 15, 24, 0.74);
+  padding: 0.56rem 0.6rem;
+  display: grid;
+  gap: 6px;
+}
+
+.mk3-host-canon-step-kicker {
+  color: #9fd7ff;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 800;
+}
+
+.mk3-host-canon-step-title {
+  color: #fff0ce;
+  font-size: 0.78rem;
+}
+
+.mk3-host-canon-step-copy {
+  margin: 0;
+  color: #c7ddf2;
+  font-size: 0.73rem;
+  line-height: 1.38;
+}
+
+.mk3-host-canon-button {
+  border-radius: 12px;
+  border: 1px solid rgba(176, 198, 220, 0.24);
+  background: rgba(11, 20, 29, 0.92);
+  color: #d8e9fa;
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  min-height: 44px;
+  padding: 0.6rem 0.9rem;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.mk3-host-canon-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(176, 198, 220, 0.35);
+  background: rgba(14, 24, 34, 0.96);
+}
+
+.mk3-host-canon-button:focus-visible {
+  outline: 2px solid var(--mk3-host-focus-ring);
+  outline-offset: 2px;
+}
+
+.mk3-host-canon-button.is-primary {
+  border-radius: var(--mk3-btn-pill-radius);
+  border: 1px solid var(--mk3-btn-border-primary);
+  background: var(--mk3-btn-gradient-primary);
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
+  color: var(--mk3-btn-ink-primary);
+  box-shadow:
+    inset 0 1px 0 rgba(238, 252, 255, 0.34),
+    0 6px 18px rgba(15, 31, 44, 0.32);
+}
+
+.mk3-host-canon-button.is-pill {
+  border-radius: 999px;
+  min-height: 38px;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  padding: 0.4rem 0.72rem;
+}
+
+.mk3-host-canon-button.is-pill.active {
+  border-color: rgba(255, 184, 120, 0.55);
+  color: #1a0b2f;
+  background:
+    linear-gradient(112deg, #ffc56e 5%, #ff79c9 58%, #5ce9ff 98%) padding-box,
+    linear-gradient(rgba(255, 121, 201, 0.6), rgba(255, 121, 201, 0.6)) border-box;
+  background-clip: padding-box, border-box;
+  -webkit-background-clip: padding-box, border-box;
 }
 
 .mk3-host-command {

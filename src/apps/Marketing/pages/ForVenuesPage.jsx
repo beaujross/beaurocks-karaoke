@@ -62,15 +62,6 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
           >
             Claim Your Venue
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              trackPersonaCta("secondary_open_discover");
-              navigate("discover");
-            }}
-          >
-            Open Discover Map
-          </button>
         </div>
       </article>
 

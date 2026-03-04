@@ -23,6 +23,7 @@ const HostTopChrome = ({
     hostBase,
     audienceBase,
     tvBase,
+    launchUrls = null,
     roomCode,
     gamesMeta,
     tab,
@@ -105,6 +106,8 @@ const HostTopChrome = ({
     const resolvedHostBase = hostBase || appBase;
     const resolvedAudienceBase = audienceBase || appBase;
     const resolvedTvBase = tvBase || appBase;
+    const launchTvHref = String(launchUrls?.tvUrl || '').trim() || `${resolvedTvBase}?room=${roomCode}&mode=tv`;
+    const launchAudienceHref = String(launchUrls?.audienceUrl || '').trim() || `${resolvedAudienceBase}?room=${roomCode}`;
     const clampNumber = (value, min, max, fallback = min) => {
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) return fallback;
@@ -638,7 +641,7 @@ const HostTopChrome = ({
                     {showLaunchMenu && (
                         <div className="absolute left-0 top-full mt-2 w-56 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-50">
                             <a
-                                href={`${resolvedTvBase}?room=${roomCode}&mode=tv`}
+                                href={launchTvHref}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={() => setShowLaunchMenu(false)}
@@ -647,7 +650,7 @@ const HostTopChrome = ({
                                 <i className="fa-solid fa-tv mr-2 text-cyan-300"></i> Launch TV
                             </a>
                             <a
-                                href={`${resolvedAudienceBase}?room=${roomCode}`}
+                                href={launchAudienceHref}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={() => setShowLaunchMenu(false)}
