@@ -481,10 +481,10 @@ const MarketingSite = () => {
 
   useEffect(() => {
     const intent = String(route.params?.intent || "").trim().toLowerCase();
-    if (!isHostAccessPage || !hasFullAccount) return;
+    if (!hasFullAccount) return;
     if (intent !== "host_dashboard_resume") return;
-    openHostDashboard("host_access_resume_after_login");
-  }, [hasFullAccount, isHostAccessPage, openHostDashboard, route.params?.intent]);
+    openHostDashboard("host_resume_after_login");
+  }, [hasFullAccount, openHostDashboard, route.params?.intent]);
 
   const onAuthSubmit = async (event) => {
     event.preventDefault();
@@ -507,6 +507,11 @@ const MarketingSite = () => {
       if (result?.ok) {
         trackEvent("marketing_account_signup", { source: "marketing_directory" });
         setAuthForm({ email, password: "", confirmPassword: "" });
+        const returnTo = String(route.params?.return_to || "").trim();
+        if (isHostAccessPage && !returnTo) {
+          openHostDashboard("host_access_direct_signup");
+          return;
+        }
         resolvePostAuthReturn();
       }
       return;
@@ -514,6 +519,11 @@ const MarketingSite = () => {
     const result = await actions.signInWithEmail({ email, password });
     if (result?.ok) {
       trackEvent("marketing_account_signin", { source: "marketing_directory" });
+      const returnTo = String(route.params?.return_to || "").trim();
+      if (isHostAccessPage && !returnTo) {
+        openHostDashboard("host_access_direct_signin");
+        return;
+      }
       resolvePostAuthReturn();
     }
   };
