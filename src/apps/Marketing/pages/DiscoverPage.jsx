@@ -74,8 +74,8 @@ const SOON_LOOKAHEAD_MS = 8 * MS_PER_HOUR;
 const ENV_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED = typeof import.meta !== "undefined" && import.meta?.env
   ? String(import.meta.env.VITE_MARKETING_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED || "")
   : "";
-const DISCOVER_DEFAULT_LIMIT_DESKTOP = 40;
-const DISCOVER_DEFAULT_LIMIT_MOBILE = 24;
+const DISCOVER_DEFAULT_LIMIT_DESKTOP = 120;
+const DISCOVER_DEFAULT_LIMIT_MOBILE = 72;
 
 const toRadians = (value = 0) => (Number(value || 0) * Math.PI) / 180;
 
@@ -339,6 +339,14 @@ const escapeHtml = (value = "") =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+const sanitizeMediaUrl = (value = "") => {
+  const token = String(value || "").trim();
+  if (!token) return "";
+  if (token.startsWith("/")) return token;
+  if (/^https?:\/\//i.test(token)) return token.replace(/^http:\/\//i, "https://");
+  return "";
+};
+
 const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const mapsApiKey = String(options?.mapsApiKey || "").trim();
   const allowGoogleImageApis = options?.allowGoogleImageApis !== false;
@@ -382,6 +390,15 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const hostUid = String(entry?.hostUid || "").trim();
   const hostName = String(entry?.hostName || "").trim();
   const avatarUrl = resolveProfileAvatarUrl(entry);
+  const officialBadgeImageUrl = sanitizeMediaUrl(
+    entry?.logoUrl
+    || entry?.hostLogoUrl
+    || entry?.brandLogoUrl
+    || entry?.branding?.logoUrl
+    || avatarUrl
+    || imageUrl
+    || "/images/logo-library/beaurocks-karaoke-logo-2.png"
+  );
   const locationLabel = [city, state, address1].filter(Boolean).join(", ");
   const roomCode = String(entry?.roomCode || "").trim().toUpperCase();
   const virtualOnly = !!entry?.virtualOnly
@@ -436,6 +453,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
       : listingType === "room_session"
         ? String(entry?.hostName || entry?.roomCode || entry?.title || "").trim()
         : String(entry?.title || "").trim(),
+    officialBadgeImageUrl,
     subtitle,
     detailLine: listingType === "event"
       ? [entry?.hostName, entry?.venueName].filter(Boolean).join(" | ")
@@ -788,7 +806,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         ? Math.max(0, 32 - (distanceMiles * 1.8))
         : 0;
       const typeBonus = entry.listingType === "event" ? 12 : entry.listingType === "room_session" ? 8 : 5;
-      const elevatedBonus = entry.isOfficialBeauRocksRoom ? 10 : 0;
+      const elevatedBonus = entry.isOfficialBeauRocksRoom ? 32 : 0;
       const score = computeTimePriority(entry.startsAtMs, rankingNowMs)
         + distanceScore
         + typeBonus
@@ -1256,8 +1274,11 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       : selectedListingInMap.venueLeaderboardRank > 0
         ? `Venue rank #${selectedListingInMap.venueLeaderboardRank}`
         : "";
+    const elevatedBadgeImage = selectedListingInMap.isOfficialBeauRocksRoom && selectedListingInMap.officialBadgeImageUrl
+      ? `<img class="mk3-map-chip-icon" src="${escapeHtml(selectedListingInMap.officialBadgeImageUrl)}" alt="Official BeauRocks logo" loading="lazy" />`
+      : "";
     const elevatedBadge = selectedListingInMap.isOfficialBeauRocksRoom
-      ? '<div class="mk3-map-marker-selected-badge">Official BeauRocks Room</div>'
+      ? `<div class="mk3-chip mk3-chip-elevated mk3-map-marker-selected-badge">${elevatedBadgeImage}<span>Official BeauRocks Room</span></div>`
       : "";
     infoWindow.setContent(
       `<div class="mk3-map-marker-selected">

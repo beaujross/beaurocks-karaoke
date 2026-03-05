@@ -2818,6 +2818,9 @@
 
 .mk3-map-marker-selected-badge {
   width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border-radius: 999px;
   border: 1px solid rgba(255, 217, 119, 0.72);
   background:
@@ -2830,6 +2833,16 @@
   font-weight: 700;
   box-shadow: 0 0 0 1px rgba(255, 216, 130, 0.18), 0 0 16px rgba(255, 190, 76, 0.28);
   animation: mk3-premium-glow 2.3s ease-in-out infinite;
+}
+
+.mk3-map-chip-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 224, 163, 0.74);
+  object-fit: cover;
+  background: rgba(12, 15, 22, 0.62);
+  box-shadow: 0 0 8px rgba(255, 193, 82, 0.3);
 }
 
 .mk3-map-marker-selected strong {
@@ -3054,6 +3067,9 @@
 
 .mk3-chip {
   width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border-radius: 999px;
   border: 1px solid rgba(211, 138, 199, 0.45);
   background: linear-gradient(110deg, rgba(39, 211, 203, 0.16), rgba(236, 72, 153, 0.2));
@@ -3062,6 +3078,16 @@
   text-transform: uppercase;
   letter-spacing: 0.12em;
   padding: 0.26rem 0.5rem;
+}
+
+.mk3-chip-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 230, 178, 0.72);
+  object-fit: cover;
+  background: rgba(8, 14, 20, 0.82);
+  box-shadow: 0 0 10px rgba(255, 203, 109, 0.26);
 }
 
 .mk3-chip.mk3-chip-elevated {

@@ -54,7 +54,19 @@ const DiscoverListingCard = ({
       <div className="mk3-discover-media-top">
         <div className="mk3-discover-chip-row">
           <div className="mk3-chip">{entry.typeLabel}</div>
-          {entry.isOfficialBeauRocksRoom && <div className="mk3-chip mk3-chip-elevated">Official BeauRocks Room</div>}
+          {entry.isOfficialBeauRocksRoom && (
+            <div className="mk3-chip mk3-chip-elevated">
+              {entry.officialBadgeImageUrl && (
+                <img
+                  className="mk3-chip-icon"
+                  src={entry.officialBadgeImageUrl}
+                  alt="Official BeauRocks logo"
+                  loading="lazy"
+                />
+              )}
+              <span>Official BeauRocks Room</span>
+            </div>
+          )}
         </div>
         <div className="mk3-discover-avatar" aria-hidden="true">
           {entry.avatarUrl
