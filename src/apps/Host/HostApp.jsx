@@ -4816,6 +4816,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, []);
 
     const ensureAppleMusic = useCallback(async () => {
+        if (!roomCode) {
+            const missingRoomError = new Error('Open a room before connecting Apple Music.');
+            missingRoomError.code = 'failed-precondition';
+            throw missingRoomError;
+        }
         if (appleMusicRef.current) return appleMusicRef.current;
         setAppleMusicStatus('Loading Apple Music...');
         const MusicKit = await loadMusicKitScript();
@@ -6463,11 +6468,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setLyricsPipelineV2Touched(false);
     }, [roomCode, room?.lyricsPipelineV2Enabled]);
     useEffect(() => {
-        if (!uid || !accountMusicPrefsReady) return;
+        if (!uid || !accountMusicPrefsReady || !roomCode) return;
         if (!accountMusicPrefsRef.current?.appleAutoConnect) return;
         let cancelled = false;
         (async () => {
             try {
+                const appCheckReady = await ensureAppCheckToken(false) || await ensureAppCheckToken(true);
+                if (!appCheckReady) {
+                    hostLogger.debug('Apple Music auto-connect skipped: App Check token unavailable');
+                    return;
+                }
                 const instance = await ensureAppleMusic();
                 if (cancelled) return;
                 if (instance?.isAuthorized) {
@@ -6475,13 +6485,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     if (!appleMusicStatus) setAppleMusicStatus('Connected');
                 }
             } catch (error) {
+                if (isAppCheckError(error)) {
+                    hostLogger.debug('Apple Music account restore skipped while App Check warms up', error);
+                    return;
+                }
                 hostLogger.debug('Apple Music account restore skipped', error);
             }
         })();
         return () => {
             cancelled = true;
         };
-    }, [uid, accountMusicPrefsReady, ensureAppleMusic, appleMusicStatus]);
+    }, [uid, roomCode, accountMusicPrefsReady, ensureAppleMusic, appleMusicStatus]);
     useEffect(() => {
         if (!room) return;
         setMarqueeEnabled(!!room?.marqueeEnabled);
@@ -6887,6 +6901,38 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         appleMusicAutoPlaylistTitle,
         persistAccountMusicPrefs
     ]);
+
+    const runWithAppCheckWarmup = useCallback(async (action, options = {}) => {
+        if (typeof action !== 'function') {
+            throw new Error('runWithAppCheckWarmup requires an action callback.');
+        }
+        const attemptsRaw = Number(options?.attempts ?? 3);
+        const attempts = Number.isFinite(attemptsRaw) ? Math.max(1, Math.min(5, Math.trunc(attemptsRaw))) : 3;
+        const scope = String(options?.scope || 'operation');
+        let lastError = null;
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+            try {
+                return await action();
+            } catch (error) {
+                lastError = error;
+                if (!isAppCheckError(error) || attempt >= attempts - 1) {
+                    throw error;
+                }
+                try {
+                    await ensureAppCheckToken(true);
+                } catch (tokenError) {
+                    hostLogger.debug(`${scope} App Check warmup token retry failed`, tokenError);
+                }
+                hostLogger.debug(`${scope} waiting for App Check token`, {
+                    attempt: attempt + 1,
+                    maxAttempts: attempts,
+                    error
+                });
+                await sleep(250 * (attempt + 1));
+            }
+        }
+        throw lastError || new Error(`${scope} failed after App Check warmup retries.`);
+    }, []);
 
     const ensureActiveUid = async () => {
         let activeUid = auth.currentUser?.uid || uid || null;
@@ -7733,7 +7779,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
                 return false;
             }
-            await assertRoomHostAccess(code);
+            await runWithAppCheckWarmup(
+                () => assertRoomHostAccess(code),
+                { scope: 'assertRoomHostAccess' }
+            );
 
             setRoomCode(code);
             setRoomCodeInput(code);
@@ -7755,7 +7804,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         playing: true,
                         crowdSize: 12,
                     });
-                    await assertRoomHostAccess(code);
+                    await runWithAppCheckWarmup(
+                        () => assertRoomHostAccess(code),
+                        { scope: 'assertRoomHostAccess' }
+                    );
                     setRoomCode(code);
                     setRoomCodeInput(code);
                     setView('panel');
@@ -7778,6 +7830,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 } else if (errorCode.includes('unauthenticated')) {
                     toast('You are signed out. Please retry auth, then open room again.');
                     setEntryError('You are signed out. Retry auth, then open room again.');
+                } else if (isAppCheckError(e)) {
+                    toast('Security check is warming up. Please retry in a moment.');
+                    setEntryError('Security check is warming up. Please retry in a moment.');
                 } else if (errorCode.includes('unavailable') || errorCode.includes('network')) {
                     toast('Network issue while opening room. Please retry.');
                     setEntryError('Network issue while opening room. Please retry.');
@@ -7997,7 +8052,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (!activeUid) {
                 throw new Error('Auth unavailable');
             }
-            await assertRoomHostAccess(normalizedCode);
+            await runWithAppCheckWarmup(
+                () => assertRoomHostAccess(normalizedCode),
+                { scope: 'assertRoomHostAccess' }
+            );
             await updateRoomByCode(normalizedCode, {
                 archivedAt: nextArchived ? serverTimestamp() : null,
                 archivedBy: nextArchived ? activeUid : null,
@@ -8036,7 +8094,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (!activeUid) {
                 throw new Error('Auth unavailable');
             }
-            await assertRoomHostAccess(normalizedCode);
+            await runWithAppCheckWarmup(
+                () => assertRoomHostAccess(normalizedCode),
+                { scope: 'assertRoomHostAccess' }
+            );
             await clearRoomDataForCode(normalizedCode);
             toast(`Room ${normalizedCode} cleaned.`);
         } catch (error) {
