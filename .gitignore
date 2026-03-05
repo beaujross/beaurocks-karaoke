@@ -36,3 +36,4 @@ GoogleCloudSDKInstaller.exe
 functions/.env*
 tmp/
 artifacts/
+.secrets/

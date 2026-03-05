@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -9,6 +10,32 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 const publicDir = path.join(projectRoot, "public");
 const require = createRequire(import.meta.url);
+
+const loadEnvFileIntoProcess = (filename = "") => {
+  const target = String(filename || "").trim();
+  if (!target) return;
+  const filePath = path.join(projectRoot, target);
+  if (!fsSync.existsSync(filePath)) return;
+  const raw = fsSync.readFileSync(filePath, "utf8");
+  raw.split(/\r?\n/g).forEach((line) => {
+    const trimmed = String(line || "").trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+    const normalized = trimmed.startsWith("export ") ? trimmed.slice(7).trim() : trimmed;
+    const eqIndex = normalized.indexOf("=");
+    if (eqIndex <= 0) return;
+    const key = normalized.slice(0, eqIndex).trim();
+    if (!key || process.env[key] !== undefined) return;
+    let value = normalized.slice(eqIndex + 1).trim();
+    if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    value = value.replace(/\\n/g, "\n");
+    process.env[key] = value;
+  });
+};
+
+loadEnvFileIntoProcess(".env");
+loadEnvFileIntoProcess(".env.local");
 
 const readEnv = (name = "", fallback = "") => {
   const value = process.env[name];
@@ -77,25 +104,40 @@ const parseServiceAccountPayload = (raw = "") => {
   }
 };
 
+const isServiceAccountPayload = (payload = null) => {
+  if (!payload || typeof payload !== "object") return false;
+  return String(payload.type || "").trim() === "service_account"
+    && !!String(payload.client_email || "").trim()
+    && !!String(payload.private_key || "").trim();
+};
+
 const loadServiceAccount = async () => {
   const inlinePayload = parseServiceAccountPayload(
     readEnv("SITEMAP_FIREBASE_SERVICE_ACCOUNT_JSON")
     || readEnv("FIREBASE_SERVICE_ACCOUNT_JSON")
     || readEnv("GOOGLE_SERVICE_ACCOUNT_JSON")
   );
-  if (inlinePayload) return inlinePayload;
+  if (isServiceAccountPayload(inlinePayload)) return inlinePayload;
 
-  const relativeFile = readEnv("SITEMAP_FIREBASE_SERVICE_ACCOUNT_FILE", "").trim();
-  if (!relativeFile) return null;
-  const serviceAccountPath = path.isAbsolute(relativeFile)
-    ? relativeFile
-    : path.join(projectRoot, relativeFile);
-  try {
-    const raw = await fs.readFile(serviceAccountPath, "utf8");
-    return parseServiceAccountPayload(raw);
-  } catch {
-    return null;
+  const fileCandidates = [
+    readEnv("SITEMAP_FIREBASE_SERVICE_ACCOUNT_FILE", "").trim(),
+    readEnv("FIREBASE_SERVICE_ACCOUNT_FILE", "").trim(),
+    readEnv("GOOGLE_SERVICE_ACCOUNT_FILE", "").trim(),
+    readEnv("GOOGLE_APPLICATION_CREDENTIALS", "").trim(),
+  ].filter(Boolean);
+  for (const candidate of fileCandidates) {
+    const serviceAccountPath = path.isAbsolute(candidate)
+      ? candidate
+      : path.join(projectRoot, candidate);
+    try {
+      const raw = await fs.readFile(serviceAccountPath, "utf8");
+      const parsed = parseServiceAccountPayload(raw);
+      if (isServiceAccountPayload(parsed)) return parsed;
+    } catch {
+      // Ignore candidate and continue to next source.
+    }
   }
+  return null;
 };
 
 const initializeFirebaseAdmin = async (admin) => {

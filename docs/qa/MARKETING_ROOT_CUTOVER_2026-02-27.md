@@ -39,6 +39,8 @@ Supported env wiring for Firestore source:
 - `SITEMAP_FIREBASE_SERVICE_ACCOUNT_JSON`
 - `SITEMAP_FIREBASE_SERVICE_ACCOUNT_FILE`
 - `SITEMAP_FIREBASE_PROJECT_ID`
+- `GOOGLE_APPLICATION_CREDENTIALS` (service-account json path)
+- `.env` / `.env.local` values are loaded by `scripts/generate-sitemap.mjs`
 
 Strict gates:
 - `SITEMAP_STRICT_FIRESTORE=true` -> fail build if Firestore source is unavailable.
