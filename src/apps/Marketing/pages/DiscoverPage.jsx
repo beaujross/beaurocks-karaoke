@@ -51,6 +51,11 @@ const TIME_WINDOW_OPTIONS = [
   { id: "tonight", label: "Tonight" },
   { id: "this_week", label: "This Week" },
 ];
+const EVENT_CADENCE_OPTIONS = [
+  { id: "all", label: "All events" },
+  { id: "recurring", label: "Recurring" },
+  { id: "one_time", label: "One-time" },
+];
 const TYPE_FILTER_LABELS = Object.freeze({
   event: "Events",
   venue: "Venues",
@@ -410,6 +415,9 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     startsAtMs,
     max: listingType === "venue" ? 4 : 3,
   });
+  const recurringRule = String(entry?.recurringRule || "").trim();
+  const karaokeNightsLabel = String(entry?.karaokeNightsLabel || "").trim();
+  const isRecurringEvent = listingType === "event" && (!!recurringRule || !!karaokeNightsLabel);
   return {
     key: `${listingType}:${entry.id}`,
     id: entry.id,
@@ -444,6 +452,9 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     location,
     roomCode,
     virtualOnly,
+    recurringRule,
+    karaokeNightsLabel,
+    isRecurringEvent,
     isOfficialBeauRocksRoom,
     isBeauRocksElevated,
     hasBeauRocksHostAccount,
@@ -539,7 +550,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [timeWindow, setTimeWindow] = useState("all");
   const [sortMode, setSortMode] = useState("smart");
   const [mapFirst, setMapFirst] = useState(true);
+  const [mapOnly, setMapOnly] = useState(false);
   const [boundsOnly, setBoundsOnly] = useState(false);
+  const [eventCadenceFilter, setEventCadenceFilter] = useState("all");
   const [selectedKey, setSelectedKey] = useState("");
   const [hostFilter, setHostFilter] = useState("all");
   const [beauRocksFilter, setBeauRocksFilter] = useState("all");
@@ -560,6 +573,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const { resultsView, mobileSurface, mobileFiltersExpanded } = viewState;
 
   const mapContainerRef = useRef(null);
+  const mapStageRef = useRef(null);
   const mapRef = useRef(null);
   const selectedInfoWindowRef = useRef(null);
   const markerMapRef = useRef(new Map());
@@ -572,6 +586,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     padTop: 0,
     padBottom: 0,
   });
+  const [mapFullscreen, setMapFullscreen] = useState(false);
 
   const {
     loading,
@@ -649,6 +664,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       setAdvancedFiltersExpanded(false);
     }
   }, [isMobileViewport]);
+  useEffect(() => {
+    if (!mapOnly || !isMobileViewport) return;
+    dispatchView({ type: "show_map" });
+  }, [dispatchView, isMobileViewport, mapOnly]);
 
   const allListings = useMemo(() => {
     const next = [];
@@ -735,9 +754,26 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (roomAccessFilter !== "joinable") return filteredByBeauRocks;
     return filteredByBeauRocks.filter((entry) => isJoinableRoomListing(entry));
   }, [filteredByBeauRocks, roomAccessFilter]);
+  const eventCadenceCounts = useMemo(() => {
+    const counts = { total: 0, recurring: 0, one_time: 0 };
+    filteredByRoomAccess.forEach((entry) => {
+      if (entry.listingType !== "event") return;
+      counts.total += 1;
+      if (entry.isRecurringEvent) counts.recurring += 1;
+      else counts.one_time += 1;
+    });
+    return counts;
+  }, [filteredByRoomAccess]);
+  const filteredByEventCadence = useMemo(() => {
+    if (eventCadenceFilter === "all") return filteredByRoomAccess;
+    if (eventCadenceFilter === "recurring") {
+      return filteredByRoomAccess.filter((entry) => entry.listingType === "event" && entry.isRecurringEvent);
+    }
+    return filteredByRoomAccess.filter((entry) => entry.listingType === "event" && !entry.isRecurringEvent);
+  }, [eventCadenceFilter, filteredByRoomAccess]);
 
   const rankedListings = useMemo(() => {
-    const withSignals = filteredByRoomAccess.map((entry) => {
+    const withSignals = filteredByEventCadence.map((entry) => {
       const distanceMiles = calculateDistanceMiles(userLocation, entry.location);
       const distanceScore = Number.isFinite(distanceMiles)
         ? Math.max(0, 32 - (distanceMiles * 1.8))
@@ -831,7 +867,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       if (a.score !== b.score) return b.score - a.score;
       return sortListings(a, b);
     });
-  }, [filteredByRoomAccess, sortMode, userLocation, search, rankingNowMs]);
+  }, [filteredByEventCadence, sortMode, userLocation, search, rankingNowMs]);
 
   const mappableListings = useMemo(
     () => rankedListings.filter((entry) => !!entry.location),
@@ -948,6 +984,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     setBeauRocksFilter("all");
     setOfficialRoomFilter("all");
     setRoomAccessFilter("all");
+    setEventCadenceFilter("all");
   }, []);
 
   const registerCardRef = useCallback((key, node) => {
@@ -974,6 +1011,43 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (!googleMaps || !map) return;
     fitMapToListings({ googleMaps, map, listings: mappableListings });
   }, [mappableListings]);
+  const toggleMapFullscreen = useCallback(async () => {
+    if (typeof document === "undefined") return;
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        trackEvent("mk_discover_map_fullscreen_toggle", {
+          source: "discover_map",
+          mode: "exit",
+        });
+        return;
+      }
+      if (!mapStageRef.current || typeof mapStageRef.current.requestFullscreen !== "function") return;
+      await mapStageRef.current.requestFullscreen();
+      trackEvent("mk_discover_map_fullscreen_toggle", {
+        source: "discover_map",
+        mode: "enter",
+      });
+    } catch {
+      // Ignore fullscreen API failures in unsupported browsers.
+    }
+  }, []);
+  useEffect(() => {
+    if (typeof document === "undefined") return () => {};
+    const syncFullscreen = () => {
+      const root = mapStageRef.current;
+      const active = !!root && !!document.fullscreenElement
+        && (document.fullscreenElement === root || root.contains(document.fullscreenElement));
+      setMapFullscreen(active);
+      const googleMaps = window.google?.maps;
+      const map = mapRef.current;
+      if (googleMaps?.event && map) {
+        window.setTimeout(() => googleMaps.event.trigger(map, "resize"), 80);
+      }
+    };
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+  }, []);
 
   const requestUserLocation = useCallback(() => {
     if (typeof window === "undefined" || !window.navigator?.geolocation) {
@@ -1202,6 +1276,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     || beauRocksFilter !== "all"
     || sortMode !== "smart"
     || timeWindow !== "all"
+    || eventCadenceFilter !== "all"
     || officialRoomFilter !== "all"
     || roomAccessFilter !== "all";
   const activeFilterBadges = useMemo(() => {
@@ -1225,6 +1300,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       const timeLabel = TIME_WINDOW_OPTIONS.find((option) => option.id === timeWindow)?.label || timeWindow;
       next.push(`Time: ${timeLabel}`);
     }
+    if (eventCadenceFilter !== "all") {
+      const cadenceLabel = EVENT_CADENCE_OPTIONS.find((option) => option.id === eventCadenceFilter)?.label || eventCadenceFilter;
+      next.push(`Events: ${cadenceLabel}`);
+    }
     if (beauRocksFilter === "elevated") next.push("Featured: Official BeauRocks Rooms");
     if (officialRoomFilter === "official") next.push("Room: Official");
     if (roomAccessFilter === "joinable") next.push("Access: Joinable by code");
@@ -1244,6 +1323,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     search,
     sortMode,
     timeWindow,
+    eventCadenceFilter,
     typeFilter,
   ]);
   const filterStackClasses = [
@@ -1356,7 +1436,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           <button
             type="button"
             className={mobileSurface === "list" ? "active" : ""}
-            onClick={() => dispatchView({ type: "show_list" })}
+            onClick={() => {
+              if (mapOnly) setMapOnly(false);
+              dispatchView({ type: "show_list" });
+            }}
           >
             Results ({visibleListings.length})
           </button>
@@ -1396,6 +1479,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 setTypeFilter(nextType);
                 if (nextType !== "room_session" && roomAccessFilter === "joinable") {
                   setRoomAccessFilter("all");
+                }
+                if (nextType !== "event" && eventCadenceFilter !== "all") {
+                  setEventCadenceFilter("all");
                 }
               }}
             >
@@ -1517,6 +1603,34 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             </button>
           ))}
         </div>
+        <div className="mk3-filter-chips mk3-zone mk3-zone-time mk3-discover-filter-advanced">
+          <span className="mk3-filter-chip-label">Event cadence</span>
+          {EVENT_CADENCE_OPTIONS.map((option) => {
+            const count = option.id === "recurring"
+              ? eventCadenceCounts.recurring
+              : option.id === "one_time"
+                ? eventCadenceCounts.one_time
+                : eventCadenceCounts.total;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                className={eventCadenceFilter === option.id ? "active" : ""}
+                onClick={() => {
+                  setEventCadenceFilter(option.id);
+                  if (option.id !== "all") setTypeFilter("event");
+                  trackEvent("mk_discover_event_cadence_filter_change", {
+                    source: "discover_filters",
+                    cadence: option.id,
+                  });
+                }}
+              >
+                {option.label}
+                {count > 0 && <span className="mk3-filter-chip-count"> ({count})</span>}
+              </button>
+            );
+          })}
+        </div>
         <div className="mk3-filter-chips mk3-zone mk3-zone-region mk3-discover-filter-advanced">
           {dynamicRegionPresets.map((preset) => (
             <button
@@ -1637,7 +1751,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       </div>
       {geoError && <div className="mk3-status mk3-status-warning">{geoError}</div>}
 
-      <div className={`mk3-discover-shell ${mapFirst ? "is-map-first" : "is-balanced"} ${isMobileViewport ? `is-mobile-surface-${mobileSurface}` : ""}`}>
+      <div className={`mk3-discover-shell ${mapFirst ? "is-map-first" : "is-balanced"} ${mapOnly ? "is-map-only" : ""} ${isMobileViewport ? `is-mobile-surface-${mobileSurface}` : ""}`}>
         <article className={`mk3-map-card mk3-zone mk3-zone-map ${isMobileViewport && mobileSurface !== "map" ? "is-mobile-hidden" : ""}`}>
           <h2>{FINDER_BRAND} Map</h2>
           <div className={`mk3-map-toolbar ${isMobileViewport ? "is-mobile-compact" : ""}`}>
@@ -1663,6 +1777,26 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             >
               {geoLoading ? "Locating..." : userLocation ? "Refresh my location" : "Use my location"}
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMapOnly((prev) => !prev);
+                if (!mapOnly && isMobileViewport) dispatchView({ type: "show_map" });
+                trackEvent("mk_discover_map_only_toggle", {
+                  source: "discover_map",
+                  mode: mapOnly ? "off" : "on",
+                });
+              }}
+            >
+              {mapOnly ? "Show results rail" : "Map only"}
+            </button>
+            <button
+              type="button"
+              onClick={toggleMapFullscreen}
+              disabled={!mapEnabled || !mapsLoaded}
+            >
+              {mapFullscreen ? "Exit fullscreen" : "Fullscreen map"}
+            </button>
             {isMobileViewport ? (
               <button type="button" onClick={() => dispatchView({ type: "show_list" })}>
                 Show list
@@ -1681,7 +1815,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           )}
           {!!mapsError && <div className="mk3-status mk3-status-error">{mapsError}</div>}
 
-          <div className="mk3-map-stage">
+          <div className="mk3-map-stage" ref={mapStageRef}>
             {mapEnabled && mapsLoaded ? (
               <div ref={mapContainerRef} className="mk3-map-canvas" />
             ) : (
@@ -1708,13 +1842,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
           </div>
 
           <div className="mk3-map-footer">
-              <span>{visibleListings.length} shown in rail</span>
+              <span>{mapOnly ? `${mappableListings.length} shown on map` : `${visibleListings.length} shown in rail`}</span>
               <span>{featuredListing ? `selected: ${featuredListing.title}` : "select a marker or card"}</span>
               <span className="mk3-map-footer-bounds">{mapBoundsLabel}</span>
             </div>
           </article>
 
-        <aside className={`mk3-feed-column mk3-zone mk3-zone-rail ${isMobileViewport && mobileSurface !== "list" ? "is-mobile-hidden" : ""}`}>
+        <aside className={`mk3-feed-column mk3-zone mk3-zone-rail ${isMobileViewport && mobileSurface !== "list" ? "is-mobile-hidden" : ""} ${mapOnly ? "is-map-only-hidden" : ""}`}>
           <div className="mk3-rail-head">
             <strong>Results rail</strong>
             <div className="mk3-rail-head-meta">

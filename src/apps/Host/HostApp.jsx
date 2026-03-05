@@ -5262,6 +5262,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [recentHostRoomsLoading, setRecentHostRoomsLoading] = useState(false);
     const [recentHostRooms, setRecentHostRooms] = useState([]);
     const [entryError, setEntryError] = useState('');
+    const [landingLaunchMode, setLandingLaunchMode] = useState('create');
     const [quickLaunchDiscovery, setQuickLaunchDiscovery] = useState({
         publicRoom: false,
         virtualOnly: false,
@@ -11989,103 +11990,159 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <div className="text-xs text-cyan-100/75 mb-4 text-left">
                     Use this to set host identity, workspace details, branding, and launch defaults in one pass.
                 </div>
-                <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left" data-host-discovery-launch>
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/70">Discovery + Map Listing</div>
-                    <div className="mt-2 text-[11px] text-cyan-100/75">
-                        Make this room discoverable at launch so guests can find it from the live map.
-                    </div>
-                    <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
-                        <input
-                            type="checkbox"
-                            checked={!!quickLaunchDiscovery.publicRoom}
-                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, publicRoom: e.target.checked }))}
-                        />
-                        Public room (discoverable)
-                    </label>
-                    <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
-                        <input
-                            type="checkbox"
-                            checked={!!quickLaunchDiscovery.virtualOnly}
-                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, virtualOnly: e.target.checked }))}
-                        />
-                        Virtual-only room
-                    </label>
+                <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Primary Action</div>
                     <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <input
-                            value={quickLaunchDiscovery.title}
-                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, title: e.target.value }))}
-                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                            placeholder="Listing title (optional)"
-                        />
-                        <input
-                            type="datetime-local"
-                            value={quickLaunchDiscovery.startsAtLocal}
-                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
-                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                        />
-                        {!quickLaunchDiscovery.virtualOnly && (
-                            <>
-                                <input
-                                    value={quickLaunchDiscovery.address1}
-                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, address1: e.target.value }))}
-                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2"
-                                    placeholder="Address (optional)"
-                                />
-                                <input
-                                    value={quickLaunchDiscovery.city}
-                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, city: e.target.value }))}
-                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                                    placeholder="City"
-                                />
-                                <input
-                                    value={quickLaunchDiscovery.state}
-                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, state: e.target.value }))}
-                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                                    placeholder="State"
-                                />
-                                <input
-                                    value={quickLaunchDiscovery.lat}
-                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lat: e.target.value }))}
-                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                                    placeholder="Latitude (optional)"
-                                />
-                                <input
-                                    value={quickLaunchDiscovery.lng}
-                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lng: e.target.value }))}
-                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                                    placeholder="Longitude (optional)"
-                                />
-                            </>
-                        )}
-                        <textarea
-                            value={quickLaunchDiscovery.description}
-                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, description: e.target.value }))}
-                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2"
-                            rows={2}
-                            placeholder="Short description (optional)"
-                        />
+                        <button
+                            type="button"
+                            onClick={() => setLandingLaunchMode('create')}
+                            className={`${STYLES.btnStd} text-xs uppercase tracking-[0.16em] ${landingLaunchMode === 'create'
+                                ? `${STYLES.btnHighlight} shadow-[0_0_24px_rgba(236,72,153,0.2)]`
+                                : `${STYLES.btnNeutral} border-cyan-400/25 bg-cyan-500/8 text-cyan-100`
+                                }`}
+                        >
+                            Create Room
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setLandingLaunchMode('resume')}
+                            className={`${STYLES.btnStd} text-xs uppercase tracking-[0.16em] ${landingLaunchMode === 'resume'
+                                ? `${STYLES.btnHighlight} shadow-[0_0_24px_rgba(236,72,153,0.2)]`
+                                : `${STYLES.btnNeutral} border-cyan-400/25 bg-cyan-500/8 text-cyan-100`
+                                }`}
+                        >
+                            Resume Room
+                        </button>
+                    </div>
+                    <div className="mt-2 text-xs text-cyan-100/72">
+                        {landingLaunchMode === 'create'
+                            ? 'Set room basics once, then launch a new room.'
+                            : 'Open an existing room code and continue host operations.'}
                     </div>
                 </div>
-                <button
-                    data-host-create-room-primary
-                    onClick={() => {
-                        if (creatingRoom || joiningRoom || roomManagerBusyCode) return;
-                        if (canQuickStartRoom) {
-                            createRoom({ openNightSetup: false });
-                            return;
-                        }
-                        if (canUseWorkspaceOnboarding) {
-                            toast('Quick create is locked until Guided Setup completes workspace identity.');
-                            openOnboardingWizard();
-                            return;
-                        }
-                        toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
-                    }}
-                    disabled={creatingRoom || joiningRoom || !!roomManagerBusyCode}
-                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-3 ${creatingRoom || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                >
-                    {creatingRoom ? 'Creating Room...' : 'Create New Room'}
-                </button>
+                {landingLaunchMode === 'create' && (
+                    <>
+                        <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left" data-host-discovery-launch>
+                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/70">Discovery + Map Listing</div>
+                            <div className="mt-2 text-[11px] text-cyan-100/75">
+                                Make this room discoverable at launch so guests can find it from the live map.
+                            </div>
+                            <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
+                                <input
+                                    type="checkbox"
+                                    checked={!!quickLaunchDiscovery.publicRoom}
+                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, publicRoom: e.target.checked }))}
+                                />
+                                Public room (discoverable)
+                            </label>
+                            <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
+                                <input
+                                    type="checkbox"
+                                    checked={!!quickLaunchDiscovery.virtualOnly}
+                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, virtualOnly: e.target.checked }))}
+                                />
+                                Virtual-only room
+                            </label>
+                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <input
+                                    value={quickLaunchDiscovery.title}
+                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, title: e.target.value }))}
+                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
+                                    placeholder="Listing title (optional)"
+                                />
+                                <input
+                                    type="datetime-local"
+                                    value={quickLaunchDiscovery.startsAtLocal}
+                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
+                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
+                                />
+                                {!quickLaunchDiscovery.virtualOnly && (
+                                    <>
+                                        <input
+                                            value={quickLaunchDiscovery.address1}
+                                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, address1: e.target.value }))}
+                                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2"
+                                            placeholder="Address (optional)"
+                                        />
+                                        <input
+                                            value={quickLaunchDiscovery.city}
+                                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, city: e.target.value }))}
+                                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
+                                            placeholder="City"
+                                        />
+                                        <input
+                                            value={quickLaunchDiscovery.state}
+                                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, state: e.target.value }))}
+                                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
+                                            placeholder="State"
+                                        />
+                                        <input
+                                            value={quickLaunchDiscovery.lat}
+                                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lat: e.target.value }))}
+                                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
+                                            placeholder="Latitude (optional)"
+                                        />
+                                        <input
+                                            value={quickLaunchDiscovery.lng}
+                                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lng: e.target.value }))}
+                                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
+                                            placeholder="Longitude (optional)"
+                                        />
+                                    </>
+                                )}
+                                <textarea
+                                    value={quickLaunchDiscovery.description}
+                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, description: e.target.value }))}
+                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2"
+                                    rows={2}
+                                    placeholder="Short description (optional)"
+                                />
+                            </div>
+                        </div>
+                        <button
+                            data-host-create-room-primary
+                            onClick={() => {
+                                if (creatingRoom || joiningRoom || roomManagerBusyCode) return;
+                                if (canQuickStartRoom) {
+                                    createRoom({ openNightSetup: false });
+                                    return;
+                                }
+                                if (canUseWorkspaceOnboarding) {
+                                    toast('Quick create is locked until Guided Setup completes workspace identity.');
+                                    openOnboardingWizard();
+                                    return;
+                                }
+                                toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
+                            }}
+                            disabled={creatingRoom || joiningRoom || !!roomManagerBusyCode}
+                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-3 ${creatingRoom || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            {creatingRoom ? 'Creating Room...' : 'Create New Room'}
+                        </button>
+                        <details className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
+                            <summary className="cursor-pointer list-none flex items-center justify-between text-xs uppercase tracking-[0.18em] text-cyan-100">
+                                <span>Advanced Launch (QA / Returning Hosts)</span>
+                                <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
+                            </summary>
+                            <div className="mt-3 text-xs text-cyan-100/70">
+                                Quick start skips the guided checklist. It is best for hosts who already have identity/workspace configured.
+                            </div>
+                            <button
+                                data-host-quick-start
+                                onClick={() => createRoom()}
+                                disabled={creatingRoom || !canQuickStartRoom}
+                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 w-full py-2.5 text-xs uppercase tracking-[0.2em] shadow-[0_0_28px_rgba(236,72,153,0.25)] ${creatingRoom || !canQuickStartRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                {creatingRoom ? 'Creating Room...' : 'Quick Start New Room'}
+                            </button>
+                            {!canQuickStartRoom && (
+                                <div className="mt-2 text-[11px] text-amber-200/85">
+                                    Complete guided setup first to unlock quick start on this account.
+                                </div>
+                            )}
+                        </details>
+                    </>
+                )}
                 {!uid && authError && (
                     <div className="mb-3 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 text-left">
                         Auth failed: {authError.code || authError.message || 'Unknown error'}
@@ -12094,177 +12151,162 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         )}
                     </div>
                 )}
-                <div className="text-xs text-cyan-100/70 uppercase tracking-[0.28em] mb-2 text-left">Open Existing Room</div>
-                <div className="flex flex-col sm:flex-row gap-2 justify-center"> 
-                    <input
-                        value={roomCodeInput}
-                        onChange={e => setRoomCodeInput(e.target.value.toUpperCase())}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') joinRoom();
-                        }}
-                        placeholder="ROOM CODE"
-                        className={`${STYLES.input} text-center text-xl font-mono w-full tracking-[0.3em] bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
-                    /> 
-                    <button
-                        onClick={() => joinRoom()}
-                        disabled={joiningRoom || !!roomManagerBusyCode}
-                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 py-3 text-sm uppercase tracking-[0.2em] sm:min-w-[120px] border-cyan-300/35 bg-gradient-to-r from-[#0d2333] via-[#111a31] to-[#2b1330] text-cyan-100 hover:border-pink-300/55 ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    >
-                        {joiningRoom ? 'Opening...' : 'Open'}
-                    </button> 
-                </div>
-                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <button
-                        onClick={() => openExistingRoomWorkspace(roomCodeInput, 'queue.live_run')}
-                        disabled={joiningRoom || !!roomManagerBusyCode}
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    >
-                        Open Live Controls
-                    </button>
-                    <button
-                        onClick={() => openExistingRoomWorkspace(roomCodeInput, 'ops.room_setup')}
-                        disabled={joiningRoom || !!roomManagerBusyCode}
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    >
-                        Manage Settings
-                    </button>
-                    <button
-                        onClick={() => openExistingRoomWorkspace(roomCodeInput, 'advanced.diagnostics')}
-                        disabled={joiningRoom || !!roomManagerBusyCode}
-                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    >
-                        Cleanup + Archive Tools
-                    </button>
-                </div>
-                <div className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left" data-host-share-launch>
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Share + Launch</div>
-                    <div className="mt-1 text-xs text-cyan-100/70">
-                        {hasLaunchRoomCode
-                            ? `Room ${launchRoomCodeCandidate} ready. Send the audience link and open TV in one pass.`
-                            : 'Enter a room code above to enable audience + TV launch actions.'}
-                    </div>
-                    {hasLaunchRoomCode && (
-                        <div className="mt-2 rounded-lg border border-cyan-400/20 bg-cyan-500/8 px-2 py-1.5 text-[11px] text-cyan-100/80 font-mono break-all">
-                            {launchAudienceUrl}
+                {landingLaunchMode === 'resume' && (
+                    <>
+                        <div className="text-xs text-cyan-100/70 uppercase tracking-[0.28em] mb-2 text-left">Resume Existing Room</div>
+                        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                            <input
+                                value={roomCodeInput}
+                                onChange={e => setRoomCodeInput(e.target.value.toUpperCase())}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') joinRoom();
+                                }}
+                                placeholder="ROOM CODE"
+                                className={`${STYLES.input} text-center text-xl font-mono w-full tracking-[0.3em] bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
+                            />
+                            <button
+                                onClick={() => joinRoom()}
+                                disabled={joiningRoom || !!roomManagerBusyCode}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 py-3 text-sm uppercase tracking-[0.2em] sm:min-w-[120px] border-cyan-300/35 bg-gradient-to-r from-[#0d2333] via-[#111a31] to-[#2b1330] text-cyan-100 hover:border-pink-300/55 ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                {joiningRoom ? 'Opening...' : 'Open'}
+                            </button>
                         </div>
-                    )}
-                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                const code = resolveLaunchRoomCode();
-                                if (!code) return;
-                                window.open(launchUrls.audienceUrl, '_blank', 'noopener,noreferrer');
-                            }}
-                            disabled={!hasLaunchRoomCode}
-                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                            Open Audience App
-                        </button>
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                const code = resolveLaunchRoomCode();
-                                if (!code) return;
-                                try {
-                                    await navigator.clipboard.writeText(launchUrls.audienceUrl);
-                                    toast('Audience join link copied.');
-                                } catch {
-                                    toast(launchUrls.audienceUrl);
-                                }
-                            }}
-                            disabled={!hasLaunchRoomCode}
-                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                            Copy Join Link
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                const code = resolveLaunchRoomCode();
-                                if (!code) return;
-                                window.open(launchUrls.tvUrl, '_blank', 'noopener,noreferrer');
-                            }}
-                            disabled={!hasLaunchRoomCode}
-                            className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                            Open Public TV
-                        </button>
-                    </div>
-                </div>
-                <div className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/8 px-3 py-3 text-left" data-host-troubleshooting>
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-amber-100/85">Troubleshooting</div>
-                    <div className="mt-1 text-xs text-amber-100/80">
-                        Quick recovery shortcuts when a launch step fails.
-                    </div>
-                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                const code = resolveLaunchRoomCode();
-                                if (!code) return;
-                                await openExistingRoomWorkspace(code, 'advanced.diagnostics');
-                            }}
-                            disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode}
-                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                            Can't Open Room
-                        </button>
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                const code = resolveLaunchRoomCode();
-                                if (!code) return;
-                                try {
-                                    await navigator.clipboard.writeText(launchUrls.audienceUrl);
-                                    toast('Audience join link copied.');
-                                } catch {
-                                    toast(launchUrls.audienceUrl);
-                                }
-                                window.open(launchUrls.audienceUrl, '_blank', 'noopener,noreferrer');
-                            }}
-                            disabled={!hasLaunchRoomCode}
-                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                            Audience Can't Join
-                        </button>
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                const code = resolveLaunchRoomCode();
-                                if (!code) return;
-                                window.open(launchUrls.tvUrl, '_blank', 'noopener,noreferrer');
-                                await openExistingRoomWorkspace(code, 'advanced.diagnostics');
-                            }}
-                            disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode}
-                            className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                            TV Not Loading
-                        </button>
-                    </div>
-                </div>
-                <details className="mt-4 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
-                    <summary className="cursor-pointer list-none flex items-center justify-between text-xs uppercase tracking-[0.18em] text-cyan-100">
-                        <span>Advanced Launch (QA / Returning Hosts)</span>
-                        <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
-                    </summary>
-                    <div className="mt-3 text-xs text-cyan-100/70">
-                        Quick start skips the guided checklist. It is best for hosts who already have identity/workspace configured.
-                    </div>
-                    <button
-                        data-host-quick-start
-                        onClick={() => createRoom()}
-                        disabled={creatingRoom || !canQuickStartRoom}
-                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 w-full py-2.5 text-xs uppercase tracking-[0.2em] shadow-[0_0_28px_rgba(236,72,153,0.25)] ${creatingRoom || !canQuickStartRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    >
-                        {creatingRoom ? 'Creating Room...' : 'Quick Start New Room'}
-                    </button>
-                    {!canQuickStartRoom && (
-                        <div className="mt-2 text-[11px] text-amber-200/85">
-                            Complete guided setup first to unlock quick start on this account.
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <button
+                                onClick={() => openExistingRoomWorkspace(roomCodeInput, 'queue.live_run')}
+                                disabled={joiningRoom || !!roomManagerBusyCode}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                Open Live Controls
+                            </button>
+                            <button
+                                onClick={() => openExistingRoomWorkspace(roomCodeInput, 'ops.room_setup')}
+                                disabled={joiningRoom || !!roomManagerBusyCode}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                Manage Settings
+                            </button>
+                            <button
+                                onClick={() => openExistingRoomWorkspace(roomCodeInput, 'advanced.diagnostics')}
+                                disabled={joiningRoom || !!roomManagerBusyCode}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                Cleanup + Archive Tools
+                            </button>
                         </div>
-                    )}
-                </details>
+                        <div className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left" data-host-share-launch>
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Share + Launch</div>
+                            <div className="mt-1 text-xs text-cyan-100/70">
+                                {hasLaunchRoomCode
+                                    ? `Room ${launchRoomCodeCandidate} ready. Send the audience link and open TV in one pass.`
+                                    : 'Enter a room code above to enable audience + TV launch actions.'}
+                            </div>
+                            {hasLaunchRoomCode && (
+                                <div className="mt-2 rounded-lg border border-cyan-400/20 bg-cyan-500/8 px-2 py-1.5 text-[11px] text-cyan-100/80 font-mono break-all">
+                                    {launchAudienceUrl}
+                                </div>
+                            )}
+                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const code = resolveLaunchRoomCode();
+                                        if (!code) return;
+                                        window.open(launchUrls.audienceUrl, '_blank', 'noopener,noreferrer');
+                                    }}
+                                    disabled={!hasLaunchRoomCode}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    Open Audience App
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        const code = resolveLaunchRoomCode();
+                                        if (!code) return;
+                                        try {
+                                            await navigator.clipboard.writeText(launchUrls.audienceUrl);
+                                            toast('Audience join link copied.');
+                                        } catch {
+                                            toast(launchUrls.audienceUrl);
+                                        }
+                                    }}
+                                    disabled={!hasLaunchRoomCode}
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    Copy Join Link
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const code = resolveLaunchRoomCode();
+                                        if (!code) return;
+                                        window.open(launchUrls.tvUrl, '_blank', 'noopener,noreferrer');
+                                    }}
+                                    disabled={!hasLaunchRoomCode}
+                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    Open Public TV
+                                </button>
+                            </div>
+                        </div>
+                        <details className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/8 px-3 py-3 text-left" data-host-troubleshooting>
+                            <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-amber-100/85">
+                                <span>Troubleshooting</span>
+                                <i className="fa-solid fa-chevron-down text-amber-200/70"></i>
+                            </summary>
+                            <div className="mt-2 text-xs text-amber-100/80">
+                                Quick recovery shortcuts when a launch step fails.
+                            </div>
+                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        const code = resolveLaunchRoomCode();
+                                        if (!code) return;
+                                        await openExistingRoomWorkspace(code, 'advanced.diagnostics');
+                                    }}
+                                    disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    Can't Open Room
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        const code = resolveLaunchRoomCode();
+                                        if (!code) return;
+                                        try {
+                                            await navigator.clipboard.writeText(launchUrls.audienceUrl);
+                                            toast('Audience join link copied.');
+                                        } catch {
+                                            toast(launchUrls.audienceUrl);
+                                        }
+                                        window.open(launchUrls.audienceUrl, '_blank', 'noopener,noreferrer');
+                                    }}
+                                    disabled={!hasLaunchRoomCode}
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    Audience Can't Join
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        const code = resolveLaunchRoomCode();
+                                        if (!code) return;
+                                        window.open(launchUrls.tvUrl, '_blank', 'noopener,noreferrer');
+                                        await openExistingRoomWorkspace(code, 'advanced.diagnostics');
+                                    }}
+                                    disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode}
+                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    TV Not Loading
+                                </button>
+                            </div>
+                        </details>
+                    </>
+                )}
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-left">
                     <div className="rounded-xl border border-cyan-400/28 bg-cyan-500/8 px-3 py-2">
                         <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/65">Workspace</div>

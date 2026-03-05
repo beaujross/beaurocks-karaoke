@@ -2148,6 +2148,10 @@
   grid-template-columns: 1.25fr 0.75fr;
 }
 
+.mk3-discover-shell.is-map-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .mk3-map-column,
 .mk3-feed-column {
   display: grid;
@@ -2187,6 +2191,10 @@
   border-radius: 18px;
   padding: 10px;
   align-self: start;
+}
+
+.mk3-zone-rail.is-map-only-hidden {
+  display: none;
 }
 
 .mk3-zone-rail::before {
@@ -2248,6 +2256,11 @@
   min-height: 500px;
 }
 
+.mk3-discover-shell.is-map-only .mk3-map-canvas,
+.mk3-discover-shell.is-map-only .mk3-map-grid {
+  min-height: 74vh;
+}
+
 .mk3-map-stage-overlay {
   position: absolute;
   inset: 0;
@@ -2255,6 +2268,23 @@
   display: grid;
   align-content: space-between;
   padding: 10px;
+}
+
+.mk3-map-stage:fullscreen,
+.mk3-map-stage:-webkit-full-screen {
+  border-radius: 0;
+  background: #070d16;
+}
+
+.mk3-map-stage:fullscreen .mk3-map-canvas,
+.mk3-map-stage:fullscreen .mk3-map-grid,
+.mk3-map-stage:-webkit-full-screen .mk3-map-canvas,
+.mk3-map-stage:-webkit-full-screen .mk3-map-grid {
+  min-height: 100vh;
+  height: 100vh;
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
 }
 
 .mk3-map-legend {
@@ -4551,6 +4581,7 @@
   .mk3-discover-shell,
   .mk3-discover-shell.is-balanced,
   .mk3-discover-shell.is-map-first,
+  .mk3-discover-shell.is-map-only,
   .mk3-discover-shell.is-mobile-surface-list,
   .mk3-discover-shell.is-mobile-surface-map {
     grid-template-columns: minmax(0, 1fr);
@@ -4620,7 +4651,9 @@
   .mk3-map-canvas,
   .mk3-map-grid,
   .mk3-discover-shell.is-map-first .mk3-map-canvas,
-  .mk3-discover-shell.is-map-first .mk3-map-grid {
+  .mk3-discover-shell.is-map-first .mk3-map-grid,
+  .mk3-discover-shell.is-map-only .mk3-map-canvas,
+  .mk3-discover-shell.is-map-only .mk3-map-grid {
     min-height: 64vh;
   }
 
@@ -4866,7 +4899,9 @@
   .mk3-map-canvas,
   .mk3-map-grid,
   .mk3-discover-shell.is-map-first .mk3-map-canvas,
-  .mk3-discover-shell.is-map-first .mk3-map-grid {
+  .mk3-discover-shell.is-map-first .mk3-map-grid,
+  .mk3-discover-shell.is-map-only .mk3-map-canvas,
+  .mk3-discover-shell.is-map-only .mk3-map-grid {
     min-height: 62vh;
   }
 

@@ -1,16 +1,17 @@
 {
   "source": "firestore",
-  "generatedAt": "2026-03-05T19:21:55.106Z",
+  "generatedAt": "2026-03-05T20:08:32.776Z",
   "counts": {
     "venues": 32,
     "events": 71,
-    "sessions": 12,
+    "sessions": 13,
     "profiles": 1,
-    "regions": 2,
+    "regions": 3,
     "cities": 9,
-    "detailRoutes": 126
+    "detailRoutes": 127
   },
   "geoRegionTokens": [
+    "kitsap_wa",
     "nationwide",
     "wa_kitsap"
   ],
@@ -147,6 +148,7 @@
     "/sessions/room_v6wy",
     "/sessions/room_wh12",
     "/sessions/room_xn9b",
+    "/sessions/session_aahf_karaoke_kickoff_2026",
     "/venues/venue_kitsap_bainbridge_island_fletcher_bay_winery",
     "/venues/venue_kitsap_bainbridge_island_the_plate_pint",
     "/venues/venue_kitsap_belfair_casey_s_bar_grill",
