@@ -2159,6 +2159,29 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     roomCode,
     isOfficialBeauRocksRoom: explicitOfficial,
   };
+  const externalSources = buildDirectoryExternalLinks({ externalSources: data.externalSources || {} });
+  const listingImageUrls = normalizeDirectoryUrlArray([
+    data.imageUrls,
+    data.galleryUrls,
+    data.photoUrls,
+    data.photos,
+    data.images,
+  ], 12);
+  const photoUrl = normalizeDirectoryOptionalUrl(data.photoUrl || "");
+  const heroImageUrl = normalizeDirectoryOptionalUrl(data.heroImageUrl || "");
+  const coverImageUrl = normalizeDirectoryOptionalUrl(data.coverImageUrl || "");
+  const bannerUrl = normalizeDirectoryOptionalUrl(data.bannerUrl || "");
+  const primaryImageUrl = normalizeDirectoryOptionalUrl(
+    data.imageUrl
+    || photoUrl
+    || heroImageUrl
+    || coverImageUrl
+    || bannerUrl
+    || externalSources?.google?.imageUrl
+    || externalSources?.yelp?.imageUrl
+    || listingImageUrls[0]
+    || ""
+  );
   return {
     id: docSnap.id,
     listingType,
@@ -2183,10 +2206,15 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     virtualOnly: !!data.virtualOnly || !!data.isVirtualOnly,
     sessionMode: safeDirectoryString(data.sessionMode || "", 40),
     sourceType: normalizeDirectoryToken(data.sourceType || "", 20),
-    imageUrl: normalizeDirectoryOptionalUrl(data.imageUrl || ""),
-    externalSources: data.externalSources && typeof data.externalSources === "object"
-      ? data.externalSources
-      : {},
+    imageUrl: primaryImageUrl,
+    photoUrl,
+    heroImageUrl,
+    coverImageUrl,
+    bannerUrl,
+    imageUrls: listingImageUrls,
+    galleryUrls: listingImageUrls,
+    photos: listingImageUrls,
+    externalSources,
     isOfficialBeauRocksRoom: isOfficialBeauRocksRoomListing(baseListing),
   };
 };
@@ -8201,8 +8229,105 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     ...eventSnap.docs.map((docSnap) => buildDirectoryPublicListing(docSnap, "event")),
     ...sessionSnap.docs.map((docSnap) => buildDirectoryPublicListing(docSnap, "room_session")),
   ];
+  const normalizeVenueLookupToken = (value = "") =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const buildVenueLookupKey = ({ venueName = "", city = "", state = "" } = {}) => {
+    const nameToken = normalizeVenueLookupToken(venueName);
+    if (!nameToken) return "";
+    const cityToken = normalizeVenueLookupToken(city);
+    const stateToken = normalizeVenueLookupToken(state);
+    return [nameToken, cityToken, stateToken].filter(Boolean).join("|");
+  };
+  const hasDirectoryExternalSources = (sources = {}) => {
+    const google = sources?.google || {};
+    const yelp = sources?.yelp || {};
+    return !!(
+      safeDirectoryString(google.placeId || "", 180)
+      || normalizeDirectoryOptionalUrl(google.imageUrl || "")
+      || normalizeDirectoryOptionalUrl(google.photoUrl || "")
+      || (Array.isArray(google.photoUrls) && google.photoUrls.length > 0)
+      || safeDirectoryString(yelp.businessId || "", 180)
+      || normalizeDirectoryOptionalUrl(yelp.imageUrl || "")
+      || normalizeDirectoryOptionalUrl(yelp.photoUrl || "")
+      || (Array.isArray(yelp.images) && yelp.images.length > 0)
+    );
+  };
+  const venueById = new Map();
+  const venueByLookup = new Map();
+  merged.forEach((item) => {
+    if (item.listingType !== "venue") return;
+    const venueId = safeDirectoryString(item.id || "", 180);
+    const venueName = safeDirectoryString(item.title || item.venueName || "", 180);
+    const city = safeDirectoryString(item.city || "", 80);
+    const state = safeDirectoryString(item.state || "", 40);
+    const payload = {
+      location: normalizeDirectoryLatLng(item.location || {}),
+      imageUrl: normalizeDirectoryOptionalUrl(item.imageUrl || ""),
+      imageUrls: normalizeDirectoryUrlArray([
+        item.imageUrls,
+        item.galleryUrls,
+        item.photos,
+        item.photoUrl,
+      ], 12),
+      externalSources: item.externalSources && typeof item.externalSources === "object"
+        ? item.externalSources
+        : {},
+    };
+    if (venueId && !venueById.has(venueId)) venueById.set(venueId, payload);
+    const venueLookupKey = buildVenueLookupKey({ venueName, city, state });
+    if (venueLookupKey && !venueByLookup.has(venueLookupKey)) venueByLookup.set(venueLookupKey, payload);
+  });
+  const hydrated = merged.map((item) => {
+    if (item.listingType === "venue") return item;
+    const venueId = safeDirectoryString(item.venueId || "", 180);
+    const venueLookupKey = buildVenueLookupKey({
+      venueName: item.venueName || item.title,
+      city: item.city,
+      state: item.state,
+    });
+    const venueMatch = (venueId && venueById.get(venueId))
+      || (venueLookupKey && venueByLookup.get(venueLookupKey))
+      || null;
+    if (!venueMatch) return item;
 
-  const filtered = merged.filter((item) => {
+    const next = { ...item };
+    const hasLocation = !!normalizeDirectoryLatLng(item.location || {});
+    if (!hasLocation && venueMatch.location) {
+      next.location = venueMatch.location;
+    }
+
+    const hasImage = !!normalizeDirectoryOptionalUrl(item.imageUrl || "");
+    if (!hasImage) {
+      next.imageUrl = normalizeDirectoryOptionalUrl(venueMatch.imageUrl || "") || item.imageUrl || "";
+    }
+
+    const itemImages = normalizeDirectoryUrlArray([
+      item.imageUrls,
+      item.galleryUrls,
+      item.photos,
+      item.photoUrl,
+      item.imageUrl,
+    ], 12);
+    if (!itemImages.length && Array.isArray(venueMatch.imageUrls) && venueMatch.imageUrls.length) {
+      next.imageUrls = venueMatch.imageUrls;
+      next.galleryUrls = venueMatch.imageUrls;
+      next.photos = venueMatch.imageUrls;
+      if (!next.photoUrl) {
+        next.photoUrl = String(venueMatch.imageUrls[0] || "");
+      }
+    }
+
+    if (!hasDirectoryExternalSources(item.externalSources) && hasDirectoryExternalSources(venueMatch.externalSources)) {
+      next.externalSources = venueMatch.externalSources;
+    }
+    return next;
+  });
+
+  const filtered = hydrated.filter((item) => {
     if (item.listingType !== "venue" && String(item.visibility || "public") !== "public") return false;
     if (listingTypeFilter !== "all" && item.listingType !== listingTypeFilter) return false;
     if (hostUidFilter && String(item.hostUid || "") !== hostUidFilter) return false;

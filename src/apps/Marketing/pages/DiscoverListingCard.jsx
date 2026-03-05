@@ -15,7 +15,7 @@ const DiscoverListingCard = ({
   const cardClasses = [
     "mk3-discover-card",
     isSelected ? "is-selected" : "",
-    entry?.isBeauRocksElevated ? "is-elevated" : "",
+    entry?.isOfficialBeauRocksRoom ? "is-elevated" : "",
   ].filter(Boolean).join(" ");
   const primaryAction = (() => {
     if (entry.listingType === "room_session" && entry.roomCode) {
@@ -54,7 +54,7 @@ const DiscoverListingCard = ({
       <div className="mk3-discover-media-top">
         <div className="mk3-discover-chip-row">
           <div className="mk3-chip">{entry.typeLabel}</div>
-          {entry.isBeauRocksElevated && <div className="mk3-chip mk3-chip-elevated">BeauRocks elevated</div>}
+          {entry.isOfficialBeauRocksRoom && <div className="mk3-chip mk3-chip-elevated">Official BeauRocks Room</div>}
         </div>
         <div className="mk3-discover-avatar" aria-hidden="true">
           {entry.avatarUrl
@@ -102,7 +102,6 @@ const DiscoverListingCard = ({
         )}
       </div>
     )}
-    {entry.isOfficialBeauRocksRoom && <div className="mk3-chip">Official BeauRocks Room</div>}
     {entry.virtualOnly && <div className="mk3-chip">Virtual</div>}
     <div className="mk3-actions-inline">
       <button type="button" onClick={primaryAction.onClick} disabled={primaryAction.disabled}>

@@ -44,7 +44,7 @@ const MAP_TYPE_META = {
   event: { label: "event", routePage: "event", markerColor: "#ffd668" },
   room_session: { label: "room session", routePage: "session", markerColor: "#b384ff" },
 };
-const ELEVATED_MARKER_COLOR = "#5af3ca";
+const OFFICIAL_ROOM_MARKER_COLOR = "#5af3ca";
 const TIME_WINDOW_OPTIONS = [
   { id: "all", label: "All Times" },
   { id: "now", label: "Now" },
@@ -397,11 +397,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const beauRocksElevatedReasons = Array.isArray(entry?.beauRocksElevatedReasons)
     ? entry.beauRocksElevatedReasons.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
     : [];
-  const isBeauRocksElevated = !!entry?.isBeauRocksElevated
-    || hasBeauRocksHostAccount
-    || isOfficialBeauRocksRoom
-    || hostLeaderboardRank > 0
-    || venueLeaderboardRank > 0;
+  const isBeauRocksElevated = isOfficialBeauRocksRoom;
   const subtitle = virtualOnly
     ? "Virtual session"
     : locationLabel || [city, state].filter(Boolean).join(", ") || "Location pending";
@@ -419,7 +415,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     id: entry.id,
     listingType,
     routePage: meta.routePage,
-    markerColor: isBeauRocksElevated ? ELEVATED_MARKER_COLOR : meta.markerColor,
+    markerColor: isBeauRocksElevated ? OFFICIAL_ROOM_MARKER_COLOR : meta.markerColor,
     typeLabel: meta.label,
     title: String(entry?.title || "Untitled listing"),
     imageUrl,
@@ -484,13 +480,13 @@ const pointInBounds = (location = null, bounds = null) => {
   return inLat && inLng;
 };
 
-const buildMarkerIcon = (googleMaps, color, selected = false) => ({
+const buildMarkerIcon = (googleMaps, color, selected = false, isOfficialRoom = false) => ({
   path: googleMaps.SymbolPath.CIRCLE,
   fillColor: color,
-  fillOpacity: selected ? 1 : 0.85,
-  strokeColor: selected ? "#ffffff" : "#0b1119",
-  strokeWeight: selected ? 2.8 : 1.4,
-  scale: selected ? 10 : 7,
+  fillOpacity: selected ? 1 : 0.9,
+  strokeColor: isOfficialRoom ? "#fff2be" : selected ? "#ffffff" : "#0b1119",
+  strokeWeight: selected ? (isOfficialRoom ? 3.4 : 2.8) : (isOfficialRoom ? 2.3 : 1.4),
+  scale: selected ? (isOfficialRoom ? 12 : 10) : (isOfficialRoom ? 8.5 : 7),
 });
 
 const fitMapToListings = ({ googleMaps, map, listings }) => {
@@ -747,7 +743,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         ? Math.max(0, 32 - (distanceMiles * 1.8))
         : 0;
       const typeBonus = entry.listingType === "event" ? 12 : entry.listingType === "room_session" ? 8 : 5;
-      const elevatedBonus = entry.isBeauRocksElevated ? 10 : 0;
+      const elevatedBonus = entry.isOfficialBeauRocksRoom ? 10 : 0;
       const score = computeTimePriority(entry.startsAtMs, rankingNowMs)
         + distanceScore
         + typeBonus
@@ -860,7 +856,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       if (entry.listingType === "event") counts.event += 1;
       else if (entry.listingType === "room_session") counts.room_session += 1;
       else counts.venue += 1;
-      if (entry.isBeauRocksElevated) counts.elevated += 1;
+      if (entry.isOfficialBeauRocksRoom) counts.elevated += 1;
     });
     return counts;
   }, [rankedListings]);
@@ -1120,9 +1116,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         if (!marker.getMap()) marker.setMap(map);
       }
       const selected = entry.key === effectiveSelectedKey;
-      marker.setIcon(buildMarkerIcon(googleMaps, entry.markerColor, selected));
+      marker.setIcon(buildMarkerIcon(googleMaps, entry.markerColor, selected, !!entry.isOfficialBeauRocksRoom));
       marker.setLabel(null);
-      marker.setZIndex(selected ? 999 : 180);
+      marker.setZIndex(selected ? 999 : entry.isOfficialBeauRocksRoom ? 260 : 180);
     });
 
     markerMap.forEach((marker, key) => {
@@ -1162,8 +1158,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       : selectedListingInMap.venueLeaderboardRank > 0
         ? `Venue rank #${selectedListingInMap.venueLeaderboardRank}`
         : "";
-    const elevatedBadge = selectedListingInMap.isBeauRocksElevated
-      ? '<div class="mk3-map-marker-selected-badge">BeauRocks elevated</div>'
+    const elevatedBadge = selectedListingInMap.isOfficialBeauRocksRoom
+      ? '<div class="mk3-map-marker-selected-badge">Official BeauRocks Room</div>'
       : "";
     infoWindow.setContent(
       `<div class="mk3-map-marker-selected">
@@ -1190,13 +1186,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     return humanizeRegion(token) || token;
   }, [region]);
   const officialBeauRocksRoomCount = Number(facets?.counts?.officialBeauRocksRooms || 0) || 0;
-  const beauRocksElevatedCount = Number(facets?.counts?.beaurocksElevated || 0) || 0;
+  const beauRocksElevatedCount = officialBeauRocksRoomCount;
   const joinableRoomCount = useMemo(
     () => countJoinableRoomListings(filteredByBeauRocks),
     [filteredByBeauRocks]
   );
   const hasFullAccount = !!session?.isAuthed && !session?.isAnonymous;
   const resultCount = (Number(total || 0) || visibleListings.length);
+  const isInitialCountLoading = loading && !error && resultCount <= 0;
+  const resultCountLabel = isInitialCountLoading ? "Loading" : resultCount.toLocaleString();
   const hasSearchFilters = !!String(search || "").trim()
     || !!String(region || "").trim()
     || typeFilter !== "all"
@@ -1227,7 +1225,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       const timeLabel = TIME_WINDOW_OPTIONS.find((option) => option.id === timeWindow)?.label || timeWindow;
       next.push(`Time: ${timeLabel}`);
     }
-    if (beauRocksFilter === "elevated") next.push("Featured: BeauRocks elevated");
+    if (beauRocksFilter === "elevated") next.push("Featured: Official BeauRocks Rooms");
     if (officialRoomFilter === "official") next.push("Room: Official");
     if (roomAccessFilter === "joinable") next.push("Access: Joinable by code");
     if (effectiveHostFilter !== "all") {
@@ -1303,9 +1301,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       <div className="mk3-status mk3-zone mk3-zone-finder mk3-discover-hero">
         <div className="mk3-discover-hero-main">
           <strong>Find Live Karaoke Fast</strong>
-          <span>{resultCount.toLocaleString()} listings in {activeRegionLabel}. Launch hosting or join with a code.</span>
+          <span>
+            {isInitialCountLoading
+              ? `Loading listings in ${activeRegionLabel}...`
+              : `${resultCountLabel} listings in ${activeRegionLabel}. Launch hosting or join with a code.`}
+          </span>
           <div className="mk3-discover-hero-stats">
-            <span>{resultCount.toLocaleString()} results</span>
+            <span>{isInitialCountLoading ? "Syncing live directory..." : `${resultCountLabel} results`}</span>
             {officialBeauRocksRoomCount > 0 && <span>{officialBeauRocksRoomCount} official rooms</span>}
             {joinableRoomCount > 0 && <span>{joinableRoomCount} joinable by code</span>}
           </div>
@@ -1548,7 +1550,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
               });
             }}
           >
-            BeauRocks elevated
+            Official spotlight
             {beauRocksElevatedCount > 0 && <span className="mk3-filter-chip-count"> ({beauRocksElevatedCount})</span>}
           </button>
         </div>
@@ -1692,9 +1694,16 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                 <span className="mk3-map-legend-item is-event">Events {listingTypeCounts.event}</span>
                 <span className="mk3-map-legend-item is-venue">Venues {listingTypeCounts.venue}</span>
                 <span className="mk3-map-legend-item is-session">Sessions {listingTypeCounts.room_session}</span>
-                <span className="mk3-map-legend-item is-elevated">BeauRocks Elevated {listingTypeCounts.elevated}</span>
+                <span className="mk3-map-legend-item is-elevated">Official Rooms {listingTypeCounts.elevated}</span>
                 {userLocation && <span className="mk3-map-legend-item is-you">You are centered</span>}
               </div>
+              {mapEnabled && mapsLoaded && mappableListings.length > 0
+                && !mappableListings.some((entry) => entry.key === effectiveSelectedKey) && (
+                <div className="mk3-map-discovery-hint" role="status" aria-live="polite">
+                  <span>{mappableListings.length.toLocaleString()} map pins ready. Recenter to zoom in and tap a pin.</span>
+                  <button type="button" onClick={recenterMap}>Recenter</button>
+                </div>
+              )}
             </div>
           </div>
 

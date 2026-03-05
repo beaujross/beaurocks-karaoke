@@ -2240,6 +2240,38 @@
   gap: 6px;
 }
 
+.mk3-map-discovery-hint {
+  justify-self: end;
+  margin-top: auto;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(126, 214, 246, 0.44);
+  background: rgba(8, 17, 28, 0.9);
+  color: #d6ecff;
+  padding: 0.34rem 0.56rem;
+  font-size: 0.63rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  max-width: min(100%, 540px);
+}
+
+.mk3-map-discovery-hint button {
+  pointer-events: auto;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 215, 106, 0.42);
+  background: linear-gradient(112deg, rgba(255, 214, 106, 0.26), rgba(255, 86, 190, 0.26));
+  color: #fff2d2;
+  min-height: 30px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .mk3-map-legend-item {
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.2);
