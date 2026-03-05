@@ -44,7 +44,7 @@ const MAP_TYPE_META = {
   event: { label: "event", routePage: "event", markerColor: "#ffd668" },
   room_session: { label: "room session", routePage: "session", markerColor: "#b384ff" },
 };
-const OFFICIAL_ROOM_MARKER_COLOR = "#5af3ca";
+const OFFICIAL_ROOM_MARKER_COLOR = "#ffc94d";
 const TIME_WINDOW_OPTIONS = [
   { id: "all", label: "All Times" },
   { id: "now", label: "Now" },
@@ -491,13 +491,21 @@ const pointInBounds = (location = null, bounds = null) => {
   return inLat && inLng;
 };
 
-const buildMarkerIcon = (googleMaps, color, selected = false, isOfficialRoom = false) => ({
+const buildMarkerIcon = (
+  googleMaps,
+  color,
+  selected = false,
+  isOfficialRoom = false,
+  pulsePhase = 0
+) => ({
   path: googleMaps.SymbolPath.CIRCLE,
-  fillColor: color,
-  fillOpacity: selected ? 1 : 0.9,
-  strokeColor: isOfficialRoom ? "#fff2be" : selected ? "#ffffff" : "#0b1119",
-  strokeWeight: selected ? (isOfficialRoom ? 3.4 : 2.8) : (isOfficialRoom ? 2.3 : 1.4),
-  scale: selected ? (isOfficialRoom ? 12 : 10) : (isOfficialRoom ? 8.5 : 7),
+  fillColor: isOfficialRoom ? (pulsePhase ? "#ffd96d" : "#ffbe3b") : color,
+  fillOpacity: selected ? 1 : (isOfficialRoom ? 0.95 : 0.9),
+  strokeColor: isOfficialRoom ? "#fff4c4" : selected ? "#ffffff" : "#0b1119",
+  strokeWeight: selected ? (isOfficialRoom ? 3.8 : 2.8) : (isOfficialRoom ? 2.7 : 1.4),
+  scale: selected
+    ? (isOfficialRoom ? (13 + (pulsePhase ? 1 : 0)) : 10)
+    : (isOfficialRoom ? (9 + (pulsePhase ? 1 : 0)) : 7),
 });
 
 const fitMapToListings = ({ googleMaps, map, listings }) => {
@@ -587,6 +595,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     padBottom: 0,
   });
   const [mapFullscreen, setMapFullscreen] = useState(false);
+  const [officialMarkerPulsePhase, setOfficialMarkerPulsePhase] = useState(0);
 
   const {
     loading,
@@ -873,6 +882,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     () => rankedListings.filter((entry) => !!entry.location),
     [rankedListings]
   );
+  useEffect(() => {
+    if (!mappableListings.some((entry) => entry.isOfficialBeauRocksRoom)) return () => {};
+    const timer = window.setInterval(() => {
+      setOfficialMarkerPulsePhase((prev) => (prev ? 0 : 1));
+    }, 900);
+    return () => window.clearInterval(timer);
+  }, [mappableListings]);
   const listingsInBounds = useMemo(() => {
     if (!mapBounds) return mappableListings;
     return mappableListings.filter((entry) => pointInBounds(entry.location, mapBounds));
@@ -1190,9 +1206,17 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         if (!marker.getMap()) marker.setMap(map);
       }
       const selected = entry.key === effectiveSelectedKey;
-      marker.setIcon(buildMarkerIcon(googleMaps, entry.markerColor, selected, !!entry.isOfficialBeauRocksRoom));
+      marker.setIcon(
+        buildMarkerIcon(
+          googleMaps,
+          entry.markerColor,
+          selected,
+          !!entry.isOfficialBeauRocksRoom,
+          officialMarkerPulsePhase
+        )
+      );
       marker.setLabel(null);
-      marker.setZIndex(selected ? 999 : entry.isOfficialBeauRocksRoom ? 260 : 180);
+      marker.setZIndex(selected ? 999 : entry.isOfficialBeauRocksRoom ? 320 : 180);
     });
 
     markerMap.forEach((marker, key) => {
@@ -1245,7 +1269,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       </div>`
     );
     infoWindow.open({ map, anchor: marker });
-  }, [mappableListings, effectiveSelectedKey, focusListing]);
+  }, [mappableListings, effectiveSelectedKey, focusListing, officialMarkerPulsePhase]);
 
   const hiddenWithoutCoords = boundsOnly
     ? rankedListings.length - mappableListings.length
