@@ -32,16 +32,13 @@ const toRoomManagerEntry = (docSnap) => {
   return toRoomManagerEntryFromData({ id: docSnap.id, data });
 };
 
-const ForHostsPage = ({ navigate, route, session, authFlow }) => {
+const ForHostsPage = ({ route, session, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
-  const [roomFilter, setRoomFilter] = useState("active");
   const autoLaunchIntentRef = useRef("");
   const roomManagerRef = useRef(null);
   const [managedRooms, setManagedRooms] = useState([]);
   const [managedRoomsLoading, setManagedRoomsLoading] = useState(false);
   const [managedRoomsError, setManagedRoomsError] = useState("");
-  const [publishedSessions, setPublishedSessions] = useState([]);
-  const [publishedSessionsLoading, setPublishedSessionsLoading] = useState(false);
   const [roomManagerStatus, setRoomManagerStatus] = useState("");
 
   const trackPersonaCta = (cta = "") => {
@@ -105,14 +102,11 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
   const loadRoomManagerData = useCallback(async () => {
     if (!canSubmit || !session?.uid) {
       setManagedRooms([]);
-      setPublishedSessions([]);
       setManagedRoomsLoading(false);
-      setPublishedSessionsLoading(false);
       setManagedRoomsError("");
       return;
     }
     setManagedRoomsLoading(true);
-    setPublishedSessionsLoading(true);
     setManagedRoomsError("");
     setRoomManagerStatus("");
     try {
@@ -127,15 +121,9 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
         where("hostUid", "==", session.uid),
         limit(180)
       );
-      const qSessions = query(
-        collection(db, "room_sessions"),
-        where("hostUid", "==", session.uid),
-        limit(180)
-      );
-      const [hostUidsSnap, hostUidSnap, sessionsSnap] = await Promise.all([
+      const [hostUidsSnap, hostUidSnap] = await Promise.all([
         getDocs(byHostUids),
         getDocs(byHostUid),
-        getDocs(qSessions),
       ]);
       const merged = new Map();
       hostUidsSnap.docs.forEach((docSnap) => {
@@ -147,18 +135,12 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
       const nextRooms = Array.from(merged.values()).sort(
         (a, b) => (b.updatedAtMs || b.createdAtMs || 0) - (a.updatedAtMs || a.createdAtMs || 0)
       );
-      const nextSessions = sessionsSnap.docs
-        .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
-        .sort((a, b) => Number(b.startsAtMs || 0) - Number(a.startsAtMs || 0));
       setManagedRooms(nextRooms);
-      setPublishedSessions(nextSessions);
     } catch (error) {
       setManagedRoomsError(String(error?.message || "Could not load room manager history."));
       setManagedRooms([]);
-      setPublishedSessions([]);
     } finally {
       setManagedRoomsLoading(false);
-      setPublishedSessionsLoading(false);
     }
   }, [canSubmit, session?.uid]);
 
@@ -174,20 +156,18 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
     () => managedRooms.filter((entry) => entry.isClosed || entry.isArchived),
     [managedRooms]
   );
-  const filteredRooms = useMemo(() => {
-    if (roomFilter === "history") return roomHistory;
-    if (roomFilter === "all") return managedRooms;
-    return activeRooms;
-  }, [activeRooms, managedRooms, roomFilter, roomHistory]);
+  const recentRooms = useMemo(
+    () => managedRooms.slice(0, 8),
+    [managedRooms]
+  );
   const roomManagerSummary = useMemo(
     () => ({
       total: managedRooms.length,
       active: activeRooms.length,
       history: roomHistory.length,
       recaps: managedRooms.filter((entry) => entry.hasRecap).length,
-      published: publishedSessions.length,
     }),
-    [activeRooms.length, managedRooms, publishedSessions.length, roomHistory.length]
+    [activeRooms.length, managedRooms, roomHistory.length]
   );
   const openManagedRoom = (roomCode = "") => {
     const safeCode = normalizeRoomCode(roomCode);
@@ -205,33 +185,6 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
       },
     }, window.location);
     window.location.href = href;
-  };
-
-  const openManagedAudienceJoin = (roomCode = "") => {
-    const safeCode = normalizeRoomCode(roomCode);
-    if (!safeCode) return;
-    const href = buildSurfaceUrl({
-      surface: "app",
-      params: {
-        room: safeCode,
-        source: "marketing_host_room_manager_join",
-      },
-    }, window.location);
-    window.open(href, "_blank", "noopener,noreferrer");
-  };
-
-  const openManagedAudienceRecap = (roomCode = "") => {
-    const safeCode = normalizeRoomCode(roomCode);
-    if (!safeCode) return;
-    const href = buildSurfaceUrl({
-      surface: "app",
-      params: {
-        room: safeCode,
-        mode: "recap",
-        source: "marketing_host_room_manager_recap",
-      },
-    }, window.location);
-    window.open(href, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -267,63 +220,35 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
 
       <section className="mk3-detail-card mk3-host-manager-card mk3-host-canon-surface is-muted" ref={roomManagerRef}>
         <div className="mk3-host-manager-head">
-          <h2 className="mk3-host-canon-title is-md">Room Manager</h2>
+          <h2 className="mk3-host-canon-title is-md">Recent Rooms</h2>
           <div className="mk3-actions-inline">
-            <button className="mk3-host-canon-button" type="button" onClick={() => loadRoomManagerData()} disabled={managedRoomsLoading || publishedSessionsLoading}>
-              {managedRoomsLoading || publishedSessionsLoading ? "Refreshing..." : "Refresh"}
+            <button className="mk3-host-canon-button" type="button" onClick={() => loadRoomManagerData()} disabled={managedRoomsLoading}>
+              {managedRoomsLoading ? "Refreshing..." : "Refresh"}
             </button>
           </div>
         </div>
+        <p className="mk3-host-setup-subcopy">
+          This page is now a launcher view. Full room setup, cleanup, archive, and restore live in Host Control Surface.
+        </p>
         <div className="mk3-metric-row mk3-metric-row-mobile">
           <article className="mk3-metric"><span>Total Rooms</span><strong>{roomManagerSummary.total}</strong></article>
           <article className="mk3-metric"><span>Active</span><strong>{roomManagerSummary.active}</strong></article>
           <article className="mk3-metric"><span>History</span><strong>{roomManagerSummary.history}</strong></article>
           <article className="mk3-metric"><span>Recaps</span><strong>{roomManagerSummary.recaps}</strong></article>
-          <article className="mk3-metric"><span>Listings</span><strong>{roomManagerSummary.published}</strong></article>
-        </div>
-        <div className="mk3-host-filter-row" role="tablist" aria-label="Room filters">
-          <button
-            type="button"
-            className={`mk3-host-canon-button is-pill ${roomFilter === "active" ? "active" : ""}`}
-            onClick={() => setRoomFilter("active")}
-          >
-            Active
-          </button>
-          <button
-            type="button"
-            className={`mk3-host-canon-button is-pill ${roomFilter === "history" ? "active" : ""}`}
-            onClick={() => setRoomFilter("history")}
-          >
-            History
-          </button>
-          <button
-            type="button"
-            className={`mk3-host-canon-button is-pill ${roomFilter === "all" ? "active" : ""}`}
-            onClick={() => setRoomFilter("all")}
-          >
-            All
-          </button>
         </div>
         {!!roomManagerStatus && <div className="mk3-status">{roomManagerStatus}</div>}
         {managedRoomsLoading && <div className="mk3-status">Loading your room manager...</div>}
         {!!managedRoomsError && <div className="mk3-status mk3-status-error">{managedRoomsError}</div>}
-        {!managedRoomsLoading && !managedRoomsError && !filteredRooms.length && (
+        {!managedRoomsLoading && !managedRoomsError && !recentRooms.length && (
           <div className="mk3-status">
             {canSubmit
-              ? "No rooms in this filter yet. Start a room and it will appear here."
+              ? "No recent rooms yet. Start a room and it will appear here."
               : "Log in with a BeauRocks account to load your rooms."}
           </div>
         )}
-        {!managedRoomsLoading && filteredRooms.map((room) => {
+        {!managedRoomsLoading && recentRooms.map((room) => {
           const statusLabel = room.isArchived ? "Archived" : room.isClosed ? "Closed" : "Active";
           const roomCode = room.code || room.id;
-          const roomIsActive = !room.isClosed && !room.isArchived;
-          const actionLabel = roomIsActive ? "Open Host" : room.hasRecap ? "View Recap" : "Join Room";
-          const handleAction = roomIsActive
-            ? () => openManagedRoom(roomCode)
-            : room.hasRecap
-              ? () => openManagedAudienceRecap(roomCode)
-              : () => openManagedAudienceJoin(roomCode);
           return (
             <article key={room.id} className="mk3-host-room-row">
               <div className="mk3-host-room-row-head">
@@ -337,58 +262,13 @@ const ForHostsPage = ({ navigate, route, session, authFlow }) => {
                 {room.hasRecap && <span>Recap: {formatDateTime(room.recapAtMs || room.closedAtMs)}</span>}
               </div>
               <div className="mk3-actions-inline mk3-host-room-actions">
-                <button className="mk3-host-canon-button is-primary" type="button" onClick={handleAction}>
-                  {actionLabel}
+                <button className="mk3-host-canon-button is-primary" type="button" onClick={() => openManagedRoom(roomCode)}>
+                  Open Host
                 </button>
               </div>
             </article>
           );
         })}
-      </section>
-
-      <section className="mk3-detail-card mk3-host-canon-surface is-muted">
-        <h2 className="mk3-host-canon-title is-md">Published Room Listings</h2>
-        {publishedSessionsLoading && (
-          <div className="mk3-status">
-            Loading published listings...
-          </div>
-        )}
-        {!publishedSessionsLoading && !publishedSessions.length && (
-          <div className="mk3-status">
-            No room sessions published yet.
-          </div>
-        )}
-        <div className="mk3-sub-list compact">
-          {publishedSessions.map((sessionItem) => (
-            <article key={sessionItem.id} className="mk3-host-room-row">
-              <div className="mk3-host-room-row-head">
-                <strong>{sessionItem.title || sessionItem.id}</strong>
-                <span>{String(sessionItem.status || "unknown").toLowerCase()}</span>
-              </div>
-              <div className="mk3-host-room-row-meta">
-                <span>Visibility: {String(sessionItem.visibility || "public").toLowerCase()}</span>
-                <span>Start: {formatDateTime(sessionItem.startsAtMs)}</span>
-                {sessionItem.roomCode && <span>Code: {String(sessionItem.roomCode || "").trim().toUpperCase()}</span>}
-                <span>Type: Room session</span>
-              </div>
-              <div className="mk3-actions-inline mk3-host-room-actions">
-                <button
-                  className="mk3-host-canon-button"
-                  type="button"
-                  onClick={() => {
-                    if (sessionItem.roomCode) {
-                      openManagedAudienceJoin(sessionItem.roomCode);
-                      return;
-                    }
-                    navigate("session", sessionItem.id);
-                  }}
-                >
-                  {sessionItem.roomCode ? "Join Room" : "Open Listing"}
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
       </section>
     </section>
   );
