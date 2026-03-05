@@ -766,24 +766,17 @@ const MarketingSite = () => {
                 <span>Guests can still join with a room code, but hosting always stays account-backed.</span>
                 <span>Use the Host Room Manager page for the fastest path to new and previous rooms.</span>
               </div>
-              <div className="mk3-auth-cta-row">
-                <button
-                  type="button"
-                  className="mk3-auth-cta-primary mk3-host-canon-button is-primary"
-                  onClick={() => {
-                    if (hasFullAccount) {
-                      navigate(MARKETING_ROUTE_PAGES.forHosts);
-                      return;
-                    }
-                    setAuthMode("signin");
-                    setAuthLocalError("");
-                    actions.clearAuthError?.();
-                    scrollAuthPanelIntoView();
-                  }}
-                >
-                  {hasFullAccount ? "Open Host Room Manager" : "Host Log In"}
-                </button>
-              </div>
+              {hasFullAccount && (
+                <div className="mk3-auth-cta-row">
+                  <button
+                    type="button"
+                    className="mk3-auth-cta-primary mk3-host-canon-button is-primary"
+                    onClick={() => openHostDashboard("host_access_left_panel_open_dashboard")}
+                  >
+                    Open Host Dashboard
+                  </button>
+                </div>
+              )}
             </div>
             <div className="mk3-auth-box mk3-host-canon-surface is-muted">
               {hasFullAccount ? (
@@ -800,9 +793,12 @@ const MarketingSite = () => {
                 </div>
               ) : (
                 <form onSubmit={onAuthSubmit}>
-                  <div className="mk3-toggle-row">
+                  <div className="mk3-auth-mode-label">Account mode</div>
+                  <div className="mk3-toggle-row" role="tablist" aria-label="Account mode">
                     <button
                       type="button"
+                      role="tab"
+                      aria-selected={authMode === "signin"}
                       className={authMode === "signin" ? "active" : ""}
                       onClick={() => {
                         setAuthMode("signin");
@@ -815,6 +811,8 @@ const MarketingSite = () => {
                     </button>
                     <button
                       type="button"
+                      role="tab"
+                      aria-selected={authMode === "signup"}
                       className={authMode === "signup" ? "active" : ""}
                       onClick={() => {
                         setAuthMode("signup");

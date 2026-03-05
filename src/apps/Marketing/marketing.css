@@ -984,32 +984,45 @@
   gap: 10px;
 }
 
+.mk3-auth-mode-label {
+  color: #9fc4dd;
+  font-size: 0.61rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
 .mk3-toggle-row {
   display: flex;
-  gap: 6px;
-  padding: 4px;
-  border-radius: 999px;
-  border: 1px solid rgba(117, 204, 243, 0.3);
-  background: rgba(10, 10, 30, 0.94);
+  gap: 4px;
+  padding: 3px;
+  border-radius: 12px;
+  border: 1px solid rgba(117, 204, 243, 0.32);
+  background: rgba(8, 12, 28, 0.92);
   overflow: hidden;
 }
 
 .mk3-toggle-row button {
   flex: 1;
-  border-radius: 999px;
+  border-radius: 9px;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--mk3-muted);
+  color: #aac4d9;
   font-size: 0.68rem;
   font-weight: 800;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 0.52rem 0.62rem;
+  padding: 0.46rem 0.58rem;
+  min-height: 40px;
+  transform: none;
+  box-shadow: none;
 }
 
 .mk3-toggle-row button:hover {
-  border-color: rgba(236, 72, 153, 0.3);
-  color: #d8eef8;
+  border-color: rgba(133, 212, 245, 0.38);
+  color: #e3f3ff;
+  background: rgba(26, 36, 54, 0.56);
+  transform: none;
 }
 
 .mk3-toggle-row button:disabled {
@@ -1019,14 +1032,15 @@
 }
 
 .mk3-toggle-row button.active {
-  color: #061017;
-  border-color: transparent;
+  color: #fff2d2;
+  border-color: rgba(255, 208, 124, 0.46);
   background:
-    linear-gradient(120deg, #27d3cb, #8be7f2 52%, #ec4899) padding-box,
-    linear-gradient(rgba(39, 211, 203, 0.28), rgba(39, 211, 203, 0.28)) border-box;
+    linear-gradient(160deg, rgba(255, 208, 124, 0.2), rgba(255, 108, 190, 0.18)) padding-box,
+    linear-gradient(rgba(255, 208, 124, 0.46), rgba(255, 108, 190, 0.36)) border-box;
   background-clip: padding-box, border-box;
   -webkit-background-clip: padding-box, border-box;
-  box-shadow: 0 5px 14px rgba(10, 20, 30, 0.24);
+  box-shadow: none;
+  transform: none;
 }
 
 .mk3-auth-box label {
@@ -1111,22 +1125,31 @@
 .mk3-auth-box .mk3-toggle-row button {
   border: 1px solid transparent;
   background: transparent;
-  color: var(--mk3-muted);
+  color: #aac4d9;
   font-size: 0.68rem;
   font-weight: 800;
-  letter-spacing: 0.07em;
-  padding: 0.52rem 0.62rem;
+  letter-spacing: 0.08em;
+  padding: 0.46rem 0.58rem;
+  min-height: 40px;
+}
+
+.mk3-auth-box .mk3-toggle-row button:hover {
+  transform: none;
+  border-color: rgba(133, 212, 245, 0.38);
+  color: #e3f3ff;
+  background: rgba(26, 36, 54, 0.56);
 }
 
 .mk3-auth-box .mk3-toggle-row button.active {
-  color: #180a2c;
-  border-color: transparent;
+  color: #fff2d2;
+  border-color: rgba(255, 208, 124, 0.46);
   background:
-    linear-gradient(112deg, #ffc66a 6%, #ff64ba 56%, #6ce7ff 98%) padding-box,
-    linear-gradient(rgba(255, 100, 186, 0.56), rgba(255, 100, 186, 0.56)) border-box;
+    linear-gradient(160deg, rgba(255, 208, 124, 0.2), rgba(255, 108, 190, 0.18)) padding-box,
+    linear-gradient(rgba(255, 208, 124, 0.46), rgba(255, 108, 190, 0.36)) border-box;
   background-clip: padding-box, border-box;
   -webkit-background-clip: padding-box, border-box;
-  box-shadow: inset 0 0 0 1px rgba(255, 241, 204, 0.34);
+  box-shadow: none;
+  transform: none;
 }
 
 .mk3-auth-box button:focus-visible,
