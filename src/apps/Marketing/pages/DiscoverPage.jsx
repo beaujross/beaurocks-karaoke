@@ -964,6 +964,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       setVirtualRange({ start: 0, end: 0, padTop: 0, padBottom: 0 });
       return;
     }
+    if (resultsView !== "tiles") {
+      setVirtualRange({ start: 0, end: totalItems, padTop: 0, padBottom: 0 });
+      return;
+    }
     const estimatedRowHeight = resultsView === "tiles" ? 360 : 412;
     const itemMinWidth = resultsView === "tiles" ? 250 : 9999;
     const columns = resultsView === "tiles"
@@ -1148,27 +1152,16 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (!selectedListing) return;
     const node = cardRefs.current.get(selectedListing.key);
     const rail = cardRailRef.current;
-    if (!node?.scrollIntoView) return;
-    if (!rail?.getBoundingClientRect || !node?.getBoundingClientRect) {
-      node.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-      return;
+    if (!rail || !node) return;
+    const padding = 12;
+    const itemTop = Math.max(0, node.offsetTop - padding);
+    const itemBottom = node.offsetTop + node.offsetHeight + padding;
+    const viewportTop = rail.scrollTop;
+    const viewportBottom = rail.scrollTop + rail.clientHeight;
+    if (itemTop < viewportTop || itemBottom > viewportBottom) {
+      rail.scrollTo({ top: itemTop, behavior: "smooth" });
     }
-    const railRect = rail.getBoundingClientRect();
-    const nodeRect = node.getBoundingClientRect();
-    const margin = 14;
-    const maxVisibleHeight = Math.max(0, railRect.height - margin * 2);
-    if (nodeRect.height > maxVisibleHeight) {
-      node.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
-      return;
-    }
-    if (nodeRect.top < railRect.top + margin) {
-      rail.scrollBy({ behavior: "smooth", top: nodeRect.top - (railRect.top + margin) });
-      return;
-    }
-    if (nodeRect.bottom > railRect.bottom - margin) {
-      rail.scrollBy({ behavior: "smooth", top: nodeRect.bottom - (railRect.bottom - margin) });
-    }
-  }, [selectedListing]);
+  }, [selectedListing?.key]);
 
   useEffect(() => {
     if (!isMobileViewport || mobileSurface !== "map") return () => {};
@@ -2006,7 +1999,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             ref={cardRailRef}
             className={`mk3-card-list mk3-card-rail ${resultsView === "tiles" ? "mk3-card-tiles" : "mk3-card-results"}`}
           >
-            {virtualRange.padTop > 0 && <div style={{ height: `${virtualRange.padTop}px` }} aria-hidden="true" />}
+            {resultsView === "tiles" && virtualRange.padTop > 0 && <div style={{ height: `${virtualRange.padTop}px` }} aria-hidden="true" />}
             {virtualListings.map((entry) => {
               const googleCandidates = Array.isArray(entry.googleImageCandidates)
                 ? entry.googleImageCandidates
@@ -2069,7 +2062,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
               />
               );
             })}
-            {virtualRange.padBottom > 0 && <div style={{ height: `${virtualRange.padBottom}px` }} aria-hidden="true" />}
+            {resultsView === "tiles" && virtualRange.padBottom > 0 && <div style={{ height: `${virtualRange.padBottom}px` }} aria-hidden="true" />}
             {loadingMore && <div className="mk3-status">Loading more listings...</div>}
             {hasMore && !loadingMore && (
               <div className="mk3-actions-inline">
