@@ -1149,19 +1149,38 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   }, [sortMode]);
 
   useEffect(() => {
-    if (!selectedListing) return;
+    if (!selectedListing || resultsView !== "results") return;
     const node = cardRefs.current.get(selectedListing.key);
     const rail = cardRailRef.current;
-    if (!rail || !node) return;
-    const padding = 12;
-    const itemTop = Math.max(0, node.offsetTop - padding);
-    const itemBottom = node.offsetTop + node.offsetHeight + padding;
-    const viewportTop = rail.scrollTop;
-    const viewportBottom = rail.scrollTop + rail.clientHeight;
-    if (itemTop < viewportTop || itemBottom > viewportBottom) {
-      rail.scrollTo({ top: itemTop, behavior: "smooth" });
-    }
-  }, [selectedListing?.key]);
+    if (!rail) return;
+    const ensureVisible = () => {
+      const selectedNode = cardRefs.current.get(selectedListing.key);
+      if (!selectedNode) return false;
+      const padding = 12;
+      const itemTop = Math.max(0, selectedNode.offsetTop - padding);
+      const itemBottom = selectedNode.offsetTop + selectedNode.offsetHeight + padding;
+      const viewportTop = rail.scrollTop;
+      const viewportBottom = rail.scrollTop + rail.clientHeight;
+      if (itemTop < viewportTop || itemBottom > viewportBottom) {
+        rail.scrollTo({ top: itemTop, behavior: "auto" });
+      }
+      return true;
+    };
+    if (node && ensureVisible()) return;
+    if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") return;
+    let rafOne = 0;
+    let rafTwo = 0;
+    rafOne = window.requestAnimationFrame(() => {
+      if (ensureVisible()) return;
+      rafTwo = window.requestAnimationFrame(() => {
+        ensureVisible();
+      });
+    });
+    return () => {
+      if (rafOne) window.cancelAnimationFrame(rafOne);
+      if (rafTwo) window.cancelAnimationFrame(rafTwo);
+    };
+  }, [selectedListing?.key, resultsView, visibleListings.length]);
 
   useEffect(() => {
     if (!isMobileViewport || mobileSurface !== "map") return () => {};
