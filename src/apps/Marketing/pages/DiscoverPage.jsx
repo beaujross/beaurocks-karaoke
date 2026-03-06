@@ -15,6 +15,7 @@ import {
   resolveListingImageCandidates,
   resolveProfileAvatarUrl,
 } from "./shared";
+import { buildMarketingPath } from "../routing";
 
 const FINDER_BRAND = "Setlist";
 const MAP_DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
@@ -345,6 +346,19 @@ const sanitizeMediaUrl = (value = "") => {
   if (token.startsWith("/")) return token;
   if (/^https?:\/\//i.test(token)) return token.replace(/^http:\/\//i, "https://");
   return "";
+};
+
+const buildListingActionHref = (listing = null) => {
+  if (!listing || typeof listing !== "object") return "";
+  const listingType = normalizeListingType(listing?.listingType);
+  const roomCode = String(listing?.roomCode || "").trim().toUpperCase();
+  if (listingType === "room_session" && roomCode) {
+    return buildMarketingPath({ page: "join", id: roomCode, params: { roomCode } });
+  }
+  const routePage = String(listing?.routePage || "").trim();
+  const listingId = String(listing?.id || "").trim();
+  if (!routePage || !listingId) return "";
+  return buildMarketingPath({ page: routePage, id: listingId });
 };
 
 const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
@@ -1133,8 +1147,26 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   useEffect(() => {
     if (!selectedListing) return;
     const node = cardRefs.current.get(selectedListing.key);
-    if (node?.scrollIntoView) {
-      node.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const rail = cardRailRef.current;
+    if (!node?.scrollIntoView) return;
+    if (!rail?.getBoundingClientRect || !node?.getBoundingClientRect) {
+      node.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      return;
+    }
+    const railRect = rail.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    const margin = 14;
+    const maxVisibleHeight = Math.max(0, railRect.height - margin * 2);
+    if (nodeRect.height > maxVisibleHeight) {
+      node.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+      return;
+    }
+    if (nodeRect.top < railRect.top + margin) {
+      rail.scrollBy({ behavior: "smooth", top: nodeRect.top - (railRect.top + margin) });
+      return;
+    }
+    if (nodeRect.bottom > railRect.bottom - margin) {
+      rail.scrollBy({ behavior: "smooth", top: nodeRect.bottom - (railRect.bottom - margin) });
     }
   }, [selectedListing]);
 
@@ -1280,6 +1312,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     const elevatedBadge = selectedListingInMap.isOfficialBeauRocksRoom
       ? `<div class="mk3-chip mk3-chip-elevated mk3-map-marker-selected-badge">${elevatedBadgeImage}<span>Official BeauRocks Room</span></div>`
       : "";
+    const selectedActionHref = buildListingActionHref(selectedListingInMap);
+    const selectedActionLabel = selectedListingInMap.listingType === "room_session" && selectedListingInMap.roomCode
+      ? "Open room"
+      : "Open details";
+    const selectedAction = selectedActionHref
+      ? `<a class="mk3-map-marker-selected-action" href="${escapeHtml(selectedActionHref)}">${escapeHtml(selectedActionLabel)}</a>`
+      : "";
     infoWindow.setContent(
       `<div class="mk3-map-marker-selected">
         <div class="mk3-map-marker-selected-kicker">Selected</div>
@@ -1287,6 +1326,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         <strong>${escapeHtml(selectedListingInMap.title)}</strong>
         <small>${escapeHtml(detailLine)}</small>
         ${statsLine ? `<small>${escapeHtml(statsLine)}</small>` : ""}
+        ${selectedAction}
       </div>`
     );
     infoWindow.open({ map, anchor: marker });

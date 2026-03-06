@@ -2856,6 +2856,32 @@
   line-height: 1.25;
 }
 
+.mk3-map-marker-selected-action {
+  margin-top: 4px;
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 219, 243, 0.56);
+  background: linear-gradient(114deg, rgba(9, 22, 36, 0.94), rgba(11, 29, 43, 0.9));
+  color: #dff5ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.61rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.mk3-map-marker-selected-action:hover,
+.mk3-map-marker-selected-action:focus-visible {
+  color: #fff8e1;
+  border-color: rgba(255, 220, 126, 0.72);
+  background: linear-gradient(116deg, rgba(255, 210, 113, 0.24), rgba(255, 94, 190, 0.28));
+}
+
 .mk3-metric-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3328,6 +3354,7 @@
   padding: 0.62rem 0.7rem;
   display: grid;
   gap: 8px;
+  scroll-margin-block: 10px;
 }
 
 .mk3-info-module > strong {
