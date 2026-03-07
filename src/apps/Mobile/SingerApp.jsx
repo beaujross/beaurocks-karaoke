@@ -670,6 +670,10 @@ const SingerApp = ({ roomCode, uid }) => {
     const [ytIndexFilter, setYtIndexFilter] = useState('');
     const [_showLogoTitle, setShowLogoTitle] = useState(true);
     const [authReadyUid, setAuthReadyUid] = useState(null);
+    const activeUid = useMemo(
+        () => String(auth.currentUser?.uid || authReadyUid || uid || '').trim(),
+        [authReadyUid, uid]
+    );
     const leaderboardModes = [
         { key: 'performances', label: 'Performances', unit: 'PERF', getValue: (u) => u.performances },
         { key: 'totalEmojis', label: 'Emojis Sent', unit: 'EMOJIS', getValue: (u) => u.totalEmojis },
@@ -723,9 +727,7 @@ const SingerApp = ({ roomCode, uid }) => {
         return (overrides = {}) => {
             const projectionUid = String(
                 overrides.uid
-                || auth.currentUser?.uid
-                || authReadyUid
-                || uid
+                || activeUid
                 || ''
             ).trim();
             const rawName = overrides.name ?? user?.name ?? form.name ?? 'Guest';
@@ -761,7 +763,7 @@ const SingerApp = ({ roomCode, uid }) => {
             }
             return projection;
         };
-    }, [authReadyUid, uid, roomCode, user?.name, user?.avatar, form.name, form.emoji, profile?.totalFamePoints, profile?.currentLevel, profile?.vipLevel, isVipAccount]);
+    }, [activeUid, roomCode, user?.name, user?.avatar, form.name, form.emoji, profile?.totalFamePoints, profile?.currentLevel, profile?.vipLevel, isVipAccount]);
     
     // UI State
     const [searchQ, setSearchQ] = useState('');
@@ -1801,9 +1803,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const markActive = () => {
         lastActiveAtRef.current = Date.now();
     };
-    const getActiveUid = useCallback(() => (
-        String(auth.currentUser?.uid || authReadyUid || uid || '').trim()
-    ), [authReadyUid, uid]);
+    const getActiveUid = useCallback(() => activeUid, [activeUid]);
     const pruneLobbyPlayWindow = useCallback((now = Date.now()) => {
         const cutoff = now - LOBBY_PLAYGROUND_WINDOW_MS;
         const next = lobbyPlayWindowRef.current.filter((timestamp) => Number(timestamp || 0) > cutoff);
@@ -1823,7 +1823,7 @@ const SingerApp = ({ roomCode, uid }) => {
     }, [scheduleRewardToast]);
 
     const syncPoints = useCallback(async (force = false) => {
-        if (!user || !uid) return;
+        if (!user || !activeUid) return;
         const delta = pendingPointDelta.current;
         if (!delta) return;
         const now = Date.now();
@@ -1831,12 +1831,12 @@ const SingerApp = ({ roomCode, uid }) => {
         pendingPointDelta.current = 0;
         lastPointsSync.current = now;
         try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { points: increment(delta), lastActiveAt: serverTimestamp() });
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { points: increment(delta), lastActiveAt: serverTimestamp() });
             setLocalPointOffset(prev => prev - delta);
         } catch {
             pendingPointDelta.current += delta;
         }
-    }, [user, uid, roomCode]);
+    }, [user, activeUid, roomCode]);
 
     const getEffectivePoints = () => (user?.points || 0) + localPointOffset;
 
@@ -1910,7 +1910,7 @@ const SingerApp = ({ roomCode, uid }) => {
     }, [roomCode, hallOfFameMode, tab, socialTab]);
 
     const flushReactionBuffer = useCallback(async () => {
-        if (!roomCode || !user) return;
+        if (!roomCode || !user || !activeUid) return;
         const batch = pendingReactions.current;
         const totalCount = pendingReactionCount.current;
         const totalCost = pendingReactionCost.current;
@@ -1933,7 +1933,7 @@ const SingerApp = ({ roomCode, uid }) => {
                     roomCode,
                     type,
                     count,
-                    uid: uid || null,
+                    uid: activeUid,
                     userName: user.name,
                     avatar: user.avatar,
                     isVip: !!user.isVip,
@@ -1955,7 +1955,7 @@ const SingerApp = ({ roomCode, uid }) => {
                     : boostedPoints;
                 updates.totalPointsGifted = increment(boostedPoints);
             }
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), updates);
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), updates);
             if (currentSinger && totalCost > 0) {
                 try {
                     await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', currentSinger.id), {
@@ -1968,7 +1968,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, currentSinger, room?.multiplier, uid]);
+    }, [roomCode, user, currentSinger, room?.multiplier, activeUid]);
 
     const queueReactionWrite = (type, cost) => {
         pendingReactions.current[type] = (pendingReactions.current[type] || 0) + 1;
@@ -1982,7 +1982,7 @@ const SingerApp = ({ roomCode, uid }) => {
     };
 
     const flushStrumBuffer = useCallback(async () => {
-        if (!roomCode || !user || pendingStrumHits.current <= 0) return;
+        if (!roomCode || !user || !activeUid || pendingStrumHits.current <= 0) return;
         const count = pendingStrumHits.current;
         pendingStrumHits.current = 0;
         try {
@@ -1997,7 +1997,7 @@ const SingerApp = ({ roomCode, uid }) => {
                 roomCode,
                 type: 'strum',
                 count,
-                uid,
+                uid: activeUid,
                 userName: user.name,
                 avatar: user.avatar,
                 isVip: !!user.isVip,
@@ -2008,11 +2008,11 @@ const SingerApp = ({ roomCode, uid }) => {
             const isNewSession = user?.guitarSessionId !== sessionId;
             const payload = { guitarSessionId: sessionId, lastVibeAt: serverTimestamp() };
             payload.guitarHits = isNewSession ? count : increment(count);
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), payload);
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), payload);
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, room?.guitarSessionId, uid, currentSinger]);
+    }, [roomCode, user, room?.guitarSessionId, activeUid, currentSinger]);
 
     const queueStrumWrite = () => {
         pendingStrumHits.current += 1;
@@ -2024,7 +2024,7 @@ const SingerApp = ({ roomCode, uid }) => {
     };
 
     const flushStrobeBuffer = useCallback(async () => {
-        if (!roomCode || !user || pendingStrobeTaps.current <= 0) return;
+        if (!roomCode || !user || !activeUid || pendingStrobeTaps.current <= 0) return;
         const count = pendingStrobeTaps.current;
         pendingStrobeTaps.current = 0;
         try {
@@ -2039,7 +2039,7 @@ const SingerApp = ({ roomCode, uid }) => {
                 roomCode,
                 type: 'strobe_tap',
                 count,
-                uid: uid || null,
+                uid: activeUid,
                 userName: user.name,
                 avatar: user.avatar,
                 isVip: !!user.isVip,
@@ -2050,11 +2050,11 @@ const SingerApp = ({ roomCode, uid }) => {
             const isNewSession = user?.strobeSessionId !== sessionId;
             const payload = { strobeSessionId: sessionId, lastVibeAt: serverTimestamp() };
             payload.strobeTaps = isNewSession ? count : increment(count);
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), payload);
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), payload);
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, room?.strobeSessionId, uid, currentSinger]);
+    }, [roomCode, user, room?.strobeSessionId, activeUid, currentSinger]);
 
     const queueStrobeTap = () => {
         pendingStrobeTaps.current += 1;
@@ -2066,7 +2066,7 @@ const SingerApp = ({ roomCode, uid }) => {
     };
 
     const flushStormLayerBuffer = useCallback(async () => {
-        if (!roomCode || !user || pendingStormLayerCount.current <= 0) return;
+        if (!roomCode || !user || !activeUid || pendingStormLayerCount.current <= 0) return;
         const batch = pendingStormLayers.current;
         const totalCount = pendingStormLayerCount.current;
         pendingStormLayers.current = {};
@@ -2088,7 +2088,7 @@ const SingerApp = ({ roomCode, uid }) => {
                     type: 'storm_layer',
                     layer,
                     count,
-                    uid: uid || null,
+                    uid: activeUid,
                     userName: user.name,
                     avatar: user.avatar,
                     isVip: !!user.isVip,
@@ -2097,7 +2097,7 @@ const SingerApp = ({ roomCode, uid }) => {
                 }
             )));
             const [topLayer] = [...layerEntries].sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0] || [];
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), {
                 stormLayerHits: increment(totalCount),
                 lastStormLayer: topLayer || null,
                 lastVibeAt: serverTimestamp()
@@ -2106,7 +2106,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, uid, currentSinger]);
+    }, [roomCode, user, activeUid, currentSinger]);
 
     const queueStormLayerWrite = (layerId) => {
         const key = String(layerId || '').trim().toLowerCase();
@@ -2507,13 +2507,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     // Listeners
     useEffect(() => {
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => setRoom(s.data()));
+
+        // Subscribe to ALL users for Leaderboard
+        const unsubAllUsers = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode)), s => {
+            const usersList = s.docs.map(d => d.data()).sort((a,b) => b.points - a.points);
+            setAllUsers(usersList);
+        });
         
-        const unsubUser = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), s => {
+        const unsubSongs = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), where('roomCode', '==', roomCode)), s => setSongs(s.docs.map(d => ({id:d.id, ...d.data()}))));
+        if (!activeUid) {
+            return () => { unsubRoom(); unsubAllUsers(); unsubSongs(); };
+        }
+        
+        const unsubUser = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), s => {
             if (s.exists()) {
                 const u = s.data();
                 setUser(u);
                 if (u.avatar === '??' || u.avatar === '?') {
-                    updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { avatar: DEFAULT_EMOJI }).catch((e) => {
+                    updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { avatar: DEFAULT_EMOJI }).catch((e) => {
                         console.warn('Failed to set default avatar', e);
                     });
                 }
@@ -2525,16 +2536,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
         });
         
-        // Subscribe to ALL users for Leaderboard
-        const unsubAllUsers = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode)), s => {
-            const usersList = s.docs.map(d => d.data()).sort((a,b) => b.points - a.points);
-            setAllUsers(usersList);
-        });
-        
-        const unsubSongs = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), where('roomCode', '==', roomCode)), s => setSongs(s.docs.map(d => ({id:d.id, ...d.data()}))));
-        
         return () => { unsubRoom(); unsubUser(); unsubAllUsers(); unsubSongs(); };
-    }, [roomCode, uid, isFormInitialized]);
+    }, [roomCode, activeUid, isFormInitialized]);
     useEffect(() => {
         if (uid && uid !== authReadyUid) {
             setAuthReadyUid(uid);
@@ -2713,7 +2716,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [authReadyUid]);
 
     useEffect(() => {
-        if (!uid || isAnon || !user || !profile) return;
+        if (!uid || !activeUid || isAnon || !user || !profile) return;
         if (tight15MigrationDoneRef.current === uid) return;
         const tempList = Array.isArray(user?.tight15Temp) ? user.tight15Temp : [];
         const savedList = Array.isArray(profile?.tight15) ? profile.tight15 : [];
@@ -2727,7 +2730,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 const merged = sanitizeTight15List([...savedList, ...tempList]);
                 await setDoc(doc(db, 'users', uid), { tight15: merged }, { merge: true });
                 await setDoc(
-                    doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`),
+                    doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`),
                     { tight15Temp: merged },
                     { merge: true }
                 );
@@ -2742,20 +2745,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         return () => {
             cancelled = true;
         };
-    }, [uid, isAnon, user, profile, roomCode, toast]);
+    }, [uid, activeUid, isAnon, user, profile, roomCode, toast]);
 
     useEffect(() => {
-        if (!uid || !canSaveTight15) return;
+        if (!activeUid || !canSaveTight15) return;
         const savedList = sanitizeTight15List(profile?.tight15 || []);
         if (!savedList.length) return;
         const roomList = sanitizeTight15List(user?.tight15Temp || []);
         if (areTight15ListsEqual(savedList, roomList)) return;
         setDoc(
-            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`),
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`),
             { tight15Temp: savedList },
             { merge: true }
         ).catch(() => {});
-    }, [uid, roomCode, canSaveTight15, profile?.tight15, user?.tight15Temp]);
+    }, [activeUid, roomCode, canSaveTight15, profile?.tight15, user?.tight15Temp]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -2829,18 +2832,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [scheduleJoinRayPositionUpdate, user]);
 
     useEffect(() => {
-        if (!uid || !profile) return;
+        if (!activeUid || !profile) return;
         const fameLevel = typeof profile.currentLevel === 'number'
             ? profile.currentLevel
             : getLevelFromFame(profile.totalFamePoints || 0);
         updateDoc(
-            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`),
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`),
             getRoomUserProjection({
                 fameLevel,
                 totalFamePoints: profile.totalFamePoints || 0
             })
         ).catch(() => {});
-    }, [profile, uid, roomCode, getRoomUserProjection]);
+    }, [profile, activeUid, roomCode, getRoomUserProjection]);
 
     useEffect(() => {
         if (!profile?.vipProfile) return;
@@ -2941,24 +2944,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const unsubVotes = onSnapshot(votesQuery, s => {
             const votes = s.docs.map(d => ({ id: d.id, ...d.data() }));
             setSelfieVotes(votes);
-            const mine = votes.find(v => v.voterUid === uid);
+            const mine = votes.find(v => v.voterUid === activeUid);
             setMySelfieVote(mine ? mine.targetUid : null);
         });
         return () => { unsubSubs(); unsubVotes(); };
-    }, [room?.activeMode, room?.selfieChallenge?.promptId, roomCode, uid]);
+    }, [room?.activeMode, room?.selfieChallenge?.promptId, roomCode, activeUid]);
 
     // Sync room VIP with account status
     useEffect(() => {
-        if (!user || isAnon || user.isVip) return;
+        if (!user || isAnon || user.isVip || !activeUid) return;
         updateDoc(
-            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`),
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`),
             getRoomUserProjection({
                 isVip: true,
                 vipLevel: Math.max(1, Number(profile?.vipLevel || 1))
             })
         )
             .catch(() => {});
-    }, [user, isAnon, roomCode, uid, getRoomUserProjection, profile?.vipLevel]);
+    }, [user, isAnon, roomCode, activeUid, getRoomUserProjection, profile?.vipLevel]);
 
     // Points Drip (VIP only, requires recent activity; local accrual, sync on spend/events)
     useEffect(() => {
@@ -3054,8 +3057,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const startKey = `${start}-${durationMs}`;
         if (readyCheckStartRef.current !== startKey) {
             readyCheckStartRef.current = startKey;
-            if (user?.isReady) {
-                updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { isReady: false }).catch(() => {});
+            if (user?.isReady && activeUid) {
+                updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { isReady: false }).catch(() => {});
             }
         }
         const tick = () => {
@@ -3065,7 +3068,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         tick();
         const interval = setInterval(tick, 200);
         return () => clearInterval(interval);
-    }, [room?.readyCheck?.active, room?.readyCheck?.startTime, room?.readyCheck?.durationSec, user?.isReady, roomCode, uid]);
+    }, [room?.readyCheck?.active, room?.readyCheck?.startTime, room?.readyCheck?.durationSec, user?.isReady, roomCode, activeUid]);
 
     useEffect(() => {
         if (!room?.bingoMysteryRng?.active) return;
@@ -3450,11 +3453,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     const readyUp = async () => {
-        if (!user || !room?.readyCheck?.active) return;
+        if (!user || !room?.readyCheck?.active || !activeUid) return;
         if (user.isReady) return toast('Already marked ready.');
         const rewardPoints = Math.max(0, Number(room?.readyCheck?.rewardPoints ?? 100));
         markActive();
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), {
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), {
             isReady: true,
             points: increment(rewardPoints),
             lastActiveAt: serverTimestamp()
@@ -3874,7 +3877,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             const voteName = String(user?.name || form.name || 'Guest').trim() || 'Guest';
             const voteAvatar = String(user?.avatar || form.emoji || DEFAULT_EMOJI);
             const alreadyVoted = deduped.some((vote) => {
-                if (vote?.uid && uid) return vote.uid === uid;
+                if (vote?.uid && activeUid) return vote.uid === activeUid;
                 return String(vote?.userName || 'Guest') === voteName
                     && String(vote?.avatar || DEFAULT_EMOJI) === voteAvatar;
             });
@@ -3896,7 +3899,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 performanceStartedAtMs: timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || null,
                 userName: voteName,
                 avatar: voteAvatar,
-                uid: uid || null,
+                uid: activeUid || null,
                 isVote: true,
                 timestamp: serverTimestamp()
             });
@@ -3911,11 +3914,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     
     const submitSong = async (s, a, art, options = {}) => { 
         if(!user) return; 
+        const singerUid = activeUid;
+        if (!singerUid) {
+            toast('Session is still connecting. Try again.');
+            return;
+        }
         const queueSettings = room?.queueSettings || {};
         const limitMode = queueSettings.limitMode || 'none';
         const limitCount = Math.max(0, Number(queueSettings.limitCount || 0));
         const nowMs = Date.now();
-        const mySongs = songs.filter(song => song.singerUid === uid || song.singerName === user.name);
+        const mySongs = songs.filter(song => song.singerUid === singerUid || song.singerName === user.name);
         const myRecentSongs = mySongs.filter(song => {
             const ts = song.timestamp?.seconds ? song.timestamp.seconds * 1000 : song.timestamp?.toMillis?.() || 0;
             return ts && nowMs - ts < 60 * 60 * 1000;
@@ -3937,8 +3945,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             await ensureAppCheckToken(false).catch(() => false);
             const rotation = queueSettings.rotation || 'first_come';
             const firstTimeBoost = !!queueSettings.firstTimeBoost;
-            const queuedCount = songs.filter(songItem => (songItem.singerUid === uid || songItem.singerName === user.name) && (songItem.status === 'requested' || songItem.status === 'pending' || songItem.status === 'performing')).length;
-            const performedCount = songs.filter(songItem => (songItem.singerUid === uid || songItem.singerName === user.name) && songItem.status === 'performed').length;
+            const queuedCount = songs.filter(songItem => (songItem.singerUid === singerUid || songItem.singerName === user.name) && (songItem.status === 'requested' || songItem.status === 'pending' || songItem.status === 'performing')).length;
+            const performedCount = songs.filter(songItem => (songItem.singerUid === singerUid || songItem.singerName === user.name) && songItem.status === 'performed').length;
             let priorityScore = Date.now();
             if (rotation === 'round_robin') {
                 priorityScore += queuedCount * 60000;
@@ -3983,7 +3991,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         source: trackSource,
                         mediaUrl: backingUrl,
                         label: options.trackLabel || (options.mediaUrl ? 'Host index' : 'Singer selected'),
-                        addedBy: uid
+                        addedBy: singerUid
                     });
                 } catch (catalogError) {
                     if (isCatalogPermissionDeniedError(catalogError)) {
@@ -4001,7 +4009,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 artist: artist,
                 albumArtUrl: artwork || '',
                 singerName: user.name,
-                singerUid: uid,
+                singerUid,
                 emoji: user.avatar,
                 status: (room?.bouncerMode || enforcePending) ? 'pending' : 'requested',
                 timestamp: serverTimestamp(),
@@ -4049,8 +4057,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             toast(`Need ${changeCost} PTS to change name/emoji.`);
             return;
         }
+        if (!activeUid) {
+            toast('Session is still connecting. Try again.');
+            return;
+        }
         await updateDoc(
-            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`),
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`),
             getRoomUserProjection({ name: safeName, avatar: nextAvatar })
         );
         if (uid) {
@@ -4137,14 +4149,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     const saveTight15List = async (next) => {
-        if (!uid) return;
+        if (!activeUid) return;
         const sanitized = sanitizeTight15List(next);
         if (!canSaveTight15) {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { tight15Temp: sanitized }, { merge: true });
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { tight15Temp: sanitized }, { merge: true });
             return;
         }
         await setDoc(doc(db, 'users', uid), { tight15: sanitized }, { merge: true });
-        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { tight15Temp: sanitized }, { merge: true });
+        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { tight15Temp: sanitized }, { merge: true });
     };
 
     const addToTight15 = async (item) => {
@@ -4432,7 +4444,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             if (!auth.currentUser) return toast('No active session');
             await linkWithCredential(auth.currentUser, cred);
             // persist VIP state and phone
-            const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`);
+            const linkedUid = String(auth.currentUser?.uid || activeUid || '').trim();
+            if (!linkedUid) return toast('No active session');
+            const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${linkedUid}`);
             const vipStatus = await setMyVipAccountStatus({
                 source: 'audience_phone_verify',
                 vipLevel: 1
@@ -4494,7 +4508,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             const fix = resolveFeedbackValue(feedbackForm.fix, feedbackForm.fixOther, 'other');
             await addDoc(collection(db, 'feedback'), {
                 roomCode,
-                uid: uid || null,
+                uid: activeUid || null,
                 userName: user?.name || 'Guest',
                 avatar: user?.emoji || DEFAULT_EMOJI,
                 vibeScore: feedbackForm.vibeScore,
@@ -5338,7 +5352,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_votes'), {
                 roomCode,
                 promptId: challenge.promptId,
-                voterUid: uid,
+                voterUid: activeUid,
                 targetUid,
                 timestamp: serverTimestamp()
             });
@@ -5533,10 +5547,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         };
 
         const submitMysterySpin = async ({ allowFinalized = false } = {}) => {
-            if (!user || !uid) return false;
+            if (!user || !activeUid) return false;
             const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
             const spinEntry = {
-                uid,
+                uid: activeUid,
                 name: user.name,
                 avatar: user.avatar,
                 value: Math.floor(Math.random() * 1000) + 1,
@@ -5549,12 +5563,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 const rngState = roomData?.bingoMysteryRng || {};
                 const isOpen = !!rngState?.active || (allowFinalized && !!rngState?.finalized);
                 if (!isOpen) return false;
-                if (rngState?.results?.[uid]) return false;
-                tx.update(roomRef, { [`bingoMysteryRng.results.${uid}`]: spinEntry });
+                if (rngState?.results?.[activeUid]) return false;
+                tx.update(roomRef, { [`bingoMysteryRng.results.${activeUid}`]: spinEntry });
                 return true;
             });
             if (!accepted) return false;
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`), { lastActiveAt: serverTimestamp() });
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { lastActiveAt: serverTimestamp() });
             return true;
         };
 
@@ -5591,7 +5605,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 return;
             }
             try {
-                const userRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${uid}`);
+                if (!activeUid) {
+                    toast('Session is still connecting. Try again.');
+                    setPendingBingoSuggest(null);
+                    return;
+                }
+                const userRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`);
                 const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
                 if (isMysteryBingo) {
                     if (!isMysteryParticipant) {

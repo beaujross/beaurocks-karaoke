@@ -465,7 +465,10 @@ const cleanCatalogTitle = (value = "") => {
   let safe = String(value || "").trim();
   if (!safe) return "";
   safe = safe
-    .replace(/[\[\(]([^\]\)]{0,120})[\]\)]/g, (full, inner) => (containsKaraokeNoise(inner) ? " " : full))
+    .replace(/(\[[^\]]{0,120}\]|\([^)]{0,120}\))/g, (full) => {
+      const inner = full.slice(1, -1);
+      return containsKaraokeNoise(inner) ? " " : full;
+    })
     .replace(/\b(karaoke|instrumental|backing track|with lyrics|lyric video|guide vocals?|guide melody|male key|female key|lower key|higher key|official audio|official video|video version|audio version|hd|4k)\b/gi, " ")
     .replace(/\s+\|\s+/g, " - ")
     .replace(/\s+/g, " ")
@@ -4560,10 +4563,20 @@ const parseTtml = (ttml = "") => {
 };
 
 let appleTokenCache = { token: null, exp: 0 };
+const normalizeAppleMusicSecret = (value = "", { preserveNewlines = false } = {}) => {
+  const stringValue = String(value || "");
+  if (!stringValue) return "";
+  if (preserveNewlines) {
+    return stringValue
+      .replace(/\r/g, "")
+      .replace(/^\s+|\s+$/g, "");
+  }
+  return stringValue.replace(/[\r\n]/g, "").trim();
+};
 const getAppleMusicToken = () => {
-  const teamId = APPLE_MUSIC_TEAM_ID.value();
-  const keyId = APPLE_MUSIC_KEY_ID.value();
-  let privateKey = APPLE_MUSIC_PRIVATE_KEY.value();
+  const teamId = normalizeAppleMusicSecret(APPLE_MUSIC_TEAM_ID.value());
+  const keyId = normalizeAppleMusicSecret(APPLE_MUSIC_KEY_ID.value());
+  let privateKey = normalizeAppleMusicSecret(APPLE_MUSIC_PRIVATE_KEY.value(), { preserveNewlines: true });
   if (!teamId || !keyId || !privateKey) {
     throw new HttpsError("failed-precondition", "Apple Music secrets not configured.");
   }
@@ -6400,7 +6413,7 @@ exports.appleMusicLyrics = onCall(
   async (request) => {
     checkRateLimit(request.rawRequest, "apple_music");
     await checkDurableRateLimit(request.rawRequest, "apple_music", DEFAULT_LIMITS);
-    const { uid, entitlements } = await requireCapability(request, "api.apple_music");
+    const { entitlements } = await requireCapability(request, "api.apple_music");
     enforceAppCheckIfEnabled(request, "apple_music_lyrics");
     const title = (request.data?.title || "").trim();
     const artist = (request.data?.artist || "").trim();
@@ -10899,9 +10912,9 @@ exports.createAppleMusicToken = onCall(
       deniedMessage: "Only room hosts can request Apple Music tokens.",
     });
 
-    const teamId = APPLE_MUSIC_TEAM_ID.value();
-    const keyId = APPLE_MUSIC_KEY_ID.value();
-    const rawKey = APPLE_MUSIC_PRIVATE_KEY.value();
+    const teamId = normalizeAppleMusicSecret(APPLE_MUSIC_TEAM_ID.value());
+    const keyId = normalizeAppleMusicSecret(APPLE_MUSIC_KEY_ID.value());
+    const rawKey = normalizeAppleMusicSecret(APPLE_MUSIC_PRIVATE_KEY.value(), { preserveNewlines: true });
     const privateKey = rawKey.includes("BEGIN") ? rawKey : rawKey.replace(/\\n/g, "\n");
     const now = Math.floor(Date.now() / 1000);
     const exp = now + 60 * 60 * 12;

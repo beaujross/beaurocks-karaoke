@@ -101,7 +101,8 @@ const HostTopChrome = ({
     onOpenModerationInbox,
     onOpenAppleMusicSettings,
     onOpenAiSettings,
-    onOpenAccessSettings
+    onOpenAccessSettings,
+    onOpenHostDashboard
 }) => {
     const resolvedHostBase = hostBase || appBase;
     const resolvedAudienceBase = audienceBase || appBase;
@@ -626,6 +627,20 @@ const HostTopChrome = ({
                     alt="Beaurocks Karaoke"
                 />
                 <div data-host-room-code className="text-[14px] sm:text-[16px] lg:text-[18px] font-mono font-bold text-[#00C4D9] bg-black/40 px-2 py-0.5 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
+                {typeof onOpenHostDashboard === 'function' && (
+                    <button
+                        onClick={() => {
+                            closeAllTopMenus();
+                            onOpenHostDashboard();
+                        }}
+                        className={`${styles.btnStd} ${styles.btnNeutral} px-2.5 text-xs`}
+                        title="Back to rooms and room creation"
+                        style={{ touchAction: 'manipulation' }}
+                    >
+                        <i className="fa-solid fa-layer-group"></i>
+                        <span className="hidden sm:inline">Rooms</span>
+                    </button>
+                )}
                 <div className="relative" ref={launchMenuRef}>
                     <button
                         onClick={() => {
@@ -781,6 +796,17 @@ const HostTopChrome = ({
                     </button>
                     {showNavMenu && (
                         <div className="absolute right-0 top-full mt-2 w-44 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-50">
+                            {typeof onOpenHostDashboard === 'function' && (
+                                <button
+                                    onClick={() => {
+                                        closeAllTopMenus();
+                                        onOpenHostDashboard();
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm font-bold uppercase tracking-widest text-zinc-300 hover:bg-zinc-900 rounded-t-xl"
+                                >
+                                    Rooms
+                                </button>
+                            )}
                             {[
                                 { key: 'stage', label: 'Queue' },
                                 { key: 'games', label: 'Games' },
@@ -799,7 +825,9 @@ const HostTopChrome = ({
                                         setTab(t.key);
                                         setShowNavMenu(false);
                                     }}
-                                    className={`w-full text-left px-4 py-2 text-sm font-bold uppercase tracking-widest ${tab === t.key ? 'text-[#00C4D9]' : 'text-zinc-300'} hover:bg-zinc-900 ${t.key === 'stage' ? 'rounded-t-xl' : ''} ${t.key === 'admin' ? 'rounded-b-xl' : ''}`}
+                                    className={`w-full text-left px-4 py-2 text-sm font-bold uppercase tracking-widest ${tab === t.key ? 'text-[#00C4D9]' : 'text-zinc-300'} hover:bg-zinc-900 ${
+                                        t.key === 'stage' && typeof onOpenHostDashboard !== 'function' ? 'rounded-t-xl' : ''
+                                    } ${t.key === 'admin' ? 'rounded-b-xl' : ''}`}
                                 >
                                     {t.label}
                                 </button>

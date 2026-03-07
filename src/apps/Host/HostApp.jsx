@@ -5299,6 +5299,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [recentHostRooms, setRecentHostRooms] = useState([]);
     const [entryError, setEntryError] = useState('');
     const [landingLaunchMode, setLandingLaunchMode] = useState('create');
+    const [showLandingListingOptions, setShowLandingListingOptions] = useState(false);
     const [hostUpdateDeploymentWarning, setHostUpdateDeploymentWarning] = useState('');
     const hostUpdateWarningToastedRef = useRef(false);
     const [orgContext, setOrgContext] = useState({
@@ -7415,6 +7416,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setShowNightSetupWizard(false);
         setNightSetupStep(0);
     }, [nightSetupApplying]);
+    const openHostRoomDashboard = useCallback(() => {
+        setShowNightSetupWizard(false);
+        setShowSettings(false);
+        setLandingLaunchMode('create');
+        setEntryError('');
+        if (roomCode) {
+            setRoomCodeInput(roomCode);
+        }
+        setView('landing');
+    }, [roomCode]);
 
     useEffect(() => {
         if (!showNightSetupWizard) return;
@@ -11486,7 +11497,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }}
             >
                 <div className="mx-auto w-full max-w-6xl">
-                    <div className="w-full bg-zinc-950/94 border border-white/15 rounded-3xl shadow-[0_28px_80px_rgba(0,0,0,0.55)] overflow-hidden max-h-[88vh] flex flex-col">
+                    <div className="w-full bg-zinc-950/94 border border-white/15 rounded-3xl shadow-[0_28px_80px_rgba(0,0,0,0.55)] overflow-visible md:overflow-hidden max-h-none md:max-h-[88vh] flex flex-col">
                         <div className="px-4 py-4 md:px-6 md:py-5 border-b border-white/10">
                             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
                                 <div className="min-w-0">
@@ -11534,7 +11545,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </div>
 
                         <div className="flex-1 min-h-0">
-                            <div className="px-4 py-5 md:px-6 md:py-6 min-h-0 overflow-y-auto custom-scrollbar space-y-4">
+                            <div
+                                className="px-4 py-5 pb-24 md:px-6 md:py-6 md:pb-6 min-h-0 space-y-4 md:overflow-y-auto md:custom-scrollbar overscroll-y-contain"
+                                style={{ WebkitOverflowScrolling: 'touch' }}
+                            >
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                     <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">
                                         Step {activeStep.id + 1}: {activeStep.label}
@@ -11562,7 +11576,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <button
                                                         key={`night-setup-preset-${preset.id}`}
                                                         onClick={() => seedNightSetupFromPreset(preset.id, { keepQueueDraft: false })}
-                                                        className={`relative overflow-hidden text-left rounded-2xl border transform-gpu transition-all duration-200 ease-out h-[238px] md:h-[246px] ${
+                                                        className={`relative overflow-hidden text-left rounded-2xl border transform-gpu transition-all duration-200 ease-out min-h-[206px] md:h-[246px] ${
                                                             active
                                                                 ? 'border-cyan-300/85 ring-1 ring-cyan-300/55 shadow-[0_0_34px_rgba(34,211,238,0.22)]'
                                                                 : 'border-zinc-700 hover:border-zinc-500'
@@ -11863,6 +11877,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     if(view === 'landing') {
         const hasWorkspaceIdentity = Boolean(String(orgContext?.orgId || '').trim());
         const hasHostIdentity = Boolean(String(hostName || '').trim());
+        const isFirstHostRun = !hasWorkspaceIdentity;
+        const shouldShowSetupCard = canUseWorkspaceOnboarding && isFirstHostRun;
         const quickStartRoleAllowed = canQuickStartForRole(hostPermissionLevel);
         const canQuickStartRoom = hasWorkspaceIdentity && hasHostIdentity && quickStartRoleAllowed;
         const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
@@ -11935,6 +11951,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ? resolveLaunchUrlsForRoomCode(launchRoomCodeCandidate)
             : { hostUrl: '', tvUrl: '', audienceUrl: '', provisioned: false };
         const launchAudienceUrl = launchUrls.audienceUrl;
+        const hasDiscoveryDraft = Boolean(
+            quickLaunchDiscovery.publicRoom
+            || quickLaunchDiscovery.virtualOnly
+            || String(quickLaunchDiscovery.title || '').trim()
+            || String(quickLaunchDiscovery.description || '').trim()
+            || String(quickLaunchDiscovery.startsAtLocal || '').trim()
+            || String(quickLaunchDiscovery.address1 || '').trim()
+            || String(quickLaunchDiscovery.city || '').trim()
+            || String(quickLaunchDiscovery.state || '').trim()
+            || String(quickLaunchDiscovery.lat || '').trim()
+            || String(quickLaunchDiscovery.lng || '').trim()
+        );
+        const landingListingDetailsOpen = showLandingListingOptions || hasDiscoveryDraft;
         const retryLastHostAction = async () => {
             if (creatingRoom || joiningRoom || roomManagerBusyCode) return;
             if (hasLaunchRoomCode) {
@@ -11969,13 +11998,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100">
                         <span className="h-2 w-2 rounded-full bg-cyan-300 animate-pulse"></span>
-                        Host Control Surface
+                        Host Dashboard
                     </div>
-                    <div className="rounded-full border border-pink-300/30 bg-pink-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-pink-100">
-                        {planLabel}
-                    </div>
-                    <div className="rounded-full border border-fuchsia-300/25 bg-fuchsia-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-fuchsia-100">
-                        Role: {hostPermissionLevel}
+                    <div className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.2em] ${
+                        isFirstHostRun
+                            ? 'border-pink-300/30 bg-pink-500/10 text-pink-100'
+                            : 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'
+                    }`}>
+                        {isFirstHostRun ? 'First Room Setup' : 'Ready To Host'}
                     </div>
                 </div>
                 <div className="mb-4 flex flex-col items-center gap-3 md:flex-row md:items-center md:text-left">
@@ -11985,46 +12015,61 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         alt="Bross Entertainment"
                     />
                     <div className="max-w-xl">
-                        <h1 className="text-[1.85rem] md:text-[2.65rem] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] via-[#84e7f4] to-[#EC4899] leading-tight">Open Your Karaoke Room In Seconds</h1>
-                        <div className="text-sm text-cyan-100/85 mt-2">Workspace owners and admins run setup here. Singers and audience join from their own mobile view using the room code.</div>
+                        <h1 className="text-[1.85rem] md:text-[2.65rem] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] via-[#84e7f4] to-[#EC4899] leading-tight">
+                            {isFirstHostRun ? "Let's Get Your First Karaoke Room Ready" : 'Start Your Karaoke Night'}
+                        </h1>
+                        <div className="text-sm text-cyan-100/85 mt-2">
+                            {isFirstHostRun
+                                ? 'Finish a quick setup once, then start hosting. Guests join with the room code you share.'
+                                : 'Create a room for tonight or reopen one from a recent show. Guests join with the room code you share.'}
+                        </div>
                     </div>
                 </div>
-                <div className="text-[11px] uppercase tracking-[0.2em] text-fuchsia-100/60 mb-4">Recommended path: guided setup first, then launch.</div>
                 <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-2.5 text-left" data-host-room-state>
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100/75">Room State</div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100/75">Status</div>
                         <div className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${launchStateTone}`}>
                             {launchState}
                         </div>
                     </div>
                     <div className="mt-1 text-xs text-cyan-100/70">{launchStateHelp}</div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${authError ? 'border-rose-300/40 bg-rose-500/12 text-rose-100' : 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100'}`}>
-                            Auth: {authHealthLabel}
-                        </span>
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${isOnline ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : 'border-amber-300/40 bg-amber-500/12 text-amber-100'}`}>
-                            Network: {isOnline ? 'Online' : 'Offline'}
-                        </span>
+                    {(authError || !isOnline) && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${authError ? 'border-rose-300/40 bg-rose-500/12 text-rose-100' : 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100'}`}>
+                                {authHealthLabel}
+                            </span>
+                            {!isOnline && (
+                                <span className="rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] border-amber-300/40 bg-amber-500/12 text-amber-100">
+                                    Offline
+                                </span>
+                            )}
+                        </div>
+                    )}
+                </div>
+                {shouldShowSetupCard && (
+                    <div className="mb-3 rounded-xl border border-pink-300/30 bg-gradient-to-r from-cyan-500/10 via-sky-500/10 to-pink-500/10 px-3 py-3 text-left">
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-pink-100/75">First-Time Setup</div>
+                        <div className="mt-1 text-sm font-semibold text-white">Set up your host profile once.</div>
+                        <div className="mt-1 text-xs text-cyan-100/75">
+                            Add your host name, workspace details, and branding. After that, you can start rooms without seeing setup every time.
+                        </div>
+                        <button
+                            onClick={() => {
+                                if (!canUseWorkspaceOnboarding) {
+                                    toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
+                                    return;
+                                }
+                                openOnboardingWizard();
+                            }}
+                            disabled={!canUseWorkspaceOnboarding}
+                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} mt-3 w-full py-3 text-sm uppercase tracking-[0.2em] bg-gradient-to-r from-[#00C4D9] via-[#48d5eb] to-[#EC4899] text-black border-transparent shadow-[0_0_24px_rgba(0,196,217,0.24)] ${!canUseWorkspaceOnboarding ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            Finish Host Setup
+                        </button>
                     </div>
-                </div>
-                <button
-                    onClick={() => {
-                        if (!canUseWorkspaceOnboarding) {
-                            toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
-                            return;
-                        }
-                        openOnboardingWizard();
-                    }}
-                    disabled={!canUseWorkspaceOnboarding}
-                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} w-full py-4 text-sm uppercase tracking-[0.24em] mb-3 bg-gradient-to-r from-[#00C4D9] via-[#48d5eb] to-[#EC4899] text-black border-transparent shadow-[0_0_30px_rgba(0,196,217,0.28)] ${!canUseWorkspaceOnboarding ? 'opacity-60 cursor-not-allowed' : ''}`}
-                >
-                    Guided Setup Wizard
-                </button>
-                <div className="text-xs text-cyan-100/75 mb-4 text-left">
-                    Use this to set host identity, workspace details, branding, and launch defaults in one pass.
-                </div>
+                )}
                 <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Primary Action</div>
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Choose What You Want To Do</div>
                     <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <button
                             type="button"
@@ -12049,16 +12094,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                     <div className="mt-2 text-xs text-cyan-100/72">
                         {landingLaunchMode === 'create'
-                            ? 'Set room basics once, then launch a new room.'
-                            : 'Open an existing room code and continue host operations.'}
+                            ? (shouldShowSetupCard
+                                ? 'New hosts should finish setup first. Returning hosts can start a room right away.'
+                                : 'Start a fresh room for tonight.')
+                            : 'Open an existing room code and keep the show moving.'}
                     </div>
                 </div>
                 {landingLaunchMode === 'create' && (
                     <>
-                        <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left" data-host-discovery-launch>
-                            <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/70">Discovery + Map Listing</div>
+                        <details
+                            className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left"
+                            data-host-discovery-launch
+                            open={landingListingDetailsOpen}
+                            onToggle={(event) => setShowLandingListingOptions(event.currentTarget.open)}
+                        >
+                            <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">
+                                <span>Optional: Help Guests Find This Room</span>
+                                <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
+                            </summary>
                             <div className="mt-2 text-[11px] text-cyan-100/75">
-                                Make this room discoverable at launch so guests can find it from the live map.
+                                Add a public listing only if you want this room to appear on the discover map.
                             </div>
                             <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
                                 <input
@@ -12066,7 +12121,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     checked={!!quickLaunchDiscovery.publicRoom}
                                     onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, publicRoom: e.target.checked }))}
                                 />
-                                Public room (discoverable)
+                                Show this room on the map
                             </label>
                             <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
                                 <input
@@ -12074,14 +12129,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     checked={!!quickLaunchDiscovery.virtualOnly}
                                     onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, virtualOnly: e.target.checked }))}
                                 />
-                                Virtual-only room
+                                Online-only room
                             </label>
                             <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <input
                                     value={quickLaunchDiscovery.title}
                                     onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, title: e.target.value }))}
                                     className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                                    placeholder="Listing title (optional)"
+                                    placeholder="Room title (optional)"
                                 />
                                 <input
                                     type="datetime-local"
@@ -12131,7 +12186,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     placeholder="Short description (optional)"
                                 />
                             </div>
-                        </div>
+                        </details>
                         <button
                             data-host-create-room-primary
                             onClick={() => {
@@ -12150,15 +12205,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             disabled={creatingRoom || joiningRoom || !!roomManagerBusyCode}
                             className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-3 ${creatingRoom || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
-                            {creatingRoom ? 'Creating Room...' : 'Create New Room'}
+                            {creatingRoom ? 'Starting Room...' : (shouldShowSetupCard && !canQuickStartRoom ? 'Finish Setup First' : 'Start New Room')}
                         </button>
+                        {!shouldShowSetupCard && (
                         <details className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
                             <summary className="cursor-pointer list-none flex items-center justify-between text-xs uppercase tracking-[0.18em] text-cyan-100">
-                                <span>Advanced Launch (QA / Returning Hosts)</span>
+                                <span>More Options For Returning Hosts</span>
                                 <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
                             </summary>
                             <div className="mt-3 text-xs text-cyan-100/70">
-                                Quick start skips the guided checklist. It is best for hosts who already have identity/workspace configured.
+                                Quick start skips the setup checklist and opens a room immediately.
                             </div>
                             <button
                                 data-host-quick-start
@@ -12166,14 +12222,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 disabled={creatingRoom || !canQuickStartRoom}
                                 className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 w-full py-2.5 text-xs uppercase tracking-[0.2em] shadow-[0_0_28px_rgba(236,72,153,0.25)] ${creatingRoom || !canQuickStartRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
-                                {creatingRoom ? 'Creating Room...' : 'Quick Start New Room'}
+                                {creatingRoom ? 'Starting Room...' : 'Quick Start Room'}
                             </button>
                             {!canQuickStartRoom && (
                                 <div className="mt-2 text-[11px] text-amber-200/85">
-                                    Complete guided setup first to unlock quick start on this account.
+                                    Finish setup first to unlock quick start on this account.
                                 </div>
                             )}
                         </details>
+                        )}
                     </>
                 )}
                 {!uid && authError && (
@@ -12186,7 +12243,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 )}
                 {landingLaunchMode === 'resume' && (
                     <>
-                        <div className="text-xs text-cyan-100/70 uppercase tracking-[0.28em] mb-2 text-left">Resume Existing Room</div>
+                        <div className="text-xs text-cyan-100/70 uppercase tracking-[0.28em] mb-2 text-left">Open An Existing Room</div>
                         <div className="flex flex-col sm:flex-row gap-2 justify-center">
                             <input
                                 value={roomCodeInput}
@@ -12211,21 +12268,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 disabled={joiningRoom || !!roomManagerBusyCode}
                                 className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
-                                Open Live Controls
+                                Open Host Controls
                             </button>
                             <button
                                 onClick={() => openExistingRoomWorkspace(roomCodeInput, 'ops.room_setup')}
                                 disabled={joiningRoom || !!roomManagerBusyCode}
                                 className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
-                                Manage Settings
+                                Open Room Settings
                             </button>
                             <button
                                 onClick={() => openExistingRoomWorkspace(roomCodeInput, 'advanced.diagnostics')}
                                 disabled={joiningRoom || !!roomManagerBusyCode}
                                 className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
-                                Cleanup + Archive Tools
+                                Cleanup + Archive
                             </button>
                         </div>
                         <div className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left" data-host-share-launch>
@@ -12286,7 +12343,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </div>
                         <details className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/8 px-3 py-3 text-left" data-host-troubleshooting>
                             <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-amber-100/85">
-                                <span>Troubleshooting</span>
+                                <span>Need Help?</span>
                                 <i className="fa-solid fa-chevron-down text-amber-200/70"></i>
                             </summary>
                             <div className="mt-2 text-xs text-amber-100/80">
@@ -12340,23 +12397,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </details>
                     </>
                 )}
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-left">
-                    <div className="rounded-xl border border-cyan-400/28 bg-cyan-500/8 px-3 py-2">
-                        <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/65">Workspace</div>
-                        <div className="mt-1 text-xs text-cyan-100 font-mono truncate">{orgContext?.orgId || 'not-initialized'}</div>
-                    </div>
-                    <div className="rounded-xl border border-pink-400/28 bg-pink-500/8 px-3 py-2">
-                        <div className="text-[10px] uppercase tracking-[0.24em] text-pink-100/65">Plan</div>
-                        <div className="mt-1 text-xs text-pink-100">{planLabel}</div>
-                    </div>
-                    <div className="rounded-xl border border-fuchsia-400/25 bg-fuchsia-500/8 px-3 py-2">
-                        <div className="text-[10px] uppercase tracking-[0.24em] text-fuchsia-100/65">Release Build</div>
-                        <div className="mt-1 text-xs text-fuchsia-100 font-mono break-all">{VERSION}</div>
-                    </div>
-                </div>
                 <div className="mt-4 rounded-xl border border-cyan-400/25 bg-gradient-to-br from-[#120f22]/90 via-[#11152a]/90 to-[#13151f]/90 px-3 py-3 text-left">
-                    <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Room Manager</div>
-                    <div className="text-xs text-cyan-100/75 mt-1">Spin up new rooms, reopen previous rooms, or run cleanup/archive actions without hunting through admin tabs.</div>
+                    <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Recent Rooms</div>
+                    <div className="text-xs text-cyan-100/75 mt-1">Jump back into a recent room or clean up an older one.</div>
                     {recentHostRoomsLoading ? (
                         <div className="text-xs text-cyan-100/70 mt-3">Loading recent rooms...</div>
                     ) : recentHostRooms.length > 0 ? (
@@ -12404,7 +12447,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     disabled={roomBusy || joiningRoom}
                                                     className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                 >
-                                                    Manage
+                                                    Settings
                                                 </button>
                                                 <button
                                                     onClick={() => runLandingRoomCleanup(roomItem.code)}
@@ -12461,7 +12504,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     }}
                                     className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-[11px] px-2 py-1`}
                                 >
-                                    Open Guided Setup
+                                    Finish Setup
                                 </button>
                             </div>
                         </div>
@@ -12490,21 +12533,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         {hostUpdateDeploymentBanner}
                     </div>
                 )}
-                <div className="mt-5 rounded-xl border border-pink-400/22 bg-gradient-to-r from-[#141028]/90 via-[#121726]/90 to-[#0f1d27]/90 px-3 py-2 text-left text-xs text-cyan-100/75">
-                    <div className="font-semibold text-white mb-1">Launch Flow</div>
-                    <div className="mb-1"><span className="text-cyan-200"><i className="fa-solid fa-wand-magic-sparkles mr-2"></i></span>Primary: Guided Setup for identity, billing, branding, then launch.</div>
-                    <div className="mb-1"><span className="text-pink-200"><i className="fa-solid fa-bolt mr-2"></i></span>Advanced: Quick Start (inside Advanced Launch) for QA or returning hosts.</div>
-                    <div><span className="text-emerald-200"><i className="fa-solid fa-layer-group mr-2"></i></span>Room Manager: reopen, cleanup, archive, and restore existing rooms.</div>
-                </div> 
             </div>
             {showOnboardingWizard && (
                 <div className="fixed inset-0 z-[95] bg-black/85 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
                     <div className="w-full max-w-5xl mx-auto bg-gradient-to-br from-[#151026]/95 via-[#0f1628]/95 to-[#0a111c]/95 border border-cyan-300/35 rounded-[2rem] shadow-[0_34px_100px_rgba(0,0,0,0.62),0_0_60px_rgba(236,72,153,0.16)] overflow-hidden text-left">
                         <div className="px-5 py-4 md:px-6 border-b border-cyan-400/20 flex items-center justify-between gap-3">
                             <div>
-                                <div className="text-[11px] uppercase tracking-[0.3em] text-fuchsia-100/70">Turnkey Setup</div>
-                                <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] mt-1">Workspace Onboarding</div>
-                                <div className="text-sm text-cyan-100/80 mt-1">Configure identity, billing, branding, then launch your first room.</div>
+                                <div className="text-[11px] uppercase tracking-[0.3em] text-fuchsia-100/70">Host Setup</div>
+                                <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] mt-1">Set Up Your Hosting Profile</div>
+                                <div className="text-sm text-cyan-100/80 mt-1">Add your host details, choose your plan, add branding, then launch your first room.</div>
                             </div>
                             <button
                                 onClick={closeOnboardingWizard}
@@ -13305,6 +13342,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         setShowSettings(true);
                         setSettingsTab('general');
                     }}
+                    onOpenHostDashboard={openHostRoomDashboard}
                 />
                 <ModerationInboxDrawer
                     open={showModerationInbox}
