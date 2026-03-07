@@ -23,6 +23,9 @@ import { buildMarketingPath } from "../routing";
 
 const FINDER_BRAND = "Setlist";
 const MAP_DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
+const KITSAP_BOOTSTRAP_REGION = "wa_kitsap";
+const KITSAP_BOOTSTRAP_CENTER = { lat: 47.5964, lng: -122.6432 };
+const KITSAP_BOOTSTRAP_ZOOM = 10;
 const MAP_BRAND_STYLES = [
   { elementType: "geometry", stylers: [{ color: "#020714" }] },
   { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
@@ -98,7 +101,7 @@ const ENV_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED = typeof import.meta !== "undefi
   ? String(import.meta.env.VITE_MARKETING_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED || "")
   : "";
 const DISCOVER_DEFAULT_LIMIT_DESKTOP = 120;
-const DISCOVER_DEFAULT_LIMIT_MOBILE = 72;
+const DISCOVER_DEFAULT_LIMIT_MOBILE = 48;
 
 const toRadians = (value = 0) => (Number(value || 0) * Math.PI) / 180;
 
@@ -678,6 +681,10 @@ const applyAdvancedMarkerStyles = (element, visual, title = "") => {
   element.style.boxShadow = visual.shadow;
   element.style.cursor = "pointer";
   element.style.boxSizing = "border-box";
+  element.style.borderRadius = "999px";
+  element.style.background = "transparent";
+  element.style.backfaceVisibility = "hidden";
+  element.style.webkitBackfaceVisibility = "hidden";
   element.style.transition = "transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease";
 };
 
@@ -764,8 +771,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const initialIsMobile = typeof window !== "undefined"
     && typeof window.matchMedia === "function"
     && window.matchMedia("(max-width: 1120px)").matches;
+  const initialRegion = initialIsMobile ? KITSAP_BOOTSTRAP_REGION : "";
   const [search, setSearch] = useState("");
-  const [region, setRegion] = useState("");
+  const [region, setRegion] = useState(initialRegion);
   const [typeFilter, setTypeFilter] = useState("all");
   const [timeWindow, setTimeWindow] = useState("all");
   const [sortMode, setSortMode] = useState("smart");
@@ -809,6 +817,20 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   });
   const [mapFullscreen, setMapFullscreen] = useState(false);
   const [officialMarkerPulsePhase, setOfficialMarkerPulsePhase] = useState(0);
+  const mobileBootstrapRegion = isMobileViewport ? KITSAP_BOOTSTRAP_REGION : "";
+  const bootstrapMapView = useMemo(() => {
+    const regionToken = String(region || "").trim().toLowerCase();
+    if (regionToken === KITSAP_BOOTSTRAP_REGION) {
+      return {
+        center: KITSAP_BOOTSTRAP_CENTER,
+        zoom: KITSAP_BOOTSTRAP_ZOOM,
+      };
+    }
+    return {
+      center: MAP_DEFAULT_CENTER,
+      zoom: 4,
+    };
+  }, [region]);
 
   const {
     loading,
@@ -1224,7 +1246,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
   const resetDiscoverFilters = useCallback(() => {
     setSearch("");
-    setRegion("");
+    setRegion(mobileBootstrapRegion);
     setTypeFilter("all");
     setTimeWindow("all");
     setSortMode("smart");
@@ -1234,7 +1256,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     setRoomAccessFilter("all");
     setExperienceFilter("all");
     setEventCadenceFilter("all");
-  }, []);
+  }, [mobileBootstrapRegion]);
 
   const registerCardRef = useCallback((key, node) => {
     if (!key) return;
@@ -1400,8 +1422,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       const container = mapContainerRef.current;
       if (!container || mapRef.current) return;
       const map = new googleMaps.Map(container, {
-        center: MAP_DEFAULT_CENTER,
-        zoom: 4,
+        center: bootstrapMapView.center,
+        zoom: bootstrapMapView.zoom,
         minZoom: 3,
         clickableIcons: false,
         gestureHandling: "greedy",
@@ -1429,7 +1451,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       window.cancelAnimationFrame(frameId);
       idleListener?.remove?.();
     };
-  }, [mapsLoaded, mapEnabled, mapsMapId, hasCloudStyledMapId]);
+  }, [mapsLoaded, mapEnabled, mapsMapId, hasCloudStyledMapId, bootstrapMapView]);
 
   useEffect(() => () => {
     const googleMaps = window.google?.maps;

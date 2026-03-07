@@ -98,6 +98,7 @@ const ForHostsPage = ({ route, session, authFlow }) => {
             targetType: "session",
           },
         },
+        preferHostSurface: true,
       });
       return;
     }
@@ -118,6 +119,7 @@ const ForHostsPage = ({ route, session, authFlow }) => {
           page: MARKETING_ROUTE_PAGES.hostAccess,
           params: {},
         },
+        preferHostSurface: true,
       });
       return;
     }

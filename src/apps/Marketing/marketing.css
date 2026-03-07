@@ -2806,6 +2806,9 @@
   height: var(--mk3-map-pin-size);
   display: grid;
   place-items: center;
+  border-radius: 999px;
+  overflow: visible;
+  isolation: isolate;
   transform: translate3d(0, 0, 0);
 }
 

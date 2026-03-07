@@ -357,22 +357,65 @@ const MarketingSite = () => {
     authPanelRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   }, []);
 
-  const requireFullAuth = useCallback(({ intent = "", targetType = "", targetId = "", returnRoute = null } = {}) => {
-    if (isAuthed && !isAnonymous) return true;
+  const buildHostSurfaceAuthHref = useCallback(({ intent = "", targetType = "", targetId = "", returnRoute = null } = {}) => {
+    if (typeof window === "undefined") return "";
     const currentRoute = normalizeRouteInput(route);
     const plannedReturn = normalizeRouteInput(returnRoute || currentRoute);
-    const nextRoute = {
-      page: MARKETING_ROUTE_PAGES.hostAccess,
-      id: "",
-      params: {
-        intent: String(intent || "").trim() || "continue",
-        targetType: String(targetType || "").trim(),
-        targetId: String(targetId || "").trim(),
-        return_to: buildMarketingUrl(plannedReturn),
-      },
+    const authParams = {
+      ...pickCampaignParams(plannedReturn.params || {}),
+      intent: String(intent || "").trim() || "continue",
+      targetType: String(targetType || "").trim(),
+      targetId: String(targetId || "").trim(),
+      return_to: buildMarketingUrl(plannedReturn),
     };
-    navigate(nextRoute, "", {}, { replace: true });
-    scrollAuthPanelIntoView();
+    if (marketingFlags.routePathsEnabled) {
+      return buildSurfaceUrl({
+        surface: "host",
+        path: "host-access",
+        params: authParams,
+      }, window.location);
+    }
+    return buildSurfaceUrl({
+      surface: "host",
+      params: {
+        mode: "marketing",
+        page: MARKETING_ROUTE_PAGES.hostAccess,
+        ...authParams,
+      },
+    }, window.location);
+  }, [route]);
+
+  const requireFullAuth = useCallback(({
+    intent = "",
+    targetType = "",
+    targetId = "",
+    returnRoute = null,
+    preferHostSurface = false,
+  } = {}) => {
+    if (isAuthed && !isAnonymous) return true;
+
+    if (preferHostSurface) {
+      const nextHref = buildHostSurfaceAuthHref({ intent, targetType, targetId, returnRoute });
+      if (nextHref && typeof window !== "undefined") {
+        window.location.href = nextHref;
+      }
+    } else {
+      const currentRoute = normalizeRouteInput(route);
+      const plannedReturn = normalizeRouteInput(returnRoute || currentRoute);
+      const nextRoute = {
+        page: MARKETING_ROUTE_PAGES.hostAccess,
+        id: "",
+        params: {
+          intent: String(intent || "").trim() || "continue",
+          targetType: String(targetType || "").trim(),
+          targetId: String(targetId || "").trim(),
+          return_to: buildMarketingUrl(plannedReturn),
+        },
+      };
+      navigate(nextRoute, "", {}, { replace: true });
+      scrollAuthPanelIntoView();
+    }
+
     trackEvent("mk_persona_cta_click", {
       persona: "auth_gate",
       cta: `auth_required_${String(intent || "continue").toLowerCase()}`,
@@ -380,7 +423,7 @@ const MarketingSite = () => {
       targetId: String(targetId || ""),
     });
     return false;
-  }, [isAnonymous, isAuthed, navigate, route, scrollAuthPanelIntoView]);
+  }, [buildHostSurfaceAuthHref, isAnonymous, isAuthed, navigate, route, scrollAuthPanelIntoView]);
 
   const resolvePostAuthReturn = useCallback(() => {
     const currentRoute = normalizeRouteInput(readRouteFromWindow());
@@ -494,6 +537,7 @@ const MarketingSite = () => {
     if (typeof window === "undefined") return "";
     return inferSurfaceFromHostname(window.location.hostname, window.location);
   }, []);
+  const isHostSurface = currentSurface === "host";
   const openHostDashboard = useCallback((source = "marketing_nav") => {
     if (typeof window === "undefined") return;
     trackEvent("mk_nav_host_dashboard_click", {
@@ -511,6 +555,12 @@ const MarketingSite = () => {
       );
     window.location.href = nextHref;
   }, [currentSurface, hasFullAccount, hostAccessResumeHref, hostDashboardHref]);
+  const openHostAuthGate = useCallback((options = {}) => {
+    if (typeof window === "undefined") return;
+    const nextHref = buildHostSurfaceAuthHref(options);
+    if (!nextHref) return;
+    window.location.href = nextHref;
+  }, [buildHostSurfaceAuthHref]);
 
   const applyForHostAccess = useCallback(async (source = "marketing_host_apply") => {
     if (!hasFullAccount) {
@@ -521,6 +571,7 @@ const MarketingSite = () => {
           page: MARKETING_ROUTE_PAGES.hostAccess,
           params: withCampaignParams({ utm_content: source }),
         },
+        preferHostSurface: true,
       });
       return;
     }
@@ -734,6 +785,7 @@ const MarketingSite = () => {
                         targetType: "session",
                       },
                     },
+                    preferHostSurface: true,
                   });
                 }}
               >
@@ -889,6 +941,37 @@ const MarketingSite = () => {
                     </button>
                   </div>
                 </div>
+              ) : !isHostSurface ? (
+                <div className="mk3-auth-state">
+                  <div className="mk3-status mk3-status-warning">
+                    <strong>Host sign-in continues on the host app.</strong>
+                    <span>Root-domain marketing pages explain the flow, but host authentication now completes on `host.beaurocks.app` so your session can open the real dashboard correctly.</span>
+                  </div>
+                  <div className="mk3-actions-inline">
+                    <button
+                      className="mk3-host-canon-button is-primary"
+                      type="button"
+                      onClick={() => {
+                        trackEvent("mk_nav_host_access_click", { source: "host_access_root_handoff" });
+                        openHostAuthGate({
+                          intent: String(route.params?.intent || "").trim() || "continue",
+                          targetType: String(route.params?.targetType || "").trim(),
+                          targetId: String(route.params?.targetId || "").trim(),
+                          returnRoute: {
+                            page: MARKETING_ROUTE_PAGES.hostAccess,
+                            params: {
+                              ...withCampaignParams(route.params || {}),
+                              ...stripIntentParams(route.params || {}),
+                            },
+                          },
+                        });
+                      }}
+                    >
+                      Continue To Host Login
+                    </button>
+                  </div>
+                  <div className="mk3-auth-hint">If you already have host access, sign in there and you will resume into Host Dashboard.</div>
+                </div>
               ) : (
                 <form onSubmit={onAuthSubmit}>
                   <div className="mk3-auth-mode-label">Account mode</div>
@@ -1019,7 +1102,15 @@ const MarketingSite = () => {
                       openHostDashboard("marketing_footer_host_dashboard");
                       return;
                     }
-                    navigate(MARKETING_ROUTE_PAGES.hostAccess, "", withCampaignParams({ utm_content: "footer_host_access" }));
+                    requireFullAuth({
+                      intent: "host_dashboard_resume",
+                      targetType: "session",
+                      returnRoute: {
+                        page: MARKETING_ROUTE_PAGES.hostAccess,
+                        params: withCampaignParams({ utm_content: "footer_host_access" }),
+                      },
+                      preferHostSurface: true,
+                    });
                   }}
                 >
                   {hasFullAccount ? "Open Host Dashboard" : "Host Access"}
