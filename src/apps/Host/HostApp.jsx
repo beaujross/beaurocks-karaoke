@@ -142,6 +142,69 @@ const HOST_UPDATE_OP_FIELD = '__hostOp';
 const HOST_UPDATE_SERVER_TIMESTAMP = 'serverTimestamp';
 const POP_TRIVIA_CACHE_FIELD = 'popTriviaSongCache';
 
+const decodeUriComponentSafe = (value = '') => {
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return String(value || '');
+    }
+};
+
+const decodeUriComponentLoop = (value = '', maxPasses = 3) => {
+    let current = String(value || '');
+    for (let pass = 0; pass < maxPasses; pass += 1) {
+        const decoded = decodeUriComponentSafe(current);
+        if (decoded === current) break;
+        current = decoded;
+    }
+    return current;
+};
+
+const normalizeOrbPathname = (pathname = '') => {
+    const rawPath = String(pathname || '').replace(/\\/g, '/');
+    const segments = rawPath.split('/').map((segment, idx) => {
+        if (idx === 0 && segment === '') return '';
+        const decoded = decodeUriComponentLoop(segment);
+        return encodeURIComponent(decoded);
+    });
+    const joined = segments.join('/');
+    if (!joined) return '/';
+    return joined.startsWith('/') ? joined : `/${joined}`;
+};
+
+const normalizeOrbSkinUrl = (rawValue = '') => {
+    const raw = String(rawValue || '').trim();
+    if (!raw) return '';
+    const slashNormalized = raw.replace(/\\/g, '/');
+    if (/^javascript:/i.test(slashNormalized) || /^data:/i.test(slashNormalized)) return '';
+    let candidate = slashNormalized;
+    const publicIndex = candidate.toLowerCase().indexOf('/public/');
+    if (publicIndex >= 0) {
+        const fromPublic = candidate.slice(publicIndex + '/public'.length);
+        candidate = fromPublic.startsWith('/') ? fromPublic : `/${fromPublic}`;
+    }
+    if (/^[a-z]:\//i.test(candidate)) return '';
+    if (/^https?:\/\//i.test(candidate)) {
+        try {
+            const parsed = new URL(candidate);
+            const normalizedPathname = normalizeOrbPathname(parsed.pathname || '/');
+            return `${parsed.origin}${normalizedPathname}${parsed.search}${parsed.hash}`;
+        } catch {
+            return '';
+        }
+    }
+    if (candidate.startsWith('/')) {
+        try {
+            const parsed = new URL(candidate, 'https://beaurocks.local');
+            const normalizedPathname = normalizeOrbPathname(parsed.pathname || '/');
+            return `${normalizedPathname}${parsed.search}${parsed.hash}`;
+        } catch {
+            return '';
+        }
+    }
+    return '';
+};
+
 const isPlainObject = (value) =>
     !!value && Object.prototype.toString.call(value) === '[object Object]';
 
@@ -7968,65 +8031,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         await updateRoom({ logoUrl: trimmed || null });
         toast('Logo updated');
-    };
-    const decodeUriComponentSafe = (value = '') => {
-        try {
-            return decodeURIComponent(String(value || ''));
-        } catch {
-            return String(value || '');
-        }
-    };
-    const decodeUriComponentLoop = (value = '', maxPasses = 3) => {
-        let current = String(value || '');
-        for (let pass = 0; pass < maxPasses; pass += 1) {
-            const decoded = decodeUriComponentSafe(current);
-            if (decoded === current) break;
-            current = decoded;
-        }
-        return current;
-    };
-    const normalizeOrbPathname = (pathname = '') => {
-        const rawPath = String(pathname || '').replace(/\\/g, '/');
-        const segments = rawPath.split('/').map((segment, idx) => {
-            if (idx === 0 && segment === '') return '';
-            const decoded = decodeUriComponentLoop(segment);
-            return encodeURIComponent(decoded);
-        });
-        const joined = segments.join('/');
-        if (!joined) return '/';
-        return joined.startsWith('/') ? joined : `/${joined}`;
-    };
-    const normalizeOrbSkinUrl = (rawValue = '') => {
-        const raw = String(rawValue || '').trim();
-        if (!raw) return '';
-        const slashNormalized = raw.replace(/\\/g, '/');
-        if (/^javascript:/i.test(slashNormalized) || /^data:/i.test(slashNormalized)) return '';
-        let candidate = slashNormalized;
-        const publicIndex = candidate.toLowerCase().indexOf('/public/');
-        if (publicIndex >= 0) {
-            const fromPublic = candidate.slice(publicIndex + '/public'.length);
-            candidate = fromPublic.startsWith('/') ? fromPublic : `/${fromPublic}`;
-        }
-        if (/^[a-z]:\//i.test(candidate)) return '';
-        if (/^https?:\/\//i.test(candidate)) {
-            try {
-                const parsed = new URL(candidate);
-                const normalizedPathname = normalizeOrbPathname(parsed.pathname || '/');
-                return `${parsed.origin}${normalizedPathname}${parsed.search}${parsed.hash}`;
-            } catch {
-                return '';
-            }
-        }
-        if (candidate.startsWith('/')) {
-            try {
-                const parsed = new URL(candidate, 'https://beaurocks.local');
-                const normalizedPathname = normalizeOrbPathname(parsed.pathname || '/');
-                return `${normalizedPathname}${parsed.search}${parsed.hash}`;
-            } catch {
-                return '';
-            }
-        }
-        return '';
     };
     const saveOrbSkinUrl = async (nextOrbSkinUrl = orbSkinUrl) => {
         const raw = (nextOrbSkinUrl || '').trim();
