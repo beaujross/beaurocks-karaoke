@@ -1116,3 +1116,76 @@ html, body, #root { height: 100%; width: 100%; }
     transform: none;
   }
 }
+
+/* iPad/tablet touch usability pass (Host + Audience) */
+@media (min-width: 768px) and (max-width: 1366px) {
+  .host-app[data-host-tablet-touch="true"] {
+    min-height: 100dvh;
+    height: auto;
+    overflow-y: auto !important;
+  }
+
+  .host-app[data-host-tablet-touch="true"] [data-host-top-chrome="true"] {
+    position: sticky;
+    top: 0;
+    z-index: 45;
+  }
+
+  .host-app[data-host-tablet-touch="true"] .host-btn {
+    min-height: 46px;
+    font-size: 0.9rem;
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+  }
+
+  .host-app[data-host-tablet-touch="true"] [data-host-quick-strip-wrap="true"] {
+    padding-bottom: 0.3rem;
+  }
+
+  .host-app[data-host-tablet-touch="true"] .host-top-quick-strip {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: 0.2rem;
+  }
+
+  .host-app[data-host-tablet-touch="true"] .host-top-quick-strip > * {
+    flex: 0 0 auto;
+  }
+
+  .singer-tablet-touch[data-singer-view="main"],
+  .singer-tablet-touch[data-singer-view="join"] {
+    max-width: 1100px;
+    margin: 0 auto;
+    border-left: 1px solid rgba(125, 211, 252, 0.2);
+    border-right: 1px solid rgba(125, 211, 252, 0.2);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+  }
+
+  .singer-tablet-touch[data-singer-view="main"] .mobile-native-header {
+    height: 7.75rem;
+  }
+
+  .singer-tablet-touch[data-singer-view="main"] .mobile-native-tabbar-row {
+    gap: 14px;
+    padding-top: 10px;
+  }
+
+  .singer-tablet-touch[data-singer-view="main"] .mobile-native-tab-btn {
+    min-height: 78px;
+  }
+
+  .singer-tablet-touch[data-singer-view="main"] .mobile-native-tab-btn i {
+    font-size: 1.5rem;
+  }
+
+  .singer-tablet-touch[data-singer-view="main"] .mobile-native-tab-btn span {
+    font-size: 0.94rem;
+  }
+
+  .singer-tablet-touch[data-singer-view="main"] .mobile-native-content {
+    padding: 1.05rem 1.2rem 1.5rem;
+  }
+}

@@ -207,6 +207,23 @@ const normalizeUnitVolume = (value, fallback = 0.3) => {
     return Math.max(0, Math.min(1, numeric));
 };
 
+const detectTabletTouchViewport = () => {
+    if (typeof window === 'undefined') return false;
+    const width = Math.max(
+        Number(window.innerWidth || 0),
+        Number(window.screen?.width || 0)
+    );
+    const coarsePointer = typeof window.matchMedia === 'function'
+        ? window.matchMedia('(pointer: coarse)').matches
+        : false;
+    const ua = String(window.navigator?.userAgent || '');
+    const platform = String(window.navigator?.platform || '');
+    const touchPoints = Number(window.navigator?.maxTouchPoints || 0);
+    const appleTablet = /iPad/i.test(ua) || (platform === 'MacIntel' && touchPoints > 1);
+    if (appleTablet && width >= 744 && width <= 1366) return true;
+    return coarsePointer && width >= 768 && width <= 1180;
+};
+
 // Background tracks and sounds imported from gameDataConstants.js
 // (BG_TRACKS, SOUNDS)
 
@@ -5012,7 +5029,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [stageMicReady, setStageMicReady] = useState(false);
     const [stageMicError, setStageMicError] = useState('');
     const [viewportHeight, setViewportHeight] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 1080));
-    const compactHostViewport = viewportHeight <= 900;
+    const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1440));
+    const [tabletTouchViewport, setTabletTouchViewport] = useState(() => detectTabletTouchViewport());
+    const compactHostViewport = viewportHeight <= 900 || tabletTouchViewport || viewportWidth <= 860;
     const [audioPanelOpen, setAudioPanelOpen] = useState(() => {
         if (typeof window === 'undefined') return true;
         return window.innerHeight > 900;
@@ -5119,10 +5138,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [showAiSetupGuide, setShowAiSetupGuide] = useState(false);
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
-        const onResize = () => setViewportHeight(window.innerHeight || 0);
-        onResize();
-        window.addEventListener('resize', onResize);
-        return () => window.removeEventListener('resize', onResize);
+        const onViewportChange = () => {
+            setViewportHeight(window.innerHeight || 0);
+            setViewportWidth(window.innerWidth || 0);
+            setTabletTouchViewport(detectTabletTouchViewport());
+        };
+        onViewportChange();
+        const coarsePointerMedia = typeof window.matchMedia === 'function' ? window.matchMedia('(pointer: coarse)') : null;
+        window.addEventListener('resize', onViewportChange);
+        window.addEventListener('orientationchange', onViewportChange);
+        coarsePointerMedia?.addEventListener?.('change', onViewportChange);
+        coarsePointerMedia?.addListener?.(onViewportChange);
+        return () => {
+            window.removeEventListener('resize', onViewportChange);
+            window.removeEventListener('orientationchange', onViewportChange);
+            coarsePointerMedia?.removeEventListener?.('change', onViewportChange);
+            coarsePointerMedia?.removeListener?.(onViewportChange);
+        };
     }, []);
     useEffect(() => {
         if (!compactHostViewport) return;
@@ -13218,7 +13250,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }
 
     return (
-            <div className="host-app min-h-screen md:h-screen flex flex-col relative bg-zinc-950 text-white font-saira overflow-x-hidden overflow-y-auto md:overflow-hidden">
+            <div
+                data-host-tablet-touch={tabletTouchViewport ? 'true' : 'false'}
+                className={`host-app min-h-screen ${tabletTouchViewport ? '' : 'md:h-screen'} flex flex-col relative bg-zinc-950 text-white font-saira overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? '' : 'md:overflow-hidden'}`}
+            >
                 {/* Header */}
                 <HostTopChrome
                     room={room}
@@ -13353,7 +13388,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
             )}
 
-            <div className="flex-1 min-h-0 p-3 sm:p-4 md:p-5 lg:p-6 overflow-x-hidden overflow-y-auto md:overflow-hidden">
+            <div className={`flex-1 min-h-0 p-3 sm:p-4 md:p-5 lg:p-6 overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? '' : 'md:overflow-hidden'}`}>
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <HostGameControlPad
                         roomCode={roomCode}

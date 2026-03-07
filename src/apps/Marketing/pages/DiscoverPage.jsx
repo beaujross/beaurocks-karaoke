@@ -930,8 +930,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     [boundsOnly, listingsInBounds, rankedListings]
   );
   const effectiveSelectedKey = useMemo(() => {
+    if (!selectedKey) return "";
     if (visibleListings.some((entry) => entry.key === selectedKey)) return selectedKey;
-    return visibleListings[0]?.key || "";
+    return "";
   }, [visibleListings, selectedKey]);
 
   const listingTypeCounts = useMemo(() => {
@@ -947,6 +948,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
   const selectedListing = useMemo(
     () => visibleListings.find((entry) => entry.key === effectiveSelectedKey) || null,
+    [visibleListings, effectiveSelectedKey]
+  );
+  const selectedListingIndex = useMemo(
+    () => visibleListings.findIndex((entry) => entry.key === effectiveSelectedKey),
     [visibleListings, effectiveSelectedKey]
   );
   const googleImageEligibleKeys = useMemo(() => {
@@ -1180,7 +1185,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       if (rafOne) window.cancelAnimationFrame(rafOne);
       if (rafTwo) window.cancelAnimationFrame(rafTwo);
     };
-  }, [selectedListing?.key, resultsView, visibleListings.length]);
+  }, [selectedListing?.key, selectedListingIndex, resultsView, visibleListings.length]);
 
   useEffect(() => {
     if (!isMobileViewport || mobileSurface !== "map") return () => {};

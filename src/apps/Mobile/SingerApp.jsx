@@ -328,6 +328,23 @@ const isStandaloneDisplayMode = () => {
     return !!(navStandalone || mediaStandalone || mediaFullscreen);
 };
 
+const detectTabletTouchViewport = () => {
+    if (typeof window === 'undefined') return false;
+    const width = Math.max(
+        Number(window.innerWidth || 0),
+        Number(window.screen?.width || 0)
+    );
+    const coarsePointer = typeof window.matchMedia === 'function'
+        ? window.matchMedia('(pointer: coarse)').matches
+        : false;
+    const ua = String(window.navigator?.userAgent || '');
+    const platform = String(window.navigator?.platform || '');
+    const touchPoints = Number(window.navigator?.maxTouchPoints || 0);
+    const appleTablet = /iPad/i.test(ua) || (platform === 'MacIntel' && touchPoints > 1);
+    if (appleTablet && width >= 744 && width <= 1366) return true;
+    return coarsePointer && width >= 768 && width <= 1180;
+};
+
 const normalizeVipForm = (vip = {}) => ({
     location: (vip.location || '').trim(),
     birthMonth: (vip.birthMonth || '').trim(),
@@ -878,6 +895,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [readyTimer, setReadyTimer] = useState(0);
     const [activeBrowseList, setActiveBrowseList] = useState(null);
     const [mobileLayoutMode, setMobileLayoutMode] = useState('native');
+    const [tabletTouchViewport, setTabletTouchViewport] = useState(() => detectTabletTouchViewport());
     const [isStandaloneDisplay, setIsStandaloneDisplay] = useState(() => isStandaloneDisplayMode());
     const stormAudioRef = useRef(null);
     const stormAudioCtxRef = useRef(null);
@@ -1611,8 +1629,28 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch {
             // Ignore storage read failures.
         }
-        const nextMode = forcedMode || storedMode || 'native';
+        const tabletTouch = detectTabletTouchViewport();
+        setTabletTouchViewport(tabletTouch);
+        const defaultMode = tabletTouch ? 'legacy' : 'native';
+        const nextMode = forcedMode || storedMode || defaultMode;
         setMobileLayoutMode(nextMode);
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        const syncTabletViewport = () => setTabletTouchViewport(detectTabletTouchViewport());
+        syncTabletViewport();
+        const coarsePointerMedia = typeof window.matchMedia === 'function' ? window.matchMedia('(pointer: coarse)') : null;
+        window.addEventListener('resize', syncTabletViewport);
+        window.addEventListener('orientationchange', syncTabletViewport);
+        coarsePointerMedia?.addEventListener?.('change', syncTabletViewport);
+        coarsePointerMedia?.addListener?.(syncTabletViewport);
+        return () => {
+            window.removeEventListener('resize', syncTabletViewport);
+            window.removeEventListener('orientationchange', syncTabletViewport);
+            coarsePointerMedia?.removeEventListener?.('change', syncTabletViewport);
+            coarsePointerMedia?.removeListener?.(syncTabletViewport);
+        };
     }, []);
 
     useEffect(() => {
@@ -4724,7 +4762,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         <div
             data-singer-view="join"
             ref={joinContainerRef}
-            className="h-screen w-full bg-zinc-900 flex flex-col items-center p-3 text-center font-saira justify-start overflow-y-auto overflow-x-hidden relative custom-scrollbar"
+            className={`w-full bg-zinc-900 flex flex-col items-center p-3 text-center font-saira justify-start overflow-y-auto overflow-x-hidden relative custom-scrollbar ${tabletTouchViewport ? 'singer-tablet-touch min-h-[100dvh] h-auto' : 'h-screen'}`}
             style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
         >
             <style>{PARTY_LIGHTS_STYLE}</style>
@@ -6868,7 +6906,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     return (
-        <div data-singer-view="main" className={`relative h-[100dvh] min-h-[100dvh] bg-[#090612] text-white font-saira flex flex-col overflow-hidden ${isNativeMobileLayout ? 'mobile-shell-native' : ''}`}>
+        <div data-singer-view="main" className={`relative ${tabletTouchViewport ? 'singer-tablet-touch min-h-[100dvh] h-auto overflow-y-auto overflow-x-hidden' : 'h-[100dvh] min-h-[100dvh] overflow-hidden'} bg-[#090612] text-white font-saira flex flex-col ${isNativeMobileLayout ? 'mobile-shell-native' : ''}`}>
             {isNativeMobileLayout && (
                 <>
                     <div className="mobile-native-top-chrome absolute inset-x-0 top-0 z-[18] pointer-events-none"></div>

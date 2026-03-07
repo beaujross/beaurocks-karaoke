@@ -618,14 +618,14 @@ const HostTopChrome = ({
 
     return (
     <div data-host-top-chrome="true" className="bg-zinc-900 px-4 py-2 flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full">
-            <div className="flex items-center gap-2 md:gap-3">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between w-full">
+            <div className="flex items-center gap-2 lg:gap-3">
                 <img
                     src={room?.logoUrl || logoFallback}
-                    className="h-11 md:h-14 object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5"
+                    className="h-11 lg:h-14 object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5"
                     alt="Beaurocks Karaoke"
                 />
-                <div data-host-room-code className="text-[14px] md:text-[18px] font-mono font-bold text-[#00C4D9] bg-black/40 px-2 py-0.5 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
+                <div data-host-room-code className="text-[14px] sm:text-[16px] lg:text-[18px] font-mono font-bold text-[#00C4D9] bg-black/40 px-2 py-0.5 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
                 <div className="relative" ref={launchMenuRef}>
                     <button
                         onClick={() => {
@@ -687,18 +687,18 @@ const HostTopChrome = ({
                     )}
                 </div>
             </div>
-            <div className="flex items-center gap-2 md:gap-3 justify-between md:justify-end">
+            <div className="flex items-center gap-2 lg:gap-3 justify-between lg:justify-end">
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
-                    <div data-host-live-mode={room.activeMode} className="bg-red-600 px-2.5 py-0.5 rounded text-xs md:text-sm font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
+                    <div data-host-live-mode={room.activeMode} className="bg-red-600 px-2.5 py-0.5 rounded text-xs lg:text-sm font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
                 )}
                 <ModerationInboxChip
                     pendingCount={moderationPendingCount}
                     severity={moderationSeverity}
                     needsAttention={moderationNeedsAttention}
                     onClick={onOpenModerationInbox}
-                    className="md:hidden"
+                    className="xl:hidden"
                 />
-                <div className="hidden md:flex items-center gap-2">
+                <div className="hidden xl:flex items-center gap-2">
                     <ModerationInboxChip
                         pendingCount={moderationPendingCount}
                         severity={moderationSeverity}
@@ -765,7 +765,7 @@ const HostTopChrome = ({
                     className="text-zinc-500 hover:text-white"
                     title="Open Admin"
                 >
-                    <i className="fa-solid fa-gear text-base md:text-lg"></i>
+                    <i className="fa-solid fa-gear text-base lg:text-lg"></i>
                 </button>
                 <div className="relative" ref={navMenuRef}>
                     <button
@@ -774,7 +774,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowNavMenu(next);
                         }}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-sm md:hidden`}
+                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-sm xl:hidden`}
                         style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-bars"></i>
@@ -809,8 +809,8 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
-        <div className="w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 px-3 py-2">
-            <div className="flex flex-wrap items-center gap-2">
+        <div data-host-quick-strip-wrap="true" className="w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 px-3 py-2">
+            <div className="host-top-quick-strip flex flex-wrap items-center gap-2">
                 <div className="relative" ref={automationMenuRef}>
                     <button
                         data-feature-id="deck-automation-menu-toggle"
