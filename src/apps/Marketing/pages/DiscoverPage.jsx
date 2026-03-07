@@ -776,7 +776,7 @@ const humanizeRegion = (token = "") => {
   return cityLabel ? `${cityLabel}, ${state}` : state;
 };
 
-const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
+const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) => {
   const initialIsMobile = typeof window !== "undefined"
     && typeof window.matchMedia === "function"
     && window.matchMedia("(max-width: 1120px)").matches;
@@ -1780,50 +1780,160 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     navigate("discover");
   };
 
+  const heroPulseLabel = heroStats?.generatedAtMs
+    ? `Updated ${formatDateTime(heroStats.generatedAtMs)}`
+    : isInitialCountLoading
+      ? "Syncing the live directory now"
+      : `Live now in ${activeRegionLabel}`;
+  const premiumProofCards = [
+    {
+      id: "results",
+      label: "Live listings",
+      value: resultCountLabel,
+      detail: isInitialCountLoading ? "Pulling tonight's rooms, venues, and events." : `Across ${activeRegionLabel}`,
+    },
+    {
+      id: "official",
+      label: "Official rooms",
+      value: officialBeauRocksRoomCount > 0 ? officialBeauRocksRoomCount.toLocaleString() : "Approval-based",
+      detail: "BeauRocks-backed host experiences with cleaner launch flow.",
+    },
+    {
+      id: "joinable",
+      label: "Join by code",
+      value: joinableRoomCount > 0 ? joinableRoomCount.toLocaleString() : "Live when open",
+      detail: "Audience can jump in fast without hunting for the host.",
+    },
+    {
+      id: "modern",
+      label: "Modern karaoke",
+      value: experienceCounts.modern > 0 ? experienceCounts.modern.toLocaleString() : "Host-first",
+      detail: "Rooms already tagged for interactive, recap-ready nights.",
+    },
+  ];
+  const surfaceHighlights = [
+    {
+      id: "host",
+      title: "Host Deck",
+      copy: "Launch rooms, reopen recent shows, and keep live controls in one host workspace.",
+    },
+    {
+      id: "audience",
+      title: "Party Mic",
+      copy: "Guests join with a code, request songs, and play along from their phones.",
+    },
+    {
+      id: "tv",
+      title: "Spotlight TV",
+      copy: "Bring the room together with a shared screen tuned for live karaoke nights.",
+    },
+    {
+      id: "finder",
+      title: "Setlist Map",
+      copy: "Public rooms show up in real time so people can discover the night before they bounce.",
+    },
+  ];
+  const launchLoopSteps = [
+    "Launch a room from Host Access.",
+    "Share the room code with the crowd.",
+    "Audience joins from mobile and the TV comes alive.",
+    "Public rooms land on the live setlist map automatically.",
+  ];
+  const openHostAccess = () => {
+    trackEvent("mk_discover_premium_hero_host_access_click", { source: "discover_premium_hero" });
+    navigate("host_access");
+  };
+  const openJoinPage = () => {
+    trackEvent("mk_discover_premium_hero_join_click", { source: "discover_premium_hero" });
+    navigate("join");
+  };
+  const openListingSubmission = () => {
+    trackEvent("mk_discover_premium_hero_list_click", { source: "discover_premium_hero" });
+    navigate("submit", "", { intent: "listing_submit", targetType: "venue" });
+  };
+  const scrollToLiveMap = () => {
+    trackEvent("mk_discover_premium_hero_map_click", { source: "discover_premium_hero" });
+    mapStageRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <section className="mk3-page">
+      <section className="mk3-home-discover-hero mk3-zone mk3-zone-finder">
+        <div className="mk3-home-discover-main">
+          <span className="mk3-home-discover-kicker">Premium karaoke operating system</span>
+          <h1>Run smoother karaoke nights. Let the crowd find the room.</h1>
+          <p>
+            BeauRocks connects host launch, audience join, interactive TV, and a live public setlist map
+            so karaoke nights feel organized, modern, and easy to discover.
+          </p>
+          <div className="mk3-finder-cta-row mk3-home-discover-cta-row">
+            <button
+              type="button"
+              className="mk3-home-discover-cta-primary"
+              onClick={openHostAccess}
+            >
+              {hasFullAccount ? "Open Host Access" : "Request Host Access"}
+            </button>
+            <button
+              type="button"
+              className="mk3-home-discover-cta-secondary"
+              onClick={scrollToLiveMap}
+            >
+              Explore Live Map
+            </button>
+          </div>
+          <div className="mk3-home-discover-aux-actions">
+            <button type="button" onClick={openJoinPage}>Join with code</button>
+            <button type="button" onClick={openListingSubmission}>List a public room</button>
+          </div>
+          <div className="mk3-home-discover-proof-grid">
+            {premiumProofCards.map((card) => (
+              <article key={card.id}>
+                <span>{card.label}</span>
+                <strong>{card.value}</strong>
+                <p>{card.detail}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+        <aside className="mk3-home-discover-side">
+          <div className="mk3-home-discover-side-head">
+            <span>Tonight's live signal</span>
+            <strong>{activeRegionLabel}</strong>
+            <p>{heroPulseLabel}</p>
+          </div>
+          <div className="mk3-home-discover-loop">
+            {launchLoopSteps.map((step, index) => (
+              <article key={step}>
+                <span>{`0${index + 1}`}</span>
+                <p>{step}</p>
+              </article>
+            ))}
+          </div>
+          <div className="mk3-home-discover-surface-grid">
+            {surfaceHighlights.map((surface) => (
+              <article key={surface.id}>
+                <strong>{surface.title}</strong>
+                <p>{surface.copy}</p>
+              </article>
+            ))}
+          </div>
+        </aside>
+      </section>
       <div className="mk3-status mk3-zone mk3-zone-finder mk3-discover-hero">
         <div className="mk3-discover-hero-main">
-          <strong>Find Live Karaoke Fast</strong>
+          <strong>Explore The Live Setlist Map</strong>
           <span>
             {isInitialCountLoading
-              ? `Loading listings in ${activeRegionLabel}...`
-              : `${resultCountLabel} listings in ${activeRegionLabel}. Launch hosting or join with a code.`}
+              ? `Loading the live directory in ${activeRegionLabel}...`
+              : `Search by host, venue, city, or vibe, then tighten the list with quick shortcuts and advanced filters.`}
           </span>
           <div className="mk3-discover-hero-stats">
             <span>{isInitialCountLoading ? "Syncing live directory..." : `${resultCountLabel} results`}</span>
             {officialBeauRocksRoomCount > 0 && <span>{officialBeauRocksRoomCount} official rooms</span>}
             {joinableRoomCount > 0 && <span>{joinableRoomCount} joinable by code</span>}
+            <span>{heroPulseLabel}</span>
           </div>
-        </div>
-        <div className="mk3-finder-cta-row mk3-discover-hero-actions">
-          <button
-            type="button"
-            className="mk3-discover-hero-cta-primary"
-            onClick={() => {
-              trackEvent("mk_discover_hero_host_access_click", { source: "discover_hero" });
-              navigate("host_access");
-            }}
-          >
-            {hasFullAccount ? "Open Host Access" : "Host Access"}
-          </button>
-          <button
-            type="button"
-            className="mk3-discover-hero-cta-secondary"
-            onClick={() => {
-              trackEvent("mk_discover_hero_join_click", { source: "discover_hero" });
-              navigate("join");
-            }}
-          >
-            Join With Code
-          </button>
-          <button
-            type="button"
-            className="mk3-discover-hero-cta-tertiary"
-            onClick={() => navigate("submit", "", { intent: "listing_submit", targetType: "venue" })}
-          >
-            List A Public Room
-          </button>
         </div>
       </div>
       {isMobileViewport && (
@@ -1927,7 +2037,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
                   });
                 }}
               >
-                {advancedFiltersExpanded ? "Less filters" : "More filters"}
+                {advancedFiltersExpanded ? "Hide advanced" : "Advanced filters"}
               </button>
               {hasSearchFilters && (
                 <button
@@ -1941,7 +2051,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             </div>
           )}
           <div className="mk3-discover-fast-start">
-            <span className="mk3-filter-chip-label">Fast start</span>
+            <span className="mk3-filter-chip-label">Popular shortcuts</span>
             <button
               type="button"
               className={`mk3-discover-fast-chip ${officialRoomFilter === "official" ? "active" : ""}`}
