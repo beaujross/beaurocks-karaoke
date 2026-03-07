@@ -52,7 +52,7 @@ const PageShellLoader = () => (
   </div>
 );
 
-const MAPS_CONFIG_CACHE_KEY = "mk3_maps_config_cache_v1";
+const MAPS_CONFIG_CACHE_KEY = "mk3_maps_config_cache_v2";
 const MAPS_CONFIG_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 const readCachedMapsConfig = () => {

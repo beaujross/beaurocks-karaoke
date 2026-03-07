@@ -1910,6 +1910,9 @@ const DIRECTORY_DEFAULT_REGION = "nationwide";
 const DIRECTORY_MAPS_PUBLIC_ENABLED = String(process.env.DIRECTORY_MAPS_PUBLIC_ENABLED || "false")
   .trim()
   .toLowerCase() === "true";
+const DIRECTORY_MAPS_MAP_ID = String(
+  process.env.DIRECTORY_MAPS_MAP_ID || process.env.GOOGLE_MAPS_MAP_ID || "DEMO_MAP_ID"
+).trim();
 const MARKETING_CLAIM_FLOW_ENABLED = String(process.env.MARKETING_CLAIM_FLOW_ENABLED || "true")
   .trim()
   .toLowerCase() === "true";
@@ -7671,6 +7674,7 @@ exports.getDirectoryMapsConfig = onCall(
     return {
       mapEnabled,
       apiKey: mapEnabled ? key : "",
+      mapId: mapEnabled ? DIRECTORY_MAPS_MAP_ID : "",
       defaultCountry: DIRECTORY_DEFAULT_COUNTRY,
       defaultScope: DIRECTORY_DEFAULT_REGION,
       supportedProviders: ["google", "yelp"],

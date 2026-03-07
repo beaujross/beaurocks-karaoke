@@ -1327,34 +1327,39 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (!mapsLoaded || !mapEnabled || mapRef.current || !mapContainerRef.current) return;
     const googleMaps = window.google?.maps;
     if (!googleMaps || typeof googleMaps.Map !== "function") return;
-
-    const map = new googleMaps.Map(mapContainerRef.current, {
-      center: MAP_DEFAULT_CENTER,
-      zoom: 4,
-      minZoom: 3,
-      clickableIcons: false,
-      gestureHandling: "greedy",
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: false,
-      backgroundColor: "#190827",
-      styles: MAP_BRAND_STYLES,
-      ...(mapsMapId ? { mapId: mapsMapId } : {}),
-    });
-    mapRef.current = map;
-    const idleListener = map.addListener("idle", () => {
-      const bounds = map.getBounds();
-      if (!bounds) return;
-      const ne = bounds.getNorthEast();
-      const sw = bounds.getSouthWest();
-      setMapBounds({
-        north: ne.lat(),
-        south: sw.lat(),
-        east: ne.lng(),
-        west: sw.lng(),
+    let idleListener = null;
+    const frameId = window.requestAnimationFrame(() => {
+      const container = mapContainerRef.current;
+      if (!container || mapRef.current) return;
+      const map = new googleMaps.Map(container, {
+        center: MAP_DEFAULT_CENTER,
+        zoom: 4,
+        minZoom: 3,
+        clickableIcons: false,
+        gestureHandling: "greedy",
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+        backgroundColor: "#190827",
+        styles: MAP_BRAND_STYLES,
+        ...(mapsMapId ? { mapId: mapsMapId } : {}),
+      });
+      mapRef.current = map;
+      idleListener = map.addListener("idle", () => {
+        const bounds = map.getBounds();
+        if (!bounds) return;
+        const ne = bounds.getNorthEast();
+        const sw = bounds.getSouthWest();
+        setMapBounds({
+          north: ne.lat(),
+          south: sw.lat(),
+          east: ne.lng(),
+          west: sw.lng(),
+        });
       });
     });
     return () => {
+      window.cancelAnimationFrame(frameId);
       idleListener?.remove?.();
     };
   }, [mapsLoaded, mapEnabled, mapsMapId]);
@@ -1459,7 +1464,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     });
 
     if (!hasAutoFitRef.current && mappableListings.length) {
-      fitMapToListings({ googleMaps, map, listings: mappableListings });
+      window.requestAnimationFrame(() => {
+        if (!mapRef.current) return;
+        fitMapToListings({ googleMaps, map: mapRef.current, listings: mappableListings });
+      });
       hasAutoFitRef.current = true;
     }
     const selectedListingInMap = mappableListings.find((entry) => entry.key === effectiveSelectedKey);
