@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
     db, doc, onSnapshot, setDoc, updateDoc, increment, serverTimestamp, 
     addDoc, collection, query, where, orderBy, limit, deleteDoc, arrayUnion,
@@ -835,6 +835,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const joinRayStageRef = useRef(null);
     const joinLogoRef = useRef(null);
     const [joinRayPos, setJoinRayPos] = useState({ x: '50%', y: '30%' });
+    const joinRayFrameRef = useRef(0);
 
     const [localReactions, setLocalReactions] = useState([]);
     const [composedPhoto, setComposedPhoto] = useState(null);
@@ -2784,29 +2785,48 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
     }, [uid]);
 
-    useLayoutEffect(() => {
+    const updateJoinRayPosition = useCallback(() => {
+        const container = joinRayStageRef.current || joinContainerRef.current;
+        const logo = joinLogoRef.current;
+        if (!container || !logo) return;
+        const containerRect = container.getBoundingClientRect();
+        const logoRect = logo.getBoundingClientRect();
+        const x = logoRect.left - containerRect.left + logoRect.width / 2;
+        const y = logoRect.top - containerRect.top + logoRect.height / 2;
+        setJoinRayPos({ x: `${Math.round(x)}px`, y: `${Math.round(y)}px` });
+    }, []);
+
+    const scheduleJoinRayPositionUpdate = useCallback(() => {
+        if (typeof window === 'undefined') return;
+        if (joinRayFrameRef.current) {
+            window.cancelAnimationFrame(joinRayFrameRef.current);
+        }
+        joinRayFrameRef.current = window.requestAnimationFrame(() => {
+            joinRayFrameRef.current = 0;
+            updateJoinRayPosition();
+        });
+    }, [updateJoinRayPosition]);
+
+    useEffect(() => {
         if (typeof window === 'undefined') return;
         if (user) return;
         const container = joinRayStageRef.current || joinContainerRef.current;
         const logo = joinLogoRef.current;
         if (!container || !logo) return;
-        const update = () => {
-            const containerRect = container.getBoundingClientRect();
-            const logoRect = logo.getBoundingClientRect();
-            const x = logoRect.left - containerRect.left + logoRect.width / 2;
-            const y = logoRect.top - containerRect.top + logoRect.height / 2;
-            setJoinRayPos({ x: `${Math.round(x)}px`, y: `${Math.round(y)}px` });
-        };
-        update();
-        window.addEventListener('resize', update);
-        const ro = new ResizeObserver(update);
+        scheduleJoinRayPositionUpdate();
+        window.addEventListener('resize', scheduleJoinRayPositionUpdate);
+        const ro = new ResizeObserver(() => scheduleJoinRayPositionUpdate());
         ro.observe(container);
         ro.observe(logo);
         return () => {
-            window.removeEventListener('resize', update);
+            window.removeEventListener('resize', scheduleJoinRayPositionUpdate);
             ro.disconnect();
+            if (joinRayFrameRef.current) {
+                window.cancelAnimationFrame(joinRayFrameRef.current);
+                joinRayFrameRef.current = 0;
+            }
         };
-    }, [user]);
+    }, [scheduleJoinRayPositionUpdate, user]);
 
     useEffect(() => {
         if (!uid || !profile) return;
@@ -4731,15 +4751,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <img
                         ref={joinLogoRef}
                         src={BRAND_ICON}
-                        onLoad={() => {
-                            const container = joinRayStageRef.current || joinContainerRef.current;
-                            if (!container || !joinLogoRef.current) return;
-                            const containerRect = container.getBoundingClientRect();
-                            const logoRect = joinLogoRef.current.getBoundingClientRect();
-                            const x = logoRect.left - containerRect.left + logoRect.width / 2;
-                            const y = logoRect.top - containerRect.top + logoRect.height / 2;
-                            setJoinRayPos({ x: `${Math.round(x)}px`, y: `${Math.round(y)}px` });
-                        }}
+                        onLoad={scheduleJoinRayPositionUpdate}
                         className="w-[230px] h-auto object-contain bg-transparent drop-shadow-[0_0_28px_rgba(255,255,255,0.6)] logo-bounce relative z-10"
                         alt="Beaurocks Karaoke"
                     />

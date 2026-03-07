@@ -1123,21 +1123,26 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
 
   useEffect(() => {
     const rail = cardRailRef.current;
-    if (!rail) return () => {};
-
-    const onScroll = () => {
+    if (!rail || typeof window === "undefined") return () => {};
+    let frameId = 0;
+    const processRailMetrics = () => {
+      frameId = 0;
       recomputeVirtualRange();
       if (hasMore && !loadingMore && (rail.scrollTop + rail.clientHeight >= rail.scrollHeight - 320)) {
         loadMore();
       }
     };
-    const onResize = () => recomputeVirtualRange();
-    rail.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onResize);
-    onScroll();
+    const scheduleRailMetrics = () => {
+      if (frameId) return;
+      frameId = window.requestAnimationFrame(processRailMetrics);
+    };
+    rail.addEventListener("scroll", scheduleRailMetrics, { passive: true });
+    window.addEventListener("resize", scheduleRailMetrics);
+    scheduleRailMetrics();
     return () => {
-      rail.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onResize);
+      if (frameId) window.cancelAnimationFrame(frameId);
+      rail.removeEventListener("scroll", scheduleRailMetrics);
+      window.removeEventListener("resize", scheduleRailMetrics);
     };
   }, [hasMore, loadMore, loadingMore, recomputeVirtualRange]);
 
