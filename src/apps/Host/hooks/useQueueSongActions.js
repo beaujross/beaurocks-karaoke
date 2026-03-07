@@ -19,6 +19,8 @@ import {
     ensureSong,
     ensureTrack,
     resolveSongCatalog,
+    resolveCanonicalTrackIdentity,
+    resolveCanonicalTrackIdentityBatch,
     upsertSongLyrics,
     extractYouTubeId
 } from '../../../lib/songCatalog';
@@ -129,6 +131,38 @@ const normalizeYouTubePlaylistItems = (rawItems = []) => (
         }))
         .filter((item) => item.id)
 );
+
+const resolveCanonicalIdentitySafe = async ({
+    songId = '',
+    title = '',
+    artist = '',
+    source = '',
+    mediaUrl = '',
+    appleMusicId = ''
+} = {}) => {
+    try {
+        return await resolveCanonicalTrackIdentity({
+            songId,
+            title,
+            artist,
+            source,
+            mediaUrl,
+            appleMusicId
+        });
+    } catch (error) {
+        console.warn('resolveCanonicalTrackIdentity failed', error);
+        return null;
+    }
+};
+
+const resolveCanonicalIdentityBatchSafe = async (items = []) => {
+    try {
+        return await resolveCanonicalTrackIdentityBatch(items);
+    } catch (error) {
+        console.warn('resolveCanonicalTrackIdentityBatch failed', error);
+        return [];
+    }
+};
 
 const fetchYouTubeEmbeddableStatusMap = async (videoIds = [], { batchSize = 50, concurrency = 4 } = {}) => {
     const ids = [...new Set((Array.isArray(videoIds) ? videoIds : []).map((id) => String(id || '').trim()).filter(Boolean))];
@@ -514,22 +548,69 @@ const useQueueSongActions = ({
                 const basePriority = Date.now();
                 const singerName = manual.singer || room?.hostName || hostName || 'Host';
                 let queuedCount = 0;
-                for (let start = 0; start < queueItems.length; start += 400) {
-                    const chunk = queueItems.slice(start, start + 400);
+                for (let start = 0; start < queueItems.length; start += 100) {
+                    const chunk = queueItems.slice(start, start + 100);
+                    const canonicalBatch = await resolveCanonicalIdentityBatchSafe(
+                        chunk.map((item) => ({
+                            title: item.title,
+                            artist: item.channel || 'YouTube',
+                            source: 'youtube',
+                            mediaUrl: item.url
+                        }))
+                    );
+                    const canonicalByIndex = new Map(
+                        canonicalBatch.map((entry) => [Number(entry?.index || 0), entry || null])
+                    );
+                    const preparedChunk = await Promise.all(
+                        chunk.map(async (item, idx) => {
+                            const canonicalMatch = canonicalByIndex.get(idx) || null;
+                            const songId = String(canonicalMatch?.songId || buildSongKey(item.title, item.channel || 'YouTube')).trim();
+                            const songTitle = canonicalMatch?.title || item.title;
+                            const artist = canonicalMatch?.artist || item.channel || 'YouTube';
+                            let trackId = canonicalMatch?.trackId || null;
+                            if (canonicalMatch?.found && !trackId) {
+                                try {
+                                    const trackRecord = await ensureTrack({
+                                        songId,
+                                        source: 'youtube',
+                                        mediaUrl: item.url,
+                                        duration: 180,
+                                        audioOnly: false,
+                                        backingOnly: false,
+                                        addedBy: hostName || 'Host'
+                                    });
+                                    trackId = trackRecord?.trackId || null;
+                                } catch (err) {
+                                    if (isCatalogPermissionDeniedError(err)) {
+                                        logCatalogPermissionSkip('playlist.ensureTrack');
+                                    } else {
+                                        console.warn('playlist ensureTrack failed', err);
+                                    }
+                                }
+                            }
+                            return {
+                                item,
+                                songId,
+                                trackId,
+                                songTitle,
+                                artist
+                            };
+                        })
+                    );
                     const batch = writeBatch(db);
-                    chunk.forEach((item, idx) => {
+                    preparedChunk.forEach((prepared, idx) => {
                         const globalIdx = start + idx;
                         const songRef = doc(songsCol);
                         batch.set(songRef, {
                             roomCode,
-                            songId: buildSongKey(item.title, item.channel || 'YouTube'),
-                            trackId: null,
+                            songId: prepared.songId,
+                            trackId: prepared.trackId || null,
                             trackSource: 'youtube',
-                            songTitle: item.title,
-                            artist: item.channel || 'YouTube',
+                            songTitle: prepared.songTitle,
+                            artist: prepared.artist,
                             singerName,
-                            mediaUrl: item.url,
-                            albumArtUrl: item.thumbnail || '',
+                            mediaUrl: prepared.item.url,
+                            albumArtUrl: prepared.item.thumbnail || '',
                             lyrics: '',
                             lyricsTimed: null,
                             appleMusicId: '',
@@ -637,11 +718,21 @@ const useQueueSongActions = ({
             );
 
             void (async () => {
-                let resolvedSongId = initialSongId;
+                const canonicalMatch = await resolveCanonicalIdentitySafe({
+                    songId: initialSongId,
+                    title: manualTitle,
+                    artist: manualArtist,
+                    source: trackSource,
+                    mediaUrl: manualUrl,
+                    appleMusicId: resolvedAppleMusicId
+                });
+                const canonicalTitle = canonicalMatch?.found ? (canonicalMatch.title || manualTitle) : manualTitle;
+                const canonicalArtist = canonicalMatch?.found ? (canonicalMatch.artist || manualArtist) : manualArtist;
+                let resolvedSongId = canonicalMatch?.songId || initialSongId;
                 try {
                     const songRecord = await ensureSong({
-                        title: manualTitle,
-                        artist: manualArtist,
+                        title: canonicalTitle,
+                        artist: canonicalArtist,
                         artworkUrl: manual.art || '',
                         appleMusicId: resolvedAppleMusicId,
                         verifyMeta: manual.art ? {} : false,
@@ -658,22 +749,26 @@ const useQueueSongActions = ({
 
                 let trackRecord = null;
                 if (trackSource) {
-                    try {
-                        trackRecord = await ensureTrack({
-                            songId: resolvedSongId,
-                            source: trackSource,
-                            mediaUrl: manualUrl || '',
-                            appleMusicId: resolvedAppleMusicId,
-                            duration: manual.duration ? Math.round(manual.duration) : null,
-                            audioOnly: manual.audioOnly || isAudioUrl(manualUrl),
-                            backingOnly: !!manual.backingAudioOnly,
-                            addedBy: hostName || 'Host'
-                        });
-                    } catch (err) {
-                        if (isCatalogPermissionDeniedError(err)) {
-                            logCatalogPermissionSkip('manual.ensureTrack');
-                        } else {
-                            console.warn('manual ensureTrack failed', err);
+                    if (canonicalMatch?.trackId) {
+                        trackRecord = { trackId: canonicalMatch.trackId };
+                    } else {
+                        try {
+                            trackRecord = await ensureTrack({
+                                songId: resolvedSongId,
+                                source: trackSource,
+                                mediaUrl: manualUrl || '',
+                                appleMusicId: resolvedAppleMusicId,
+                                duration: manual.duration ? Math.round(manual.duration) : null,
+                                audioOnly: manual.audioOnly || isAudioUrl(manualUrl),
+                                backingOnly: !!manual.backingAudioOnly,
+                                addedBy: hostName || 'Host'
+                            });
+                        } catch (err) {
+                            if (isCatalogPermissionDeniedError(err)) {
+                                logCatalogPermissionSkip('manual.ensureTrack');
+                            } else {
+                                console.warn('manual ensureTrack failed', err);
+                            }
                         }
                     }
                 }
@@ -681,7 +776,11 @@ const useQueueSongActions = ({
                 try {
                     await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', docRef.id), {
                         songId: resolvedSongId,
-                        trackId: trackRecord?.trackId || null
+                        trackId: trackRecord?.trackId || null,
+                        ...(canonicalMatch?.found ? {
+                            songTitle: canonicalTitle,
+                            artist: canonicalArtist
+                        } : {})
                     });
                 } catch (error) {
                     console.warn('Failed to persist manual queue song metadata', error);
@@ -780,11 +879,21 @@ const useQueueSongActions = ({
             toast(statusText);
 
             void (async () => {
-                let songId = initialSongId;
+                const canonicalMatch = await resolveCanonicalIdentitySafe({
+                    songId: initialSongId,
+                    title: r.trackName,
+                    artist: r.artistName || 'Unknown',
+                    source: trackSource,
+                    mediaUrl,
+                    appleMusicId: nextSong.appleMusicId
+                });
+                const canonicalTitle = canonicalMatch?.found ? (canonicalMatch.title || nextSong.song) : nextSong.song;
+                const canonicalArtist = canonicalMatch?.found ? (canonicalMatch.artist || nextSong.artist || 'Unknown') : (nextSong.artist || 'Unknown');
+                let songId = canonicalMatch?.songId || initialSongId;
                 try {
                     const songRecord = await ensureSong({
-                        title: r.trackName,
-                        artist: r.artistName || 'Unknown',
+                        title: canonicalTitle,
+                        artist: canonicalArtist,
                         artworkUrl: r.source === 'itunes' ? itunesArt : r.artworkUrl100 || '',
                         itunesId: isApple ? r.trackId : '',
                         appleMusicId: nextSong.appleMusicId,
@@ -802,22 +911,26 @@ const useQueueSongActions = ({
 
                 let trackRecord = null;
                 if (trackSource) {
-                    try {
-                        trackRecord = await ensureTrack({
-                            songId,
-                            source: trackSource,
-                            mediaUrl: mediaUrl || '',
-                            appleMusicId: nextSong.appleMusicId,
-                            duration: selectedDuration,
-                            audioOnly: nextSong.audioOnly,
-                            backingOnly: false,
-                            addedBy: hostName || 'Host'
-                        });
-                    } catch (err) {
-                        if (isCatalogPermissionDeniedError(err)) {
-                            logCatalogPermissionSkip('ensureTrack');
-                        } else {
-                            console.warn('ensureTrack failed', err);
+                    if (canonicalMatch?.trackId) {
+                        trackRecord = { trackId: canonicalMatch.trackId };
+                    } else {
+                        try {
+                            trackRecord = await ensureTrack({
+                                songId,
+                                source: trackSource,
+                                mediaUrl: mediaUrl || '',
+                                appleMusicId: nextSong.appleMusicId,
+                                duration: selectedDuration,
+                                audioOnly: nextSong.audioOnly,
+                                backingOnly: false,
+                                addedBy: hostName || 'Host'
+                            });
+                        } catch (err) {
+                            if (isCatalogPermissionDeniedError(err)) {
+                                logCatalogPermissionSkip('ensureTrack');
+                            } else {
+                                console.warn('ensureTrack failed', err);
+                            }
                         }
                     }
                 }
@@ -827,7 +940,11 @@ const useQueueSongActions = ({
                     const songDocRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', docRef.id);
                     await updateDoc(songDocRef, {
                         songId,
-                        trackId: trackRecord?.trackId || null
+                        trackId: trackRecord?.trackId || null,
+                        ...(canonicalMatch?.found ? {
+                            songTitle: canonicalTitle,
+                            artist: canonicalArtist
+                        } : {})
                     });
 
                     if (shouldAttemptLyricsEnrichment) {

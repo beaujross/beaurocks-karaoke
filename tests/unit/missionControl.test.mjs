@@ -155,6 +155,23 @@ const run = () => {
     });
     assert.equal(recHype.id, 'hype_moment');
 
+    const recAutoMoment = getRecommendedHostAction({
+        room: {
+            activeMode: 'karaoke',
+            missionControl: {
+                autoMoment: {
+                    status: 'live',
+                    type: 'volley',
+                    detail: 'Audience relay is live.'
+                }
+            }
+        },
+        queue: [{ id: '1' }],
+        current: null,
+        pendingModerationCount: 0
+    });
+    assert.equal(recAutoMoment.id, 'auto_crowd_moment_live');
+
     const partyFromRoom = buildMissionPartyFromRoom({
         missionControl: {
             party: {

@@ -191,6 +191,9 @@ export const getRecommendedHostAction = ({
     const activeMode = String(room?.activeMode || 'karaoke').trim() || 'karaoke';
     const queueCount = Array.isArray(queue) ? queue.length : 0;
     const readyCheckActive = !!room?.readyCheck?.active;
+    const autoMoment = room?.missionControl?.autoMoment;
+    const autoMomentLive = autoMoment?.status === 'live';
+    const autoMomentType = String(autoMoment?.type || '').trim().toLowerCase();
 
     if (pendingModerationCount > 0) {
         return {
@@ -198,6 +201,15 @@ export const getRecommendedHostAction = ({
             label: 'Review Queue',
             reason: `${pendingModerationCount} moderation item${pendingModerationCount === 1 ? '' : 's'} waiting for approval`,
             status: 'needs_attention'
+        };
+    }
+
+    if (autoMomentLive) {
+        return {
+            id: 'auto_crowd_moment_live',
+            label: autoMomentType === 'volley' ? 'Monitor Auto Volley' : 'Monitor Auto Crowd Check',
+            reason: String(autoMoment?.detail || autoMoment?.title || 'Audience-led auto moment is live.'),
+            status: 'live'
         };
     }
 

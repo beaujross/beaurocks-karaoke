@@ -666,7 +666,7 @@ const MarketingSite = () => {
                     intent: "host_dashboard_resume",
                     targetType: "session",
                     returnRoute: {
-                      page: MARKETING_ROUTE_PAGES.forHosts,
+                      page: MARKETING_ROUTE_PAGES.hostAccess,
                       params: {
                         ...withCampaignParams({ utm_content: "nav_primary_host_access" }),
                         intent: "host_dashboard_resume",
@@ -730,14 +730,14 @@ const MarketingSite = () => {
           {isHostAccessPage ? (
           <section className="mk3-auth-panel mk3-host-canon-surface" ref={authPanelRef}>
             <div>
-              <h1 className="mk3-host-canon-title is-xl">Host Login + Room Manager</h1>
+              <h1 className="mk3-host-canon-title is-xl">Host Login + Direct App Entry</h1>
               <p className="mk3-host-canon-copy">
-                Keep host setup simple: log in once, create or reopen a room, then launch host controls.
+                Keep host entry simple: log in once, then go straight into Host Dashboard for room setup, room manager, and live controls.
               </p>
               <div className="mk3-private-pill-row mk3-host-canon-chip-row">
                 <span className="mk3-private-pill mk3-host-canon-chip">BeauRocks account required</span>
-                <span className="mk3-private-pill mk3-host-canon-chip">4-button launch flow</span>
-                <span className="mk3-private-pill mk3-host-canon-chip">Room history built in</span>
+                <span className="mk3-private-pill mk3-host-canon-chip">Direct Host Dashboard entry</span>
+                <span className="mk3-private-pill mk3-host-canon-chip">Room history built into Host</span>
               </div>
               <div className="mk3-permission-grid">
                 <article className="mk3-host-canon-step">
@@ -746,7 +746,7 @@ const MarketingSite = () => {
                 </article>
                 <article className="mk3-host-canon-step">
                   <strong className="mk3-host-canon-step-kicker">Step 2</strong>
-                  <span className="mk3-host-canon-step-copy">Start a room or resume one from Room Manager.</span>
+                  <span className="mk3-host-canon-step-copy">Open Host Dashboard and create a room or resume one there.</span>
                 </article>
                 <article className="mk3-host-canon-step">
                   <strong className="mk3-host-canon-step-kicker">Step 3</strong>
@@ -765,7 +765,7 @@ const MarketingSite = () => {
               )}
               <div className="mk3-value-points">
                 <span>Guests can still join with a room code, but hosting always stays account-backed.</span>
-                <span>Use the Host Room Manager page for the fastest path to new and previous rooms.</span>
+                <span>Host Dashboard is now the single entry point for create, resume, and room management.</span>
               </div>
               {hasFullAccount && (
                 <div className="mk3-auth-cta-row">
@@ -784,7 +784,7 @@ const MarketingSite = () => {
                 <div className="mk3-auth-state">
                   <div>Signed in as {session.email || session.uid}.</div>
                   <div className="mk3-actions-inline">
-                    <button className="mk3-host-canon-button is-primary" type="button" onClick={() => navigate(MARKETING_ROUTE_PAGES.forHosts)}>Open Host Room Manager</button>
+                    <button className="mk3-host-canon-button is-primary" type="button" onClick={() => openHostDashboard("host_access_signed_in_open_dashboard")}>Open Host Dashboard</button>
                   </div>
                   <div className="mk3-auth-support-row">
                     <button className="mk3-auth-link" type="button" onClick={actions.signOutAccount} disabled={session.authLoading}>

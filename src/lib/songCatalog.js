@@ -169,6 +169,33 @@ const resolveSongCatalog = async ({ songId, title, artist } = {}) => {
   return res || null;
 };
 
+const resolveCanonicalTrackIdentity = async ({
+  songId,
+  title,
+  artist,
+  source,
+  mediaUrl,
+  appleMusicId
+} = {}) => {
+  const payload = {};
+  if (songId) payload.songId = songId;
+  if (title) payload.title = title;
+  if (artist) payload.artist = artist;
+  if (source) payload.source = source;
+  if (mediaUrl) payload.mediaUrl = mediaUrl;
+  if (appleMusicId) payload.appleMusicId = appleMusicId;
+  const res = await callFunction('resolveCanonicalTrackIdentity', payload);
+  return res || null;
+};
+
+const resolveCanonicalTrackIdentityBatch = async (items = []) => {
+  const payload = {
+    items: Array.isArray(items) ? items : []
+  };
+  const res = await callFunction('resolveCanonicalTrackIdentityBatch', payload);
+  return Array.isArray(res?.items) ? res.items : [];
+};
+
 const upsertSongLyrics = async ({
   songId,
   title,
@@ -208,6 +235,8 @@ export {
   ensureSong,
   ensureTrack,
   resolveSongCatalog,
+  resolveCanonicalTrackIdentity,
+  resolveCanonicalTrackIdentityBatch,
   upsertSongLyrics,
   extractYouTubeId,
   isSongVerified

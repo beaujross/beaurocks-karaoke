@@ -311,6 +311,123 @@ const extractYouTubeId = (input = "") => {
   return match ? match[1] : "";
 };
 
+const TRACK_SOURCE_LOOKUP_COLLECTION = "track_source_keys";
+const KARAOKE_NOISE_TOKENS = [
+  "karaoke",
+  "lyrics",
+  "lyric video",
+  "instrumental",
+  "backing track",
+  "with lyrics",
+  "with vocal",
+  "with vocals",
+  "guide vocal",
+  "guide vocals",
+  "guide melody",
+  "lower key",
+  "higher key",
+  "male key",
+  "female key",
+  "official",
+  "audio",
+  "hd",
+  "4k",
+];
+
+const buildTrackSourceLookupKey = ({
+  source = "",
+  mediaUrl = "",
+  appleMusicId = "",
+  youtubeId = "",
+} = {}) => {
+  const cleanSource = String(source || "").trim().toLowerCase();
+  if (cleanSource === "youtube") {
+    const resolvedYoutubeId = String(youtubeId || extractYouTubeId(mediaUrl || "")).trim();
+    return resolvedYoutubeId ? `youtube__${resolvedYoutubeId}` : "";
+  }
+  if (cleanSource === "apple") {
+    const resolvedAppleMusicId = String(appleMusicId || "").trim();
+    return resolvedAppleMusicId ? `apple__${resolvedAppleMusicId}` : "";
+  }
+  return "";
+};
+
+const containsKaraokeNoise = (value = "") => {
+  const safe = String(value || "").trim().toLowerCase();
+  if (!safe) return false;
+  return KARAOKE_NOISE_TOKENS.some((token) => safe.includes(token));
+};
+
+const cleanCatalogTitle = (value = "") => {
+  let safe = String(value || "").trim();
+  if (!safe) return "";
+  safe = safe
+    .replace(/[\[\(]([^\]\)]{0,120})[\]\)]/g, (full, inner) => (containsKaraokeNoise(inner) ? " " : full))
+    .replace(/\b(karaoke|instrumental|backing track|with lyrics|lyric video|guide vocals?|guide melody|male key|female key|lower key|higher key|official audio|official video|video version|audio version|hd|4k)\b/gi, " ")
+    .replace(/\s+\|\s+/g, " - ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return safe;
+};
+
+const cleanCatalogArtist = (value = "") => {
+  let safe = String(value || "").trim();
+  if (!safe) return "";
+  safe = safe
+    .replace(/\s+-\s+topic$/i, "")
+    .replace(/\b(official|karaoke|lyrics?|channel)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return safe;
+};
+
+const deriveCanonicalSongCandidates = ({
+  title = "",
+  artist = "",
+} = {}) => {
+  const safeTitle = String(title || "").trim();
+  const safeArtist = String(artist || "").trim() || "Unknown";
+  const cleanedTitle = cleanCatalogTitle(safeTitle);
+  const cleanedArtist = cleanCatalogArtist(safeArtist) || "Unknown";
+  const seen = new Set();
+  const candidates = [];
+
+  const pushCandidate = (candidateTitle = "", candidateArtist = "", matchedBy = "") => {
+    const nextTitle = String(candidateTitle || "").trim();
+    const nextArtist = String(candidateArtist || "").trim() || "Unknown";
+    if (!nextTitle) return;
+    const songId = buildSongKey(nextTitle, nextArtist);
+    if (seen.has(songId)) return;
+    seen.add(songId);
+    candidates.push({
+      songId,
+      title: nextTitle,
+      artist: nextArtist,
+      matchedBy,
+    });
+  };
+
+  pushCandidate(safeTitle, safeArtist, "raw_metadata");
+  if (cleanedTitle) {
+    pushCandidate(cleanedTitle, cleanedArtist, "cleaned_metadata");
+  }
+
+  const dashParts = cleanedTitle
+    .split(/\s+-\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (dashParts.length >= 2) {
+    const left = dashParts[0];
+    const right = dashParts.slice(1).join(" - ");
+    pushCandidate(right, left, "title_delimiter_artist");
+    if (!safeArtist || containsKaraokeNoise(safeArtist)) {
+      pushCandidate(left, right, "title_delimiter_inverse");
+    }
+  }
+
+  return candidates;
+};
+
 const getWeekKeyUtc = (date = new Date()) => {
   const utc = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const day = utc.getUTCDay();
@@ -3494,6 +3611,39 @@ const requireCapability = async (request, capability) => {
   return { uid, entitlements };
 };
 
+const hasMarketingPrivateHostAccess = async (uid = "") => {
+  const safeUid = normalizeUidToken(uid);
+  if (!safeUid) return false;
+  const snap = await marketingPrivateAccessDocRef(safeUid).get();
+  return snap.exists && snap.data()?.privateHostAccessEnabled === true;
+};
+
+const hasEntitledHostWorkspaceAccess = (entitlements = null) => {
+  const planTier = String(getPlanDefinition(entitlements?.planId || "")?.tier || "").trim().toLowerCase();
+  if (planTier === "host" && isEntitledStatus(entitlements?.status || "")) {
+    return true;
+  }
+  const capabilities = normalizeCapabilities(entitlements?.capabilities || {});
+  return !!(
+    capabilities["api.youtube_data"]
+    || capabilities["api.apple_music"]
+    || capabilities["ai.generate_content"]
+  );
+};
+
+const requireHostWorkspaceAccess = async (request, options = {}) => {
+  const uid = requireAuth(request, options.authMessage || "Sign in required.");
+  const entitlements = await resolveUserEntitlements(uid);
+  const privateHostAccessEnabled = await hasMarketingPrivateHostAccess(uid);
+  if (!hasEntitledHostWorkspaceAccess(entitlements) && !privateHostAccessEnabled) {
+    throw new HttpsError(
+      "permission-denied",
+      options.deniedMessage || "Host workspace access requires an active host subscription or approved host access."
+    );
+  }
+  return { uid, entitlements, privateHostAccessEnabled };
+};
+
 const resolveAiDemoBypassForRoomHost = async ({ request, uid }) => {
   const roomCode = normalizeRoomCode(request?.data?.roomCode || "");
   if (!roomCode) return { enabled: false, roomCode: "" };
@@ -4336,6 +4486,12 @@ const ensureTrackAdmin = async ({
   if (!songId) return null;
   const cleanSource = source || "custom";
   const youtubeId = cleanSource === "youtube" ? extractYouTubeId(mediaUrl) : "";
+  const sourceLookupKey = buildTrackSourceLookupKey({
+    source: cleanSource,
+    mediaUrl,
+    appleMusicId,
+    youtubeId,
+  });
   let trackId = "";
 
   if (cleanSource === "youtube" && youtubeId) {
@@ -4349,6 +4505,7 @@ const ensureTrackAdmin = async ({
     source: cleanSource,
     mediaUrl: mediaUrl || null,
     appleMusicId: appleMusicId || null,
+    youtubeId: youtubeId || null,
     label: label || null,
     duration: duration || null,
     audioOnly: !!audioOnly,
@@ -4364,12 +4521,139 @@ const ensureTrackAdmin = async ({
       payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
     }
     await ref.set(payload, { merge: true });
+    if (sourceLookupKey) {
+      await admin.firestore().collection(TRACK_SOURCE_LOOKUP_COLLECTION).doc(sourceLookupKey).set(
+        {
+          source: cleanSource,
+          songId,
+          trackId,
+          youtubeId: youtubeId || null,
+          appleMusicId: appleMusicId || null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          ...(snap.exists ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp() }),
+        },
+        { merge: true }
+      );
+    }
     return { trackId };
   }
 
   payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
   const docRef = await admin.firestore().collection("tracks").add(payload);
+  if (sourceLookupKey) {
+    await admin.firestore().collection(TRACK_SOURCE_LOOKUP_COLLECTION).doc(sourceLookupKey).set(
+      {
+        source: cleanSource,
+        songId,
+        trackId: docRef.id,
+        youtubeId: youtubeId || null,
+        appleMusicId: appleMusicId || null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  }
   return { trackId: docRef.id };
+};
+
+const resolveCanonicalTrackIdentityInternal = async ({
+  songId = "",
+  title = "",
+  artist = "",
+  source = "",
+  mediaUrl = "",
+  appleMusicId = "",
+} = {}) => {
+  const db = admin.firestore();
+  const safeSongId = String(songId || "").trim();
+  const safeTitle = String(title || "").trim();
+  const safeArtist = String(artist || "").trim() || "Unknown";
+  const cleanSource = String(source || "").trim().toLowerCase()
+    || (appleMusicId ? "apple" : extractYouTubeId(mediaUrl || "") ? "youtube" : "");
+  const youtubeId = extractYouTubeId(mediaUrl || "");
+
+  const loadSong = async (candidateSongId = "", matchedBy = "", matchedTrackId = "") => {
+    const normalizedSongId = String(candidateSongId || "").trim();
+    if (!normalizedSongId) return null;
+    const snap = await db.collection("songs").doc(normalizedSongId).get();
+    if (!snap.exists) return null;
+    const songData = snap.data() || {};
+    return {
+      found: true,
+      songId: normalizedSongId,
+      trackId: matchedTrackId || null,
+      title: String(songData.title || safeTitle || "").trim() || safeTitle,
+      artist: String(songData.artist || safeArtist || "Unknown").trim() || "Unknown",
+      matchedBy,
+    };
+  };
+
+  if (safeSongId) {
+    const explicitSong = await loadSong(safeSongId, "explicit_song_id");
+    if (explicitSong) return explicitSong;
+  }
+
+  const sourceLookupKey = buildTrackSourceLookupKey({
+    source: cleanSource,
+    mediaUrl,
+    appleMusicId,
+    youtubeId,
+  });
+  if (sourceLookupKey) {
+    const sourceSnap = await db.collection(TRACK_SOURCE_LOOKUP_COLLECTION).doc(sourceLookupKey).get();
+    if (sourceSnap.exists) {
+      const sourceData = sourceSnap.data() || {};
+      const mappedSong = await loadSong(sourceData.songId || "", "source_lookup", sourceData.trackId || "");
+      if (mappedSong) return mappedSong;
+    }
+  }
+
+  const safeAppleMusicId = String(appleMusicId || "").trim();
+  if (safeAppleMusicId) {
+    const songsSnap = await db.collection("songs")
+      .where("appleMusicIds", "array-contains", safeAppleMusicId)
+      .limit(1)
+      .get();
+    const songDoc = songsSnap.docs[0];
+    if (songDoc?.exists) {
+      return {
+        found: true,
+        songId: songDoc.id,
+        trackId: null,
+        title: String(songDoc.get("title") || safeTitle || "").trim() || safeTitle,
+        artist: String(songDoc.get("artist") || safeArtist || "Unknown").trim() || "Unknown",
+        matchedBy: "apple_music_id",
+      };
+    }
+  }
+
+  const candidates = deriveCanonicalSongCandidates({
+    title: safeTitle,
+    artist: safeArtist,
+  });
+  for (const candidate of candidates) {
+    const matchedSong = await loadSong(candidate.songId, candidate.matchedBy);
+    if (matchedSong) {
+      return matchedSong;
+    }
+  }
+
+  const fallbackCandidate = candidates[0] || {
+    songId: buildSongKey(safeTitle || "Unknown", safeArtist),
+    title: safeTitle || "Unknown",
+    artist: safeArtist,
+    matchedBy: "fallback",
+  };
+  return {
+    found: false,
+    songId: fallbackCandidate.songId,
+    trackId: null,
+    title: fallbackCandidate.title,
+    artist: fallbackCandidate.artist,
+    matchedBy: fallbackCandidate.matchedBy,
+    sourceLookupKey: sourceLookupKey || "",
+  };
 };
 
 const normalizeLyricsText = (value = "") =>
@@ -4734,6 +5018,75 @@ exports.ensureTrack = onCall({ cors: true }, async (request) => {
   return { trackId: res?.trackId || null };
 });
 
+exports.resolveCanonicalTrackIdentity = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "resolve_canonical_track_identity", { perMinute: 90, perHour: 900 });
+  requireAuth(request);
+  enforceAppCheckIfEnabled(request, "resolve_canonical_track_identity");
+  const data = request.data || {};
+  const safeTitle = String(data.title || "").trim();
+  const safeMediaUrl = String(data.mediaUrl || "").trim();
+  const safeAppleMusicId = String(data.appleMusicId || "").trim();
+  const safeSongId = String(data.songId || "").trim();
+  if (!safeTitle && !safeMediaUrl && !safeAppleMusicId && !safeSongId) {
+    throw new HttpsError("invalid-argument", "title, mediaUrl, appleMusicId, or songId is required.");
+  }
+
+  const resolved = await resolveCanonicalTrackIdentityInternal({
+    songId: safeSongId,
+    title: safeTitle,
+    artist: String(data.artist || "").trim() || "Unknown",
+    source: String(data.source || "").trim(),
+    mediaUrl: safeMediaUrl,
+    appleMusicId: safeAppleMusicId,
+  });
+
+  return {
+    found: !!resolved?.found,
+    songId: String(resolved?.songId || "").trim(),
+    trackId: String(resolved?.trackId || "").trim() || null,
+    title: String(resolved?.title || safeTitle || "").trim(),
+    artist: String(resolved?.artist || data.artist || "Unknown").trim() || "Unknown",
+    matchedBy: String(resolved?.matchedBy || "").trim() || "fallback",
+  };
+});
+
+exports.resolveCanonicalTrackIdentityBatch = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "resolve_canonical_track_identity_batch", { perMinute: 60, perHour: 600 });
+  requireAuth(request);
+  enforceAppCheckIfEnabled(request, "resolve_canonical_track_identity_batch");
+  const items = Array.isArray(request.data?.items) ? request.data.items : [];
+  if (!items.length) {
+    throw new HttpsError("invalid-argument", "items is required.");
+  }
+  if (items.length > 100) {
+    throw new HttpsError("invalid-argument", "items max is 100.");
+  }
+
+  const results = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index] || {};
+    const resolved = await resolveCanonicalTrackIdentityInternal({
+      songId: String(item.songId || "").trim(),
+      title: String(item.title || "").trim(),
+      artist: String(item.artist || "").trim() || "Unknown",
+      source: String(item.source || "").trim(),
+      mediaUrl: String(item.mediaUrl || "").trim(),
+      appleMusicId: String(item.appleMusicId || "").trim(),
+    });
+    results.push({
+      index,
+      found: !!resolved?.found,
+      songId: String(resolved?.songId || "").trim(),
+      trackId: String(resolved?.trackId || "").trim() || null,
+      title: String(resolved?.title || item.title || "").trim(),
+      artist: String(resolved?.artist || item.artist || "Unknown").trim() || "Unknown",
+      matchedBy: String(resolved?.matchedBy || "").trim() || "fallback",
+    });
+  }
+
+  return { items: results };
+});
+
 exports.logPerformance = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "log_performance", { perMinute: 24, perHour: 240 });
   if (!request.auth) {
@@ -4748,18 +5101,30 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
   const artist = (data.artist || "Unknown").trim() || "Unknown";
   const roomCode = data.roomCode || "";
   const albumArtUrl = data.albumArtUrl || "";
-  const songResult = await ensureSongAdmin({
+  const sourceGuess = data.trackSource
+    || (data.appleMusicId ? "apple" : extractYouTubeId(data.mediaUrl || "") ? "youtube" : "custom");
+  const canonicalMatch = await resolveCanonicalTrackIdentityInternal({
+    songId: data.songId || "",
     title: songTitle,
     artist,
+    source: sourceGuess,
+    mediaUrl: data.mediaUrl || "",
+    appleMusicId: data.appleMusicId || "",
+  });
+  const canonicalTitle = String(canonicalMatch?.title || songTitle).trim() || songTitle;
+  const canonicalArtist = String(canonicalMatch?.artist || artist).trim() || artist;
+  const songResult = await ensureSongAdmin({
+    title: canonicalTitle,
+    artist: canonicalArtist,
     artworkUrl: albumArtUrl,
     verifyMeta: false,
     verifiedBy: data.verifiedBy || "host",
   });
-  const songId = data.songId || songResult?.songId || buildSongKey(songTitle, artist);
-  const sourceGuess = data.trackSource
-    || (data.appleMusicId ? "apple" : extractYouTubeId(data.mediaUrl || "") ? "youtube" : "custom");
+  const songId = canonicalMatch?.found
+    ? (canonicalMatch.songId || songResult?.songId || buildSongKey(canonicalTitle, canonicalArtist))
+    : (data.songId || songResult?.songId || buildSongKey(canonicalTitle, canonicalArtist));
 
-  let trackId = data.trackId || null;
+  let trackId = canonicalMatch?.trackId || data.trackId || null;
   if (!trackId && (data.mediaUrl || data.appleMusicId)) {
     const trackResult = await ensureTrackAdmin({
       songId,
@@ -4787,8 +5152,8 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
     roomCode,
     singerName: data.singerName || "",
     singerUid: data.singerUid || null,
-    songTitle,
-    artist,
+    songTitle: canonicalTitle,
+    artist: canonicalArtist,
     score: totalScore,
     totalScore,
     applauseScore,
@@ -4806,8 +5171,8 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
   if (isNewAllTime) {
     await bestRef.set({
       songId,
-      songTitle,
-      artist,
+      songTitle: canonicalTitle,
+      artist: canonicalArtist,
       albumArtUrl,
       bestScore: totalScore,
       applauseScore,
@@ -4825,8 +5190,8 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
     await weeklyRef.set({
       weekKey,
       songId,
-      songTitle,
-      artist,
+      songTitle: canonicalTitle,
+      artist: canonicalArtist,
       albumArtUrl,
       bestScore: totalScore,
       applauseScore,
@@ -5148,8 +5513,7 @@ exports.reconcilePerformanceRecap = onCall({ cors: true }, async (request) => {
 
 exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_search");
-  const uid = requireAuth(request);
-  const entitlements = await resolveUserEntitlements(uid);
+  const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_search");
   const query = request.data?.query || "";
   ensureString(query, "query");
@@ -5240,8 +5604,7 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
 
 exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_playlist");
-  const uid = requireAuth(request);
-  const entitlements = await resolveUserEntitlements(uid);
+  const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_playlist");
   const playlistId = request.data?.playlistId || "";
   ensureString(playlistId, "playlistId");
@@ -5283,8 +5646,7 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
 
 exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_status");
-  const uid = requireAuth(request);
-  const entitlements = await resolveUserEntitlements(uid);
+  const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_status");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   if (!ids.length) return { items: [] };
@@ -5388,8 +5750,7 @@ const fetchRoomReactionsInWindow = async ({
 
 exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_details");
-  const uid = requireAuth(request);
-  const entitlements = await resolveUserEntitlements(uid);
+  const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_details");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   if (!ids.length) return { items: [] };
@@ -5864,7 +6225,7 @@ exports.appleMusicLyrics = onCall(
   { cors: true, secrets: [APPLE_MUSIC_TEAM_ID, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_PRIVATE_KEY] },
   async (request) => {
     checkRateLimit(request.rawRequest, "apple_music");
-    const uid = requireAuth(request);
+    const { uid, entitlements } = await requireCapability(request, "api.apple_music");
     enforceAppCheckIfEnabled(request, "apple_music_lyrics");
     const title = (request.data?.title || "").trim();
     const artist = (request.data?.artist || "").trim();
@@ -5897,7 +6258,6 @@ exports.appleMusicLyrics = onCall(
       }
     }
 
-    const entitlements = await resolveUserEntitlements(uid);
     const token = getAppleMusicToken();
     const headers = { Authorization: `Bearer ${token}` };
     if (musicUserToken) {
@@ -9048,7 +9408,9 @@ exports.ensureOrganization = onCall({ cors: true }, async (request) => {
 
 exports.bootstrapOnboardingWorkspace = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "bootstrap_onboarding_workspace", { perMinute: 20, perHour: 200 });
-  const { uid } = await requireCapability(request, "workspace.onboarding");
+  const { uid } = await requireHostWorkspaceAccess(request, {
+    deniedMessage: "Host onboarding requires an active host subscription or approved host access.",
+  });
   enforceAppCheckIfEnabled(request, "bootstrap_onboarding_workspace");
   const orgName = typeof request.data?.orgName === "string" ? request.data.orgName : "";
   const hostName = normalizeOptionalName(request.data?.hostName, "Host");
@@ -9314,7 +9676,9 @@ exports.provisionHostRoom = onCall(
   async (request) => {
     checkRateLimit(request.rawRequest, "provision_host_room", { perMinute: 30, perHour: 240 });
     enforceAppCheckIfEnabled(request, "provision_host_room");
-    const callerUid = requireAuth(request, "Sign in required.");
+    const { uid: callerUid } = await requireHostWorkspaceAccess(request, {
+      deniedMessage: "Room provisioning requires an active host subscription or approved host access.",
+    });
     const payload = isPlainObject(request.data) ? request.data : {};
     const rootRef = getRootRef();
     const db = admin.firestore();
@@ -10230,7 +10594,7 @@ exports.createAppleMusicToken = onCall(
   { cors: true, secrets: [APPLE_MUSIC_TEAM_ID, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_PRIVATE_KEY] },
   async (request) => {
     checkRateLimit(request.rawRequest, "apple_music_token", { perMinute: 10, perHour: 80 });
-    const callerUid = requireAuth(request);
+    const { uid: callerUid } = await requireCapability(request, "api.apple_music");
     enforceAppCheckIfEnabled(request, "create_apple_music_token");
     const roomCode = normalizeRoomCode(request.data?.roomCode || "");
     ensureString(roomCode, "roomCode");

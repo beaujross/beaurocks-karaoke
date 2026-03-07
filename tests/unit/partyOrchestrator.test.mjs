@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import {
+    PARTY_AUTO_MOMENT_DEFAULTS,
     PARTY_POLICY_DEFAULTS,
     normalizeMissionParty,
     shouldAllowGroupMoment,
     recordCompletedPerformance,
     recordGroupMoment,
-    getSingingSharePct
+    getSingingSharePct,
+    recommendAutoCrowdMoment
 } from '../../src/apps/Host/partyOrchestrator.js';
 
 const run = () => {
@@ -13,6 +15,8 @@ const run = () => {
     assert.equal(defaults.karaokeFirst, true);
     assert.equal(defaults.minSingingSharePct, PARTY_POLICY_DEFAULTS.minSingingSharePct);
     assert.equal(defaults.maxConsecutiveNonKaraokeModes, 1);
+    assert.equal(defaults.autoCrowdMomentsEnabled, false);
+    assert.deepEqual(defaults.autoCrowdMomentPreferredTypes, PARTY_AUTO_MOMENT_DEFAULTS.autoCrowdMomentPreferredTypes);
 
     const withSinging = recordCompletedPerformance(defaults.state, { durationSec: 180 });
     assert.equal(withSinging.singingMs, 180000);
@@ -85,6 +89,44 @@ const run = () => {
 
     const singingShare = getSingingSharePct({ singingMs: 210000, groupMs: 90000 });
     assert.equal(singingShare, 70);
+
+    const autoReadyCheck = recommendAutoCrowdMoment({
+        party: {
+            ...defaults,
+            autoCrowdMomentsEnabled: true,
+            autoCrowdMomentPreferredTypes: ['ready_check']
+        },
+        flowState: withSinging,
+        queueDepth: 2,
+        hasCurrentSinger: false,
+        activeMode: 'karaoke'
+    });
+    assert.equal(autoReadyCheck.allowed, true);
+    assert.equal(autoReadyCheck.type, 'ready_check');
+    assert.equal(autoReadyCheck.breakDurationSec, PARTY_AUTO_MOMENT_DEFAULTS.autoCrowdMomentReadyCheckSec);
+
+    const autoVolley = recommendAutoCrowdMoment({
+        party: {
+            ...defaults,
+            autoCrowdMomentsEnabled: true,
+            autoCrowdMomentPreferredTypes: ['volley', 'ready_check']
+        },
+        flowState: { ...withSinging, songsSinceLastGroupMoment: 2 },
+        queueDepth: 1,
+        lobbyVolleyEnabled: true,
+        hasCurrentSinger: false,
+        activeMode: 'karaoke'
+    });
+    assert.equal(autoVolley.allowed, true);
+    assert.equal(autoVolley.type, 'volley');
+
+    const disabledAuto = recommendAutoCrowdMoment({
+        party: defaults,
+        flowState: withSinging,
+        queueDepth: 1
+    });
+    assert.equal(disabledAuto.allowed, false);
+    assert.equal(disabledAuto.reason, 'disabled');
 
     console.log('partyOrchestrator tests passed');
 };

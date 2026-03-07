@@ -42,9 +42,18 @@ async function resetState() {
   await deleteCollection(["room_sessions"]);
   await deleteCollection(["organizations"]);
   await deleteCollection(["users"]);
+  await deleteCollection(["marketing_private_access"]);
   await deleteCollection(["artifacts", APP_ID, "public", "data", "rooms"]);
   await deleteCollection(["artifacts", APP_ID, "public", "data", "host_libraries"]);
   await deleteCollection(["artifacts", APP_ID, "public", "data", "room_provisioning_jobs"]);
+  await db.doc(`users/${HOST_UID}`).set({
+    uid: HOST_UID,
+    subscription: { tier: "free" },
+  }, { merge: true });
+  await db.doc(`marketing_private_access/${HOST_UID}`).set({
+    uid: HOST_UID,
+    privateHostAccessEnabled: true,
+  }, { merge: true });
 }
 
 async function runCase(name, fn) {

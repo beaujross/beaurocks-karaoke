@@ -2814,6 +2814,15 @@ const PublicTV = ({ roomCode }) => {
     });
     const lobbyVolleyEnabled = room?.lobbyVolleyEnabled !== false;
     const lobbyCompactHudMode = lobbyVolleySceneActive && lobbyVolleyEnabled;
+    const activeAutoCrowdMoment = room?.missionControl?.autoMoment;
+    const autoCrowdMomentActive = activeAutoCrowdMoment?.status === 'live' && activeAutoCrowdMoment?.source === 'autopilot';
+    const autoCrowdMomentType = String(activeAutoCrowdMoment?.type || '').trim().toLowerCase();
+    const autoCrowdMomentTitle = String(activeAutoCrowdMoment?.title || '').trim()
+        || (autoCrowdMomentType === 'volley' ? 'Auto Party: Volley Orb' : 'Auto Party: Ready Check');
+    const autoCrowdMomentDetail = String(activeAutoCrowdMoment?.detail || '').trim()
+        || (autoCrowdMomentType === 'volley'
+            ? 'Audience relay is live between singers.'
+            : 'Audience check-in is live before the next singer.');
     const lobbyGroundLineBottomPct = lobbyCompactHudMode ? 3.2 : 4.4;
     const lobbyGroundLineTopPct = 100 - lobbyGroundLineBottomPct;
     const lobbyNow = nowMs();
@@ -3485,13 +3494,23 @@ const PublicTV = ({ roomCode }) => {
         const readyPct = totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
         return (
             <div className="public-tv fixed inset-0 z-[200] bg-[radial-gradient(circle_at_top,rgba(6,182,212,0.16),transparent_55%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.18),transparent_48%),#09090b] flex flex-col items-center justify-center p-4 md:p-8 2xl:p-12 text-center">
-                <div className="text-sm md:text-base uppercase tracking-[0.2em] md:tracking-[0.4em] text-zinc-200 mb-3 md:mb-4">Ready Check</div>
+                <div className="flex items-center gap-3 mb-3 md:mb-4">
+                    <div className="text-sm md:text-base uppercase tracking-[0.2em] md:tracking-[0.4em] text-zinc-200">Ready Check</div>
+                    {autoCrowdMomentActive && (
+                        <span className="px-3 py-1 rounded-full border border-cyan-300/45 bg-cyan-500/16 text-[10px] md:text-xs font-black tracking-[0.18em] text-cyan-100">
+                            AUTO PARTY
+                        </span>
+                    )}
+                </div>
                 <div className="text-[clamp(5rem,24vw,18rem)] font-black text-white leading-none">{readyTimer || 0}</div>
                 <div className="text-2xl md:text-4xl 2xl:text-5xl font-bebas text-cyan-300 mt-3 md:mt-6">ARE YOU READY?</div>
                 <div className="text-base md:text-2xl text-zinc-200 mt-2 md:mt-4">{readyCount} / {totalCount} ready ({readyPct}%)</div>
                 <div className="mt-4 md:mt-6 w-[86vw] max-w-[640px] h-3 md:h-4 rounded-full border border-white/20 bg-black/35 overflow-hidden">
                     <div className="h-full bg-gradient-to-r from-cyan-400 to-pink-400 transition-all duration-500" style={{ width: `${Math.min(100, Math.max(0, readyPct))}%` }}></div>
                 </div>
+                {autoCrowdMomentActive && (
+                    <div className="text-sm md:text-lg text-cyan-200 mt-4">{autoCrowdMomentDetail}</div>
+                )}
                 <div className="text-sm md:text-lg text-zinc-300 mt-3">Grab your phone and tap READY before the clock hits zero.</div>
             </div>
         );
@@ -4437,11 +4456,22 @@ const PublicTV = ({ roomCode }) => {
                                     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
                                         <div className="flex items-center justify-between mb-2 border-b border-white/10 pb-2">
                                             <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-cyan-300">VOLLEY ORB</h3>
+                                            {autoCrowdMomentActive && autoCrowdMomentType === 'volley' && (
+                                                <span className="px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/15 text-[10px] uppercase tracking-[0.16em] text-cyan-100">
+                                                    Auto Party
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="rounded-2xl border border-cyan-300/35 bg-black/35 px-3 py-3 mb-3">
+                                            {autoCrowdMomentActive && autoCrowdMomentType === 'volley' && (
+                                                <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200 mb-1">{autoCrowdMomentTitle}</div>
+                                            )}
                                             <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/90 mb-1">Now</div>
                                             <div className="text-sm md:text-lg font-semibold text-white leading-tight">{lobbyInstructionHeadline}</div>
                                             <div className="mt-1 text-xs md:text-sm text-cyan-100/90">{lobbyInstructionSecondary}</div>
+                                            {autoCrowdMomentActive && autoCrowdMomentType === 'volley' && (
+                                                <div className="mt-2 text-[11px] md:text-xs text-cyan-100/85">{autoCrowdMomentDetail}</div>
+                                            )}
                                         </div>
                                         <div className="rounded-2xl border border-fuchsia-300/35 bg-gradient-to-r from-cyan-500/14 via-indigo-500/14 to-fuchsia-500/16 px-3 py-3 mb-3">
                                             <div className="flex items-center justify-between gap-2">

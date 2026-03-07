@@ -5426,13 +5426,23 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     if (room?.readyCheck?.active) {
         return (
             <div className="fixed inset-0 z-[120] bg-zinc-900 flex flex-col items-center justify-center p-6 text-white font-saira">
-                <div className="text-[10px] uppercase tracking-[0.4em] text-zinc-500 mb-3">Ready Check</div>
+                <div className="flex items-center gap-2 mb-3">
+                    <div className="text-[10px] uppercase tracking-[0.4em] text-zinc-500">Ready Check</div>
+                    {autoCrowdMomentActive && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.14em] border border-cyan-300/45 bg-cyan-500/18 text-cyan-100">
+                            AUTO PARTY
+                        </span>
+                    )}
+                </div>
                 <div className="text-[12rem] font-black text-white leading-none mb-4">{readyTimer || 0}</div>
                 {user?.isReady ? (
                     <h1 className="text-4xl font-bebas text-green-400">YOU ARE READY!</h1>
                 ) : (
                     <div className="text-center animate-pulse">
                         <h1 className="text-5xl font-bebas mb-8">ARE YOU READY?</h1>
+                        {autoCrowdMomentActive && (
+                            <div className="text-sm text-cyan-200 mb-6">{autoCrowdMomentDetail}</div>
+                        )}
                         <button onClick={readyUp} className="w-64 h-64 bg-green-500 rounded-full flex items-center justify-center border-8 border-green-300 shadow-2xl">
                             <span className="text-4xl font-bold">YES!</span>
                         </button>
@@ -6797,6 +6807,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         timedOut: lobbyVolleyTimedOut,
         relayActive: lobbyRelayObjective.active
     });
+    const activeAutoCrowdMoment = room?.missionControl?.autoMoment;
+    const autoCrowdMomentActive = activeAutoCrowdMoment?.status === 'live' && activeAutoCrowdMoment?.source === 'autopilot';
+    const autoCrowdMomentType = String(activeAutoCrowdMoment?.type || '').trim().toLowerCase();
+    const autoCrowdMomentTitle = String(activeAutoCrowdMoment?.title || '').trim()
+        || (autoCrowdMomentType === 'volley' ? 'Auto Party: Volley Orb' : 'Auto Party: Ready Check');
+    const autoCrowdMomentDetail = String(activeAutoCrowdMoment?.detail || '').trim()
+        || (autoCrowdMomentType === 'volley'
+            ? 'Audience relay is live between singers.'
+            : 'Audience check-in is live before the next singer.');
     const chatTitle = socialTab === 'host' ? 'DM Host' : 'VIP Lounge';
     const chatStatusLabel = !room?.chatEnabled
         ? 'Chat paused'
@@ -7328,6 +7347,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
                 {tab === 'home' && (
                     <div className="space-y-5">
+                         {autoCrowdMomentActive && (
+                             <div className="rounded-2xl border border-cyan-300/45 bg-gradient-to-r from-cyan-500/14 via-[#08111d] to-fuchsia-500/14 px-3 py-3 shadow-[0_0_20px_rgba(34,211,238,0.18)]">
+                                 <div className="flex items-center justify-between gap-3">
+                                     <div className="min-w-0">
+                                         <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200">Auto Party</div>
+                                         <div className="text-sm font-black text-white leading-tight">{autoCrowdMomentTitle}</div>
+                                         <div className="text-xs text-zinc-300 mt-1">{autoCrowdMomentDetail}</div>
+                                     </div>
+                                     <span className="px-2 py-1 rounded-full border border-cyan-300/35 bg-cyan-500/18 text-[10px] font-black tracking-[0.12em] text-cyan-50">
+                                         AUDIENCE LED
+                                     </span>
+                                 </div>
+                             </div>
+                         )}
                          {lobbyVolleySceneActive && lobbyVolleyEnabled ? (
                              <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-3 space-y-3 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
                                  <div className="flex items-center justify-between gap-2">
@@ -7336,6 +7369,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          <div className="text-base font-black text-white leading-tight">{lobbyMobileMainLine}</div>
                                      </div>
                                      <div className="flex items-center gap-1">
+                                         {autoCrowdMomentActive && autoCrowdMomentType === 'volley' && (
+                                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] border bg-cyan-500/20 border-cyan-300/45 text-cyan-100">
+                                                 AUTO
+                                             </span>
+                                         )}
                                          {lobbyPlayStrictMode && (
                                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] border bg-fuchsia-500/20 border-fuchsia-300/45 text-fuchsia-100">
                                                  STRICT

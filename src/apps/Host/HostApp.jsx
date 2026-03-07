@@ -62,7 +62,7 @@ import { BG_TRACKS, SOUNDS } from '../../lib/gameDataConstants';
 import { HOST_APP_CONFIG } from '../../lib/uiConstants';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabilities';
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
-import { buildSongKey, ensureSong, ensureTrack } from '../../lib/songCatalog';
+import { buildSongKey, ensureSong, ensureTrack, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
 import { createLogger } from '../../lib/logger';
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
 import {
@@ -110,7 +110,8 @@ import {
     normalizeMissionParty,
     recordCompletedPerformance,
     recordGroupMoment,
-    shouldAllowGroupMoment
+    shouldAllowGroupMoment,
+    recommendAutoCrowdMoment
 } from './partyOrchestrator';
 import {
     AUTO_DJ_EVENTS,
@@ -660,8 +661,13 @@ const MISSION_OVERRIDE_STORAGE_KEY = 'bross_mission_control_overrides_v1';
 const MISSION_QUERY_KEY = 'mission';
 const MISSION_CONTROL_VERSION = 1;
 const MISSION_DEFAULT_ASSIST_LEVEL = 'smart_assist';
-const PARTY_AUTOPILOT_READY_CHECK_DURATION_SEC = 6;
 const MISSION_FLOW_RULE_OPTIONS = Object.freeze(Object.values(MISSION_FLOW_RULES));
+const AUTO_CROWD_ORDER_PRESETS = Object.freeze({
+    volley_first: ['volley', 'ready_check'],
+    ready_first: ['ready_check', 'volley'],
+    ready_only: ['ready_check'],
+    volley_only: ['volley']
+});
 
 const PARTY_GUARD_REASON_MESSAGE = {
     queue_guard: 'Queue is busy, keeping focus on singers.',
@@ -673,6 +679,14 @@ const PARTY_GUARD_REASON_MESSAGE = {
 
 const getPartyGuardMessage = (reason = '') =>
     PARTY_GUARD_REASON_MESSAGE[String(reason || '').trim()] || 'Holding group moment to keep karaoke flow stable.';
+
+const getAutoCrowdOrderPreset = (preferredTypes = []) => {
+    const normalized = Array.isArray(preferredTypes)
+        ? preferredTypes.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+        : [];
+    const normalizedKey = JSON.stringify(normalized);
+    return Object.entries(AUTO_CROWD_ORDER_PRESETS).find(([, value]) => JSON.stringify(value) === normalizedKey)?.[0] || 'volley_first';
+};
 
 const mergeMissionControlParty = (missionControl = {}, partyPatch = {}) => {
     const previousParty = isPlainObject(missionControl?.party) ? missionControl.party : {};
@@ -5276,6 +5290,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [tight15Profile, setTight15Profile] = useState(null);
     const [readyCheckDurationSec, setReadyCheckDurationSec] = useState(10);
     const [readyCheckRewardPoints, setReadyCheckRewardPoints] = useState(100);
+    const [autoCrowdMomentsEnabled, setAutoCrowdMomentsEnabled] = useState(false);
+    const [autoCrowdMomentOrderPreset, setAutoCrowdMomentOrderPreset] = useState('volley_first');
+    const [autoCrowdMomentReadyCheckSec, setAutoCrowdMomentReadyCheckSec] = useState(6);
+    const [autoCrowdMomentVolleySec, setAutoCrowdMomentVolleySec] = useState(12);
     // Announce state
     const [_announceText, _setAnnounceText] = useState(''); 
     const [_showAnnounceModal, _setShowAnnounceModal] = useState(false);
@@ -5753,6 +5771,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const lastPartyAutoBreakTsRef = useRef(null);
     const seededPartyPolicyRoomRef = useRef('');
     const readyCheckTimerRef = useRef(null);
+    const autoCrowdMomentTimerRef = useRef(null);
     const bingoTurnAdvanceRef = useRef(null);
     const roomRef = useRef(room);
     const songsRef = useRef(songs);
@@ -6467,6 +6486,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room.readyCheckRewardPoints !== undefined && room.readyCheckRewardPoints !== null) {
             setReadyCheckRewardPoints(room.readyCheckRewardPoints);
         }
+        const roomPartyConfig = buildMissionPartyFromRoom(room);
+        setAutoCrowdMomentsEnabled(!!roomPartyConfig.autoCrowdMomentsEnabled);
+        setAutoCrowdMomentOrderPreset(getAutoCrowdOrderPreset(roomPartyConfig.autoCrowdMomentPreferredTypes));
+        setAutoCrowdMomentReadyCheckSec(roomPartyConfig.autoCrowdMomentReadyCheckSec);
+        setAutoCrowdMomentVolleySec(roomPartyConfig.autoCrowdMomentVolleySec);
         if (room.queueSettings) {
             setQueueLimitMode(room.queueSettings.limitMode || 'none');
             setQueueLimitCount(room.queueSettings.limitCount ?? 0);
@@ -6489,7 +6513,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.popTriviaEnabled !== undefined && room?.popTriviaEnabled !== null) {
             setPopTriviaEnabled(room.popTriviaEnabled !== false);
         }
-    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
+    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.missionControl?.party, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
     useEffect(() => {
         if (room?.autoLyricsOnQueue === undefined || room?.autoLyricsOnQueue === null) return;
         setAutoLyricsOnQueue(!!room.autoLyricsOnQueue);
@@ -8407,73 +8431,209 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const requestedReward = options?.rewardPoints ?? readyCheckRewardPoints ?? 0;
         const durationSec = Math.max(3, Number(requestedDuration));
         const rewardPoints = Math.max(0, Number(requestedReward));
-        await updateRoom({ readyCheck: { active: true, startTime: nowMs(), durationSec, rewardPoints } });
+        const autoMomentKey = String(options?.momentKey || '').trim();
+        const autoMomentSource = String(options?.source || '').trim().toLowerCase();
+        const autoMomentTitle = String(options?.title || '').trim();
+        const autoMomentDetail = String(options?.detail || '').trim();
+        const roomPatch = {
+            readyCheck: {
+                active: true,
+                startTime: nowMs(),
+                durationSec,
+                rewardPoints,
+                ...(autoMomentSource ? { source: autoMomentSource } : {}),
+                ...(autoMomentKey ? { momentKey: autoMomentKey } : {})
+            }
+        };
+        if (autoMomentSource === 'autopilot') {
+            roomPatch.missionControl = {
+                ...(isPlainObject(room?.missionControl) ? room.missionControl : {}),
+                autoMoment: {
+                    key: autoMomentKey || `ready_check_${nowMs()}`,
+                    source: 'autopilot',
+                    type: 'ready_check',
+                    status: 'live',
+                    title: autoMomentTitle || 'Auto Party: Ready Check',
+                    detail: autoMomentDetail || 'Audience check-in is live before the next singer.',
+                    startedAt: nowMs(),
+                    durationSec
+                }
+            };
+        }
+        await updateRoom(roomPatch);
         if (readyCheckTimerRef.current) clearTimeout(readyCheckTimerRef.current);
         readyCheckTimerRef.current = setTimeout(() => {
-            updateRoom({ 'readyCheck.active': false });
+            const activeAutoMoment = roomRef.current?.missionControl?.autoMoment;
+            const shouldClearAutoMoment = autoMomentSource === 'autopilot'
+                && activeAutoMoment?.status === 'live'
+                && String(activeAutoMoment?.key || '').trim() === autoMomentKey;
+            const nextPatch = { 'readyCheck.active': false };
+            if (shouldClearAutoMoment) {
+                nextPatch.missionControl = {
+                    ...(isPlainObject(roomRef.current?.missionControl) ? roomRef.current.missionControl : {}),
+                    autoMoment: {
+                        ...activeAutoMoment,
+                        status: 'completed',
+                        endedAt: nowMs()
+                    }
+                };
+            }
+            updateRoom(nextPatch);
         }, durationSec * 1000);
-    }, [readyCheckDurationSec, readyCheckRewardPoints, updateRoom]);
+    }, [readyCheckDurationSec, readyCheckRewardPoints, room?.missionControl, updateRoom]);
+    const startAutoCrowdMoment = useCallback(async (moment = {}) => {
+        const type = String(moment?.type || '').trim().toLowerCase();
+        const durationSec = Math.max(3, Number(moment?.durationSec ?? moment?.breakDurationSec ?? 6) || 6);
+        const momentKey = String(moment?.key || `${type || 'auto'}_${nowMs()}`).trim();
+        const title = String(moment?.title || '').trim();
+        const detail = String(moment?.detail || '').trim();
+        if (type === 'volley') {
+            if (autoCrowdMomentTimerRef.current) {
+                clearTimeout(autoCrowdMomentTimerRef.current);
+                autoCrowdMomentTimerRef.current = null;
+            }
+            await updateRoom({
+                lightMode: 'volley',
+                lobbyVolleyEnabled: true,
+                missionControl: {
+                    ...(isPlainObject(room?.missionControl) ? room.missionControl : {}),
+                    autoMoment: {
+                        key: momentKey,
+                        source: 'autopilot',
+                        type: 'volley',
+                        status: 'live',
+                        title: title || 'Auto Party: Volley Orb',
+                        detail: detail || 'Audience relay is live between singers.',
+                        startedAt: nowMs(),
+                        durationSec
+                    }
+                }
+            });
+            autoCrowdMomentTimerRef.current = setTimeout(() => {
+                const activeAutoMoment = roomRef.current?.missionControl?.autoMoment;
+                const isSameMoment = activeAutoMoment?.status === 'live'
+                    && String(activeAutoMoment?.key || '').trim() === momentKey;
+                if (!isSameMoment) return;
+                const nextPatch = {
+                    missionControl: {
+                        ...(isPlainObject(roomRef.current?.missionControl) ? roomRef.current.missionControl : {}),
+                        autoMoment: {
+                            ...activeAutoMoment,
+                            status: 'completed',
+                            endedAt: nowMs()
+                        }
+                    }
+                };
+                if (String(roomRef.current?.lightMode || '').trim().toLowerCase() === 'volley') {
+                    nextPatch.lightMode = 'off';
+                }
+                updateRoom(nextPatch).catch((error) => {
+                    hostLogger.debug('Failed to clear auto volley moment', error);
+                });
+                autoCrowdMomentTimerRef.current = null;
+            }, durationSec * 1000);
+            return;
+        }
+        await startReadyCheck({
+            durationSec,
+            source: 'autopilot',
+            momentKey,
+            title,
+            detail
+        });
+    }, [room?.missionControl, startReadyCheck, updateRoom]);
+    const updateAutoPartyConfig = useCallback(async (patch = {}) => {
+        const currentParty = buildMissionPartyFromRoom(room);
+        const nextParty = {
+            ...currentParty,
+            ...(isPlainObject(patch) ? patch : {})
+        };
+        await updateRoom({
+            missionControl: mergeMissionControlParty(room?.missionControl, nextParty)
+        });
+    }, [room, updateRoom]);
     useEffect(() => {
         if (!roomCode || !room?.autoDj) return;
         const assistLevel = String(room?.missionControl?.setupDraft?.assistLevel || '').trim().toLowerCase();
-        if (assistLevel !== 'autopilot_first') return;
+        const partyRaw = room?.missionControl?.party || {};
+        const explicitAutoPartyEnabled = buildMissionPartyFromRoom(room).autoCrowdMomentsEnabled;
+        if (assistLevel !== 'autopilot_first' && !explicitAutoPartyEnabled) return;
         const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
         if (!lastPerformanceTs) return;
         if (lastPartyAutoBreakTsRef.current === lastPerformanceTs) return;
         if (queuedCount <= 0) return;
 
-        const partyRaw = room?.missionControl?.party || {};
-        const partyConfig = buildMissionPartyPayload(partyRaw);
+        const partyConfig = buildMissionPartyPayload({
+            ...partyRaw,
+            autoCrowdMomentsEnabled: explicitAutoPartyEnabled || assistLevel === 'autopilot_first'
+        });
         const durationSec = Math.max(30, Number(room?.lastPerformance?.duration || 180));
         const hasTrackedPerformance = Number(partyRaw?.lastPerformanceAtMs || 0) === lastPerformanceTs;
         const flowStateForGuard = hasTrackedPerformance
             ? partyConfig.state
             : recordCompletedPerformance(partyConfig.state, { durationSec });
-        const guard = shouldAllowGroupMoment({
-            policy: partyConfig,
+        const recommendedMoment = recommendAutoCrowdMoment({
+            party: partyConfig,
             flowState: flowStateForGuard,
             queueDepth: queuedCount,
-            requestedMode: 'ready_check',
-            requestedDurationSec: PARTY_AUTOPILOT_READY_CHECK_DURATION_SEC
+            lobbyVolleyEnabled: room?.lobbyVolleyEnabled !== false,
+            hasCurrentSinger: performingCount > 0,
+            activeMode: room?.activeMode,
+            currentLightMode: room?.lightMode
         });
-        if (!guard.allowed) return;
+        if (!recommendedMoment.allowed) return;
 
         lastPartyAutoBreakTsRef.current = lastPerformanceTs;
         const timer = setTimeout(() => {
-            startReadyCheck({ durationSec: guard.breakDurationSec }).then(() => {
+            const momentKey = `${recommendedMoment.type}_${lastPerformanceTs}`;
+            startAutoCrowdMoment({
+                ...recommendedMoment,
+                key: momentKey
+            }).then(() => {
                 const nextFlowState = recordGroupMoment(flowStateForGuard, {
-                    mode: 'ready_check',
-                    durationSec: guard.breakDurationSec
+                    mode: recommendedMoment.type,
+                    durationSec: recommendedMoment.breakDurationSec
                 });
                 return updateRoom({
                     missionControl: mergeMissionControlParty(room?.missionControl, {
                         state: nextFlowState,
-                        lastGroupMode: 'ready_check',
-                        lastGroupDurationSec: guard.breakDurationSec,
+                        lastGroupMode: recommendedMoment.type,
+                        lastGroupDurationSec: recommendedMoment.breakDurationSec,
                         lastGroupTriggeredAt: nowMs(),
                         lastSuggestedAction: 'hype_moment'
                     })
                 });
             }).then(() => {
-                logActivity(roomCode, hostName || 'Host', 'triggered a quick crowd check between singers', EMOJI.sparkle);
+                logActivity(roomCode, hostName || 'Host', recommendedMoment.activityLog, EMOJI.sparkle);
             }).catch((error) => {
                 hostLogger.debug('Autopilot crowd check skipped', error);
             });
-        }, 400);
+        }, recommendedMoment.delayMs);
 
         return () => clearTimeout(timer);
     }, [
         roomCode,
+        room,
         room?.autoDj,
+        room?.activeMode,
+        room?.lightMode,
         room?.lastPerformance?.timestamp,
         room?.lastPerformance?.duration,
         room?.missionControl,
+        room?.lobbyVolleyEnabled,
         queuedCount,
-        startReadyCheck,
+        performingCount,
+        startAutoCrowdMoment,
         updateRoom,
         logActivity,
         hostName
     ]);
+    useEffect(() => () => {
+        if (autoCrowdMomentTimerRef.current) {
+            clearTimeout(autoCrowdMomentTimerRef.current);
+            autoCrowdMomentTimerRef.current = null;
+        }
+    }, []);
     const runMissionHypeMoment = async () => {
         if (!roomCode) {
             toast('Create or open a room first');
@@ -10173,17 +10333,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const lyricsSource = hasTimedLyrics || hasPlainLyrics ? 'apple' : (aiLyricsText ? 'ai' : '');
         const lyricsText = hasPlainLyrics ? fetchedApple.lyrics : aiLyricsText;
 
+        const canonicalMatch = await (async () => {
+            try {
+                return await resolveCanonicalTrackIdentity({
+                    title: song.title,
+                    artist: song.artist || 'Unknown',
+                    source: appleMusicId ? 'apple' : '',
+                    mediaUrl: '',
+                    appleMusicId
+                });
+            } catch (error) {
+                hostLogger.debug('Browse canonical match failed', error);
+                return null;
+            }
+        })();
+        const canonicalTitle = canonicalMatch?.found ? (canonicalMatch.title || song.title) : song.title;
+        const canonicalArtist = canonicalMatch?.found ? (canonicalMatch.artist || song.artist || 'Unknown') : (song.artist || 'Unknown');
+
         const songRecord = await ensureSong({
-            title: song.title,
-            artist: song.artist || 'Unknown',
+            title: canonicalTitle,
+            artist: canonicalArtist,
             artworkUrl: art || song.art || '',
             appleMusicId,
             verifyMeta: art || song.art ? {} : false,
             verifiedBy: hostName || 'host'
         });
-        const songId = songRecord?.songId || buildSongKey(song.title, song.artist || 'Unknown');
-        let trackRecord = null;
-        if (appleMusicId) {
+        const songId = canonicalMatch?.songId || songRecord?.songId || buildSongKey(canonicalTitle, canonicalArtist);
+        let trackRecord = canonicalMatch?.trackId ? { trackId: canonicalMatch.trackId } : null;
+        if (appleMusicId && !trackRecord?.trackId) {
             try {
                 trackRecord = await ensureTrack({
                     songId,
@@ -10204,8 +10381,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             songId,
             trackId: trackRecord?.trackId || null,
             trackSource: trackRecord?.trackId ? 'apple' : null,
-            songTitle: song.title,
-            artist: song.artist,
+            songTitle: canonicalTitle,
+            artist: canonicalArtist,
             singerName,
             mediaUrl: '',
             albumArtUrl: art || song.art || '',
@@ -14662,6 +14839,89 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 className={`${STYLES.input} mt-1`}
                                             />
                                         </label>
+                                    </div>
+                                </div>
+                                <div className="bg-zinc-900/50 border border-fuchsia-500/20 rounded-xl p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-xs uppercase tracking-[0.28em] text-fuchsia-200">Auto Party</div>
+                                            <div className="text-sm text-zinc-300 mt-1">
+                                                Let the audience drive short in-between moments while karaoke stays queue-first.
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={async () => {
+                                                const next = !autoCrowdMomentsEnabled;
+                                                setAutoCrowdMomentsEnabled(next);
+                                                const nextParty = {
+                                                    ...buildMissionPartyFromRoom(room),
+                                                    autoCrowdMomentsEnabled: next
+                                                };
+                                                const roomPatch = {
+                                                    missionControl: mergeMissionControlParty(room?.missionControl, nextParty)
+                                                };
+                                                if (next && !autoDj) {
+                                                    setAutoDj(true);
+                                                    roomPatch.autoDj = true;
+                                                }
+                                                await updateRoom(roomPatch);
+                                                toast(next ? 'Auto Party enabled' : 'Auto Party disabled');
+                                            }}
+                                            className={`${STYLES.btnStd} ${autoCrowdMomentsEnabled ? STYLES.btnHighlight : STYLES.btnNeutral} justify-start whitespace-nowrap`}
+                                        >
+                                            <i className="fa-solid fa-users-rays"></i>
+                                            {autoCrowdMomentsEnabled ? 'Auto Party ON' : 'Auto Party OFF'}
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-4">
+                                        <label className="text-sm text-zinc-300">
+                                            Moment order
+                                            <select
+                                                value={autoCrowdMomentOrderPreset}
+                                                onChange={async (event) => {
+                                                    const nextPreset = event.target.value;
+                                                    setAutoCrowdMomentOrderPreset(nextPreset);
+                                                    await updateAutoPartyConfig({
+                                                        autoCrowdMomentPreferredTypes: AUTO_CROWD_ORDER_PRESETS[nextPreset] || AUTO_CROWD_ORDER_PRESETS.volley_first
+                                                    });
+                                                }}
+                                                className={`${STYLES.input} mt-1`}
+                                            >
+                                                <option value="volley_first">Volley first</option>
+                                                <option value="ready_first">Ready check first</option>
+                                                <option value="ready_only">Ready check only</option>
+                                                <option value="volley_only">Volley only</option>
+                                            </select>
+                                        </label>
+                                        <label className="text-sm text-zinc-300">
+                                            Auto ready check (sec)
+                                            <input
+                                                value={autoCrowdMomentReadyCheckSec}
+                                                onChange={(event) => setAutoCrowdMomentReadyCheckSec(event.target.value)}
+                                                onBlur={async () => {
+                                                    const next = Math.max(3, Math.min(20, Number(autoCrowdMomentReadyCheckSec || 6) || 6));
+                                                    setAutoCrowdMomentReadyCheckSec(next);
+                                                    await updateAutoPartyConfig({ autoCrowdMomentReadyCheckSec: next });
+                                                }}
+                                                className={`${STYLES.input} mt-1`}
+                                            />
+                                        </label>
+                                        <label className="text-sm text-zinc-300">
+                                            Auto volley window (sec)
+                                            <input
+                                                value={autoCrowdMomentVolleySec}
+                                                onChange={(event) => setAutoCrowdMomentVolleySec(event.target.value)}
+                                                onBlur={async () => {
+                                                    const next = Math.max(4, Math.min(30, Number(autoCrowdMomentVolleySec || 12) || 12));
+                                                    setAutoCrowdMomentVolleySec(next);
+                                                    await updateAutoPartyConfig({ autoCrowdMomentVolleySec: next });
+                                                }}
+                                                className={`${STYLES.input} mt-1`}
+                                            />
+                                        </label>
+                                    </div>
+                                    <div className="host-form-helper mt-3">
+                                        Auto Party currently works best with Auto-DJ on. It will auto-pick between Ready Check and Volley Orb between singers.
                                     </div>
                                 </div>
                             </div>

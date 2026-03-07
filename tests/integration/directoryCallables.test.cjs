@@ -5,6 +5,8 @@ process.env.MARKETING_PRIVATE_INVITE_CODE = process.env.MARKETING_PRIVATE_INVITE
 const {
   ensureSong,
   ensureTrack,
+  resolveCanonicalTrackIdentity,
+  resolveCanonicalTrackIdentityBatch,
   upsertDirectoryProfile,
   submitDirectoryListing,
   listModerationQueue,
@@ -28,6 +30,7 @@ const {
   listCatalogContributionQueue,
   resolveCatalogContribution,
   previewDirectoryRoomSessionByCode,
+  logPerformance,
 } = require("../../functions/index.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
@@ -75,6 +78,10 @@ async function resetState() {
     "catalog_contributions",
     "songs",
     "tracks",
+    "track_source_keys",
+    "performances",
+    "song_hall_of_fame",
+    "song_hall_of_fame_weeks",
     "users",
     "marketing_private_access",
     "marketing_private_invites",
@@ -286,6 +293,116 @@ async function run() {
       assert.ok(track.trackId);
       const trackSnap = await db.doc(`tracks/${track.trackId}`).get();
       assert.equal(trackSnap.exists, true);
+    }],
+
+    ["resolveCanonicalTrackIdentity reuses persisted youtube mappings", async () => {
+      await db.doc(`directory_profiles/${USER_UID}`).set({
+        uid: USER_UID,
+        displayName: "Host User",
+        roles: ["host"],
+        status: "approved",
+      });
+      const song = await ensureSong.run(
+        requestFor(USER_UID, { title: "Don't Stop Believin'", artist: "Journey" })
+      );
+      const track = await ensureTrack.run(
+        requestFor(USER_UID, {
+          songId: song.songId,
+          source: "youtube",
+          mediaUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          label: "YouTube Karaoke",
+        })
+      );
+      assert.ok(track.trackId);
+
+      const resolved = await resolveCanonicalTrackIdentity.run(
+        requestFor(USER_UID, {
+          title: "Journey - Don't Stop Believin' (Karaoke Version)",
+          artist: "Sing King Karaoke",
+          source: "youtube",
+          mediaUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        })
+      );
+      assert.equal(resolved.found, true);
+      assert.equal(resolved.songId, song.songId);
+      assert.equal(resolved.trackId, track.trackId);
+    }],
+
+    ["resolveCanonicalTrackIdentityBatch resolves youtube mappings in one request", async () => {
+      await db.doc(`directory_profiles/${USER_UID}`).set({
+        uid: USER_UID,
+        displayName: "Host User",
+        roles: ["host"],
+        status: "approved",
+      });
+      const song = await ensureSong.run(
+        requestFor(USER_UID, { title: "Africa", artist: "Toto" })
+      );
+      const track = await ensureTrack.run(
+        requestFor(USER_UID, {
+          songId: song.songId,
+          source: "youtube",
+          mediaUrl: "https://www.youtube.com/watch?v=PWgvGjAhvIw",
+          label: "YouTube Karaoke",
+        })
+      );
+
+      const result = await resolveCanonicalTrackIdentityBatch.run(
+        requestFor(USER_UID, {
+          items: [
+            {
+              title: "Toto - Africa (Karaoke Version)",
+              artist: "Sing King Karaoke",
+              source: "youtube",
+              mediaUrl: "https://www.youtube.com/watch?v=PWgvGjAhvIw",
+            },
+          ],
+        })
+      );
+      assert.equal(Array.isArray(result.items), true);
+      assert.equal(result.items.length, 1);
+      assert.equal(result.items[0].songId, song.songId);
+      assert.equal(result.items[0].trackId, track.trackId);
+    }],
+
+    ["logPerformance collapses youtube-backed scores onto canonical song ids", async () => {
+      await db.doc(`directory_profiles/${USER_UID}`).set({
+        uid: USER_UID,
+        displayName: "Host User",
+        roles: ["host"],
+        status: "approved",
+      });
+      const song = await ensureSong.run(
+        requestFor(USER_UID, { title: "Don't Stop Believin'", artist: "Journey" })
+      );
+      const track = await ensureTrack.run(
+        requestFor(USER_UID, {
+          songId: song.songId,
+          source: "youtube",
+          mediaUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          label: "YouTube Karaoke",
+        })
+      );
+      const result = await logPerformance.run(
+        requestFor(USER_UID, {
+          roomCode: "ROOMX",
+          songTitle: "Journey - Don't Stop Believin' (Karaoke Version)",
+          artist: "Sing King Karaoke",
+          singerName: "Beau",
+          mediaUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          trackSource: "youtube",
+          applauseScore: 88,
+          hypeScore: 22,
+          hostBonus: 10,
+        })
+      );
+      assert.equal(result.songId, song.songId);
+      assert.equal(result.trackId, track.trackId);
+
+      const hallOfFameSnap = await db.doc(`song_hall_of_fame/${song.songId}`).get();
+      assert.equal(hallOfFameSnap.exists, true);
+      assert.equal(hallOfFameSnap.get("songTitle"), "Don't Stop Believin'");
+      assert.equal(hallOfFameSnap.get("artist"), "Journey");
     }],
 
     ["submitCatalogContribution queues pending request", async () => {
