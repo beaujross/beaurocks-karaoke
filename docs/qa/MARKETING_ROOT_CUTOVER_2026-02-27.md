@@ -69,6 +69,26 @@ Script validates:
 - route/query correctness (`room`, `mode=tv`, `mode=host`)
 - loadability of target links across desktop Chromium, Android emulation, and iOS WebKit emulation
 
+Auth/surface invariants:
+- Host-auth entry must be allowed on the `host` origin:
+  - valid: `https://host.beaurocks.app/host-access?...`
+  - do not canonically bounce `/host-access` away from `host.beaurocks.app`
+- Unauthenticated host intents should redirect to `host`-origin `/host-access`, not marketing-origin `/host-access`.
+- Do not assume email/password auth established on `https://beaurocks.app` is immediately reusable on `https://host.beaurocks.app` for this flow.
+  - treat the host auth gate as origin-local and complete the login/resume handoff on the `host` surface before expecting host controls to load
+
+Manual regression checks:
+```powershell
+# marketing CTA can hand off into host auth without looping
+start https://beaurocks.app/for-hosts
+
+# direct unauth host hit resolves to host-surface auth gate
+start https://host.beaurocks.app/?mode=host&hostUiVersion=v2
+```
+Expected:
+- marketing host CTA lands on `https://host.beaurocks.app/host-access?...` when not already authenticated on the host surface
+- successful login on host-access resumes into host controls without bouncing between `beaurocks.app` and `host.beaurocks.app`
+
 ## 4) Analytics + Attribution Validation
 
 Automated (same command as above):

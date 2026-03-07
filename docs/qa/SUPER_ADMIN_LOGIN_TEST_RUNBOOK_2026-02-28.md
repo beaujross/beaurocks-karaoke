@@ -23,6 +23,9 @@ Source in code:
 Important:
 - `isSuperAdminUid` result is cached for up to 10 minutes in-memory.
 - If you fix email verification or env vars, allow cache to expire (or redeploy functions) before retesting.
+- Do not assume any Beau-owned account is super admin by default.
+  - the default email allowlist path is `hello@beauross.com`
+  - other accounts only qualify if they are email-verified and explicitly added to `SUPER_ADMIN_EMAILS`, or their UID is added to `SUPER_ADMIN_UIDS`
 
 ## 1.1) Auth Bootstrap Guardrail (Regression-Protected)
 
@@ -43,6 +46,14 @@ Important:
    - ensure `SUPER_ADMIN_EMAILS` includes `hello@beauross.com` (or leave default behavior)
    - optional break-glass: add your UID to `SUPER_ADMIN_UIDS`
 
+Observed production note (2026-03-07):
+- `hello@beauross.com`
+  - email verified in Firebase Auth
+  - matches default super-admin email behavior
+- `beaujross@gmail.com`
+  - present in Firebase Auth but not email-verified at time of check
+  - does not satisfy default super-admin rules unless verification/env/UID overrides are updated
+
 3. Firestore UI role doc (optional fallback for moderator UI visibility):
    - create/update `directory_roles/{yourUid}` with:
 
@@ -59,13 +70,18 @@ Why this matters:
 
 ## 3) Production Login Flow
 
-1. Open `https://beaurocks.app/host-access`
+1. Open `https://host.beaurocks.app/host-access`
 2. Sign in with `hello@beauross.com`
 3. Confirm signed-in state appears in auth panel
 4. Open host surface:
    - `https://host.beaurocks.app/?mode=host&hostUiVersion=v2`
 5. Open marketing moderation route:
    - `https://beaurocks.app/admin/moderation`
+
+Why the host origin matters:
+- current production flow treats the host auth gate as origin-local
+- if login starts on marketing and immediately jumps to host, session persistence can appear signed-out again on `host.beaurocks.app`
+- start or resume host login on `https://host.beaurocks.app/host-access` when validating host dashboard access
 
 ## 4) Super Admin Smoke Test Checklist
 
@@ -132,5 +148,8 @@ If host room creation fails with permission/auth errors:
 - retest after confirming same UID/email in Firebase Auth
 
 If host routing loops back to `/host-access` after successful login:
-- verify the deployed build includes commit `97bf4eb` (auth bootstrap session-preservation fix)
-- clear site data for `host.beaurocks.app` and repeat sign-in
+- verify the deployed build includes the host-surface redirect-loop fixes:
+  - `97bf4eb` auth bootstrap session-preservation fix
+  - `129c4a3` host login redirect-loop fix
+- make sure login is happening on `https://host.beaurocks.app/host-access`
+- clear site data for both `beaurocks.app` and `host.beaurocks.app`, then repeat sign-in

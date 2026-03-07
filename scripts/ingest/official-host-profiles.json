@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "updatedAt": "2026-03-07",
+  "profiles": [
+    {
+      "id": "dj_beaurocks",
+      "uid": "12scDWBbxVb6cYostveztDKMsji2",
+      "displayName": "DJ BeauRocks",
+      "firstName": "Beau",
+      "lastName": "Ross",
+      "handle": "dj_beaurocks",
+      "bio": "DJ BeauRocks is the host identity behind BeauRocks Karaoke and Bross Entertainment, building Seattle-area karaoke nights around faster room setup, live join, interactive TV, and crowd-first pacing.",
+      "city": "Seattle",
+      "state": "WA",
+      "country": "US",
+      "visibility": "public",
+      "status": "approved",
+      "roles": [
+        "host",
+        "performer",
+        "venue_owner"
+      ],
+      "avatarUrl": "/images/logo-library/bross-entertainment-chrome.png",
+      "photoUrl": "/images/logo-library/bross-entertainment-chrome.png",
+      "heroImageUrl": "/images/marketing/BeauRocks-HostPanel.png",
+      "coverImageUrl": "/images/marketing/BeauRocks-Audienceapp.png",
+      "imageUrls": [
+        "/images/marketing/BeauRocks-HostPanel.png",
+        "/images/marketing/BeauRocks-Audienceapp.png",
+        "/images/logo-library/bross-entertainment-chrome.png"
+      ],
+      "galleryUrls": [
+        "/images/marketing/BeauRocks-HostPanel.png",
+        "/images/marketing/BeauRocks-Audienceapp.png",
+        "/images/logo-library/bross-entertainment-chrome.png"
+      ],
+      "socialLinks": {
+        "website": "https://beaurocks.app/for-hosts"
+      },
+      "preserveExisting": [
+        "city",
+        "state",
+        "country",
+        "roles",
+        "createdAt",
+        "vipLevel",
+        "fameLevel",
+        "totalFamePoints",
+        "hostRoomCodes"
+      ]
+    }
+  ]
+}

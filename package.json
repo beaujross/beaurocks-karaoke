@@ -66,7 +66,10 @@
     "seed:directory:venues:photos": "node scripts/ingest/backfill-venue-featured-images.mjs --dry-run",
     "seed:directory:seattle-tacoma:scrape": "node scripts/ingest/scrape-seattle-tacoma-sources.mjs --dry-run",
     "seed:directory:seattle-tacoma:apply": "node scripts/ingest/scrape-seattle-tacoma-sources.mjs --apply",
+    "seed:directory:hosts:official": "node scripts/ingest/seed-official-host-profiles.mjs --dry-run",
+    "seed:directory:hosts:official:apply": "node scripts/ingest/seed-official-host-profiles.mjs --apply",
     "seed:directory:bootstrap": "node scripts/ingest/bootstrap-directory-profiles.mjs --dry-run",
+    "ops:overnight:directory-growth": "node scripts/ops/overnight-directory-growth.mjs",
     "preview": "vite preview",
     "deploy:hosting": "npm run build && npx firebase-tools deploy --only hosting",
     "deploy:hosting:ci": "npx firebase-tools deploy --only hosting --non-interactive"
