@@ -3,7 +3,7 @@ import { ToastProvider } from './context/ToastContext';
 import { auth, onAuthStateChanged, initAuth } from './lib/firebase';
 import { ASSETS } from './lib/assets';
 import { marketingFlags } from './apps/Marketing/featureFlags';
-import { MARKETING_ROUTE_PAGES, buildLegacyMarketingQuery, isMarketingPath } from './apps/Marketing/routing';
+import { MARKETING_ROUTE_PAGES, isMarketingPath } from './apps/Marketing/routing';
 import { buildSurfaceUrl, inferSurfaceFromHostname } from './lib/surfaceDomains';
 
 // App Views
@@ -43,6 +43,31 @@ const getCanonicalManagedHostRedirectUrl = (locationLike = null) => {
         destination.search = locationLike.search || '';
         destination.hash = locationLike.hash || '';
         return destination.toString();
+    } catch {
+        return '';
+    }
+};
+
+const getCanonicalSurfaceRedirectUrl = (locationLike = null) => {
+    if (!locationLike) return '';
+    const pathname = String(locationLike.pathname || '/').trim() || '/';
+    const params = new URLSearchParams(locationLike.search || '');
+    const detectedSurface = inferSurfaceFromHostname(locationLike.hostname, locationLike);
+    const marketingRouteRequested = (
+        params.get('mode') === 'marketing'
+        || isMarketingPath(pathname.replace(/\/+$/, ''))
+        || /\/marketing(\/.*)?$/i.test(pathname)
+    );
+    if (!marketingRouteRequested) return '';
+    if (detectedSurface === 'marketing') return '';
+
+    try {
+        const targetUrl = new URL(buildSurfaceUrl({ surface: 'marketing' }, locationLike));
+        targetUrl.pathname = pathname;
+        targetUrl.search = locationLike.search || '';
+        targetUrl.hash = locationLike.hash || '';
+        if (targetUrl.origin === normalizeOrigin(locationLike.origin || '')) return '';
+        return targetUrl.toString();
     } catch {
         return '';
     }
@@ -179,9 +204,11 @@ const KaraokeTerms = () => (
 );
 
 const App = () => {
-    const [canonicalRedirectUrl] = useState(() => (
-        typeof window !== 'undefined' ? getCanonicalManagedHostRedirectUrl(window.location) : ''
-    ));
+    const [canonicalRedirectUrl] = useState(() => {
+        if (typeof window === 'undefined') return '';
+        return getCanonicalManagedHostRedirectUrl(window.location)
+            || getCanonicalSurfaceRedirectUrl(window.location);
+    });
     const initialRoute = getInitialRouteState();
     const [view, setView] = useState(() => initialRoute.view);
     const [roomCode, setRoomCode] = useState(() => initialRoute.roomCode);
@@ -224,10 +251,15 @@ const App = () => {
         if (!authReady || hasBeauRocksAccount || typeof window === 'undefined') return;
 
         const resumeIntent = 'host_dashboard_resume';
-        const baseHref = buildLegacyMarketingQuery({ page: MARKETING_ROUTE_PAGES.hostAccess });
-        const returnToUrl = new URL(baseHref, window.location.origin);
+        const baseHref = marketingFlags.routePathsEnabled
+            ? buildSurfaceUrl({ surface: 'marketing', path: 'host-access' }, window.location)
+            : buildSurfaceUrl({
+                surface: 'marketing',
+                params: { mode: 'marketing', page: MARKETING_ROUTE_PAGES.hostAccess },
+            }, window.location);
+        const returnToUrl = new URL(baseHref);
         returnToUrl.searchParams.set('intent', resumeIntent);
-        const authGateUrl = new URL(baseHref, window.location.origin);
+        const authGateUrl = new URL(baseHref);
         authGateUrl.searchParams.set('intent', resumeIntent);
         authGateUrl.searchParams.set('targetType', 'host_dashboard');
         authGateUrl.searchParams.set('return_to', `${returnToUrl.pathname}${returnToUrl.search}`);
