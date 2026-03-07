@@ -13,7 +13,7 @@ import { applyMarketingSeo } from "./seo";
 import { directoryActions } from "./api/directoryApi";
 import { useDirectorySession } from "./hooks/useDirectorySession";
 import { formatDateTime } from "./pages/shared";
-import { buildSurfaceUrl } from "../../lib/surfaceDomains";
+import { buildSurfaceUrl, inferSurfaceFromHostname } from "../../lib/surfaceDomains";
 import { getMarketingNavModel } from "./iaModel";
 import "./marketing.css";
 
@@ -464,16 +464,53 @@ const MarketingSite = () => {
       },
     }, window.location);
   }, []);
+  const hostAccessResumeHref = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const returnTo = marketingFlags.routePathsEnabled
+      ? "/host-access?intent=host_dashboard_resume"
+      : "/?mode=marketing&page=host_access&intent=host_dashboard_resume";
+    return marketingFlags.routePathsEnabled
+      ? buildSurfaceUrl({
+        surface: "host",
+        path: "host-access",
+        params: {
+          intent: "host_dashboard_resume",
+          targetType: "host_dashboard",
+          return_to: returnTo,
+        },
+      }, window.location)
+      : buildSurfaceUrl({
+        surface: "host",
+        params: {
+          mode: "marketing",
+          page: MARKETING_ROUTE_PAGES.hostAccess,
+          intent: "host_dashboard_resume",
+          targetType: "host_dashboard",
+          return_to: returnTo,
+        },
+      }, window.location);
+  }, []);
+  const currentSurface = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return inferSurfaceFromHostname(window.location.hostname, window.location);
+  }, []);
   const openHostDashboard = useCallback((source = "marketing_nav") => {
     if (typeof window === "undefined") return;
     trackEvent("mk_nav_host_dashboard_click", {
       source: String(source || "marketing_nav"),
       authed: hasFullAccount ? 1 : 0,
     });
-    const nextHref = hostDashboardHref
-      || buildSurfaceUrl({ surface: "host", params: { mode: "host" } }, window.location);
+    const nextHref = currentSurface === "host" && hasFullAccount
+      ? (
+        hostDashboardHref
+        || buildSurfaceUrl({ surface: "host", params: { mode: "host" } }, window.location)
+      )
+      : (
+        hostAccessResumeHref
+        || buildSurfaceUrl({ surface: "host", params: { mode: "host" } }, window.location)
+      );
     window.location.href = nextHref;
-  }, [hasFullAccount, hostDashboardHref]);
+  }, [currentSurface, hasFullAccount, hostAccessResumeHref, hostDashboardHref]);
 
   const applyForHostAccess = useCallback(async (source = "marketing_host_apply") => {
     if (!hasFullAccount) {

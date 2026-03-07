@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
-import { buildSurfaceUrl } from "../../../lib/surfaceDomains";
+import { buildSurfaceUrl, inferSurfaceFromHostname } from "../../../lib/surfaceDomains";
 import { MARKETING_ROUTE_PAGES } from "../routing";
+import { marketingFlags } from "../featureFlags";
 
 const HOST_STACK_BADGES = [
   "Approval-based host onboarding",
@@ -54,6 +55,36 @@ const ForHostsPage = ({ route, session, authFlow }) => {
       },
     }, window.location);
   }, []);
+  const hostAccessResumeHref = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const returnTo = marketingFlags.routePathsEnabled
+      ? "/host-access?intent=host_dashboard_resume"
+      : "/?mode=marketing&page=host_access&intent=host_dashboard_resume";
+    return marketingFlags.routePathsEnabled
+      ? buildSurfaceUrl({
+        surface: "host",
+        path: "host-access",
+        params: {
+          intent: "host_dashboard_resume",
+          targetType: "host_dashboard",
+          return_to: returnTo,
+        },
+      }, window.location)
+      : buildSurfaceUrl({
+        surface: "host",
+        params: {
+          mode: "marketing",
+          page: MARKETING_ROUTE_PAGES.hostAccess,
+          intent: "host_dashboard_resume",
+          targetType: "host_dashboard",
+          return_to: returnTo,
+        },
+      }, window.location);
+  }, []);
+  const currentSurface = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return inferSurfaceFromHostname(window.location.hostname, window.location);
+  }, []);
 
   const openHostSetup = useCallback(() => {
     if (!canSubmit) {
@@ -70,12 +101,13 @@ const ForHostsPage = ({ route, session, authFlow }) => {
       });
       return;
     }
-    if (!hostSetupHref) return;
+    const nextHref = currentSurface === "host" ? hostSetupHref : hostAccessResumeHref;
+    if (!nextHref) return;
     trackEvent("mk_host_setup_redirect", {
       source: "for_hosts_direct_dashboard",
     });
-    window.location.href = hostSetupHref;
-  }, [authFlow, canSubmit, hostSetupHref]);
+    window.location.href = nextHref;
+  }, [authFlow, canSubmit, currentSurface, hostAccessResumeHref, hostSetupHref]);
 
   const applyForHostAccess = useCallback(async () => {
     if (!canSubmit) {
@@ -118,8 +150,8 @@ const ForHostsPage = ({ route, session, authFlow }) => {
     trackEvent("mk_host_setup_redirect", {
       source: "for_hosts_resume_after_login",
     });
-    window.location.href = hostSetupHref;
-  }, [canSubmit, hostSetupHref, route?.params?.intent, session?.hasHostWorkspaceAccess, session?.uid]);
+    window.location.href = currentSurface === "host" ? hostSetupHref : hostAccessResumeHref;
+  }, [canSubmit, currentSurface, hostAccessResumeHref, hostSetupHref, route?.params?.intent, session?.hasHostWorkspaceAccess, session?.uid]);
 
   return (
     <section className="mk3-page mk3-host-command mk3-host-rebuild">

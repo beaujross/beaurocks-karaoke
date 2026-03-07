@@ -51,14 +51,20 @@ const getCanonicalManagedHostRedirectUrl = (locationLike = null) => {
 const getCanonicalSurfaceRedirectUrl = (locationLike = null) => {
     if (!locationLike) return '';
     const pathname = String(locationLike.pathname || '/').trim() || '/';
+    const normalizedPathname = pathname.replace(/\/+$/, '') || '/';
     const params = new URLSearchParams(locationLike.search || '');
     const detectedSurface = inferSurfaceFromHostname(locationLike.hostname, locationLike);
+    const legacyPage = String(params.get('page') || '').trim().toLowerCase();
+    const isHostAccessRoute = normalizedPathname === '/host-access'
+        || legacyPage === 'host_access'
+        || legacyPage === 'host-access';
     const marketingRouteRequested = (
         params.get('mode') === 'marketing'
-        || isMarketingPath(pathname.replace(/\/+$/, ''))
+        || isMarketingPath(normalizedPathname)
         || /\/marketing(\/.*)?$/i.test(pathname)
     );
     if (!marketingRouteRequested) return '';
+    if (isHostAccessRoute) return '';
     if (detectedSurface === 'marketing') return '';
 
     try {
@@ -252,9 +258,9 @@ const App = () => {
 
         const resumeIntent = 'host_dashboard_resume';
         const baseHref = marketingFlags.routePathsEnabled
-            ? buildSurfaceUrl({ surface: 'marketing', path: 'host-access' }, window.location)
+            ? buildSurfaceUrl({ surface: 'host', path: 'host-access' }, window.location)
             : buildSurfaceUrl({
-                surface: 'marketing',
+                surface: 'host',
                 params: { mode: 'marketing', page: MARKETING_ROUTE_PAGES.hostAccess },
             }, window.location);
         const returnToUrl = new URL(baseHref);
