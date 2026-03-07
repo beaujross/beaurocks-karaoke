@@ -627,6 +627,21 @@ const createAdvancedMarkerElement = (visual, title = "") => {
   return element;
 };
 
+const bindAdvancedMarkerClick = (marker, onClick) => {
+  if (typeof marker?.addEventListener === "function") {
+    marker.addEventListener("gmp-click", onClick);
+    return {
+      remove: () => marker.removeEventListener?.("gmp-click", onClick),
+    };
+  }
+  if (typeof marker?.addListener === "function") {
+    return marker.addListener("gmp-click", onClick)
+      || marker.addListener("click", onClick)
+      || null;
+  }
+  return null;
+};
+
 const disposeMapMarker = (googleMaps, markerEntry) => {
   if (!markerEntry?.marker) return;
   markerEntry.listener?.remove?.();
@@ -753,6 +768,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const mapEnabled = !!mapsConfig?.mapEnabled && !!mapsConfig?.apiKey;
   const shouldLoadMaps = mapEnabled && (!isMobileViewport || mobileSurface === "map");
   const mapsApiKey = mapEnabled ? String(mapsConfig?.apiKey || "") : "";
+  const mapsMapId = mapEnabled ? String(mapsConfig?.mapId || "").trim() : "";
   const { loaded: mapsLoaded, error: mapsError } = useGoogleMapsScript({
     enabled: shouldLoadMaps,
     apiKey: String(mapsConfig?.apiKey || ""),
@@ -1318,6 +1334,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       fullscreenControl: false,
       backgroundColor: "#190827",
       styles: MAP_BRAND_STYLES,
+      ...(mapsMapId ? { mapId: mapsMapId } : {}),
     });
     mapRef.current = map;
     const idleListener = map.addListener("idle", () => {
@@ -1335,7 +1352,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     return () => {
       idleListener?.remove?.();
     };
-  }, [mapsLoaded, mapEnabled]);
+  }, [mapsLoaded, mapEnabled, mapsMapId]);
 
   useEffect(() => () => {
     const googleMaps = window.google?.maps;
@@ -1356,7 +1373,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (!googleMaps || !map) return;
 
     const AdvancedMarkerElement = googleMaps?.marker?.AdvancedMarkerElement;
-    const supportsAdvancedMarkers = typeof AdvancedMarkerElement === "function";
+    const supportsAdvancedMarkers = !!mapsMapId && typeof AdvancedMarkerElement === "function";
     const markerMap = markerMapRef.current;
     const nextMarkerKeys = new Set();
     mappableListings.forEach((entry) => {
@@ -1385,7 +1402,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             kind: "advanced",
             marker,
             content,
-            listener: marker.addListener?.("click", () => setSelectedKey(entry.key)) || null,
+            listener: bindAdvancedMarkerClick(marker, () => setSelectedKey(entry.key)),
           };
         } else {
           const marker = new googleMaps.Marker({
@@ -1494,7 +1511,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       </div>`
     );
     infoWindow.open({ map, anchor: markerEntry.marker });
-  }, [mappableListings, effectiveSelectedKey, focusListing, officialMarkerPulsePhase]);
+  }, [mappableListings, effectiveSelectedKey, focusListing, officialMarkerPulsePhase, mapsMapId]);
 
   const hiddenWithoutCoords = boundsOnly
     ? rankedListings.length - mappableListings.length
