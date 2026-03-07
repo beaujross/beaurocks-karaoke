@@ -701,19 +701,28 @@ const createAdvancedMarkerElement = (visual, title = "") => {
   return element;
 };
 
-const bindAdvancedMarkerClick = (marker, onClick) => {
+const bindAdvancedMarkerClick = (marker, onClick, content = null) => {
+  const removers = [];
   if (typeof marker?.addEventListener === "function") {
     marker.addEventListener("gmp-click", onClick);
-    return {
-      remove: () => marker.removeEventListener?.("gmp-click", onClick),
-    };
+    removers.push(() => marker.removeEventListener?.("gmp-click", onClick));
+    marker.addEventListener("click", onClick);
+    removers.push(() => marker.removeEventListener?.("click", onClick));
   }
   if (typeof marker?.addListener === "function") {
-    return marker.addListener("gmp-click", onClick)
-      || marker.addListener("click", onClick)
+    const clickListener = marker.addListener("click", onClick)
+      || marker.addListener("gmp-click", onClick)
       || null;
+    if (clickListener?.remove) removers.push(() => clickListener.remove());
   }
-  return null;
+  if (typeof content?.addEventListener === "function") {
+    content.addEventListener("click", onClick);
+    removers.push(() => content.removeEventListener?.("click", onClick));
+  }
+  if (!removers.length) return null;
+  return {
+    remove: () => removers.forEach((dispose) => dispose()),
+  };
 };
 
 const disposeMapMarker = (googleMaps, markerEntry) => {
@@ -1495,13 +1504,14 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             position: entry.location,
             title: entry.title,
             content,
+            gmpClickable: true,
             zIndex,
           });
           markerEntry = {
             kind: "advanced",
             marker,
             content,
-            listener: bindAdvancedMarkerClick(marker, () => setSelectedKey(entry.key)),
+            listener: bindAdvancedMarkerClick(marker, () => setSelectedKey(entry.key), content),
           };
         } else {
           const marker = new googleMaps.Marker({
