@@ -1,9 +1,11 @@
 name: Deploy Firebase Hosting
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
@@ -15,11 +17,20 @@ concurrency:
 
 jobs:
   deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
+    env:
+      TZ: UTC
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -27,20 +38,11 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
       - name: Install dependencies
         run: npm ci
 
-      - name: Run quality checks
-        run: npm test
-
       - name: Build app
-        run: npm run build
+        run: npm run ci:build
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2

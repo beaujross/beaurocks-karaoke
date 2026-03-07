@@ -8,7 +8,7 @@ import { MARKETING_REGION_PRESETS, MARKETING_GEO_CITY_PRESETS } from "../src/app
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
-const publicDir = path.join(projectRoot, "public");
+const trackedPublicDir = path.join(projectRoot, "public");
 const require = createRequire(import.meta.url);
 
 const loadEnvFileIntoProcess = (filename = "") => {
@@ -43,6 +43,14 @@ const readEnv = (name = "", fallback = "") => {
   return String(value);
 };
 
+const readCliArg = (flag = "") => {
+  const target = String(flag || "").trim();
+  if (!target) return "";
+  const index = process.argv.indexOf(target);
+  if (index === -1) return "";
+  return String(process.argv[index + 1] || "").trim();
+};
+
 const readEnvBool = (name, fallback = false) => {
   const raw = readEnv(name, "").trim().toLowerCase();
   if (!raw) return fallback;
@@ -68,6 +76,15 @@ const withBasePath = (pathname = "/") => {
 const readSiteUrl = () => {
   const raw = readEnv("SITE_URL", readEnv("VITE_SITE_URL", "https://beaurocks.app"));
   return String(raw || "").trim().replace(/\/+$/, "");
+};
+
+const resolveOutputDir = () => {
+  const raw = readCliArg("--output-dir") || readEnv("SITEMAP_OUTPUT_DIR", "public");
+  const normalized = String(raw || "public").trim();
+  if (!normalized) return trackedPublicDir;
+  return path.isAbsolute(normalized)
+    ? normalized
+    : path.join(projectRoot, normalized);
 };
 
 const safeToken = (value = "") =>
@@ -310,15 +327,22 @@ const loadManifestFromFirestore = async () => {
   }
 };
 
-const loadExistingManifest = async () => {
-  const file = path.join(publicDir, "marketing-route-manifest.json");
-  try {
-    const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
+const loadExistingManifest = async (searchDirs = []) => {
+  const seen = new Set();
+  for (const dir of searchDirs) {
+    const resolvedDir = String(dir || "").trim();
+    if (!resolvedDir || seen.has(resolvedDir)) continue;
+    seen.add(resolvedDir);
+    const file = path.join(resolvedDir, "marketing-route-manifest.json");
+    try {
+      const raw = await fs.readFile(file, "utf8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      // Try the next cached manifest candidate.
+    }
   }
+  return null;
 };
 
 const buildStaticManifest = () => ({
@@ -334,7 +358,7 @@ const buildStaticManifest = () => ({
   detailRoutes: [],
 });
 
-const resolveManifest = async () => {
+const resolveManifest = async (outputDir) => {
   const strictFirestore = readEnvBool("SITEMAP_STRICT_FIRESTORE", false);
   const requireDetailRoutes = readEnvBool("SITEMAP_REQUIRE_DETAIL_ROUTES", false);
   const warnings = [];
@@ -354,7 +378,7 @@ const resolveManifest = async () => {
     throw new Error("SITEMAP_STRICT_FIRESTORE is enabled and live Firestore manifest could not be loaded.");
   }
 
-  const existing = await loadExistingManifest();
+  const existing = await loadExistingManifest([outputDir, trackedPublicDir]);
   if (existing) {
     warnings.push("Using cached marketing-route-manifest.json fallback.");
     const cachedSourceBase = String(existing.source || "cached").replace(/(?:_cached)+$/g, "") || "cached";
@@ -449,23 +473,25 @@ const buildRobotsTxt = (siteUrl) => {
 
 const run = async () => {
   const siteUrl = readSiteUrl();
-  const { manifest, warnings } = await resolveManifest();
+  const outputDir = resolveOutputDir();
+  const { manifest, warnings } = await resolveManifest(outputDir);
   warnings.forEach((line) => {
     process.stderr.write(`[seo:sitemap] ${line}\n`);
   });
   const entries = buildUrlEntries(manifest);
   const sitemapXml = buildSitemapXml(siteUrl, entries);
   const robotsTxt = buildRobotsTxt(siteUrl);
-  await fs.mkdir(publicDir, { recursive: true });
+  await fs.mkdir(outputDir, { recursive: true });
   await fs.writeFile(
-    path.join(publicDir, "marketing-route-manifest.json"),
+    path.join(outputDir, "marketing-route-manifest.json"),
     JSON.stringify(manifest, null, 2),
     "utf8"
   );
-  await fs.writeFile(path.join(publicDir, "sitemap.xml"), sitemapXml, "utf8");
-  await fs.writeFile(path.join(publicDir, "robots.txt"), robotsTxt, "utf8");
+  await fs.writeFile(path.join(outputDir, "sitemap.xml"), sitemapXml, "utf8");
+  await fs.writeFile(path.join(outputDir, "robots.txt"), robotsTxt, "utf8");
+  const outputLabel = path.relative(projectRoot, outputDir) || ".";
   process.stdout.write(
-    `Generated sitemap.xml (${entries.length} urls), robots.txt, and marketing-route-manifest.json from ${manifest.source || "unknown"} for ${siteUrl}\n`
+    `Generated sitemap.xml (${entries.length} urls), robots.txt, and marketing-route-manifest.json in ${outputLabel} from ${manifest.source || "unknown"} for ${siteUrl}\n`
   );
 };
 

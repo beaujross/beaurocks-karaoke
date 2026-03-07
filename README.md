@@ -26,8 +26,10 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 - `npm run build` - production build
 - `npm run preview` - preview built app
 - `npm run lint` - ESLint checks
+- `npm run ci` - full local CI suite (lint, unit, rules, callables, build)
 - `npm run test:rules` - Firestore + Storage emulator security checks (requires Java)
 - `npm run deploy:hosting` - build + deploy web app to Firebase Hosting
+- `npm run seo:sitemap` - refresh tracked SEO artifacts in `public/` when you intentionally want to update them
 - Optional: set `VITE_BASE_PATH` only if deploying under a subpath (example: `/karaoke/`)
 
 ## Build Versioning (Host Launch Screen)
@@ -57,8 +59,9 @@ Automated deploys (GitHub Actions):
 
 1. Add repo secret `FIREBASE_SERVICE_ACCOUNT_BEAUROCKS_KARAOKE_V2`.
 2. Use a service account JSON with Firebase Hosting deploy permissions for project `beaurocks-karaoke-v2`.
-3. Push to `main` to auto-deploy via `.github/workflows/firebase-hosting-deploy.yml`.
-4. Open/update a PR targeting `main` to get a preview URL via `.github/workflows/firebase-hosting-preview.yml` (channel expires in 7 days).
+3. Pushes and PRs run the validation workflow in `.github/workflows/ci.yml`.
+4. Successful CI on `main` auto-deploys Hosting via `.github/workflows/firebase-hosting-deploy.yml`.
+5. Open/update a PR targeting `main` to get a preview URL via `.github/workflows/firebase-hosting-preview.yml` (channel expires in 7 days).
 
 ---
 
