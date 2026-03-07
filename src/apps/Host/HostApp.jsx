@@ -6228,118 +6228,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             .slice(0, 10);
 
     useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const t = params.get('tab');
-        const c = params.get('catalogue');
-        const chat = params.get('chat');
-        const onboarding = String(params.get('onboarding') || '').toLowerCase();
-        const plan = String(params.get('plan') || '').trim();
-        const launchRoomCode = normalizeLaunchRoomCode(params.get('launch_room_code'));
-        const launchPublicRoom = parseLaunchBoolParam(params.get('launch_public_room'));
-        const launchVirtualOnly = parseLaunchBoolParam(params.get('launch_virtual_only'));
-        const launchTitle = String(params.get('launch_title') || '').trim();
-        const launchDescription = String(params.get('launch_description') || '').trim();
-        const launchStartsAt = String(params.get('launch_starts_at') || '').trim();
-        const launchCity = String(params.get('launch_city') || '').trim();
-        const launchState = String(params.get('launch_state') || '').trim();
-        const view = (params.get('view') || '').trim().toLowerCase();
-        const section = (params.get('section') || '').trim().toLowerCase();
-        const g = normalizeGameParam(params.get('game'));
-        let consumedMarketingOnboardingParams = false;
-        if (view) {
-            const chosenSection = section || getViewDefaultSection(view);
-            setActiveWorkspaceView(view);
-            setActiveWorkspaceSection(chosenSection);
-            if (view === 'queue') {
-                setTab('stage');
-                if (chosenSection === 'queue.catalog') setTab('browse');
-            } else if (view === 'games') {
-                setTab('games');
-            } else if (view === 'audience') {
-                setTab('lobby');
-            } else {
-                setTab('admin');
-                const mappedTab = SECTION_TO_SETTINGS_TAB[chosenSection] || 'general';
-                setSettingsTab(mappedTab);
-            }
-        } else if (t === 'photos') {
-            setTab('lobby');
-            setLobbyTab('users');
-            openModerationInbox();
-        } else if (t === 'qa') {
-            setTab('admin');
-            setSettingsTab('qa');
-            setActiveWorkspaceView('advanced');
-            setActiveWorkspaceSection('advanced.diagnostics');
-        } else if (g) {
-            setTab('games');
-            setAutoOpenGameId(g);
-        } else if (t && ['stage', 'games', 'lobby', 'browse', 'admin'].includes(t)) {
-            setTab(t);
-            const redirect = LEGACY_TAB_REDIRECTS[t];
-            if (redirect) {
-                setActiveWorkspaceView(redirect.view);
-                setActiveWorkspaceSection(redirect.section);
-            }
-            if (t === 'admin') {
-                setActiveWorkspaceView('ops');
-                setActiveWorkspaceSection('ops.room_setup');
-                setSettingsTab('general');
-            }
-        }
-        if (c === '1') setCatalogueOnly(true);
-        if (chat === '1') setTab('stage');
-        if (onboarding === '1' || onboarding === 'true') {
-            const allowedPlanIds = new Set(HOST_ONBOARDING_PLAN_OPTIONS.map((option) => option.id));
-            const chosenPlan = allowedPlanIds.has(plan) ? plan : 'host_monthly';
-            openOnboardingWizard();
-            setOnboardingPlanId(chosenPlan);
-            setOnboardingStep(0);
-            consumedMarketingOnboardingParams = true;
-        }
-        if (
-            launchRoomCode
-            || launchPublicRoom
-            || launchVirtualOnly
-            || launchTitle
-            || launchDescription
-            || launchStartsAt
-            || launchCity
-            || launchState
-        ) {
-            if (launchRoomCode) {
-                setRoomCodeInput(launchRoomCode);
-            }
-            setQuickLaunchDiscovery((prev) => ({
-                ...prev,
-                ...(launchTitle ? { title: launchTitle } : {}),
-                ...(launchDescription ? { description: launchDescription } : {}),
-                ...(launchStartsAt ? { startsAtLocal: launchStartsAt } : {}),
-                ...(launchCity ? { city: launchCity } : {}),
-                ...(launchState ? { state: launchState } : {}),
-                ...(launchPublicRoom ? { publicRoom: true } : {}),
-                ...(launchVirtualOnly ? { virtualOnly: true } : {}),
-            }));
-            consumedMarketingOnboardingParams = true;
-        }
-        if (consumedMarketingOnboardingParams) {
-            params.delete('onboarding');
-            params.delete('plan');
-            params.delete('source');
-            params.delete('launch_room_code');
-            params.delete('launch_public_room');
-            params.delete('launch_virtual_only');
-            params.delete('launch_title');
-            params.delete('launch_description');
-            params.delete('launch_starts_at');
-            params.delete('launch_city');
-            params.delete('launch_state');
-            const nextQuery = params.toString();
-            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
-            window.history.replaceState({}, '', nextUrl);
-        }
-    }, [openModerationInbox, openOnboardingWizard, setOnboardingPlanId, setOnboardingStep, setQuickLaunchDiscovery]);
-    useEffect(() => {
         if (typeof window === 'undefined') return;
         const url = new URL(window.location.href);
         const params = url.searchParams;
@@ -7094,6 +6982,119 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         trackEvent,
         hostRoomProvisionDeploymentWarning: HOST_ROOM_PROVISION_DEPLOYMENT_WARNING,
     });
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const t = params.get('tab');
+        const c = params.get('catalogue');
+        const chat = params.get('chat');
+        const onboarding = String(params.get('onboarding') || '').toLowerCase();
+        const plan = String(params.get('plan') || '').trim();
+        const launchRoomCode = normalizeLaunchRoomCode(params.get('launch_room_code'));
+        const launchPublicRoom = parseLaunchBoolParam(params.get('launch_public_room'));
+        const launchVirtualOnly = parseLaunchBoolParam(params.get('launch_virtual_only'));
+        const launchTitle = String(params.get('launch_title') || '').trim();
+        const launchDescription = String(params.get('launch_description') || '').trim();
+        const launchStartsAt = String(params.get('launch_starts_at') || '').trim();
+        const launchCity = String(params.get('launch_city') || '').trim();
+        const launchState = String(params.get('launch_state') || '').trim();
+        const view = (params.get('view') || '').trim().toLowerCase();
+        const section = (params.get('section') || '').trim().toLowerCase();
+        const g = normalizeGameParam(params.get('game'));
+        let consumedMarketingOnboardingParams = false;
+        if (view) {
+            const chosenSection = section || getViewDefaultSection(view);
+            setActiveWorkspaceView(view);
+            setActiveWorkspaceSection(chosenSection);
+            if (view === 'queue') {
+                setTab('stage');
+                if (chosenSection === 'queue.catalog') setTab('browse');
+            } else if (view === 'games') {
+                setTab('games');
+            } else if (view === 'audience') {
+                setTab('lobby');
+            } else {
+                setTab('admin');
+                const mappedTab = SECTION_TO_SETTINGS_TAB[chosenSection] || 'general';
+                setSettingsTab(mappedTab);
+            }
+        } else if (t === 'photos') {
+            setTab('lobby');
+            setLobbyTab('users');
+            openModerationInbox();
+        } else if (t === 'qa') {
+            setTab('admin');
+            setSettingsTab('qa');
+            setActiveWorkspaceView('advanced');
+            setActiveWorkspaceSection('advanced.diagnostics');
+        } else if (g) {
+            setTab('games');
+            setAutoOpenGameId(g);
+        } else if (t && ['stage', 'games', 'lobby', 'browse', 'admin'].includes(t)) {
+            setTab(t);
+            const redirect = LEGACY_TAB_REDIRECTS[t];
+            if (redirect) {
+                setActiveWorkspaceView(redirect.view);
+                setActiveWorkspaceSection(redirect.section);
+            }
+            if (t === 'admin') {
+                setActiveWorkspaceView('ops');
+                setActiveWorkspaceSection('ops.room_setup');
+                setSettingsTab('general');
+            }
+        }
+        if (c === '1') setCatalogueOnly(true);
+        if (chat === '1') setTab('stage');
+        if (onboarding === '1' || onboarding === 'true') {
+            const allowedPlanIds = new Set(HOST_ONBOARDING_PLAN_OPTIONS.map((option) => option.id));
+            const chosenPlan = allowedPlanIds.has(plan) ? plan : 'host_monthly';
+            openOnboardingWizard();
+            setOnboardingPlanId(chosenPlan);
+            setOnboardingStep(0);
+            consumedMarketingOnboardingParams = true;
+        }
+        if (
+            launchRoomCode
+            || launchPublicRoom
+            || launchVirtualOnly
+            || launchTitle
+            || launchDescription
+            || launchStartsAt
+            || launchCity
+            || launchState
+        ) {
+            if (launchRoomCode) {
+                setRoomCodeInput(launchRoomCode);
+            }
+            setQuickLaunchDiscovery((prev) => ({
+                ...prev,
+                ...(launchTitle ? { title: launchTitle } : {}),
+                ...(launchDescription ? { description: launchDescription } : {}),
+                ...(launchStartsAt ? { startsAtLocal: launchStartsAt } : {}),
+                ...(launchCity ? { city: launchCity } : {}),
+                ...(launchState ? { state: launchState } : {}),
+                ...(launchPublicRoom ? { publicRoom: true } : {}),
+                ...(launchVirtualOnly ? { virtualOnly: true } : {}),
+            }));
+            consumedMarketingOnboardingParams = true;
+        }
+        if (consumedMarketingOnboardingParams) {
+            params.delete('onboarding');
+            params.delete('plan');
+            params.delete('source');
+            params.delete('launch_room_code');
+            params.delete('launch_public_room');
+            params.delete('launch_virtual_only');
+            params.delete('launch_title');
+            params.delete('launch_description');
+            params.delete('launch_starts_at');
+            params.delete('launch_city');
+            params.delete('launch_state');
+            const nextQuery = params.toString();
+            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
+            window.history.replaceState({}, '', nextUrl);
+        }
+    }, [openModerationInbox, openOnboardingWizard, setOnboardingPlanId, setOnboardingStep, setQuickLaunchDiscovery]);
 
     const onboardingPlanLabel = useMemo(() => {
         const found = HOST_ONBOARDING_PLAN_OPTIONS.find(p => p.id === onboardingPlanId);

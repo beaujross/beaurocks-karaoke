@@ -559,22 +559,84 @@ const pointInBounds = (location = null, bounds = null) => {
   return inLat && inLng;
 };
 
+const buildMarkerVisual = (
+  color,
+  selected = false,
+  isOfficialRoom = false,
+  pulsePhase = 0
+) => {
+  const fillColor = isOfficialRoom ? (pulsePhase ? "#ffd96d" : "#ffbe3b") : color;
+  const strokeColor = isOfficialRoom ? "#fff4c4" : selected ? "#ffffff" : "#0b1119";
+  const strokeWidth = selected ? (isOfficialRoom ? 3.8 : 2.8) : (isOfficialRoom ? 2.7 : 1.4);
+  const radius = selected
+    ? (isOfficialRoom ? (13 + (pulsePhase ? 1 : 0)) : 10)
+    : (isOfficialRoom ? (9 + (pulsePhase ? 1 : 0)) : 7);
+  return {
+    fillColor,
+    strokeColor,
+    strokeWidth,
+    radius,
+    fillOpacity: selected ? 1 : (isOfficialRoom ? 0.95 : 0.9),
+    shadow: selected
+      ? `0 0 0 4px rgba(255,255,255,0.18), 0 10px 26px rgba(8, 16, 30, 0.52)`
+      : isOfficialRoom
+        ? `0 0 0 3px rgba(255, 201, 77, 0.16), 0 8px 22px rgba(8, 16, 30, 0.42)`
+        : `0 6px 16px rgba(8, 16, 30, 0.34)`,
+    scale: radius,
+  };
+};
+
 const buildMarkerIcon = (
   googleMaps,
   color,
   selected = false,
   isOfficialRoom = false,
   pulsePhase = 0
-) => ({
-  path: googleMaps.SymbolPath.CIRCLE,
-  fillColor: isOfficialRoom ? (pulsePhase ? "#ffd96d" : "#ffbe3b") : color,
-  fillOpacity: selected ? 1 : (isOfficialRoom ? 0.95 : 0.9),
-  strokeColor: isOfficialRoom ? "#fff4c4" : selected ? "#ffffff" : "#0b1119",
-  strokeWeight: selected ? (isOfficialRoom ? 3.8 : 2.8) : (isOfficialRoom ? 2.7 : 1.4),
-  scale: selected
-    ? (isOfficialRoom ? (13 + (pulsePhase ? 1 : 0)) : 10)
-    : (isOfficialRoom ? (9 + (pulsePhase ? 1 : 0)) : 7),
-});
+) => {
+  const visual = buildMarkerVisual(color, selected, isOfficialRoom, pulsePhase);
+  return {
+    path: googleMaps.SymbolPath.CIRCLE,
+    fillColor: visual.fillColor,
+    fillOpacity: visual.fillOpacity,
+    strokeColor: visual.strokeColor,
+    strokeWeight: visual.strokeWidth,
+    scale: visual.scale,
+  };
+};
+
+const applyAdvancedMarkerStyles = (element, visual, title = "") => {
+  if (!element) return;
+  const diameter = Math.max(visual.radius * 2, 12);
+  element.setAttribute("aria-label", title || "Map marker");
+  element.title = title || "";
+  element.style.width = `${diameter}px`;
+  element.style.height = `${diameter}px`;
+  element.style.borderRadius = "999px";
+  element.style.background = visual.fillColor;
+  element.style.opacity = String(visual.fillOpacity);
+  element.style.border = `${Math.max(1, Math.round(visual.strokeWidth))}px solid ${visual.strokeColor}`;
+  element.style.boxShadow = visual.shadow;
+  element.style.cursor = "pointer";
+  element.style.boxSizing = "border-box";
+  element.style.transition = "width 140ms ease, height 140ms ease, background 140ms ease, border 140ms ease, box-shadow 140ms ease, opacity 140ms ease";
+};
+
+const createAdvancedMarkerElement = (visual, title = "") => {
+  const element = document.createElement("div");
+  applyAdvancedMarkerStyles(element, visual, title);
+  return element;
+};
+
+const disposeMapMarker = (googleMaps, markerEntry) => {
+  if (!markerEntry?.marker) return;
+  markerEntry.listener?.remove?.();
+  if (markerEntry.kind === "advanced") {
+    markerEntry.marker.map = null;
+    return;
+  }
+  googleMaps?.event?.clearInstanceListeners?.(markerEntry.marker);
+  markerEntry.marker.setMap?.(null);
+};
 
 const fitMapToListings = ({ googleMaps, map, listings }) => {
   if (!map || !googleMaps || !Array.isArray(listings) || !listings.length) return;
@@ -1281,9 +1343,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       selectedInfoWindowRef.current.close();
       selectedInfoWindowRef.current = null;
     }
-    markerMapRef.current.forEach((marker) => {
-      googleMaps?.event?.clearInstanceListeners(marker);
-      marker.setMap(null);
+    markerMapRef.current.forEach((markerEntry) => {
+      disposeMapMarker(googleMaps, markerEntry);
     });
     markerMapRef.current.clear();
     mapRef.current = null;
@@ -1294,43 +1355,84 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     const map = mapRef.current;
     if (!googleMaps || !map) return;
 
+    const AdvancedMarkerElement = googleMaps?.marker?.AdvancedMarkerElement;
+    const supportsAdvancedMarkers = typeof AdvancedMarkerElement === "function";
     const markerMap = markerMapRef.current;
     const nextMarkerKeys = new Set();
     mappableListings.forEach((entry) => {
       nextMarkerKeys.add(entry.key);
-      let marker = markerMap.get(entry.key);
-      if (!marker) {
-        marker = new googleMaps.Marker({
-          map,
-          position: entry.location,
-          title: entry.title,
-          optimized: true,
-        });
-        marker.addListener("click", () => setSelectedKey(entry.key));
-        markerMap.set(entry.key, marker);
-      } else {
-        marker.setPosition(entry.location);
-        marker.setTitle(entry.title);
-        if (!marker.getMap()) marker.setMap(map);
-      }
       const selected = entry.key === effectiveSelectedKey;
-      marker.setIcon(
-        buildMarkerIcon(
-          googleMaps,
-          entry.markerColor,
-          selected,
-          !!entry.isOfficialBeauRocksRoom,
-          officialMarkerPulsePhase
-        )
+      const visual = buildMarkerVisual(
+        entry.markerColor,
+        selected,
+        !!entry.isOfficialBeauRocksRoom,
+        officialMarkerPulsePhase
       );
-      marker.setLabel(null);
-      marker.setZIndex(selected ? 999 : entry.isOfficialBeauRocksRoom ? 320 : 180);
+      const zIndex = selected ? 999 : entry.isOfficialBeauRocksRoom ? 320 : 180;
+      let markerEntry = markerMap.get(entry.key);
+
+      if (!markerEntry) {
+        if (supportsAdvancedMarkers) {
+          const content = createAdvancedMarkerElement(visual, entry.title);
+          const marker = new AdvancedMarkerElement({
+            map,
+            position: entry.location,
+            title: entry.title,
+            content,
+            zIndex,
+          });
+          markerEntry = {
+            kind: "advanced",
+            marker,
+            content,
+            listener: marker.addListener?.("click", () => setSelectedKey(entry.key)) || null,
+          };
+        } else {
+          const marker = new googleMaps.Marker({
+            map,
+            position: entry.location,
+            title: entry.title,
+            optimized: true,
+          });
+          markerEntry = {
+            kind: "legacy",
+            marker,
+            listener: marker.addListener("click", () => setSelectedKey(entry.key)),
+          };
+        }
+        markerMap.set(entry.key, markerEntry);
+      } else {
+        if (markerEntry.kind === "advanced") {
+          markerEntry.marker.position = entry.location;
+          markerEntry.marker.title = entry.title;
+          markerEntry.marker.map = map;
+          applyAdvancedMarkerStyles(markerEntry.content, visual, entry.title);
+        } else {
+          markerEntry.marker.setPosition(entry.location);
+          markerEntry.marker.setTitle(entry.title);
+          if (!markerEntry.marker.getMap()) markerEntry.marker.setMap(map);
+          markerEntry.marker.setIcon(
+            buildMarkerIcon(
+              googleMaps,
+              entry.markerColor,
+              selected,
+              !!entry.isOfficialBeauRocksRoom,
+              officialMarkerPulsePhase
+            )
+          );
+          markerEntry.marker.setLabel(null);
+        }
+      }
+      if (markerEntry.kind === "advanced") {
+        markerEntry.marker.zIndex = zIndex;
+      } else {
+        markerEntry.marker.setZIndex(zIndex);
+      }
     });
 
-    markerMap.forEach((marker, key) => {
+    markerMap.forEach((markerEntry, key) => {
       if (nextMarkerKeys.has(key)) return;
-      googleMaps.event.clearInstanceListeners(marker);
-      marker.setMap(null);
+      disposeMapMarker(googleMaps, markerEntry);
       markerMap.delete(key);
     });
 
@@ -1350,8 +1452,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       infoWindow.close();
       return;
     }
-    const marker = markerMap.get(selectedListingInMap.key);
-    if (!marker) {
+    const markerEntry = markerMap.get(selectedListingInMap.key);
+    if (!markerEntry?.marker) {
       infoWindow.close();
       return;
     }
@@ -1391,7 +1493,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         ${selectedAction}
       </div>`
     );
-    infoWindow.open({ map, anchor: marker });
+    infoWindow.open({ map, anchor: markerEntry.marker });
   }, [mappableListings, effectiveSelectedKey, focusListing, officialMarkerPulsePhase]);
 
   const hiddenWithoutCoords = boundsOnly

@@ -74,6 +74,17 @@ const ensureGoogleMapsReady = async (mapsNs = null) => {
     } catch (error) {
       importLibraryError = error;
     }
+    try {
+      const markerLibrary = await maps.importLibrary("marker");
+      if (markerLibrary && typeof markerLibrary === "object") {
+        maps.marker = {
+          ...(maps.marker || {}),
+          ...markerLibrary,
+        };
+      }
+    } catch {
+      // Keep the map usable even if the marker library fails; callers can fall back.
+    }
   }
 
   if (typeof maps.Map !== "function" && await waitForMapConstructor(maps)) {
@@ -145,7 +156,7 @@ const loadGoogleMapsScript = (apiKey = "") => {
     script.id = SCRIPT_ID;
     script.async = true;
     script.defer = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async&callback=${encodeURIComponent(CALLBACK_NAME)}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async&libraries=marker&callback=${encodeURIComponent(CALLBACK_NAME)}`;
     script.onload = () => {
       script.dataset.loaded = "true";
       ensureGoogleMapsReady(window.google?.maps)
