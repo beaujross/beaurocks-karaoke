@@ -43,9 +43,12 @@ const AdminModerationPage = ({ session }) => {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportStatus, setReportStatus] = useState("");
   const [reportSummary, setReportSummary] = useState(null);
-  const [hostAccessTarget, setHostAccessTarget] = useState("");
-  const [hostAccessNotes, setHostAccessNotes] = useState("");
-  const [hostAccessBusy, setHostAccessBusy] = useState(false);
+  const [hostApprovalTarget, setHostApprovalTarget] = useState("");
+  const [hostApprovalNotes, setHostApprovalNotes] = useState("");
+  const [hostApprovalBusy, setHostApprovalBusy] = useState(false);
+  const [hostApplications, setHostApplications] = useState([]);
+  const [hostApplicationFilter, setHostApplicationFilter] = useState("pending");
+  const [hostApplicationLoading, setHostApplicationLoading] = useState(false);
 
   const refreshQueue = async () => {
     if (!canModerate) return;
@@ -92,6 +95,28 @@ const AdminModerationPage = ({ session }) => {
     refreshReporting();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canModerate, reportWindowDays]);
+
+  const refreshHostApplications = async () => {
+    if (!canManageHostAccess) return;
+    setHostApplicationLoading(true);
+    try {
+      const payload = await directoryActions.listHostApplications({
+        status: hostApplicationFilter || undefined,
+        limit: 40,
+      });
+      setHostApplications(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (error) {
+      setStatus(String(error?.message || "Could not load host applications."));
+      setHostApplications([]);
+    } finally {
+      setHostApplicationLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshHostApplications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManageHostAccess, hostApplicationFilter]);
 
   useEffect(() => {
     if (!canModerate || !marketingFlags.claimFlowEnabled) {
@@ -204,32 +229,52 @@ const AdminModerationPage = ({ session }) => {
     }
   };
 
-  const setHostAccess = async (enabled = true) => {
-    if (!canManageHostAccess || hostAccessBusy) return;
-    const target = String(hostAccessTarget || "").trim();
+  const setHostApproval = async (enabled = true) => {
+    if (!canManageHostAccess || hostApprovalBusy) return;
+    const target = String(hostApprovalTarget || "").trim();
     if (!target) {
       setStatus("Enter host email or UID before submitting.");
       return;
     }
-    setHostAccessBusy(true);
+    setHostApprovalBusy(true);
     setStatus("");
     try {
-      const payload = await directoryActions.setMarketingPrivateHostAccess({
+      const payload = await directoryActions.setHostApprovalStatus({
         target,
         enabled,
-        notes: hostAccessNotes,
+        notes: hostApprovalNotes,
         source: "admin_moderation_panel",
       });
       const targetLabel = payload?.targetEmail || payload?.targetUid || target;
-      setStatus(`Host access ${enabled ? "granted" : "revoked"} for ${targetLabel}.`);
-      trackEvent("mk_host_access_updated", {
-        action: enabled ? "grant" : "revoke",
+      setStatus(`Host approval ${enabled ? "granted" : "revoked"} for ${targetLabel}.`);
+      trackEvent("mk_host_approval_updated", {
+        action: enabled ? "approve" : "revoke",
         scope: payload?.mode || "unknown",
       });
     } catch (error) {
-      setStatus(String(error?.message || "Host access update failed."));
+      setStatus(String(error?.message || "Host approval update failed."));
     } finally {
-      setHostAccessBusy(false);
+      setHostApprovalBusy(false);
+    }
+  };
+
+  const resolveHostApplication = async (applicationId, action) => {
+    if (!canManageHostAccess || !applicationId) return;
+    setActionBusyId(applicationId);
+    setStatus("");
+    try {
+      await directoryActions.resolveHostApplication({
+        applicationId,
+        action,
+        notes: notesById[applicationId] || "",
+      });
+      setStatus(`Host application ${action === "approve" ? "approved" : "rejected"}.`);
+      trackEvent("mk_host_application_resolved", { action });
+      await refreshHostApplications();
+    } catch (error) {
+      setStatus(String(error?.message || "Host application review failed."));
+    } finally {
+      setActionBusyId("");
     }
   };
 
@@ -372,40 +417,91 @@ const AdminModerationPage = ({ session }) => {
       </article>
 
       <aside className="mk3-actions-card">
-        <h4>Host Access Invites</h4>
-        <p>Grant or revoke private host onboarding access by email or UID.</p>
+        <h4>Host Applications</h4>
+        <p>Review host applications and approve the accounts you want to onboard.</p>
         {canManageHostAccess ? (
           <>
+            <div className="mk3-filter-row">
+              <select value={hostApplicationFilter} onChange={(e) => setHostApplicationFilter(e.target.value)}>
+                <option value="pending">pending</option>
+                <option value="approved">approved</option>
+                <option value="rejected">rejected</option>
+              </select>
+              <button type="button" onClick={refreshHostApplications} disabled={hostApplicationLoading}>
+                {hostApplicationLoading ? "Loading..." : "Refresh Applications"}
+              </button>
+            </div>
+            <div className="mk3-sub-list compact">
+              <h3>Applications ({hostApplications.length})</h3>
+              {hostApplications.map((application) => (
+                <article key={application.applicationId} className="mk3-review-card">
+                  <div className="mk3-review-head">
+                    <strong>{application.name || application.email || application.uid || application.applicationId}</strong>
+                    <div className="mk3-chip">{application.status || "pending"}</div>
+                  </div>
+                  <div className="mk3-detail-meta">
+                    {application.email || "no-email"} | {application.source || "unknown source"} | {formatDateTime(application.submittedAtMs || application.createdAtMs)}
+                  </div>
+                  <textarea
+                    value={notesById[application.applicationId] || application.reviewNotes || ""}
+                    onChange={(e) => setNotesById((prev) => ({ ...prev, [application.applicationId]: e.target.value }))}
+                    placeholder="Approval notes"
+                  />
+                  <div className="mk3-actions-inline">
+                    <button
+                      type="button"
+                      disabled={actionBusyId === application.applicationId}
+                      onClick={() => resolveHostApplication(application.applicationId, "approve")}
+                    >
+                      Approve Host
+                    </button>
+                    <button
+                      type="button"
+                      disabled={actionBusyId === application.applicationId}
+                      onClick={() => resolveHostApplication(application.applicationId, "reject")}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {!hostApplications.length && (
+                <div className="mk3-status">No host applications for this filter.</div>
+              )}
+            </div>
+            <hr className="mk3-divider" />
+            <h4>Manual Host Approval Override</h4>
+            <p>Approve or revoke a host directly by email or UID when you need to bypass the application queue.</p>
             <label>
               Host Email or UID
               <input
-                value={hostAccessTarget}
-                onChange={(e) => setHostAccessTarget(e.target.value)}
+                value={hostApprovalTarget}
+                onChange={(e) => setHostApprovalTarget(e.target.value)}
                 placeholder="host@example.com or firebase_uid"
               />
             </label>
             <label>
               Notes (optional)
               <textarea
-                value={hostAccessNotes}
-                onChange={(e) => setHostAccessNotes(e.target.value)}
+                value={hostApprovalNotes}
+                onChange={(e) => setHostApprovalNotes(e.target.value)}
                 placeholder="Invite context or source"
               />
             </label>
             <div className="mk3-actions-inline">
-              <button type="button" onClick={() => setHostAccess(true)} disabled={hostAccessBusy}>
-                {hostAccessBusy ? "Working..." : "Grant Host Access"}
+              <button type="button" onClick={() => setHostApproval(true)} disabled={hostApprovalBusy}>
+                {hostApprovalBusy ? "Working..." : "Approve Host"}
               </button>
-              <button type="button" onClick={() => setHostAccess(false)} disabled={hostAccessBusy}>
-                {hostAccessBusy ? "Working..." : "Revoke Access"}
+              <button type="button" onClick={() => setHostApproval(false)} disabled={hostApprovalBusy}>
+                {hostApprovalBusy ? "Working..." : "Revoke Approval"}
               </button>
             </div>
             <div className="mk3-status">
-              Email grants can be pre-seeded before account creation. The grant is applied when that email signs in.
+              Email approvals can be pre-seeded before account creation. They become active once that email signs in.
             </div>
           </>
         ) : (
-          <div className="mk3-status">Directory admin role required to manage host invites.</div>
+          <div className="mk3-status">Directory admin role required to manage host approvals.</div>
         )}
         <hr className="mk3-divider" />
         <h4>External Ingestion</h4>

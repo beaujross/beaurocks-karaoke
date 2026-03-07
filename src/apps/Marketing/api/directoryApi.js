@@ -30,8 +30,10 @@ import {
   resolveCatalogContribution,
   previewDirectoryRoomSessionByCode,
   submitMarketingWaitlist,
-  redeemMarketingPrivateHostAccess,
-  setMarketingPrivateHostAccess,
+  setHostApprovalStatus,
+  listHostApplications,
+  resolveHostApplication,
+  getMyHostAccessStatus,
   getMyDirectoryAccess,
   runDemoDirectorAction,
   recordMarketingTelemetry,
@@ -270,6 +272,8 @@ export const subscribeModeratorAccess = ({ uid, onData, onError }) => {
   };
 };
 
+export { getMyHostAccessStatus, getMyDirectoryAccess, listHostApplications, resolveHostApplication };
+
 export const subscribeOwnDashboard = ({ uid, onData, onError }) => {
   if (!uid) {
     onData?.({
@@ -465,8 +469,10 @@ export const directoryActions = {
   previewDirectoryRoomSessionByCode,
   resolveJoinRoomCodePreview,
   submitMarketingWaitlist,
-  redeemMarketingPrivateHostAccess,
-  setMarketingPrivateHostAccess,
+  setHostApprovalStatus,
+  listHostApplications,
+  resolveHostApplication,
+  getMyHostAccessStatus,
   getMyDirectoryAccess,
   runDemoDirectorAction,
   recordMarketingTelemetry,

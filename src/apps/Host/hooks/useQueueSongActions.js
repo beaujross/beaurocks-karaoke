@@ -3,7 +3,6 @@ import {
     addDoc,
     collection,
     doc,
-    getDoc,
     writeBatch,
     updateDoc,
     serverTimestamp,
@@ -18,10 +17,8 @@ import {
     buildSongKey,
     ensureSong,
     ensureTrack,
-    resolveSongCatalog,
     resolveCanonicalTrackIdentity,
     resolveCanonicalTrackIdentityBatch,
-    upsertSongLyrics,
     extractYouTubeId
 } from '../../../lib/songCatalog';
 import { normalizeBackingChoice } from '../../../lib/playbackSource';
@@ -209,191 +206,6 @@ const useQueueSongActions = ({
     getAppleMusicUserToken,
     toast
 }) => {
-    const fetchAiLyricsFallback = async (title, artist) => {
-        if (!room?.autoLyricsOnQueue || typeof generateAIContent !== 'function') return null;
-        const safeTitle = (title || '').trim();
-        if (!safeTitle) return null;
-        try {
-            const generated = await generateAIContent('lyrics', {
-                title: safeTitle,
-                artist: (artist || '').trim()
-            });
-            const lyrics = String(generated?.lyrics || '').trim();
-            if (!lyrics) return null;
-            return {
-                lyrics,
-                lyricsSource: 'ai'
-            };
-        } catch (err) {
-            console.warn('AI lyrics fallback failed', err);
-            return null;
-        }
-    };
-
-    const fetchAppleTimedLyrics = async (title, artist) => {
-        const safeTitle = (title || '').trim();
-        if (!safeTitle) return null;
-        const safeArtist = (artist || '').trim();
-        try {
-            const cached = await resolveSongCatalog({
-                title: safeTitle,
-                artist: safeArtist || 'Unknown'
-            });
-            const hasTimed = Array.isArray(cached?.lyrics?.timedLyrics) && cached.lyrics.timedLyrics.length > 0;
-            const hasText = !!(cached?.lyrics?.lyrics || '').trim();
-            if (hasTimed || hasText) {
-                return {
-                    found: true,
-                    appleMusicId: cached?.lyrics?.appleMusicId || cached?.track?.appleMusicId || '',
-                    lyrics: cached?.lyrics?.lyrics || '',
-                    lyricsTimed: hasTimed ? cached.lyrics.timedLyrics : null,
-                    lyricsSource: cached?.lyrics?.source || 'catalog',
-                    needsUserToken: false,
-                    resolution: hasTimed ? 'catalog_timed' : 'catalog_text',
-                    message: 'Lyrics loaded from catalog cache.'
-                };
-            }
-        } catch (err) {
-            console.warn('Catalog lyrics lookup failed', err);
-        }
-
-        try {
-            const musicUserToken = getAppleMusicUserToken?.() || '';
-            const res = await callFunction('appleMusicLyrics', {
-                title: safeTitle,
-                artist: safeArtist,
-                storefront: 'us',
-                musicUserToken
-            });
-            if (!res?.found && !res?.songId) {
-                return {
-                    found: false,
-                    appleMusicId: '',
-                    lyrics: '',
-                    lyricsTimed: null,
-                    lyricsSource: '',
-                    needsUserToken: false,
-                    resolution: 'no_match',
-                    message: res?.message || 'No Apple Music match found.'
-                };
-            }
-            const hasTimedLyrics = Array.isArray(res?.timedLyrics) && res.timedLyrics.length > 0;
-            if (hasTimedLyrics || res?.lyrics) {
-                try {
-                    await upsertSongLyrics({
-                        title: res?.title || safeTitle,
-                        artist: res?.artist || safeArtist || 'Unknown',
-                        lyrics: res?.lyrics || '',
-                        lyricsTimed: hasTimedLyrics ? res.timedLyrics : null,
-                        lyricsSource: hasTimedLyrics || res?.lyrics ? 'apple' : '',
-                        appleMusicId: res?.songId ? String(res.songId) : '',
-                        verifiedBy: hostName || 'host'
-                    });
-                } catch (cacheErr) {
-                    console.warn('upsertSongLyrics failed', cacheErr);
-                }
-            }
-            return {
-                found: !!res?.found || !!res?.songId,
-                appleMusicId: res?.songId ? String(res.songId) : '',
-                lyrics: res?.lyrics || '',
-                lyricsTimed: hasTimedLyrics ? res.timedLyrics : null,
-                lyricsSource: hasTimedLyrics || res?.lyrics ? 'apple' : '',
-                needsUserToken: !!res?.needsUserToken,
-                resolution: hasTimedLyrics
-                    ? 'apple_timed'
-                    : res?.lyrics
-                        ? 'apple_text'
-                        : res?.needsUserToken
-                            ? 'needs_user_token'
-                            : 'apple_no_lyrics',
-                message: res?.message || ''
-            };
-        } catch (err) {
-            console.warn('Apple lyrics fetch failed', err);
-            return {
-                found: false,
-                appleMusicId: '',
-                lyrics: '',
-                lyricsTimed: null,
-                lyricsSource: '',
-                needsUserToken: false,
-                resolution: 'fetch_error',
-                message: err?.message || 'Apple lyrics request failed.'
-            };
-        }
-    };
-
-    const resolveQueueLyrics = async ({
-        title,
-        artist,
-        allowAiFallback = false
-    }) => {
-        const safeTitle = String(title || '').trim();
-        const safeArtist = String(artist || '').trim();
-        if (!safeTitle) {
-            return {
-                hasLyrics: false,
-                hasTimedLyrics: false,
-                lyrics: '',
-                lyricsTimed: null,
-                lyricsSource: '',
-                appleMusicId: '',
-                resolution: 'missing_title',
-                message: '',
-                needsUserToken: false
-            };
-        }
-
-        const fetchedAppleLyrics = await fetchAppleTimedLyrics(safeTitle, safeArtist);
-        if (fetchedAppleLyrics) {
-            const hasTimedLyrics = Array.isArray(fetchedAppleLyrics.lyricsTimed) && fetchedAppleLyrics.lyricsTimed.length > 0;
-            const hasPlainLyrics = !!String(fetchedAppleLyrics.lyrics || '').trim();
-            if (hasTimedLyrics || hasPlainLyrics) {
-                return {
-                    hasLyrics: hasPlainLyrics,
-                    hasTimedLyrics,
-                    lyrics: fetchedAppleLyrics.lyrics || '',
-                    lyricsTimed: hasTimedLyrics ? fetchedAppleLyrics.lyricsTimed : null,
-                    lyricsSource: fetchedAppleLyrics.lyricsSource || 'apple',
-                    appleMusicId: String(fetchedAppleLyrics.appleMusicId || '').trim(),
-                    resolution: fetchedAppleLyrics.resolution || (hasTimedLyrics ? 'apple_timed' : 'apple_text'),
-                    message: fetchedAppleLyrics.message || '',
-                    needsUserToken: false
-                };
-            }
-        }
-
-        if (allowAiFallback) {
-            const generatedLyrics = await fetchAiLyricsFallback(safeTitle, safeArtist);
-            if (generatedLyrics?.lyrics) {
-                return {
-                    hasLyrics: true,
-                    hasTimedLyrics: false,
-                    lyrics: generatedLyrics.lyrics,
-                    lyricsTimed: null,
-                    lyricsSource: generatedLyrics.lyricsSource || 'ai',
-                    appleMusicId: String(fetchedAppleLyrics?.appleMusicId || '').trim(),
-                    resolution: 'ai_text',
-                    message: '',
-                    needsUserToken: false
-                };
-            }
-        }
-
-        return {
-            hasLyrics: false,
-            hasTimedLyrics: false,
-            lyrics: '',
-            lyricsTimed: null,
-            lyricsSource: '',
-            appleMusicId: String(fetchedAppleLyrics?.appleMusicId || '').trim(),
-            resolution: fetchedAppleLyrics?.resolution || 'no_match',
-            message: fetchedAppleLyrics?.message || '',
-            needsUserToken: !!fetchedAppleLyrics?.needsUserToken
-        };
-    };
-
     const buildLyricsToastFromResult = (result = {}, timedOnly = false) => {
         const status = String(result?.status || '').trim().toLowerCase();
         const resolution = String(result?.resolution || '').trim().toLowerCase();
@@ -403,6 +215,9 @@ const useQueueSongActions = ({
         if (hasLyrics) return 'Lyrics ready.';
         if (status === 'needs_user_token' || resolution === 'needs_user_token') {
             return 'Apple lyrics need host Apple Music authorization.';
+        }
+        if (status === 'permission_denied' || resolution === 'permission_denied') {
+            return 'Lyrics lookup is blocked for this account.';
         }
         if (status === 'capability_blocked' || resolution === 'capability_blocked') {
             return 'AI fallback blocked by current workspace entitlement.';
@@ -415,77 +230,8 @@ const useQueueSongActions = ({
         return 'No lyrics match found yet.';
     };
 
-    const applyLocalLyricsFallbackToDoc = async ({
-        songDocRef,
-        title,
-        artist,
-        timedOnly = false
-    }) => {
-        let lyricsResult = {
-            hasLyrics: false,
-            hasTimedLyrics: false,
-            lyrics: '',
-            lyricsTimed: null,
-            lyricsSource: '',
-            resolution: 'no_match',
-            message: '',
-            needsUserToken: false
-        };
-        try {
-            lyricsResult = await resolveQueueLyrics({
-                title,
-                artist,
-                allowAiFallback: !timedOnly
-            });
-        } catch (error) {
-            console.warn('Local queue lyrics fallback failed', error);
-            lyricsResult = {
-                hasLyrics: false,
-                hasTimedLyrics: false,
-                lyrics: '',
-                lyricsTimed: null,
-                lyricsSource: '',
-                resolution: 'fetch_error',
-                message: error?.message || '',
-                needsUserToken: false
-            };
-        }
-
-        const songSnap = await getDoc(songDocRef);
-        const currentSongData = songSnap.exists() ? (songSnap.data() || {}) : {};
-        const hasExistingTimedLyrics = Array.isArray(currentSongData?.lyricsTimed) && currentSongData.lyricsTimed.length > 0;
-        const hasExistingLyrics = !!String(currentSongData?.lyrics || '').trim();
-        const songUpdates = {
-            lyricsGenerationUpdatedAt: serverTimestamp(),
-            lyricsGenerationResolution: lyricsResult.resolution || '',
-            lyricsGenerationStatus: (
-                lyricsResult.hasTimedLyrics || lyricsResult.hasLyrics
-                    ? 'resolved'
-                    : lyricsResult.needsUserToken
-                        ? 'needs_user_token'
-                        : (lyricsResult.resolution === 'fetch_error' ? 'error' : 'no_match')
-            )
-        };
-        if (!hasExistingTimedLyrics && !hasExistingLyrics && (lyricsResult.hasTimedLyrics || lyricsResult.hasLyrics)) {
-            songUpdates.lyrics = lyricsResult.lyrics || '';
-            songUpdates.lyricsTimed = lyricsResult.lyricsTimed || null;
-            songUpdates.lyricsSource = lyricsResult.lyricsSource || '';
-        }
-        await updateDoc(songDocRef, songUpdates);
-
-        return {
-            status: songUpdates.lyricsGenerationStatus,
-            resolution: songUpdates.lyricsGenerationResolution,
-            hasLyrics: !!lyricsResult.hasLyrics || hasExistingLyrics,
-            hasTimedLyrics: !!lyricsResult.hasTimedLyrics || hasExistingTimedLyrics,
-            needsUserToken: !!lyricsResult.needsUserToken
-        };
-    };
-
     const resolveQueuedSongLyrics = async ({
         songDocId,
-        title,
-        artist,
         timedOnly = false,
         force = true
     }) => {
@@ -505,17 +251,29 @@ const useQueueSongActions = ({
                 toastMessage: buildLyricsToastFromResult(callableResult, timedOnly)
             };
         } catch (error) {
-            console.warn('resolveQueueSongLyrics callable failed, using local fallback', error);
-            const fallback = await applyLocalLyricsFallbackToDoc({
-                songDocRef,
-                title,
-                artist,
-                timedOnly
+            console.warn('resolveQueueSongLyrics callable failed', error);
+            const status = String(error?.code || '').toLowerCase().includes('permission-denied')
+                ? 'permission_denied'
+                : 'error';
+            const resolution = status === 'permission_denied' ? 'permission_denied' : 'callable_error';
+            const fallback = {
+                status,
+                resolution,
+                hasLyrics: false,
+                hasTimedLyrics: false,
+                needsUserToken: false
+            };
+            await updateDoc(songDocRef, {
+                lyricsGenerationUpdatedAt: serverTimestamp(),
+                lyricsGenerationStatus: status,
+                lyricsGenerationResolution: resolution
+            }).catch((updateError) => {
+                console.warn('Failed to persist queue lyrics error state', updateError);
             });
             return {
                 ...fallback,
                 toastMessage: buildLyricsToastFromResult(fallback, timedOnly),
-                localFallback: true
+                callableError: true
             };
         }
     };
@@ -789,8 +547,6 @@ const useQueueSongActions = ({
                 if (!shouldAttemptLyricsEnrichment) return;
                 const enrichment = await resolveQueuedSongLyrics({
                     songDocId: docRef.id,
-                    title: manualTitle,
-                    artist: manualArtist,
                     timedOnly: false,
                     force: true
                 });
@@ -950,8 +706,6 @@ const useQueueSongActions = ({
                     if (shouldAttemptLyricsEnrichment) {
                         const enrichment = await resolveQueuedSongLyrics({
                             songDocId: docRef.id,
-                            title: nextSong.song,
-                            artist: nextSong.artist,
                             timedOnly: false,
                             force: true
                         });
@@ -1065,8 +819,6 @@ const useQueueSongActions = ({
         if (!song?.id) return;
         const result = await resolveQueuedSongLyrics({
             songDocId: song.id,
-            title: song.songTitle || song.title || '',
-            artist: song.artist || '',
             timedOnly: false,
             force: true
         });
@@ -1077,8 +829,6 @@ const useQueueSongActions = ({
         if (!song?.id) return;
         const result = await resolveQueuedSongLyrics({
             songDocId: song.id,
-            title: song.songTitle || song.title || '',
-            artist: song.artist || '',
             timedOnly: true,
             force: true
         });

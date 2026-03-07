@@ -338,15 +338,27 @@ const submitMarketingWaitlist = async (payload = {}) => {
   return data || null;
 };
 
-const redeemMarketingPrivateHostAccess = async (payload = {}) => {
-  await requireAppCheckToken("redeemMarketingPrivateHostAccess");
-  const data = await callFunction("redeemMarketingPrivateHostAccess", payload || {});
+const setHostApprovalStatus = async (payload = {}) => {
+  await requireAppCheckToken("setHostApprovalStatus");
+  const data = await callFunction("setHostApprovalStatus", payload || {});
   return data || null;
 };
 
-const setMarketingPrivateHostAccess = async (payload = {}) => {
-  await requireAppCheckToken("setMarketingPrivateHostAccess");
-  const data = await callFunction("setMarketingPrivateHostAccess", payload || {});
+const listHostApplications = async (payload = {}) => {
+  await requireAppCheckToken("listHostApplications");
+  const data = await callFunction("listHostApplications", payload || {});
+  return data || null;
+};
+
+const resolveHostApplication = async (payload = {}) => {
+  await requireAppCheckToken("resolveHostApplication");
+  const data = await callFunction("resolveHostApplication", payload || {});
+  return data || null;
+};
+
+const getMyHostAccessStatus = async (payload = {}) => {
+  await requireAppCheckToken("getMyHostAccessStatus");
+  const data = await callFunction("getMyHostAccessStatus", payload || {});
   return data || null;
 };
 
@@ -800,8 +812,10 @@ export {
   callFunction,
   getGoogleMapsApiKey,
   submitMarketingWaitlist,
-  redeemMarketingPrivateHostAccess,
-  setMarketingPrivateHostAccess,
+  setHostApprovalStatus,
+  listHostApplications,
+  resolveHostApplication,
+  getMyHostAccessStatus,
   getMyDirectoryAccess,
   setMyVipAccountStatus,
   getDirectoryMapsConfig,

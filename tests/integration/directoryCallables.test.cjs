@@ -18,12 +18,16 @@ const {
   runExternalDirectoryIngestion,
   submitDirectoryClaimRequest,
   resolveDirectoryClaimRequest,
+  submitMarketingWaitlist,
   setDirectoryRsvp,
   setDirectoryReminderPreferences,
   listDirectoryGeoLanding,
   listDirectoryDiscover,
   redeemMarketingPrivateHostAccess,
-  setMarketingPrivateHostAccess,
+  setHostApprovalStatus,
+  listHostApplications,
+  resolveHostApplication,
+  getMyHostAccessStatus,
   getMyDirectoryAccess,
   upsertHostRoomDiscoveryListing,
   submitCatalogContribution,
@@ -85,6 +89,10 @@ async function resetState() {
     "users",
     "marketing_private_access",
     "marketing_private_invites",
+    "host_access_approvals",
+    "host_access_approval_invites",
+    "host_access_applications",
+    "security_rate_limits",
   ];
   for (const name of collections) {
     const snap = await db.collection(name).limit(500).get();
@@ -138,20 +146,18 @@ async function runCase(name, fn) {
 
 async function run() {
   const checks = [
-    ["redeemMarketingPrivateHostAccess grants host onboarding access", async () => {
-      const result = await redeemMarketingPrivateHostAccess.run(
-        requestFor(USER_UID, { code: "TEST123", source: "integration_test" })
+    ["redeemMarketingPrivateHostAccess is disabled for approval-only onboarding", async () => {
+      await expectHttpsError(
+        () => redeemMarketingPrivateHostAccess.run(
+          requestFor(USER_UID, { code: "TEST123", source: "integration_test" })
+        ),
+        "permission-denied"
       );
-      assert.equal(result.ok, true);
-      assert.equal(result.privateHostAccessEnabled, true);
-      const snap = await db.doc(`marketing_private_access/${USER_UID}`).get();
-      assert.equal(snap.exists, true);
-      assert.equal(!!snap.get("privateHostAccessEnabled"), true);
     }],
 
-    ["setMarketingPrivateHostAccess denies non-admin moderator", async () => {
+    ["setHostApprovalStatus denies non-admin moderator", async () => {
       await expectHttpsError(
-        () => setMarketingPrivateHostAccess.run(
+        () => setHostApprovalStatus.run(
           requestFor(MOD_UID, { target: "invitee@beaurocks.app", enabled: true })
         ),
         "permission-denied"
@@ -170,9 +176,9 @@ async function run() {
       assert.equal(adminAccess.isAdmin, true);
     }],
 
-    ["setMarketingPrivateHostAccess email grant unlocks host role update", async () => {
+    ["setHostApprovalStatus email grant writes host approval invite only", async () => {
       const inviteEmail = "invitee@beaurocks.app";
-      const grant = await setMarketingPrivateHostAccess.run(
+      const grant = await setHostApprovalStatus.run(
         requestFor(ADMIN_UID, {
           target: inviteEmail,
           enabled: true,
@@ -180,22 +186,68 @@ async function run() {
         })
       );
       assert.equal(grant.ok, true);
-      assert.equal(grant.privateHostAccessEnabled, true);
-      const inviteSnap = await db.doc("marketing_private_invites/wl_invitee_beaurocks_app").get();
+      assert.equal(grant.hostApprovalEnabled, true);
+      const inviteSnap = await db.doc("host_access_approval_invites/wl_invitee_beaurocks_app").get();
       assert.equal(inviteSnap.exists, true);
-      assert.equal(!!inviteSnap.get("privateHostAccessEnabled"), true);
+      assert.equal(!!inviteSnap.get("hostApprovalEnabled"), true);
+      const accessSnap = await db.doc(`host_access_approvals/${USER_UID}`).get();
+      assert.equal(accessSnap.exists, false);
+    }],
 
-      const result = await upsertDirectoryProfile.run(
-        requestFor(
-          USER_UID,
-          { profile: { displayName: "Invited Host", roles: ["host"] } },
-          { email: inviteEmail }
-        )
+    ["getMyHostAccessStatus reports false for free user and true for granted uid", async () => {
+      const initial = await getMyHostAccessStatus.run(requestFor(USER_UID));
+      assert.equal(initial.ok, true);
+      assert.equal(initial.hasHostWorkspaceAccess, false);
+      assert.equal(initial.entitledHostAccess, false);
+      assert.equal(initial.hostApprovalEnabled, false);
+
+      const grant = await setHostApprovalStatus.run(
+        requestFor(ADMIN_UID, {
+          target: USER_UID,
+          enabled: true,
+          notes: "uid grant for integration",
+        })
       );
-      assert.equal(result.ok, true);
-      const accessSnap = await db.doc(`marketing_private_access/${USER_UID}`).get();
-      assert.equal(accessSnap.exists, true);
-      assert.equal(!!accessSnap.get("privateHostAccessEnabled"), true);
+      assert.equal(grant.ok, true);
+      assert.equal(grant.mode, "uid_grant");
+
+      const afterGrant = await getMyHostAccessStatus.run(requestFor(USER_UID));
+      assert.equal(afterGrant.ok, true);
+      assert.equal(afterGrant.hasHostWorkspaceAccess, true);
+      assert.equal(afterGrant.hostApprovalEnabled, true);
+    }],
+
+    ["host application queue can be listed and approved by admin", async () => {
+      await submitMarketingWaitlist.run(
+        requestFor(USER_UID, {
+          name: "Queue Host",
+          email: "queue-host@beaurocks.app",
+          useCase: "host_application",
+          source: "integration_test",
+        })
+      );
+
+      const listed = await listHostApplications.run(
+        requestFor(ADMIN_UID, { status: "pending" })
+      );
+      assert.equal(listed.ok, true);
+      assert.equal(Array.isArray(listed.items), true);
+      assert.equal(listed.items.length, 1);
+
+      const applicationId = listed.items[0].applicationId;
+      const resolved = await resolveHostApplication.run(
+        requestFor(ADMIN_UID, {
+          applicationId,
+          action: "approve",
+          notes: "approved in test",
+        })
+      );
+      assert.equal(resolved.ok, true);
+      const appSnap = await db.doc(`host_access_applications/${applicationId}`).get();
+      assert.equal(String(appSnap.get("status")), "approved");
+      const approvalSnap = await db.doc(`host_access_approvals/${USER_UID}`).get();
+      assert.equal(approvalSnap.exists, true);
+      assert.equal(!!approvalSnap.get("hostApprovalEnabled"), true);
     }],
 
     ["upsertHostRoomDiscoveryListing creates public room_session listing", async () => {

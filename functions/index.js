@@ -56,6 +56,7 @@ const LYRICS_TIMED_ADAPTER_ENABLED_DEFAULT = String(process.env.LYRICS_TIMED_ADA
 const rateState = new Map();
 const GLOBAL_LIMITS = { perMinute: 120, perHour: 1000 };
 const DEFAULT_LIMITS = { perMinute: 30, perHour: 300 };
+const SECURITY_RATE_LIMITS_COLLECTION = "security_rate_limits";
 const securitySignalState = new Map();
 const SECURITY_ALERT_WINDOW_MS = 15 * 60 * 1000;
 const youtubeSearchCache = new Map();
@@ -245,6 +246,108 @@ const checkRateLimit = (req, scope, limits = DEFAULT_LIMITS) => {
   if (globalMinute > GLOBAL_LIMITS.perMinute || globalHour > GLOBAL_LIMITS.perHour) {
     throw new HttpsError("resource-exhausted", "Server is busy. Try again.");
   }
+};
+
+const buildDurableRateLimitDocId = ({
+  scope = "",
+  bucket = "minute",
+  windowStartMs = 0,
+  actor = "",
+}) => [
+  sanitizeSecurityToken(scope, 48) || "unknown",
+  sanitizeSecurityToken(bucket, 16) || "window",
+  String(Math.max(0, Number(windowStartMs || 0))),
+  sanitizeSecurityToken(actor, 120) || "unknown",
+].join("__").slice(0, 220);
+
+const checkDurableRateLimit = async (req, scope, limits = DEFAULT_LIMITS) => {
+  const now = nowMs();
+  const safeScope = sanitizeSecurityToken(scope, 48) || "unknown";
+  const actor = sanitizeSecurityToken(getClientIp(req), 120) || "unknown";
+  const minuteStartMs = Math.floor(now / 60000) * 60000;
+  const hourStartMs = Math.floor(now / 3600000) * 3600000;
+  const db = admin.firestore();
+  const limitsRef = db.collection(SECURITY_RATE_LIMITS_COLLECTION);
+  const minuteRef = limitsRef.doc(buildDurableRateLimitDocId({
+    scope: safeScope,
+    bucket: "minute",
+    windowStartMs: minuteStartMs,
+    actor,
+  }));
+  const hourRef = limitsRef.doc(buildDurableRateLimitDocId({
+    scope: safeScope,
+    bucket: "hour",
+    windowStartMs: hourStartMs,
+    actor,
+  }));
+  const actorGlobalMinuteRef = limitsRef.doc(buildDurableRateLimitDocId({
+    scope: "global_actor",
+    bucket: "minute",
+    windowStartMs: minuteStartMs,
+    actor,
+  }));
+  const actorGlobalHourRef = limitsRef.doc(buildDurableRateLimitDocId({
+    scope: "global_actor",
+    bucket: "hour",
+    windowStartMs: hourStartMs,
+    actor,
+  }));
+  const expiresAtMs = hourStartMs + (2 * 3600000);
+
+  await db.runTransaction(async (tx) => {
+    const [minuteSnap, hourSnap, globalMinuteSnap, globalHourSnap] = await Promise.all([
+      tx.get(minuteRef),
+      tx.get(hourRef),
+      tx.get(actorGlobalMinuteRef),
+      tx.get(actorGlobalHourRef),
+    ]);
+    const nextMinute = Number(minuteSnap.data()?.count || 0) + 1;
+    const nextHour = Number(hourSnap.data()?.count || 0) + 1;
+    const nextGlobalMinute = Number(globalMinuteSnap.data()?.count || 0) + 1;
+    const nextGlobalHour = Number(globalHourSnap.data()?.count || 0) + 1;
+
+    if (nextMinute > limits.perMinute || nextHour > limits.perHour) {
+      throw new HttpsError("resource-exhausted", "Rate limit exceeded.");
+    }
+    if (nextGlobalMinute > GLOBAL_LIMITS.perMinute || nextGlobalHour > GLOBAL_LIMITS.perHour) {
+      throw new HttpsError("resource-exhausted", "Server is busy. Try again.");
+    }
+
+    const writeWindow = (ref, count, bucket, windowStartMsValue, limitSnapshot) => {
+      tx.set(ref, {
+        scope: safeScope,
+        actor,
+        bucket,
+        count,
+        windowStartMs: windowStartMsValue,
+        expiresAtMs,
+        limitPerMinute: limitSnapshot?.perMinute || DEFAULT_LIMITS.perMinute,
+        limitPerHour: limitSnapshot?.perHour || DEFAULT_LIMITS.perHour,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    };
+
+    writeWindow(minuteRef, nextMinute, "minute", minuteStartMs, limits);
+    writeWindow(hourRef, nextHour, "hour", hourStartMs, limits);
+    tx.set(actorGlobalMinuteRef, {
+      scope: "global_actor",
+      actor,
+      bucket: "minute",
+      count: nextGlobalMinute,
+      windowStartMs: minuteStartMs,
+      expiresAtMs,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    tx.set(actorGlobalHourRef, {
+      scope: "global_actor",
+      actor,
+      bucket: "hour",
+      count: nextGlobalHour,
+      windowStartMs: hourStartMs,
+      expiresAtMs,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
 };
 
 const ensureString = (val, name) => {
@@ -1670,6 +1773,7 @@ const MARKETING_WAITLIST_USE_CASES = new Set([
   "Fundraiser Organizer",
   "Community Event Host",
   "Venue / KJ Operator",
+  "host_application",
 ]);
 
 const sanitizeWaitlistName = (value = "") => {
@@ -1719,8 +1823,21 @@ const sanitizeWaitlistSource = (value = "") => {
   return safe;
 };
 
+const sanitizeHostApplicationStatus = (value = "", fallback = "pending") => {
+  const token = String(value || "").trim().toLowerCase();
+  if (["pending", "approved", "rejected"].includes(token)) return token;
+  return fallback;
+};
+
 const buildWaitlistDocId = (email = "") =>
   `wl_${email.replace(/[^a-z0-9]/g, "_").replace(/_+/g, "_").slice(0, 140) || "unknown"}`;
+
+const buildHostApplicationDocId = ({ uid = "", email = "" } = {}) => {
+  const safeUid = normalizeUidToken(uid);
+  if (safeUid) return `uid_${safeUid}`;
+  const safeEmail = normalizeEmailToken(email);
+  return `email_${buildWaitlistDocId(safeEmail || "unknown")}`;
+};
 
 const normalizeMarketingPrivateInviteCode = (value = "", maxLen = 24) =>
   String(value || "")
@@ -2817,11 +2934,20 @@ const getDirectoryModeratorAccess = async (uid = "") => {
   return { isModerator, isAdmin, roles };
 };
 
-const marketingPrivateAccessDocRef = (uid = "") =>
+const hostAccessApprovalDocRef = (uid = "") =>
+  admin.firestore().collection("host_access_approvals").doc(uid);
+
+const legacyMarketingPrivateAccessDocRef = (uid = "") =>
   admin.firestore().collection("marketing_private_access").doc(uid);
 
-const marketingPrivateInviteDocRef = (email = "") =>
+const hostAccessApprovalInviteDocRef = (email = "") =>
+  admin.firestore().collection("host_access_approval_invites").doc(buildWaitlistDocId(normalizeEmailToken(email)));
+
+const legacyMarketingPrivateInviteDocRef = (email = "") =>
   admin.firestore().collection("marketing_private_invites").doc(buildWaitlistDocId(normalizeEmailToken(email)));
+
+const hostAccessApplicationDocRef = ({ uid = "", email = "" } = {}) =>
+  admin.firestore().collection("host_access_applications").doc(buildHostApplicationDocId({ uid, email }));
 
 const requireDirectoryModerator = async (request, options = {}) => {
   const uid = requireAuth(request, options.authMessage || "Sign in required.");
@@ -3611,11 +3737,17 @@ const requireCapability = async (request, capability) => {
   return { uid, entitlements };
 };
 
-const hasMarketingPrivateHostAccess = async (uid = "") => {
+const hasHostApprovalAccess = async (uid = "") => {
   const safeUid = normalizeUidToken(uid);
   if (!safeUid) return false;
-  const snap = await marketingPrivateAccessDocRef(safeUid).get();
-  return snap.exists && snap.data()?.privateHostAccessEnabled === true;
+  const [approvalSnap, legacySnap] = await Promise.all([
+    hostAccessApprovalDocRef(safeUid).get(),
+    legacyMarketingPrivateAccessDocRef(safeUid).get(),
+  ]);
+  return (
+    (approvalSnap.exists && approvalSnap.data()?.hostApprovalEnabled === true)
+    || (legacySnap.exists && legacySnap.data()?.privateHostAccessEnabled === true)
+  );
 };
 
 const hasEntitledHostWorkspaceAccess = (entitlements = null) => {
@@ -3634,14 +3766,48 @@ const hasEntitledHostWorkspaceAccess = (entitlements = null) => {
 const requireHostWorkspaceAccess = async (request, options = {}) => {
   const uid = requireAuth(request, options.authMessage || "Sign in required.");
   const entitlements = await resolveUserEntitlements(uid);
-  const privateHostAccessEnabled = await hasMarketingPrivateHostAccess(uid);
-  if (!hasEntitledHostWorkspaceAccess(entitlements) && !privateHostAccessEnabled) {
+  const hostApprovalEnabled = await hasHostApprovalAccess(uid);
+  if (!hasEntitledHostWorkspaceAccess(entitlements) && !hostApprovalEnabled) {
     throw new HttpsError(
       "permission-denied",
       options.deniedMessage || "Host workspace access requires an active host subscription or approved host access."
     );
   }
-  return { uid, entitlements, privateHostAccessEnabled };
+  return { uid, entitlements, hostApprovalEnabled };
+};
+
+const resolveHostApplicationRecord = async ({ uid = "", email = "" } = {}) => {
+  const safeUid = normalizeUidToken(uid);
+  const safeEmail = normalizeEmailToken(email);
+  const refs = [];
+  if (safeUid) refs.push(hostAccessApplicationDocRef({ uid: safeUid }));
+  if (safeEmail) refs.push(hostAccessApplicationDocRef({ email: safeEmail }));
+  if (!refs.length) return { id: "", data: null };
+  const snaps = await Promise.all(refs.map((ref) => ref.get()));
+  const found = snaps.find((snap) => snap.exists);
+  if (!found) return { id: "", data: null };
+  return { id: found.id, data: found.data() || null };
+};
+
+const resolveHostWorkspaceAccess = async (uid = "", email = "") => {
+  const entitlements = await resolveUserEntitlements(uid);
+  const hostApprovalEnabled = await hasHostApprovalAccess(uid);
+  const entitledHostAccess = hasEntitledHostWorkspaceAccess(entitlements);
+  const application = await resolveHostApplicationRecord({ uid, email });
+  const applicationStatus = sanitizeHostApplicationStatus(application?.data?.status || "", "");
+  return {
+    uid,
+    hasHostWorkspaceAccess: entitledHostAccess || hostApprovalEnabled,
+    entitledHostAccess,
+    hostApprovalEnabled,
+    applicationId: application?.id || "",
+    applicationStatus,
+    applicationSubmittedAtMs: valueToMillis(application?.data?.createdAt),
+    applicationReviewedAtMs: valueToMillis(application?.data?.reviewedAt),
+    planId: entitlements.planId,
+    status: entitlements.status,
+    role: entitlements.role,
+  };
 };
 
 const resolveAiDemoBypassForRoomHost = async ({ request, uid }) => {
@@ -5513,6 +5679,7 @@ exports.reconcilePerformanceRecap = onCall({ cors: true }, async (request) => {
 
 exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_search");
+  await checkDurableRateLimit(request.rawRequest, "youtube_search", DEFAULT_LIMITS);
   const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_search");
   const query = request.data?.query || "";
@@ -5604,6 +5771,7 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
 
 exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_playlist");
+  await checkDurableRateLimit(request.rawRequest, "youtube_playlist", DEFAULT_LIMITS);
   const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_playlist");
   const playlistId = request.data?.playlistId || "";
@@ -5646,6 +5814,7 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
 
 exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_status");
+  await checkDurableRateLimit(request.rawRequest, "youtube_status", DEFAULT_LIMITS);
   const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_status");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
@@ -5750,6 +5919,7 @@ const fetchRoomReactionsInWindow = async ({
 
 exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_details");
+  await checkDurableRateLimit(request.rawRequest, "youtube_details", DEFAULT_LIMITS);
   const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_details");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
@@ -5781,6 +5951,7 @@ exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asyn
 
 exports.geminiGenerate = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "gemini", { perMinute: 10, perHour: 120 });
+  await checkDurableRateLimit(request.rawRequest, "gemini", { perMinute: 10, perHour: 120 });
   const uid = requireAuth(request);
   const entitlements = await resolveUserEntitlements(uid);
   let aiDemoBypass = false;
@@ -6225,6 +6396,7 @@ exports.appleMusicLyrics = onCall(
   { cors: true, secrets: [APPLE_MUSIC_TEAM_ID, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_PRIVATE_KEY] },
   async (request) => {
     checkRateLimit(request.rawRequest, "apple_music");
+    await checkDurableRateLimit(request.rawRequest, "apple_music", DEFAULT_LIMITS);
     const { uid, entitlements } = await requireCapability(request, "api.apple_music");
     enforceAppCheckIfEnabled(request, "apple_music_lyrics");
     const title = (request.data?.title || "").trim();
@@ -6391,6 +6563,7 @@ exports.resolveQueueSongLyrics = onCall(
   },
   async (request) => {
     checkRateLimit(request.rawRequest, "resolve_queue_song_lyrics", { perMinute: 90, perHour: 900 });
+    await checkDurableRateLimit(request.rawRequest, "resolve_queue_song_lyrics", { perMinute: 90, perHour: 900 });
     const callerUid = requireAuth(request);
     if (!hasAppCheck(request)) {
       throw new HttpsError("failed-precondition", "App Check token required.");
@@ -7094,6 +7267,7 @@ exports.googleMapsKey = onCall({ cors: true, secrets: [GOOGLE_MAPS_API_KEY] }, a
 
 exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "submit_marketing_waitlist", { perMinute: 12, perHour: 80 });
+  await checkDurableRateLimit(request.rawRequest, "submit_marketing_waitlist", { perMinute: 12, perHour: 80 });
   enforceAppCheckIfEnabled(request, "submit_marketing_waitlist");
 
   const name = sanitizeWaitlistName(request.data?.name || "");
@@ -7108,11 +7282,17 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
   const db = admin.firestore();
   const waitlistRef = db.collection("marketing_waitlist").doc(buildWaitlistDocId(email));
   const metaRef = db.collection("marketing_meta").doc("waitlist");
+  const isHostApplication = String(useCase || "").trim().toLowerCase() === "host_application";
+  const hostApplicationRef = isHostApplication
+    ? hostAccessApplicationDocRef({ uid: uid || "", email })
+    : null;
   let linePosition = 0;
   let isNewSignup = false;
 
   await db.runTransaction(async (tx) => {
-    const [signupSnap, metaSnap] = await Promise.all([tx.get(waitlistRef), tx.get(metaRef)]);
+    const refsToRead = [tx.get(waitlistRef), tx.get(metaRef)];
+    if (hostApplicationRef) refsToRead.push(tx.get(hostApplicationRef));
+    const [signupSnap, metaSnap, hostApplicationSnap] = await Promise.all(refsToRead);
     const currentTotal = Number(metaSnap.data()?.totalSignups || 0);
 
     if (!signupSnap.exists) {
@@ -7138,22 +7318,42 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
         totalSignups: linePosition,
         updatedAt: now,
       }, { merge: true });
-      return;
+    } else {
+      const existing = signupSnap.data() || {};
+      linePosition = Number(existing.linePosition || currentTotal || 1);
+      tx.set(waitlistRef, {
+        name,
+        useCase,
+        source,
+        updatedAt: now,
+        lastUid: uid,
+        lastIp: ip,
+        userAgent,
+        duplicateSubmitCount: admin.firestore.FieldValue.increment(1),
+        lastSubmittedAt: now,
+      }, { merge: true });
     }
 
-    const existing = signupSnap.data() || {};
-    linePosition = Number(existing.linePosition || currentTotal || 1);
-    tx.set(waitlistRef, {
-      name,
-      useCase,
-      source,
-      updatedAt: now,
-      lastUid: uid,
-      lastIp: ip,
-      userAgent,
-      duplicateSubmitCount: admin.firestore.FieldValue.increment(1),
-      lastSubmittedAt: now,
-    }, { merge: true });
+    if (hostApplicationRef) {
+      const applicationData = hostApplicationSnap?.data?.() || {};
+      const status = sanitizeHostApplicationStatus(applicationData.status || "", "pending");
+      tx.set(hostApplicationRef, {
+        uid: uid || "",
+        email,
+        name,
+        source,
+        useCase,
+        linePosition,
+        status,
+        submittedAt: applicationData.submittedAt || now,
+        createdAt: applicationData.createdAt || now,
+        updatedAt: now,
+        lastUid: uid || "",
+        lastIp: ip,
+        userAgent,
+        notes: String(applicationData.notes || ""),
+      }, { merge: true });
+    }
   });
 
   return {
@@ -7168,63 +7368,19 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
 
 exports.redeemMarketingPrivateHostAccess = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "redeem_marketing_private_host_access", { perMinute: 18, perHour: 120 });
+  await checkDurableRateLimit(request.rawRequest, "redeem_marketing_private_host_access", { perMinute: 18, perHour: 120 });
   enforceAppCheckIfEnabled(request, "redeem_marketing_private_host_access");
-  const uid = requireAuth(request, "Sign in required.");
-  const source = sanitizeWaitlistSource(request.data?.source || "marketing_site");
-  const submittedCode = normalizeMarketingPrivateInviteCode(request.data?.code || "");
-
-  if (MARKETING_PRIVATE_HOST_ACCESS_ENFORCED && !MARKETING_PRIVATE_INVITE_CODES.length) {
-    throw new HttpsError("failed-precondition", "Private host invite code list is not configured.");
-  }
-
-  if (MARKETING_PRIVATE_HOST_ACCESS_ENFORCED && MARKETING_PRIVATE_INVITE_CODES.length) {
-    if (!submittedCode) {
-      throw new HttpsError("invalid-argument", "code is required.");
-    }
-    if (!MARKETING_PRIVATE_INVITE_CODES.includes(submittedCode)) {
-      throw new HttpsError("permission-denied", "Invalid private host access code.");
-    }
-  }
-
-  const now = admin.firestore.FieldValue.serverTimestamp();
-  const db = admin.firestore();
-  const unlockMode = MARKETING_PRIVATE_HOST_ACCESS_ENFORCED
-    ? (MARKETING_PRIVATE_INVITE_CODES.length > 1 ? "pin_multi" : "pin")
-    : "disabled";
-  const codeFingerprint = submittedCode
-    ? `${submittedCode.length}_${submittedCode.slice(0, 2)}_${submittedCode.slice(-1)}`
-    : "";
-
-  await Promise.all([
-    marketingPrivateAccessDocRef(uid).set({
-      uid,
-      privateHostAccessEnabled: true,
-      unlockedVia: unlockMode,
-      source,
-      codeFingerprint,
-      createdAt: now,
-      updatedAt: now,
-    }, { merge: true }),
-    db.collection("users").doc(uid).set({
-      marketing: {
-        privateHostAccessEnabled: true,
-        privateHostAccessUpdatedAt: now,
-        privateHostAccessSource: source,
-      },
-      updatedAt: now,
-    }, { merge: true }),
-  ]);
-
-  return {
-    ok: true,
-    privateHostAccessEnabled: true,
-    mode: unlockMode,
-  };
+  requireAuth(request, "Sign in required.");
+  throw new HttpsError(
+    "permission-denied",
+    "Host access is approval-only. Apply through the host application flow and wait for admin onboarding."
+  );
 });
 
-exports.setMarketingPrivateHostAccess = onCall({ cors: true }, async (request) => {
-  checkRateLimit(request.rawRequest, "set_marketing_private_host_access", { perMinute: 30, perHour: 240 });
-  enforceAppCheckIfEnabled(request, "set_marketing_private_host_access");
+const runSetHostApprovalStatus = async (request) => {
+  checkRateLimit(request.rawRequest, "set_host_approval_status", { perMinute: 30, perHour: 240 });
+  await checkDurableRateLimit(request.rawRequest, "set_host_approval_status", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "set_host_approval_status");
   const requesterUid = requireAuth(request, "Sign in required.");
   const requesterAccess = await getDirectoryModeratorAccess(requesterUid);
   if (!requesterAccess.isAdmin) {
@@ -7253,11 +7409,25 @@ exports.setMarketingPrivateHostAccess = onCall({ cors: true }, async (request) =
   const now = admin.firestore.FieldValue.serverTimestamp();
   const db = admin.firestore();
   const updates = [];
-  const action = enabled ? "grant" : "revoke";
+  const action = enabled ? "approve" : "revoke";
 
   if (targetEmail) {
     updates.push(
-      marketingPrivateInviteDocRef(targetEmail).set({
+      hostAccessApprovalInviteDocRef(targetEmail).set({
+        email: targetEmail,
+        hostApprovalEnabled: enabled,
+        status: enabled ? "approved" : "revoked",
+        source,
+        notes,
+        reviewedByUid: requesterUid,
+        reviewedByRoles: requesterAccess.roles || [],
+        lastAction: action,
+        updatedAt: now,
+        createdAt: now,
+      }, { merge: true })
+    );
+    updates.push(
+      legacyMarketingPrivateInviteDocRef(targetEmail).set({
         email: targetEmail,
         privateHostAccessEnabled: enabled,
         status: enabled ? "granted" : "revoked",
@@ -7265,7 +7435,7 @@ exports.setMarketingPrivateHostAccess = onCall({ cors: true }, async (request) =
         notes,
         grantedByUid: requesterUid,
         grantedByRoles: requesterAccess.roles || [],
-        lastAction: action,
+        lastAction: enabled ? "grant" : "revoke",
         updatedAt: now,
         createdAt: now,
       }, { merge: true })
@@ -7274,7 +7444,20 @@ exports.setMarketingPrivateHostAccess = onCall({ cors: true }, async (request) =
 
   if (targetUid) {
     updates.push(
-      marketingPrivateAccessDocRef(targetUid).set({
+      hostAccessApprovalDocRef(targetUid).set({
+        uid: targetUid,
+        hostApprovalEnabled: enabled,
+        approvalSource: enabled ? "admin_approval" : "admin_revoke",
+        source,
+        notes,
+        invitedEmail: targetEmail || "",
+        reviewedByUid: requesterUid,
+        updatedAt: now,
+        createdAt: now,
+      }, { merge: true })
+    );
+    updates.push(
+      legacyMarketingPrivateAccessDocRef(targetUid).set({
         uid: targetUid,
         privateHostAccessEnabled: enabled,
         unlockedVia: enabled ? "admin_grant" : "admin_revoke",
@@ -7288,11 +7471,11 @@ exports.setMarketingPrivateHostAccess = onCall({ cors: true }, async (request) =
     );
     updates.push(
       db.collection("users").doc(targetUid).set({
-        marketing: {
-          privateHostAccessEnabled: enabled,
-          privateHostAccessUpdatedAt: now,
-          privateHostAccessSource: source,
-          privateHostAccessNotes: notes,
+        hostApproval: {
+          hostApprovalEnabled: enabled,
+          reviewedAt: now,
+          source,
+          notes,
         },
         updatedAt: now,
       }, { merge: true })
@@ -7303,13 +7486,118 @@ exports.setMarketingPrivateHostAccess = onCall({ cors: true }, async (request) =
 
   return {
     ok: true,
-    privateHostAccessEnabled: enabled,
+    hostApprovalEnabled: enabled,
     targetUid,
     targetEmail,
     mode: targetUid ? "uid_grant" : "email_invite",
     message: targetUid
-      ? `Host access ${enabled ? "granted" : "revoked"} for uid ${targetUid}.`
-      : `Host access ${enabled ? "granted" : "revoked"} for ${targetEmail}.`,
+      ? `Host approval ${enabled ? "granted" : "revoked"} for uid ${targetUid}.`
+      : `Host approval ${enabled ? "granted" : "revoked"} for ${targetEmail}.`,
+  };
+};
+
+exports.setHostApprovalStatus = onCall({ cors: true }, runSetHostApprovalStatus);
+exports.setMarketingPrivateHostAccess = onCall({ cors: true }, runSetHostApprovalStatus);
+
+exports.listHostApplications = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "list_host_applications", { perMinute: 40, perHour: 240 });
+  await checkDurableRateLimit(request.rawRequest, "list_host_applications", { perMinute: 40, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "list_host_applications");
+  const requesterUid = requireAuth(request, "Sign in required.");
+  const requesterAccess = await getDirectoryModeratorAccess(requesterUid);
+  if (!requesterAccess.isModerator) {
+    throw new HttpsError("permission-denied", "Directory moderator role required.");
+  }
+  const payload = request.data && typeof request.data === "object" ? request.data : {};
+  const statusFilter = sanitizeHostApplicationStatus(payload.status || "", "");
+  const maxItems = Math.max(1, Math.min(100, Number(payload.limit || 40) || 40));
+  const snap = await admin.firestore().collection("host_access_applications").limit(200).get();
+  let items = snap.docs.map((docSnap) => ({ applicationId: docSnap.id, ...(docSnap.data() || {}) }));
+  if (statusFilter) {
+    items = items.filter((item) => sanitizeHostApplicationStatus(item.status || "", "") === statusFilter);
+  }
+  items = items
+    .sort((a, b) => (valueToMillis(b.updatedAt || b.createdAt) - valueToMillis(a.updatedAt || a.createdAt)))
+    .slice(0, maxItems)
+    .map((item) => ({
+      ...item,
+      createdAtMs: valueToMillis(item.createdAt),
+      submittedAtMs: valueToMillis(item.submittedAt || item.createdAt),
+      reviewedAtMs: valueToMillis(item.reviewedAt),
+    }));
+  return { ok: true, items };
+});
+
+exports.resolveHostApplication = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "resolve_host_application", { perMinute: 30, perHour: 180 });
+  await checkDurableRateLimit(request.rawRequest, "resolve_host_application", { perMinute: 30, perHour: 180 });
+  enforceAppCheckIfEnabled(request, "resolve_host_application");
+  const requesterUid = requireAuth(request, "Sign in required.");
+  const requesterAccess = await getDirectoryModeratorAccess(requesterUid);
+  if (!requesterAccess.isAdmin) {
+    throw new HttpsError("permission-denied", "Directory admin role required.");
+  }
+  const payload = request.data && typeof request.data === "object" ? request.data : {};
+  const applicationId = String(payload.applicationId || "").trim();
+  const action = String(payload.action || "").trim().toLowerCase();
+  const notes = normalizeDirectoryTextBlock(payload.notes || "", 500);
+  if (!applicationId) {
+    throw new HttpsError("invalid-argument", "applicationId is required.");
+  }
+  if (!["approve", "reject"].includes(action)) {
+    throw new HttpsError("invalid-argument", "action must be approve or reject.");
+  }
+  const appRef = admin.firestore().collection("host_access_applications").doc(applicationId);
+  const appSnap = await appRef.get();
+  if (!appSnap.exists) {
+    throw new HttpsError("not-found", "Host application not found.");
+  }
+  const appData = appSnap.data() || {};
+  const targetUid = normalizeUidToken(appData.uid || payload.targetUid || "");
+  const targetEmail = sanitizeOptionalWaitlistEmail(appData.email || payload.targetEmail || "");
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const nextStatus = action === "approve" ? "approved" : "rejected";
+  const writes = [
+    appRef.set({
+      status: nextStatus,
+      reviewNotes: notes,
+      reviewedByUid: requesterUid,
+      reviewedAt: now,
+      updatedAt: now,
+    }, { merge: true })
+  ];
+  if (action === "approve" && (targetUid || targetEmail)) {
+    writes.push(runSetHostApprovalStatus({
+      ...request,
+      data: {
+        target: targetUid || targetEmail,
+        enabled: true,
+        notes,
+        source: "host_application_review",
+      },
+    }));
+  }
+  await Promise.all(writes);
+  return {
+    ok: true,
+    applicationId,
+    status: nextStatus,
+    targetUid,
+    targetEmail,
+  };
+});
+
+exports.getMyHostAccessStatus = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "get_my_host_access_status", { perMinute: 60, perHour: 480 });
+  await checkDurableRateLimit(request.rawRequest, "get_my_host_access_status", { perMinute: 60, perHour: 480 });
+  enforceAppCheckIfEnabled(request, "get_my_host_access_status");
+  const uid = requireAuth(request, "Sign in required.");
+  const email = String(request.auth?.token?.email || "").trim().toLowerCase();
+  const access = await resolveHostWorkspaceAccess(uid, email);
+  return {
+    ok: true,
+    ...access,
+    privateHostAccessEnabled: !!access.hostApprovalEnabled,
   };
 });
 
@@ -9408,6 +9696,7 @@ exports.ensureOrganization = onCall({ cors: true }, async (request) => {
 
 exports.bootstrapOnboardingWorkspace = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "bootstrap_onboarding_workspace", { perMinute: 20, perHour: 200 });
+  await checkDurableRateLimit(request.rawRequest, "bootstrap_onboarding_workspace", { perMinute: 20, perHour: 200 });
   const { uid } = await requireHostWorkspaceAccess(request, {
     deniedMessage: "Host onboarding requires an active host subscription or approved host access.",
   });
@@ -9675,6 +9964,7 @@ exports.provisionHostRoom = onCall(
   { cors: true, secrets: [GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_SERVER_API_KEY] },
   async (request) => {
     checkRateLimit(request.rawRequest, "provision_host_room", { perMinute: 30, perHour: 240 });
+    await checkDurableRateLimit(request.rawRequest, "provision_host_room", { perMinute: 30, perHour: 240 });
     enforceAppCheckIfEnabled(request, "provision_host_room");
     const { uid: callerUid } = await requireHostWorkspaceAccess(request, {
       deniedMessage: "Room provisioning requires an active host subscription or approved host access.",
@@ -10594,6 +10884,7 @@ exports.createAppleMusicToken = onCall(
   { cors: true, secrets: [APPLE_MUSIC_TEAM_ID, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_PRIVATE_KEY] },
   async (request) => {
     checkRateLimit(request.rawRequest, "apple_music_token", { perMinute: 10, perHour: 80 });
+    await checkDurableRateLimit(request.rawRequest, "apple_music_token", { perMinute: 10, perHour: 80 });
     const { uid: callerUid } = await requireCapability(request, "api.apple_music");
     enforceAppCheckIfEnabled(request, "create_apple_music_token");
     const roomCode = normalizeRoomCode(request.data?.roomCode || "");

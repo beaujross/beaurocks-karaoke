@@ -234,6 +234,8 @@ const MarketingSite = () => {
   const [authForm, setAuthForm] = useState({ email: "", password: "", confirmPassword: "" });
   const [authLocalError, setAuthLocalError] = useState("");
   const [authNotice, setAuthNotice] = useState("");
+  const [hostApplicationBusy, setHostApplicationBusy] = useState(false);
+  const [hostApplicationNotice, setHostApplicationNotice] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const authPanelRef = useRef(null);
   const { session, actions } = useDirectorySession();
@@ -388,7 +390,7 @@ const MarketingSite = () => {
     const targetId = String(currentRoute.params?.targetId || "").trim();
     if (!returnToHref) {
       const fallbackRoute = currentRoute.page === MARKETING_ROUTE_PAGES.hostAccess
-        ? { page: MARKETING_ROUTE_PAGES.profile, id: "", params: {} }
+        ? { page: MARKETING_ROUTE_PAGES.hostAccess, id: "", params: stripIntentParams(currentRoute.params) }
         : {
           ...currentRoute,
           params: stripIntentParams(currentRoute.params),
@@ -473,6 +475,38 @@ const MarketingSite = () => {
     window.location.href = nextHref;
   }, [hasFullAccount, hostDashboardHref]);
 
+  const applyForHostAccess = useCallback(async (source = "marketing_host_apply") => {
+    if (!hasFullAccount) {
+      requireFullAuth({
+        intent: "host_apply",
+        targetType: "session",
+        returnRoute: {
+          page: MARKETING_ROUTE_PAGES.hostAccess,
+          params: withCampaignParams({ utm_content: source }),
+        },
+      });
+      return;
+    }
+    setHostApplicationBusy(true);
+    setHostApplicationNotice("");
+    try {
+      const payload = await directoryActions.submitMarketingWaitlist({
+        name: session.email || session.uid || "BeauRocks Host Applicant",
+        email: session.email || "",
+        useCase: "host_application",
+        source,
+      });
+      setHostApplicationNotice(String(payload?.message || "Application submitted. We will review your host request."));
+      trackEvent("mk_host_application_submitted", { source });
+    } catch (error) {
+      setHostApplicationNotice(String(error?.message || "Could not submit host application right now."));
+    } finally {
+      setHostApplicationBusy(false);
+    }
+  }, [hasFullAccount, requireFullAuth, session.email, session.uid, withCampaignParams]);
+
+  const hostApplicationStatus = String(session?.applicationStatus || "").trim().toLowerCase();
+
   useEffect(() => {
     if (!isHostAccessPage) return;
     if (!route.params?.intent) return;
@@ -481,10 +515,10 @@ const MarketingSite = () => {
 
   useEffect(() => {
     const intent = String(route.params?.intent || "").trim().toLowerCase();
-    if (!hasFullAccount) return;
+    if (!hasFullAccount || !session.hasHostWorkspaceAccess) return;
     if (intent !== "host_dashboard_resume") return;
     openHostDashboard("host_resume_after_login");
-  }, [hasFullAccount, openHostDashboard, route.params?.intent]);
+  }, [hasFullAccount, openHostDashboard, route.params?.intent, session.hasHostWorkspaceAccess]);
 
   const onAuthSubmit = async (event) => {
     event.preventDefault();
@@ -507,11 +541,6 @@ const MarketingSite = () => {
       if (result?.ok) {
         trackEvent("marketing_account_signup", { source: "marketing_directory" });
         setAuthForm({ email, password: "", confirmPassword: "" });
-        const returnTo = String(route.params?.return_to || "").trim();
-        if (isHostAccessPage && !returnTo) {
-          openHostDashboard("host_access_direct_signup");
-          return;
-        }
         resolvePostAuthReturn();
       }
       return;
@@ -519,11 +548,6 @@ const MarketingSite = () => {
     const result = await actions.signInWithEmail({ email, password });
     if (result?.ok) {
       trackEvent("marketing_account_signin", { source: "marketing_directory" });
-      const returnTo = String(route.params?.return_to || "").trim();
-      if (isHostAccessPage && !returnTo) {
-        openHostDashboard("host_access_direct_signin");
-        return;
-      }
       resolvePostAuthReturn();
     }
   };
@@ -730,9 +754,9 @@ const MarketingSite = () => {
           {isHostAccessPage ? (
           <section className="mk3-auth-panel mk3-host-canon-surface" ref={authPanelRef}>
             <div>
-              <h1 className="mk3-host-canon-title is-xl">Host Login + Direct App Entry</h1>
+              <h1 className="mk3-host-canon-title is-xl">Host Login + Application</h1>
               <p className="mk3-host-canon-copy">
-                Keep host entry simple: log in once, then go straight into Host Dashboard for room setup, room manager, and live controls.
+                Hosting is approval-based. Create your BeauRocks account, apply once, and approved hosts go straight into Host Dashboard for room setup, room manager, and live controls.
               </p>
               <div className="mk3-private-pill-row mk3-host-canon-chip-row">
                 <span className="mk3-private-pill mk3-host-canon-chip">BeauRocks account required</span>
@@ -746,11 +770,11 @@ const MarketingSite = () => {
                 </article>
                 <article className="mk3-host-canon-step">
                   <strong className="mk3-host-canon-step-kicker">Step 2</strong>
-                  <span className="mk3-host-canon-step-copy">Open Host Dashboard and create a room or resume one there.</span>
+                  <span className="mk3-host-canon-step-copy">Apply for host access so a super admin can review your request.</span>
                 </article>
                 <article className="mk3-host-canon-step">
                   <strong className="mk3-host-canon-step-kicker">Step 3</strong>
-                  <span className="mk3-host-canon-step-copy">Run your show in Host Dashboard with TV and audience links.</span>
+                  <span className="mk3-host-canon-step-copy">Approved hosts open Host Dashboard and run the room from the real app.</span>
                 </article>
                 <article className="mk3-host-canon-step">
                   <strong className="mk3-host-canon-step-kicker">Step 4</strong>
@@ -765,9 +789,9 @@ const MarketingSite = () => {
               )}
               <div className="mk3-value-points">
                 <span>Guests can still join with a room code, but hosting always stays account-backed.</span>
-                <span>Host Dashboard is now the single entry point for create, resume, and room management.</span>
+                <span>Host access is granted by admin approval, not by self-serve unlock codes.</span>
               </div>
-              {hasFullAccount && (
+              {hasFullAccount && session.hasHostWorkspaceAccess && (
                 <div className="mk3-auth-cta-row">
                   <button
                     type="button"
@@ -783,9 +807,45 @@ const MarketingSite = () => {
               {hasFullAccount ? (
                 <div className="mk3-auth-state">
                   <div>Signed in as {session.email || session.uid}.</div>
-                  <div className="mk3-actions-inline">
-                    <button className="mk3-host-canon-button is-primary" type="button" onClick={() => openHostDashboard("host_access_signed_in_open_dashboard")}>Open Host Dashboard</button>
-                  </div>
+                  {session.hasHostWorkspaceAccess ? (
+                    <div className="mk3-actions-inline">
+                      <button className="mk3-host-canon-button is-primary" type="button" onClick={() => openHostDashboard("host_access_signed_in_open_dashboard")}>Open Host Dashboard</button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mk3-status mk3-status-warning">
+                        <strong>
+                          {hostApplicationStatus === "approved"
+                            ? "Host approval complete"
+                            : hostApplicationStatus === "rejected"
+                              ? "Host application not approved"
+                              : hostApplicationStatus === "pending"
+                                ? "Host application pending review"
+                                : "Apply for host approval"}
+                        </strong>
+                        <span>
+                          {hostApplicationStatus === "approved"
+                            ? "Refresh or reopen Host Dashboard if approval was granted very recently."
+                            : hostApplicationStatus === "rejected"
+                              ? "This application is currently closed. Reach out if you need another review."
+                              : hostApplicationStatus === "pending"
+                                ? "A super admin will review your request before host tools are enabled."
+                                : "Submit your application and a super admin can onboard your host account."}
+                        </span>
+                      </div>
+                      <div className="mk3-actions-inline">
+                        <button
+                          className="mk3-host-canon-button is-primary"
+                          type="button"
+                          onClick={() => applyForHostAccess("host_access_signed_in_apply")}
+                          disabled={hostApplicationBusy || hostApplicationStatus === "pending"}
+                        >
+                          {hostApplicationBusy ? "Applying..." : (hostApplicationStatus === "pending" ? "Application Submitted" : "Apply To Host")}
+                        </button>
+                      </div>
+                      {!!hostApplicationNotice && <div className="mk3-status">{hostApplicationNotice}</div>}
+                    </>
+                  )}
                   <div className="mk3-auth-support-row">
                     <button className="mk3-auth-link" type="button" onClick={actions.signOutAccount} disabled={session.authLoading}>
                       {session.authLoading ? "Signing out..." : "Sign out"}

@@ -11,7 +11,7 @@ import {
   ensureUserProfile,
   mergeAnonymousAccountData,
 } from "../../../lib/firebase";
-import { subscribeModeratorAccess } from "../api/directoryApi";
+import { getMyHostAccessStatus, subscribeModeratorAccess } from "../api/directoryApi";
 
 const normalizeAuthError = (error) =>
   String(error?.message || error?.code || "Auth failed.").replace(/^Firebase:\s*/i, "");
@@ -22,6 +22,12 @@ export const useDirectorySession = () => {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [modAccess, setModAccess] = useState({ isModerator: false, isAdmin: false, roles: [] });
+  const [hostAccess, setHostAccess] = useState({
+    hasHostWorkspaceAccess: false,
+    entitledHostAccess: false,
+    hostApprovalEnabled: false,
+    applicationStatus: "",
+  });
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (nextUser) => {
@@ -43,6 +49,44 @@ export const useDirectorySession = () => {
       onError: () => setModAccess({ isModerator: false, isAdmin: false, roles: [] }),
     });
   }, [user?.uid]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user?.uid || user?.isAnonymous) {
+      setHostAccess({
+        hasHostWorkspaceAccess: false,
+        entitledHostAccess: false,
+        hostApprovalEnabled: false,
+        applicationStatus: "",
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    (async () => {
+      try {
+        const payload = await getMyHostAccessStatus();
+        if (cancelled) return;
+        setHostAccess({
+          hasHostWorkspaceAccess: !!payload?.hasHostWorkspaceAccess,
+          entitledHostAccess: !!payload?.entitledHostAccess,
+          hostApprovalEnabled: !!payload?.hostApprovalEnabled || !!payload?.privateHostAccessEnabled,
+          applicationStatus: String(payload?.applicationStatus || "").trim().toLowerCase(),
+        });
+      } catch (_error) {
+        if (cancelled) return;
+        setHostAccess({
+          hasHostWorkspaceAccess: false,
+          entitledHostAccess: false,
+          hostApprovalEnabled: false,
+          applicationStatus: "",
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid, user?.isAnonymous]);
 
   const ensureProfile = useCallback(async (nextUser, fallbackName = "BeauRocks User") => {
     if (!nextUser?.uid) return;
@@ -142,12 +186,16 @@ export const useDirectorySession = () => {
     email: user?.email || "",
     isAuthed: !!user?.uid,
     isAnonymous: !!user?.isAnonymous,
+    hasHostWorkspaceAccess: !!hostAccess.hasHostWorkspaceAccess,
+    entitledHostAccess: !!hostAccess.entitledHostAccess,
+    hostApprovalEnabled: !!hostAccess.hostApprovalEnabled,
+    applicationStatus: hostAccess.applicationStatus || "",
     isModerator: !!modAccess.isModerator,
     isAdmin: !!modAccess.isAdmin,
     roles: modAccess.roles || [],
     authLoading,
     authError,
-  }), [ready, user, modAccess, authLoading, authError]);
+  }), [ready, user, hostAccess, modAccess, authLoading, authError]);
 
   return {
     session,

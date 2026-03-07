@@ -411,17 +411,29 @@ service cloud.firestore {
       return /databases/$(database)/documents/directory_roles/$(uid);
     }
 
-    function marketingPrivateAccessDocPath(uid) {
+    function hostAccessApprovalDocPath(uid) {
+      return /databases/$(database)/documents/host_access_approvals/$(uid);
+    }
+
+    function legacyMarketingPrivateAccessDocPath(uid) {
       return /databases/$(database)/documents/marketing_private_access/$(uid);
     }
 
-    function hasMarketingPrivateHostAccess(uid) {
+    function hasHostApproval(uid) {
       return uid is string
-        && exists(marketingPrivateAccessDocPath(uid))
-        && get(marketingPrivateAccessDocPath(uid)).data.privateHostAccessEnabled == true;
+        && (
+          (
+            exists(hostAccessApprovalDocPath(uid))
+            && get(hostAccessApprovalDocPath(uid)).data.hostApprovalEnabled == true
+          )
+          || (
+            exists(legacyMarketingPrivateAccessDocPath(uid))
+            && get(legacyMarketingPrivateAccessDocPath(uid)).data.privateHostAccessEnabled == true
+          )
+        );
     }
 
-    function requestsPrivateHostRole(data) {
+    function requestsHostRole(data) {
       return data.roles is list
         && (
           "host" in data.roles
@@ -514,8 +526,8 @@ service cloud.firestore {
       allow create, update: if isAuthed()
         && request.auth.uid == uid
         && (
-          !requestsPrivateHostRole(request.resource.data)
-          || hasMarketingPrivateHostAccess(uid)
+          !requestsHostRole(request.resource.data)
+          || hasHostApproval(uid)
           || isDirectoryModerator()
         );
       allow delete: if false;
@@ -523,6 +535,11 @@ service cloud.firestore {
 
     match /directory_roles/{uid} {
       allow read: if isAuthed() && (request.auth.uid == uid || isDirectoryModerator());
+      allow write: if false;
+    }
+
+    match /host_access_approvals/{uid} {
+      allow read: if isAuthed() && request.auth.uid == uid;
       allow write: if false;
     }
 

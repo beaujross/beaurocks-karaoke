@@ -32,6 +32,7 @@ import useQueueSongActions from './hooks/useQueueSongActions';
 import useQueueTabState from './hooks/useQueueTabState';
 import useModerationInboxState from './hooks/useModerationInboxState';
 import useHostSmokeTest from './hooks/useHostSmokeTest';
+import useHostLaunchFlow from './hooks/useHostLaunchFlow';
 import HOST_UI_FEATURE_CHECKLIST from './hostUiFeatureChecklist';
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
@@ -883,21 +884,6 @@ const parseAppleMusicPlaylistId = (value = '') => {
     return trimmed;
 };
 
-const isProvisionHostRoomCallableUnavailableError = (error) => {
-    const code = String(error?.code || '').toLowerCase();
-    const message = String(error?.message || '').toLowerCase();
-    if (code.includes('not-found') || code.includes('unimplemented')) return true;
-    return (
-        message.includes('provisionhostroom')
-        && (
-            message.includes('does not exist')
-            || message.includes('not found')
-            || message.includes('not deployed')
-            || message.includes('no function')
-        )
-    );
-};
-
 const DEFAULT_HOST_MUSIC_PREFS = Object.freeze({
     appleAutoConnect: false,
     applePlaylistUrl: '',
@@ -1062,72 +1048,6 @@ const getTimestampMs = (value) => {
     if (typeof value?.toMillis === 'function') return value.toMillis();
     if (typeof value?.seconds === 'number') return value.seconds * 1000;
     return 0;
-};
-
-const fromDateTimeLocalInput = (value = '') => {
-    const token = String(value || '').trim();
-    if (!token) return 0;
-    const parsed = Date.parse(token);
-    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-    return Math.floor(parsed);
-};
-
-const buildHostProvisionRequestId = (prefix = 'host_launch') => {
-    const safePrefix = String(prefix || 'host_launch')
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]/g, '')
-        .slice(0, 24) || 'host_launch';
-    const nonce = Math.random().toString(36).slice(2, 10);
-    return `${safePrefix}_${Date.now().toString(36)}_${nonce}`.slice(0, 80);
-};
-
-const buildProvisionDiscoveryPayload = (draft = {}) => {
-    const startsAtMs = fromDateTimeLocalInput(draft?.startsAtLocal);
-    const lat = Number(draft?.lat);
-    const lng = Number(draft?.lng);
-    const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
-    const virtualOnly = !!draft?.virtualOnly;
-    return {
-        publicRoom: !!draft?.publicRoom,
-        virtualOnly,
-        title: String(draft?.title || '').trim(),
-        description: String(draft?.description || '').trim(),
-        startsAtMs: startsAtMs || 0,
-        startsAtLocal: String(draft?.startsAtLocal || '').trim(),
-        address1: virtualOnly ? '' : String(draft?.address1 || '').trim(),
-        city: String(draft?.city || '').trim(),
-        state: String(draft?.state || '').trim(),
-        lat: String(draft?.lat || '').trim(),
-        lng: String(draft?.lng || '').trim(),
-        location: hasCoords ? { lat, lng } : {},
-        sessionMode: virtualOnly ? 'virtual' : 'karaoke',
-        venueName: virtualOnly ? 'Virtual Room' : '',
-    };
-};
-
-const normalizeLaunchHttpUrl = (value = '') => {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-    try {
-        const baseOrigin = typeof window !== 'undefined'
-            ? window.location.origin
-            : 'https://beaurocks.app';
-        const parsed = new URL(raw, baseOrigin);
-        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '';
-        return parsed.toString();
-    } catch {
-        return '';
-    }
-};
-
-const normalizeProvisionLaunchUrls = (value = {}) => {
-    const input = value && typeof value === 'object' ? value : {};
-    return {
-        hostUrl: normalizeLaunchHttpUrl(input.hostUrl),
-        tvUrl: normalizeLaunchHttpUrl(input.tvUrl),
-        audienceUrl: normalizeLaunchHttpUrl(input.audienceUrl),
-    };
 };
 
 const sanitizePopTriviaCacheKey = (value = '') => String(value || '')
@@ -5227,7 +5147,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const logoInputRef = useRef(null);
     const orbSkinInputRef = useRef(null);
     const autoJoinAttemptKeyRef = useRef('');
-    const roomProvisionRequestIdRef = useRef('');
     const [lastProvisionedLaunchUrls, setLastProvisionedLaunchUrls] = useState({
         roomCode: '',
         hostUrl: '',
@@ -5309,7 +5228,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [tipAmount, setTipAmount] = useState('');
     const [tipGiftUserId, setTipGiftUserId] = useState('');
     const [tipGiftAmount, setTipGiftAmount] = useState('');
-    const [creatingRoom, setCreatingRoom] = useState(false);
     const [joiningRoom, setJoiningRoom] = useState(false);
     const [roomManagerBusyCode, setRoomManagerBusyCode] = useState('');
     const [roomManagerBusyAction, setRoomManagerBusyAction] = useState('');
@@ -5318,18 +5236,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [recentHostRooms, setRecentHostRooms] = useState([]);
     const [entryError, setEntryError] = useState('');
     const [landingLaunchMode, setLandingLaunchMode] = useState('create');
-    const [quickLaunchDiscovery, setQuickLaunchDiscovery] = useState({
-        publicRoom: false,
-        virtualOnly: false,
-        title: '',
-        description: '',
-        startsAtLocal: '',
-        address1: '',
-        city: '',
-        state: '',
-        lat: '',
-        lng: ''
-    });
     const [hostUpdateDeploymentWarning, setHostUpdateDeploymentWarning] = useState('');
     const hostUpdateWarningToastedRef = useRef(false);
     const [orgContext, setOrgContext] = useState({
@@ -5365,14 +5271,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [invoiceTaxRatePercent, setInvoiceTaxRatePercent] = useState('0');
     const [invoiceStatusDraft, setInvoiceStatusDraft] = useState('draft');
     const [invoiceNotes, setInvoiceNotes] = useState('');
-    const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
-    const [onboardingStep, setOnboardingStep] = useState(0);
-    const [onboardingBusy, setOnboardingBusy] = useState(false);
-    const [onboardingError, setOnboardingError] = useState('');
-    const [onboardingHostName, setOnboardingHostName] = useState(localStorage.getItem('bross_host_name') || 'Host');
-    const [onboardingWorkspaceName, setOnboardingWorkspaceName] = useState('');
-    const [onboardingPlanId, setOnboardingPlanId] = useState('host_monthly');
-    const [onboardingLogoUrl, setOnboardingLogoUrl] = useState(ASSETS.logo);
     const [showNightSetupWizard, setShowNightSetupWizard] = useState(false);
     const [nightSetupStep, setNightSetupStep] = useState(0);
     const [nightSetupApplying, setNightSetupApplying] = useState(false);
@@ -5467,14 +5365,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!ms) return 'Not scheduled';
         return new Date(ms).toLocaleDateString();
     }, [orgContext?.renewalAtMs]);
-    const onboardingPlanLabel = useMemo(() => {
-        const found = HOST_ONBOARDING_PLAN_OPTIONS.find(p => p.id === onboardingPlanId);
-        return found?.label || onboardingPlanId || 'Free';
-    }, [onboardingPlanId]);
-    const onboardingHasActiveSubscription = useMemo(() => {
-        const status = String(orgContext?.status || '').toLowerCase();
-        return ['active', 'trialing', 'past_due'].includes(status);
-    }, [orgContext?.status]);
     const hostMonthlyPlan = useMemo(() => getHostSubscriptionPlan('host_monthly'), []);
     const hostAnnualPlan = useMemo(() => getHostSubscriptionPlan('host_annual'), []);
     const capabilities = useMemo(() => orgContext?.capabilities || {}, [orgContext?.capabilities]);
@@ -5649,19 +5539,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         })();
         return () => { cancelled = true; };
     }, [uid, selectedUsagePeriod]);
-
-    useEffect(() => {
-        if (!onboardingWorkspaceName.trim()) {
-            const baseHost = onboardingHostName.trim() || hostName.trim() || 'Host';
-            setOnboardingWorkspaceName(`${baseHost} Workspace`);
-        }
-    }, [hostName, onboardingHostName, onboardingWorkspaceName]);
-
-    useEffect(() => {
-        if (!showOnboardingWizard) {
-            setOnboardingLogoUrl((logoUrl || ASSETS.logo || '').trim() || ASSETS.logo);
-        }
-    }, [logoUrl, showOnboardingWizard]);
 
     useEffect(() => {
         if ((invoiceCustomerName || '').trim()) return;
@@ -6352,9 +6229,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (onboarding === '1' || onboarding === 'true') {
             const allowedPlanIds = new Set(HOST_ONBOARDING_PLAN_OPTIONS.map((option) => option.id));
             const chosenPlan = allowedPlanIds.has(plan) ? plan : 'host_monthly';
+            openOnboardingWizard();
             setOnboardingPlanId(chosenPlan);
             setOnboardingStep(0);
-            setShowOnboardingWizard(true);
             consumedMarketingOnboardingParams = true;
         }
         if (
@@ -6398,7 +6275,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
             window.history.replaceState({}, '', nextUrl);
         }
-    }, [openModerationInbox]);
+    }, [openModerationInbox, openOnboardingWizard, setOnboardingPlanId, setOnboardingStep, setQuickLaunchDiscovery]);
     useEffect(() => {
         if (typeof window === 'undefined') return;
         const url = new URL(window.location.href);
@@ -7086,7 +6963,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
     }, [uid]);
 
-    const syncOrgContextFromEntitlements = (entitlements = {}) => {
+    const syncOrgContextFromEntitlements = useCallback((entitlements = {}) => {
         setOrgContext(prev => ({
             ...prev,
             orgId: entitlements?.orgId || prev.orgId || '',
@@ -7102,7 +6979,75 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             loading: false,
             error: ''
         }));
-    };
+    }, []);
+
+    const {
+        creatingRoom,
+        createRoom: provisionRoom,
+        quickLaunchDiscovery,
+        setQuickLaunchDiscovery,
+        showOnboardingWizard,
+        onboardingStep,
+        onboardingBusy,
+        onboardingError,
+        onboardingHostName,
+        onboardingWorkspaceName,
+        onboardingPlanId,
+        onboardingLogoUrl,
+        setOnboardingHostName,
+        setOnboardingWorkspaceName,
+        setOnboardingPlanId,
+        setOnboardingLogoUrl,
+        setOnboardingStep,
+        setOnboardingError,
+        openOnboardingWizard,
+        closeOnboardingWizard,
+        provisionOnboardingWorkspace,
+        syncOnboardingWorkspaceName,
+        syncOnboardingLogoUrl,
+    } = useHostLaunchFlow({
+        hostName,
+        setHostName,
+        logoUrl,
+        setLogoUrl,
+        hostNightPreset,
+        orgContext,
+        ensureActiveUid,
+        syncOrgContextFromEntitlements,
+        getMyEntitlements,
+        provisionHostRoom,
+        bootstrapOnboardingWorkspace,
+        canUseWorkspaceOnboarding,
+        subscriptionActionLoading,
+        uid,
+        authUid: auth.currentUser?.uid || null,
+        hostLogger,
+        setRoomCode,
+        setRoomCodeInput,
+        setView,
+        setLastProvisionedLaunchUrls,
+        setEntryError,
+        toast,
+        trackEvent,
+        hostRoomProvisionDeploymentWarning: HOST_ROOM_PROVISION_DEPLOYMENT_WARNING,
+    });
+
+    const onboardingPlanLabel = useMemo(() => {
+        const found = HOST_ONBOARDING_PLAN_OPTIONS.find(p => p.id === onboardingPlanId);
+        return found?.label || onboardingPlanId || 'Free';
+    }, [onboardingPlanId]);
+    const onboardingHasActiveSubscription = useMemo(() => {
+        const status = String(orgContext?.status || '').toLowerCase();
+        return ['active', 'trialing', 'past_due'].includes(status);
+    }, [orgContext?.status]);
+
+    useEffect(() => {
+        syncOnboardingWorkspaceName(onboardingHostName.trim() || hostName.trim() || 'Host');
+    }, [hostName, onboardingHostName, onboardingWorkspaceName, syncOnboardingWorkspaceName]);
+
+    useEffect(() => {
+        syncOnboardingLogoUrl((logoUrl || ASSETS.logo || '').trim() || ASSETS.logo);
+    }, [logoUrl, showOnboardingWizard, syncOnboardingLogoUrl]);
 
     useEffect(() => {
         let nextCohort = 'legacy';
@@ -7360,6 +7305,45 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         missionControlCohort,
         applyMissionDraftToNightSetupState,
         seedNightSetupFromPreset
+    ]);
+
+    const createRoom = useCallback(async (options = {}) => {
+        const result = await provisionRoom({ ...options, openNightSetup: false });
+        const shouldOpenNightSetup = options?.openNightSetup !== false;
+        if (!result?.roomCode || !shouldOpenNightSetup) return result;
+        openNightSetupWizard(
+            String(options?.nightPresetId || '').trim()
+            || String(result?.presetId || '').trim()
+            || 'casual'
+        );
+        return result;
+    }, [openNightSetupWizard, provisionRoom]);
+
+    const launchOnboardingRoom = useCallback(async () => {
+        const trimmedHost = onboardingHostName.trim();
+        const trimmedWorkspace = onboardingWorkspaceName.trim();
+        const trimmedLogo = onboardingLogoUrl.trim();
+        if (!trimmedHost || !trimmedWorkspace) {
+            setOnboardingError('Identity and workspace details are required before launch.');
+            setOnboardingStep(0);
+            return;
+        }
+        setOnboardingError('');
+        await createRoom({
+            hostName: trimmedHost,
+            orgName: trimmedWorkspace,
+            logoUrl: trimmedLogo || ASSETS.logo,
+            nightPresetId: hostNightPreset && hostNightPreset !== 'custom' ? hostNightPreset : 'casual',
+            openNightSetup: true
+        });
+    }, [
+        createRoom,
+        hostNightPreset,
+        onboardingHostName,
+        onboardingLogoUrl,
+        onboardingWorkspaceName,
+        setOnboardingError,
+        setOnboardingStep
     ]);
 
     const closeNightSetupWizard = useCallback(() => {
@@ -7732,86 +7716,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         nightSetupPrimaryMode
     ]);
 
-    const openOnboardingWizard = () => {
-        const seededHost = (hostName || '').trim() || 'Host';
-        const seededLogo = (logoUrl || ASSETS.logo || '').trim() || ASSETS.logo;
-        const allowedPlanIds = new Set(HOST_ONBOARDING_PLAN_OPTIONS.map((option) => option.id));
-        const seededPlan = allowedPlanIds.has(orgContext?.planId) ? orgContext.planId : 'host_monthly';
-        setOnboardingHostName(seededHost);
-        setOnboardingWorkspaceName((onboardingWorkspaceName || '').trim() || `${seededHost} Workspace`);
-        setOnboardingPlanId(seededPlan);
-        setOnboardingLogoUrl(seededLogo);
-        setOnboardingError('');
-        setOnboardingStep(0);
-        setShowOnboardingWizard(true);
-    };
-
-    const closeOnboardingWizard = () => {
-        if (onboardingBusy || creatingRoom || subscriptionActionLoading) return;
-        setShowOnboardingWizard(false);
-        setOnboardingStep(0);
-        setOnboardingError('');
-    };
-
-    const provisionOnboardingWorkspace = async () => {
-        if (!canUseWorkspaceOnboarding) {
-            setOnboardingError(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not available on this plan.`);
-            return;
-        }
-        const trimmedHost = onboardingHostName.trim();
-        const trimmedWorkspace = onboardingWorkspaceName.trim();
-        if (!trimmedHost) {
-            setOnboardingError('Host name is required.');
-            return;
-        }
-        if (!trimmedWorkspace) {
-            setOnboardingError('Workspace name is required.');
-            return;
-        }
-        setOnboardingBusy(true);
-        setOnboardingError('');
-        try {
-            const activeUid = await ensureActiveUid();
-            if (!activeUid) {
-                throw new Error('Auth unavailable');
-            }
-            const payload = await bootstrapOnboardingWorkspace({
-                orgName: trimmedWorkspace,
-                hostName: trimmedHost,
-                logoUrl: onboardingLogoUrl
-            });
-            const entitlements = payload?.entitlements || await getMyEntitlements();
-            syncOrgContextFromEntitlements(entitlements);
-            setHostName(trimmedHost);
-            localStorage.setItem('bross_host_name', trimmedHost);
-            setOnboardingStep(1);
-        } catch (e) {
-            hostLogger.error('Onboarding workspace provision failed', e);
-            setOnboardingError('Could not initialize workspace. Please retry.');
-        } finally {
-            setOnboardingBusy(false);
-        }
-    };
-
-    const launchOnboardingRoom = async () => {
-        const trimmedHost = onboardingHostName.trim();
-        const trimmedWorkspace = onboardingWorkspaceName.trim();
-        const trimmedLogo = onboardingLogoUrl.trim();
-        if (!trimmedHost || !trimmedWorkspace) {
-            setOnboardingError('Identity and workspace details are required before launch.');
-            setOnboardingStep(0);
-            return;
-        }
-        setOnboardingError('');
-        await createRoom({
-            hostName: trimmedHost,
-            orgName: trimmedWorkspace,
-            logoUrl: trimmedLogo || ASSETS.logo,
-            nightPresetId: hostNightPreset && hostNightPreset !== 'custom' ? hostNightPreset : 'casual',
-            openNightSetup: true
-        });
-    };
-
     const joinRoom = async (candidateCode, options = {}) => {
         const silent = !!options?.silent;
         if (joiningRoom) return;
@@ -7903,132 +7807,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
 
-    const createRoom = async (options = {}) => {
-        if (creatingRoom) return;
-        const hostNameOverride = typeof options?.hostName === 'string' ? options.hostName.trim() : '';
-        const orgNameOverride = typeof options?.orgName === 'string' ? options.orgName.trim() : '';
-        const logoUrlOverride = typeof options?.logoUrl === 'string' ? options.logoUrl.trim() : '';
-        const initialNightPresetId = typeof options?.nightPresetId === 'string' ? options.nightPresetId.trim() : '';
-        const requestIdOverride = typeof options?.requestId === 'string' ? options.requestId.trim() : '';
-        const shouldOpenNightSetup = options?.openNightSetup !== false;
-        const discoveryDraft = { ...(quickLaunchDiscovery || {}) };
-        const nextHostName = hostNameOverride || (hostName || '').trim() || 'Host';
-        const nextOrgName = orgNameOverride || `${nextHostName} Workspace`;
-        const nextLogoUrl = logoUrlOverride || (logoUrl || '').trim() || ASSETS.logo;
-        const requestId = requestIdOverride
-            || roomProvisionRequestIdRef.current
-            || buildHostProvisionRequestId('host_launch');
-        roomProvisionRequestIdRef.current = requestId;
-        setCreatingRoom(true);
-        setEntryError('');
-        try {
-            const activeUid = await ensureActiveUid();
-            if (!activeUid) {
-                toast('Could not establish auth. Please retry.');
-                setEntryError('Could not establish auth. Retry and create room again.');
-                roomProvisionRequestIdRef.current = '';
-                return;
-            }
-            setHostName(nextHostName);
-            setLogoUrl(nextLogoUrl);
-            localStorage.setItem('bross_host_name', nextHostName);
-
-            const result = await provisionHostRoom({
-                requestId,
-                hostName: nextHostName,
-                orgName: nextOrgName,
-                logoUrl: nextLogoUrl,
-                nightPresetId: initialNightPresetId || (hostNightPreset && hostNightPreset !== 'custom' ? hostNightPreset : 'casual'),
-                discoveryListing: buildProvisionDiscoveryPayload(discoveryDraft),
-            });
-            const nextRoomCode = String(result?.roomCode || '').trim().toUpperCase();
-            if (!nextRoomCode) {
-                throw new Error('Room provisioning did not return a room code.');
-            }
-            const normalizedLaunchUrls = normalizeProvisionLaunchUrls(result?.launchUrls || {});
-            setLastProvisionedLaunchUrls({
-                roomCode: nextRoomCode,
-                hostUrl: normalizedLaunchUrls.hostUrl,
-                tvUrl: normalizedLaunchUrls.tvUrl,
-                audienceUrl: normalizedLaunchUrls.audienceUrl,
-                updatedAtMs: nowMs(),
-            });
-            trackEvent('host_room_created', {
-                room_code: nextRoomCode,
-                provisioned: true,
-                created: !!result?.created,
-                idempotent: !!result?.idempotent,
-            });
-            try {
-                const entitlements = await getMyEntitlements();
-                syncOrgContextFromEntitlements(entitlements);
-            } catch (orgSyncError) {
-                hostLogger.debug('Entitlements refresh after room provision failed', orgSyncError);
-            }
-            setRoomCode(nextRoomCode);
-            setRoomCodeInput(nextRoomCode);
-            setView('panel');
-            setShowOnboardingWizard(false);
-            roomProvisionRequestIdRef.current = '';
-            if (shouldOpenNightSetup) {
-                openNightSetupWizard(
-                    initialNightPresetId
-                    || String(result?.presetId || '').trim()
-                    || 'casual'
-                );
-            }
-            if (Array.isArray(result?.warnings) && result.warnings.includes('discovery_sync_failed')) {
-                toast(`Room ${nextRoomCode} created. Discovery listing sync needs retry.`);
-            } else if (result?.discovery?.isPublicRoom) {
-                toast('Room created and public discovery listing is live.');
-            } else if (result?.discovery) {
-                toast('Room created and private discovery listing saved.');
-            } else {
-                toast(`Room ${nextRoomCode} created`);
-            }
-        } catch (e) {
-            hostLogger.error('Failed to create room', {
-                error: e,
-                propUid: uid || null,
-                authUid: auth.currentUser?.uid || null
-            });
-            const code = String(e?.code || '');
-            const codeLower = code.toLowerCase();
-            const shouldReuseRequestId = (
-                codeLower.includes('unavailable')
-                || codeLower.includes('network')
-                || codeLower.includes('deadline-exceeded')
-                || codeLower.includes('aborted')
-                || codeLower.includes('internal')
-            );
-            if (!shouldReuseRequestId) {
-                roomProvisionRequestIdRef.current = '';
-            }
-            if (isProvisionHostRoomCallableUnavailableError(e)) {
-                toast(HOST_ROOM_PROVISION_DEPLOYMENT_WARNING);
-                setEntryError(HOST_ROOM_PROVISION_DEPLOYMENT_WARNING);
-                return;
-            }
-            if (code.includes('permission-denied')) {
-                toast('Permission denied while creating room. Re-authenticate and try again.');
-                setEntryError('Permission denied while creating room. Re-authenticate and try again.');
-            } else if (code.includes('unauthenticated')) {
-                toast('You are signed out. Please retry auth, then create room again.');
-                setEntryError('You are signed out. Retry auth, then create room again.');
-            } else if (code.includes('already-exists')) {
-                toast('Requested room code already exists. Please retry.');
-                setEntryError('Requested room code already exists. Please retry.');
-            } else if (code.includes('unavailable') || code.includes('network')) {
-                toast('Network issue while creating room. Please retry.');
-                setEntryError('Network issue while creating room. Please retry.');
-            } else {
-                toast(`Failed to create room${code ? ` (${code})` : ''}`);
-                setEntryError(`Failed to create room${code ? ` (${code})` : ''}.`);
-            }
-        } finally {
-            setCreatingRoom(false);
-        }
-    };
     const openExistingRoomWorkspace = async (targetRoomCode = '', sectionId = 'queue.live_run') => {
         const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
         const joined = await joinRoom(normalizedCode || roomCodeInput);
@@ -10148,7 +9926,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
         if (subscriptionStatus === 'success') {
             toast('Subscription checkout completed. Refreshing billing status...');
-            setShowOnboardingWizard(true);
+            openOnboardingWizard();
             setOnboardingStep(1);
         } else if (subscriptionStatus === 'cancel') {
             toast('Subscription checkout canceled.');
@@ -10193,8 +9971,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const nextQuery = params.toString();
         const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
         window.history.replaceState({}, '', nextUrl);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [openOnboardingWizard, selectedUsagePeriod, setOnboardingStep, syncOrgContextFromEntitlements, toast, orgContext?.orgId]);
     
     // History
     const history = songs.filter(s => s.status === 'performed').sort((a,b) => b.timestamp?.seconds - a.timestamp?.seconds);
@@ -10304,43 +10081,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!song?.title) return;
         const art = await fetchTop100Art(song);
         const singerName = singerOverride || room?.hostName || hostName || 'Host';
-        let fetchedApple = null;
-        try {
-            fetchedApple = await callFunction('appleMusicLyrics', {
-                title: song.title,
-                artist: song.artist || '',
-                storefront: 'us',
-                musicUserToken: getAppleMusicUserToken?.() || ''
-            });
-        } catch (err) {
-            hostLogger.debug('Browse Apple lyrics fetch failed', err);
-        }
-        const hasTimedLyrics = Array.isArray(fetchedApple?.timedLyrics) && fetchedApple.timedLyrics.length > 0;
-        const hasPlainLyrics = !!String(fetchedApple?.lyrics || '').trim();
-        const appleMusicId = fetchedApple?.songId ? String(fetchedApple.songId) : '';
-        let aiLyricsText = '';
-        if (!hasTimedLyrics && !hasPlainLyrics && room?.autoLyricsOnQueue && canUseAiTools && typeof generateAIContent === 'function') {
-            try {
-                const generated = await generateAIContent('lyrics', {
-                    title: song.title,
-                    artist: song.artist || ''
-                });
-                aiLyricsText = String(generated?.lyrics || '').trim();
-            } catch (err) {
-                hostLogger.debug('Browse AI lyrics fallback failed', err);
-            }
-        }
-        const lyricsSource = hasTimedLyrics || hasPlainLyrics ? 'apple' : (aiLyricsText ? 'ai' : '');
-        const lyricsText = hasPlainLyrics ? fetchedApple.lyrics : aiLyricsText;
-
         const canonicalMatch = await (async () => {
             try {
                 return await resolveCanonicalTrackIdentity({
                     title: song.title,
                     artist: song.artist || 'Unknown',
-                    source: appleMusicId ? 'apple' : '',
+                    source: '',
                     mediaUrl: '',
-                    appleMusicId
+                    appleMusicId: ''
                 });
             } catch (error) {
                 hostLogger.debug('Browse canonical match failed', error);
@@ -10354,43 +10102,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             title: canonicalTitle,
             artist: canonicalArtist,
             artworkUrl: art || song.art || '',
-            appleMusicId,
             verifyMeta: art || song.art ? {} : false,
             verifiedBy: hostName || 'host'
         });
         const songId = canonicalMatch?.songId || songRecord?.songId || buildSongKey(canonicalTitle, canonicalArtist);
-        let trackRecord = canonicalMatch?.trackId ? { trackId: canonicalMatch.trackId } : null;
-        if (appleMusicId && !trackRecord?.trackId) {
-            try {
-                trackRecord = await ensureTrack({
-                    songId,
-                    source: 'apple',
-                    mediaUrl: '',
-                    appleMusicId,
-                    duration: null,
-                    audioOnly: true,
-                    backingOnly: true,
-                    addedBy: hostName || 'Host'
-                });
-            } catch (err) {
-                hostLogger.debug('Browse Apple track ensure failed', err);
-            }
-        }
-        await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
+        const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
             roomCode,
             songId,
-            trackId: trackRecord?.trackId || null,
-            trackSource: trackRecord?.trackId ? 'apple' : null,
+            trackId: canonicalMatch?.trackId || null,
+            trackSource: canonicalMatch?.trackId ? 'apple' : null,
             songTitle: canonicalTitle,
             artist: canonicalArtist,
             singerName,
             mediaUrl: '',
             albumArtUrl: art || song.art || '',
-            lyrics: lyricsText,
-            lyricsTimed: hasTimedLyrics ? fetchedApple.timedLyrics : null,
-            appleMusicId,
-            musicSource: appleMusicId ? 'apple' : '',
-            lyricsSource,
+            lyrics: '',
+            lyricsTimed: null,
+            appleMusicId: '',
+            musicSource: '',
+            lyricsSource: '',
+            lyricsGenerationStatus: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
+            lyricsGenerationResolution: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
+            lyricsGenerationUpdatedAt: serverTimestamp(),
             status: 'requested',
             timestamp: serverTimestamp(),
             priorityScore: nowMs(),
@@ -10398,27 +10131,52 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             backingAudioOnly: false,
             audioOnly: false
         });
-        if (hasTimedLyrics) {
-            toast('Queued with Apple timed lyrics');
-            return;
-        }
-        if (hasPlainLyrics) {
-            toast('Queued with Apple lyrics');
-            return;
-        }
-        if (aiLyricsText) {
-            toast(appleMusicId ? 'Queued with Apple backing + AI lyrics fallback' : 'Queued with AI lyrics fallback');
-            return;
-        }
-        if (fetchedApple?.needsUserToken) {
-            toast('Queued with Apple backing. Lyrics need Apple Music host authorization (connect Apple Music).');
-            return;
-        }
-        if (fetchedApple && fetchedApple.found === false) {
-            toast(appleMusicId ? 'Queued with Apple backing. Apple lyrics not found for this track.' : 'Queued. Apple lyrics not found for this track.');
-            return;
-        }
-        toast(appleMusicId ? 'Queued with Apple backing (no lyrics found)' : 'Added to queue');
+        toast(room?.autoLyricsOnQueue ? 'Queued (finalizing lyrics...)' : 'Added to queue');
+        if (!room?.autoLyricsOnQueue) return;
+        void (async () => {
+            try {
+                const result = await callFunction('resolveQueueSongLyrics', {
+                    roomCode,
+                    songId: docRef.id,
+                    timedOnly: false,
+                    force: true,
+                    musicUserToken: getAppleMusicUserToken?.() || ''
+                });
+                const hasTimedLyrics = !!result?.hasTimedLyrics;
+                const hasLyrics = !!result?.hasLyrics;
+                if (hasTimedLyrics) {
+                    toast('Timed lyrics ready.');
+                    return;
+                }
+                if (hasLyrics) {
+                    toast('Lyrics ready.');
+                    return;
+                }
+                const status = String(result?.status || '').toLowerCase();
+                const resolution = String(result?.resolution || '').toLowerCase();
+                if (status === 'needs_user_token' || resolution === 'needs_user_token') {
+                    toast('Apple lyrics need host Apple Music authorization.');
+                    return;
+                }
+                if (status === 'capability_blocked' || resolution === 'capability_blocked') {
+                    toast('Lyrics fallback is blocked by current workspace entitlements.');
+                    return;
+                }
+                toast('No lyrics match found yet.');
+            } catch (error) {
+                hostLogger.debug('Browse queue lyrics resolution failed', error);
+                try {
+                    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', docRef.id), {
+                        lyricsGenerationStatus: 'error',
+                        lyricsGenerationResolution: 'callable_error',
+                        lyricsGenerationUpdatedAt: serverTimestamp()
+                    });
+                } catch (updateError) {
+                    hostLogger.debug('Browse queue lyrics error status update failed', updateError);
+                }
+                toast('Lyrics lookup hit a provider error.');
+            }
+        })();
     };
 
     const resolveRoomUserUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';

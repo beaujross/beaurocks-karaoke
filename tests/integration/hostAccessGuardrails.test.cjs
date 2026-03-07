@@ -5,9 +5,11 @@ const {
   provisionHostRoom,
   youtubeSearch,
   createAppleMusicToken,
+  setHostApprovalStatus,
 } = require("../../functions/index.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
+const ADMIN_UID = "host-guard-admin";
 const USER_UID = "host-guard-user";
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
@@ -30,7 +32,13 @@ const requestFor = (uid, data = {}, options = {}) => ({
 async function resetState() {
   const collections = [
     "users",
+    "directory_roles",
+    "host_access_approvals",
+    "host_access_approval_invites",
+    "host_access_applications",
     "marketing_private_access",
+    "marketing_private_invites",
+    "security_rate_limits",
     "artifacts",
     "organizations",
   ];
@@ -46,6 +54,19 @@ async function resetState() {
     name: "Guardrail User",
     subscription: { tier: "free" },
   }, { merge: true });
+  await db.doc(`directory_roles/${ADMIN_UID}`).set({
+    roles: ["directory_admin"],
+  }, { merge: true });
+}
+
+async function grantPrivateHostAccess(uid) {
+  await setHostApprovalStatus.run(
+    requestFor(ADMIN_UID, {
+      target: uid,
+      enabled: true,
+      notes: "integration host access grant",
+    })
+  );
 }
 
 async function expectHttpsError(run, expectedCode) {
@@ -90,11 +111,8 @@ async function run() {
         "permission-denied"
       );
     }],
-    ["private host access can provision host room", async () => {
-      await db.doc(`marketing_private_access/${USER_UID}`).set({
-        uid: USER_UID,
-        privateHostAccessEnabled: true,
-      }, { merge: true });
+    ["approved host access can provision host room", async () => {
+      await grantPrivateHostAccess(USER_UID);
       const result = await provisionHostRoom.run(
         requestFor(USER_UID, { requestId: "guardrail-room-ok", hostName: "Guardrail Host" })
       );
