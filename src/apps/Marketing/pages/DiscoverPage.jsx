@@ -24,32 +24,41 @@ import { buildMarketingPath } from "../routing";
 const FINDER_BRAND = "Setlist";
 const MAP_DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
 const MAP_BRAND_STYLES = [
-  { elementType: "geometry", stylers: [{ color: "#241335" }] },
+  { elementType: "geometry", stylers: [{ color: "#020714" }] },
   { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#f9d58a" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#2a0a3a" }] },
-  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#694185" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#ffd98c" }] },
-  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#2f1744" }] },
-  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#3a1f4f" }] },
-  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#2e2f54" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#5b2a72" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#7f4c98" }] },
-  { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#643179" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#8f4ead" }] },
-  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#f1b85b" }] },
-  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#4f356a" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0e3f73" }] },
-  { featureType: "water", elementType: "geometry.stroke", stylers: [{ color: "#1a5a97" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#8fd8ff" }] },
-  { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#08294d" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#b9c8e8" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#020714" }] },
+  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#17314d" }] },
+  { featureType: "administrative.land_parcel", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative.neighborhood", stylers: [{ visibility: "off" }] },
+  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#08111d" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#5d7191" }] },
+  { featureType: "poi.business", stylers: [{ visibility: "off" }] },
+  { featureType: "poi.attraction", stylers: [{ visibility: "off" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#06232c" }] },
+  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#2ce6da" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#0c182b" }] },
+  { featureType: "road.local", elementType: "geometry", stylers: [{ color: "#09111f" }] },
+  { featureType: "road.local", elementType: "labels.text.fill", stylers: [{ color: "#5f7190" }] },
+  { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#0b647a" }] },
+  { featureType: "road.arterial", elementType: "geometry.stroke", stylers: [{ color: "#083442" }] },
+  { featureType: "road.arterial", elementType: "labels.text.fill", stylers: [{ color: "#79fff5" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#7a2558" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#381028" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#ffd6f3" }] },
+  { featureType: "road.highway.controlled_access", elementType: "geometry", stylers: [{ color: "#ff4db8" }] },
+  { featureType: "road.highway.controlled_access", elementType: "geometry.stroke", stylers: [{ color: "#5b1d42" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#03384f" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#37efff" }] },
 ];
 const MAP_TYPE_META = {
-  venue: { label: "venue", routePage: "venue", markerColor: "#ff68bf" },
-  event: { label: "event", routePage: "event", markerColor: "#ffd668" },
-  room_session: { label: "room session", routePage: "session", markerColor: "#b384ff" },
+  venue: { label: "venue", routePage: "venue", markerColor: "#26d7e8" },
+  event: { label: "event", routePage: "event", markerColor: "#f1c76f" },
+  room_session: { label: "room session", routePage: "session", markerColor: "#ff4fae" },
 };
-const OFFICIAL_ROOM_MARKER_COLOR = "#ffc94d";
+const OFFICIAL_ROOM_MARKER_COLOR = "#ff4fae";
+const DEMO_MAP_ID = "DEMO_MAP_ID";
 const TIME_WINDOW_OPTIONS = [
   { id: "all", label: "All Times" },
   { id: "now", label: "Now" },
@@ -274,7 +283,7 @@ const buildStaticMapImageUrl = ({ location = null, mapsApiKey = "" } = {}) => {
   const key = String(mapsApiKey || "").trim();
   if (!key || !location) return "";
   const marker = `${Number(location.lat).toFixed(6)},${Number(location.lng).toFixed(6)}`;
-  return `https://maps.googleapis.com/maps/api/staticmap?size=960x540&maptype=roadmap&markers=color:0xff68bf%7C${encodeURIComponent(marker)}&style=feature:all%7Csaturation:-60&style=feature:all%7Clightness:-20&key=${encodeURIComponent(key)}`;
+  return `https://maps.googleapis.com/maps/api/staticmap?size=960x540&maptype=roadmap&markers=color:0xff4fae%7C${encodeURIComponent(marker)}&style=feature:all%7Csaturation:-75&style=feature:all%7Clightness:-32&style=feature:road.highway%7Ccolor:0x7a2558&style=feature:water%7Ccolor:0x03384f&key=${encodeURIComponent(key)}`;
 };
 
 const buildGooglePlacePhotoUrls = ({ entry = {}, mapsApiKey = "" } = {}) => {
@@ -359,6 +368,16 @@ const sanitizeMediaUrl = (value = "") => {
   if (token.startsWith("/")) return token;
   if (/^https?:\/\//i.test(token)) return token.replace(/^http:\/\//i, "https://");
   return "";
+};
+
+const hexToRgba = (hex = "", alpha = 1) => {
+  const token = String(hex || "").trim().replace(/^#/, "");
+  if (!/^[0-9a-f]{6}$/i.test(token)) return `rgba(255, 255, 255, ${alpha})`;
+  const parsed = Number.parseInt(token, 16);
+  const r = (parsed >> 16) & 255;
+  const g = (parsed >> 8) & 255;
+  const b = parsed & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
 const buildListingActionHref = (listing = null) => {
@@ -565,24 +584,58 @@ const buildMarkerVisual = (
   isOfficialRoom = false,
   pulsePhase = 0
 ) => {
-  const fillColor = isOfficialRoom ? (pulsePhase ? "#ffd96d" : "#ffbe3b") : color;
-  const strokeColor = isOfficialRoom ? "#fff4c4" : selected ? "#ffffff" : "#0b1119";
-  const strokeWidth = selected ? (isOfficialRoom ? 3.8 : 2.8) : (isOfficialRoom ? 2.7 : 1.4);
+  const accentColor = isOfficialRoom
+    ? (pulsePhase ? "#ff72c1" : "#ff4fae")
+    : color || "#26d7e8";
+  const ringColor = isOfficialRoom
+    ? "#f1c76f"
+    : selected
+      ? "#dffcff"
+      : hexToRgba(accentColor, 0.54);
+  const bodyColor = selected ? "#07182b" : "#091326";
+  const coreColor = isOfficialRoom
+    ? "#f1c76f"
+    : selected
+      ? "#37efff"
+      : accentColor;
+  const badgeColor = isOfficialRoom ? "#ff4fae" : "#020714";
+  const badgeTextColor = isOfficialRoom ? "#fff1fb" : "#d8faff";
+  const badgeBorderColor = isOfficialRoom ? "rgba(241, 199, 111, 0.76)" : hexToRgba(accentColor, 0.58);
+  const haloColor = isOfficialRoom
+    ? hexToRgba("#ff4fae", selected ? 0.34 : 0.26)
+    : hexToRgba(accentColor, selected ? 0.3 : 0.18);
+  const haloRingColor = isOfficialRoom
+    ? hexToRgba("#f1c76f", selected ? 0.24 : 0.18)
+    : hexToRgba(accentColor, selected ? 0.18 : 0.1);
   const radius = selected
-    ? (isOfficialRoom ? (13 + (pulsePhase ? 1 : 0)) : 10)
-    : (isOfficialRoom ? (9 + (pulsePhase ? 1 : 0)) : 7);
+    ? (isOfficialRoom ? (16 + (pulsePhase ? 1 : 0)) : 14)
+    : (isOfficialRoom ? (13 + (pulsePhase ? 1 : 0)) : 11);
+  const strokeWidth = selected ? (isOfficialRoom ? 3.8 : 3.1) : (isOfficialRoom ? 3 : 2.2);
   return {
-    fillColor,
-    strokeColor,
+    accentColor,
+    badgeColor,
+    badgeTextColor,
+    badgeBorderColor,
+    bodyColor,
+    coreColor,
+    haloColor,
+    haloRingColor,
+    ringColor,
+    fillColor: coreColor,
+    strokeColor: ringColor,
     strokeWidth,
     radius,
-    fillOpacity: selected ? 1 : (isOfficialRoom ? 0.95 : 0.9),
+    fillOpacity: selected ? 1 : (isOfficialRoom ? 0.98 : 0.94),
     shadow: selected
-      ? `0 0 0 4px rgba(255,255,255,0.18), 0 10px 26px rgba(8, 16, 30, 0.52)`
+      ? isOfficialRoom
+        ? `0 0 0 4px ${hexToRgba("#f1c76f", 0.18)}, 0 0 30px ${hexToRgba("#ff4fae", 0.42)}, 0 14px 32px rgba(2, 7, 20, 0.62)`
+        : `0 0 0 4px ${hexToRgba(accentColor, 0.16)}, 0 0 26px ${hexToRgba(accentColor, 0.34)}, 0 12px 28px rgba(2, 7, 20, 0.54)`
       : isOfficialRoom
-        ? `0 0 0 3px rgba(255, 201, 77, 0.16), 0 8px 22px rgba(8, 16, 30, 0.42)`
-        : `0 6px 16px rgba(8, 16, 30, 0.34)`,
+        ? `0 0 0 3px ${hexToRgba("#f1c76f", 0.12)}, 0 0 18px ${hexToRgba("#ff4fae", 0.22)}, 0 8px 24px rgba(2, 7, 20, 0.46)`
+        : `0 0 0 2px ${hexToRgba(accentColor, 0.08)}, 0 6px 18px rgba(2, 7, 20, 0.36)`,
     scale: radius,
+    selected,
+    isOfficialRoom,
   };
 };
 
@@ -606,23 +659,37 @@ const buildMarkerIcon = (
 
 const applyAdvancedMarkerStyles = (element, visual, title = "") => {
   if (!element) return;
-  const diameter = Math.max(visual.radius * 2, 12);
+  const diameter = Math.max(visual.radius * 2, 22);
+  element.className = `mk3-map-pin${visual.selected ? " is-selected" : ""}${visual.isOfficialRoom ? " is-elevated" : ""}`;
   element.setAttribute("aria-label", title || "Map marker");
   element.title = title || "";
-  element.style.width = `${diameter}px`;
-  element.style.height = `${diameter}px`;
-  element.style.borderRadius = "999px";
-  element.style.background = visual.fillColor;
+  element.style.setProperty("--mk3-map-pin-size", `${diameter}px`);
+  element.style.setProperty("--mk3-map-pin-accent", visual.accentColor);
+  element.style.setProperty("--mk3-map-pin-body", visual.bodyColor);
+  element.style.setProperty("--mk3-map-pin-ring", visual.ringColor);
+  element.style.setProperty("--mk3-map-pin-core", visual.coreColor);
+  element.style.setProperty("--mk3-map-pin-badge-bg", visual.badgeColor);
+  element.style.setProperty("--mk3-map-pin-badge-ink", visual.badgeTextColor);
+  element.style.setProperty("--mk3-map-pin-badge-border", visual.badgeBorderColor);
+  element.style.setProperty("--mk3-map-pin-halo", visual.haloColor);
+  element.style.setProperty("--mk3-map-pin-halo-ring", visual.haloRingColor);
+  element.style.setProperty("--mk3-map-pin-stroke-width", `${Math.max(2, Math.round(visual.strokeWidth))}px`);
   element.style.opacity = String(visual.fillOpacity);
-  element.style.border = `${Math.max(1, Math.round(visual.strokeWidth))}px solid ${visual.strokeColor}`;
   element.style.boxShadow = visual.shadow;
   element.style.cursor = "pointer";
   element.style.boxSizing = "border-box";
-  element.style.transition = "width 140ms ease, height 140ms ease, background 140ms ease, border 140ms ease, box-shadow 140ms ease, opacity 140ms ease";
+  element.style.transition = "transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease";
 };
 
 const createAdvancedMarkerElement = (visual, title = "") => {
   const element = document.createElement("div");
+  element.innerHTML = `
+    <span class="mk3-map-pin__halo" aria-hidden="true"></span>
+    <span class="mk3-map-pin__body" aria-hidden="true">
+      <span class="mk3-map-pin__core"></span>
+      <span class="mk3-map-pin__badge">${visual.isOfficialRoom ? "BR" : "K"}</span>
+    </span>
+  `;
   applyAdvancedMarkerStyles(element, visual, title);
   return element;
 };
@@ -769,6 +836,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const shouldLoadMaps = mapEnabled && (!isMobileViewport || mobileSurface === "map");
   const mapsApiKey = mapEnabled ? String(mapsConfig?.apiKey || "") : "";
   const mapsMapId = mapEnabled ? String(mapsConfig?.mapId || "").trim() : "";
+  const hasCloudStyledMapId = !!mapsMapId && mapsMapId !== DEMO_MAP_ID;
   const { loaded: mapsLoaded, error: mapsError } = useGoogleMapsScript({
     enabled: shouldLoadMaps,
     apiKey: String(mapsConfig?.apiKey || ""),
@@ -1340,9 +1408,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
-        backgroundColor: "#190827",
-        styles: MAP_BRAND_STYLES,
-        ...(mapsMapId ? { mapId: mapsMapId } : {}),
+        backgroundColor: "#020714",
+        ...(hasCloudStyledMapId ? { mapId: mapsMapId } : { styles: MAP_BRAND_STYLES }),
       });
       mapRef.current = map;
       idleListener = map.addListener("idle", () => {
@@ -1362,7 +1429,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       window.cancelAnimationFrame(frameId);
       idleListener?.remove?.();
     };
-  }, [mapsLoaded, mapEnabled, mapsMapId]);
+  }, [mapsLoaded, mapEnabled, mapsMapId, hasCloudStyledMapId]);
 
   useEffect(() => () => {
     const googleMaps = window.google?.maps;
@@ -1383,7 +1450,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (!googleMaps || !map) return;
 
     const AdvancedMarkerElement = googleMaps?.marker?.AdvancedMarkerElement;
-    const supportsAdvancedMarkers = !!mapsMapId && typeof AdvancedMarkerElement === "function";
+    const supportsAdvancedMarkers = hasCloudStyledMapId && typeof AdvancedMarkerElement === "function";
     const markerMap = markerMapRef.current;
     const nextMarkerKeys = new Set();
     mappableListings.forEach((entry) => {
@@ -1524,7 +1591,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       </div>`
     );
     infoWindow.open({ map, anchor: markerEntry.marker });
-  }, [mappableListings, effectiveSelectedKey, focusListing, officialMarkerPulsePhase, mapsMapId]);
+  }, [mappableListings, effectiveSelectedKey, focusListing, officialMarkerPulsePhase, hasCloudStyledMapId]);
 
   const hiddenWithoutCoords = boundsOnly
     ? rankedListings.length - mappableListings.length

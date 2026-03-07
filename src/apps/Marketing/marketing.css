@@ -2192,10 +2192,10 @@
   border-radius: 20px;
   padding: 15px;
   background:
-    radial-gradient(circle at 12% 10%, rgba(255, 186, 112, 0.24), transparent 40%),
-    radial-gradient(circle at 86% 16%, rgba(255, 74, 168, 0.24), transparent 44%),
-    radial-gradient(circle at 52% 78%, rgba(67, 220, 255, 0.22), transparent 48%),
-    rgba(5, 18, 52, 0.92);
+    radial-gradient(circle at 10% 12%, rgba(55, 239, 255, 0.16), transparent 34%),
+    radial-gradient(circle at 88% 14%, rgba(255, 79, 174, 0.18), transparent 36%),
+    radial-gradient(circle at 52% 84%, rgba(122, 37, 88, 0.16), transparent 44%),
+    linear-gradient(180deg, rgba(3, 8, 22, 0.96), rgba(6, 17, 33, 0.94));
   min-height: 560px;
   display: grid;
   gap: 10px;
@@ -2205,12 +2205,12 @@
 }
 
 .mk3-zone-map {
-  border-color: rgba(88, 198, 255, 0.34);
-  box-shadow: inset 0 0 0 1px rgba(88, 198, 255, 0.12);
+  border-color: rgba(55, 239, 255, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(55, 239, 255, 0.08), 0 20px 40px rgba(2, 7, 20, 0.24);
 }
 
 .mk3-zone-map::before {
-  background: linear-gradient(180deg, #ffbf73, #42dcff);
+  background: linear-gradient(180deg, #37efff, #ff4fae);
 }
 
 .mk3-zone-rail {
@@ -2251,16 +2251,16 @@
 
 .mk3-map-grid {
   border-radius: 14px;
-  border: 1px solid rgba(88, 198, 255, 0.22);
+  border: 1px solid rgba(55, 239, 255, 0.18);
   min-height: 420px;
   display: grid;
   place-items: center;
   background:
-    repeating-linear-gradient(0deg, rgba(88, 198, 255, 0.12), rgba(88, 198, 255, 0.12) 1px, transparent 1px, transparent 38px),
-    repeating-linear-gradient(90deg, rgba(88, 198, 255, 0.1), rgba(88, 198, 255, 0.1) 1px, transparent 1px, transparent 38px),
-    radial-gradient(circle at 24% 36%, rgba(255, 74, 168, 0.44), transparent 18%),
-    radial-gradient(circle at 68% 44%, rgba(255, 186, 112, 0.36), transparent 18%),
-    radial-gradient(circle at 54% 78%, rgba(67, 220, 255, 0.32), transparent 20%);
+    repeating-linear-gradient(0deg, rgba(55, 239, 255, 0.08), rgba(55, 239, 255, 0.08) 1px, transparent 1px, transparent 40px),
+    repeating-linear-gradient(90deg, rgba(55, 239, 255, 0.06), rgba(55, 239, 255, 0.06) 1px, transparent 1px, transparent 40px),
+    radial-gradient(circle at 18% 24%, rgba(55, 239, 255, 0.18), transparent 22%),
+    radial-gradient(circle at 82% 22%, rgba(255, 79, 174, 0.2), transparent 24%),
+    linear-gradient(180deg, rgba(4, 11, 24, 0.98), rgba(4, 12, 24, 0.92));
 }
 
 .mk3-map-stage {
@@ -2269,13 +2269,35 @@
   overflow: hidden;
 }
 
+.mk3-map-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    radial-gradient(circle at top left, rgba(55, 239, 255, 0.08), transparent 24%),
+    radial-gradient(circle at top right, rgba(255, 79, 174, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(2, 7, 20, 0.08), rgba(2, 7, 20, 0.28));
+}
+
+.mk3-map-stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: radial-gradient(circle at center, transparent 56%, rgba(2, 7, 20, 0.34) 100%);
+}
+
 .mk3-map-canvas {
   min-height: 420px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 215, 106, 0.34);
+  border: 1px solid rgba(55, 239, 255, 0.22);
   box-shadow:
-    0 0 0 1px rgba(255, 86, 190, 0.2),
-    0 16px 28px rgba(8, 2, 12, 0.46);
+    0 0 0 1px rgba(255, 79, 174, 0.16),
+    0 0 0 6px rgba(55, 239, 255, 0.04),
+    0 18px 34px rgba(2, 7, 20, 0.48);
   overflow: hidden;
 }
 
@@ -2296,6 +2318,7 @@
   display: grid;
   align-content: space-between;
   padding: 10px;
+  z-index: 3;
 }
 
 .mk3-map-stage:fullscreen,
@@ -2365,42 +2388,43 @@
 
 .mk3-map-legend-item {
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(8, 14, 20, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(4, 12, 24, 0.82);
   color: #d7e7f7;
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   padding: 0.28rem 0.56rem;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .mk3-map-legend-item.is-event {
-  border-color: rgba(255, 214, 106, 0.54);
+  border-color: rgba(241, 199, 111, 0.54);
   color: #ffe4ac;
 }
 
 .mk3-map-legend-item.is-venue {
-  border-color: rgba(255, 104, 191, 0.46);
-  color: #ffd3ee;
+  border-color: rgba(55, 239, 255, 0.46);
+  color: #c9fbff;
 }
 
 .mk3-map-legend-item.is-session {
-  border-color: rgba(179, 132, 255, 0.52);
-  color: #e3d5ff;
+  border-color: rgba(255, 79, 174, 0.56);
+  color: #ffd3ea;
 }
 
 .mk3-map-legend-item.is-elevated {
-  border-color: rgba(255, 214, 118, 0.72);
+  border-color: rgba(241, 199, 111, 0.72);
   color: #fff0c4;
   background:
-    linear-gradient(110deg, rgba(255, 206, 105, 0.2), rgba(255, 173, 58, 0.28), rgba(255, 209, 114, 0.2));
-  box-shadow: 0 0 14px rgba(255, 191, 82, 0.2);
+    linear-gradient(110deg, rgba(255, 79, 174, 0.18), rgba(122, 37, 88, 0.3), rgba(241, 199, 111, 0.18));
+  box-shadow: 0 0 14px rgba(255, 79, 174, 0.18);
   animation: mk3-premium-glow 2.2s ease-in-out infinite;
 }
 
 .mk3-map-legend-item.is-you {
-  border-color: rgba(95, 218, 243, 0.52);
+  border-color: rgba(55, 239, 255, 0.52);
   color: #c6f3ff;
 }
 
@@ -2772,20 +2796,105 @@
   margin-left: auto;
 }
 
+.mk3-map-card .gm-style {
+  filter: saturate(1.05) contrast(1.02);
+}
+
+.mk3-map-pin {
+  position: relative;
+  width: var(--mk3-map-pin-size);
+  height: var(--mk3-map-pin-size);
+  display: grid;
+  place-items: center;
+  transform: translate3d(0, 0, 0);
+}
+
+.mk3-map-pin__halo,
+.mk3-map-pin__body,
+.mk3-map-pin__core,
+.mk3-map-pin__badge {
+  position: absolute;
+  border-radius: 999px;
+}
+
+.mk3-map-pin__halo {
+  inset: -18%;
+  background:
+    radial-gradient(circle, var(--mk3-map-pin-halo-ring) 0%, var(--mk3-map-pin-halo) 48%, transparent 74%);
+  filter: blur(1px);
+  opacity: 0.96;
+}
+
+.mk3-map-pin__body {
+  inset: 8%;
+  background: var(--mk3-map-pin-body);
+  border: var(--mk3-map-pin-stroke-width) solid var(--mk3-map-pin-ring);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 10px 22px rgba(2, 7, 20, 0.34);
+}
+
+.mk3-map-pin__core {
+  inset: 28%;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.34), transparent 34%),
+    var(--mk3-map-pin-core);
+  box-shadow: 0 0 12px var(--mk3-map-pin-halo);
+}
+
+.mk3-map-pin__badge {
+  right: -10%;
+  top: -10%;
+  min-width: 1.45em;
+  min-height: 1.45em;
+  padding: 0 0.28em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--mk3-map-pin-badge-bg);
+  color: var(--mk3-map-pin-badge-ink);
+  border: 1px solid var(--mk3-map-pin-badge-border);
+  font-size: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 0 0 1px rgba(2, 7, 20, 0.38), 0 4px 12px rgba(2, 7, 20, 0.3);
+}
+
+.mk3-map-pin.is-selected {
+  transform: scale(1.08);
+}
+
+.mk3-map-pin.is-selected .mk3-map-pin__halo {
+  inset: -24%;
+}
+
+.mk3-map-pin.is-selected .mk3-map-pin__body {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 18px var(--mk3-map-pin-halo),
+    0 12px 24px rgba(2, 7, 20, 0.38);
+}
+
+.mk3-map-pin.is-elevated .mk3-map-pin__body {
+  background:
+    linear-gradient(180deg, rgba(42, 16, 38, 0.98), rgba(16, 10, 24, 0.98));
+}
+
 .mk3-map-marker-selected {
   display: grid;
   gap: 4px;
   min-width: 170px;
-  color: #f5e7ff;
+  color: #ebf5ff;
 }
 
 .mk3-map-card .gm-style .gm-style-iw-c {
-  background: linear-gradient(140deg, rgba(17, 11, 40, 0.96), rgba(31, 13, 46, 0.94)) !important;
-  border: 1px solid rgba(94, 211, 246, 0.54) !important;
+  background: linear-gradient(140deg, rgba(4, 11, 24, 0.98), rgba(8, 20, 34, 0.96)) !important;
+  border: 1px solid rgba(55, 239, 255, 0.38) !important;
   border-radius: 12px !important;
   box-shadow:
-    0 10px 26px rgba(7, 4, 19, 0.55),
-    inset 0 0 0 1px rgba(255, 132, 206, 0.18) !important;
+    0 16px 36px rgba(2, 7, 20, 0.58),
+    inset 0 0 0 1px rgba(255, 79, 174, 0.14) !important;
   padding: 10px 12px !important;
 }
 
@@ -2794,8 +2903,8 @@
 }
 
 .mk3-map-card .gm-style .gm-style-iw-t::after {
-  background: rgba(24, 11, 43, 0.96) !important;
-  box-shadow: -1px -1px 0 rgba(94, 211, 246, 0.44) !important;
+  background: rgba(5, 14, 26, 0.98) !important;
+  box-shadow: -1px -1px 0 rgba(55, 239, 255, 0.3) !important;
 }
 
 .mk3-map-card .gm-style .gm-ui-hover-effect {
@@ -2809,7 +2918,7 @@
 }
 
 .mk3-map-marker-selected-kicker {
-  color: #ffdba4;
+  color: #79fff5;
   font-size: 0.58rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -2822,16 +2931,16 @@
   align-items: center;
   gap: 6px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 217, 119, 0.72);
+  border: 1px solid rgba(241, 199, 111, 0.72);
   background:
-    linear-gradient(118deg, rgba(255, 206, 112, 0.28), rgba(255, 162, 46, 0.42) 46%, rgba(255, 223, 160, 0.2));
+    linear-gradient(118deg, rgba(255, 79, 174, 0.22), rgba(122, 37, 88, 0.38) 46%, rgba(241, 199, 111, 0.18));
   color: #fff2cb;
   padding: 0.18rem 0.46rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 0.56rem;
   font-weight: 700;
-  box-shadow: 0 0 0 1px rgba(255, 216, 130, 0.18), 0 0 16px rgba(255, 190, 76, 0.28);
+  box-shadow: 0 0 0 1px rgba(241, 199, 111, 0.16), 0 0 16px rgba(255, 79, 174, 0.24);
   animation: mk3-premium-glow 2.3s ease-in-out infinite;
 }
 
@@ -2842,7 +2951,7 @@
   border: 1px solid rgba(255, 224, 163, 0.74);
   object-fit: cover;
   background: rgba(12, 15, 22, 0.62);
-  box-shadow: 0 0 8px rgba(255, 193, 82, 0.3);
+  box-shadow: 0 0 8px rgba(255, 79, 174, 0.24);
 }
 
 .mk3-map-marker-selected strong {
@@ -2851,7 +2960,7 @@
 }
 
 .mk3-map-marker-selected small {
-  color: #cae2f6;
+  color: #b8cbe6;
   font-size: 0.7rem;
   line-height: 1.25;
 }
@@ -2860,8 +2969,8 @@
   margin-top: 4px;
   width: fit-content;
   border-radius: 999px;
-  border: 1px solid rgba(124, 219, 243, 0.56);
-  background: linear-gradient(114deg, rgba(9, 22, 36, 0.94), rgba(11, 29, 43, 0.9));
+  border: 1px solid rgba(55, 239, 255, 0.4);
+  background: linear-gradient(114deg, rgba(6, 18, 30, 0.94), rgba(9, 28, 42, 0.9));
   color: #dff5ff;
   display: inline-flex;
   align-items: center;
@@ -2878,8 +2987,8 @@
 .mk3-map-marker-selected-action:hover,
 .mk3-map-marker-selected-action:focus-visible {
   color: #fff8e1;
-  border-color: rgba(255, 220, 126, 0.72);
-  background: linear-gradient(116deg, rgba(255, 210, 113, 0.24), rgba(255, 94, 190, 0.28));
+  border-color: rgba(241, 199, 111, 0.68);
+  background: linear-gradient(116deg, rgba(55, 239, 255, 0.18), rgba(255, 79, 174, 0.24));
 }
 
 .mk3-metric-row {

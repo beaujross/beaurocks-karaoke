@@ -1911,7 +1911,7 @@ const DIRECTORY_MAPS_PUBLIC_ENABLED = String(process.env.DIRECTORY_MAPS_PUBLIC_E
   .trim()
   .toLowerCase() === "true";
 const DIRECTORY_MAPS_MAP_ID = String(
-  process.env.DIRECTORY_MAPS_MAP_ID || process.env.GOOGLE_MAPS_MAP_ID || "DEMO_MAP_ID"
+  process.env.DIRECTORY_MAPS_MAP_ID || process.env.GOOGLE_MAPS_MAP_ID || "4255cf5cd59d77ed34285164"
 ).trim();
 const MARKETING_CLAIM_FLOW_ENABLED = String(process.env.MARKETING_CLAIM_FLOW_ENABLED || "true")
   .trim()
