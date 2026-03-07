@@ -889,6 +889,7 @@ const MarketingSite = () => {
                     Email
                     <input
                       type="email"
+                      autoComplete="email"
                       value={authForm.email}
                       onChange={(e) => {
                         setAuthForm((prev) => ({ ...prev, email: e.target.value }));
@@ -903,6 +904,7 @@ const MarketingSite = () => {
                     Password
                     <input
                       type="password"
+                      autoComplete={authMode === "signup" ? "new-password" : "current-password"}
                       value={authForm.password}
                       onChange={(e) => {
                         setAuthForm((prev) => ({ ...prev, password: e.target.value }));
@@ -919,6 +921,7 @@ const MarketingSite = () => {
                       Confirm Password
                       <input
                         type="password"
+                        autoComplete="new-password"
                           value={authForm.confirmPassword}
                           onChange={(e) => {
                             setAuthForm((prev) => ({ ...prev, confirmPassword: e.target.value }));
