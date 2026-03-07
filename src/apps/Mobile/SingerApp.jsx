@@ -38,19 +38,21 @@ import {
 import {
     createLobbyVolleyState,
     applyLobbyInteraction,
-    getActiveParticipants,
     deriveRelayObjective,
-    getLobbyInteractionProfile,
     LOBBY_PLAYGROUND_ENGINE_CONSTANTS
 } from '../TV/lobbyPlaygroundEngine';
 import { watchQuerySnapshot } from '../../lib/firestoreWatch';
 import {
     CROWD_OBJECTIVE_DEFAULT_MODE_ID,
     getCrowdObjectiveModeById,
-    getCrowdObjectiveModeFromLightMode,
-    isCrowdObjectiveLightMode
+    getCrowdObjectiveModeFromLightMode
 } from '../../lib/crowdObjectiveModes';
 import { buildSurfaceUrl } from '../../lib/surfaceDomains';
+import {
+    getVolleyOrbMobileMainLine,
+    isVolleyOrbSceneActive,
+    isVolleyOrbTargetInteraction
+} from '../../lib/volleyOrbUiState';
 
 // Helper Component for Animated Points
 const AnimatedPoints = ({ value, onClick, className = '' }) => {
@@ -102,10 +104,10 @@ const STORM_LAYER_VIBRATE = {
 const LOBBY_PLAYGROUND_INTERACTIONS = [
     {
         id: 'wave',
-        label: 'Wave Tunnel',
+        label: 'Wave',
         emoji: emoji(0x1F44B),
-        hint: 'Best for saving a falling orb.',
-        actionLabel: 'Stabilize',
+        hint: 'Keep the orb alive.',
+        actionLabel: 'Wave',
         effectLabel: 'Slows orb decay and buys recovery time.',
         timingLabel: 'Use when the orb is falling fast.',
         accentCard: 'from-cyan-500/22 via-sky-500/12 to-black/55',
@@ -116,10 +118,10 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
     },
     {
         id: 'laser',
-        label: 'Laser Pop',
+        label: 'Laser',
         emoji: emoji(0x2728),
-        hint: 'Best for quick power jumps.',
-        actionLabel: 'Boost Power',
+        hint: 'Pop the orb forward.',
+        actionLabel: 'Laser',
         effectLabel: 'Adds a fast energy jump to lift tier progress.',
         timingLabel: 'Use when the orb is stable and climbing.',
         accentCard: 'from-fuchsia-500/24 via-cyan-500/10 to-black/55',
@@ -130,10 +132,10 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
     },
     {
         id: 'echo',
-        label: 'Echo Ring',
+        label: 'Echo',
         emoji: emoji(0x1F30A),
-        hint: 'Best when relay timer is low.',
-        actionLabel: 'Extend Relay',
+        hint: 'Catch the next pass.',
+        actionLabel: 'Echo',
         effectLabel: 'Adds relay window time for teammate catch-ups.',
         timingLabel: 'Use when relay timer is almost out.',
         accentCard: 'from-indigo-500/22 via-blue-500/14 to-black/55',
@@ -146,8 +148,8 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
         id: 'confetti',
         label: 'Confetti',
         emoji: emoji(0x1F389),
-        hint: 'Best for climbing tiers fast.',
-        actionLabel: 'Stack Streak',
+        hint: 'Spike the room energy.',
+        actionLabel: 'Confetti',
         effectLabel: 'Increases streak momentum and pushes tier gains.',
         timingLabel: 'Use during active streak chains.',
         accentCard: 'from-pink-500/24 via-yellow-400/15 to-black/55',
@@ -157,24 +159,6 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
         boost: 'Role: Momentum'
     }
 ];
-const formatLobbyInteractionImpact = (interactionId = '') => {
-    const profile = getLobbyInteractionProfile(interactionId);
-    if (!profile) return '';
-    const interactionKey = String(interactionId || '').trim().toLowerCase();
-    if (interactionKey === 'wave') {
-        return `Decay -${Math.max(0, Math.round((1 - Number(profile.decayMultiplier || 1)) * 100))}%`;
-    }
-    if (interactionKey === 'laser') {
-        return `Energy +${Math.max(0, Math.round((Number(profile.energyGainMultiplier || 1) - 1) * 100))}%`;
-    }
-    if (interactionKey === 'echo') {
-        return `Relay +${(Math.max(0, Number(profile.relayWindowBonusMs || 0)) / 1000).toFixed(1)}s`;
-    }
-    if (interactionKey === 'confetti') {
-        return `Streak +${Math.max(1, Math.round(Number(profile.streakStep || 1)))}`;
-    }
-    return profile.roleLabel || '';
-};
 const LOBBY_PLAYGROUND_WINDOW_MS = 60 * 1000;
 const LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE = 12;
 let singerCatalogPermissionSkipLogged = false;
@@ -899,8 +883,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const [isStandaloneDisplay, setIsStandaloneDisplay] = useState(() => isStandaloneDisplayMode());
     const stormAudioRef = useRef(null);
     const stormAudioCtxRef = useRef(null);
-    const lobbySuccessAudioCtxRef = useRef(null);
-    const lobbySuccessLastChimeRef = useRef(0);
     const stormAnalyserRef = useRef(null);
     const stormSourceRef = useRef(null);
     const stormRafRef = useRef(null);
@@ -1821,43 +1803,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const getActiveUid = useCallback(() => (
         String(auth.currentUser?.uid || authReadyUid || uid || '').trim()
     ), [authReadyUid, uid]);
-    const playLobbySuccessChime = useCallback(({ relayHit = false } = {}) => {
-        const now = Date.now();
-        const minGap = relayHit ? 100 : 130;
-        if (now - Number(lobbySuccessLastChimeRef.current || 0) < minGap) return;
-        lobbySuccessLastChimeRef.current = now;
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-        try {
-            if (!lobbySuccessAudioCtxRef.current) {
-                lobbySuccessAudioCtxRef.current = new AudioCtx();
-            }
-            const ctx = lobbySuccessAudioCtxRef.current;
-            if (ctx.state === 'suspended') {
-                ctx.resume().catch(() => {});
-            }
-            const startAt = ctx.currentTime;
-            const scheduleTone = (freq, durationSec, offsetSec, gainAmount, type = 'triangle') => {
-                const toneAt = startAt + offsetSec;
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = type;
-                osc.frequency.setValueAtTime(Math.max(120, Number(freq || 440)), toneAt);
-                gain.gain.setValueAtTime(0.0001, toneAt);
-                gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, Number(gainAmount || 0.04)), toneAt + 0.008);
-                gain.gain.exponentialRampToValueAtTime(0.0001, toneAt + Math.max(0.04, durationSec));
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(toneAt);
-                osc.stop(toneAt + Math.max(0.06, durationSec + 0.04));
-            };
-            scheduleTone(relayHit ? 698 : 622, relayHit ? 0.16 : 0.13, 0, relayHit ? 0.082 : 0.058, 'triangle');
-            scheduleTone(relayHit ? 988 : 831, relayHit ? 0.22 : 0.17, relayHit ? 0.05 : 0.04, relayHit ? 0.056 : 0.04, 'sine');
-            scheduleTone(relayHit ? 1175 : 880, relayHit ? 0.14 : 0.11, relayHit ? 0.1 : 0.09, relayHit ? 0.045 : 0.03, relayHit ? 'square' : 'triangle');
-        } catch {
-            // Audio feedback is best effort only.
-        }
-    }, []);
     const pruneLobbyPlayWindow = useCallback((now = Date.now()) => {
         const cutoff = now - LOBBY_PLAYGROUND_WINDOW_MS;
         const next = lobbyPlayWindowRef.current.filter((timestamp) => Number(timestamp || 0) > cutoff);
@@ -2615,14 +2560,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setLobbyVolleyPreview(createLobbyVolleyState());
             return () => {};
         }
-        const lobbyQueueDepth = (Array.isArray(songs) ? songs : []).reduce(
-            (sum, song) => sum + (song?.status === 'requested' ? 1 : 0),
-            0
-        );
-        const lobbyVolleyModeForced = isCrowdObjectiveLightMode(room?.lightMode);
-        const lobbyVolleySceneActive = !currentSinger
-            && (!room?.activeMode || room.activeMode === 'karaoke')
-            && (lobbyVolleyModeForced || lobbyQueueDepth === 0);
+        const lobbyVolleySceneActive = isVolleyOrbSceneActive({
+            hasCurrentSinger: !!currentSinger,
+            activeMode: room?.activeMode,
+            lightMode: room?.lightMode
+        });
         if (!lobbyVolleySceneActive) {
             setLobbyVolleyPreview(createLobbyVolleyState());
             return () => {};
@@ -2660,7 +2602,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setLobbyVolleyPreview(nextState);
         });
         return () => unsub();
-    }, [roomCode, room?.lobbyVolleyEnabled, room?.lightMode, room?.activeMode, songs, currentSinger]);
+    }, [roomCode, room?.lobbyVolleyEnabled, room?.lightMode, room?.activeMode, currentSinger]);
     const popTriviaRoundSec = Math.max(8, Number(room?.popTriviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC));
     const popTriviaState = useMemo(() => {
         if (room?.activeMode !== 'karaoke') return null;
@@ -3780,16 +3722,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             toast('Idle crowd objective is currently off.');
             return;
         }
-        const lobbyQueueDepth = (Array.isArray(songs) ? songs : []).reduce(
-            (sum, song) => sum + (song?.status === 'requested' ? 1 : 0),
-            0
-        );
-        const lobbyVolleyModeForced = isCrowdObjectiveLightMode(room?.lightMode);
-        const lobbyVolleySceneActive = !currentSinger
-            && (!room?.activeMode || room.activeMode === 'karaoke')
-            && (lobbyVolleyModeForced || lobbyQueueDepth === 0);
+        const lobbyVolleySceneActive = isVolleyOrbSceneActive({
+            hasCurrentSinger: !!currentSinger,
+            activeMode: room?.activeMode,
+            lightMode: room?.lightMode
+        });
         if (!lobbyVolleySceneActive) {
-            toast(`${activeObjectiveMode?.label || 'Crowd objective'} is available when stage is idle.`);
+            toast(`${activeObjectiveMode?.label || 'Crowd objective'} starts when the host turns it on.`);
             return;
         }
         const key = String(interactionId || '').trim().toLowerCase();
@@ -3836,7 +3775,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
         }
         try {
-            const relayTargetHit = !!lobbyRelayObjective?.active && lobbyRelayObjective?.targetType === key;
             const activeUid = getActiveUid();
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
                 roomCode,
@@ -3849,7 +3787,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 isFree: true,
                 timestamp: serverTimestamp()
             });
-            playLobbySuccessChime({ relayHit: relayTargetHit });
             trackEvent('lobby_play_interaction', { room_code: roomCode, interaction: key });
         } catch (error) {
             console.error(error);
@@ -6831,19 +6768,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
     const noSingerOnStage = !currentSinger;
     const lobbyVolleyEnabled = room?.lobbyVolleyEnabled !== false;
-    const lobbyQueueDepth = (Array.isArray(songs) ? songs : []).reduce(
-        (sum, song) => sum + (song?.status === 'requested' ? 1 : 0),
-        0
-    );
     const lobbyForcedObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
     const lobbyObjectiveMode = lobbyForcedObjectiveMode || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
-    const _lobbyObjectiveLabel = lobbyObjectiveMode?.label || 'Volley Orb';
-    const lobbyObjectiveMobileGoal = lobbyObjectiveMode?.mobileGoal || 'Keep the volley alive';
     const lobbyObjectiveStreakLabel = lobbyObjectiveMode?.id === 'team_pong' ? 'Rally' : 'Streak';
-    const lobbyVolleyModeForced = isCrowdObjectiveLightMode(room?.lightMode);
-    const lobbyVolleySceneActive = noSingerOnStage
-        && (!room?.activeMode || room.activeMode === 'karaoke')
-        && (lobbyVolleyModeForced || lobbyQueueDepth === 0);
+    const lobbyVolleySceneActive = isVolleyOrbSceneActive({
+        hasCurrentSinger: !noSingerOnStage,
+        activeMode: room?.activeMode,
+        lightMode: room?.lightMode
+    });
     const lobbyPlayStrictMode = !!room?.lobbyPlaygroundStrictMode;
     const lobbyPlaygroundPaused = !!room?.lobbyPlaygroundPaused;
     const lobbyPlayMaxPerMinute = Math.max(
@@ -6853,24 +6785,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const lobbyPlayRemaining = Math.max(0, lobbyPlayMaxPerMinute - lobbyPlayUsageCount);
     const lobbyPlayRateLimited = lobbyPlayRemaining <= 0;
     const lobbyPlayInteractionDisabled = lobbyPlayRateLimited || lobbyPlaygroundPaused;
-    const lobbyPlayCooldownMs = Math.max(
-        120,
-        Math.min(1200, Number(room?.lobbyPlaygroundPerUserCooldownMs || (lobbyPlayStrictMode ? 450 : 220)))
-    );
     const lobbyVolleyTimeoutMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.STREAK_TIMEOUT_MS || 6200);
     const lobbyVolleyAgeMs = Math.max(0, lobbyVolleyNowMs - Number(lobbyVolleyPreview?.lastInteractionAtMs || 0));
-    const _lobbyVolleyStreakDecayPct = Math.max(0, Math.min(100, Math.round(100 - ((lobbyVolleyAgeMs / Math.max(1, lobbyVolleyTimeoutMs)) * 100))));
-    const _lobbyVolleyEnergyLive = Math.max(0, Math.min(100, Math.round(
-        Number(lobbyVolleyPreview?.energy || 0) - ((lobbyVolleyAgeMs / 1000) * 0.28)
-    )));
-    const lobbyVolleyParticipants = getActiveParticipants(lobbyVolleyPreview, lobbyVolleyNowMs).slice(0, 4);
+    const lobbyVolleyTimedOut = Number(lobbyVolleyPreview?.lastInteractionAtMs || 0) > 0
+        && lobbyVolleyAgeMs >= lobbyVolleyTimeoutMs;
     const lobbyRelayObjective = deriveRelayObjective(lobbyVolleyPreview, lobbyVolleyNowMs);
-    const lobbyRelayTarget = LOBBY_PLAYGROUND_INTERACTIONS.find((interaction) => interaction.id === lobbyRelayObjective?.targetType) || null;
     const lobbyRelayRemainingSec = Math.max(0, Math.ceil(Number(lobbyRelayObjective?.remainingMs || 0) / 100) / 10);
-    const lobbyBuilderSequenceLabel = LOBBY_PLAYGROUND_INTERACTIONS
-        .map((interaction) => (interaction.actionLabel || interaction.label || '').toUpperCase())
-        .filter(Boolean)
-        .join(' -> ');
+    const lobbyMobileTeamworkLabel = `x${Number(lobbyVolleyPreview?.teamworkMultiplier || 1).toFixed(1)}`;
+    const lobbyMobileMainLine = getVolleyOrbMobileMainLine({
+        paused: lobbyPlaygroundPaused,
+        timedOut: lobbyVolleyTimedOut,
+        relayActive: lobbyRelayObjective.active
+    });
     const chatTitle = socialTab === 'host' ? 'DM Host' : 'VIP Lounge';
     const chatStatusLabel = !room?.chatEnabled
         ? 'Chat paused'
@@ -7407,10 +7333,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                  <div className="flex items-center justify-between gap-2">
                                      <div className="min-w-0">
                                          <div className="text-xs uppercase tracking-[0.18em] text-cyan-200">Volley Orb</div>
-                                         <div className="text-base font-black text-white leading-tight">{lobbyObjectiveMobileGoal}</div>
+                                         <div className="text-base font-black text-white leading-tight">{lobbyMobileMainLine}</div>
                                      </div>
                                      <div className="flex items-center gap-1">
-                                         <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] bg-cyan-400/20 border border-cyan-300/45 text-cyan-100">FREE</span>
                                          {lobbyPlayStrictMode && (
                                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] border bg-fuchsia-500/20 border-fuchsia-300/45 text-fuchsia-100">
                                                  STRICT
@@ -7428,31 +7353,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          {lobbyObjectiveStreakLabel} {lobbyVolleyPreview?.streakCount || 0}
                                      </span>
                                      <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                         Tier {lobbyVolleyPreview?.currentTier || 0}
+                                         Teamwork {lobbyMobileTeamworkLabel}
                                      </span>
                                      <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                         {lobbyVolleyParticipants.length} active
-                                     </span>
-                                     <span className={`px-2 py-0.5 rounded-full border ${lobbyPlayRateLimited ? 'bg-amber-500/20 border-amber-300/40 text-amber-100' : 'bg-black/45 border-white/20 text-zinc-100'}`}>
-                                         {lobbyPlayRemaining}/{lobbyPlayMaxPerMinute}
+                                         Relay {lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s` : 'idle'}
                                      </span>
                                  </div>
-                                 <div className="rounded-xl border border-white/15 bg-black/35 px-3 py-2">
-                                     <div className="text-[11px] uppercase tracking-[0.16em] text-cyan-200">Builder sequence</div>
-                                     <div className="text-sm font-bold text-white mt-1">{lobbyBuilderSequenceLabel}</div>
-                                     <div className="text-xs text-zinc-200 mt-1">Follow the highlighted target with a different teammate to extend the volley.</div>
-                                 </div>
-                                  <div className="grid grid-cols-2 gap-3">
-                                       {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction, idx) => {
-                                            const impactLabel = formatLobbyInteractionImpact(interaction.id);
-                                            const isRelayTarget = lobbyRelayObjective.active && interaction.id === lobbyRelayObjective.targetType;
-                                            const interactionStatusLabel = lobbyPlaygroundPaused
-                                                ? 'Paused by host'
-                                                : lobbyPlayRateLimited
-                                                    ? 'Cooling down...'
-                                                    : isRelayTarget
-                                                        ? 'Relay target now'
-                                                        : 'Ready';
+                                 <div className="grid grid-cols-2 gap-3">
+                                       {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction) => {
+                                            const isRelayTarget = isVolleyOrbTargetInteraction({
+                                                relayActive: lobbyRelayObjective.active,
+                                                targetType: lobbyRelayObjective.targetType,
+                                                interactionId: interaction.id
+                                            });
                                             return (
                                                 <button
                                                     key={interaction.id}
@@ -7465,44 +7378,21 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
                                                 >
                                                     <div className="w-full flex items-center justify-between gap-2">
-                                                        <span className={`text-[11px] font-bold tracking-[0.18em] ${interaction.accentText}`}>TAP {String.fromCharCode(65 + idx)}</span>
-                                                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full border ${
-                                                            isRelayTarget
-                                                                ? 'border-emerald-200/60 bg-emerald-500/25 text-emerald-50'
-                                                                : 'border-white/25 bg-black/35 text-zinc-100'
-                                                        }`}>
-                                                            {isRelayTarget ? 'TARGET' : 'FREE'}
-                                                        </span>
+                                                        <span />
+                                                        {isRelayTarget ? (
+                                                            <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full border border-emerald-200/60 bg-emerald-500/25 text-emerald-50">
+                                                                TARGET
+                                                            </span>
+                                                        ) : (
+                                                            <span />
+                                                        )}
                                                     </div>
-                                                    <span className="mt-1 text-5xl leading-none">{interaction.emoji}</span>
-                                                    <span className={`mt-1 text-lg font-black uppercase leading-none ${interaction.accentText}`}>{interaction.actionLabel || interaction.label}</span>
-                                                    <span className={`mt-1 text-sm font-semibold leading-none ${interaction.accentText}`}>{impactLabel || interaction.label}</span>
-                                                    <div className={`mt-2 text-sm font-semibold ${
-                                                        isRelayTarget ? 'text-emerald-100' : 'text-zinc-200'
-                                                    }`}>
-                                                        {interactionStatusLabel}
-                                                    </div>
+                                                    <span className="mt-2 text-5xl leading-none">{interaction.emoji}</span>
+                                                    <span className={`mt-2 text-lg font-black uppercase leading-none ${interaction.accentText}`}>{interaction.label}</span>
                                                 </button>
                                            );
                                        })}
                                   </div>
-                                 <div className="flex flex-wrap items-center gap-1 text-[11px] text-zinc-200">
-                                     <span className={`px-2 py-0.5 rounded-full border ${
-                                         lobbyRelayObjective.active
-                                             ? 'border-emerald-300/45 bg-emerald-500/12 text-emerald-100'
-                                             : 'border-white/15 bg-black/35 text-zinc-300'
-                                     }`}>
-                                         {lobbyRelayObjective.active
-                                             ? `${lobbyRelayTarget?.emoji || DEFAULT_EMOJI} next: different teammate taps ${lobbyRelayTarget?.actionLabel || lobbyRelayTarget?.label || lobbyRelayObjective?.targetType || 'wave'} in ${lobbyRelayRemainingSec}s`
-                                             : 'Relay unlocks when a different teammate hits the next builder'}
-                                     </span>
-                                     <span className="px-2 py-0.5 rounded-full border border-white/15 bg-black/35 text-zinc-300">
-                                         Cooldown {lobbyPlayCooldownMs}ms
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded-full border border-cyan-300/35 bg-cyan-500/12 text-cyan-100">
-                                         Hit builder = encouragement chime
-                                     </span>
-                                 </div>
                                  <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#27d3f7] to-[#26D7E8] text-black py-2.5 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
                                      Add first song to start karaoke
                                  </button>

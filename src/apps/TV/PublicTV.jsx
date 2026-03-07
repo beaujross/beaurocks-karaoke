@@ -42,10 +42,14 @@ import { watchQuerySnapshot } from '../../lib/firestoreWatch';
 import {
     CROWD_OBJECTIVE_DEFAULT_MODE_ID,
     getCrowdObjectiveModeById,
-    getCrowdObjectiveModeFromLightMode,
-    isCrowdObjectiveLightMode
+    getCrowdObjectiveModeFromLightMode
 } from '../../lib/crowdObjectiveModes';
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
+import {
+    getVolleyOrbTvInstructionCopy,
+    isVolleyOrbSceneActive,
+    isVolleyOrbTargetInteraction
+} from '../../lib/volleyOrbUiState';
 
 const isTvVisibleChatMessage = (message) => {
     if (!message) return false;
@@ -235,25 +239,25 @@ const LOBBY_PLAY_EFFECTS = {
 const LOBBY_PLAY_GUIDE = [
     {
         id: 'wave',
-        action: 'Stabilize',
+        action: 'Wave',
         detail: 'Slows decay so the orb can recover.',
         timing: 'Use when the orb is dropping.'
     },
     {
         id: 'laser',
-        action: 'Boost',
+        action: 'Laser',
         detail: 'Adds a quick energy jump.',
         timing: 'Use during steady momentum.'
     },
     {
         id: 'echo',
-        action: 'Extend Relay',
+        action: 'Echo',
         detail: 'Adds time to relay windows.',
         timing: 'Use when relay timer is low.'
     },
     {
         id: 'confetti',
-        action: 'Stack Streak',
+        action: 'Confetti',
         detail: 'Builds streak momentum and tiers.',
         timing: 'Use during active chains.'
     }
@@ -856,15 +860,14 @@ const PublicTV = ({ roomCode }) => {
     const [readyTimer, setReadyTimer] = useState(0);
     const [chatMessages, setChatMessages] = useState([]);
     const [showChatFeed, setShowChatFeed] = useState(false);
-    const [lobbyPromptIndex, setLobbyPromptIndex] = useState(0);
-    const [lobbyLiveEvents, setLobbyLiveEvents] = useState([]);
+    const [, setLobbyLiveEvents] = useState([]);
     const [bingoRngNow, setBingoRngNow] = useState(nowMs());
     const [bonusDropBurst, setBonusDropBurst] = useState(null);
     const [popTriviaVotes, setPopTriviaVotes] = useState([]);
     const [popTriviaNow, setPopTriviaNow] = useState(nowMs());
     const [previewNowMs, setPreviewNowMs] = useState(nowMs());
     const [previewSession, setPreviewSession] = useState({ key: '', startMs: 0 });
-    const [reactionScoreVersion, setReactionScoreVersion] = useState(0);
+    const [reactionScoreTotalsByPerformance, setReactionScoreTotalsByPerformance] = useState(() => new Map());
     const [viewportSize, setViewportSize] = useState(() => ({
         width: typeof window !== 'undefined' ? window.innerWidth : 1920,
         height: typeof window !== 'undefined' ? window.innerHeight : 1080
@@ -878,9 +881,8 @@ const PublicTV = ({ roomCode }) => {
     const stormThunderRefs = useRef([]);
     const stormAnalyserUnavailableRef = useRef(false);
     const playStormLayerPulseRef = useRef(() => {});
-    const playLobbySuccessChimeRef = useRef(() => {});
+    const playLobbyVolleyCueRef = useRef(() => {});
     const triggerStormLightningRef = useRef(() => {});
-    const lastLobbyChimeAtRef = useRef(0);
     const lastPromptAt = useRef(0);
     const lastRealMessageAt = useRef(0);
     const promptIndexRef = useRef(0);
@@ -1293,37 +1295,75 @@ const PublicTV = ({ roomCode }) => {
         }
     }, [audioCtx]);
 
-    const playLobbySuccessChime = useCallback(({ relayHit = false, intensity = 1 } = {}) => {
+    const lobbyCueLastPlayedRef = useRef({});
+    const playLobbyVolleyCue = useCallback((cue = 'hit', { intensity = 1 } = {}) => {
         if (!audioCtx) return;
         const ctx = audioCtx;
         const nowMsValue = nowMs();
-        const minGapMs = relayHit ? 95 : 130;
-        if (nowMsValue - Number(lastLobbyChimeAtRef.current || 0) < minGapMs) return;
-        lastLobbyChimeAtRef.current = nowMsValue;
+        const throttles = {
+            launch: 220,
+            hit: 130,
+            relay: 110,
+            tier: 260,
+            warning: 1000,
+            reset: 480
+        };
+        const minGapMs = Number(throttles[cue] || 140);
+        const lastPlayedAt = Number(lobbyCueLastPlayedRef.current?.[cue] || 0);
+        if (nowMsValue - lastPlayedAt < minGapMs) return;
+        lobbyCueLastPlayedRef.current = {
+            ...(lobbyCueLastPlayedRef.current || {}),
+            [cue]: nowMsValue
+        };
         if (ctx.state === 'suspended') {
             ctx.resume().catch(() => {});
         }
         const now = ctx.currentTime;
-        const gainBoost = clampLobby(Number(intensity || 1), 0.7, 1.8);
-        const hitGain = relayHit ? 0.085 : 0.065;
+        const gainBoost = clampLobby(Number(intensity || 1), 0.65, 1.7);
         const scheduleTone = (freq, durationSec, startOffsetSec, gainScale = 1, type = 'triangle') => {
             const startAt = now + startOffsetSec;
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = type;
-            osc.frequency.setValueAtTime(Math.max(120, Number(freq || 440)), startAt);
+            osc.frequency.setValueAtTime(Math.max(70, Number(freq || 440)), startAt);
             gain.gain.setValueAtTime(0.0001, startAt);
-            gain.gain.exponentialRampToValueAtTime(hitGain * gainBoost * gainScale, startAt + 0.01);
-            gain.gain.exponentialRampToValueAtTime(0.0001, startAt + Math.max(0.04, durationSec));
+            gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, gainScale * gainBoost), startAt + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.0001, startAt + Math.max(0.05, durationSec));
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.start(startAt);
-            osc.stop(startAt + Math.max(0.06, durationSec + 0.05));
+            osc.stop(startAt + Math.max(0.07, durationSec + 0.05));
         };
-        scheduleTone(relayHit ? 698 : 622, relayHit ? 0.16 : 0.13, 0, 1, 'triangle');
-        scheduleTone(relayHit ? 988 : 831, relayHit ? 0.22 : 0.17, relayHit ? 0.06 : 0.05, 0.72, 'sine');
-        if (relayHit) {
-            scheduleTone(1175, 0.18, 0.12, 0.62, 'square');
+        switch (cue) {
+            case 'launch':
+                scheduleTone(262, 0.38, 0, 0.022, 'sine');
+                scheduleTone(392, 0.42, 0.04, 0.028, 'triangle');
+                scheduleTone(523, 0.48, 0.08, 0.02, 'sine');
+                break;
+            case 'relay':
+                scheduleTone(466, 0.16, 0, 0.024, 'triangle');
+                scheduleTone(698, 0.2, 0.04, 0.022, 'sine');
+                scheduleTone(988, 0.24, 0.1, 0.018, 'square');
+                break;
+            case 'tier':
+                scheduleTone(220, 0.2, 0, 0.018, 'sine');
+                scheduleTone(330, 0.28, 0.03, 0.022, 'triangle');
+                scheduleTone(494, 0.36, 0.08, 0.024, 'sine');
+                break;
+            case 'warning':
+                scheduleTone(174, 0.18, 0, 0.013, 'sine');
+                scheduleTone(207, 0.18, 0.16, 0.011, 'triangle');
+                break;
+            case 'reset':
+                scheduleTone(392, 0.14, 0, 0.012, 'triangle');
+                scheduleTone(262, 0.28, 0.08, 0.016, 'sine');
+                scheduleTone(174, 0.34, 0.16, 0.012, 'triangle');
+                break;
+            case 'hit':
+            default:
+                scheduleTone(220, 0.12, 0, 0.012, 'sine');
+                scheduleTone(330, 0.16, 0.04, 0.009, 'triangle');
+                break;
         }
     }, [audioCtx]);
 
@@ -1332,8 +1372,8 @@ const PublicTV = ({ roomCode }) => {
     }, [playStormLayerPulse]);
 
     useEffect(() => {
-        playLobbySuccessChimeRef.current = playLobbySuccessChime;
-    }, [playLobbySuccessChime]);
+        playLobbyVolleyCueRef.current = playLobbyVolleyCue;
+    }, [playLobbyVolleyCue]);
 
     useEffect(() => {
         triggerStormLightningRef.current = triggerStormLightning;
@@ -1473,7 +1513,7 @@ const PublicTV = ({ roomCode }) => {
         trackEvent('tv_view', { room_code: roomCode });
         reactionScoreByDocRef.current = new Map();
         reactionScoreTotalsByPerformanceRef.current = new Map();
-        setReactionScoreVersion((prev) => prev + 1);
+        setReactionScoreTotalsByPerformance(new Map());
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => setRoom(s.data()));
         const unsubSongs = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), where('roomCode', '==', roomCode)), s => setSongs(s.docs.map(d => ({id:d.id, ...d.data()}))));
         
@@ -1559,10 +1599,22 @@ const PublicTV = ({ roomCode }) => {
                             const relayReceiverName = relayHit
                                 ? String(nextVolleyStateRaw?.lastRelayReceiverName || (d.userName || d.user || 'Guest'))
                                 : '';
-                            playLobbySuccessChimeRef.current({
-                                relayHit,
-                                intensity: Math.min(1.8, 0.9 + (totalCount * 0.1) + (relayHit ? 0.35 : 0))
-                            });
+                            const previousVolleyExpired = Number(previousVolleyState?.lastInteractionAtMs || 0) > 0
+                                && (burstTime - Number(previousVolleyState?.lastInteractionAtMs || 0)) >= Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.STREAK_TIMEOUT_MS || 6200);
+                            const previousVolleyActive = Number(previousVolleyState?.streakCount || 0) > 0
+                                && Number(previousVolleyState?.lastInteractionAtMs || 0) > 0
+                                && !previousVolleyExpired;
+                            const volleyCue = relayHit
+                                ? 'relay'
+                                : tierTransitions.length
+                                    ? 'tier'
+                                    : previousVolleyActive
+                                        ? 'hit'
+                                        : 'launch';
+                            playLobbyVolleyCueRef.current(
+                                volleyCue,
+                                { intensity: Math.min(1.6, 0.85 + (totalCount * 0.08) + (relayHit ? 0.22 : 0)) }
+                            );
                             setLobbyLastInteraction({
                                 id: `lobby-last-${c.doc.id}`,
                                 interactionType,
@@ -1978,7 +2030,7 @@ const PublicTV = ({ roomCode }) => {
                 }
             });
             if (scoreChanged) {
-                setReactionScoreVersion((prev) => prev + 1);
+                setReactionScoreTotalsByPerformance(new Map(reactionScoreTotalsByPerformanceRef.current));
             }
         };
         let unsubReactFallback = null;
@@ -2720,9 +2772,9 @@ const PublicTV = ({ roomCode }) => {
         if (!activePerformanceId) return 0;
         return Math.max(
             0,
-            Math.round(Number(reactionScoreTotalsByPerformanceRef.current.get(activePerformanceId) || 0))
+            Math.round(Number(reactionScoreTotalsByPerformance.get(activePerformanceId) || 0))
         );
-    }, [current?.id, reactionScoreVersion]);
+    }, [current?.id, reactionScoreTotalsByPerformance]);
     const currentPerformanceHypeScore = current
         ? Math.max(
             0,
@@ -2751,52 +2803,24 @@ const PublicTV = ({ roomCode }) => {
         spotlightPayload: room?.spotlightUser || null,
         roomUser: spotlightUser || null
     });
-    const lobbyWarmupMode = !current
-        && allQueue.length === 0
-        && (!room?.activeMode || room.activeMode === 'karaoke');
     const lobbyForcedObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
-    const lobbyVolleyModeForced = isCrowdObjectiveLightMode(room?.lightMode);
     const lobbyObjectiveMode = lobbyForcedObjectiveMode || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
     const lobbyObjectiveIsTeamPong = lobbyObjectiveMode?.id === 'team_pong';
     const lobbyObjectiveLabel = lobbyObjectiveMode?.label || 'Volley Orb';
-    const lobbyObjectiveBannerGoal = lobbyObjectiveMode?.tvBannerGoal || 'Keep The Volley Alive';
-    const lobbyPromptPool = Array.isArray(lobbyObjectiveMode?.prompts) && lobbyObjectiveMode.prompts.length
-        ? lobbyObjectiveMode.prompts
-        : ['Goal: keep the crowd objective active.'];
-    const lobbyVolleySceneActive = !current
-        && (!room?.activeMode || room.activeMode === 'karaoke')
-        && (lobbyWarmupMode || lobbyVolleyModeForced);
+    const lobbyVolleySceneActive = isVolleyOrbSceneActive({
+        hasCurrentSinger: !!current,
+        activeMode: room?.activeMode,
+        lightMode: room?.lightMode
+    });
     const lobbyVolleyEnabled = room?.lobbyVolleyEnabled !== false;
     const lobbyCompactHudMode = lobbyVolleySceneActive && lobbyVolleyEnabled;
     const lobbyGroundLineBottomPct = lobbyCompactHudMode ? 3.2 : 4.4;
     const lobbyGroundLineTopPct = 100 - lobbyGroundLineBottomPct;
-    const lobbyPrompt = lobbyPromptPool[lobbyPromptIndex % lobbyPromptPool.length];
-    const lobbyMembers = [...roomUsers]
-        .sort((a, b) => getTimestampMs(b?.lastActiveAt) - getTimestampMs(a?.lastActiveAt))
-        .slice(0, 8);
-    const lobbyJoinEvents = activities
-        .filter((entry) => /joined the party/i.test(String(entry?.text || '')))
-        .map((entry, idx) => ({
-            id: `join-${idx}-${getTimestampMs(entry?.timestamp)}`,
-            avatar: entry?.icon || EMOJI.wave,
-            user: entry?.user || 'Guest',
-            text: 'joined the lobby',
-            timestampMs: getTimestampMs(entry?.timestamp)
-        }));
-    const lobbyEventFeed = [...lobbyLiveEvents, ...lobbyJoinEvents]
-        .filter((entry) => (nowMs() - Number(entry?.timestampMs || 0)) < 90000)
-        .sort((a, b) => Number(b?.timestampMs || 0) - Number(a?.timestampMs || 0))
-        .slice(0, 5);
     const lobbyNow = nowMs();
     const lobbyOrbEnergy = getLobbyOrbMeterValue(lobbyVolleyState, lobbyNow);
     const lobbyActiveParticipants = getActiveParticipants(lobbyVolleyState, lobbyNow).slice(0, LOBBY_ORB_EVENT_CAP);
     const lobbyRelayObjective = deriveRelayObjective(lobbyVolleyState, lobbyNow);
-    const lobbyRelayEffect = getLobbyPlayEffectByInteractionType(lobbyRelayObjective?.targetType || '');
     const lobbyRelayRemainingSec = Math.max(0, Math.ceil(Number(lobbyRelayObjective?.remainingMs || 0) / 100) / 10);
-    const lobbyBuilderSequenceLabel = LOBBY_PLAY_GUIDE
-        .map((guide) => (guide?.action || '').toUpperCase())
-        .filter(Boolean)
-        .join(' -> ');
     const lobbyCurrentTierMeta = getLobbyTierDefinition(lobbyVolleyState?.currentTier || 0);
     const motionSafeFx = !!room?.reduceMotionFx;
     const lobbyOrbSkinUrl = useMemo(
@@ -2810,7 +2834,11 @@ const PublicTV = ({ roomCode }) => {
         0,
         100
     );
-    const lobbyHasActiveVolley = Number(lobbyVolleyState?.streakCount || 0) > 0 && Number(lobbyVolleyState?.lastInteractionAtMs || 0) > 0;
+    const lobbyVolleyExpired = Number(lobbyVolleyState?.lastInteractionAtMs || 0) > 0
+        && lobbyStreakAgeMs >= lobbyStreakTimeoutMs;
+    const lobbyHasActiveVolley = Number(lobbyVolleyState?.streakCount || 0) > 0
+        && Number(lobbyVolleyState?.lastInteractionAtMs || 0) > 0
+        && !lobbyVolleyExpired;
     const lobbyOrbDiameterPx = clampLobby((Number(viewportSize?.width || 1920) * 0.2), 198, 292);
     const lobbyOrbRadiusPct = (lobbyOrbDiameterPx * 0.5 / Math.max(1, Number(viewportSize?.height || 1080))) * 100;
     const lobbyOrbRestCenterTopPct = clampLobby(
@@ -2933,6 +2961,16 @@ const PublicTV = ({ roomCode }) => {
     const lobbyObjectiveProgressLabel = lobbyObjectiveIsTeamPong
         ? `Pace ${Math.round(lobbyPongState.speedPct)}%`
         : `Clearance ${Math.round(lobbyOrbClearancePct)}%`;
+    const lobbyWarningState = lobbyHasActiveVolley
+        && !room?.lobbyPlaygroundPaused
+        && (lobbyRelayObjective?.urgency === 'danger' || lobbyStreakDecayPct <= 24);
+    const lobbyInstructionCopy = getVolleyOrbTvInstructionCopy({
+        warningState: lobbyWarningState,
+        hasActiveVolley: lobbyHasActiveVolley,
+        volleyExpired: lobbyVolleyExpired
+    });
+    const lobbyInstructionHeadline = lobbyInstructionCopy.headline;
+    const lobbyInstructionSecondary = lobbyInstructionCopy.secondary;
     const showLobbyPlaygroundFx = lobbyVolleyEnabled && (
         lobbyVolleySceneActive
         || lobbyTransitionPhase === 'exiting'
@@ -2943,17 +2981,32 @@ const PublicTV = ({ roomCode }) => {
         || lobbyAssistMoments.length > 0
         || lobbyTierChips.length > 0
     );
+    const lobbyWarningCueActiveRef = useRef(false);
+    const lobbyResetCueActiveRef = useRef(false);
     useEffect(() => {
         if (!lobbyVolleySceneActive) {
-            setLobbyPromptIndex(0);
             setLobbyLastInteraction(null);
+            lobbyWarningCueActiveRef.current = false;
+            lobbyResetCueActiveRef.current = false;
             return;
         }
-        const interval = setInterval(() => {
-            setLobbyPromptIndex((prev) => (prev + 1) % lobbyPromptPool.length);
-        }, 9000);
-        return () => clearInterval(interval);
-    }, [lobbyVolleySceneActive, lobbyPromptPool.length]);
+        if (lobbyWarningState) {
+            if (!lobbyWarningCueActiveRef.current) {
+                playLobbyVolleyCueRef.current('warning', { intensity: 0.82 });
+            }
+            lobbyWarningCueActiveRef.current = true;
+        } else {
+            lobbyWarningCueActiveRef.current = false;
+        }
+        if (lobbyVolleyExpired) {
+            if (!lobbyResetCueActiveRef.current) {
+                playLobbyVolleyCueRef.current('reset', { intensity: 0.9 });
+            }
+            lobbyResetCueActiveRef.current = true;
+        } else {
+            lobbyResetCueActiveRef.current = false;
+        }
+    }, [lobbyVolleySceneActive, lobbyWarningState, lobbyVolleyExpired]);
     useEffect(() => {
         if (lobbyTransitionTimerRef.current) {
             clearTimeout(lobbyTransitionTimerRef.current);
@@ -3004,6 +3057,9 @@ const PublicTV = ({ roomCode }) => {
         lobbyLastAnchorRef.current = null;
         setLobbyLastInteraction(null);
         lobbyAwardAuthLockedRef.current = false;
+        lobbyCueLastPlayedRef.current = {};
+        lobbyWarningCueActiveRef.current = false;
+        lobbyResetCueActiveRef.current = false;
     }, [roomCode]);
     useEffect(() => {
         if (lobbyVolleyEnabled) return;
@@ -3024,6 +3080,9 @@ const PublicTV = ({ roomCode }) => {
         lobbyLastAnchorRef.current = null;
         setLobbyLastInteraction(null);
         lobbyAwardAuthLockedRef.current = false;
+        lobbyCueLastPlayedRef.current = {};
+        lobbyWarningCueActiveRef.current = false;
+        lobbyResetCueActiveRef.current = false;
     }, [lobbyVolleyEnabled]);
     useEffect(() => () => {
         if (lobbyTransitionTimerRef.current) {
@@ -4377,31 +4436,16 @@ const PublicTV = ({ roomCode }) => {
                                 {lobbyVolleySceneActive && lobbyVolleyEnabled ? (
                                     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
                                         <div className="flex items-center justify-between mb-2 border-b border-white/10 pb-2">
-                                            <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-cyan-300">LOBBY PLAYGROUND</h3>
+                                            <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-cyan-300">VOLLEY ORB</h3>
                                         </div>
-                                        <div className={`${lobbyCompactHudMode ? 'text-[11px] md:text-xs mb-2' : 'text-xs md:text-sm mb-3'} text-zinc-200/90 uppercase tracking-[0.12em]`}>
-                                            Volley mode: take turns and hit the highlighted builder.
+                                        <div className="rounded-2xl border border-cyan-300/35 bg-black/35 px-3 py-3 mb-3">
+                                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/90 mb-1">Now</div>
+                                            <div className="text-sm md:text-lg font-semibold text-white leading-tight">{lobbyInstructionHeadline}</div>
+                                            <div className="mt-1 text-xs md:text-sm text-cyan-100/90">{lobbyInstructionSecondary}</div>
                                         </div>
-                                        <div className={`rounded-2xl border border-emerald-300/35 bg-emerald-500/10 px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'}`}>
-                                            <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-100 mb-1">{lobbyObjectiveLabel} Goal</div>
-                                            <div className={`${lobbyCompactHudMode ? 'text-sm md:text-base' : 'text-sm md:text-lg'} font-semibold text-white leading-tight`}>
-                                                {lobbyObjectiveBannerGoal}
-                                            </div>
-                                        </div>
-                                        <div className={`rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'}`}>
-                                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200 mb-1">Try This</div>
-                                            <div className={`${lobbyCompactHudMode ? 'text-sm md:text-base' : 'text-sm md:text-lg'} font-semibold text-white leading-tight`}>{lobbyPrompt}</div>
-                                        </div>
-                                        <div className={`rounded-2xl border border-white/20 bg-black/35 px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'}`}>
-                                            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-200">Builder Sequence</div>
-                                            <div className={`${lobbyCompactHudMode ? 'text-xs md:text-sm' : 'text-sm md:text-base'} font-bold text-white mt-1`}>
-                                                {lobbyBuilderSequenceLabel}
-                                            </div>
-                                            <div className="text-[11px] text-zinc-200 mt-1">Different teammate must hit the highlighted next builder.</div>
-                                        </div>
-                                        <div className={`rounded-2xl border border-fuchsia-300/35 bg-gradient-to-r from-cyan-500/14 via-indigo-500/14 to-fuchsia-500/16 px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'}`}>
+                                        <div className="rounded-2xl border border-fuchsia-300/35 bg-gradient-to-r from-cyan-500/14 via-indigo-500/14 to-fuchsia-500/16 px-3 py-3 mb-3">
                                             <div className="flex items-center justify-between gap-2">
-                                                <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100">Teamwork Multiplier</div>
+                                                <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100">Teamwork</div>
                                                 <div className="px-2 py-1 rounded-full border border-white/25 bg-black/35 text-[10px] uppercase tracking-[0.15em] text-white">
                                                     Tier {lobbyVolleyState?.currentTier || 0}{lobbyCurrentTierMeta?.name ? `: ${lobbyCurrentTierMeta.name}` : ''}
                                                 </div>
@@ -4409,9 +4453,7 @@ const PublicTV = ({ roomCode }) => {
                                             <div className="mt-2 flex items-end justify-between gap-3">
                                                 <div className="text-2xl md:text-3xl font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
                                                 <div className="text-xs md:text-sm text-cyan-100">
-                                                    {lobbyHasActiveVolley
-                                                        ? `${lobbyAirborneSec}s ${lobbyObjectiveIsTeamPong ? 'rally live' : 'airborne'}`
-                                                        : (lobbyObjectiveIsTeamPong ? 'waiting for rally' : 'waiting for launch')}
+                                                    {lobbyHasActiveVolley ? `${lobbyAirborneSec}s airborne` : (lobbyVolleyExpired ? 'ready to relaunch' : 'waiting for launch')}
                                                 </div>
                                             </div>
                                             <div className="mt-2 h-2 rounded-full overflow-hidden border border-white/20 bg-black/45">
@@ -4420,110 +4462,34 @@ const PublicTV = ({ roomCode }) => {
                                                     style={{ width: `${lobbyStreakDecayPct}%` }}
                                                 />
                                             </div>
-                                            <div className="mt-1 h-1 rounded-full overflow-hidden bg-black/45">
-                                                <div
-                                                    className="h-full bg-cyan-300/85 transition-all duration-150"
-                                                    style={{ width: `${lobbyOrbEnergy}%` }}
-                                                />
-                                            </div>
                                             <div className="mt-1 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-cyan-100/90">
                                                 <span>{lobbyObjectiveStreakLabel}</span>
                                                 <span>{lobbyActiveParticipants.length} active</span>
                                             </div>
-                                            {lobbyVolleyState?.authFailureLocked && (
-                                                <div className="mt-2 text-[10px] uppercase tracking-[0.14em] text-amber-100">
-                                                    Host auth unavailable: running visual-only rewards
-                                                </div>
-                                            )}
-                                            {!!room?.lobbyPlaygroundVisualOnly && (
-                                                <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-fuchsia-100">
-                                                    Host forced visual-only rewards
-                                                </div>
-                                            )}
-                                            {!!room?.lobbyPlaygroundPaused && (
-                                                <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-amber-100">
-                                                    Lobby playground intake paused by host
-                                                </div>
-                                            )}
                                         </div>
-                                        <div className={`rounded-2xl border px-3 ${lobbyCompactHudMode ? 'py-2 mb-2' : 'py-3 mb-3'} ${
-                                            lobbyRelayObjective.active
-                                                ? 'border-emerald-300/45 bg-emerald-500/12'
-                                                : 'border-white/20 bg-black/35'
-                                        }`}>
-                                            <div className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.2em] text-emerald-100">
-                                                <span>Relay Objective</span>
-                                                <span>{lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s` : 'idle'}</span>
+                                        <div className="rounded-2xl border border-white/20 bg-black/35 px-3 py-3">
+                                            <div className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.2em] text-zinc-200">
+                                                <span>Room {roomUsers.length}</span>
+                                                <span>{lobbyRelayObjective.active ? `Relay ${lobbyRelayRemainingSec}s` : 'Relay idle'}</span>
                                             </div>
-                                            <div className="mt-1 text-sm md:text-base font-semibold text-white leading-tight">
-                                                {lobbyRelayObjective.active
-                                                    ? `Different teammate: ${lobbyRelayEffect?.label || (lobbyRelayObjective?.targetType || 'wave')}`
-                                                    : 'Start a volley to unlock relay passes'}
-                                            </div>
-                                            <div className="mt-1 text-[11px] text-emerald-100/90">
-                                                {lobbyRelayObjective.active
-                                                    ? `${lobbyRelayEffect?.icon || EMOJI.sparkle} Chain x${lobbyRelayObjective.chainCount || 0}`
-                                                    : 'Passes count only when a different teammate catches next.'}
-                                            </div>
-                                            <div className="mt-2 h-1.5 rounded-full overflow-hidden bg-black/50 border border-white/15">
-                                                <div
-                                                    className={`h-full transition-all duration-150 ${
-                                                        lobbyRelayObjective?.urgency === 'danger'
-                                                            ? 'bg-gradient-to-r from-red-300 to-amber-200'
-                                                            : lobbyRelayObjective?.urgency === 'warning'
-                                                                ? 'bg-gradient-to-r from-amber-300 to-yellow-200'
-                                                                : 'bg-gradient-to-r from-emerald-300 to-cyan-300'
-                                                    }`}
-                                                    style={{ width: `${Math.max(0, Number(lobbyRelayObjective?.progressPct || 0))}%` }}
-                                                />
+                                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.14em]">
+                                                {!!room?.lobbyPlaygroundVisualOnly && (
+                                                    <span className="px-2 py-1 rounded-full border border-fuchsia-300/35 bg-fuchsia-500/12 text-fuchsia-100">
+                                                        Visual only
+                                                    </span>
+                                                )}
+                                                {!!room?.lobbyPlaygroundPaused && (
+                                                    <span className="px-2 py-1 rounded-full border border-amber-300/40 bg-amber-500/12 text-amber-100">
+                                                        Paused
+                                                    </span>
+                                                )}
+                                                {lobbyVolleyState?.authFailureLocked && (
+                                                    <span className="px-2 py-1 rounded-full border border-amber-300/40 bg-amber-500/12 text-amber-100">
+                                                        Rewards locked
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
-                                        {lobbyCompactHudMode ? (
-                                            <div className="rounded-2xl border border-white/20 bg-black/35 px-3 py-2">
-                                                <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-zinc-200">
-                                                    <span>In Room {roomUsers.length}</span>
-                                                    <span>{lobbyActiveParticipants.length} active</span>
-                                                </div>
-                                                <div className="mt-1 text-xs text-zinc-100 leading-tight">
-                                                    {lobbyEventFeed[0]
-                                                        ? `${lobbyEventFeed[0].user || 'Guest'} ${lobbyEventFeed[0].text || ''}`
-                                                        : 'Scan the QR to join and launch the first volley.'}
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-300 mb-1">In Room ({roomUsers.length})</div>
-                                                <div className="grid grid-cols-2 gap-2 mb-3 max-h-[16vh] overflow-y-auto custom-scrollbar pr-1">
-                                                    {lobbyMembers.length === 0 && (
-                                                        <div className="col-span-2 rounded-xl border border-white/10 bg-black/35 px-3 py-3 text-zinc-200 text-sm md:text-base">
-                                                            Scan the QR to join. First person in unlocks live interaction.
-                                                        </div>
-                                                    )}
-                                                    {lobbyMembers.map((member, idx) => (
-                                                        <div key={`${member.uid || member.name || 'guest'}-${idx}`} className="rounded-xl border border-white/10 bg-black/35 px-2 py-1.5 flex items-center gap-1.5">
-                                                            <span className="text-base md:text-lg">{member.avatar || EMOJI.sparkle}</span>
-                                                            <span className="truncate text-xs md:text-sm font-semibold text-zinc-100">{member.name || 'Guest'}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-300 mb-1">Live Signals</div>
-                                                <div className="flex-1 min-h-[120px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
-                                                    {lobbyEventFeed.length === 0 && (
-                                                        <div className="rounded-xl border border-white/10 bg-black/35 px-3 py-3 text-zinc-200 text-sm md:text-base">
-                                                            Waiting for joins, reactions, or chat...
-                                                        </div>
-                                                    )}
-                                                    {lobbyEventFeed.map((entry) => (
-                                                        <div key={entry.id} className="rounded-xl border border-white/10 bg-black/45 px-3 py-2 flex items-center gap-2">
-                                                            <span className="text-lg md:text-xl">{entry.avatar || EMOJI.sparkle}</span>
-                                                            <span className="truncate text-sm md:text-base text-zinc-100">
-                                                                <span className="font-bold text-white">{entry.user || 'Guest'}</span> {entry.text}
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </>
-                                        )}
                                     </div>
                                 ) : (
                                     <>
@@ -4952,12 +4918,15 @@ const PublicTV = ({ roomCode }) => {
                             <>
                                 <div className="absolute left-[6%] right-[6%] lobby-volley-ground-line" style={{ top: 'auto', bottom: `${lobbyGroundLineBottomPct}%` }}>
                                     <div className="lobby-volley-ground-core" />
-                                    <div className="lobby-volley-ground-label">Ground Line</div>
                                 </div>
                                 {LOBBY_PLAY_GUIDE.map((guide) => {
                                     const anchor = LOBBY_ANCHOR_BASE[guide.id] || LOBBY_ANCHOR_BASE.wave;
                                     const effect = getLobbyPlayEffectByInteractionType(guide.id);
-                                    const isRelayTarget = lobbyRelayObjective.active && lobbyRelayObjective.targetType === guide.id;
+                                    const isRelayTarget = isVolleyOrbTargetInteraction({
+                                        relayActive: lobbyRelayObjective.active,
+                                        targetType: lobbyRelayObjective.targetType,
+                                        interactionId: guide.id
+                                    });
                                     const isRecent = lobbyRecentInteractionType === guide.id;
                                     return (
                                         <div
@@ -5068,7 +5037,10 @@ const PublicTV = ({ roomCode }) => {
                         {lobbyObjectiveLabel}
                     </div>
                     <div className="mt-0.5 text-[42px] md:text-[58px] 2xl:text-[68px] leading-[0.9] font-bebas text-white drop-shadow-[0_0_12px_rgba(0,0,0,0.45)]">
-                        {lobbyObjectiveBannerGoal}
+                        {lobbyInstructionHeadline}
+                    </div>
+                    <div className="mt-1 text-[13px] md:text-[16px] text-cyan-100/90 leading-tight">
+                        {lobbyInstructionSecondary}
                     </div>
                     <div className="mt-2 space-y-1.5">
                         <div className="flex items-end justify-between gap-4">
@@ -5110,17 +5082,21 @@ const PublicTV = ({ roomCode }) => {
                 {!lobbyObjectiveIsTeamPong && (
                     <div className="absolute top-[4.5%] left-[4%] w-[min(35vw,430px)] rounded-2xl border border-cyan-200/30 bg-black/45 backdrop-blur px-3 py-2.5 shadow-[0_0_24px_rgba(34,211,238,0.2)]">
                         <div className="flex items-center justify-between gap-2 mb-2">
-                            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-cyan-100/90 font-black">Volley Controls</div>
+                            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-cyan-100/90 font-black">Relay Targets</div>
                             <div className="text-[10px] md:text-xs uppercase tracking-[0.15em] text-zinc-200">
                                 {lobbyLastInteraction && lobbyLastInteractionAgeMs < 4500
                                     ? `Last: ${lobbyLastInteraction.user} ${lobbyLastInteraction.icon || ''}`
-                                    : 'Watch crowd passes'}
+                                    : 'Watch the glow'}
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-1.5">
                             {LOBBY_PLAY_GUIDE.map((guide) => {
                                 const effect = getLobbyPlayEffectByInteractionType(guide.id);
-                                const isRelayTarget = lobbyRelayObjective.active && lobbyRelayObjective.targetType === guide.id;
+                                const isRelayTarget = isVolleyOrbTargetInteraction({
+                                    relayActive: lobbyRelayObjective.active,
+                                    targetType: lobbyRelayObjective.targetType,
+                                    interactionId: guide.id
+                                });
                                 const isRecent = lobbyRecentInteractionType === guide.id;
                                 return (
                                     <div
@@ -5128,7 +5104,7 @@ const PublicTV = ({ roomCode }) => {
                                         className={`rounded-xl border px-2 py-1.5 ${
                                             isRelayTarget
                                                 ? 'border-emerald-300/75 bg-emerald-500/18'
-                                                : isRecent
+                                            : isRecent
                                                     ? 'border-cyan-300/75 bg-cyan-500/14'
                                                     : 'border-white/20 bg-black/30'
                                         }`}
@@ -5139,8 +5115,9 @@ const PublicTV = ({ roomCode }) => {
                                             </div>
                                             {isRelayTarget && <span className="text-[9px] uppercase tracking-[0.12em] text-emerald-100 font-black">Target</span>}
                                         </div>
-                                        <div className="mt-0.5 text-[10px] md:text-[11px] text-zinc-100/90 leading-tight">{guide.detail}</div>
-                                        <div className="mt-0.5 text-[9px] md:text-[10px] uppercase tracking-[0.1em] text-zinc-300">{guide.timing}</div>
+                                        <div className="mt-1 text-[10px] md:text-[11px] uppercase tracking-[0.1em] text-zinc-300">
+                                            {isRelayTarget ? 'Tap now' : 'Ready'}
+                                        </div>
                                     </div>
                                 );
                             })}

@@ -7,14 +7,14 @@ const MODE_LIST = Object.freeze([
         label: 'Volley Orb',
         shortLabel: 'Volley',
         icon: 'fa-bullseye',
-        tvGoal: 'Keep the orb in play. Build a volley and hit the next highlighted builder in sequence.',
-        tvBannerGoal: 'Keep The Volley Alive',
-        mobileGoal: 'Keep the volley alive',
+        tvGoal: 'Scan in, launch the orb, and pass it to the next player.',
+        tvBannerGoal: 'Volley Orb',
+        mobileGoal: 'Tap any button to start the orb',
         prompts: [
-            'Build a volley first: any builder gets the orb moving.',
-            'Follow the sequence: wave -> laser -> echo -> confetti.',
-            'Relay rule: a different teammate must hit the highlighted next builder.',
-            'Miss the relay timer and the chain resets. Keep it moving.'
+            'Tap any button to launch.',
+            'Pass to the glowing target.',
+            'A different teammate must catch the next pass.',
+            'Miss the timer and the chain resets.'
         ]
     })
 ]);

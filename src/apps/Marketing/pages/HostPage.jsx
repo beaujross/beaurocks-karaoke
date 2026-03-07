@@ -11,6 +11,7 @@ import {
 import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
 import EntityActionsCard from "./EntityActionsCard";
 import ClaimOwnershipCard from "./ClaimOwnershipCard";
+import DirectoryExperienceSpotlight from "./DirectoryExperienceSpotlight";
 import EmptyStatePanel from "./EmptyStatePanel";
 import {
   formatDateTime,
@@ -89,6 +90,17 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
   ].filter((value, index, arr) => arr.indexOf(value) === index);
   const heroImage = hostImageCandidates[0] || "/images/logo-library/beaurocks-karaoke-logo-2.png";
   const listingGallery = hostImageCandidates.slice(0, 3);
+  const hostExperienceSource = {
+    ...profile,
+    ...(sessions[0] || events[0] || {}),
+    title: hostName,
+    description: profile.bio || events[0]?.description || sessions[0]?.description || "",
+    hostName,
+    imageUrl: heroImage,
+  };
+  const hostModernized = !!hostExperienceSource?.isOfficialBeauRocksRoom
+    || !!hostExperienceSource?.hasBeauRocksHostAccount
+    || (Array.isArray(hostExperienceSource?.beauRocksCapabilities) && hostExperienceSource.beauRocksCapabilities.length > 0);
 
   return (
     <section className="mk3-page mk3-two-col">
@@ -120,6 +132,11 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
           ))}
         </div>
         <p>{profile.bio || "No host bio yet."}</p>
+        <DirectoryExperienceSpotlight
+          entry={hostExperienceSource}
+          title="Host Signature"
+          eyebrow="host identity"
+        />
 
         <div className="mk3-sub-list">
           <h3>Upcoming Events</h3>
@@ -149,6 +166,7 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
           session={session}
           navigate={navigate}
           authFlow={authFlow}
+          isModernized={hostModernized}
         />
         <EntityActionsCard
           targetType="host"

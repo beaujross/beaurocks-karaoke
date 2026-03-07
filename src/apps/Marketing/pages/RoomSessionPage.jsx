@@ -9,6 +9,7 @@ import {
 } from "../../../lib/firebase";
 import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
 import EntityActionsCard from "./EntityActionsCard";
+import DirectoryExperienceSpotlight from "./DirectoryExperienceSpotlight";
 import EmptyStatePanel from "./EmptyStatePanel";
 import {
   formatDateTime,
@@ -97,6 +98,18 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
             </figure>
           ))}
         </div>
+        <DirectoryExperienceSpotlight
+          entry={{
+            ...sessionItem,
+            ...(hostProfile || {}),
+            title: sessionItem.title,
+            hostName,
+            imageUrl: heroImage,
+          }}
+          title="Why Guests Pick This Room"
+          eyebrow="room personality"
+          showUpgradePrompt={false}
+        />
         <p>{sessionItem.description || "No session notes yet."}</p>
         <div className="mk3-sub-list">
           <div className="mk3-list-row static">

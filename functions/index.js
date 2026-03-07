@@ -1789,6 +1789,20 @@ const normalizeDirectoryStringArray = (input = [], maxItems = 8, maxLen = 260) =
   return output.slice(0, Math.max(1, Number(maxItems || 8)));
 };
 
+const normalizeDirectoryTokenArray = (input = [], maxItems = 8, maxLen = 60) =>
+  normalizeDirectoryStringArray(input, maxItems, maxLen)
+    .map((entry) => normalizeDirectoryToken(entry, maxLen))
+    .filter(Boolean)
+    .slice(0, Math.max(1, Number(maxItems || 8)));
+
+const normalizeDirectoryExperienceLevel = (value = "") => {
+  const token = normalizeDirectoryToken(value, 30);
+  if (["high", "medium", "low", "yes", "no", "friendly", "welcoming", "mixed"].includes(token)) {
+    return token;
+  }
+  return "";
+};
+
 const normalizeDirectoryUrlArray = (input = [], maxItems = 8) => {
   const source = Array.isArray(input) ? input : [input];
   const seen = new Set();
@@ -2215,6 +2229,16 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     galleryUrls: listingImageUrls,
     photos: listingImageUrls,
     externalSources,
+    experienceTags: normalizeDirectoryTokenArray(data.experienceTags || [], 10, 60),
+    hostStyleTags: normalizeDirectoryTokenArray(data.hostStyleTags || [], 6, 60),
+    crowdVibeTags: normalizeDirectoryTokenArray(data.crowdVibeTags || [], 8, 60),
+    bestForTags: normalizeDirectoryTokenArray(data.bestForTags || [], 6, 60),
+    rotationEstimate: normalizeDirectoryToken(data.rotationEstimate || "", 30),
+    beginnerFriendly: normalizeDirectoryExperienceLevel(data.beginnerFriendly || ""),
+    duetFriendly: normalizeDirectoryExperienceLevel(data.duetFriendly || ""),
+    beauRocksCapabilities: normalizeDirectoryTokenArray(data.beauRocksCapabilities || [], 10, 60),
+    scheduleVerifiedAtMs: Number(data.scheduleVerifiedAtMs || 0) || 0,
+    lastActiveAtMs: Number(data.lastActiveAtMs || 0) || 0,
     isOfficialBeauRocksRoom: isOfficialBeauRocksRoomListing(baseListing),
   };
 };
@@ -2784,6 +2808,16 @@ const normalizeDirectoryListingPayload = (listingType = "", payload = {}, caller
   const visibility = normalizeDirectoryVisibility(payload?.visibility || "public", "public");
   const status = normalizeDirectoryStatus(payload?.status || "pending", "pending");
   const tags = normalizeDirectoryReviewTags(payload?.tags || []);
+  const experienceTags = normalizeDirectoryTokenArray(payload?.experienceTags || [], 10, 60);
+  const hostStyleTags = normalizeDirectoryTokenArray(payload?.hostStyleTags || [], 6, 60);
+  const crowdVibeTags = normalizeDirectoryTokenArray(payload?.crowdVibeTags || [], 8, 60);
+  const bestForTags = normalizeDirectoryTokenArray(payload?.bestForTags || [], 6, 60);
+  const rotationEstimate = normalizeDirectoryToken(payload?.rotationEstimate || "", 30);
+  const beginnerFriendly = normalizeDirectoryExperienceLevel(payload?.beginnerFriendly || "");
+  const duetFriendly = normalizeDirectoryExperienceLevel(payload?.duetFriendly || "");
+  const beauRocksCapabilities = normalizeDirectoryTokenArray(payload?.beauRocksCapabilities || [], 10, 60);
+  const scheduleVerifiedAtMs = Math.max(0, Number(payload?.scheduleVerifiedAtMs || 0) || 0);
+  const lastActiveAtMs = Math.max(0, Number(payload?.lastActiveAtMs || 0) || 0);
 
   const base = {
     listingType,
@@ -2805,6 +2839,16 @@ const normalizeDirectoryListingPayload = (listingType = "", payload = {}, caller
     bookingUrl: normalizeDirectoryOptionalUrl(payload?.bookingUrl || ""),
     imageUrl: normalizeDirectoryOptionalUrl(payload?.imageUrl || ""),
     tags,
+    experienceTags,
+    hostStyleTags,
+    crowdVibeTags,
+    bestForTags,
+    rotationEstimate,
+    beginnerFriendly,
+    duetFriendly,
+    beauRocksCapabilities,
+    scheduleVerifiedAtMs,
+    lastActiveAtMs,
     venueId: listingType === "event" || listingType === "room_session" ? venueId : "",
     hostUid,
     performerUid,

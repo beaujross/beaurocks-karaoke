@@ -12,7 +12,14 @@ const routeForListing = (listingType = "", listingId = "") => {
   return { page: "discover", id: "" };
 };
 
-const ClaimOwnershipCard = ({ listingType = "venue", listingId = "", session, authFlow, navigate }) => {
+const ClaimOwnershipCard = ({
+  listingType = "venue",
+  listingId = "",
+  session,
+  authFlow,
+  navigate,
+  isModernized = false,
+}) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
   const [role, setRole] = useState(listingType === "host" ? "host" : "owner");
   const [evidence, setEvidence] = useState("");
@@ -82,8 +89,12 @@ const ClaimOwnershipCard = ({ listingType = "venue", listingId = "", session, au
   if (!canSubmit) {
     return (
       <aside className="mk3-actions-card">
-        <h4>Claim This Listing</h4>
-        <p>Create your BeauRocks account to submit ownership claims and unlock publish privileges.</p>
+        <h4>{isModernized ? "Claim This Listing" : "Claim + Upgrade This Listing"}</h4>
+        <p>
+          {isModernized
+            ? "Create your BeauRocks account to submit ownership claims and unlock publish privileges."
+            : "Create your BeauRocks account to claim this listing and add live join, audience interaction, and recap-powered proof."}
+        </p>
         <button
           type="button"
           onClick={() => authFlow?.requireFullAuth?.({
@@ -104,8 +115,18 @@ const ClaimOwnershipCard = ({ listingType = "venue", listingId = "", session, au
 
   return (
     <aside className="mk3-actions-card">
-      <h4>Claim This Listing</h4>
-      <p>Verified owners/hosts get faster direct-publish cadence updates.</p>
+      <h4>{isModernized ? "Claim This Listing" : "Claim + Upgrade This Listing"}</h4>
+      <p>
+        {isModernized
+          ? "Verified owners and hosts get faster direct-publish cadence updates."
+          : "Claim this listing to modernize the night with live join, audience app moments, smoother host flow, and recap-ready proof."}
+      </p>
+      {!isModernized && (
+        <div className="mk3-status">
+          <strong>Upgrade with BeauRocks</strong>
+          <span>Show guests a more modern karaoke experience directly inside discovery.</span>
+        </div>
+      )}
       <label>
         Your Role
         <select value={role} onChange={(e) => setRole(e.target.value)}>
@@ -123,7 +144,7 @@ const ClaimOwnershipCard = ({ listingType = "venue", listingId = "", session, au
         />
       </label>
       <button type="button" disabled={busy} onClick={submitClaim}>
-        {busy ? "Submitting..." : "Submit Claim Request"}
+        {busy ? "Submitting..." : isModernized ? "Submit Claim Request" : "Submit Claim + Upgrade Request"}
       </button>
       {status && <div className="mk3-status">{status}</div>}
       {!!nextStep && (

@@ -1,5 +1,6 @@
 import React from "react";
 import { getInitials } from "./shared";
+import { deriveDirectoryExperience } from "../lib/directoryExperience";
 
 const DiscoverListingCard = ({
   entry,
@@ -17,6 +18,7 @@ const DiscoverListingCard = ({
     isSelected ? "is-selected" : "",
     entry?.isOfficialBeauRocksRoom ? "is-elevated" : "",
   ].filter(Boolean).join(" ");
+  const experience = entry?.experience || deriveDirectoryExperience(entry);
   const primaryAction = (() => {
     if (entry.listingType === "room_session" && entry.roomCode) {
       return {
@@ -80,6 +82,21 @@ const DiscoverListingCard = ({
       <div className="mk3-card-subtitle">{entry.subtitle}</div>
       {!!entry.distanceLabel && <div className="mk3-card-subtitle">{entry.distanceLabel}</div>}
       {entry.timeLabel && <div className="mk3-card-time">{entry.timeLabel}</div>}
+      {experience.storyLine && <div className="mk3-card-story">{experience.storyLine}</div>}
+      {!!experience.capabilityBadges?.length && (
+        <div className="mk3-experience-pill-row is-modern">
+          {experience.capabilityBadges.slice(0, 3).map((badge) => (
+            <span key={`${entry.key}_${badge}`} className="mk3-experience-pill is-modern">{badge}</span>
+          ))}
+        </div>
+      )}
+      {!!experience.funBadges?.length && (
+        <div className="mk3-experience-pill-row is-fun">
+          {experience.funBadges.slice(0, 3).map((badge) => (
+            <span key={`${entry.key}_fun_${badge}`} className="mk3-experience-pill is-fun">{badge}</span>
+          ))}
+        </div>
+      )}
       {!!entry.cadenceBadges?.length && (
         <div className="mk3-day-badge-row">
           {entry.cadenceBadges.map((badge) => (
@@ -116,6 +133,9 @@ const DiscoverListingCard = ({
         </div>
       )}
       {entry.virtualOnly && <div className="mk3-chip">Virtual</div>}
+      {!experience.isBeauRocksPowered && (
+        <div className="mk3-card-upgrade-note">Static listing. Claim it to add live join, audience play, and recap proof.</div>
+      )}
       <div className="mk3-actions-inline">
         <button type="button" onClick={primaryAction.onClick} disabled={primaryAction.disabled}>
           {primaryAction.label}

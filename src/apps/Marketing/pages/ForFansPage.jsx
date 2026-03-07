@@ -2,27 +2,42 @@ import React from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
 
 const FAN_BADGES = [
-  "Find Better Nights Quickly",
-  "Join Rooms With Real Energy",
-  "Stay In The Loop",
+  "Fast Rotation",
+  "Welcoming Crowd",
+  "Live Join + Audience Play",
+  "Verified Weekly Nights",
 ];
 
 const FAN_STEPS = [
   {
-    title: "Find the right room",
-    detail: "Use map + timing + host signal to avoid low-energy nights.",
+    title: "Pick your vibe",
+    detail: "Choose between beginner-friendly, big singalong, fast-rotation, or serious-singer rooms.",
   },
   {
-    title: "Commit early",
-    detail: "Set RSVP/reminders for your top picks.",
+    title: "Spot the modern nights",
+    detail: "Look for BeauRocks-powered signals like live join, audience play, recap, and fresh schedule proof.",
   },
   {
-    title: "Participate live",
-    detail: "Use audience tools and build repeat routines.",
+    title: "Show up ready to sing",
+    detail: "Set reminders, invite friends, and walk into a room that fits your energy instead of guessing.",
   },
 ];
 
-const ForFansPage = ({ navigate }) => {
+const FAN_FUN_SIGNALS = [
+  "Host vibe and crowd energy",
+  "Fast or forgiving rotation",
+  "Beginner-safe versus big-voice rooms",
+  "BeauRocks nights with live join and recap proof",
+];
+
+const FAN_MODERN_SIGNALS = [
+  "Live Join",
+  "Audience App",
+  "Interactive TV",
+  "Recap Ready",
+];
+
+const ForFansPage = ({ navigate, heroStats }) => {
   const trackPersonaCta = (cta = "") => {
     trackEvent("mk_persona_cta_click", {
       persona: "fan",
@@ -34,14 +49,23 @@ const ForFansPage = ({ navigate }) => {
   return (
     <section className="mk3-page mk3-persona-command is-fan">
       <article className="mk3-detail-card mk3-persona-hero mk3-zone">
-        <div className="mk3-persona-kicker">for guests</div>
-        <h1>Find premium karaoke nights without guesswork.</h1>
-        <p>Open the map, pick the strongest room, and actually enjoy the night.</p>
+        <div className="mk3-persona-kicker">karaoke night finder</div>
+        <h1>Find the karaoke night that fits your vibe tonight.</h1>
+        <p>
+          BeauRocks helps people find rooms with real crowd energy, humane rotation, strong hosts,
+          and modern karaoke features that make older listings feel static.
+        </p>
         <div className="mk3-persona-badge-row">
           {FAN_BADGES.map((badge) => (
             <span key={badge}>{badge}</span>
           ))}
         </div>
+        {heroStats?.total > 0 && (
+          <div className="mk3-status mk3-hero-proof">
+            <strong>{heroStats.total.toLocaleString()} karaoke listings live in the directory</strong>
+            <span>Use BeauRocks signals to separate modern nights from generic event posts.</span>
+          </div>
+        )}
         <div className="mk3-actions-inline">
           <button
             type="button"
@@ -50,14 +74,23 @@ const ForFansPage = ({ navigate }) => {
               navigate("discover");
             }}
           >
-            Open Discover Map
+            Find Tonight's Room
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              trackPersonaCta("secondary_open_geo_nationwide");
+              navigate("geo_region", "", { regionToken: "nationwide" });
+            }}
+          >
+            Browse Karaoke Guides
           </button>
         </div>
       </article>
 
       <div className="mk3-two-col mk3-persona-late-grid">
         <section className="mk3-detail-card mk3-persona-flow mk3-zone" aria-label="Guest flow overview">
-          <h2>Guest Loop In 3 Steps</h2>
+          <h2>How BeauRocks Helps You Pick Better Nights</h2>
           <div className="mk3-persona-flow-grid">
             {FAN_STEPS.map((step, index) => (
               <article key={step.title}>
@@ -70,15 +103,59 @@ const ForFansPage = ({ navigate }) => {
         </section>
 
         <aside className="mk3-actions-card mk3-persona-checklist">
-          <h4>Guest Checklist</h4>
+          <h4>What To Look For</h4>
           <div className="mk3-status">
-            <strong>Tonight ready</strong>
-            <span>Pick room, set reminder, invite friends.</span>
+            <strong>Great karaoke nights are specific</strong>
+            <span>Rotation, host vibe, crowd chemistry, and room tech matter more than a generic flyer.</span>
           </div>
           <div className="mk3-persona-checklist-list">
-            <span>Room selected</span>
-            <span>RSVP/reminder set</span>
-            <span>Audience app ready</span>
+            {FAN_FUN_SIGNALS.map((signal) => (
+              <span key={signal}>{signal}</span>
+            ))}
+          </div>
+        </aside>
+      </div>
+
+      <div className="mk3-two-col mk3-persona-late-grid">
+        <section className="mk3-detail-card mk3-zone">
+          <div className="mk3-persona-kicker">modern karaoke</div>
+          <h2>Why BeauRocks-powered nights feel different</h2>
+          <p className="mk3-card-story">
+            Static listings tell you where karaoke exists. BeauRocks helps you see which nights are active,
+            interactive, and actually worth showing up for.
+          </p>
+          <div className="mk3-experience-pill-row is-modern">
+            {FAN_MODERN_SIGNALS.map((signal) => (
+              <span key={signal} className="mk3-experience-pill is-modern">{signal}</span>
+            ))}
+          </div>
+        </section>
+
+        <aside className="mk3-actions-card">
+          <h4>Tonight Ready</h4>
+          <div className="mk3-status">
+            <strong>Start with the right room</strong>
+            <span>Pick your vibe, lock the reminder, then look for live-join and recap-ready nights.</span>
+          </div>
+          <div className="mk3-actions-inline">
+            <button
+              type="button"
+              onClick={() => {
+                trackPersonaCta("tertiary_open_discover_modern");
+                navigate("discover");
+              }}
+            >
+              Open Discover
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                trackPersonaCta("tertiary_submit_listing");
+                navigate("submit", "", { intent: "listing_submit", targetType: "fan_tip" });
+              }}
+            >
+              Add A Night
+            </button>
           </div>
         </aside>
       </div>

@@ -2,12 +2,14 @@ import React, { useState } from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
 import { marketingFlags } from "../featureFlags";
+import { deriveDirectoryExperience } from "../lib/directoryExperience";
 
 const InlineConversionActions = ({ entry = {}, session, navigate, authFlow }) => {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [nextStep, setNextStep] = useState(null);
   const canAct = !!session?.uid && !session?.isAnonymous;
+  const experience = deriveDirectoryExperience(entry);
 
   const requireAuth = ({ intent = "", returnRoute = null, targetType = "", targetId = "" }) => {
     if (canAct) return true;
@@ -168,7 +170,7 @@ const InlineConversionActions = ({ entry = {}, session, navigate, authFlow }) =>
       )}
       {listingType === "venue" && (
         <button type="button" disabled={busy} onClick={submitQuickClaim}>
-          {busy ? "Submitting..." : "Claim Venue"}
+          {busy ? "Submitting..." : experience.isBeauRocksPowered ? "Claim Venue" : "Upgrade Venue"}
         </button>
       )}
       {!!entry.hostUid && (

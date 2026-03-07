@@ -577,6 +577,7 @@ const MarketingSite = () => {
       navigate,
       session,
       mapsConfig,
+      heroStats,
       changelogEntries: MARKETING_PUBLIC_CHANGELOG,
       releaseLabel: MARKETING_RELEASE_LABEL,
       authFlow: {
@@ -604,7 +605,7 @@ const MarketingSite = () => {
       return <GeoLandingPage {...pageProps} />;
     }
     return <DiscoverPage {...pageProps} />;
-  }, [activePage, requireFullAuth, route, navigate, mapsConfig, session]);
+  }, [activePage, requireFullAuth, route, navigate, mapsConfig, heroStats, session]);
 
   return (
     <div className="mk3-site">

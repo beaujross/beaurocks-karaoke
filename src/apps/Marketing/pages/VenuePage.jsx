@@ -12,6 +12,7 @@ import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestra
 import EntityActionsCard from "./EntityActionsCard";
 import CadenceUpdateCard from "./CadenceUpdateCard";
 import ClaimOwnershipCard from "./ClaimOwnershipCard";
+import DirectoryExperienceSpotlight from "./DirectoryExperienceSpotlight";
 import EmptyStatePanel from "./EmptyStatePanel";
 import {
   buildGoogleMapsSearchUrl,
@@ -113,6 +114,17 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
     || buildGoogleMapsSearchUrl([venue.address1, venue.city, venue.state, venue.postalCode]);
   const phoneLabel = String(venue.phone || "").trim();
   const phoneHref = toTelephoneHref(phoneLabel);
+  const venueExperienceSource = {
+    ...venue,
+    ...(nextEvent || {}),
+    title: venue.title,
+    description: venue.description || nextEvent?.description || "",
+    venueName: venue.title,
+    imageUrl: heroImage,
+  };
+  const venueModernized = !!venueExperienceSource?.isOfficialBeauRocksRoom
+    || !!venueExperienceSource?.hasBeauRocksHostAccount
+    || (Array.isArray(venueExperienceSource?.beauRocksCapabilities) && venueExperienceSource.beauRocksCapabilities.length > 0);
 
   return (
     <section className="mk3-page mk3-two-col">
@@ -175,6 +187,11 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
         </div>
 
         <p>{venue.description || "No venue description provided yet."}</p>
+        <DirectoryExperienceSpotlight
+          entry={venueExperienceSource}
+          title="Why This Night Works"
+          eyebrow="karaoke personality"
+        />
         <div className="mk3-info-module">
           <strong>Contact / Info</strong>
           <div className="mk3-info-link-row">
@@ -229,6 +246,7 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
           session={session}
           navigate={navigate}
           authFlow={authFlow}
+          isModernized={venueModernized}
         />
         <CadenceUpdateCard
           listingType="venue"

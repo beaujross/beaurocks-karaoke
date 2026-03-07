@@ -10,6 +10,7 @@ import {
 import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
 import EntityActionsCard from "./EntityActionsCard";
 import CadenceUpdateCard from "./CadenceUpdateCard";
+import DirectoryExperienceSpotlight from "./DirectoryExperienceSpotlight";
 import EmptyStatePanel from "./EmptyStatePanel";
 import {
   buildGoogleMapsSearchUrl,
@@ -119,6 +120,15 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
     venue?.state || eventItem?.state,
     venue?.postalCode || eventItem?.postalCode,
   ].filter(Boolean).join(", ");
+  const eventExperienceSource = {
+    ...eventItem,
+    ...(venue || {}),
+    ...(hostProfile || {}),
+    title: eventItem.title,
+    hostName: hostLabel,
+    venueName: venue?.title || eventItem.venueName || "",
+    imageUrl: heroImage,
+  };
 
   return (
     <section className="mk3-page mk3-two-col">
@@ -179,6 +189,12 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
           ))}
         </div>
         <p>{eventItem.description || "No event description yet."}</p>
+        <DirectoryExperienceSpotlight
+          entry={eventExperienceSource}
+          title="Why This Event Feels Different"
+          eyebrow="event experience"
+          showUpgradePrompt={false}
+        />
         <div className="mk3-info-module">
           <strong>Venue / Host / Links</strong>
           <div className="mk3-sub-list">

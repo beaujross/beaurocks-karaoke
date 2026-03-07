@@ -10,6 +10,14 @@ import {
 } from "./cadenceSchedule";
 import WeeklyScheduleEditor from "./WeeklyScheduleEditor";
 
+const splitTagInput = (value = "", max = 8) =>
+  String(value || "")
+    .split(/[,\n]/g)
+    .map((entry) => entry.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, ""))
+    .filter(Boolean)
+    .filter((entry, index, array) => array.indexOf(entry) === index)
+    .slice(0, Math.max(1, Number(max || 8)));
+
 const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
   const [listingType, setListingType] = useState("venue");
@@ -29,6 +37,14 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
     venueName: "",
     roomCode: "",
     visibility: "public",
+    experienceTagsInput: "",
+    hostStyleTagsInput: "",
+    crowdVibeTagsInput: "",
+    bestForTagsInput: "",
+    rotationEstimate: "",
+    beginnerFriendly: "",
+    duetFriendly: "",
+    beauRocksCapabilitiesInput: "",
   });
 
   const cadenceLabel = useMemo(() => buildKaraokeNightsLabel(form.cadenceRows), [form.cadenceRows]);
@@ -83,6 +99,15 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
         venueName: form.venueName,
         roomCode: form.roomCode,
         visibility: listingType === "room_session" ? form.visibility : "public",
+        experienceTags: splitTagInput(form.experienceTagsInput, 10),
+        hostStyleTags: splitTagInput(form.hostStyleTagsInput, 6),
+        crowdVibeTags: splitTagInput(form.crowdVibeTagsInput, 8),
+        bestForTags: splitTagInput(form.bestForTagsInput, 6),
+        rotationEstimate: String(form.rotationEstimate || "").trim().toLowerCase(),
+        beginnerFriendly: String(form.beginnerFriendly || "").trim().toLowerCase(),
+        duetFriendly: String(form.duetFriendly || "").trim().toLowerCase(),
+        beauRocksCapabilities: splitTagInput(form.beauRocksCapabilitiesInput, 10),
+        scheduleVerifiedAtMs: Date.now(),
       };
       const result = await directoryActions.submitDirectoryListing({
         listingType,
@@ -154,6 +179,73 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
           <label className="full">
             Description
             <textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
+          </label>
+          <label>
+            Rotation
+            <select value={form.rotationEstimate} onChange={(e) => setForm((prev) => ({ ...prev, rotationEstimate: e.target.value }))}>
+              <option value="">Unknown</option>
+              <option value="fast">Fast</option>
+              <option value="medium">Steady</option>
+              <option value="slow">Longer queue</option>
+            </select>
+          </label>
+          <label>
+            Beginner Friendly
+            <select value={form.beginnerFriendly} onChange={(e) => setForm((prev) => ({ ...prev, beginnerFriendly: e.target.value }))}>
+              <option value="">Unknown</option>
+              <option value="high">High</option>
+              <option value="medium">Mixed</option>
+              <option value="low">Low</option>
+            </select>
+          </label>
+          <label>
+            Duet Friendly
+            <select value={form.duetFriendly} onChange={(e) => setForm((prev) => ({ ...prev, duetFriendly: e.target.value }))}>
+              <option value="">Unknown</option>
+              <option value="high">High</option>
+              <option value="medium">Mixed</option>
+              <option value="low">Low</option>
+            </select>
+          </label>
+          <label className="full">
+            Experience Tags
+            <input
+              value={form.experienceTagsInput}
+              onChange={(e) => setForm((prev) => ({ ...prev, experienceTagsInput: e.target.value }))}
+              placeholder="fast_rotation, singalong, strong_sound"
+            />
+          </label>
+          <label className="full">
+            Crowd Vibe Tags
+            <input
+              value={form.crowdVibeTagsInput}
+              onChange={(e) => setForm((prev) => ({ ...prev, crowdVibeTagsInput: e.target.value }))}
+              placeholder="welcoming, late_night, serious_singers"
+            />
+          </label>
+          <label className="full">
+            Best For
+            <input
+              value={form.bestForTagsInput}
+              onChange={(e) => setForm((prev) => ({ ...prev, bestForTagsInput: e.target.value }))}
+              placeholder="first_timers, friend_groups, regulars"
+            />
+          </label>
+          <label className="full">
+            Host Style Tags
+            <input
+              value={form.hostStyleTagsInput}
+              onChange={(e) => setForm((prev) => ({ ...prev, hostStyleTagsInput: e.target.value }))}
+              placeholder="hype, organized, playful"
+            />
+          </label>
+          <label className="full">
+            BeauRocks Capabilities
+            <input
+              value={form.beauRocksCapabilitiesInput}
+              onChange={(e) => setForm((prev) => ({ ...prev, beauRocksCapabilitiesInput: e.target.value }))}
+              placeholder="live_join, audience_app, interactive_tv, recap_ready"
+            />
           </label>
           {listingType === "venue" && (
             <div className="full mk3-cadence-field">
@@ -275,6 +367,7 @@ const ListingSubmissionPage = ({ session, navigate, authFlow }) => {
           <li>Moderation required before publish.</li>
           <li>Google/Yelp enrichment can be added by admins.</li>
           <li>Room sessions support public/private visibility.</li>
+          <li>Experience tags drive discover badges and modern karaoke storytelling.</li>
         </ul>
         {previewStart > 0 && (
           <div className="mk3-status">Start Preview: {formatDateTime(previewStart)}</div>

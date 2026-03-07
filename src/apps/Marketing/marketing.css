@@ -4617,6 +4617,144 @@
   padding: 0.38rem 0.52rem;
 }
 
+.mk3-card-story,
+.mk3-experience-story {
+  color: #e6eef8;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.mk3-card-upgrade-note {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 191, 105, 0.24);
+  background: rgba(32, 18, 34, 0.54);
+  color: #ffe0ba;
+  font-size: 0.74rem;
+  line-height: 1.42;
+  padding: 0.44rem 0.54rem;
+}
+
+.mk3-experience-spotlight {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+  border-color: rgba(111, 212, 241, 0.28);
+  background:
+    radial-gradient(circle at 90% 10%, rgba(77, 232, 255, 0.12), transparent 38%),
+    linear-gradient(144deg, rgba(8, 16, 27, 0.82), rgba(24, 11, 38, 0.78));
+}
+
+.mk3-experience-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mk3-experience-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 0.24rem 0.56rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.mk3-experience-pill.is-modern {
+  border-color: rgba(104, 226, 255, 0.38);
+  background: rgba(8, 34, 41, 0.54);
+  color: #cfffff;
+}
+
+.mk3-experience-pill.is-fun {
+  border-color: rgba(255, 197, 106, 0.34);
+  background: rgba(43, 28, 18, 0.5);
+  color: #ffe2b8;
+}
+
+.mk3-experience-pill.is-trust,
+.mk3-experience-pill.is-best-for {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(15, 17, 28, 0.66);
+  color: #d7e8fa;
+}
+
+.mk3-experience-best-for {
+  display: grid;
+  gap: 6px;
+}
+
+.mk3-experience-best-for strong {
+  color: #ffe8bf;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mk3-experience-notes {
+  display: grid;
+  gap: 6px;
+}
+
+.mk3-experience-note {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(9, 16, 26, 0.68);
+  color: #d2e4f4;
+  font-size: 0.76rem;
+  line-height: 1.42;
+  padding: 0.48rem 0.58rem;
+}
+
+.mk3-experience-upgrade-callout,
+.mk3-experience-region-summary {
+  display: grid;
+  gap: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 194, 112, 0.28);
+  background:
+    radial-gradient(circle at 85% 0%, rgba(255, 102, 188, 0.14), transparent 42%),
+    linear-gradient(142deg, rgba(26, 13, 34, 0.84), rgba(10, 16, 25, 0.88));
+  padding: 0.7rem 0.78rem;
+}
+
+.mk3-experience-upgrade-callout strong,
+.mk3-experience-region-summary strong {
+  color: #ffe8be;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mk3-experience-upgrade-callout span {
+  color: #d6e6f8;
+  font-size: 0.78rem;
+  line-height: 1.44;
+}
+
+.mk3-experience-region-summary span {
+  color: #d6e6f8;
+  font-size: 0.78rem;
+  line-height: 1.44;
+}
+
+.mk3-experience-upgrade-callout button {
+  width: fit-content;
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--mk3-btn-border-primary);
+  color: var(--mk3-btn-ink-primary);
+  background: var(--mk3-btn-gradient-primary);
+  padding: 0.45rem 0.8rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 @media (min-width: 1720px) {
   .mk3-demo-shell,
   .mk3-demo-shell.mk3-demo-shell-testing {

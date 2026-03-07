@@ -9,6 +9,10 @@ import DiscoverListingCard from "./DiscoverListingCard";
 import { createDiscoverViewState, reduceDiscoverViewState } from "./discoverViewState";
 import { countJoinableRoomListings, isJoinableRoomListing } from "./discoverFilters";
 import {
+  deriveDirectoryExperience,
+  matchesDirectoryExperienceFilter,
+} from "../lib/directoryExperience";
+import {
   buildPublicLocationImageUrl,
   extractCadenceBadges,
   formatDateTime,
@@ -56,6 +60,15 @@ const EVENT_CADENCE_OPTIONS = [
   { id: "all", label: "All events" },
   { id: "recurring", label: "Recurring" },
   { id: "one_time", label: "One-time" },
+];
+const EXPERIENCE_FILTER_OPTIONS = [
+  { id: "all", label: "All nights" },
+  { id: "modern", label: "Modern karaoke" },
+  { id: "interactive", label: "Interactive rooms" },
+  { id: "live_join", label: "Live join" },
+  { id: "recap", label: "Recap-enabled" },
+  { id: "beginner", label: "Beginner friendly" },
+  { id: "fast_rotation", label: "Fast rotation" },
 ];
 const TYPE_FILTER_LABELS = Object.freeze({
   event: "Events",
@@ -433,7 +446,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const beauRocksElevatedReasons = Array.isArray(entry?.beauRocksElevatedReasons)
     ? entry.beauRocksElevatedReasons.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
     : [];
-  const isBeauRocksElevated = isOfficialBeauRocksRoom;
+  const isBeauRocksElevated = !!entry?.isBeauRocksElevated || isOfficialBeauRocksRoom || hasBeauRocksHostAccount;
   const subtitle = virtualOnly
     ? "Virtual session"
     : locationLabel || [city, state].filter(Boolean).join(", ") || "Location pending";
@@ -449,6 +462,28 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const recurringRule = String(entry?.recurringRule || "").trim();
   const karaokeNightsLabel = String(entry?.karaokeNightsLabel || "").trim();
   const isRecurringEvent = listingType === "event" && (!!recurringRule || !!karaokeNightsLabel);
+  const experience = deriveDirectoryExperience({
+    ...entry,
+    listingType,
+    isOfficialBeauRocksRoom,
+    isBeauRocksElevated,
+    hasBeauRocksHostAccount,
+    beauRocksHostTier,
+    beauRocksElevatedReasons,
+    hostLeaderboardRank,
+    hostLeaderboardScore,
+    hostHostedRooms,
+    hostRecapCount,
+    venueLeaderboardRank,
+    venueLeaderboardScore,
+    venueAverageRating,
+    venueReviewCount,
+    venueCheckinCount,
+    startsAtMs,
+    roomCode,
+    recurringRule,
+    karaokeNightsLabel,
+  });
   return {
     key: `${listingType}:${entry.id}`,
     id: entry.id,
@@ -502,6 +537,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     venueReviewCount,
     venueCheckinCount,
     locationSource: String(options?.locationSource || "").trim() || (location ? "entry" : "missing"),
+    experience,
   };
 };
 
@@ -598,6 +634,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
   const [beauRocksFilter, setBeauRocksFilter] = useState("all");
   const [officialRoomFilter, setOfficialRoomFilter] = useState("all");
   const [roomAccessFilter, setRoomAccessFilter] = useState("all");
+  const [experienceFilter, setExperienceFilter] = useState("all");
   const [mapBounds, setMapBounds] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -690,6 +727,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     const syncViewport = (matches) => {
       const isMobile = !!matches;
       setIsMobileViewport(isMobile);
+      if (isMobile) setAdvancedFiltersExpanded(false);
       dispatchView({ type: "viewport_changed", isMobile });
     };
     const onViewportChange = (event) => syncViewport(event?.matches);
@@ -700,11 +738,6 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     media.addListener(onViewportChange);
     return () => media.removeListener(onViewportChange);
   }, []);
-  useEffect(() => {
-    if (isMobileViewport) {
-      setAdvancedFiltersExpanded(false);
-    }
-  }, [isMobileViewport]);
   useEffect(() => {
     if (!mapOnly || !isMobileViewport) return;
     dispatchView({ type: "show_map" });
@@ -795,39 +828,46 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (roomAccessFilter !== "joinable") return filteredByBeauRocks;
     return filteredByBeauRocks.filter((entry) => isJoinableRoomListing(entry));
   }, [filteredByBeauRocks, roomAccessFilter]);
+  const filteredByExperience = useMemo(() => {
+    if (experienceFilter === "all") return filteredByRoomAccess;
+    return filteredByRoomAccess.filter((entry) => matchesDirectoryExperienceFilter(entry.experience || entry, experienceFilter));
+  }, [experienceFilter, filteredByRoomAccess]);
   const eventCadenceCounts = useMemo(() => {
     const counts = { total: 0, recurring: 0, one_time: 0 };
-    filteredByRoomAccess.forEach((entry) => {
+    filteredByExperience.forEach((entry) => {
       if (entry.listingType !== "event") return;
       counts.total += 1;
       if (entry.isRecurringEvent) counts.recurring += 1;
       else counts.one_time += 1;
     });
     return counts;
-  }, [filteredByRoomAccess]);
+  }, [filteredByExperience]);
   const filteredByEventCadence = useMemo(() => {
-    if (eventCadenceFilter === "all") return filteredByRoomAccess;
+    if (eventCadenceFilter === "all") return filteredByExperience;
     if (eventCadenceFilter === "recurring") {
-      return filteredByRoomAccess.filter((entry) => entry.listingType === "event" && entry.isRecurringEvent);
+      return filteredByExperience.filter((entry) => entry.listingType === "event" && entry.isRecurringEvent);
     }
-    return filteredByRoomAccess.filter((entry) => entry.listingType === "event" && !entry.isRecurringEvent);
-  }, [eventCadenceFilter, filteredByRoomAccess]);
+    return filteredByExperience.filter((entry) => entry.listingType === "event" && !entry.isRecurringEvent);
+  }, [eventCadenceFilter, filteredByExperience]);
 
   const rankedListings = useMemo(() => {
     const withSignals = filteredByEventCadence.map((entry) => {
+      const experience = entry.experience || deriveDirectoryExperience(entry);
       const distanceMiles = calculateDistanceMiles(userLocation, entry.location);
       const distanceScore = Number.isFinite(distanceMiles)
         ? Math.max(0, 32 - (distanceMiles * 1.8))
         : 0;
       const typeBonus = entry.listingType === "event" ? 12 : entry.listingType === "room_session" ? 8 : 5;
-      const elevatedBonus = entry.isOfficialBeauRocksRoom ? 32 : 0;
+      const elevatedBonus = entry.isOfficialBeauRocksRoom ? 32 : entry.isBeauRocksElevated ? 20 : 0;
       const score = computeTimePriority(entry.startsAtMs, rankingNowMs)
         + distanceScore
         + typeBonus
         + elevatedBonus
+        + Number(experience.discoveryBoost || 0)
         + scoreSearchRelevance(entry, search);
       return {
         ...entry,
+        experience,
         distanceMiles: Number.isFinite(distanceMiles) ? distanceMiles : null,
         distanceLabel: formatDistanceLabel(distanceMiles),
         score,
@@ -1041,6 +1081,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     setBeauRocksFilter("all");
     setOfficialRoomFilter("all");
     setRoomAccessFilter("all");
+    setExperienceFilter("all");
     setEventCadenceFilter("all");
   }, []);
 
@@ -1185,7 +1226,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       if (rafOne) window.cancelAnimationFrame(rafOne);
       if (rafTwo) window.cancelAnimationFrame(rafTwo);
     };
-  }, [selectedListing?.key, selectedListingIndex, resultsView, visibleListings.length]);
+  }, [selectedListing, selectedListingIndex, resultsView, visibleListings.length]);
 
   useEffect(() => {
     if (!isMobileViewport || mobileSurface !== "map") return () => {};
@@ -1323,6 +1364,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
       : selectedListingInMap.venueLeaderboardRank > 0
         ? `Venue rank #${selectedListingInMap.venueLeaderboardRank}`
         : "";
+    const experienceLine = selectedListingInMap?.experience?.capabilityBadges?.length
+      ? selectedListingInMap.experience.capabilityBadges.slice(0, 2).join(" | ")
+      : selectedListingInMap?.experience?.funBadges?.slice(0, 2).join(" | ") || "";
     const elevatedBadgeImage = selectedListingInMap.isOfficialBeauRocksRoom && selectedListingInMap.officialBadgeImageUrl
       ? `<img class="mk3-map-chip-icon" src="${escapeHtml(selectedListingInMap.officialBadgeImageUrl)}" alt="Official BeauRocks logo" loading="lazy" />`
       : "";
@@ -1343,6 +1387,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
         <strong>${escapeHtml(selectedListingInMap.title)}</strong>
         <small>${escapeHtml(detailLine)}</small>
         ${statsLine ? `<small>${escapeHtml(statsLine)}</small>` : ""}
+        ${experienceLine ? `<small>${escapeHtml(experienceLine)}</small>` : ""}
         ${selectedAction}
       </div>`
     );
@@ -1362,11 +1407,31 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     return humanizeRegion(token) || token;
   }, [region]);
   const officialBeauRocksRoomCount = Number(facets?.counts?.officialBeauRocksRooms || 0) || 0;
-  const beauRocksElevatedCount = officialBeauRocksRoomCount;
+  const beauRocksElevatedCount = Number(facets?.counts?.beaurocksElevated || 0) || officialBeauRocksRoomCount;
   const joinableRoomCount = useMemo(
     () => countJoinableRoomListings(filteredByBeauRocks),
     [filteredByBeauRocks]
   );
+  const experienceCounts = useMemo(() => {
+    const counts = {
+      modern: 0,
+      interactive: 0,
+      live_join: 0,
+      recap: 0,
+      beginner: 0,
+      fast_rotation: 0,
+    };
+    filteredByHost.forEach((entry) => {
+      const experience = entry.experience || deriveDirectoryExperience(entry);
+      if (experience.isBeauRocksPowered) counts.modern += 1;
+      if (matchesDirectoryExperienceFilter(experience, "interactive")) counts.interactive += 1;
+      if (matchesDirectoryExperienceFilter(experience, "live_join")) counts.live_join += 1;
+      if (matchesDirectoryExperienceFilter(experience, "recap")) counts.recap += 1;
+      if (matchesDirectoryExperienceFilter(experience, "beginner")) counts.beginner += 1;
+      if (matchesDirectoryExperienceFilter(experience, "fast_rotation")) counts.fast_rotation += 1;
+    });
+    return counts;
+  }, [filteredByHost]);
   const hasFullAccount = !!session?.isAuthed && !session?.isAnonymous;
   const resultCount = (Number(total || 0) || visibleListings.length);
   const isInitialCountLoading = loading && !error && resultCount <= 0;
@@ -1380,7 +1445,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     || timeWindow !== "all"
     || eventCadenceFilter !== "all"
     || officialRoomFilter !== "all"
-    || roomAccessFilter !== "all";
+    || roomAccessFilter !== "all"
+    || experienceFilter !== "all";
   const activeFilterBadges = useMemo(() => {
     const next = [];
     const searchToken = String(search || "").trim();
@@ -1409,6 +1475,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     if (beauRocksFilter === "elevated") next.push("Featured: Official BeauRocks Rooms");
     if (officialRoomFilter === "official") next.push("Room: Official");
     if (roomAccessFilter === "joinable") next.push("Access: Joinable by code");
+    if (experienceFilter !== "all") {
+      const label = EXPERIENCE_FILTER_OPTIONS.find((option) => option.id === experienceFilter)?.label || experienceFilter;
+      next.push(`Experience: ${label}`);
+    }
     if (effectiveHostFilter !== "all") {
       const hostName = hostFacetOptions.find((host) => host.id === effectiveHostFilter)?.hostName || "Selected host";
       next.push(`Host: ${hostName}`);
@@ -1422,6 +1492,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
     officialRoomFilter,
     region,
     roomAccessFilter,
+    experienceFilter,
     search,
     sortMode,
     timeWindow,
@@ -1670,6 +1741,20 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
               Joinable by code
               {joinableRoomCount > 0 && <span className="mk3-filter-chip-count"> ({joinableRoomCount})</span>}
             </button>
+            <button
+              type="button"
+              className={`mk3-discover-fast-chip ${experienceFilter === "modern" ? "active" : ""}`}
+              onClick={() => {
+                setExperienceFilter("modern");
+                trackEvent("mk_discover_experience_filter_change", {
+                  source: "discover_quick_filters",
+                  filter: "modern",
+                });
+              }}
+            >
+              Modern karaoke
+              {experienceCounts.modern > 0 && <span className="mk3-filter-chip-count"> ({experienceCounts.modern})</span>}
+            </button>
           </div>
         </div>
         {hasSearchFilters && (
@@ -1820,6 +1905,31 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow }) => {
             Joinable by code
             {joinableRoomCount > 0 && <span className="mk3-filter-chip-count"> ({joinableRoomCount})</span>}
           </button>
+        </div>
+        <div className="mk3-filter-chips mk3-zone mk3-zone-host mk3-discover-filter-advanced">
+          <span className="mk3-filter-chip-label">Experience</span>
+          {EXPERIENCE_FILTER_OPTIONS.map((option) => {
+            const count = option.id === "all"
+              ? filteredByHost.length
+              : Number(experienceCounts[option.id] || 0);
+            return (
+              <button
+                key={option.id}
+                type="button"
+                className={experienceFilter === option.id ? "active" : ""}
+                onClick={() => {
+                  setExperienceFilter(option.id);
+                  trackEvent("mk_discover_experience_filter_change", {
+                    source: "discover_filters",
+                    filter: option.id,
+                  });
+                }}
+              >
+                {option.label}
+                {count > 0 && <span className="mk3-filter-chip-count"> ({count})</span>}
+              </button>
+            );
+          })}
         </div>
         {hostFacetOptions.length > 0 && (
           <div className="mk3-filter-chips mk3-zone mk3-zone-host mk3-discover-filter-advanced">

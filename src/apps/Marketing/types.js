@@ -22,6 +22,13 @@
  * @property {string} address1
  * @property {string} description
  * @property {"approved"|"pending"|"rejected"|"disabled"} status
+ * @property {string[]} experienceTags
+ * @property {string[]} crowdVibeTags
+ * @property {string[]} bestForTags
+ * @property {string} rotationEstimate
+ * @property {string} beginnerFriendly
+ * @property {string} duetFriendly
+ * @property {string[]} beauRocksCapabilities
  */
 
 /**
@@ -35,6 +42,10 @@
  * @property {string} state
  * @property {string} venueId
  * @property {string} hostUid
+ * @property {string[]} experienceTags
+ * @property {string[]} hostStyleTags
+ * @property {string[]} crowdVibeTags
+ * @property {string[]} bestForTags
  */
 
 /**
@@ -48,6 +59,8 @@
  * @property {string} hostUid
  * @property {string} venueId
  * @property {string} roomCode
+ * @property {string[]} experienceTags
+ * @property {string[]} beauRocksCapabilities
  */
 
 /**

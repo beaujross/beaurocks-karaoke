@@ -5,6 +5,7 @@ import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestra
 import { marketingFlags } from "../featureFlags";
 import EmptyStatePanel from "./EmptyStatePanel";
 import InlineConversionActions from "./InlineConversionActions";
+import { deriveDirectoryExperience, summarizeGeoExperience } from "../lib/directoryExperience";
 import { extractCadenceBadges, formatDateTime } from "./shared";
 
 const toLabel = (value = "") =>
@@ -67,6 +68,7 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
     const sessions = (payload.sessions || []).map((item) => ({ ...item, routePage: "session" }));
     return [...events, ...sessions, ...venues];
   }, [payload]);
+  const experienceSummary = useMemo(() => summarizeGeoExperience(entries), [entries]);
 
   const onEmptyAction = (action = {}) => {
     const intent = String(action.intent || "");
@@ -116,9 +118,12 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
           <span className="mk3-breadcrumb-sep">/</span>
           <span className="mk3-breadcrumb-current">{label}</span>
         </nav>
-        <div className="mk3-chip">geo landing</div>
-        <h2>{label}</h2>
-        <p>Public karaoke nights and upcoming sessions in this area.</p>
+        <div className="mk3-chip">karaoke city guide</div>
+        <h2>Best karaoke nights in {label}</h2>
+        <p>
+          Use this guide to find rooms with the right mix of host vibe, crowd energy, rotation speed,
+          and modern karaoke signals like live join and recap-ready nights.
+        </p>
         <div className="mk3-filter-row">
           <label>
             Date Window
@@ -137,6 +142,21 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
             <span>{payload?.counts?.events || 0} events | {payload?.counts?.sessions || 0} sessions | {payload?.counts?.venues || 0} venues</span>
           </div>
         )}
+        {!loading && !error && entries.length > 0 && (
+          <div className="mk3-experience-region-summary">
+            <strong>{experienceSummary.beauRocksPowered} modern karaoke nights stand out in this mix</strong>
+            <span>
+              BeauRocks-powered listings surface the signals static directories miss: live join, audience play,
+              recap proof, and fresher host workflow.
+            </span>
+            <div className="mk3-experience-pill-row is-modern">
+              {experienceSummary.liveJoin > 0 && <span className="mk3-experience-pill is-modern">{experienceSummary.liveJoin} live join</span>}
+              {experienceSummary.recapReady > 0 && <span className="mk3-experience-pill is-modern">{experienceSummary.recapReady} recap-ready</span>}
+              {experienceSummary.beginnerFriendly > 0 && <span className="mk3-experience-pill is-fun">{experienceSummary.beginnerFriendly} beginner-friendly</span>}
+              {experienceSummary.fastRotation > 0 && <span className="mk3-experience-pill is-fun">{experienceSummary.fastRotation} fast rotation</span>}
+            </div>
+          </div>
+        )}
         <div className="mk3-sub-list">
           {!loading && !error && entries.length === 0 && (
             <EmptyStatePanel
@@ -149,6 +169,7 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
             />
           )}
           {entries.map((entry) => {
+            const experience = deriveDirectoryExperience(entry);
             const cadenceBadges = extractCadenceBadges({
               karaokeNightsLabel: entry.karaokeNightsLabel,
               recurringRule: entry.recurringRule,
@@ -165,6 +186,14 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
                 <span>{entry.title || "Untitled listing"}</span>
                 <span>{entry.startsAtMs ? formatDateTime(entry.startsAtMs) : [entry.city, entry.state].filter(Boolean).join(", ")}</span>
               </button>
+              {experience.storyLine && <div className="mk3-card-story">{experience.storyLine}</div>}
+              {!!experience.capabilityBadges.length && (
+                <div className="mk3-experience-pill-row is-modern">
+                  {experience.capabilityBadges.slice(0, 3).map((badge) => (
+                    <span key={`${entry.id}_${badge}`} className="mk3-experience-pill is-modern">{badge}</span>
+                  ))}
+                </div>
+              )}
               {!!cadenceBadges.length && (
                 <div className="mk3-day-badge-row">
                   {cadenceBadges.map((badge) => (
@@ -184,13 +213,18 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
         </div>
       </article>
       <aside className="mk3-actions-card">
-        <h4>Explore</h4>
-        <p>Need map view and deeper filters? Jump to Discover.</p>
+        <h4>How To Pick Tonight's Room</h4>
+        <p>Start with vibe, then trust the proof. The best nights usually show host energy, cadence, and modern room signals.</p>
+        <div className="mk3-persona-checklist-list">
+          <span>Look for fast rotation or beginner-friendly badges</span>
+          <span>Prefer listings with live join, audience play, or recap proof</span>
+          <span>Use Discover when you want map view and deeper filtering</span>
+        </div>
         <button type="button" onClick={() => navigate("submit", "", { intent: "listing_submit", targetType: "geo" })}>
           Add Karaoke Night
         </button>
         <button type="button" onClick={() => navigate("discover")}>
-          Open Discover
+          Open Discover Map
         </button>
       </aside>
     </section>

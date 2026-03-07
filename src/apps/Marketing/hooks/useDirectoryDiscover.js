@@ -14,7 +14,7 @@ const toDiscoverErrorMessage = (error) => {
 const DEFAULT_FACETS = Object.freeze({
   host: [],
   region: [],
-  counts: { venue: 0, event: 0, room_session: 0, officialBeauRocksRooms: 0, total: 0 },
+  counts: { venue: 0, event: 0, room_session: 0, officialBeauRocksRooms: 0, beaurocksElevated: 0, total: 0 },
 });
 
 const splitByListingType = (items = []) => {
