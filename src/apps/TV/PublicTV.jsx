@@ -805,6 +805,10 @@ const PublicTV = ({ roomCode }) => {
     const initialTvExploreConfig = useMemo(() => getInitialTvExploreConfig(), []);
     const tvExploreEnabled = initialTvExploreConfig.enabled;
     const [tvExploreProfile, setTvExploreProfile] = useState(initialTvExploreConfig.profile);
+    const isMarketingDemoEmbed = useMemo(() => {
+        if (typeof window === 'undefined') return false;
+        return new URLSearchParams(window.location.search || '').get('mkDemoEmbed') === '1';
+    }, []);
     const [room, setRoom] = useState(null);
     const [songs, setSongs] = useState([]);
     const [reactions, setReactions] = useState([]);
@@ -868,6 +872,11 @@ const PublicTV = ({ roomCode }) => {
     const [previewNowMs, setPreviewNowMs] = useState(nowMs());
     const [previewSession, setPreviewSession] = useState({ key: '', startMs: 0 });
     const [reactionScoreTotalsByPerformance, setReactionScoreTotalsByPerformance] = useState(() => new Map());
+
+    useEffect(() => {
+        if (!isMarketingDemoEmbed) return;
+        setStarted(true);
+    }, [isMarketingDemoEmbed]);
     const [viewportSize, setViewportSize] = useState(() => ({
         width: typeof window !== 'undefined' ? window.innerWidth : 1920,
         height: typeof window !== 'undefined' ? window.innerHeight : 1080

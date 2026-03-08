@@ -224,6 +224,11 @@ const App = () => {
     const [authReady, setAuthReady] = useState(false);
     const isKaraokeTerms = typeof window !== 'undefined'
         && window.location.pathname.replace(/\/+$/, '').endsWith('/karaoke/terms');
+    const isDemoRoomCode = String(roomCode || '').trim().toUpperCase().startsWith('DEMO');
+    const isDemoHostEmbed = typeof window !== 'undefined'
+        && view === 'host'
+        && isDemoRoomCode
+        && new URLSearchParams(window.location.search || '').get('mkDemoEmbed') === '1';
 
     useEffect(() => {
         if (!canonicalRedirectUrl || typeof window === 'undefined') return;
@@ -254,7 +259,7 @@ const App = () => {
 
     useEffect(() => {
         if (view !== 'host') return;
-        if (!authReady || hasBeauRocksAccount || typeof window === 'undefined') return;
+        if (!authReady || hasBeauRocksAccount || isDemoHostEmbed || typeof window === 'undefined') return;
 
         const resumeIntent = 'host_dashboard_resume';
         const baseHref = marketingFlags.routePathsEnabled
@@ -270,7 +275,7 @@ const App = () => {
         authGateUrl.searchParams.set('targetType', 'host_dashboard');
         authGateUrl.searchParams.set('return_to', `${returnToUrl.pathname}${returnToUrl.search}`);
         window.location.replace(`${authGateUrl.pathname}${authGateUrl.search}`);
-    }, [authReady, hasBeauRocksAccount, view]);
+    }, [authReady, hasBeauRocksAccount, isDemoHostEmbed, view]);
     if (canonicalRedirectUrl) return <ViewLoader />;
     if (isKaraokeTerms) return <KaraokeTerms />;
     if (view === 'landing') return <Landing hasBeauRocksAccount={hasBeauRocksAccount} onJoin={(c) => { setRoomCode(c); setView('mobile'); }} />;
@@ -288,7 +293,7 @@ const App = () => {
     };
 
     if (view === 'host') {
-        if (!authReady || !hasBeauRocksAccount) return <ViewLoader />;
+        if (!authReady || (!hasBeauRocksAccount && !isDemoHostEmbed)) return <ViewLoader />;
         return (
             <Suspense fallback={<ViewLoader />}>
                 <ToastProvider>

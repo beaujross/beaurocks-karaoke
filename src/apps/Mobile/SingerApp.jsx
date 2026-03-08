@@ -674,6 +674,19 @@ const SingerApp = ({ roomCode, uid }) => {
         () => String(auth.currentUser?.uid || authReadyUid || uid || '').trim(),
         [authReadyUid, uid]
     );
+    const isMarketingDemoEmbed = useMemo(() => {
+        if (typeof window === 'undefined') return false;
+        return new URLSearchParams(window.location.search || '').get('mkDemoEmbed') === '1';
+    }, []);
+    const demoGuestProfile = useMemo(() => {
+        const audienceNames = ['Alex', 'Jordan', 'Taylor', 'Casey', 'Riley', 'Morgan', 'Harper', 'Kai'];
+        const seed = String(activeUid || roomCode || 'demo')
+            .split('')
+            .reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+        const avatar = AVATAR_CATALOG[seed % Math.min(AVATAR_CATALOG.length, 12)]?.emoji || DEFAULT_EMOJI;
+        const name = `${audienceNames[seed % audienceNames.length]} Demo`;
+        return { name, emoji: avatar };
+    }, [activeUid, roomCode]);
     const leaderboardModes = [
         { key: 'performances', label: 'Performances', unit: 'PERF', getValue: (u) => u.performances },
         { key: 'totalEmojis', label: 'Emojis Sent', unit: 'EMOJIS', getValue: (u) => u.totalEmojis },
@@ -836,8 +849,15 @@ const SingerApp = ({ roomCode, uid }) => {
     const joinContainerRef = useRef(null);
     const joinRayStageRef = useRef(null);
     const joinLogoRef = useRef(null);
+    const demoAutoJoinAttemptRef = useRef('');
+    const demoJoinRef = useRef(null);
     const [joinRayPos, setJoinRayPos] = useState({ x: '50%', y: '30%' });
     const joinRayFrameRef = useRef(0);
+
+    useEffect(() => {
+        if (!isMarketingDemoEmbed) return;
+        setTermsAccepted(true);
+    }, [isMarketingDemoEmbed]);
 
     const [localReactions, setLocalReactions] = useState([]);
     const [composedPhoto, setComposedPhoto] = useState(null);
@@ -3328,6 +3348,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         trackEvent('singer_join', { room_code: roomCode });
         logActivity('joined the party', EMOJI.wave);
     };
+    demoJoinRef.current = join;
+
+    useEffect(() => {
+        if (!isMarketingDemoEmbed || user || !roomCode || !activeUid) return;
+        const attemptKey = `${roomCode}_${activeUid}`;
+        if (demoAutoJoinAttemptRef.current === attemptKey) return;
+        demoAutoJoinAttemptRef.current = attemptKey;
+        demoJoinRef.current?.(demoGuestProfile).catch((error) => {
+            console.error('Demo auto-join failed', error);
+            demoAutoJoinAttemptRef.current = '';
+        });
+    }, [activeUid, demoGuestProfile, isMarketingDemoEmbed, roomCode, user]);
     
     const sendChatMessage = async (overrideText = null) => {
         const isEventLike = !!overrideText

@@ -391,7 +391,7 @@ const normalizeDemoViewMode = (value = "") => {
 };
 
 const getInitialDemoViewMode = () => {
-  if (typeof window === "undefined") return DEMO_VIEW_MODES.interactive;
+  if (typeof window === "undefined") return DEMO_VIEW_MODES.autoplay;
   try {
     const params = new URLSearchParams(window.location.search);
     const queryModeRaw = params.get("demo_view") || params.get("demoView") || "";
@@ -399,9 +399,9 @@ const getInitialDemoViewMode = () => {
     if (params.get("autoplay") === "1") return DEMO_VIEW_MODES.autoplay;
     const storedRaw = window.sessionStorage.getItem(DEMO_VIEW_STORAGE_KEY) || "";
     if (storedRaw) return normalizeDemoViewMode(storedRaw);
-    return DEMO_VIEW_MODES.interactive;
+    return DEMO_VIEW_MODES.autoplay;
   } catch {
-    return DEMO_VIEW_MODES.interactive;
+    return DEMO_VIEW_MODES.autoplay;
   }
 };
 
@@ -457,6 +457,93 @@ const buildReactionEvents = (scene, sceneProgress = 0) => {
   }));
 };
 
+const DEMO_AUDIENCE_LIBRARY = [
+  { name: "Alex", avatar: ":)" },
+  { name: "Jordan", avatar: ":D" },
+  { name: "Taylor", avatar: "<3" },
+  { name: "Casey", avatar: ":P" },
+  { name: "Riley", avatar: ":]" },
+  { name: "Morgan", avatar: ":O" },
+  { name: "Harper", avatar: "^_^" },
+  { name: "Kai", avatar: "(*)" },
+];
+
+const buildAudienceRoster = ({ crowdSize = 0, sceneProgress = 0, activeScene = null } = {}) => {
+  const visibleCount = Math.max(4, Math.min(8, Number(crowdSize || 0) || 0));
+  return Array.from({ length: visibleCount }, (_, index) => {
+    const profile = DEMO_AUDIENCE_LIBRARY[index % DEMO_AUDIENCE_LIBRARY.length];
+    const scoreBase = 120 + (index * 18);
+    const score = scoreBase + Math.round(sceneProgress * 90);
+    const active = index < Math.max(3, Math.round(visibleCount * (0.55 + (sceneProgress * 0.2))));
+    const focus = activeScene?.mode === "trivia"
+      ? "Voting"
+      : activeScene?.mode === "wyr"
+        ? "Picking a side"
+        : activeScene?.mode === "guitar"
+          ? "Strumming"
+          : activeScene?.mode === "vocal"
+            ? "Chasing combo"
+            : "Sending hype";
+    return {
+      id: `${profile.name}_${index + 1}`,
+      name: `${profile.name} ${index + 1}`,
+      avatar: profile.avatar,
+      score,
+      active,
+      focus,
+    };
+  });
+};
+
+const buildAudienceFeed = ({
+  activeScene = null,
+  activeHostAction = null,
+  reactionEvents = [],
+  triviaModel = null,
+  wyrModel = null,
+  crowdSize = 0,
+} = {}) => {
+  const items = [];
+  if (activeHostAction) {
+    items.push({
+      title: "Host cue",
+      detail: activeHostAction.label || "Host shifts the room.",
+    });
+  }
+  if (triviaModel) {
+    items.push({
+      title: triviaModel.status === "reveal" ? "Answer reveal" : "Trivia live",
+      detail: triviaModel.status === "reveal"
+        ? `Crowd lands on ${triviaModel.options?.[triviaModel.correctIndex] || "the winning answer"}.`
+        : "Votes are stacking while the countdown runs.",
+    });
+  } else if (wyrModel) {
+    items.push({
+      title: wyrModel.status === "reveal" ? "Crowd split locked" : "Would You Rather live",
+      detail: wyrModel.status === "reveal"
+        ? "TV expands the winning side and closes the round."
+        : "Audience picks A or B while music keeps moving.",
+    });
+  } else if (activeScene?.mode === "guitar") {
+    items.push({
+      title: "Guitar sync",
+      detail: "Phones turn into strum pads and the solo meter climbs.",
+    });
+  } else {
+    items.push({
+      title: "Singalong",
+      detail: `${Math.max(4, Number(crowdSize || 0) || 0)} guests are feeding reactions into the room.`,
+    });
+  }
+  reactionEvents.slice(0, 3).forEach((entry) => {
+    items.push({
+      title: `${entry.label} burst`,
+      detail: `${entry.count} quick ${String(entry.label || "reaction").toLowerCase()} actions landed this cycle.`,
+    });
+  });
+  return items.slice(0, 4);
+};
+
 const DemoExperiencePage = ({ session = {} }) => {
   const isSessionReady = !!session?.ready;
   const hasCallableAuth = !!session?.isAuthed;
@@ -487,7 +574,6 @@ const DemoExperiencePage = ({ session = {} }) => {
   const [iframeMountReady, setIframeMountReady] = useState(false);
   const isAutoplayShowcase = demoViewMode === DEMO_VIEW_MODES.autoplay;
   const canRunLiveSync = isSessionReady && hasCallableAuth;
-  const isInteractiveTestingLayout = !isAutoplayShowcase;
 
   useEffect(() => {
     if (iframeMountReady) return;
@@ -669,8 +755,8 @@ const DemoExperiencePage = ({ session = {} }) => {
   }, [sanitizedRoomCode, surfaceReloadToken]);
 
   const launchLinks = useMemo(() => ({
-    audience: buildSceneSurfaceUrl("app", { mobile_layout: "native" }),
-    tv: buildSceneSurfaceUrl("tv", { mode: "tv" }),
+    audience: buildSceneSurfaceUrl("app", { mobile_layout: "native", mkDemoEmbed: "1" }),
+    tv: buildSceneSurfaceUrl("tv", { mode: "tv", mkDemoEmbed: "1" }),
     host: buildSceneSurfaceUrl("host", {
       mode: "host",
       mkDemoEmbed: "1",
@@ -685,6 +771,47 @@ const DemoExperiencePage = ({ session = {} }) => {
     () => reactionEvents.reduce((sum, entry) => sum + Math.max(0, Number(entry.count || 0)), 0),
     [reactionEvents]
   );
+
+  const audienceRoster = useMemo(
+    () => buildAudienceRoster({ crowdSize, sceneProgress, activeScene }),
+    [activeScene, crowdSize, sceneProgress]
+  );
+
+  const audienceFeed = useMemo(
+    () => buildAudienceFeed({
+      activeScene,
+      activeHostAction,
+      reactionEvents,
+      triviaModel,
+      wyrModel,
+      crowdSize,
+    }),
+    [activeHostAction, activeScene, crowdSize, reactionEvents, triviaModel, wyrModel]
+  );
+
+  const eqBars = useMemo(() => (
+    Array.from({ length: 22 }, (_, index) => {
+      const phase = ((beatPulseTick + (index * 3)) % 11) / 10;
+      const weight = 0.35 + (sceneProgress * 0.45) + (((index % 4) + 1) * 0.06);
+      return `${Math.max(12, Math.min(100, Math.round((phase * 52) + (weight * 38))))}%`;
+    })
+  ), [beatPulseTick, sceneProgress]);
+
+  const hostStats = useMemo(() => ([
+    { label: "Crowd", value: `${crowdSize}` },
+    { label: "Interactions", value: `${sceneInteractionTotal}` },
+    { label: "Scene cues", value: `${hostActions.length || 1}` },
+  ]), [crowdSize, hostActions.length, sceneInteractionTotal]);
+
+  const activeHostControlIds = useMemo(() => {
+    const ids = new Set();
+    const activeControl = String(activeHostAction?.control || "").trim().toLowerCase();
+    if (activeControl) ids.add(activeControl);
+    HOST_CONTROL_BUTTONS.forEach((button) => {
+      if (button.sceneId === activeScene.id) ids.add(button.id);
+    });
+    return ids;
+  }, [activeHostAction?.control, activeScene.id]);
 
   useEffect(() => {
     try {
@@ -706,14 +833,14 @@ const DemoExperiencePage = ({ session = {} }) => {
     if (!isAutoplayShowcase) return;
     if (!liveSync) return;
     setLiveSync(false);
-    setSyncState({ tone: "muted", message: "Autoplay Showcase uses local scripted playback only." });
+    setSyncState({ tone: "muted", message: "Guided Demo uses local scripted playback only." });
   }, [isAutoplayShowcase, liveSync]);
 
   useEffect(() => {
     if (isAutoplayShowcase) return;
     if (!canRunLiveSync && liveSync) {
       setLiveSync(false);
-      setSyncState({ tone: "muted", message: "Interactive surfaces are live. Sign in to enable scripted sync controls." });
+      setSyncState({ tone: "muted", message: "Live Lab uses the native surfaces. Sign in to enable scripted sync controls." });
     }
   }, [canRunLiveSync, isAutoplayShowcase, liveSync]);
 
@@ -1010,7 +1137,7 @@ const DemoExperiencePage = ({ session = {} }) => {
         <header>
           <h3>Demo Controls</h3>
           <p>
-            Interactive surfaces are native by default. Switch to on-rails autoplay only when you want a deterministic walkthrough.
+            Guided mode keeps the room readable without setup friction. Live Lab embeds the native surfaces when you want to inspect the real apps.
           </p>
         </header>
         <div className="mk3-demo-toolbar">
@@ -1023,12 +1150,12 @@ const DemoExperiencePage = ({ session = {} }) => {
                 setLiveSync(true);
               } else {
                 setLiveSync(false);
-                setSyncState({ tone: "muted", message: "Interactive surfaces are live. Sign in to enable scripted sync controls." });
+                setSyncState({ tone: "muted", message: "Live Lab uses the native surfaces. Sign in to enable scripted sync controls." });
               }
               trackEvent("mk_demo_view_mode", { mode: DEMO_VIEW_MODES.interactive });
             }}
           >
-            Interactive Surfaces (Recommended)
+            Live Interactive Lab
           </button>
           <button
             type="button"
@@ -1038,7 +1165,7 @@ const DemoExperiencePage = ({ session = {} }) => {
               trackEvent("mk_demo_view_mode", { mode: DEMO_VIEW_MODES.autoplay });
             }}
           >
-            Demo On Rails
+            Guided Demo (Recommended)
           </button>
           <button type="button" onClick={onTogglePlayback}>
             {playing ? "Pause Demo" : "Play Demo"}
@@ -1149,7 +1276,7 @@ const DemoExperiencePage = ({ session = {} }) => {
         />
       </article>
 
-      <div ref={demoShellRef} className={`mk3-demo-shell ${isInteractiveTestingLayout ? "mk3-demo-shell-testing" : ""}`}>
+      <div ref={demoShellRef} className="mk3-demo-shell">
         <article className={`mk3-demo-surface mk3-demo-tv is-${activeScene.mode}`}>
           <header>
             <span>Public TV</span>
@@ -1159,6 +1286,96 @@ const DemoExperiencePage = ({ session = {} }) => {
             </a>
           </header>
           <div className="mk3-demo-frame-wrap mk3-demo-tv-frame-wrap">
+            {isAutoplayShowcase ? (
+              <div className="mk3-demo-tv-stage">
+                <div className="mk3-demo-tv-video">
+                  <span className="mk3-demo-tv-video-kicker">Guided public TV playback</span>
+                  <strong>{activeScene.songTitle || "Demo Track"} {" · "} {activeScene.artist || "BeauRocks"}</strong>
+                  <div className="mk3-demo-tv-video-eq" aria-hidden="true">
+                    {eqBars.map((height, index) => (
+                      <i key={`eq_${index}`} style={{ height }} />
+                    ))}
+                  </div>
+                </div>
+                <div className="mk3-demo-tv-overlay is-guided">
+                  <div className="mk3-demo-tv-badges">
+                    <span>Now Playing</span>
+                    <strong>{stageModeLabel}</strong>
+                  </div>
+                  <div className={`mk3-demo-beat-light ${audioBedEnabled ? "is-live" : ""}`} data-beat={beatPulseTick % 8} />
+                  {lyricOverlayEnabled ? (
+                    <div className="mk3-demo-tv-lyrics">
+                      <p className="mk3-demo-tv-lyric-active">{currentLyricLine}</p>
+                      <p className="mk3-demo-tv-lyric-next">{nextLyricLine || currentLyricLine}</p>
+                    </div>
+                  ) : (
+                    <div className="mk3-demo-tv-lyrics is-instrumental">
+                      <p className="mk3-demo-tv-lyric-active">{stageModeLabel}</p>
+                      <p className="mk3-demo-tv-lyric-next">{activeScene.description}</p>
+                    </div>
+                  )}
+                </div>
+                {triviaModel ? (
+                  <div className="mk3-demo-trivia">
+                    <strong>{triviaModel.question}</strong>
+                    <div className="mk3-demo-trivia-options">
+                      {triviaModel.options.map((option, index) => {
+                        const totalVotes = triviaModel.votes.reduce((sum, value) => sum + value, 0) || 1;
+                        const voteCount = Number(triviaModel.votes[index] || 0);
+                        const percent = Math.round((voteCount / totalVotes) * 100);
+                        const highlight = triviaModel.status === "reveal" && index === triviaModel.correctIndex;
+                        return (
+                          <div key={`${triviaModel.questionId}_${option}`} className={`mk3-demo-trivia-option ${highlight ? "is-highlight" : ""}`}>
+                            <span>{option}</span>
+                            <div className="mk3-demo-trivia-bar">
+                              <div style={{ width: `${percent}%` }} />
+                            </div>
+                            <b>{percent}%</b>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : wyrModel ? (
+                  <div className="mk3-demo-trivia">
+                    <strong>{wyrModel.question}</strong>
+                    <div className="mk3-demo-trivia-options">
+                      {[wyrModel.optionA, wyrModel.optionB].map((option, index) => {
+                        const totalVotes = wyrModel.votes.reduce((sum, value) => sum + value, 0) || 1;
+                        const voteCount = Number(wyrModel.votes[index] || 0);
+                        const percent = Math.round((voteCount / totalVotes) * 100);
+                        const highlight = wyrModel.status === "reveal" && voteCount === Math.max(...wyrModel.votes);
+                        return (
+                          <div key={`${wyrModel.questionId}_${option}`} className={`mk3-demo-trivia-option ${highlight ? "is-highlight" : ""}`}>
+                            <span>{option}</span>
+                            <div className="mk3-demo-trivia-bar">
+                              <div style={{ width: `${percent}%` }} />
+                            </div>
+                            <b>{percent}%</b>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mk3-demo-vibe-meter">
+                    <span>{activeScene.description}</span>
+                    <div>
+                      <i style={{ width: `${Math.round(36 + (sceneProgress * 56))}%` }} />
+                    </div>
+                  </div>
+                )}
+                <div className="mk3-demo-reaction-rail">
+                  {reactionEvents.map((entry) => (
+                    <div key={`${activeScene.id}_${entry.type}`} className="mk3-demo-reaction-item">
+                      <span>{entry.token}</span>
+                      <small>{entry.count} hits</small>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+            <>
             <iframe
               title="Public TV surface"
               src={iframeMountReady ? launchLinks.tv : "about:blank"}
@@ -1194,10 +1411,12 @@ const DemoExperiencePage = ({ session = {} }) => {
               </div>
             </div>
             )}
+            </>
+            )}
           </div>
           <div className="mk3-demo-surface-status">
-            <span>{activeScene.title}</span>
-            <strong>{Math.round(sceneProgress * 100)}% through scene</strong>
+            <span>{isAutoplayShowcase ? "Guided TV playback with karaoke, games, and crowd reactions already in motion." : activeScene.title}</span>
+            <strong>{isAutoplayShowcase ? `${reactionEvents.length} live reaction lanes` : `${Math.round(sceneProgress * 100)}% through scene`}</strong>
           </div>
         </article>
 
@@ -1212,20 +1431,53 @@ const DemoExperiencePage = ({ session = {} }) => {
           <div className="mk3-demo-frame-wrap mk3-demo-audience-frame-wrap">
             <div className="mk3-demo-phone-shell">
               <div className="mk3-demo-phone-notch" />
-              <div className="mk3-demo-phone-screen">
-                <iframe
-                  title="Audience phone viewport"
-                  src={iframeMountReady ? launchLinks.audience : "about:blank"}
-                  className="mk3-demo-iframe mk3-demo-iframe-mobile"
-                  loading="lazy"
-                  allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
-                />
+              <div className={`mk3-demo-phone-screen ${isAutoplayShowcase ? "mk3-demo-autoplay-audience" : ""}`}>
+                {isAutoplayShowcase ? (
+                  <div className="mk3-demo-surface-body mk3-demo-audience-sim">
+                    <div className="mk3-demo-vibe-meter">
+                      <span>{activeScene.mode === "guitar" ? "Audience phones become strum pads" : "Audience app stays live all night"}</span>
+                      <div>
+                        <i style={{ width: `${Math.round(42 + (sceneProgress * 46))}%` }} />
+                      </div>
+                    </div>
+                    <div className="mk3-demo-audience-grid">
+                      {audienceRoster.map((member) => (
+                        <div key={member.id} className={member.active ? "online" : ""}>
+                          <strong>{member.avatar}</strong>
+                          <div>{member.name}</div>
+                          <small>{member.focus}</small>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mk3-demo-mini-actions">
+                      <button type="button">{activeScene.mode === "trivia" ? "Vote Now" : activeScene.mode === "guitar" ? "Strum" : "React"}</button>
+                      <button type="button">{activeScene.mode === "wyr" ? "Pick A/B" : "Queue Song"}</button>
+                      <button type="button">{activeScene.mode === "finale" ? "Send Encore" : "Send Emoji"}</button>
+                    </div>
+                    <div className="mk3-demo-audience-feed">
+                      {audienceFeed.map((item, index) => (
+                        <div key={`${item.title}_${index}`}>
+                          <strong>{item.title}</strong>
+                          <span>{item.detail}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <iframe
+                    title="Audience phone viewport"
+                    src={iframeMountReady ? launchLinks.audience : "about:blank"}
+                    className="mk3-demo-iframe mk3-demo-iframe-mobile"
+                    loading="lazy"
+                    allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
+                  />
+                )}
               </div>
             </div>
           </div>
           <div className="mk3-demo-surface-status">
-            <span>{`Mobile-framed audience client for room ${sanitizedRoomCode}`}</span>
-            <strong>{sceneInteractionTotal} interactions per cycle</strong>
+            <span>{isAutoplayShowcase ? `${crowdSize} audience phones are simulated as an already-live room.` : `Mobile-framed audience client for room ${sanitizedRoomCode}`}</span>
+            <strong>{isAutoplayShowcase ? `${sceneInteractionTotal} scripted interactions this beat` : `${sceneInteractionTotal} interactions per cycle`}</strong>
           </div>
         </article>
 
@@ -1237,30 +1489,64 @@ const DemoExperiencePage = ({ session = {} }) => {
               Open
             </a>
           </header>
-          <div className="mk3-demo-frame-wrap mk3-demo-host-frame-wrap mk3-demo-host-frame-wrap-live">
-            <iframe
-              title="Host deck surface"
-              src={iframeMountReady ? launchLinks.host : "about:blank"}
-              className="mk3-demo-iframe"
-              loading="lazy"
-              allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
-            />
-          </div>
-          {isAutoplayShowcase && activeHostAction && (
-            <div className="mk3-demo-host-tooltip">
-              <div className="mk3-demo-host-tooltip-kicker">
-                Autopilot cue {Math.max(1, Number(activeHostAction.index || 0) + 1)}/{Math.max(1, Number(activeHostAction.total || 1))}
+          <div className={`mk3-demo-frame-wrap mk3-demo-host-frame-wrap ${isAutoplayShowcase ? "" : "mk3-demo-host-frame-wrap-live"}`}>
+            {isAutoplayShowcase ? (
+              <div className="mk3-demo-host-sim">
+                <div className="mk3-demo-host-top-row">
+                  <span>Room {sanitizedRoomCode}</span>
+                  <span>{stageModeLabel}</span>
+                  <span>{crowdSize} guests</span>
+                  <span>{sceneInteractionTotal} live actions</span>
+                </div>
+                <div className="mk3-demo-host-stats">
+                  {hostStats.map((entry) => (
+                    <div key={entry.label}>
+                      <span>{entry.label}</span>
+                      <strong>{entry.value}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div className="mk3-demo-host-controls">
+                  {HOST_CONTROL_BUTTONS.slice(0, 6).map((button) => (
+                    <button key={button.id} type="button" className={activeHostControlIds.has(button.id) ? "active" : ""}>
+                      <i className={`fa-solid ${button.icon}`} aria-hidden="true" />
+                      {button.label}
+                    </button>
+                  ))}
+                </div>
+                {activeHostAction && (
+                  <div className="mk3-demo-host-tooltip">
+                    <div className="mk3-demo-host-tooltip-kicker">
+                      Guided cue {Math.max(1, Number(activeHostAction.index || 0) + 1)}/{Math.max(1, Number(activeHostAction.total || 1))}
+                    </div>
+                    <strong>{activeHostAction.label || "Scripted host transition"}</strong>
+                    <p>{activeHostAction.explain || "Scene timeline drives host controls while the room keeps moving."}</p>
+                    <div className="mk3-demo-host-tooltip-result">{activeHostAction.result || "Host logic is simulating the next room beat."}</div>
+                  </div>
+                )}
+                <div className="mk3-demo-host-actions-mini">
+                  {hostActions.map((action) => (
+                    <span key={action.id} className={String(action.id || "") === String(activeHostAction?.id || "") ? "active" : ""}>
+                      {action.control || "cue"}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <strong>{activeHostAction.label || "Scripted host transition"}</strong>
-              <p>{activeHostAction.explain || "Scene timeline drives host controls while native surfaces stay visible."}</p>
-              <div className="mk3-demo-host-tooltip-result">Scripted controls in rotation: {HOST_CONTROL_BUTTONS.length}</div>
-            </div>
-          )}
+            ) : (
+              <iframe
+                title="Host deck surface"
+                src={iframeMountReady ? launchLinks.host : "about:blank"}
+                className="mk3-demo-iframe"
+                loading="lazy"
+                allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
+              />
+            )}
+          </div>
           <div className="mk3-demo-surface-status">
-            <span>{isAutoplayShowcase ? "Native host deck running scripted cues" : "Native host surface for room control and queue management"}</span>
+            <span>{isAutoplayShowcase ? "Guided host deck shows what the operator is doing without forcing setup first." : "Native host surface for room control and queue management"}</span>
             <strong>
               {isAutoplayShowcase
-                ? "On-rails native view"
+                ? `${activeHostControlIds.size} controls highlighted`
                 : syncState.tone === "ok"
                   ? "Sync healthy"
                   : syncState.tone === "error"
@@ -1272,11 +1558,11 @@ const DemoExperiencePage = ({ session = {} }) => {
       </div>
 
       <article className="mk3-demo-launch">
-        <h3>{isAutoplayShowcase ? "Demo On Rails Is Running" : "Launch Real Surfaces From This Room Code"}</h3>
+        <h3>{isAutoplayShowcase ? "Guided Demo Is Running" : "Launch Real Surfaces From This Room Code"}</h3>
         <p>
           {isAutoplayShowcase
-            ? "This deterministic run keeps native TV, audience, and host surfaces on autopilot so real gameplay is always visible."
-            : "Runs an ambient multi-surface loop with karaoke first, game moments in sequence, two Would You Rather resolutions, and a finale reset."}
+            ? "This scripted mode skips sign-in, start gates, and setup friction so buyers immediately see a busy karaoke night across TV, audience, and host."
+            : "Live Interactive Lab embeds the native room surfaces so you can inspect the actual product behavior and controls for this demo room."}
         </p>
         <div className={`mk3-inline-status ${syncState.tone === "error" ? "mk3-status-error" : syncState.tone === "ok" ? "mk3-inline-next" : ""}`}>
           {syncState.message}
