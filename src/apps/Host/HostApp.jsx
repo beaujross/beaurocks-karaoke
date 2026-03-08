@@ -44,6 +44,7 @@ import {
     callFunction,
     ensureAppCheckToken,
     assertRoomHostAccess,
+    removeHostRoomDiscoveryListing,
     ensureOrganization,
     bootstrapOnboardingWorkspace,
     getMyEntitlements,
@@ -7997,6 +7998,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         for (const name of collections) {
             await deleteRoomCollection(name, normalizedCode);
         }
+        await runWithAppCheckWarmup(
+            () => removeHostRoomDiscoveryListing(normalizedCode),
+            { scope: 'removeHostRoomDiscoveryListing' }
+        );
         await updateRoomByCode(normalizedCode, {
             activeMode: 'karaoke',
             activeScreen: 'stage',

@@ -584,41 +584,48 @@ const pointInBounds = (location = null, bounds = null) => {
 const buildMarkerVisual = (
   color,
   selected = false,
+  isElevated = false,
   isOfficialRoom = false,
   pulsePhase = 0
 ) => {
   const accentColor = isOfficialRoom
     ? (pulsePhase ? "#ff72c1" : "#ff4fae")
-    : color || "#26d7e8";
+    : isElevated
+      ? "#f1c76f"
+      : color || "#26d7e8";
   const ringColor = isOfficialRoom
     ? "#f1c76f"
-    : selected
-      ? "#dffcff"
-      : hexToRgba(accentColor, 0.54);
-  const bodyColor = selected ? "#07182b" : "#091326";
+    : isElevated
+      ? (selected ? "#fff3c7" : "#f1c76f")
+      : selected
+        ? "#dffcff"
+        : hexToRgba(accentColor, 0.54);
+  const bodyColor = isElevated ? "#120d18" : selected ? "#07182b" : "#091326";
   const coreColor = isOfficialRoom
     ? "#f1c76f"
-    : selected
-      ? "#37efff"
-      : accentColor;
-  const badgeColor = isOfficialRoom ? "#ff4fae" : "#020714";
-  const badgeTextColor = isOfficialRoom ? "#fff1fb" : "#d8faff";
-  const badgeBorderColor = isOfficialRoom ? "rgba(241, 199, 111, 0.76)" : hexToRgba(accentColor, 0.58);
+    : isElevated
+      ? "#ffd987"
+      : selected
+        ? "#37efff"
+        : accentColor;
   const haloColor = isOfficialRoom
     ? hexToRgba("#ff4fae", selected ? 0.34 : 0.26)
-    : hexToRgba(accentColor, selected ? 0.3 : 0.18);
+    : isElevated
+      ? hexToRgba("#f1c76f", selected ? 0.3 : 0.2)
+      : hexToRgba(accentColor, selected ? 0.3 : 0.18);
   const haloRingColor = isOfficialRoom
     ? hexToRgba("#f1c76f", selected ? 0.24 : 0.18)
-    : hexToRgba(accentColor, selected ? 0.18 : 0.1);
+    : isElevated
+      ? hexToRgba("#fff3c7", selected ? 0.22 : 0.14)
+      : hexToRgba(accentColor, selected ? 0.18 : 0.1);
   const radius = selected
-    ? (isOfficialRoom ? (16 + (pulsePhase ? 1 : 0)) : 14)
-    : (isOfficialRoom ? (13 + (pulsePhase ? 1 : 0)) : 11);
-  const strokeWidth = selected ? (isOfficialRoom ? 3.8 : 3.1) : (isOfficialRoom ? 3 : 2.2);
+    ? (isOfficialRoom ? (16 + (pulsePhase ? 1 : 0)) : isElevated ? 15 : 14)
+    : (isOfficialRoom ? (13 + (pulsePhase ? 1 : 0)) : isElevated ? 12 : 11);
+  const strokeWidth = selected
+    ? (isOfficialRoom ? 3.8 : isElevated ? 3.3 : 3.1)
+    : (isOfficialRoom ? 3 : isElevated ? 2.5 : 2.2);
   return {
     accentColor,
-    badgeColor,
-    badgeTextColor,
-    badgeBorderColor,
     bodyColor,
     coreColor,
     haloColor,
@@ -632,12 +639,17 @@ const buildMarkerVisual = (
     shadow: selected
       ? isOfficialRoom
         ? `0 0 0 4px ${hexToRgba("#f1c76f", 0.18)}, 0 0 30px ${hexToRgba("#ff4fae", 0.42)}, 0 14px 32px rgba(2, 7, 20, 0.62)`
+        : isElevated
+          ? `0 0 0 4px ${hexToRgba("#f1c76f", 0.16)}, 0 0 28px ${hexToRgba("#f1c76f", 0.28)}, 0 12px 28px rgba(2, 7, 20, 0.56)`
         : `0 0 0 4px ${hexToRgba(accentColor, 0.16)}, 0 0 26px ${hexToRgba(accentColor, 0.34)}, 0 12px 28px rgba(2, 7, 20, 0.54)`
       : isOfficialRoom
         ? `0 0 0 3px ${hexToRgba("#f1c76f", 0.12)}, 0 0 18px ${hexToRgba("#ff4fae", 0.22)}, 0 8px 24px rgba(2, 7, 20, 0.46)`
+        : isElevated
+          ? `0 0 0 2px ${hexToRgba("#f1c76f", 0.1)}, 0 0 16px ${hexToRgba("#f1c76f", 0.16)}, 0 8px 22px rgba(2, 7, 20, 0.4)`
         : `0 0 0 2px ${hexToRgba(accentColor, 0.08)}, 0 6px 18px rgba(2, 7, 20, 0.36)`,
     scale: radius,
     selected,
+    isElevated,
     isOfficialRoom,
   };
 };
@@ -646,10 +658,11 @@ const buildMarkerIcon = (
   googleMaps,
   color,
   selected = false,
+  isElevated = false,
   isOfficialRoom = false,
   pulsePhase = 0
 ) => {
-  const visual = buildMarkerVisual(color, selected, isOfficialRoom, pulsePhase);
+  const visual = buildMarkerVisual(color, selected, isElevated, isOfficialRoom, pulsePhase);
   return {
     path: googleMaps.SymbolPath.CIRCLE,
     fillColor: visual.fillColor,
@@ -663,7 +676,7 @@ const buildMarkerIcon = (
 const applyAdvancedMarkerStyles = (element, visual, title = "") => {
   if (!element) return;
   const diameter = Math.max(visual.radius * 2, 22);
-  element.className = `mk3-map-pin${visual.selected ? " is-selected" : ""}${visual.isOfficialRoom ? " is-elevated" : ""}`;
+  element.className = `mk3-map-pin${visual.selected ? " is-selected" : ""}${visual.isElevated ? " is-highlighted" : ""}${visual.isOfficialRoom ? " is-official" : ""}`;
   element.setAttribute("aria-label", title || "Map marker");
   element.title = title || "";
   element.style.setProperty("--mk3-map-pin-size", `${diameter}px`);
@@ -671,9 +684,6 @@ const applyAdvancedMarkerStyles = (element, visual, title = "") => {
   element.style.setProperty("--mk3-map-pin-body", visual.bodyColor);
   element.style.setProperty("--mk3-map-pin-ring", visual.ringColor);
   element.style.setProperty("--mk3-map-pin-core", visual.coreColor);
-  element.style.setProperty("--mk3-map-pin-badge-bg", visual.badgeColor);
-  element.style.setProperty("--mk3-map-pin-badge-ink", visual.badgeTextColor);
-  element.style.setProperty("--mk3-map-pin-badge-border", visual.badgeBorderColor);
   element.style.setProperty("--mk3-map-pin-halo", visual.haloColor);
   element.style.setProperty("--mk3-map-pin-halo-ring", visual.haloRingColor);
   element.style.setProperty("--mk3-map-pin-stroke-width", `${Math.max(2, Math.round(visual.strokeWidth))}px`);
@@ -694,8 +704,8 @@ const createAdvancedMarkerElement = (visual, title = "") => {
     <span class="mk3-map-pin__halo" aria-hidden="true"></span>
     <span class="mk3-map-pin__body" aria-hidden="true">
       <span class="mk3-map-pin__core"></span>
-      <span class="mk3-map-pin__badge">${visual.isOfficialRoom ? "BR" : "K"}</span>
     </span>
+    ${visual.isElevated ? '<span class="mk3-map-pin__spark" aria-hidden="true"></span>' : ""}
   `;
   applyAdvancedMarkerStyles(element, visual, title);
   return element;
@@ -1158,7 +1168,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
       if (entry.listingType === "event") counts.event += 1;
       else if (entry.listingType === "room_session") counts.room_session += 1;
       else counts.venue += 1;
-      if (entry.isOfficialBeauRocksRoom) counts.elevated += 1;
+      if (entry.isBeauRocksElevated) counts.elevated += 1;
     });
     return counts;
   }, [rankedListings]);
@@ -1490,10 +1500,11 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
       const visual = buildMarkerVisual(
         entry.markerColor,
         selected,
+        !!entry.isBeauRocksElevated,
         !!entry.isOfficialBeauRocksRoom,
         officialMarkerPulsePhase
       );
-      const zIndex = selected ? 999 : entry.isOfficialBeauRocksRoom ? 320 : 180;
+      const zIndex = selected ? 999 : entry.isBeauRocksElevated ? 320 : 180;
       let markerEntry = markerMap.get(entry.key);
 
       if (!markerEntry) {
@@ -1542,6 +1553,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
               googleMaps,
               entry.markerColor,
               selected,
+              !!entry.isBeauRocksElevated,
               !!entry.isOfficialBeauRocksRoom,
               officialMarkerPulsePhase
             )
@@ -1598,11 +1610,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     const experienceLine = selectedListingInMap?.experience?.capabilityBadges?.length
       ? selectedListingInMap.experience.capabilityBadges.slice(0, 2).join(" | ")
       : selectedListingInMap?.experience?.funBadges?.slice(0, 2).join(" | ") || "";
-    const elevatedBadgeImage = selectedListingInMap.isOfficialBeauRocksRoom && selectedListingInMap.officialBadgeImageUrl
+    const elevatedBadgeImage = selectedListingInMap.isBeauRocksElevated && selectedListingInMap.officialBadgeImageUrl
       ? `<img class="mk3-map-chip-icon" src="${escapeHtml(selectedListingInMap.officialBadgeImageUrl)}" alt="Official BeauRocks logo" loading="lazy" />`
       : "";
     const elevatedBadge = selectedListingInMap.isOfficialBeauRocksRoom
       ? `<div class="mk3-chip mk3-chip-elevated mk3-map-marker-selected-badge">${elevatedBadgeImage}<span>Official BeauRocks Room</span></div>`
+      : selectedListingInMap.isBeauRocksElevated
+        ? `<div class="mk3-chip mk3-chip-elevated mk3-map-marker-selected-badge">${elevatedBadgeImage}<span>Featured BeauRocks Host</span></div>`
       : "";
     const selectedActionHref = buildListingActionHref(selectedListingInMap);
     const selectedActionLabel = selectedListingInMap.listingType === "room_session" && selectedListingInMap.roomCode
@@ -2381,7 +2395,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
                 <span className="mk3-map-legend-item is-event">Events {listingTypeCounts.event}</span>
                 <span className="mk3-map-legend-item is-venue">Venues {listingTypeCounts.venue}</span>
                 <span className="mk3-map-legend-item is-session">Sessions {listingTypeCounts.room_session}</span>
-                <span className="mk3-map-legend-item is-elevated">Official Rooms {listingTypeCounts.elevated}</span>
+                <span className="mk3-map-legend-item is-elevated">Featured BeauRocks {listingTypeCounts.elevated}</span>
                 {userLocation && <span className="mk3-map-legend-item is-you">You are centered</span>}
               </div>
               {mapEnabled && mapsLoaded && mappableListings.length > 0

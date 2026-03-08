@@ -560,6 +560,12 @@ const assertRoomHostAccess = async (roomCode = "") => {
   return data || null;
 };
 
+const removeHostRoomDiscoveryListing = async (roomCode = "") => {
+  await requireAppCheckToken("removeHostRoomDiscoveryListing");
+  const data = await callFunction("removeHostRoomDiscoveryListing", { roomCode });
+  return data || null;
+};
+
 const provisionHostRoom = async (payload = {}) => {
   await requireAppCheckToken("provisionHostRoom");
   const data = await callFunction("provisionHostRoom", payload || {});
@@ -849,6 +855,7 @@ export {
   saveMyUsageInvoiceDraft,
   listMyUsageInvoices,
   assertRoomHostAccess,
+  removeHostRoomDiscoveryListing,
   provisionHostRoom,
   updateRoomAsHost,
   resolveQueueSongLyrics,

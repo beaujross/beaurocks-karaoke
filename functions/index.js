@@ -10194,6 +10194,64 @@ exports.assertRoomHostAccess = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.removeHostRoomDiscoveryListing = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "remove_host_room_discovery_listing", { perMinute: 40, perHour: 320 });
+  enforceAppCheckIfEnabled(request, "remove_host_room_discovery_listing");
+  const callerUid = requireAuth(request);
+  const roomCode = String(request.data?.roomCode || "").trim().toUpperCase();
+  ensureString(roomCode, "roomCode");
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const now = buildDirectoryNow();
+  const { roomRef, roomCode: safeRoomCode, roomData } = await ensureRoomHostAccess({
+    rootRef,
+    roomCode,
+    callerUid,
+    deniedMessage: "Only room hosts can remove room discovery listings.",
+  });
+
+  const listingIds = new Set();
+  const storedListingId = safeDirectoryString(roomData?.discover?.listingId || "", 220);
+  if (storedListingId) listingIds.add(storedListingId);
+
+  const roomSessionSnap = await db.collection("room_sessions")
+    .where("roomCode", "==", safeRoomCode)
+    .limit(12)
+    .get();
+
+  roomSessionSnap.docs.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    const sourceType = normalizeDirectoryToken(data.sourceType || "", 20);
+    const candidateRoomCode = normalizeRoomCode(data.roomCode || "");
+    if (candidateRoomCode !== safeRoomCode) return;
+    if (sourceType && sourceType !== "host_room") return;
+    listingIds.add(docSnap.id);
+  });
+
+  const batch = db.batch();
+  Array.from(listingIds).forEach((listingId) => {
+    batch.delete(db.collection("room_sessions").doc(listingId));
+  });
+  batch.update(roomRef, {
+    "discover.publicRoom": false,
+    "discover.visibility": "private",
+    "discover.updatedAt": now,
+    "discover.listingId": admin.firestore.FieldValue.delete(),
+    "discover.title": admin.firestore.FieldValue.delete(),
+    "discover.startsAtMs": admin.firestore.FieldValue.delete(),
+    updatedAt: now,
+  });
+  await batch.commit();
+
+  return {
+    ok: true,
+    roomCode: safeRoomCode,
+    deletedListingCount: listingIds.size,
+    deletedListingIds: Array.from(listingIds),
+  };
+});
+
 exports.updateRoomAsHost = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "update_room_as_host", { perMinute: 90, perHour: 900 });
   enforceAppCheckIfEnabled(request, "update_room_as_host");
