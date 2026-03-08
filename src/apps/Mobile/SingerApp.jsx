@@ -1643,6 +1643,12 @@ const SingerApp = ({ roomCode, uid }) => {
         setMobileLayoutMode(nextMode);
     }, []);
 
+    const toast = useToast();
+    const showToast = useCallback((message, options = {}) => {
+        if (typeof toast !== 'function') return;
+        toast(message, options);
+    }, [toast]);
+
     useEffect(() => {
         if (typeof window === 'undefined') return;
         const params = new URLSearchParams(window.location.search);
@@ -1786,12 +1792,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const [lobbyPlayUsageCount, setLobbyPlayUsageCount] = useState(0);
     const [lobbyVolleyPreview, setLobbyVolleyPreview] = useState(() => createLobbyVolleyState());
     const [lobbyVolleyNowMs, setLobbyVolleyNowMs] = useState(Date.now());
-
-    const toast = useToast();
-    const showToast = useCallback((message, options = {}) => {
-        if (typeof toast !== 'function') return;
-        toast(message, options);
-    }, [toast]);
     const showRewardToast = useCallback((message, points = 0, options = {}) => {
         const safePoints = Math.max(0, Math.round(Number(points) || 0));
         const msg = String(message || '').trim() || (safePoints > 0 ? `+${safePoints} PTS` : 'Reward unlocked');
