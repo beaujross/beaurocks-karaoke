@@ -150,15 +150,27 @@ export const MARKETING_ROUTE_OWNERSHIP = Object.freeze({
 
 export const MARKETING_NAV_CONFIG = Object.freeze({
   publicPrimary: Object.freeze([
+    navItem(MARKETING_ROUTE_PAGES.forFans, "For Fans"),
+    navItem(MARKETING_ROUTE_PAGES.forHosts, "For Hosts"),
+    navItem(MARKETING_ROUTE_PAGES.forVenues, "For Venues"),
+    navItem(MARKETING_ROUTE_PAGES.demo, "Demo"),
+  ]),
+  publicSecondary: Object.freeze([
+    navItem(MARKETING_ROUTE_PAGES.forPerformers, "For Performers"),
     navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
     navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
-  publicSecondary: Object.freeze([]),
   homePrimary: Object.freeze([
+    navItem(MARKETING_ROUTE_PAGES.forFans, "For Fans"),
+    navItem(MARKETING_ROUTE_PAGES.forHosts, "For Hosts"),
+    navItem(MARKETING_ROUTE_PAGES.forVenues, "For Venues"),
+    navItem(MARKETING_ROUTE_PAGES.demo, "Demo"),
+  ]),
+  homeSecondary: Object.freeze([
+    navItem(MARKETING_ROUTE_PAGES.forPerformers, "For Performers"),
     navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
     navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
-  homeSecondary: Object.freeze([]),
   authenticatedSecondary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.profile, "Dashboard"),
   ]),

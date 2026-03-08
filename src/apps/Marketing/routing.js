@@ -77,7 +77,7 @@ const safeToken = (value = "") =>
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-const defaultRoute = () => ({ page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} });
+const defaultRoute = () => ({ page: MARKETING_ROUTE_PAGES.forFans, id: "", params: {} });
 
 const stripBasePath = (pathname = "") => {
   const clean = `/${trimSlashes(pathname)}`;

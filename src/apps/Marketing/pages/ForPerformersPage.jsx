@@ -7,19 +7,16 @@ const PERFORMER_BADGES = [
   "Build Repeat Presence",
 ];
 
-const PERFORMER_STEPS = [
-  {
-    title: "Discover quality rooms",
-    detail: "Filter by host signal, room energy, and schedules that do not disappear into the void.",
-  },
-  {
-    title: "Commit and show up",
-    detail: "Use reminders so the good nights stop slipping past while you say “we should go sometime.”",
-  },
-  {
-    title: "Track what works",
-    detail: "Use your profile history to find the rooms where you sounded great and felt even better.",
-  },
+const PERFORMER_STORY_POINTS = [
+  "Better rooms make it easier to sing well, settle in, and actually enjoy being on stage.",
+  "Reliable cadence beats random karaoke roulette every time.",
+  "Your best songs deserve rooms with good energy, decent flow, and a crowd that is there for it.",
+];
+
+const PERFORMER_PROOF_POINTS = [
+  "Hosts with signal, not mystery",
+  "Schedules that stay current",
+  "Rooms you can build into a weekly run",
 ];
 
 const ForPerformersPage = ({ navigate }) => {
@@ -56,29 +53,32 @@ const ForPerformersPage = ({ navigate }) => {
       </article>
 
       <div className="mk3-two-col mk3-persona-late-grid">
-        <section className="mk3-detail-card mk3-persona-flow mk3-zone" aria-label="Performer flow overview">
-          <h2>How To Build A Better Karaoke Run</h2>
-          <div className="mk3-persona-flow-grid">
-            {PERFORMER_STEPS.map((step, index) => (
-              <article key={step.title}>
-                <span>{`Step ${index + 1}`}</span>
-                <strong>{step.title}</strong>
-                <p>{step.detail}</p>
+        <section className="mk3-detail-card mk3-zone">
+          <div className="mk3-persona-kicker">build your run</div>
+          <h2>Stop leaving your best karaoke nights up to chance.</h2>
+          <p className="mk3-card-story">
+            BeauRocks helps performers find rooms with the right energy and the right cadence,
+            so the night feels like part of a routine instead of a random gamble.
+          </p>
+          <div className="mk3-sub-list compact">
+            {PERFORMER_STORY_POINTS.map((point) => (
+              <article key={point} className="mk3-review-card">
+                <p>{point}</p>
               </article>
             ))}
           </div>
         </section>
 
         <aside className="mk3-actions-card mk3-persona-checklist">
-          <h4>Performer Checklist</h4>
+          <h4>What To Optimize For</h4>
           <div className="mk3-status">
-            <strong>Before your next run</strong>
-            <span>Pick a room, set the reminder, and stop leaving your best karaoke nights up to chance.</span>
+            <strong>Pick rooms worth repeating</strong>
+            <span>Find the hosts, schedules, and room feel that make you want to come back next week too.</span>
           </div>
           <div className="mk3-persona-checklist-list">
-            <span>Target rooms shortlisted</span>
-            <span>Reminders ready</span>
-            <span>Next-week plan locked</span>
+            {PERFORMER_PROOF_POINTS.map((point) => (
+              <span key={point}>{point}</span>
+            ))}
           </div>
         </aside>
       </div>

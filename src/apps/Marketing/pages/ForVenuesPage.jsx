@@ -7,19 +7,17 @@ const VENUE_BADGES = [
   "Grow Repeat Attendance",
 ];
 
-const VENUE_STEPS = [
-  {
-    title: "Claim your venue",
-    detail: "Own profile updates, publishing access, and the basic facts people should not have to guess.",
-  },
-  {
-    title: "Set weekly cadence",
-    detail: "Make karaoke timing predictable so regulars can build it into the week.",
-  },
-  {
-    title: "Track outcomes",
-    detail: "Use follows, RSVPs, and check-ins to see which nights are pulling people back for another round.",
-  },
+const VENUE_STORY_POINTS = [
+  "The best karaoke nights become part of someone’s weekly routine, not a lucky accident.",
+  "Clear listings and reliable cadence help regulars return and help new guests trust the plan.",
+  "A venue page should answer the basics fast instead of forcing people to play detective.",
+];
+
+const VENUE_OUTCOME_POINTS = [
+  "Ownership verified",
+  "Recurring schedule published",
+  "Hosts and venue details aligned",
+  "Follows, RSVPs, and check-ins pointing to repeat demand",
 ];
 
 const ForVenuesPage = ({ navigate, session, authFlow }) => {
@@ -66,29 +64,32 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
       </article>
 
       <div className="mk3-two-col mk3-persona-late-grid">
-        <section className="mk3-detail-card mk3-persona-flow mk3-zone" aria-label="Venue flow overview">
-          <h2>How Venues Keep The Night Rolling</h2>
-          <div className="mk3-persona-flow-grid">
-            {VENUE_STEPS.map((step, index) => (
-              <article key={step.title}>
-                <span>{`Step ${index + 1}`}</span>
-                <strong>{step.title}</strong>
-                <p>{step.detail}</p>
+        <section className="mk3-detail-card mk3-zone">
+          <div className="mk3-persona-kicker">why venue pages matter</div>
+          <h2>People come back to the nights they can count on.</h2>
+          <p className="mk3-card-story">
+            BeauRocks helps venues make karaoke feel dependable, current, and worth planning around,
+            which is a much better growth strategy than hoping people decode a blurry social post.
+          </p>
+          <div className="mk3-sub-list compact">
+            {VENUE_STORY_POINTS.map((point) => (
+              <article key={point} className="mk3-review-card">
+                <p>{point}</p>
               </article>
             ))}
           </div>
         </section>
 
         <aside className="mk3-actions-card mk3-persona-checklist">
-          <h4>Venue Checklist</h4>
+          <h4>What Good Setup Looks Like</h4>
           <div className="mk3-status">
-            <strong>Before you promote it</strong>
-            <span>Make sure ownership, schedule, and host operations all agree so guests are not walking into improv.</span>
+            <strong>Keep the listing honest</strong>
+            <span>Ownership, schedule, and host operations should agree before you ask anyone to show up.</span>
           </div>
           <div className="mk3-persona-checklist-list">
-            <span>Ownership verified</span>
-            <span>Recurring schedule published</span>
-            <span>Host workflow confirmed</span>
+            {VENUE_OUTCOME_POINTS.map((point) => (
+              <span key={point}>{point}</span>
+            ))}
           </div>
         </aside>
       </div>

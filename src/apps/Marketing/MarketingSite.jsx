@@ -85,7 +85,7 @@ const cacheMapsConfig = (config = null) => {
 
 const normalizePage = (value = "") => {
   const safe = String(value || "").trim().toLowerCase();
-  if (safe === "home") return MARKETING_ROUTE_PAGES.discover;
+  if (safe === "home") return MARKETING_ROUTE_PAGES.forFans;
   if (safe === "discover") return MARKETING_ROUTE_PAGES.discover;
   if (safe === "demo") return MARKETING_ROUTE_PAGES.demo;
   if (safe === "changelog") return MARKETING_ROUTE_PAGES.changelog;
@@ -727,7 +727,7 @@ const MarketingSite = () => {
             <button
               type="button"
               className="mk3-brand"
-              onClick={() => navigate(MARKETING_ROUTE_PAGES.discover, "", withCampaignParams({ utm_content: "nav_brand" }))}
+              onClick={() => navigate(MARKETING_ROUTE_PAGES.forFans, "", withCampaignParams({ utm_content: "nav_brand" }))}
             >
               <img src="/images/logo-library/beaurocks-karaoke-logo-2.png" alt="BeauRocks Karaoke logo" />
               <div>
@@ -852,24 +852,6 @@ const MarketingSite = () => {
                 <span className="mk3-private-pill mk3-host-canon-chip">Direct Host Dashboard entry</span>
                 <span className="mk3-private-pill mk3-host-canon-chip">Room history built into Host</span>
               </div>
-              <div className="mk3-permission-grid">
-                <article className="mk3-host-canon-step">
-                  <strong className="mk3-host-canon-step-kicker">Step 1</strong>
-                  <span className="mk3-host-canon-step-copy">Log in with your BeauRocks account.</span>
-                </article>
-                <article className="mk3-host-canon-step">
-                  <strong className="mk3-host-canon-step-kicker">Step 2</strong>
-                  <span className="mk3-host-canon-step-copy">Apply for host access so a super admin can review your request.</span>
-                </article>
-                <article className="mk3-host-canon-step">
-                  <strong className="mk3-host-canon-step-kicker">Step 3</strong>
-                  <span className="mk3-host-canon-step-copy">Approved hosts open Host Dashboard and run the room from the real app.</span>
-                </article>
-                <article className="mk3-host-canon-step">
-                  <strong className="mk3-host-canon-step-kicker">Step 4</strong>
-                  <span className="mk3-host-canon-step-copy">Review room history and open recap links after the show.</span>
-                </article>
-              </div>
               {heroStats?.total > 0 && (
                 <div className="mk3-status mk3-hero-proof">
                   <strong>{heroStats.total.toLocaleString()} live listings and counting</strong>
@@ -879,6 +861,7 @@ const MarketingSite = () => {
               <div className="mk3-value-points">
                 <span>Guests can still join with a room code, but hosting always stays account-backed.</span>
                 <span>Host access is granted by admin approval, not by self-serve unlock codes.</span>
+                <span>Once approved, you create rooms and run the night from Host Dashboard instead of bouncing back through marketing pages.</span>
               </div>
               {hasFullAccount && session.hasHostWorkspaceAccess && (
                 <div className="mk3-auth-cta-row">

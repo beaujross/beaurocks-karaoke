@@ -11,17 +11,17 @@ const HOST_STACK_BADGES = [
   "One login, one control surface",
 ];
 
-const HOST_FLOW_NOTES = [
-  "Apply once, then head straight into the real host app when you are approved.",
-  "Create rooms, reopen recent nights, and launch TV and audience links from the same place.",
-  "Run the show, clean up after it, and revisit recaps without bouncing through extra setup pages.",
-];
-
 const HOST_CORE_OUTCOMES = [
   "Every host uses the same apply-and-approval flow, so access is clear instead of mysterious.",
   "Room setup, room manager, and live controls all live in Host Dashboard now.",
   "Marketing stays focused on discovery and conversion instead of pretending to be a control panel.",
   "Approved hosts land closer to the real show and farther from unnecessary detours.",
+];
+
+const HOST_STORY_POINTS = [
+  "Apply once, then head into the real host app when you are approved.",
+  "Create rooms, reopen nights, launch TV and audience links, and run the show from the same place.",
+  "Cleanup, archive, and recap belong inside Host Dashboard too, not scattered across marketing pages.",
 ];
 
 const ForHostsPage = ({ route, session, authFlow }) => {
@@ -218,30 +218,35 @@ const ForHostsPage = ({ route, session, authFlow }) => {
         {!!applyNotice && <div className="mk3-status">{applyNotice}</div>}
       </article>
 
-      <section className="mk3-detail-card mk3-host-manager-card mk3-host-canon-surface is-muted">
-        <h2 className="mk3-host-canon-title is-md">How hosting works now</h2>
-        <p className="mk3-host-setup-subcopy">
-          The core host app now owns room creation, recent rooms, cleanup, archive, launch links, and live controls. Marketing gets to sell the night. The host app gets to run it.
-        </p>
-        <div className="mk3-sub-list compact">
-          {HOST_FLOW_NOTES.map((note) => (
-            <article key={note} className="mk3-review-card">
-              <p>{note}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <div className="mk3-two-col mk3-persona-late-grid">
+        <section className="mk3-detail-card mk3-host-manager-card mk3-host-canon-surface is-muted">
+          <h2 className="mk3-host-canon-title is-md">Host the night from the app that actually runs the night</h2>
+          <p className="mk3-host-setup-subcopy">
+            Marketing should explain the value. The host app should handle the room.
+            BeauRocks is finally set up that way.
+          </p>
+          <div className="mk3-sub-list compact">
+            {HOST_STORY_POINTS.map((note) => (
+              <article key={note} className="mk3-review-card">
+                <p>{note}</p>
+              </article>
+            ))}
+          </div>
+        </section>
 
-      <section className="mk3-detail-card mk3-host-canon-surface is-muted">
-        <h2 className="mk3-host-canon-title is-md">Why this is simpler</h2>
-        <div className="mk3-sub-list compact">
-          {HOST_CORE_OUTCOMES.map((item) => (
-            <article key={item} className="mk3-review-card">
-              <p>{item}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+        <aside className="mk3-actions-card mk3-persona-checklist">
+          <h4>What Changed</h4>
+          <div className="mk3-status">
+            <strong>Fewer detours, clearer ownership</strong>
+            <span>Approved hosts get pushed toward the real host workflow instead of wandering through extra setup theater.</span>
+          </div>
+          <div className="mk3-persona-checklist-list">
+            {HOST_CORE_OUTCOMES.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
+          </div>
+        </aside>
+      </div>
     </section>
   );
 };
