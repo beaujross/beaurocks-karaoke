@@ -56,6 +56,13 @@ const normalizeAutocompleteProvider = (value = '') => {
     return 'youtube';
 };
 
+const getInitialDemoSearchQuery = () => {
+    if (typeof window === 'undefined') return '';
+    const params = new URLSearchParams(window.location.search || '');
+    if (params.get('mkDemoEmbed') !== '1') return '';
+    return String(params.get('demo_search') || '').trim();
+};
+
 const sanitizePart = (value = '', fallback = 'default') => {
     const cleaned = String(value || '')
         .trim()
@@ -93,7 +100,7 @@ const useQueueTabState = ({ hostName, roomCode }) => {
     const [showQueueList, setShowQueueList] = useState(PANEL_LAYOUT_DEFAULTS.showQueueList);
     const [activeWorkspace, setActiveWorkspace] = useState('default');
 
-    const [searchQ, setSearchQ] = useState('');
+    const [searchQ, setSearchQ] = useState(() => getInitialDemoSearchQuery());
     const [autocompleteProvider, setAutocompleteProviderState] = useState(() => {
         try {
             if (typeof window === 'undefined') return 'youtube';

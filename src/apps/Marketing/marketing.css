@@ -1876,6 +1876,8 @@
   display: grid;
   align-content: start;
   gap: 10px;
+  min-height: 100%;
+  grid-template-rows: auto auto auto auto auto auto 1fr;
 }
 
 .mk3-fans-home-brand-pill {
@@ -1923,6 +1925,54 @@
   color: #c6daef;
   font-size: 0.76rem;
   line-height: 1.35;
+}
+
+.mk3-fans-home-signal-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.mk3-fans-home-signal-card {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 108px;
+  border-radius: 16px;
+  border: 1px solid rgba(119, 203, 241, 0.22);
+  background:
+    radial-gradient(circle at 14% 18%, rgba(255, 205, 108, 0.18), transparent 34%),
+    linear-gradient(144deg, rgba(9, 17, 27, 0.88), rgba(16, 10, 31, 0.84));
+  padding: 0.8rem;
+}
+
+.mk3-fans-home-signal-card img {
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  object-fit: cover;
+  background: rgba(7, 13, 24, 0.94);
+  border: 1px solid rgba(255, 216, 127, 0.3);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24);
+}
+
+.mk3-fans-home-signal-card > div {
+  display: grid;
+  gap: 4px;
+}
+
+.mk3-fans-home-signal-card strong {
+  color: #fff1cf;
+  font-size: 0.86rem;
+  line-height: 1.18;
+}
+
+.mk3-fans-home-signal-card span {
+  color: #cee0f1;
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 .mk3-fans-home-visual {
@@ -4467,11 +4517,10 @@
 
 .mk3-demo-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  grid-template-areas:
-    "tv audience"
-    "tv host";
-  gap: 10px;
+  grid-template-columns: minmax(0, 1.24fr) minmax(300px, 0.68fr) minmax(0, 0.98fr);
+  grid-template-areas: "tv audience host";
+  gap: 14px;
+  align-items: start;
 }
 
 .mk3-demo-shell.mk3-demo-shell-testing {
@@ -4484,10 +4533,18 @@
 .mk3-demo-surface {
   border: 1px solid rgba(126, 188, 226, 0.24);
   border-radius: 16px;
-  background: rgba(8, 15, 24, 0.82);
-  padding: 10px;
+  background:
+    radial-gradient(circle at top left, rgba(110, 205, 255, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(8, 15, 24, 0.92), rgba(5, 10, 18, 0.94));
+  padding: 12px;
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.24);
+}
+
+.mk3-demo-surface.is-shifting {
+  border-color: rgba(142, 220, 255, 0.42);
+  box-shadow: 0 0 0 1px rgba(142, 220, 255, 0.08), 0 18px 46px rgba(0, 0, 0, 0.28);
 }
 
 .mk3-demo-surface header {
@@ -4522,6 +4579,31 @@
   padding: 0.3rem 0.55rem;
 }
 
+.mk3-demo-surface-kicker {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(7, 14, 24, 0.7);
+  padding: 0.42rem 0.58rem;
+}
+
+.mk3-demo-surface-kicker span {
+  font-size: 0.66rem;
+  color: #b7ceea;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.mk3-demo-surface-kicker strong {
+  font-size: 0.7rem;
+  color: #ffe2b4;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .mk3-demo-tv {
   grid-area: tv;
 }
@@ -4538,17 +4620,19 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
   overflow: hidden;
-  background: rgba(4, 9, 15, 0.92);
+  background:
+    linear-gradient(180deg, rgba(4, 9, 15, 0.96), rgba(2, 6, 11, 0.98)),
+    rgba(4, 9, 15, 0.92);
   min-height: 280px;
 }
 
 .mk3-demo-tv .mk3-demo-frame-wrap {
-  min-height: 520px;
+  min-height: 500px;
 }
 
 .mk3-demo-audience .mk3-demo-frame-wrap,
 .mk3-demo-host .mk3-demo-frame-wrap {
-  min-height: 290px;
+  min-height: 330px;
 }
 
 .mk3-demo-shell.mk3-demo-shell-testing .mk3-demo-host .mk3-demo-frame-wrap {
@@ -4574,6 +4658,7 @@
 .mk3-demo-tv-frame-wrap {
   position: relative;
   min-height: 560px;
+  aspect-ratio: 16 / 9;
 }
 
 .mk3-demo-tv-frame-wrap .mk3-demo-iframe {
@@ -4669,14 +4754,14 @@
   min-height: 420px;
   display: grid;
   place-items: center;
-  padding: 0.5rem;
+  padding: 0.75rem;
 }
 
 .mk3-demo-audience .mk3-demo-audience-frame-wrap-live {
   min-height: 420px;
   display: grid;
   place-items: center;
-  padding: 0.5rem;
+  padding: 0.75rem;
 }
 
 .mk3-demo-phone-shell {
@@ -4780,7 +4865,8 @@
 }
 
 .mk3-demo-host .mk3-demo-host-frame-wrap-live {
-  min-height: 720px;
+  min-height: 560px;
+  aspect-ratio: 16 / 10;
   padding: 0;
 }
 
@@ -4917,7 +5003,8 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   font-size: 0.68rem;
 }
 
@@ -5395,6 +5482,15 @@
   }
 }
 
+@media (max-width: 1480px) {
+  .mk3-demo-shell {
+    grid-template-columns: minmax(0, 1.58fr) minmax(340px, 1fr);
+    grid-template-areas:
+      "tv audience"
+      "tv host";
+  }
+}
+
 @media (max-width: 1120px) {
   .mk3-site {
     --mk3-rail-space: 176px;
@@ -5448,6 +5544,10 @@
 
   .mk3-fans-home-stat-row,
   .mk3-fans-home-proof-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mk3-fans-home-signal-row {
     grid-template-columns: 1fr;
   }
 
@@ -5690,6 +5790,7 @@
   }
 
   .mk3-demo-shell {
+    grid-template-columns: 1fr;
     grid-template-areas:
       "tv"
       "audience"
@@ -5712,6 +5813,11 @@
   .mk3-demo-audience .mk3-demo-frame-wrap,
   .mk3-demo-host .mk3-demo-frame-wrap {
     min-height: 420px;
+  }
+
+  .mk3-demo-surface-kicker {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .mk3-demo-tv-frame-wrap {

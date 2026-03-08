@@ -1104,7 +1104,7 @@ const MarketingSite = () => {
 
         </div>
       </main>
-      {!isHostProductPage && activePage !== MARKETING_ROUTE_PAGES.discover && activePage !== MARKETING_ROUTE_PAGES.forFans && (
+      {!isHostProductPage && activePage !== MARKETING_ROUTE_PAGES.discover && activePage !== MARKETING_ROUTE_PAGES.forFans && activePage !== MARKETING_ROUTE_PAGES.demo && (
         <Suspense fallback={null}>
           <GoldenPathRail
             navigate={navigate}

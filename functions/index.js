@@ -4190,6 +4190,10 @@ const buildDemoRoomUpdates = (payload = {}) => {
   const applauseLevel = clampNumber(Math.round(Number(payload.progress || 0) * 100), 0, 100, 0);
   const sceneLabel = String(payload.sceneId || "karaoke").replace(/[_-]+/g, " ").slice(0, 64);
   const now = Date.now();
+  const playbook = getDemoScenePlaybook(payload.sceneId || "");
+  const currentTrack = playbook.current || {};
+  const mediaUrl = String(currentTrack.mediaUrl || "").trim();
+  const shouldRefreshMedia = payload.action === "bootstrap" || payload.action === "scene" || payload.action === "seek";
 
   const updates = {
     activeMode: "karaoke",
@@ -4207,6 +4211,18 @@ const buildDemoRoomUpdates = (payload = {}) => {
       atMs: Number(payload.timelineMs || 0),
     },
   };
+
+  if (payload.action === "pause") {
+    updates.videoPlaying = false;
+    updates.pausedAt = now;
+  } else if (shouldRefreshMedia) {
+    updates.mediaUrl = mediaUrl;
+    updates.videoPlaying = !!mediaUrl && payload.playing !== false;
+    updates.videoStartTimestamp = mediaUrl ? now : null;
+    updates.pausedAt = null;
+    updates.videoVolume = 100;
+    updates.appleMusicPlayback = null;
+  }
 
   if (mode === "guitar") {
     updates.lightMode = "guitar";
@@ -4300,6 +4316,468 @@ const buildDemoRoomUpdates = (payload = {}) => {
   }
 
   return updates;
+};
+
+const DEMO_MEDIA_URLS = Object.freeze([
+  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+  "https://archive.org/download/Popeye_forPresident/Popeye_forPresident_512kb.mp4",
+]);
+
+const DEMO_QUEUE_SLOT_IDS = Object.freeze([
+  "demo_now",
+  "demo_queue_01",
+  "demo_queue_02",
+  "demo_queue_03",
+  "demo_queue_04",
+]);
+
+const DEMO_ACTIVITY_SLOT_IDS = Object.freeze([
+  "demo_activity_01",
+  "demo_activity_02",
+  "demo_activity_03",
+  "demo_activity_04",
+]);
+
+const DEMO_SCENE_PLAYBOOK = Object.freeze({
+  karaoke_kickoff: {
+    current: {
+      songKey: "sweet_caroline",
+      songTitle: "Sweet Caroline",
+      artist: "Classic Singalong",
+      singerName: "DJ BeauRocks",
+      singerUid: "demo_host_beaurocks",
+      mediaUrl: DEMO_MEDIA_URLS[0],
+      albumArtUrl: "/images/marketing/aahf-karaoke-kickoff-2026.png",
+      lyrics: "Hands up high now, the whole room sways in time",
+      duration: 228,
+    },
+    queue: [
+      {
+        songKey: "harbor_lights",
+        songTitle: "Harbor Lights",
+        artist: "Late Night Demo",
+        singerName: "Alex 1",
+        singerUid: "demo_user_01",
+        mediaUrl: DEMO_MEDIA_URLS[1],
+        albumArtUrl: "/images/marketing/bross-liveband.png",
+        duration: 214,
+      },
+      {
+        songKey: "waterfront_glow",
+        songTitle: "Waterfront Glow",
+        artist: "Neon Crowd",
+        singerName: "Jordan 2",
+        singerUid: "demo_user_02",
+        mediaUrl: DEMO_MEDIA_URLS[2],
+        albumArtUrl: "/images/marketing/bross-karaokenight.png",
+        duration: 202,
+      },
+      {
+        songKey: "marina_echo",
+        songTitle: "Marina Echo",
+        artist: "Demo Mix",
+        singerName: "Taylor 3",
+        singerUid: "demo_user_03",
+        mediaUrl: DEMO_MEDIA_URLS[3],
+        albumArtUrl: "/images/marketing/bross-dancepart.png",
+        duration: 198,
+      },
+    ],
+    activities: [
+      { user: "DJ BeauRocks", text: "searched Sweet Caroline karaoke backing", icon: "SEARCH" },
+      { user: "DJ BeauRocks", text: "queued Sweet Caroline and opened the room", icon: "QUEUE" },
+      { user: "Audience", text: "started joining from the room code", icon: "JOIN" },
+    ],
+  },
+  karaoke_singalong: {
+    current: {
+      songKey: "harbor_lights",
+      songTitle: "Harbor Lights",
+      artist: "Late Night Demo",
+      singerName: "Alex 1",
+      singerUid: "demo_user_01",
+      mediaUrl: DEMO_MEDIA_URLS[1],
+      albumArtUrl: "/images/marketing/bross-liveband.png",
+      lyrics: "One more chorus, crowd response in stereo",
+      duration: 214,
+    },
+    queue: [
+      {
+        songKey: "waterfront_glow",
+        songTitle: "Waterfront Glow",
+        artist: "Neon Crowd",
+        singerName: "Jordan 2",
+        singerUid: "demo_user_02",
+        mediaUrl: DEMO_MEDIA_URLS[2],
+        albumArtUrl: "/images/marketing/bross-karaokenight.png",
+        duration: 202,
+      },
+      {
+        songKey: "solo_storm",
+        songTitle: "Solo Storm",
+        artist: "BeauRocks Demo Band",
+        singerName: "Casey 4",
+        singerUid: "demo_user_04",
+        mediaUrl: DEMO_MEDIA_URLS[0],
+        albumArtUrl: "/images/marketing/bross-stage.png",
+        duration: 186,
+      },
+      {
+        songKey: "pitch_duel",
+        songTitle: "Pitch Duel",
+        artist: "BeauRocks Demo Band",
+        singerName: "Riley 5",
+        singerUid: "demo_user_05",
+        mediaUrl: DEMO_MEDIA_URLS[3],
+        albumArtUrl: "/images/marketing/bross-other.png",
+        duration: 180,
+      },
+    ],
+    activities: [
+      { user: "DJ BeauRocks", text: "bumped Alex 1 to the top of the queue", icon: "QUEUE" },
+      { user: "Audience", text: "lit up the singalong with fast reactions", icon: "WOW" },
+      { user: "Public TV", text: "kept lyrics and backing video rolling", icon: "TV" },
+    ],
+  },
+  guitar_vibe_sync: {
+    current: {
+      songKey: "solo_storm",
+      songTitle: "Solo Storm",
+      artist: "BeauRocks Demo Band",
+      singerName: "Casey 4",
+      singerUid: "demo_user_04",
+      mediaUrl: DEMO_MEDIA_URLS[2],
+      albumArtUrl: "/images/marketing/bross-stage.png",
+      duration: 186,
+    },
+    queue: [
+      {
+        songKey: "pitch_duel",
+        songTitle: "Pitch Duel",
+        artist: "BeauRocks Demo Band",
+        singerName: "Riley 5",
+        singerUid: "demo_user_05",
+        mediaUrl: DEMO_MEDIA_URLS[3],
+        albumArtUrl: "/images/marketing/bross-other.png",
+        duration: 180,
+      },
+      {
+        songKey: "trivia_break",
+        songTitle: "Trivia Break",
+        artist: "BeauRocks Demo Band",
+        singerName: "Morgan 6",
+        singerUid: "demo_user_06",
+        mediaUrl: DEMO_MEDIA_URLS[1],
+        albumArtUrl: "/images/marketing/bross-schoolcommunit.png",
+        duration: 168,
+      },
+      {
+        songKey: "crowd_split",
+        songTitle: "Crowd Split",
+        artist: "BeauRocks Demo Band",
+        singerName: "Harper 7",
+        singerUid: "demo_user_07",
+        mediaUrl: DEMO_MEDIA_URLS[0],
+        albumArtUrl: "/images/marketing/bross-dancepart.png",
+        duration: 164,
+      },
+    ],
+    activities: [
+      { user: "DJ BeauRocks", text: "switched the room into Guitar Vibe Sync", icon: "GTR" },
+      { user: "Audience", text: "turned phones into strum pads", icon: "STRUM" },
+      { user: "Public TV", text: "dropped lyrics and pushed solo visuals", icon: "TV" },
+    ],
+  },
+  vocal_game_challenge: {
+    current: {
+      songKey: "pitch_duel",
+      songTitle: "Pitch Duel",
+      artist: "BeauRocks Demo Band",
+      singerName: "Riley 5",
+      singerUid: "demo_user_05",
+      mediaUrl: DEMO_MEDIA_URLS[3],
+      albumArtUrl: "/images/marketing/bross-other.png",
+      lyrics: "Hold the note and ride the line",
+      duration: 180,
+    },
+    queue: [
+      {
+        songKey: "trivia_break",
+        songTitle: "Trivia Break",
+        artist: "BeauRocks Demo Band",
+        singerName: "Morgan 6",
+        singerUid: "demo_user_06",
+        mediaUrl: DEMO_MEDIA_URLS[1],
+        albumArtUrl: "/images/marketing/bross-schoolcommunit.png",
+        duration: 168,
+      },
+      {
+        songKey: "crowd_split",
+        songTitle: "Crowd Split",
+        artist: "BeauRocks Demo Band",
+        singerName: "Harper 7",
+        singerUid: "demo_user_07",
+        mediaUrl: DEMO_MEDIA_URLS[0],
+        albumArtUrl: "/images/marketing/bross-dancepart.png",
+        duration: 164,
+      },
+      {
+        songKey: "finale_hook",
+        songTitle: "Finale Hook",
+        artist: "Classic Singalong",
+        singerName: "Kai 8",
+        singerUid: "demo_user_08",
+        mediaUrl: DEMO_MEDIA_URLS[2],
+        albumArtUrl: "/images/marketing/bross-karaokenight.png",
+        duration: 224,
+      },
+    ],
+    activities: [
+      { user: "DJ BeauRocks", text: "loaded a quick vocal challenge between songs", icon: "MIC" },
+      { user: "Audience", text: "started chasing combo points", icon: "GAME" },
+      { user: "Queue", text: "kept the next singers lined up", icon: "QUEUE" },
+    ],
+  },
+  trivia_showdown: {
+    current: {
+      songKey: "trivia_break",
+      songTitle: "Trivia Break",
+      artist: "BeauRocks Demo Band",
+      singerName: "Morgan 6",
+      singerUid: "demo_user_06",
+      mediaUrl: DEMO_MEDIA_URLS[1],
+      albumArtUrl: "/images/marketing/bross-schoolcommunit.png",
+      duration: 168,
+    },
+    queue: [
+      {
+        songKey: "crowd_split",
+        songTitle: "Crowd Split",
+        artist: "BeauRocks Demo Band",
+        singerName: "Harper 7",
+        singerUid: "demo_user_07",
+        mediaUrl: DEMO_MEDIA_URLS[0],
+        albumArtUrl: "/images/marketing/bross-dancepart.png",
+        duration: 164,
+      },
+      {
+        songKey: "crowd_split_two",
+        songTitle: "Crowd Split Remix",
+        artist: "BeauRocks Demo Band",
+        singerName: "Kai 8",
+        singerUid: "demo_user_08",
+        mediaUrl: DEMO_MEDIA_URLS[3],
+        albumArtUrl: "/images/marketing/bross-other.png",
+        duration: 170,
+      },
+      {
+        songKey: "finale_hook",
+        songTitle: "Finale Hook",
+        artist: "Classic Singalong",
+        singerName: "DJ BeauRocks",
+        singerUid: "demo_host_beaurocks",
+        mediaUrl: DEMO_MEDIA_URLS[2],
+        albumArtUrl: "/images/marketing/aahf-karaoke-kickoff-2026.png",
+        duration: 224,
+      },
+    ],
+    activities: [
+      { user: "DJ BeauRocks", text: "opened a trivia round while the room kept moving", icon: "TRIVIA" },
+      { user: "Audience", text: "started voting live from their phones", icon: "VOTE" },
+      { user: "Public TV", text: "prepped the reveal countdown", icon: "TV" },
+    ],
+  },
+  wyr_split_decision_one: {
+    current: {
+      songKey: "crowd_split",
+      songTitle: "Crowd Split",
+      artist: "BeauRocks Demo Band",
+      singerName: "Harper 7",
+      singerUid: "demo_user_07",
+      mediaUrl: DEMO_MEDIA_URLS[0],
+      albumArtUrl: "/images/marketing/bross-dancepart.png",
+      duration: 164,
+    },
+    queue: [
+      {
+        songKey: "crowd_split_two",
+        songTitle: "Crowd Split Remix",
+        artist: "BeauRocks Demo Band",
+        singerName: "Kai 8",
+        singerUid: "demo_user_08",
+        mediaUrl: DEMO_MEDIA_URLS[3],
+        albumArtUrl: "/images/marketing/bross-other.png",
+        duration: 170,
+      },
+      {
+        songKey: "finale_hook",
+        songTitle: "Finale Hook",
+        artist: "Classic Singalong",
+        singerName: "DJ BeauRocks",
+        singerUid: "demo_host_beaurocks",
+        mediaUrl: DEMO_MEDIA_URLS[2],
+        albumArtUrl: "/images/marketing/aahf-karaoke-kickoff-2026.png",
+        duration: 224,
+      },
+    ],
+    activities: [
+      { user: "DJ BeauRocks", text: "launched a Would You Rather round", icon: "WYR" },
+      { user: "Audience", text: "picked sides while the music stayed up", icon: "VOTE" },
+      { user: "Queue", text: "held the next singers ready", icon: "QUEUE" },
+    ],
+  },
+  wyr_split_decision_two: {
+    current: {
+      songKey: "crowd_split_two",
+      songTitle: "Crowd Split Remix",
+      artist: "BeauRocks Demo Band",
+      singerName: "Kai 8",
+      singerUid: "demo_user_08",
+      mediaUrl: DEMO_MEDIA_URLS[3],
+      albumArtUrl: "/images/marketing/bross-other.png",
+      duration: 170,
+    },
+    queue: [
+      {
+        songKey: "finale_hook",
+        songTitle: "Finale Hook",
+        artist: "Classic Singalong",
+        singerName: "DJ BeauRocks",
+        singerUid: "demo_host_beaurocks",
+        mediaUrl: DEMO_MEDIA_URLS[2],
+        albumArtUrl: "/images/marketing/aahf-karaoke-kickoff-2026.png",
+        duration: 224,
+      },
+    ],
+    activities: [
+      { user: "DJ BeauRocks", text: "fired a second Would You Rather to prove repeatability", icon: "WYR" },
+      { user: "Audience", text: "re-engaged instantly with a fresh split", icon: "VOTE" },
+      { user: "Public TV", text: "locked in the crowd percentages", icon: "TV" },
+    ],
+  },
+  finale_drop: {
+    current: {
+      songKey: "finale_hook",
+      songTitle: "Sweet Caroline",
+      artist: "Classic Singalong",
+      singerName: "DJ BeauRocks",
+      singerUid: "demo_host_beaurocks",
+      mediaUrl: DEMO_MEDIA_URLS[2],
+      albumArtUrl: "/images/marketing/aahf-karaoke-kickoff-2026.png",
+      lyrics: "Final round now, everybody lean in close",
+      duration: 224,
+    },
+    queue: [],
+    activities: [
+      { user: "DJ BeauRocks", text: "brought the room back to a big karaoke finish", icon: "MIC" },
+      { user: "Audience", text: "sent encore reactions into the finale", icon: "FIRE" },
+      { user: "Public TV", text: "pushed the last hook and join CTA", icon: "TV" },
+    ],
+  },
+});
+
+const getDemoScenePlaybook = (sceneId = "") => (
+  DEMO_SCENE_PLAYBOOK[sanitizeDemoToken(sceneId, 80) || ""] || DEMO_SCENE_PLAYBOOK.karaoke_kickoff
+);
+
+const seedDemoQueueSnapshot = async ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  payload = {},
+}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  if (!safeRoomCode) return { queued: 0 };
+  const playbook = getDemoScenePlaybook(payload.sceneId || "");
+  const db = admin.firestore();
+  const batch = db.batch();
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+  const queueEntries = [playbook.current, ...(Array.isArray(playbook.queue) ? playbook.queue : [])]
+    .slice(0, DEMO_QUEUE_SLOT_IDS.length);
+  const priorityBase = Date.now();
+
+  DEMO_QUEUE_SLOT_IDS.forEach((slotId, index) => {
+    const ref = rootRef.collection("karaoke_songs").doc(`${safeRoomCode}_${slotId}`);
+    const entry = queueEntries[index];
+    if (!entry) {
+      batch.delete(ref);
+      return;
+    }
+    const status = index === 0 ? "performing" : "requested";
+    const docData = {
+      roomCode: safeRoomCode,
+      songId: sanitizeDemoToken(entry.songKey || `demo_song_${index + 1}`, 80) || `demo_song_${index + 1}`,
+      trackId: sanitizeDemoToken(`demo_track_${entry.songKey || index + 1}`, 96) || `demo_track_${index + 1}`,
+      trackSource: "custom",
+      songTitle: String(entry.songTitle || "Demo Song").trim().slice(0, 120),
+      artist: String(entry.artist || "BeauRocks Demo").trim().slice(0, 120),
+      singerName: String(entry.singerName || `Singer ${index + 1}`).trim().slice(0, 120),
+      singerUid: sanitizeDemoToken(entry.singerUid || `demo_user_${index + 1}`, 64) || `demo_user_${index + 1}`,
+      mediaUrl: String(entry.mediaUrl || "").trim(),
+      albumArtUrl: String(entry.albumArtUrl || "").trim(),
+      lyrics: String(entry.lyrics || "").trim(),
+      lyricsTimed: null,
+      appleMusicId: "",
+      musicSource: "",
+      lyricsSource: entry.lyrics ? "demo" : "",
+      lyricsGenerationStatus: entry.lyrics ? "resolved" : "disabled",
+      lyricsGenerationResolution: entry.lyrics ? "resolved" : "disabled",
+      lyricsGenerationUpdatedAt: serverNow,
+      duration: clampNumber(entry.duration ?? 180, 30, 900, 180),
+      status,
+      timestamp: serverNow,
+      priorityScore: priorityBase + (index * 1000),
+      emoji: entry.emoji || "MIC",
+      backingAudioOnly: false,
+      audioOnly: false,
+      isDemo: true,
+      demoSceneId: sanitizeDemoToken(payload.sceneId || "", 80) || "karaoke_kickoff",
+    };
+    if (status === "performing") {
+      docData.performingStartedAt = serverNow;
+    }
+    batch.set(ref, docData, { merge: false });
+  });
+
+  await batch.commit();
+  return { queued: Math.max(0, queueEntries.length - 1) };
+};
+
+const seedDemoActivityFeed = async ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  payload = {},
+}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  if (!safeRoomCode) return 0;
+  const playbook = getDemoScenePlaybook(payload.sceneId || "");
+  const items = Array.isArray(playbook.activities) ? playbook.activities.slice(0, DEMO_ACTIVITY_SLOT_IDS.length) : [];
+  const db = admin.firestore();
+  const batch = db.batch();
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+  DEMO_ACTIVITY_SLOT_IDS.forEach((slotId, index) => {
+    const ref = rootRef.collection("activities").doc(`${safeRoomCode}_${slotId}`);
+    const item = items[index];
+    if (!item) {
+      batch.delete(ref);
+      return;
+    }
+    batch.set(ref, {
+      roomCode: safeRoomCode,
+      user: String(item.user || "Demo").trim().slice(0, 80),
+      text: String(item.text || "").trim().slice(0, 180),
+      icon: sanitizeDemoToken(item.icon || "INFO", 24) || "INFO",
+      timestamp: serverNow,
+      isDemo: true,
+      sceneId: sanitizeDemoToken(payload.sceneId || "", 80) || "karaoke_kickoff",
+      sortOrder: index,
+    }, { merge: false });
+  });
+
+  await batch.commit();
+  return items.length;
 };
 
 const seedDemoAudienceSnapshot = async ({
@@ -10292,13 +10770,15 @@ exports.runDemoDirectorAction = onCall({ cors: true }, async (request) => {
   try {
     checkRateLimit(request.rawRequest, "run_demo_director_action", { perMinute: 120, perHour: 1200 });
     enforceAppCheckIfEnabled(request, "run_demo_director_action");
-    const authedUid = requireAuth(request);
-    const superAdmin = await isSuperAdminUid(authedUid);
     payload = normalizeDemoDirectorPayload(request.data || {});
     safeRoomCode = payload.roomCode;
+    const authedUid = callerUid || "";
+    const superAdmin = authedUid ? await isSuperAdminUid(authedUid) : false;
 
     const roomUpdates = normalizeHostRoomUpdates(buildDemoRoomUpdates(payload));
-    const actorKey = sanitizeDemoToken(authedUid, 64) || "actor";
+    const actorKey = sanitizeDemoToken(authedUid, 64)
+      || sanitizeDemoToken(`ip_${callerIp || "anon"}`, 64)
+      || "public_demo_actor";
 
     const db = admin.firestore();
     const txResult = await db.runTransaction(async (tx) => {
@@ -10316,8 +10796,8 @@ exports.runDemoDirectorAction = onCall({ cors: true }, async (request) => {
         createdRoom = true;
         tx.set(roomRef, {
           roomCode: safeRoomCode,
-          hostUid: authedUid,
-          hostUids: [authedUid],
+          hostUid: authedUid || "",
+          hostUids: authedUid ? [authedUid] : [],
           activeMode: "karaoke",
           lightMode: "ballad",
           showLyricsTv: true,
@@ -10332,8 +10812,10 @@ exports.runDemoDirectorAction = onCall({ cors: true }, async (request) => {
         const hostUids = Array.isArray(roomData.hostUids)
           ? roomData.hostUids.filter((uid) => typeof uid === "string")
           : [];
-        const isHost = superAdmin || authedUid === hostUid || hostUids.includes(authedUid);
-        if (!isHost) {
+        const isDemoRoom = !!roomData.isDemoRoom;
+        const isHost = !!authedUid && (superAdmin || authedUid === hostUid || hostUids.includes(authedUid));
+        const allowPublicDemoWrite = !authedUid && isDemoRoom;
+        if (!isHost && !allowPublicDemoWrite) {
           throw new HttpsError("permission-denied", "Only demo room hosts can drive demo director sync.");
         }
       }
@@ -10389,7 +10871,7 @@ exports.runDemoDirectorAction = onCall({ cors: true }, async (request) => {
         progress: payload.progress,
         playing: !!payload.playing,
         crowdSize: payload.crowdSize,
-        updatedBy: authedUid,
+        updatedBy: authedUid || "public_demo",
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
 
@@ -10447,6 +10929,25 @@ exports.runDemoDirectorAction = onCall({ cors: true }, async (request) => {
       seededUsers = Number(seedResult?.crowdSize || 0);
     }
 
+    let queuedSongs = 0;
+    if (shouldSeedUsers) {
+      const queueResult = await seedDemoQueueSnapshot({
+        rootRef,
+        roomCode: safeRoomCode,
+        payload,
+      });
+      queuedSongs = Number(queueResult?.queued || 0);
+    }
+
+    let activitiesWritten = 0;
+    if (shouldSeedUsers) {
+      activitiesWritten = await seedDemoActivityFeed({
+        rootRef,
+        roomCode: safeRoomCode,
+        payload,
+      });
+    }
+
     let reactionsWritten = 0;
     const shouldWriteReactions = payload.action === "bootstrap" || payload.action === "scene" || payload.action === "seek";
     if (shouldWriteReactions) {
@@ -10474,11 +10975,13 @@ exports.runDemoDirectorAction = onCall({ cors: true }, async (request) => {
       createdRoom: !!txResult.createdRoom,
       stale: false,
       duplicate: false,
-      sequence: payload.sequence,
-      seededUsers,
-      reactionsWritten,
-      votesWritten,
-    };
+        sequence: payload.sequence,
+        seededUsers,
+        queuedSongs,
+        activitiesWritten,
+        reactionsWritten,
+        votesWritten,
+      };
   } catch (error) {
     const code = String(error?.code || "").toLowerCase();
     const message = String(error?.message || "").toLowerCase();

@@ -44,6 +44,21 @@ const QUICK_PROOF = [
   },
 ];
 
+const HERO_SIGNAL_CARDS = [
+  {
+    title: "Follow the host, not the guesswork",
+    copy: "Featured nights point back to the person actually running the room.",
+    imageUrl: MARKETING_DJ_BEAUROCKS_AVATAR_URL,
+    imageAlt: "DJ BeauRocks",
+  },
+  {
+    title: "The badge means live setup",
+    copy: "BeauRocks-powered events are tied to a host, a room flow, and a real night in motion.",
+    imageUrl: MARKETING_BRAND_BADGE_URL,
+    imageAlt: "BeauRocks badge",
+  },
+];
+
 const ForFansPage = ({ navigate, heroStats }) => {
   const trackPersonaCta = (cta = "") => {
     trackEvent("mk_persona_cta_click", {
@@ -107,6 +122,17 @@ const ForFansPage = ({ navigate, heroStats }) => {
             >
               Browse Nationwide
             </button>
+          </div>
+          <div className="mk3-fans-home-signal-row">
+            {HERO_SIGNAL_CARDS.map((card) => (
+              <article key={card.title} className="mk3-fans-home-signal-card">
+                <img src={card.imageUrl} alt={card.imageAlt} loading="lazy" />
+                <div>
+                  <strong>{card.title}</strong>
+                  <span>{card.copy}</span>
+                </div>
+              </article>
+            ))}
           </div>
         </div>
 
