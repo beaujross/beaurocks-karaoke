@@ -12,6 +12,7 @@ const QueueListPanel = ({
     setDragQueueId,
     setDragOverId,
     reorderQueue,
+    touchReorderEnabled,
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
@@ -61,6 +62,7 @@ const QueueListPanel = ({
                     setDragQueueId={setDragQueueId}
                     setDragOverId={setDragOverId}
                     reorderQueue={reorderQueue}
+                    touchReorderEnabled={touchReorderEnabled}
                     handleTouchStart={handleTouchStart}
                     handleTouchMove={handleTouchMove}
                     handleTouchEnd={handleTouchEnd}

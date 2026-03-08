@@ -5,10 +5,20 @@ export const BILLING_PLATFORMS = {
   IOS: "ios",
 };
 
-export const detectBillingPlatform = () => {
-  if (typeof navigator === "undefined") return BILLING_PLATFORMS.WEB;
+const isNativeAppleBillingSurface = () => {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
-  if (/iPad|iPhone|iPod/i.test(ua)) return BILLING_PLATFORMS.IOS;
+  if (!/iPad|iPhone|iPod/i.test(ua)) return false;
+  const explicitPlatform = String(window.__BEAUROCKS_NATIVE_BILLING__ || "").trim().toLowerCase();
+  if (explicitPlatform === BILLING_PLATFORMS.IOS) return true;
+  if (typeof window.Capacitor?.isNativePlatform === "function" && window.Capacitor.isNativePlatform()) {
+    return true;
+  }
+  return !!window.webkit?.messageHandlers?.beaurocksBilling;
+};
+
+export const detectBillingPlatform = () => {
+  if (isNativeAppleBillingSurface()) return BILLING_PLATFORMS.IOS;
   return BILLING_PLATFORMS.WEB;
 };
 

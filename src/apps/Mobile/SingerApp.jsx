@@ -20,6 +20,7 @@ import { averageBand } from '../../lib/utils';
 import { PARTY_LIGHTS_STYLE, SINGER_APP_CONFIG } from '../../lib/uiConstants';
 import { POINTS_PACKS, SUBSCRIPTIONS } from '../../billing/catalog';
 import { BILLING_PLATFORMS, createBillingProvider, detectBillingPlatform } from '../../billing/provider';
+import { DEFAULT_TIP_CRATES } from '../Host/hostAppData';
 import { ensureSong, ensureTrack, extractYouTubeId, buildSongKey } from '../../lib/songCatalog';
 import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
 import GameContainer from '../../components/GameContainer';
@@ -934,6 +935,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const _vipCount = useMemo(() => allUsers.filter(u => u.isVip || (u.vipLevel || 0) > 0).length, [allUsers]);
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !isVipAccount;
     const tipCrates = useMemo(() => (Array.isArray(room?.tipCrates) ? room.tipCrates : []), [room?.tipCrates]);
+    const availableTipCrates = useMemo(() => (tipCrates.length ? tipCrates : DEFAULT_TIP_CRATES), [tipCrates]);
     const isNativeMobileLayout = mobileLayoutMode === 'native';
     const mobileSafeTopInset = 'env(safe-area-inset-top)';
     const mobileSafeLeftInset = 'env(safe-area-inset-left)';
@@ -1640,6 +1642,40 @@ const SingerApp = ({ roomCode, uid }) => {
         const nextMode = forcedMode || storedMode || defaultMode;
         setMobileLayoutMode(nextMode);
     }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        const pointsStatus = String(params.get('points') || '').trim().toLowerCase();
+        const tipStatus = String(params.get('tip') || '').trim().toLowerCase();
+        if (!pointsStatus && !tipStatus) return;
+
+        if (pointsStatus === 'success') {
+            setShowPoints(true);
+            setShowPointsShop(true);
+            toast('Points checkout complete. Your room points should land in a moment.');
+        } else if (pointsStatus === 'cancel') {
+            setShowPoints(true);
+            setShowPointsShop(true);
+            toast('Points checkout canceled.');
+        }
+
+        if (tipStatus === 'success') {
+            setShowPoints(true);
+            setShowPointsShop(true);
+            toast('Room boost complete. The room should light up in a moment.');
+        } else if (tipStatus === 'cancel') {
+            setShowPoints(true);
+            setShowPointsShop(true);
+            toast('Room boost canceled.');
+        }
+
+        params.delete('points');
+        params.delete('tip');
+        const nextSearch = params.toString();
+        const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState({}, '', nextUrl);
+    }, [toast]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
@@ -6573,7 +6609,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             </div>
                             <div className="bg-black/30 border border-cyan-400/40 rounded-2xl p-4">
                                 <div className="text-base uppercase tracking-widest text-cyan-200 mb-2">Carry over?</div>
-                                <div className="text-lg text-zinc-100">Account points carry between sessions. Guest points stay in the room.</div>
+                                <div className="text-lg text-zinc-100">Room points power tonight&apos;s session. Your BeauRocks account keeps your identity, VIP perks, and history between rooms.</div>
                             </div>
                         </div>
                         <div className="flex flex-col gap-2 mt-4">
@@ -6613,10 +6649,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         </div>
                         <div className="text-sm uppercase tracking-widest text-zinc-300 mt-5 mb-2">Room boosts</div>
                         <div className="grid gap-3">
-                            {(tipCrates.length ? tipCrates : [{ id: 'tip_default', label: 'Room Boost', amount: 20, points: 2500 }]).slice(0, 1).map((crate, idx) => {
+                            {availableTipCrates.slice(0, 3).map((crate, idx) => {
                                 const label = crate.label || `Room Boost ${idx + 1}`;
                                 const amount = crate.amount ? `$${crate.amount}` : '$';
                                 const points = crate.points ? `+${crate.points} pts` : '';
+                                const rewardScope = String(crate.rewardScope || 'room').toLowerCase();
+                                const rewardsRoom = rewardScope !== 'buyer';
+                                const earnsBadge = crate.awardBadge !== false;
                                 return (
                                     <button
                                         key={crate.id || `${label}-${idx}`}
@@ -6625,12 +6664,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     >
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <div className="text-sm uppercase tracking-widest text-cyan-200">Room boost - Earns a badge</div>
+                                                <div className="text-sm uppercase tracking-widest text-cyan-200">
+                                                    {rewardsRoom ? 'Room boost' : 'Personal boost'}
+                                                    {earnsBadge ? ' - Earns a badge' : ''}
+                                                </div>
                                                 <div className="text-2xl font-bold text-white flex items-center gap-2">
                                                     <span className="text-2xl">{EMOJI.crown}</span>
                                                     {label}
                                                 </div>
-                                                <div className="text-base text-zinc-200">Everyone gets {points} + Crowd Hero badge</div>
+                                                <div className="text-base text-zinc-200">
+                                                    {rewardsRoom
+                                                        ? `Everyone gets ${points || 'a boost'}${earnsBadge ? ' + Crowd Hero badge' : ''}`
+                                                        : `You get ${points || 'a boost'}${earnsBadge ? ' + Crowd Hero badge' : ''}`}
+                                                </div>
                                             </div>
                                             <div className="text-cyan-300 font-black text-2xl">{amount}</div>
                                         </div>

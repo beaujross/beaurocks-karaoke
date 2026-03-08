@@ -11,6 +11,7 @@ const QueueSongCard = ({
     setDragQueueId,
     setDragOverId,
     reorderQueue,
+    touchReorderEnabled = false,
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
@@ -68,20 +69,30 @@ const QueueSongCard = ({
     return (
         <div
             data-queue-id={song.id}
-            draggable
+            draggable={!touchReorderEnabled}
             onDragStart={() => setDragQueueId(song.id)}
             onDragEnd={() => { setDragQueueId(null); setDragOverId(null); }}
             onDragOver={(e) => { e.preventDefault(); setDragOverId(song.id); }}
             onDrop={() => { reorderQueue(dragQueueId, song.id); setDragQueueId(null); setDragOverId(null); }}
-            onTouchStart={() => handleTouchStart(song.id)}
+            onTouchStart={(event) => handleTouchStart(song.id, event)}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchEnd}
             className={`bg-zinc-900/50 p-2 rounded-lg border ${dragOverId === song.id ? 'border-[#00C4D9]' : 'border-white/5'}`}
         >
             <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex items-start gap-2">
                     <span className="font-mono text-zinc-500 w-5 text-center text-xs mt-1">{index + 1}</span>
-                    <i className="fa-solid fa-grip-lines text-zinc-600 text-xs mt-1.5"></i>
+                    <button
+                        type="button"
+                        data-queue-drag-handle="true"
+                        className="inline-flex min-h-[28px] min-w-[28px] items-center justify-center rounded-md border border-white/10 bg-black/20 text-zinc-500 transition hover:text-zinc-300"
+                        title={touchReorderEnabled ? 'Press and drag to reorder the queue' : 'Drag to reorder the queue'}
+                        aria-label="Reorder queue item"
+                        style={touchReorderEnabled ? { touchAction: 'none' } : undefined}
+                    >
+                        <i className="fa-solid fa-grip-lines text-xs"></i>
+                    </button>
                     {song.albumArtUrl && <img src={song.albumArtUrl} className="w-8 h-8 rounded shadow-sm mt-0.5"/>}
                     <div className="min-w-0">
                         <div className="font-bold text-white text-sm truncate">{song.songTitle}</div>

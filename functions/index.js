@@ -596,6 +596,11 @@ const DEFAULT_TIP_CRATES = Object.freeze([
   { id: "crate_mid", label: "Crowd Energy", amount: 10, points: 2500, rewardScope: "room", awardBadge: false },
   { id: "crate_big", label: "Room Rager", amount: 20, points: 6000, rewardScope: "room", awardBadge: true },
 ]);
+const DEFAULT_POINTS_PACKS = Object.freeze([
+  { id: "points_1200", label: "Solo Boost", amount: 5, points: 1200 },
+  { id: "points_3000", label: "Stage Starter", amount: 10, points: 3000 },
+  { id: "points_7500", label: "Headliner", amount: 20, points: 7500 },
+]);
 const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
   casual: Object.freeze({
     hostNightPreset: "casual",
@@ -10850,9 +10855,9 @@ exports.createTipCrateCheckout = onCall(
     if (!roomSnap.exists) {
       throw new HttpsError("not-found", "Room not found.");
     }
-    const crates = Array.isArray(roomSnap.data()?.tipCrates)
+    const crates = Array.isArray(roomSnap.data()?.tipCrates) && roomSnap.data().tipCrates.length
       ? roomSnap.data().tipCrates
-      : [];
+      : DEFAULT_TIP_CRATES;
     const crate = crates.find((c) => c.id === crateId);
     if (!crate) {
       throw new HttpsError("invalid-argument", "Tip crate not found.");
@@ -10907,20 +10912,22 @@ exports.createPointsCheckout = onCall(
     const callerUid = requireAuth(request);
     enforceAppCheckIfEnabled(request, "create_points_checkout");
     const roomCode = normalizeRoomCode(request.data?.roomCode || "");
-    const amount = clampNumber(request.data?.amount || 0, 1, 500, 0);
-    const points = clampNumber(request.data?.points || 0, 0, 100000, 0);
-    const label = normalizeOptionalName(request.data?.label || "", "Points Pack");
-    const packId = request.data?.packId || "points_pack";
+    const packId = String(request.data?.packId || "").trim();
     const buyerName = normalizeOptionalName(request.data?.userName || "", "Guest");
     ensureString(roomCode, "roomCode");
-    if (!amount || !points) {
-      throw new HttpsError("invalid-argument", "Invalid points pack.");
-    }
+    ensureString(packId, "packId");
 
     const roomSnap = await getRootRef().collection("rooms").doc(roomCode).get();
     if (!roomSnap.exists) {
       throw new HttpsError("not-found", "Room not found.");
     }
+    const pack = DEFAULT_POINTS_PACKS.find((entry) => entry.id === packId);
+    if (!pack) {
+      throw new HttpsError("invalid-argument", "Invalid points pack.");
+    }
+    const amount = clampNumber(pack.amount || 0, 1, 500, 0);
+    const points = clampNumber(pack.points || 0, 0, 100000, 0);
+    const label = normalizeOptionalName(pack.label || "Points Pack", "Points Pack");
 
     const origin = resolveOrigin(request.rawRequest, request.data?.origin);
     const stripe = getStripeClient();

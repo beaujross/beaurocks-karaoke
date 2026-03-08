@@ -3301,6 +3301,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         dragOverId,
         setDragOverId,
         reorderQueue,
+        touchReorderEnabled,
         handleTouchStart,
         handleTouchMove,
         handleTouchEnd
@@ -4332,6 +4333,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 setDragQueueId={setDragQueueId}
                 setDragOverId={setDragOverId}
                 reorderQueue={reorderQueue}
+                touchReorderEnabled={touchReorderEnabled}
                 handleTouchStart={handleTouchStart}
                 handleTouchMove={handleTouchMove}
                 handleTouchEnd={handleTouchEnd}
