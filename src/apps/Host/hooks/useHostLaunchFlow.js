@@ -30,8 +30,12 @@ const useHostLaunchFlow = ({
     hostLogger,
     setRoomCode,
     setRoomCodeInput,
+    setTab,
+    setShowSettings,
     setView,
     setLastProvisionedLaunchUrls,
+    setQuickStartChecklistRoomCode,
+    setQuickStartChecklistProgress,
     setEntryError,
     toast,
     trackEvent,
@@ -123,6 +127,15 @@ const useHostLaunchFlow = ({
             }
             setRoomCode(nextRoomCode);
             setRoomCodeInput(nextRoomCode);
+            setQuickStartChecklistRoomCode(nextRoomCode);
+            setQuickStartChecklistProgress({
+                roomCode: nextRoomCode,
+                tvOpened: false,
+                joinLinkCopied: false,
+                roomSetupOpened: false,
+            });
+            setShowSettings(false);
+            setTab('stage');
             setView('panel');
             setShowOnboardingWizard(false);
             roomProvisionRequestIdRef.current = '';
@@ -196,7 +209,11 @@ const useHostLaunchFlow = ({
         setLogoUrl,
         setRoomCode,
         setRoomCodeInput,
+        setQuickStartChecklistRoomCode,
+        setQuickStartChecklistProgress,
+        setShowSettings,
         setView,
+        setTab,
         syncOrgContextFromEntitlements,
         toast,
         trackEvent,

@@ -1,6 +1,55 @@
 # Project History and Lessons Learned
 
-Last updated: 2026-02-11
+Last updated: 2026-03-08
+
+## 2026-03-08 Host Quick-Start and Production Smoke Notes
+
+Scope delivered:
+- Removed the duplicate/inert create-room CTA from Host Dashboard landing.
+- Changed new-room post-create flow to land on the live deck instead of full admin.
+- Added a live-deck quick-start banner with direct actions for Public TV, join-link copy, and Room Setup.
+- Added progress tracking to that quick-start checklist so actions mark complete as the host uses them.
+- Renamed ambiguous `Rooms` navigation to `Room Manager` in host chrome and admin header.
+- Deployed the host UX changes live to Firebase Hosting project `beaurocks-karaoke-v2`.
+
+Validation evidence captured:
+- `npx eslint src/apps/Host/HostApp.jsx src/apps/Host/hooks/useHostLaunchFlow.js src/apps/Host/components/HostTopChrome.jsx`: pass.
+- `npm run build`: pass.
+- `npx firebase-tools deploy --only hosting --non-interactive`: pass.
+- Hosting URL deployed: `https://beaurocks-karaoke-v2.web.app`
+
+Production QA findings:
+- A dedicated low-privilege QA host account was created in production Auth and granted host approval access for smoke testing.
+- Automated authenticated production smoke could sign in, but full host-access automation was blocked by App Check enforcement on `getMyHostAccessStatus`.
+- Direct callable verification confirmed the remaining blocker was App Check, not missing host approval records or broken auth credentials.
+- The existing hands-off Playwright host script is stale against the current host/marketing shell and also mis-read `SETUP` from quick-start copy as a room code.
+
+Important operational notes:
+- Do not store QA host passwords in repo markdown. Keep credentials out-of-band and rotate or remove the QA account after testing.
+- Host-access automation on production now depends on a browser session obtaining a valid App Check token before host-access callables can succeed.
+- Backend host approval alone is sufficient for host workspace access, but the production marketing/host-access surface still cannot be smoke-tested headlessly unless App Check is satisfied in automation.
+
+Lessons learned and process changes:
+
+1. Land first-run hosts in the surface they actually operate from.
+- Lesson: dumping a newly created room into full admin makes the room feel abstract and configuration-heavy.
+- Change adopted: new rooms should open on the live deck, with admin linked as a secondary action.
+
+2. Keep onboarding guidance inside the live experience.
+- Lesson: quick-start guidance is more useful as a lightweight checklist on the live deck than as a forced admin detour.
+- Change adopted: put first-run setup prompts in a dismissible banner with direct action links and completion feedback.
+
+3. Use explicit navigation labels when surfaces are conceptually different.
+- Lesson: `Rooms` was too vague once the app had both live-deck and admin surfaces.
+- Change adopted: use `Room Manager` where the destination is the room-chooser/landing workspace.
+
+4. Treat production App Check as a first-class QA dependency.
+- Lesson: a valid production Auth account plus correct Firestore approval records are still insufficient for automated smoke coverage when App Check gates the host-access callables.
+- Change adopted: any future production smoke plan must include an App Check-compatible automation path, not just QA credentials.
+
+5. Keep golden-path QA scripts aligned with current UI contracts.
+- Lesson: the legacy host hands-off script assumed older host-access routing and weak room-code extraction rules, which produced false failures after the quick-start UX changes.
+- Change adopted: update Playwright golden paths whenever host landing copy, navigation, or room-code presentation changes.
 
 ## 2026-02-11 Overnight Execution Retrospective
 

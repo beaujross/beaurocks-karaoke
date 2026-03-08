@@ -641,11 +641,11 @@ const HostTopChrome = ({
                             onOpenHostDashboard();
                         }}
                         className={`${styles.btnStd} ${styles.btnNeutral} px-2.5 text-xs`}
-                        title="Back to rooms and room creation"
+                        title="Back to room manager and room creation"
                         style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-layer-group"></i>
-                        <span className="hidden sm:inline">Rooms</span>
+                        <span className="hidden sm:inline">Room Manager</span>
                     </button>
                 )}
                 <div className="relative" ref={launchMenuRef}>
@@ -811,7 +811,7 @@ const HostTopChrome = ({
                                     }}
                                     className="w-full text-left px-4 py-2 text-sm font-bold uppercase tracking-widest text-zinc-300 hover:bg-zinc-900 rounded-t-xl"
                                 >
-                                    Rooms
+                                    Room Manager
                                 </button>
                             )}
                             {[

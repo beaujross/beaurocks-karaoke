@@ -5217,6 +5217,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         audienceUrl: '',
         updatedAtMs: 0,
     });
+    const [quickStartChecklistRoomCode, setQuickStartChecklistRoomCode] = useState('');
+    const [quickStartChecklistProgress, setQuickStartChecklistProgress] = useState({
+        roomCode: '',
+        tvOpened: false,
+        joinLinkCopied: false,
+        roomSetupOpened: false,
+    });
     const [marqueeEnabled, setMarqueeEnabled] = useState(false);
     const [marqueeDurationSec, setMarqueeDurationSec] = useState(12);
     const [marqueeIntervalSec, setMarqueeIntervalSec] = useState(20);
@@ -5879,6 +5886,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         [orgContext?.role]
     );
     const hostAuthSessionReady = !!(uid || auth.currentUser?.uid);
+    const hasWorkspaceIdentityReady = Boolean(String(orgContext?.orgId || '').trim());
+    const hasHostProfileIdentity = Boolean(String(hostName || '').trim());
+    const isFirstHostRoomRun = !hasWorkspaceIdentityReady;
     const recentActivities = (activities || []).filter(a => toMs(a.timestamp) > nowMs() - 5 * 60 * 1000);
     const lastActivity = activities?.[0];
     const {
@@ -6976,8 +6986,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         hostLogger,
         setRoomCode,
         setRoomCodeInput,
+        setTab,
+        setShowSettings,
         setView,
         setLastProvisionedLaunchUrls,
+        setQuickStartChecklistRoomCode,
+        setQuickStartChecklistProgress,
         setEntryError,
         toast,
         trackEvent,
@@ -7419,6 +7433,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const openHostRoomDashboard = useCallback(() => {
         setShowNightSetupWizard(false);
         setShowSettings(false);
+        setQuickStartChecklistRoomCode('');
+        setQuickStartChecklistProgress({
+            roomCode: '',
+            tvOpened: false,
+            joinLinkCopied: false,
+            roomSetupOpened: false,
+        });
         setLandingLaunchMode('create');
         setEntryError('');
         if (roomCode) {
@@ -7747,6 +7768,55 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         return true;
     }, [roomCode, activeRoomLaunchUrls?.audienceUrl, toast]);
+    const updateStageQuickStartProgress = useCallback((patch = {}) => {
+        setQuickStartChecklistProgress((prev) => {
+            const activeRoomCode = String(roomCode || '').trim().toUpperCase();
+            if (!activeRoomCode) return prev;
+            const previousRoomCode = String(prev?.roomCode || '').trim().toUpperCase();
+            const baseState = previousRoomCode === activeRoomCode
+                ? prev
+                : {
+                    roomCode: activeRoomCode,
+                    tvOpened: false,
+                    joinLinkCopied: false,
+                    roomSetupOpened: false,
+                };
+            return {
+                ...baseState,
+                ...patch,
+                roomCode: activeRoomCode,
+            };
+        });
+    }, [roomCode]);
+    const handleStageQuickStartOpenTv = useCallback(() => {
+        const opened = openActiveRoomTv();
+        if (opened) {
+            updateStageQuickStartProgress({ tvOpened: true });
+        }
+    }, [openActiveRoomTv, updateStageQuickStartProgress]);
+    const handleStageQuickStartCopyJoinLink = useCallback(async () => {
+        const copied = await copyActiveRoomAudienceLink();
+        if (copied) {
+            updateStageQuickStartProgress({ joinLinkCopied: true });
+        }
+    }, [copyActiveRoomAudienceLink, updateStageQuickStartProgress]);
+    const showStageQuickStartChecklist = (
+        tab === 'stage'
+        && !!roomCode
+        && String(quickStartChecklistRoomCode || '').trim().toUpperCase() === String(roomCode || '').trim().toUpperCase()
+    );
+    const activeQuickStartProgress = String(quickStartChecklistProgress?.roomCode || '').trim().toUpperCase() === String(roomCode || '').trim().toUpperCase()
+        ? quickStartChecklistProgress
+        : { roomCode: String(roomCode || '').trim().toUpperCase(), tvOpened: false, joinLinkCopied: false, roomSetupOpened: false };
+    const stageQuickStartAudienceReady = !!String(activeRoomLaunchUrls?.audienceUrl || '').trim();
+    const stageQuickStartTvReady = !!String(activeRoomLaunchUrls?.tvUrl || '').trim();
+    const stageQuickStartSetupReady = hasWorkspaceIdentityReady && hasHostProfileIdentity;
+    const stageQuickStartCompletedCount = Number(!!activeQuickStartProgress.tvOpened)
+        + Number(!!activeQuickStartProgress.joinLinkCopied)
+        + Number(!!activeQuickStartProgress.roomSetupOpened);
+    const dismissStageQuickStartChecklist = useCallback(() => {
+        setQuickStartChecklistRoomCode('');
+    }, []);
 
     const launchNightSetupPackage = useCallback(async () => {
         if (!roomCode) {
@@ -7821,6 +7891,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
             setRoomCode(code);
             setRoomCodeInput(code);
+            setQuickStartChecklistRoomCode('');
+            setQuickStartChecklistProgress({
+                roomCode: '',
+                tvOpened: false,
+                joinLinkCopied: false,
+                roomSetupOpened: false,
+            });
             setView('panel');
             return true;
         } catch (e) {
@@ -7845,12 +7922,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     );
                     setRoomCode(code);
                     setRoomCodeInput(code);
+                    setQuickStartChecklistRoomCode('');
+                    setQuickStartChecklistProgress({
+                        roomCode: '',
+                        tvOpened: false,
+                        joinLinkCopied: false,
+                        roomSetupOpened: false,
+                    });
                     setView('panel');
                     return true;
                 } catch (seedError) {
                     hostLogger.debug('Marketing demo embed room bootstrap failed', { roomCode: code, error: seedError });
                     setRoomCode(code);
                     setRoomCodeInput(code);
+                    setQuickStartChecklistRoomCode('');
+                    setQuickStartChecklistProgress({
+                        roomCode: '',
+                        tvOpened: false,
+                        joinLinkCopied: false,
+                        roomSetupOpened: false,
+                    });
                     setView('panel');
                     return false;
                 }
@@ -9624,7 +9715,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setActiveWorkspaceSection('audience.chat');
         handleSettingsNavSelect('chat');
     };
-    const openAdminWorkspace = (sectionId = 'ops.room_setup') => {
+    const openAdminWorkspace = useCallback((sectionId = 'ops.room_setup') => {
         const targetSection = sectionId || 'ops.room_setup';
         const sectionMeta = getSectionMeta(targetSection);
         const viewId = sectionMeta?.view || 'ops';
@@ -9634,7 +9725,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setSettingsTab(mappedTab);
         setTab('admin');
         setShowSettings(true);
-    };
+    }, []);
+    const handleStageQuickStartOpenRoomSetup = useCallback(() => {
+        updateStageQuickStartProgress({ roomSetupOpened: true });
+        openAdminWorkspace('ops.room_setup');
+    }, [openAdminWorkspace, updateStageQuickStartProgress]);
     const leaveAdminWithTarget = (targetTab = 'stage') => {
         setSettingsNavOpen(false);
         setShowSettings(false);
@@ -12069,35 +12164,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 )}
                 <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Choose What You Want To Do</div>
-                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Choose What You Want To Do</div>
+                            <div className="mt-2 text-sm font-semibold text-white">
+                                {landingLaunchMode === 'create' ? 'Starting a new room tonight' : 'Reopening an existing room'}
+                            </div>
+                            <div className="mt-1 text-xs text-cyan-100/72">
+                                {landingLaunchMode === 'create'
+                                    ? (shouldShowSetupCard
+                                        ? 'New hosts should finish setup first. Returning hosts can start a room right away.'
+                                        : 'Start a fresh room for tonight.')
+                                    : 'Open an existing room code and keep the show moving.'}
+                            </div>
+                        </div>
                         <button
                             type="button"
-                            onClick={() => setLandingLaunchMode('create')}
-                            className={`${STYLES.btnStd} text-xs uppercase tracking-[0.16em] ${landingLaunchMode === 'create'
-                                ? `${STYLES.btnHighlight} shadow-[0_0_24px_rgba(236,72,153,0.2)]`
-                                : `${STYLES.btnNeutral} border-cyan-400/25 bg-cyan-500/8 text-cyan-100`
-                                }`}
+                            onClick={() => setLandingLaunchMode(landingLaunchMode === 'create' ? 'resume' : 'create')}
+                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} shrink-0 border-cyan-400/25 bg-cyan-500/8 px-4 py-2 text-xs uppercase tracking-[0.16em] text-cyan-100`}
                         >
-                            Create Room
+                            {landingLaunchMode === 'create' ? 'Switch To Resume' : 'Switch To New Room'}
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => setLandingLaunchMode('resume')}
-                            className={`${STYLES.btnStd} text-xs uppercase tracking-[0.16em] ${landingLaunchMode === 'resume'
-                                ? `${STYLES.btnHighlight} shadow-[0_0_24px_rgba(236,72,153,0.2)]`
-                                : `${STYLES.btnNeutral} border-cyan-400/25 bg-cyan-500/8 text-cyan-100`
-                                }`}
-                        >
-                            Resume Room
-                        </button>
-                    </div>
-                    <div className="mt-2 text-xs text-cyan-100/72">
-                        {landingLaunchMode === 'create'
-                            ? (shouldShowSetupCard
-                                ? 'New hosts should finish setup first. Returning hosts can start a room right away.'
-                                : 'Start a fresh room for tonight.')
-                            : 'Open an existing room code and keep the show moving.'}
                     </div>
                 </div>
                 {landingLaunchMode === 'create' && (
@@ -13378,7 +13465,97 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     />
                 )}
                 {tab === 'stage' && (
-                    <QueueTab {...queueTabProps} />
+                    <>
+                        {showStageQuickStartChecklist && (
+                            <div className="mb-4 rounded-3xl border border-cyan-300/30 bg-gradient-to-r from-cyan-500/12 via-sky-500/10 to-pink-500/12 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                    <div className="max-w-3xl">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-500/12 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-cyan-100">
+                                                <span className="h-2 w-2 rounded-full bg-cyan-300"></span>
+                                                Quick Start
+                                            </div>
+                                            <div className="inline-flex items-center rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-200">
+                                                {stageQuickStartCompletedCount}/3 Complete
+                                            </div>
+                                        </div>
+                                        <div className="mt-3 text-xl font-black text-white">
+                                            {isFirstHostRoomRun ? `Your first room ${roomCode} is live.` : `Room ${roomCode} is ready to run.`}
+                                        </div>
+                                        <div className="mt-1 text-sm text-cyan-100/80">
+                                            {isFirstHostRoomRun
+                                                ? 'Stay here on the live deck. Open the TV, share the join link, and only jump into Room Setup if you want to tune host identity or defaults.'
+                                                : 'Use this live deck to launch the room fast, then dip into Room Setup only if you need to change configuration.'}
+                                        </div>
+                                        <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-3">
+                                            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-left">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">1. Public TV</div>
+                                                    <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${activeQuickStartProgress.tvOpened ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : stageQuickStartTvReady ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200'}`}>
+                                                        {activeQuickStartProgress.tvOpened ? 'Complete' : stageQuickStartTvReady ? 'Ready' : 'Pending'}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-2 text-xs text-zinc-300">Open the TV surface on the public screen so guests instantly understand the room.</div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleStageQuickStartOpenTv}
+                                                    disabled={!stageQuickStartTvReady}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} mt-3 w-full justify-center ${!stageQuickStartTvReady ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    {activeQuickStartProgress.tvOpened ? 'Open Public TV Again' : 'Open Public TV'}
+                                                </button>
+                                            </div>
+                                            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-left">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">2. Guest Entry</div>
+                                                    <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${activeQuickStartProgress.joinLinkCopied ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : stageQuickStartAudienceReady ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200'}`}>
+                                                        {activeQuickStartProgress.joinLinkCopied ? 'Complete' : stageQuickStartAudienceReady ? 'Ready' : 'Pending'}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-2 text-xs text-zinc-300">Copy the audience link and share it, or just tell people the room code shown in the top bar.</div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleStageQuickStartCopyJoinLink}
+                                                    disabled={!stageQuickStartAudienceReady}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 w-full justify-center ${!stageQuickStartAudienceReady ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    {activeQuickStartProgress.joinLinkCopied ? 'Copy Join Link Again' : 'Copy Join Link'}
+                                                </button>
+                                            </div>
+                                            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-left">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">3. Room Setup</div>
+                                                    <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${activeQuickStartProgress.roomSetupOpened ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : stageQuickStartSetupReady ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-amber-300/40 bg-amber-500/12 text-amber-100'}`}>
+                                                        {activeQuickStartProgress.roomSetupOpened ? 'Complete' : stageQuickStartSetupReady ? 'Optional' : 'Review'}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-2 text-xs text-zinc-300">Need host identity, queue defaults, branding, or automation changes? Room Setup is one click away.</div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleStageQuickStartOpenRoomSetup}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} mt-3 w-full justify-center`}
+                                                >
+                                                    {activeQuickStartProgress.roomSetupOpened ? 'Reopen Room Setup' : 'Open Room Setup'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-cyan-100/75">
+                                            <span>{stageQuickStartCompletedCount === 3 ? 'Quick start complete. Keep running the room from this live deck.' : 'Best order: TV first, then guest entry, then any setup tuning.'}</span>
+                                            <span>Need another room later? Use <span className="font-semibold text-white">Room Manager</span> in the top bar.</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={dismissStageQuickStartChecklist}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} shrink-0 self-start`}
+                                    >
+                                        Dismiss
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        <QueueTab {...queueTabProps} />
+                    </>
                 )}
                 {tab === 'browse' && browsePanel}
                 {tab === 'games' && (
@@ -13908,6 +14085,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             Context {adminContextOpen ? 'On' : 'Off'}
                                         </button>
                                     )}
+                                    <button onClick={openHostRoomDashboard} className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}>Room Manager</button>
                                     <button onClick={closeSettingsSurface} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>{inAdminWorkspace ? 'Exit Admin' : 'Close'}</button>
                                 </div>
                             </div>
