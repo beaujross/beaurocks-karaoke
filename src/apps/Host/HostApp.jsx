@@ -2971,9 +2971,6 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         setVibeSyncOpen,
         automationOpen,
         setAutomationOpen,
-        panelLayout,
-        activeWorkspace,
-        workspaceOptions,
         applyWorkspacePreset,
         expandAllPanels,
         collapseAllPanels,
@@ -3071,10 +3068,6 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         currentSourceLabel,
         currentSourceToneClass
     } = useQueueDerivedState({ songs, room, users, appleMusicPlaying });
-    const openPanelCount = useMemo(
-        () => Object.values(panelLayout || {}).filter(Boolean).length,
-        [panelLayout]
-    );
     const autoDjStepItems = useMemo(
         () => deriveAutoDjStepItems(autoDjSequenceState),
         [autoDjSequenceState]
@@ -4577,52 +4570,6 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                             styles={STYLES}
                         />
                     </section>
-                    {!essentialsMode && (
-                        <section className="px-4 py-4 border-b border-white/10 bg-black/20">
-                            <div className={STYLES.header}>Panel Layout</div>
-                            <div className="space-y-2">
-                                <select
-                                    value={activeWorkspace}
-                                    onChange={(e) => applyWorkspacePreset(e.target.value)}
-                                    data-feature-id="layout-workspace-select"
-                                    className={`${STYLES.input} text-xs py-2`}
-                                >
-                                    {workspaceOptions.map((opt) => (
-                                        <option key={opt.id} value={opt.id}>
-                                            {opt.label}
-                                        </option>
-                                    ))}
-                                </select>
-                                <div className="grid grid-cols-3 gap-2">
-                                    <button
-                                        onClick={expandAllPanels}
-                                        data-feature-id="layout-expand-all"
-                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 text-[10px]`}
-                                    >
-                                        Expand All
-                                    </button>
-                                    <button
-                                        onClick={collapseAllPanels}
-                                        data-feature-id="layout-collapse-all"
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 text-[10px]`}
-                                    >
-                                        Collapse All
-                                    </button>
-                                    <button
-                                        onClick={resetPanelLayout}
-                                        data-feature-id="layout-reset"
-                                        className={`${STYLES.btnStd} ${STYLES.btnInfo} px-2 text-[10px]`}
-                                    >
-                                        Reset
-                                    </button>
-                                </div>
-                                <div className="text-[11px] text-zinc-500">
-                                    {openPanelCount}/{Object.keys(panelLayout || {}).length} panels open
-                                </div>
-                            </div>
-                        </section>
-                    )}
-
                     {!essentialsMode && showLegacyLiveEffects && (
                         <section className="px-4 py-4 border-b border-white/10">
                             <SectionHeader
@@ -5242,8 +5189,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [hostNightPreset, setHostNightPreset] = useState('custom');
     const [audienceBingoReopenEnabled, setAudienceBingoReopenEnabled] = useState(true);
     const [autoLyricsOnQueue, setAutoLyricsOnQueue] = useState(false);
-    const [lyricsPipelineV2Enabled, setLyricsPipelineV2Enabled] = useState(false);
-    const [lyricsPipelineV2Touched, setLyricsPipelineV2Touched] = useState(false);
     const [popTriviaEnabled, setPopTriviaEnabled] = useState(true);
     const [audiencePreviewVisible, setAudiencePreviewVisible] = useState(() => {
         try {
@@ -6360,11 +6305,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.autoLyricsOnQueue === undefined || room?.autoLyricsOnQueue === null) return;
         setAutoLyricsOnQueue(!!room.autoLyricsOnQueue);
     }, [roomCode, room?.autoLyricsOnQueue]);
-    useEffect(() => {
-        if (room?.lyricsPipelineV2Enabled === undefined || room?.lyricsPipelineV2Enabled === null) return;
-        setLyricsPipelineV2Enabled(!!room.lyricsPipelineV2Enabled);
-        setLyricsPipelineV2Touched(false);
-    }, [roomCode, room?.lyricsPipelineV2Enabled]);
     useEffect(() => {
         if (!uid || !accountMusicPrefsReady || !roomCode) return;
         if (!accountMusicPrefsRef.current?.appleAutoConnect) return;
@@ -8444,6 +8384,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             missionControl: mergeMissionControlParty(room?.missionControl, nextParty)
         });
     }, [room, updateRoom]);
+    const toggleAutoPartyEnabled = useCallback(async () => {
+        const next = !autoCrowdMomentsEnabled;
+        setAutoCrowdMomentsEnabled(next);
+        const nextParty = {
+            ...buildMissionPartyFromRoom(room),
+            autoCrowdMomentsEnabled: next
+        };
+        const roomPatch = {
+            missionControl: mergeMissionControlParty(room?.missionControl, nextParty)
+        };
+        if (next && !autoDj) {
+            setAutoDj(true);
+            roomPatch.autoDj = true;
+        }
+        await updateRoom(roomPatch);
+    }, [autoCrowdMomentsEnabled, room, autoDj, updateRoom]);
     useEffect(() => {
         if (!roomCode || !room?.autoDj) return;
         const assistLevel = String(room?.missionControl?.setupDraft?.assistLevel || '').trim().toLowerCase();
@@ -8468,7 +8424,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             party: partyConfig,
             flowState: flowStateForGuard,
             queueDepth: queuedCount,
-            lobbyVolleyEnabled: room?.lobbyVolleyEnabled !== false,
             hasCurrentSinger: performingCount > 0,
             activeMode: room?.activeMode,
             currentLightMode: room?.lightMode
@@ -8512,7 +8467,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         room?.lastPerformance?.timestamp,
         room?.lastPerformance?.duration,
         room?.missionControl,
-        room?.lobbyVolleyEnabled,
         queuedCount,
         performingCount,
         startAutoCrowdMoment,
@@ -8780,7 +8734,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 hostNightPreset: hostNightPreset || 'custom',
                 bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
                 autoLyricsOnQueue: !!autoLyricsOnQueue,
-                ...(shouldIncludeLyricsPipelineV2 ? { lyricsPipelineV2Enabled: !!lyricsPipelineV2Enabled } : {}),
+                lyricsPipelineV2Enabled: true,
                 popTriviaEnabled: popTriviaEnabled !== false,
                 queueSettings: {
                     limitMode: queueLimitMode || 'none',
@@ -12935,8 +12889,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         .map((tab) => ({ key: tab, ...(HOST_SETTINGS_META[tab] || { label: tab, icon: 'fa-gear' }) }))
         .slice(0, 4);
     const canSaveRoomSettings = !['billing', 'qa', 'live_effects'].includes(settingsTab);
-    const shouldIncludeLyricsPipelineV2 = lyricsPipelineV2Touched
-        || typeof room?.lyricsPipelineV2Enabled === 'boolean';
     const draftRoomSettingsPayload = {
         tipUrl: (tipSettings.link || '').trim() || null,
         tipQrUrl: (tipSettings.qr || '').trim() || null,
@@ -12960,7 +12912,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         hostNightPreset: hostNightPreset || 'custom',
         bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
         autoLyricsOnQueue: !!autoLyricsOnQueue,
-        ...(shouldIncludeLyricsPipelineV2 ? { lyricsPipelineV2Enabled: !!lyricsPipelineV2Enabled } : {}),
+        lyricsPipelineV2Enabled: true,
         popTriviaEnabled: popTriviaEnabled !== false,
         queueSettings: {
             limitMode: queueLimitMode || 'none',
@@ -12995,9 +12947,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hostNightPreset: room.hostNightPreset || 'custom',
             bingoAudienceReopenEnabled: room.bingoAudienceReopenEnabled !== false,
             autoLyricsOnQueue: !!room.autoLyricsOnQueue,
-            ...(typeof room?.lyricsPipelineV2Enabled === 'boolean'
-                ? { lyricsPipelineV2Enabled: !!room.lyricsPipelineV2Enabled }
-                : {}),
+            lyricsPipelineV2Enabled: true,
             popTriviaEnabled: room.popTriviaEnabled !== false,
             queueSettings: {
                 limitMode: room.queueSettings?.limitMode || 'none',
@@ -13368,8 +13318,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     setAutoPlayMedia={setAutoPlayMedia}
                     autoDj={autoDj}
                     setAutoDj={setAutoDj}
+                    autoEndOnTrackFinish={autoEndOnTrackFinish}
+                    setAutoEndOnTrackFinish={setAutoEndOnTrackFinish}
+                    autoBonusEnabled={autoBonusEnabled}
+                    setAutoBonusEnabled={setAutoBonusEnabled}
                     autoLyricsOnQueue={autoLyricsOnQueue}
                     setAutoLyricsOnQueue={setAutoLyricsOnQueue}
+                    autoPartyEnabled={autoCrowdMomentsEnabled}
+                    onToggleAutoParty={toggleAutoPartyEnabled}
                     toggleHowToPlay={toggleHowToPlay}
                     marqueeEnabled={marqueeEnabled}
                     setMarqueeEnabled={setMarqueeEnabled}
@@ -14504,21 +14460,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                   {canUseAiTools
                                       ? 'When no lyrics are available, generate fallback lyrics for queued songs.'
                                       : 'Saved now; this activates when AI tools are enabled for the workspace (or demo bypass is on).'}
-                              </div>
-                              <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
-                                  <input
-                                      type="checkbox"
-                                      checked={lyricsPipelineV2Enabled}
-                                      onChange={e => {
-                                          setLyricsPipelineV2Enabled(e.target.checked);
-                                          setLyricsPipelineV2Touched(true);
-                                      }}
-                                      className="accent-[#00C4D9]"
-                                  />
-                                  Lyrics Pipeline V2 (status + retry controls)
-                              </label>
-                              <div className="host-form-helper">
-                                  Uses callable-based lyrics resolution with queue status chips, host retry, and timed-lyrics fetch actions.
                               </div>
                               <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
                                   <input

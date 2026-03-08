@@ -46,7 +46,7 @@ const REMINDER_SMS_WEBHOOK_URL = defineSecret("REMINDER_SMS_WEBHOOK_URL");
 const GEMINI_LYRICS_MODEL = "gemini-2.5-flash-preview-09-2025";
 const GEMINI_LYRICS_INPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_INPUT_USD_PER_1M || "0.3");
 const GEMINI_LYRICS_OUTPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_OUTPUT_USD_PER_1M || "2.5");
-const LYRICS_PIPELINE_V2_ENABLED_DEFAULT = String(process.env.LYRICS_PIPELINE_V2_ENABLED || "false")
+const LYRICS_PIPELINE_V2_ENABLED_DEFAULT = String(process.env.LYRICS_PIPELINE_V2_ENABLED || "true")
   .trim()
   .toLowerCase() === "true";
 const LYRICS_TIMED_ADAPTER_ENABLED_DEFAULT = String(process.env.LYRICS_TIMED_ADAPTER_ENABLED || "false")
@@ -801,6 +801,7 @@ const buildProvisionedRoomData = ({
     hostNightPreset: "custom",
     bingoAudienceReopenEnabled: true,
     autoLyricsOnQueue: false,
+    lyricsPipelineV2Enabled: true,
     popTriviaEnabled: true,
     gameDefaults: {
       triviaRoundSec: 20,
@@ -4872,12 +4873,7 @@ const isRoomAiDemoBypassEnabled = (roomData = {}) => {
   return !untilMs || untilMs > Date.now();
 };
 
-const isLyricsPipelineV2EnabledForRoom = (roomData = {}) => {
-  if (typeof roomData?.lyricsPipelineV2Enabled === "boolean") {
-    return roomData.lyricsPipelineV2Enabled;
-  }
-  return LYRICS_PIPELINE_V2_ENABLED_DEFAULT;
-};
+const isLyricsPipelineV2EnabledForRoom = () => LYRICS_PIPELINE_V2_ENABLED_DEFAULT;
 
 const isTimedAdapterEnabledForRoom = (roomCode = "") => {
   if (!LYRICS_TIMED_ADAPTER_ENABLED_DEFAULT) return false;

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 const AddToQueueFormBody = ({
     searchQ,
@@ -33,7 +33,14 @@ const AddToQueueFormBody = ({
     openYtSearch,
     addSong,
     appleMusicAuthorized
-}) => (
+}) => {
+    const hasOptionalMedia = !!String(manual.lyrics || '').trim() || !!String(manual.url || '').trim();
+    const mediaSummaryLabel = manualBackingChip.label === 'Apple Music'
+        ? 'Apple default'
+        : manualBackingChip.label;
+    const [mediaToolsOpen, setMediaToolsOpen] = useState(() => hasOptionalMedia);
+
+    return (
     <div className="mt-2 pr-1">
         <div className="host-autocomplete-shell relative mb-2 z-30">
             <div className="host-autocomplete-field-wrap rounded-xl border border-cyan-400/25 bg-zinc-950/70 px-2 py-2">
@@ -249,82 +256,112 @@ const AddToQueueFormBody = ({
             </div>
         </div>
         <div className="mb-2 rounded-xl border border-white/10 bg-black/30 p-3">
-            <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-widest text-zinc-400">
-                    <span>Lyrics</span>
-                    <span className={statusPill}>
-                        {manual.lyrics ? 'Added' : 'None'}
-                    </span>
+            <button
+                type="button"
+                onClick={() => setMediaToolsOpen(v => !v)}
+                className="w-full flex items-center justify-between gap-3 text-left"
+                aria-expanded={mediaToolsOpen}
+            >
+                <div className="min-w-0">
+                    <div className="text-xs uppercase tracking-widest text-zinc-400">Load Music &amp; Media</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
+                        <span className={statusPill}>Backing: {mediaSummaryLabel}</span>
+                        <span className={statusPill}>Lyrics: {manual.lyrics ? 'Added' : 'None'}</span>
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setLyricsOpen(v => !v)}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-xs min-h-[30px]`}
-                    >
-                        {lyricsOpen ? 'Hide lyrics' : 'Edit Lyrics'}
-                    </button>
-                    <button
-                        onClick={onGenerateManualLyrics}
-                        className={`${styles.btnStd} ${styles.btnHighlight} px-3 text-xs min-h-[30px]`}
-                        title="Add AI Lyrics"
-                    >
-                        <i className="fa-solid fa-wand-magic-sparkles"></i>
-                        Add AI Lyrics
-                    </button>
+                <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-cyan-200">
+                    {mediaToolsOpen ? 'Hide' : 'Open'}
+                    <i className={`fa-solid ${mediaToolsOpen ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
+                </span>
+            </button>
+            {mediaToolsOpen && (
+                <div className="mt-3 border-t border-white/10 pt-3 space-y-3">
+                    <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-widest text-zinc-400">
+                                <span>Lyrics</span>
+                                <span className={statusPill}>
+                                    {manual.lyrics ? 'Added' : 'None'}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setLyricsOpen(v => !v)}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-xs min-h-[30px]`}
+                                >
+                                    {lyricsOpen ? 'Hide Lyrics' : 'Edit Lyrics'}
+                                </button>
+                                <button
+                                    onClick={onGenerateManualLyrics}
+                                    className={`${styles.btnStd} ${styles.btnHighlight} px-3 text-xs min-h-[30px]`}
+                                    title="Add AI Lyrics"
+                                >
+                                    <i className="fa-solid fa-wand-magic-sparkles"></i>
+                                    Add AI Lyrics
+                                </button>
+                            </div>
+                        </div>
+                        {lyricsOpen && (
+                            <textarea
+                                value={manual.lyrics}
+                                onChange={e=>setManual({...manual, lyrics:e.target.value})}
+                                className={`${styles.input} w-full h-20 font-mono resize-none host-lyrics-input`}
+                                placeholder="Paste lyrics here (optional)..."
+                            />
+                        )}
+                    </div>
+                    <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="text-xs uppercase tracking-widest text-zinc-400">Backing Track</div>
+                            <span
+                                className={statusPill}
+                                title={manualBackingChip.label === 'Apple Music'
+                                    ? 'Default backing: Apple Music'
+                                    : `Selected backing: ${manualBackingChip.label}`
+                                }
+                            >
+                                {manualBackingChip.label === 'Apple Music'
+                                    ? 'Default: Apple Music'
+                                    : manualBackingChip.label
+                                }
+                            </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <button
+                                onClick={() => setManual(prev => ({ ...prev, url: '', backingAudioOnly: false }))}
+                                className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-[#00C4D9] border-[#00C4D9]`}
+                                title="Use the default Apple Music track"
+                            >
+                                <i className="fa-brands fa-apple mr-1"></i>
+                                Apple Default
+                            </button>
+                            <button
+                                onClick={() => openYtSearch('manual', `${manual.song} ${manual.artist}`.trim() || searchQ)}
+                                className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-[#00C4D9] border-[#00C4D9]`}
+                                title="Search YouTube and pick a backing track"
+                            >
+                                <i className="fa-brands fa-youtube mr-1"></i>
+                                Search YouTube
+                            </button>
+                        </div>
+                        <input
+                            value={manual.url}
+                            onChange={e=>setManual({...manual, url:e.target.value})}
+                            className={styles.input}
+                            placeholder="Paste a YouTube/local URL or YouTube playlist URL"
+                        />
+                        <div className="host-form-helper mt-2">Playlist URL in this field queues up to 1000 tracks.</div>
+                    </div>
                 </div>
-            </div>
-            {lyricsOpen && (
-                <textarea
-                    value={manual.lyrics}
-                    onChange={e=>setManual({...manual, lyrics:e.target.value})}
-                    className={`${styles.input} w-full h-20 font-mono resize-none host-lyrics-input`}
-                    placeholder="Paste lyrics here (optional)..."
-                />
             )}
         </div>
-        <div className="mb-2 rounded-xl border border-white/10 bg-black/30 p-3">
-            <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="text-xs uppercase tracking-widest text-zinc-400">Backing Track</div>
-                <span
-                    className={statusPill}
-                    title={manualBackingChip.label === 'Apple Music'
-                        ? 'Default backing: Apple Music'
-                        : `Selected backing: ${manualBackingChip.label}`
-                    }
-                >
-                    {manualBackingChip.label === 'Apple Music'
-                        ? 'Default: Apple Music'
-                        : manualBackingChip.label
-                    }
-                </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-                <button
-                    onClick={() => setManual(prev => ({ ...prev, url: '', backingAudioOnly: false }))}
-                    className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-[#00C4D9] border-[#00C4D9]`}
-                    title="Use the default Apple Music track"
-                >
-                    <i className="fa-brands fa-apple mr-1"></i>
-                    Apple Default
-                </button>
-                <button
-                    onClick={() => openYtSearch('manual', `${manual.song} ${manual.artist}`.trim() || searchQ)}
-                    className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-[#00C4D9] border-[#00C4D9]`}
-                    title="Search YouTube and pick a backing track"
-                >
-                    <i className="fa-brands fa-youtube mr-1"></i>
-                    Search YouTube
-                </button>
-            </div>
-            <div className="flex gap-2 items-center">
-                <input value={manual.url} onChange={e=>setManual({...manual, url:e.target.value})} className={styles.input} placeholder="Paste a YouTube/local URL or YouTube playlist URL"/>
-                <button onClick={addSong} className={`${styles.btnStd} ${styles.btnHighlight} px-4`}>
-                    Add to Queue
-                </button>
-            </div>
-            <div className="host-form-helper mt-2">Playlist URL in this field queues up to 1000 tracks.</div>
+        <div className="mb-2 flex justify-end">
+            <button onClick={addSong} className={`${styles.btnStd} ${styles.btnHighlight} px-4`}>
+                Add to Queue
+            </button>
         </div>
     </div>
 );
+};
 
 export default AddToQueueFormBody;

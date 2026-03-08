@@ -267,7 +267,6 @@ export const recommendAutoCrowdMoment = ({
     party = {},
     flowState = {},
     queueDepth = 0,
-    lobbyVolleyEnabled = true,
     hasCurrentSinger = false,
     activeMode = 'karaoke',
     currentLightMode = ''
@@ -291,10 +290,6 @@ export const recommendAutoCrowdMoment = ({
     let lastGuard = null;
     for (const type of preferredTypes) {
         if (type === 'volley') {
-            if (!lobbyVolleyEnabled) {
-                lastGuard = { allowed: false, reason: 'volley_disabled' };
-                continue;
-            }
             const volleyQueueCap = Math.max(2, Math.min(
                 normalizedParty.queueDepthGuardThreshold - 2,
                 Math.floor(normalizedParty.queueDepthGuardThreshold / 2) || 0

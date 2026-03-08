@@ -59,8 +59,14 @@ const HostTopChrome = ({
     setAutoPlayMedia,
     autoDj = false,
     setAutoDj,
+    autoEndOnTrackFinish = true,
+    setAutoEndOnTrackFinish,
+    autoBonusEnabled = true,
+    setAutoBonusEnabled,
     autoLyricsOnQueue = false,
     setAutoLyricsOnQueue,
+    autoPartyEnabled = false,
+    onToggleAutoParty,
     toggleHowToPlay,
     marqueeEnabled = false,
     setMarqueeEnabled,
@@ -202,11 +208,13 @@ const HostTopChrome = ({
     const leaderboardActive = room?.activeScreen === 'leaderboard';
     const tipCtaActive = room?.activeScreen === 'tipping';
     const howToPlayActive = !!room?.howToPlay?.active;
-    const lobbyVolleyEnabled = room?.lobbyVolleyEnabled !== false;
     const activeAutomationCount = Number(!!autoPlayMedia)
         + Number(!!autoBgMusic)
         + Number(!!autoDj)
+        + Number(!!autoEndOnTrackFinish)
+        + Number(!!autoBonusEnabled)
         + Number(!!autoLyricsOnQueue)
+        + Number(!!autoPartyEnabled)
         + Number(!!room?.bouncerMode);
     const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive) + Number(popTriviaActive);
     const quickMenuPanelClass = 'absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[80]';
@@ -575,10 +583,25 @@ const HostTopChrome = ({
         setAutoDj?.(next);
         await updateRoom({ autoDj: next });
     };
+    const toggleAutoEnd = async () => {
+        const next = !autoEndOnTrackFinish;
+        setAutoEndOnTrackFinish?.(next);
+        await updateRoom({ autoEndOnTrackFinish: next });
+    };
+    const toggleAutoBonus = async () => {
+        const next = !autoBonusEnabled;
+        setAutoBonusEnabled?.(next);
+        await updateRoom({ autoBonusEnabled: next });
+    };
     const toggleAutoLyricsQueue = async () => {
         const next = !autoLyricsOnQueue;
         setAutoLyricsOnQueue?.(next);
         await updateRoom({ autoLyricsOnQueue: next });
+    };
+    const toggleAutoParty = async () => {
+        if (typeof onToggleAutoParty === 'function') {
+            await onToggleAutoParty();
+        }
     };
     const toggleOverlayScreen = async (screenId) => {
         const nextScreen = room?.activeScreen === screenId ? 'stage' : screenId;
@@ -619,11 +642,6 @@ const HostTopChrome = ({
         await updateRoom({ popTriviaEnabled: next });
         closeAllTopMenus();
     };
-    const toggleLobbyVolleyMiniGame = async () => {
-        await updateRoom({ lobbyVolleyEnabled: !lobbyVolleyEnabled });
-        closeAllTopMenus();
-    };
-
     return (
     <div data-host-top-chrome="true" className="bg-zinc-900 px-4 py-2 flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between w-full">
@@ -910,6 +928,30 @@ const HostTopChrome = ({
                                     <span className="text-[11px] uppercase tracking-widest">{autoDj ? 'On' : 'Off'}</span>
                                 </button>
                                 <button
+                                    onClick={toggleAutoEnd}
+                                    data-feature-id="deck-auto-end-toggle"
+                                    className={`${styles.btnStd} ${autoEndOnTrackFinish ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    title="Automatically close out a finished performance and advance the room flow."
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-stopwatch"></i>
+                                        Auto End on Finish
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{autoEndOnTrackFinish ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={toggleAutoBonus}
+                                    data-feature-id="deck-auto-bonus-toggle"
+                                    className={`${styles.btnStd} ${autoBonusEnabled ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    title="Automatically apply the default host bonus after a performance when no manual bonus was given."
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-gift"></i>
+                                        Auto Bonus
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{autoBonusEnabled ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
                                     onClick={toggleAutoLyricsQueue}
                                     data-feature-id="deck-auto-lyrics-queue-toggle"
                                     className={`${styles.btnStd} ${autoLyricsOnQueue ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
@@ -924,6 +966,18 @@ const HostTopChrome = ({
                                     <span className="text-[11px] uppercase tracking-widest">
                                         {autoLyricsOnQueue ? (aiToolsConnected ? 'On' : 'Armed') : 'Off'}
                                     </span>
+                                </button>
+                                <button
+                                    onClick={toggleAutoParty}
+                                    data-feature-id="deck-auto-party-toggle"
+                                    className={`${styles.btnStd} ${autoPartyEnabled ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    title="Automatically drop short crowd moments like Ready Check or Volley between singers."
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <i className="fa-solid fa-users-rays"></i>
+                                        Auto Party
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{autoPartyEnabled ? 'On' : 'Off'}</span>
                                 </button>
                                 <button
                                     onClick={async () => {
@@ -1227,19 +1281,6 @@ const HostTopChrome = ({
                                         </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{marqueeActive ? 'On' : 'Off'}</span>
-                                </button>
-                                <button
-                                    onClick={toggleLobbyVolleyMiniGame}
-                                    className={`${styles.btnStd} ${lobbyVolleyEnabled ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                >
-                                    <span className="inline-flex items-center gap-2 text-left">
-                                        <i className="fa-solid fa-gamepad"></i>
-                                        <span className="flex flex-col">
-                                            <span>Idle Crowd Objective</span>
-                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Interactive mode while stage is empty</span>
-                                        </span>
-                                    </span>
-                                    <span className="text-[11px] uppercase tracking-widest">{lobbyVolleyEnabled ? 'On' : 'Off'}</span>
                                 </button>
                                 <button
                                     onClick={togglePopTriviaOverlay}

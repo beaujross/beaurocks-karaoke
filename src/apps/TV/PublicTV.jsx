@@ -921,7 +921,6 @@ const PublicTV = ({ roomCode }) => {
     const lobbyReduceMotionRef = useRef(false);
     const lobbyPausedRef = useRef(false);
     const lobbyVisualOnlyRef = useRef(false);
-    const lobbyVolleyEnabledRef = useRef(true);
     const reactionScoreByDocRef = useRef(new Map());
     const reactionScoreTotalsByPerformanceRef = useRef(new Map());
     const lobbyTransitionTimerRef = useRef(null);
@@ -1564,7 +1563,6 @@ const PublicTV = ({ roomCode }) => {
                                 timestampMs: nowMs()
                             });
                         } else if (getLobbyPlayEffect(d.type)) {
-                            if (!lobbyVolleyEnabledRef.current) return;
                             if (lobbyPausedRef.current) return;
                             const interactionType = normalizeLobbyPlayInteractionType(d.type);
                             const effect = getLobbyPlayEffectByInteractionType(interactionType);
@@ -2821,8 +2819,7 @@ const PublicTV = ({ roomCode }) => {
         activeMode: room?.activeMode,
         lightMode: room?.lightMode
     });
-    const lobbyVolleyEnabled = room?.lobbyVolleyEnabled !== false;
-    const lobbyCompactHudMode = lobbyVolleySceneActive && lobbyVolleyEnabled;
+    const lobbyCompactHudMode = lobbyVolleySceneActive;
     const activeAutoCrowdMoment = room?.missionControl?.autoMoment;
     const autoCrowdMomentActive = activeAutoCrowdMoment?.status === 'live' && activeAutoCrowdMoment?.source === 'autopilot';
     const autoCrowdMomentType = String(activeAutoCrowdMoment?.type || '').trim().toLowerCase();
@@ -2989,7 +2986,7 @@ const PublicTV = ({ roomCode }) => {
     });
     const lobbyInstructionHeadline = lobbyInstructionCopy.headline;
     const lobbyInstructionSecondary = lobbyInstructionCopy.secondary;
-    const showLobbyPlaygroundFx = lobbyVolleyEnabled && (
+    const showLobbyPlaygroundFx = (
         lobbyVolleySceneActive
         || lobbyTransitionPhase === 'exiting'
         || lobbyPlayBursts.length > 0
@@ -3079,29 +3076,6 @@ const PublicTV = ({ roomCode }) => {
         lobbyWarningCueActiveRef.current = false;
         lobbyResetCueActiveRef.current = false;
     }, [roomCode]);
-    useEffect(() => {
-        if (lobbyVolleyEnabled) return;
-        if (lobbyTransitionTimerRef.current) {
-            clearTimeout(lobbyTransitionTimerRef.current);
-            lobbyTransitionTimerRef.current = null;
-        }
-        const resetState = createLobbyVolleyState();
-        setLobbyPlayBursts([]);
-        setLobbyPlayScreenFx([]);
-        setLobbyComboMoments([]);
-        setLobbyAssistMoments([]);
-        setLobbyVolleyLinks([]);
-        setLobbyTierChips([]);
-        setLobbyTransitionPhase('idle');
-        setLobbyVolleyState(resetState);
-        lobbyVolleyStateRef.current = resetState;
-        lobbyLastAnchorRef.current = null;
-        setLobbyLastInteraction(null);
-        lobbyAwardAuthLockedRef.current = false;
-        lobbyCueLastPlayedRef.current = {};
-        lobbyWarningCueActiveRef.current = false;
-        lobbyResetCueActiveRef.current = false;
-    }, [lobbyVolleyEnabled]);
     useEffect(() => () => {
         if (lobbyTransitionTimerRef.current) {
             clearTimeout(lobbyTransitionTimerRef.current);
@@ -3276,8 +3250,7 @@ const PublicTV = ({ roomCode }) => {
     useEffect(() => {
         lobbyPausedRef.current = !!room?.lobbyPlaygroundPaused;
         lobbyVisualOnlyRef.current = !!room?.lobbyPlaygroundVisualOnly;
-        lobbyVolleyEnabledRef.current = room?.lobbyVolleyEnabled !== false;
-    }, [room?.lobbyPlaygroundPaused, room?.lobbyPlaygroundVisualOnly, room?.lobbyVolleyEnabled]);
+    }, [room?.lobbyPlaygroundPaused, room?.lobbyPlaygroundVisualOnly]);
     const bangerParticleCount = motionSafeFx ? 8 : 15;
     const balladParticleCount = motionSafeFx ? 4 : 6;
     const particleSeedBase = useMemo(
@@ -4461,7 +4434,7 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                          ) : (
                              <div className="flex-1 min-h-0 bg-zinc-800/80 backdrop-blur rounded-2xl md:rounded-3xl p-3 md:p-5 border border-white/10 flex flex-col overflow-hidden">
-                                {lobbyVolleySceneActive && lobbyVolleyEnabled ? (
+                                {lobbyVolleySceneActive ? (
                                     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
                                         <div className="flex items-center justify-between mb-2 border-b border-white/10 pb-2">
                                             <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-cyan-300">VOLLEY ORB</h3>

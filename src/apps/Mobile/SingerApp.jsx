@@ -2616,10 +2616,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [roomCode]);
     useEffect(() => {
         if (!roomCode) return () => {};
-        if (room?.lobbyVolleyEnabled === false) {
-            setLobbyVolleyPreview(createLobbyVolleyState());
-            return () => {};
-        }
         const lobbyVolleySceneActive = isVolleyOrbSceneActive({
             hasCurrentSinger: !!currentSinger,
             activeMode: room?.activeMode,
@@ -2662,7 +2658,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setLobbyVolleyPreview(nextState);
         });
         return () => unsub();
-    }, [roomCode, room?.lobbyVolleyEnabled, room?.lightMode, room?.activeMode, currentSinger]);
+    }, [roomCode, room?.lightMode, room?.activeMode, currentSinger]);
     const popTriviaRoundSec = Math.max(8, Number(room?.popTriviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC));
     const popTriviaState = useMemo(() => {
         if (room?.activeMode !== 'karaoke') return null;
@@ -3841,10 +3837,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (!user || !roomCode || currentSinger) return;
         const activeObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode)
             || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
-        if (room?.lobbyVolleyEnabled === false) {
-            toast('Idle crowd objective is currently off.');
-            return;
-        }
         const lobbyVolleySceneActive = isVolleyOrbSceneActive({
             hasCurrentSinger: !!currentSinger,
             activeMode: room?.activeMode,
@@ -6918,7 +6910,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const activeMessages = chatTab === 'host' ? dmMessages : loungeMessages;
     const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
     const noSingerOnStage = !currentSinger;
-    const lobbyVolleyEnabled = room?.lobbyVolleyEnabled !== false;
     const lobbyForcedObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
     const lobbyObjectiveMode = lobbyForcedObjectiveMode || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
     const lobbyObjectiveStreakLabel = lobbyObjectiveMode?.id === 'team_pong' ? 'Rally' : 'Streak';
@@ -7502,7 +7493,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                  </div>
                              </div>
                          )}
-                         {lobbyVolleySceneActive && lobbyVolleyEnabled ? (
+                         {lobbyVolleySceneActive ? (
                              <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-3 space-y-3 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
                                  <div className="flex items-center justify-between gap-2">
                                      <div className="min-w-0">
