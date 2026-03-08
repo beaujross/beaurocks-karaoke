@@ -729,7 +729,7 @@ const MarketingSite = () => {
               className="mk3-brand"
               onClick={() => navigate(MARKETING_ROUTE_PAGES.forFans, "", withCampaignParams({ utm_content: "nav_brand" }))}
             >
-              <img src="/images/logo-library/beaurocks-karaoke-logo-2.png" alt="BeauRocks Karaoke logo" />
+              <img src="/images/marketing/beaurocks-karaoke-logo 2.png" alt="BeauRocks Karaoke logo" />
               <div>
                 <strong>{PRODUCT_BRAND.name}</strong>
                 <span>{PRODUCT_BRAND.tagline}</span>
@@ -1075,7 +1075,7 @@ const MarketingSite = () => {
             </Suspense>
           )}
 
-          {!isHostAccessPage && (
+          {!isHostAccessPage && activePage !== MARKETING_ROUTE_PAGES.forFans && (
             <footer className="mk3-site-footer mk3-zone" aria-label="Marketing quick links">
               <div className="mk3-actions-inline">
                 <button
@@ -1104,7 +1104,7 @@ const MarketingSite = () => {
 
         </div>
       </main>
-      {!isHostProductPage && activePage !== MARKETING_ROUTE_PAGES.discover && (
+      {!isHostProductPage && activePage !== MARKETING_ROUTE_PAGES.discover && activePage !== MARKETING_ROUTE_PAGES.forFans && (
         <Suspense fallback={null}>
           <GoldenPathRail
             navigate={navigate}

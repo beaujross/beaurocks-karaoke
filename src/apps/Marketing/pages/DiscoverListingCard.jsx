@@ -1,5 +1,10 @@
 import React from "react";
-import { getInitials } from "./shared";
+import {
+  MARKETING_BRAND_BADGE_URL,
+  getBeauRocksBadgeLabel,
+  getInitials,
+  isBeauRocksPoweredListing,
+} from "./shared";
 import { deriveDirectoryExperience } from "../lib/directoryExperience";
 
 const DiscoverListingCard = ({
@@ -13,12 +18,15 @@ const DiscoverListingCard = ({
   onOpenDetails = null,
   onJoinRoom = null,
 }) => {
+  const experience = entry?.experience || deriveDirectoryExperience(entry);
+  const isBeauRocksPowered = isBeauRocksPoweredListing(entry) || !!experience?.isBeauRocksPowered;
+  const beauRocksBadgeLabel = getBeauRocksBadgeLabel(entry, { defaultLabel: "BeauRocks-powered" });
+  const badgeImageUrl = entry?.officialBadgeImageUrl || MARKETING_BRAND_BADGE_URL;
   const cardClasses = [
     "mk3-discover-card",
     isSelected ? "is-selected" : "",
-    entry?.isOfficialBeauRocksRoom ? "is-elevated" : "",
+    isBeauRocksPowered ? "is-elevated" : "",
   ].filter(Boolean).join(" ");
-  const experience = entry?.experience || deriveDirectoryExperience(entry);
   const primaryAction = (() => {
     if (entry.listingType === "room_session" && entry.roomCode) {
       return {
@@ -53,20 +61,20 @@ const DiscoverListingCard = ({
         loading="lazy"
         onError={(event) => onImageError?.(event, entry.imageFallbackUrls)}
       />
-      <div className="mk3-discover-media-top">
+        <div className="mk3-discover-media-top">
         <div className="mk3-discover-chip-row">
           <div className="mk3-chip">{entry.typeLabel}</div>
-          {entry.isOfficialBeauRocksRoom && (
+          {isBeauRocksPowered && (
             <div className="mk3-chip mk3-chip-elevated">
-              {entry.officialBadgeImageUrl && (
+              {badgeImageUrl && (
                 <img
                   className="mk3-chip-icon"
-                  src={entry.officialBadgeImageUrl}
-                  alt="Official BeauRocks logo"
+                  src={badgeImageUrl}
+                  alt="BeauRocks badge"
                   loading="lazy"
                 />
               )}
-              <span>Official BeauRocks Room</span>
+              <span>{beauRocksBadgeLabel}</span>
             </div>
           )}
         </div>
@@ -133,7 +141,7 @@ const DiscoverListingCard = ({
         </div>
       )}
       {entry.virtualOnly && <div className="mk3-chip">Virtual</div>}
-      {!experience.isBeauRocksPowered && (
+      {!isBeauRocksPowered && (
         <div className="mk3-card-upgrade-note">Static listing. Claim it to add live join, audience play, and recap proof.</div>
       )}
       <div className="mk3-actions-inline">

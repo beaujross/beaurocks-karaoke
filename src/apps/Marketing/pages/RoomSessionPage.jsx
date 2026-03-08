@@ -14,6 +14,7 @@ import EmptyStatePanel from "./EmptyStatePanel";
 import {
   formatDateTime,
   getInitials,
+  MARKETING_BRAND_BADGE_URL,
   resolveListingImageCandidates,
   resolveProfileAvatarUrl,
 } from "./shared";
@@ -66,7 +67,7 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
     ...resolveListingImageCandidates(sessionItem, "session"),
     ...resolveListingImageCandidates(hostProfile || {}, "host"),
   ].filter((value, index, arr) => arr.indexOf(value) === index);
-  const heroImage = sessionImageCandidates[0] || "/images/logo-library/beaurocks-karaoke-logo-2.png";
+  const heroImage = sessionImageCandidates[0] || MARKETING_BRAND_BADGE_URL;
   const listingGallery = sessionImageCandidates.slice(0, 3);
 
   return (

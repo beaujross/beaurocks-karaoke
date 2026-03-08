@@ -15,10 +15,13 @@ import ClaimOwnershipCard from "./ClaimOwnershipCard";
 import DirectoryExperienceSpotlight from "./DirectoryExperienceSpotlight";
 import EmptyStatePanel from "./EmptyStatePanel";
 import {
+  MARKETING_BRAND_BADGE_URL,
   buildGoogleMapsSearchUrl,
   buildPublicLocationImageUrl,
   extractCadenceBadges,
   formatDateTime,
+  getBeauRocksBadgeLabel,
+  isBeauRocksPoweredListing,
   resolveListingImageCandidates,
   toTelephoneHref,
 } from "./shared";
@@ -125,12 +128,22 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
   const venueModernized = !!venueExperienceSource?.isOfficialBeauRocksRoom
     || !!venueExperienceSource?.hasBeauRocksHostAccount
     || (Array.isArray(venueExperienceSource?.beauRocksCapabilities) && venueExperienceSource.beauRocksCapabilities.length > 0);
+  const venueBadgeLabel = getBeauRocksBadgeLabel({ ...venueExperienceSource, listingType: "venue" });
+  const venueIsBeauRocksPowered = isBeauRocksPoweredListing(venueExperienceSource);
 
   return (
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-listing-title-block">
-          <div className="mk3-chip">venue</div>
+          <div className="mk3-listing-chip-row">
+            <div className="mk3-chip">venue</div>
+            {venueIsBeauRocksPowered && (
+              <div className="mk3-chip mk3-chip-elevated">
+                <img className="mk3-chip-icon" src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks badge" loading="lazy" />
+                <span>{venueBadgeLabel}</span>
+              </div>
+            )}
+          </div>
           <h2>{venue.title}</h2>
           <div className="mk3-detail-meta">{[venue.city, venue.state, venue.address1].filter(Boolean).join(" | ")}</div>
         </div>

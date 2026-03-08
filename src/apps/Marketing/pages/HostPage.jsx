@@ -14,8 +14,11 @@ import ClaimOwnershipCard from "./ClaimOwnershipCard";
 import DirectoryExperienceSpotlight from "./DirectoryExperienceSpotlight";
 import EmptyStatePanel from "./EmptyStatePanel";
 import {
+  MARKETING_BRAND_BADGE_URL,
+  getBeauRocksBadgeLabel,
   formatDateTime,
   getInitials,
+  isBeauRocksPoweredListing,
   resolveListingImageCandidates,
   resolveProfileAvatarUrl,
 } from "./shared";
@@ -88,7 +91,7 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
     ...resolveListingImageCandidates(profile, "host"),
     ...(events[0] ? resolveListingImageCandidates(events[0], "event") : []),
   ].filter((value, index, arr) => arr.indexOf(value) === index);
-  const heroImage = hostImageCandidates[0] || "/images/logo-library/beaurocks-karaoke-logo-2.png";
+  const heroImage = hostImageCandidates[0] || MARKETING_BRAND_BADGE_URL;
   const listingGallery = hostImageCandidates.slice(0, 3);
   const hostExperienceSource = {
     ...profile,
@@ -101,12 +104,22 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
   const hostModernized = !!hostExperienceSource?.isOfficialBeauRocksRoom
     || !!hostExperienceSource?.hasBeauRocksHostAccount
     || (Array.isArray(hostExperienceSource?.beauRocksCapabilities) && hostExperienceSource.beauRocksCapabilities.length > 0);
+  const hostBadgeLabel = getBeauRocksBadgeLabel({ ...hostExperienceSource, listingType: "host" });
+  const hostIsBeauRocksPowered = isBeauRocksPoweredListing(hostExperienceSource);
 
   return (
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-listing-title-block">
-          <div className="mk3-chip">host profile</div>
+          <div className="mk3-listing-chip-row">
+            <div className="mk3-chip">host profile</div>
+            {hostIsBeauRocksPowered && (
+              <div className="mk3-chip mk3-chip-elevated">
+                <img className="mk3-chip-icon" src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks badge" loading="lazy" />
+                <span>{hostBadgeLabel}</span>
+              </div>
+            )}
+          </div>
           <h2>{hostName}</h2>
           <div className="mk3-detail-meta">{[profile.city, profile.state, profile.country].filter(Boolean).join(" | ")}</div>
         </div>

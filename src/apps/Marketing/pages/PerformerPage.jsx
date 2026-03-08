@@ -13,6 +13,7 @@ import EntityActionsCard from "./EntityActionsCard";
 import EmptyStatePanel from "./EmptyStatePanel";
 import {
   getInitials,
+  MARKETING_BRAND_BADGE_URL,
   readStars,
   resolveListingImageCandidates,
   resolveProfileAvatarUrl,
@@ -69,7 +70,7 @@ const PerformerPage = ({ id, route, session, navigate, authFlow }) => {
   const performerName = profile.displayName || profile.handle || profile.id;
   const performerAvatarUrl = resolveProfileAvatarUrl(profile);
   const performerImageCandidates = resolveListingImageCandidates(profile, "performer");
-  const heroImage = performerImageCandidates[0] || "/images/logo-library/beaurocks-karaoke-logo-2.png";
+  const heroImage = performerImageCandidates[0] || MARKETING_BRAND_BADGE_URL;
   const listingGallery = performerImageCandidates.slice(0, 3);
 
   return (

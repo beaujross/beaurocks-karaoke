@@ -13,6 +13,7 @@ import {
   matchesDirectoryExperienceFilter,
 } from "../lib/directoryExperience";
 import {
+  MARKETING_BRAND_BADGE_URL,
   buildPublicLocationImageUrl,
   extractCadenceBadges,
   formatDateTime,
@@ -324,6 +325,7 @@ const PLACEHOLDER_SCREEN_IMAGE_TOKENS = [
   "/images/marketing/tv-surface-live.png",
   "/images/marketing/beaurocks-hostpanel.png",
   "/images/marketing/beaurocks-audienceapp.png",
+  MARKETING_BRAND_BADGE_URL,
   "/images/logo-library/beaurocks-karaoke-logo-2.png",
   "/images/logo-library/bross-entertainment",
 ];
@@ -446,7 +448,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     || entry?.branding?.logoUrl
     || avatarUrl
     || imageUrl
-    || "/images/logo-library/beaurocks-karaoke-logo-2.png"
+    || MARKETING_BRAND_BADGE_URL
   );
   const locationLabel = [city, state, address1].filter(Boolean).join(", ");
   const roomCode = String(entry?.roomCode || "").trim().toUpperCase();

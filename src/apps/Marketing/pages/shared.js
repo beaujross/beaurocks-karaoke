@@ -1,3 +1,26 @@
+export const MARKETING_BRAND_BADGE_URL = "/images/marketing/beaurocks-karaoke-logo 2.png";
+export const MARKETING_DJ_BEAUROCKS_AVATAR_URL = "/images/marketing/bross-host-beaurocks.png";
+
+export const isBeauRocksPoweredListing = (entity = {}) => {
+  const safe = entity && typeof entity === "object" ? entity : {};
+  return !!safe?.isOfficialBeauRocksRoom
+    || !!safe?.isBeauRocksElevated
+    || !!safe?.hasBeauRocksHostAccount
+    || !!safe?.hasBeauRocksHostPlan
+    || (Array.isArray(safe?.beauRocksCapabilities) && safe.beauRocksCapabilities.length > 0);
+};
+
+export const getBeauRocksBadgeLabel = (entity = {}, { defaultLabel = "BeauRocks-powered" } = {}) => {
+  const safe = entity && typeof entity === "object" ? entity : {};
+  const listingType = String(safe?.listingType || "").trim().toLowerCase();
+  if (listingType === "room_session" && !!safe?.isOfficialBeauRocksRoom) return "Official BeauRocks Room";
+  if (listingType === "host") return "BeauRocks Host";
+  if (listingType === "venue") return "BeauRocks Venue";
+  if (listingType === "event") return "Hosted with BeauRocks";
+  if (listingType === "room_session") return "BeauRocks Room";
+  return defaultLabel;
+};
+
 export const formatDateTime = (ms = 0) => {
   const value = Number(ms || 0);
   if (!Number.isFinite(value) || value <= 0) return "TBD";
@@ -63,6 +86,7 @@ const MARKETING_PLACEHOLDER_IMAGE_TOKENS = [
   "/images/marketing/tv-surface-live.png",
   "/images/marketing/beaurocks-hostpanel.png",
   "/images/marketing/beaurocks-audienceapp.png",
+  MARKETING_BRAND_BADGE_URL,
   "/images/logo-library/beaurocks-karaoke-logo-2.png",
   "/images/logo-library/bross-entertainment",
 ];

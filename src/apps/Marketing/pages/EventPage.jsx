@@ -13,11 +13,14 @@ import CadenceUpdateCard from "./CadenceUpdateCard";
 import DirectoryExperienceSpotlight from "./DirectoryExperienceSpotlight";
 import EmptyStatePanel from "./EmptyStatePanel";
 import {
+  MARKETING_BRAND_BADGE_URL,
   buildGoogleMapsSearchUrl,
   buildPublicLocationImageUrl,
   extractCadenceBadges,
   formatDateTime,
+  getBeauRocksBadgeLabel,
   getInitials,
+  isBeauRocksPoweredListing,
   resolveListingImageCandidates,
   resolveProfileAvatarUrl,
   toTelephoneHref,
@@ -129,12 +132,22 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
     venueName: venue?.title || eventItem.venueName || "",
     imageUrl: heroImage,
   };
+  const eventIsBeauRocksPowered = isBeauRocksPoweredListing(eventExperienceSource);
+  const eventBadgeLabel = getBeauRocksBadgeLabel({ ...eventExperienceSource, listingType: "event" });
 
   return (
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-listing-title-block">
-          <div className="mk3-chip">event</div>
+          <div className="mk3-listing-chip-row">
+            <div className="mk3-chip">event</div>
+            {eventIsBeauRocksPowered && (
+              <div className="mk3-chip mk3-chip-elevated">
+                <img className="mk3-chip-icon" src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks badge" loading="lazy" />
+                <span>{eventBadgeLabel}</span>
+              </div>
+            )}
+          </div>
           <h2>{eventItem.title}</h2>
           <div className="mk3-detail-meta">
             {formatDateTime(eventItem.startsAtMs)}
