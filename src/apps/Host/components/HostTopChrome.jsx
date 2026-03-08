@@ -486,6 +486,16 @@ const HostTopChrome = ({
         closeAllTopMenus
     ]);
 
+    const buildCrowdObjectiveRoomPatch = React.useCallback((modeLightMode) => {
+        if (!modeLightMode) return {};
+        const turningOff = room?.lightMode === modeLightMode;
+        return {
+            lightMode: turningOff ? 'off' : modeLightMode,
+            lobbyVolleyEnabled: true,
+            ...(turningOff ? {} : { activeMode: 'karaoke' })
+        };
+    }, [room?.lightMode]);
+
     const runLiveEffect = async (effectId) => {
         if (effectId === 'beat_drop') {
             if (strobeActive) {
@@ -511,7 +521,7 @@ const HostTopChrome = ({
         } else if (effectId === 'ballad') {
             await updateRoom({ lightMode: balladActive ? 'off' : 'ballad' });
         } else if (effectId === 'volley') {
-            await updateRoom({ lightMode: volleyActive ? 'off' : 'volley', lobbyVolleyEnabled: true });
+            await updateRoom(buildCrowdObjectiveRoomPatch('volley'));
         } else if (effectId === 'selfie_cam') {
             await updateRoom({ activeMode: selfieCamActive ? 'karaoke' : 'selfie_cam' });
         } else if (effectId === 'clear') {
@@ -541,10 +551,7 @@ const HostTopChrome = ({
     };
     const toggleCrowdObjectiveMode = async (modeLightMode) => {
         if (!modeLightMode) return;
-        await updateRoom({
-            lightMode: room?.lightMode === modeLightMode ? 'off' : modeLightMode,
-            lobbyVolleyEnabled: true
-        });
+        await updateRoom(buildCrowdObjectiveRoomPatch(modeLightMode));
         closeAllTopMenus();
     };
     const applyTvPresentationProfile = async (profile) => {

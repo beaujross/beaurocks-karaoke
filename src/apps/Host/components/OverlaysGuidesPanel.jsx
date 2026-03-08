@@ -101,7 +101,11 @@ const OverlaysGuidesPanel = ({
                 {CROWD_OBJECTIVE_MODES.map((mode) => (
                     <button
                         key={`overlay-objective-${mode.id}`}
-                        onClick={() => updateRoom({ lightMode: room?.lightMode === mode.lightMode ? 'off' : mode.lightMode, lobbyVolleyEnabled: true })}
+                        onClick={() => updateRoom({
+                            lightMode: room?.lightMode === mode.lightMode ? 'off' : mode.lightMode,
+                            lobbyVolleyEnabled: true,
+                            ...(room?.lightMode === mode.lightMode ? {} : { activeMode: 'karaoke' })
+                        })}
                         className={`flex items-center justify-center gap-2 py-2 rounded-lg border ${room?.lightMode === mode.lightMode ? 'bg-pink-500 text-black border-pink-300' : 'bg-zinc-900/80 text-zinc-200 border-white/10 hover:border-pink-400/40'}`}
                         title={`${mode.label} crowd objective while stage is idle`}
                     >

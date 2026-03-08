@@ -2716,7 +2716,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [authReadyUid]);
 
     useEffect(() => {
-        if (!uid || !activeUid || isAnon || !user || !profile) return;
+        if (!activeUid || isAnon || !user || !profile) return;
         if (tight15MigrationDoneRef.current === uid) return;
         const tempList = Array.isArray(user?.tight15Temp) ? user.tight15Temp : [];
         const savedList = Array.isArray(profile?.tight15) ? profile.tight15 : [];
@@ -2865,36 +2865,34 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [isVipAccount, profile, vipProfileComplete, showPhoneModal, showProfile, showAccount, showVipOnboarding]);
 
     useEffect(() => {
-        if (!user || !uid || profile?.firstPerformanceUnlocked) return;
+        if (!user || !activeUid || profile?.firstPerformanceUnlocked) return;
         const didPerform = songs.some(s => s.singerName === user.name && s.status === 'performed');
         if (!didPerform) return;
-        updateDoc(doc(db, 'users', uid), { firstPerformanceUnlocked: true }).catch((e) => {
+        updateDoc(doc(db, 'users', activeUid), { firstPerformanceUnlocked: true }).catch((e) => {
             console.warn('Failed to unlock first performance', e);
         });
-    }, [songs, user, uid, profile?.firstPerformanceUnlocked]);
+    }, [songs, user, activeUid, profile?.firstPerformanceUnlocked]);
 
     useEffect(() => {
         const win = room?.guitarWinner;
-        if (!win || win.uid !== uid) return;
+        if (!win || win.uid !== activeUid) return;
         if (lastGuitarWin.current === win.sessionId) return;
         lastGuitarWin.current = win.sessionId;
         if (!profile?.unlockedEmojis?.includes('guitar_glow')) {
-            updateDoc(doc(db, 'users', uid), { unlockedEmojis: arrayUnion('guitar_glow') }).catch((e) => {
+            updateDoc(doc(db, 'users', activeUid), { unlockedEmojis: arrayUnion('guitar_glow') }).catch((e) => {
                 console.warn('Failed to unlock guitar glow emoji', e);
             });
         }
         showToast(`You shredded the hardest! ${win.hits || 0} inputs.`, { tone: 'success' });
-    }, [room?.guitarWinner, uid, profile?.unlockedEmojis, showToast]);
+    }, [room?.guitarWinner, activeUid, profile?.unlockedEmojis, showToast]);
 
     useEffect(() => {
         const win = room?.strobeWinner;
-        if (!win || win.uid !== uid) return;
+        if (!win || win.uid !== activeUid) return;
         if (strobeWinSeenRef.current === win.sessionId) return;
         strobeWinSeenRef.current = win.sessionId;
-        setStrobeVictoryInfo(win);
-        setStrobeVictoryOpen(true);
         showToast(`Beat Drop MVP! ${win.taps || 0} taps.`, { tone: 'success' });
-    }, [room?.strobeWinner, uid, showToast]);
+    }, [room?.strobeWinner, activeUid, showToast]);
 
     useEffect(() => {
         const drop = room?.bonusDrop;
@@ -2938,15 +2936,29 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             where('roomCode', '==', roomCode),
             where('promptId', '==', promptId)
         );
-        const unsubSubs = onSnapshot(submissionsQuery, s => {
-            setSelfieSubmissions(s.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-        const unsubVotes = onSnapshot(votesQuery, s => {
-            const votes = s.docs.map(d => ({ id: d.id, ...d.data() }));
-            setSelfieVotes(votes);
-            const mine = votes.find(v => v.voterUid === activeUid);
-            setMySelfieVote(mine ? mine.targetUid : null);
-        });
+        const handleSelfieWatchError = (error) => {
+            console.warn('Selfie challenge watch failed', error);
+            setSelfieSubmissions([]);
+            setSelfieVotes([]);
+            setMySelfieVote(null);
+        };
+        const unsubSubs = onSnapshot(
+            submissionsQuery,
+            (s) => {
+                setSelfieSubmissions(s.docs.map(d => ({ id: d.id, ...d.data() })));
+            },
+            handleSelfieWatchError
+        );
+        const unsubVotes = onSnapshot(
+            votesQuery,
+            (s) => {
+                const votes = s.docs.map(d => ({ id: d.id, ...d.data() }));
+                setSelfieVotes(votes);
+                const mine = votes.find(v => v.voterUid === activeUid);
+                setMySelfieVote(mine ? mine.targetUid : null);
+            },
+            handleSelfieWatchError
+        );
         return () => { unsubSubs(); unsubVotes(); };
     }, [room?.activeMode, room?.selfieChallenge?.promptId, roomCode, activeUid]);
 
@@ -3078,25 +3090,35 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     useEffect(() => {
         const victory = room?.guitarVictory;
-        if (!victory || victory.uid !== uid) return;
+        if (!victory || victory.uid !== activeUid) {
+            setGuitarVictoryInfo(null);
+            setGuitarVictoryOpen(false);
+            return;
+        }
         if (victory.status === 'pending') {
             setGuitarVictoryInfo(victory);
             setGuitarVictoryOpen(true);
         } else {
+            setGuitarVictoryInfo(victory);
             setGuitarVictoryOpen(false);
         }
-    }, [room?.guitarVictory?.id, room?.guitarVictory?.status, room?.guitarVictory, uid]);
+    }, [room?.guitarVictory?.id, room?.guitarVictory?.status, room?.guitarVictory, activeUid]);
 
     useEffect(() => {
         const victory = room?.strobeVictory;
-        if (!victory || victory.uid !== uid) return;
+        if (!victory || victory.uid !== activeUid) {
+            setStrobeVictoryInfo(null);
+            setStrobeVictoryOpen(false);
+            return;
+        }
         if (victory.status === 'pending') {
             setStrobeVictoryInfo(victory);
             setStrobeVictoryOpen(true);
         } else {
+            setStrobeVictoryInfo(victory);
             setStrobeVictoryOpen(false);
         }
-    }, [room?.strobeVictory?.id, room?.strobeVictory?.status, room?.strobeVictory, uid]);
+    }, [room?.strobeVictory?.id, room?.strobeVictory?.status, room?.strobeVictory, activeUid]);
 
     const startCamera = async () => {
         try {
@@ -3640,7 +3662,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     const takeGuitarVictorySelfie = async () => {
-        if (!videoRef.current || !user || !guitarVictoryInfo) return;
+        if (!videoRef.current || !user || !guitarVictoryInfo || !activeUid || guitarVictoryInfo.uid !== activeUid) {
+            setGuitarVictoryInfo(null);
+            setGuitarVictoryOpen(false);
+            return;
+        }
         try {
             const photo = await captureAndUploadSelfie({ quality: 0.6, suffix: 'guitar_victory' });
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
@@ -3669,6 +3695,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 }
             });
             setGuitarVictoryOpen(false);
+            setGuitarVictoryInfo(null);
             toast('Victory selfie sent!');
         } catch (e) {
             console.error(e);
@@ -3677,7 +3704,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     const takeStrobeVictorySelfie = async () => {
-        if (!videoRef.current || !user || !strobeVictoryInfo) return;
+        if (!videoRef.current || !user || !strobeVictoryInfo || !activeUid || strobeVictoryInfo.uid !== activeUid) {
+            setStrobeVictoryInfo(null);
+            setStrobeVictoryOpen(false);
+            return;
+        }
         try {
             const photo = await captureAndUploadSelfie({ quality: 0.6, suffix: 'strobe_victory' });
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
@@ -3706,6 +3737,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 }
             });
             setStrobeVictoryOpen(false);
+            setStrobeVictoryInfo(null);
             toast('Victory selfie sent!');
         } catch (e) {
             console.error(e);
@@ -5428,7 +5460,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20"></div>
                 </div>
                 <button onClick={takeStrobeVictorySelfie} className="mt-6 w-24 h-24 bg-white rounded-full border-4 border-zinc-300 shadow-xl active:scale-95 transition-transform"></button>
-                <button onClick={() => setStrobeVictoryOpen(false)} className="mt-4 text-xs text-zinc-400 underline">Skip for now</button>
+                <button onClick={() => { setStrobeVictoryInfo(null); setStrobeVictoryOpen(false); }} className="mt-4 text-xs text-zinc-400 underline">Skip for now</button>
             </div>
         );
     }
@@ -5444,7 +5476,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20"></div>
                 </div>
                 <button onClick={takeGuitarVictorySelfie} className="mt-6 w-24 h-24 bg-white rounded-full border-4 border-zinc-300 shadow-xl active:scale-95 transition-transform"></button>
-                <button onClick={() => setGuitarVictoryOpen(false)} className="mt-4 text-xs text-zinc-400 underline">Skip for now</button>
+                <button onClick={() => { setGuitarVictoryInfo(null); setGuitarVictoryOpen(false); }} className="mt-4 text-xs text-zinc-400 underline">Skip for now</button>
             </div>
         );
     }
