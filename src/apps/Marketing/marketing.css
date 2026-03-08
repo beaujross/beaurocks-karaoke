@@ -3561,7 +3561,7 @@
   position: relative;
   border-radius: 14px;
   overflow: hidden;
-  min-height: 220px;
+  min-height: 160px;
   border: 1px solid rgba(255, 215, 106, 0.28);
   background: linear-gradient(145deg, rgba(19, 30, 43, 0.9), rgba(46, 10, 54, 0.82));
 }
@@ -3581,10 +3581,19 @@
 .mk3-venue-hero img {
   width: 100%;
   height: 100%;
-  min-height: 220px;
+  min-height: 160px;
   object-fit: cover;
   display: block;
   filter: saturate(1.05) contrast(1.04);
+}
+
+.mk3-listing-title-block {
+  display: grid;
+  gap: 6px;
+}
+
+.mk3-listing-title-block h2 {
+  margin: 0;
 }
 
 .mk3-listing-hero-content,
@@ -3701,13 +3710,13 @@
   overflow: hidden;
   border: 1px solid rgba(255, 215, 106, 0.18);
   background: rgba(10, 16, 24, 0.9);
-  min-height: 90px;
+  min-height: 72px;
 }
 
 .mk3-venue-gallery img {
   width: 100%;
   height: 100%;
-  min-height: 90px;
+  min-height: 72px;
   object-fit: cover;
   display: block;
   filter: saturate(1.06);
@@ -5593,7 +5602,7 @@
   .mk3-listing-hero img,
   .mk3-venue-hero,
   .mk3-venue-hero img {
-    min-height: 180px;
+    min-height: 140px;
   }
 
   .mk3-map-canvas,

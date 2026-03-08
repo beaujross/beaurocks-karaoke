@@ -133,21 +133,27 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
   return (
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
-        <div className="mk3-listing-hero">
-          <img
-            src={heroImage}
-            alt={`${eventItem.title} listing visual`}
-            loading="lazy"
-            onError={(event) => applyImageFallback(event, fallbackEventImage)}
-          />
-          <div className="mk3-listing-hero-content">
-            <div className="mk3-chip">event</div>
-            <h2>{eventItem.title}</h2>
-            <div className="mk3-detail-meta">
-              {formatDateTime(eventItem.startsAtMs)}
-              {eventItem.endsAtMs ? ` -> ${formatDateTime(eventItem.endsAtMs)}` : ""}
-            </div>
+        <div className="mk3-listing-title-block">
+          <div className="mk3-chip">event</div>
+          <h2>{eventItem.title}</h2>
+          <div className="mk3-detail-meta">
+            {formatDateTime(eventItem.startsAtMs)}
+            {eventItem.endsAtMs ? ` -> ${formatDateTime(eventItem.endsAtMs)}` : ""}
           </div>
+        </div>
+        <div className="mk3-venue-stat-grid">
+          <article>
+            <span>Start Time</span>
+            <strong>{formatDateTime(eventItem.startsAtMs)}</strong>
+          </article>
+          <article>
+            <span>Venue</span>
+            <strong>{venue?.title || eventItem.venueName || "TBD"}</strong>
+          </article>
+          <article>
+            <span>Region</span>
+            <strong>{[venue?.city || eventItem?.city, venue?.state || eventItem?.state].filter(Boolean).join(", ") || "Unspecified"}</strong>
+          </article>
         </div>
 
         <div className="mk3-profile-pill">
@@ -176,25 +182,6 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
             <span className="mk3-info-note">Cadence pending.</span>
           )}
         </div>
-        <div className="mk3-venue-gallery" aria-label="Event media gallery">
-          {listingGallery.map((imageUrl, index) => (
-            <figure key={`${imageUrl}-${index}`}>
-              <img
-                src={imageUrl}
-                alt={`${eventItem.title} visual ${index + 1}`}
-                loading="lazy"
-                onError={(event) => applyImageFallback(event, fallbackEventImage)}
-              />
-            </figure>
-          ))}
-        </div>
-        <p>{eventItem.description || "No event description yet."}</p>
-        <DirectoryExperienceSpotlight
-          entry={eventExperienceSource}
-          title="Why This Event Feels Different"
-          eyebrow="event experience"
-          showUpgradePrompt={false}
-        />
         <div className="mk3-info-module">
           <strong>Venue / Host / Links</strong>
           <div className="mk3-sub-list">
@@ -257,6 +244,33 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
             )}
           </div>
         </div>
+        <div className="mk3-listing-hero">
+          <img
+            src={heroImage}
+            alt={`${eventItem.title} listing visual`}
+            loading="lazy"
+            onError={(event) => applyImageFallback(event, fallbackEventImage)}
+          />
+        </div>
+        <div className="mk3-venue-gallery" aria-label="Event media gallery">
+          {listingGallery.map((imageUrl, index) => (
+            <figure key={`${imageUrl}-${index}`}>
+              <img
+                src={imageUrl}
+                alt={`${eventItem.title} visual ${index + 1}`}
+                loading="lazy"
+                onError={(event) => applyImageFallback(event, fallbackEventImage)}
+              />
+            </figure>
+          ))}
+        </div>
+        <p>{eventItem.description || "No event description yet."}</p>
+        <DirectoryExperienceSpotlight
+          entry={eventExperienceSource}
+          title="Why This Event Feels Different"
+          eyebrow="event experience"
+          showUpgradePrompt={false}
+        />
       </article>
       <div className="mk3-side-stack">
         <CadenceUpdateCard

@@ -10,15 +10,15 @@ const PERFORMER_BADGES = [
 const PERFORMER_STEPS = [
   {
     title: "Discover quality rooms",
-    detail: "Filter by host signal and consistent schedules.",
+    detail: "Filter by host signal, room energy, and schedules that do not disappear into the void.",
   },
   {
     title: "Commit and show up",
-    detail: "Use reminders so strong nights do not slip.",
+    detail: "Use reminders so the good nights stop slipping past while you say “we should go sometime.”",
   },
   {
     title: "Track what works",
-    detail: "Use profile history to repeat your best environments.",
+    detail: "Use your profile history to find the rooms where you sounded great and felt even better.",
   },
 ];
 
@@ -35,8 +35,8 @@ const ForPerformersPage = ({ navigate }) => {
     <section className="mk3-page mk3-persona-command is-performer">
       <article className="mk3-detail-card mk3-persona-hero mk3-zone">
         <div className="mk3-persona-kicker">for performers</div>
-        <h1>Build your karaoke routine around better rooms.</h1>
-        <p>Skip random nights. Focus on hosts and venues with reliable energy and cadence.</p>
+        <h1>Build your karaoke routine around rooms that deserve your best songs.</h1>
+        <p>Skip random nights. Find hosts and venues with reliable energy, a real crowd, and a cadence you can actually build around.</p>
         <div className="mk3-persona-badge-row">
           {PERFORMER_BADGES.map((badge) => (
             <span key={badge}>{badge}</span>
@@ -57,7 +57,7 @@ const ForPerformersPage = ({ navigate }) => {
 
       <div className="mk3-two-col mk3-persona-late-grid">
         <section className="mk3-detail-card mk3-persona-flow mk3-zone" aria-label="Performer flow overview">
-          <h2>Performer Loop In 3 Steps</h2>
+          <h2>How To Build A Better Karaoke Run</h2>
           <div className="mk3-persona-flow-grid">
             {PERFORMER_STEPS.map((step, index) => (
               <article key={step.title}>
@@ -73,12 +73,12 @@ const ForPerformersPage = ({ navigate }) => {
           <h4>Performer Checklist</h4>
           <div className="mk3-status">
             <strong>Before your next run</strong>
-            <span>Pick a room, set reminders, and show up consistently.</span>
+            <span>Pick a room, set the reminder, and stop leaving your best karaoke nights up to chance.</span>
           </div>
           <div className="mk3-persona-checklist-list">
             <span>Target rooms shortlisted</span>
-            <span>RSVP/reminders configured</span>
-            <span>Next-week plan set</span>
+            <span>Reminders ready</span>
+            <span>Next-week plan locked</span>
           </div>
         </aside>
       </div>

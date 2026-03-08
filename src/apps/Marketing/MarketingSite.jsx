@@ -38,7 +38,7 @@ const GoldenPathRail = lazy(() => import("./pages/GoldenPathRail"));
 
 const PRODUCT_BRAND = {
   name: "BeauRocks Karaoke",
-  tagline: "Premium karaoke tech for legendary hosts",
+  tagline: "Modern karaoke for loud rooms and good nights",
   finder: "Setlist Finder",
   tv: "Spotlight TV",
   audience: "Party Mic",
@@ -48,7 +48,7 @@ const PRODUCT_BRAND = {
 const PageShellLoader = () => (
   <div className="mk3-status">
     <strong>Loading page...</strong>
-    <span>Warming up the next scene.</span>
+    <span>Tuning the lights, checking the mic, and cueing the next scene.</span>
   </div>
 );
 

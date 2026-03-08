@@ -105,13 +105,24 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
   return (
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
-        <div className="mk3-listing-hero">
-          <img src={heroImage} alt={`${hostName} host profile visual`} loading="lazy" />
-          <div className="mk3-listing-hero-content">
-            <div className="mk3-chip">host profile</div>
-            <h2>{hostName}</h2>
-            <div className="mk3-detail-meta">{[profile.city, profile.state, profile.country].filter(Boolean).join(" | ")}</div>
-          </div>
+        <div className="mk3-listing-title-block">
+          <div className="mk3-chip">host profile</div>
+          <h2>{hostName}</h2>
+          <div className="mk3-detail-meta">{[profile.city, profile.state, profile.country].filter(Boolean).join(" | ")}</div>
+        </div>
+        <div className="mk3-venue-stat-grid">
+          <article>
+            <span>Upcoming Events</span>
+            <strong>{events.length}</strong>
+          </article>
+          <article>
+            <span>Public Sessions</span>
+            <strong>{sessions.length}</strong>
+          </article>
+          <article>
+            <span>Home Base</span>
+            <strong>{[profile.city, profile.state].filter(Boolean).join(", ") || "Unspecified"}</strong>
+          </article>
         </div>
         <div className="mk3-profile-pill">
           <div className="mk3-profile-avatar" aria-hidden="true">
@@ -124,12 +135,8 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
             <span>{profile.handle || hostName}</span>
           </div>
         </div>
-        <div className="mk3-venue-gallery" aria-label="Host media gallery">
-          {listingGallery.map((imageUrl, index) => (
-            <figure key={`${imageUrl}-${index}`}>
-              <img src={imageUrl} alt={`${hostName} visual ${index + 1}`} loading="lazy" />
-            </figure>
-          ))}
+        <div className="mk3-listing-hero">
+          <img src={heroImage} alt={`${hostName} host profile visual`} loading="lazy" />
         </div>
         <p>{profile.bio || "No host bio yet."}</p>
         <DirectoryExperienceSpotlight
@@ -137,6 +144,13 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
           title="Host Signature"
           eyebrow="host identity"
         />
+        <div className="mk3-venue-gallery" aria-label="Host media gallery">
+          {listingGallery.map((imageUrl, index) => (
+            <figure key={`${imageUrl}-${index}`}>
+              <img src={imageUrl} alt={`${hostName} visual ${index + 1}`} loading="lazy" />
+            </figure>
+          ))}
+        </div>
 
         <div className="mk3-sub-list">
           <h3>Upcoming Events</h3>

@@ -5,21 +5,21 @@ const FAN_BADGES = [
   "Fast Rotation",
   "Welcoming Crowd",
   "Live Join + Audience Play",
-  "Verified Weekly Nights",
+  "Weekly Nights Worth Repeating",
 ];
 
 const FAN_STEPS = [
   {
     title: "Pick your vibe",
-    detail: "Choose between beginner-friendly, big singalong, fast-rotation, or serious-singer rooms.",
+    detail: "Choose between beginner-friendly, big singalong, fast-rotation, or full-main-character-energy rooms.",
   },
   {
     title: "Spot the modern nights",
-    detail: "Look for BeauRocks-powered signals like live join, audience play, recap, and fresh schedule proof.",
+    detail: "Look for BeauRocks signals like live join, audience play, recap, and proof the host did more than post once in January.",
   },
   {
     title: "Show up ready to sing",
-    detail: "Set reminders, invite friends, and walk into a room that fits your energy instead of guessing.",
+    detail: "Set reminders, invite friends, and walk into a room that matches your energy instead of rolling the karaoke dice.",
   },
 ];
 
@@ -50,10 +50,10 @@ const ForFansPage = ({ navigate, heroStats }) => {
     <section className="mk3-page mk3-persona-command is-fan">
       <article className="mk3-detail-card mk3-persona-hero mk3-zone">
         <div className="mk3-persona-kicker">karaoke night finder</div>
-        <h1>Find the karaoke night that fits your vibe tonight.</h1>
+        <h1>Find the karaoke night that fits your vibe, your voice, and your group chat.</h1>
         <p>
-          BeauRocks helps people find rooms with real crowd energy, humane rotation, strong hosts,
-          and modern karaoke features that make older listings feel static.
+          BeauRocks helps you spot rooms with real crowd energy, humane rotation, strong hosts,
+          and modern karaoke features that make the usual stale listings feel a little sleepy.
         </p>
         <div className="mk3-persona-badge-row">
           {FAN_BADGES.map((badge) => (
@@ -63,7 +63,7 @@ const ForFansPage = ({ navigate, heroStats }) => {
         {heroStats?.total > 0 && (
           <div className="mk3-status mk3-hero-proof">
             <strong>{heroStats.total.toLocaleString()} karaoke listings live in the directory</strong>
-            <span>Use BeauRocks signals to separate modern nights from generic event posts.</span>
+            <span>Use BeauRocks signals to separate the good nights from the “maybe karaoke???” posts.</span>
           </div>
         )}
         <div className="mk3-actions-inline">
@@ -105,8 +105,8 @@ const ForFansPage = ({ navigate, heroStats }) => {
         <aside className="mk3-actions-card mk3-persona-checklist">
           <h4>What To Look For</h4>
           <div className="mk3-status">
-            <strong>Great karaoke nights are specific</strong>
-            <span>Rotation, host vibe, crowd chemistry, and room tech matter more than a generic flyer.</span>
+            <strong>Great karaoke nights are weirdly specific</strong>
+            <span>Rotation, host vibe, crowd chemistry, and room tech matter a lot more than a generic flyer with a microphone emoji.</span>
           </div>
           <div className="mk3-persona-checklist-list">
             {FAN_FUN_SIGNALS.map((signal) => (
@@ -121,8 +121,8 @@ const ForFansPage = ({ navigate, heroStats }) => {
           <div className="mk3-persona-kicker">modern karaoke</div>
           <h2>Why BeauRocks-powered nights feel different</h2>
           <p className="mk3-card-story">
-            Static listings tell you where karaoke exists. BeauRocks helps you see which nights are active,
-            interactive, and actually worth showing up for.
+            Static listings tell you where karaoke technically exists. BeauRocks helps you see which nights are active,
+            interactive, and actually worth putting on real pants for.
           </p>
           <div className="mk3-experience-pill-row is-modern">
             {FAN_MODERN_SIGNALS.map((signal) => (
@@ -135,7 +135,7 @@ const ForFansPage = ({ navigate, heroStats }) => {
           <h4>Tonight Ready</h4>
           <div className="mk3-status">
             <strong>Start with the right room</strong>
-            <span>Pick your vibe, lock the reminder, then look for live-join and recap-ready nights.</span>
+            <span>Pick the vibe, lock the reminder, then look for live-join and recap-ready nights that feel alive before you even leave the house.</span>
           </div>
           <div className="mk3-actions-inline">
             <button

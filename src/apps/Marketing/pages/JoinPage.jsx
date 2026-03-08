@@ -76,7 +76,7 @@ const JoinPage = ({ navigate, id = "" }) => {
       <article className="mk3-detail-card">
         <div className="mk3-chip">join private room</div>
         <h2>Enter Room Code</h2>
-        <p>Private rooms stay off public pages. If you have the code, you are in.</p>
+        <p>Private rooms stay off the public pages. If you have the code, you are basically at the velvet rope already.</p>
         <form className="mk3-actions-block" onSubmit={onSubmit}>
           <label>
             Room Code
@@ -111,7 +111,7 @@ const JoinPage = ({ navigate, id = "" }) => {
       </article>
       <aside className="mk3-actions-card">
         <h4>Looking For Public Nights?</h4>
-        <p>Use Discover to browse public events, hosts, and venues nearby.</p>
+        <p>Use Discover to browse public events, hosts, and venues nearby when you are in the mood to roam instead of entering a secret code.</p>
         <button type="button" onClick={() => navigate("discover")}>
           Open Discover
         </button>

@@ -10,15 +10,15 @@ const VENUE_BADGES = [
 const VENUE_STEPS = [
   {
     title: "Claim your venue",
-    detail: "Own profile updates and publishing access.",
+    detail: "Own profile updates, publishing access, and the basic facts people should not have to guess.",
   },
   {
     title: "Set weekly cadence",
-    detail: "Make karaoke timing predictable for regulars.",
+    detail: "Make karaoke timing predictable so regulars can build it into the week.",
   },
   {
     title: "Track outcomes",
-    detail: "Use follows, RSVPs, and check-ins to guide programming.",
+    detail: "Use follows, RSVPs, and check-ins to see which nights are pulling people back for another round.",
   },
 ];
 
@@ -36,8 +36,8 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
     <section className="mk3-page mk3-persona-command is-venue">
       <article className="mk3-detail-card mk3-persona-hero mk3-zone">
         <div className="mk3-persona-kicker">for venues</div>
-        <h1>Turn karaoke into a dependable weekly draw.</h1>
-        <p>Claim your venue, publish a clear cadence, and keep room quality consistent.</p>
+        <h1>Turn karaoke into the weekly night people already know they are going to.</h1>
+        <p>Claim your venue, publish a clear cadence, and make it easy for regulars, new guests, and future big personalities to find you.</p>
         <div className="mk3-persona-badge-row">
           {VENUE_BADGES.map((badge) => (
             <span key={badge}>{badge}</span>
@@ -67,7 +67,7 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
 
       <div className="mk3-two-col mk3-persona-late-grid">
         <section className="mk3-detail-card mk3-persona-flow mk3-zone" aria-label="Venue flow overview">
-          <h2>Venue Loop In 3 Steps</h2>
+          <h2>How Venues Keep The Night Rolling</h2>
           <div className="mk3-persona-flow-grid">
             {VENUE_STEPS.map((step, index) => (
               <article key={step.title}>
@@ -82,8 +82,8 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
         <aside className="mk3-actions-card mk3-persona-checklist">
           <h4>Venue Checklist</h4>
           <div className="mk3-status">
-            <strong>Before promotion</strong>
-            <span>Publish only after ownership, schedule, and host operations are aligned.</span>
+            <strong>Before you promote it</strong>
+            <span>Make sure ownership, schedule, and host operations all agree so guests are not walking into improv.</span>
           </div>
           <div className="mk3-persona-checklist-list">
             <span>Ownership verified</span>

@@ -72,13 +72,24 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
   return (
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
-        <div className="mk3-listing-hero">
-          <img src={heroImage} alt={`${sessionItem.title} room session visual`} loading="lazy" />
-          <div className="mk3-listing-hero-content">
-            <div className="mk3-chip">room session</div>
-            <h2>{sessionItem.title}</h2>
-            <div className="mk3-detail-meta">{formatDateTime(sessionItem.startsAtMs)}</div>
-          </div>
+        <div className="mk3-listing-title-block">
+          <div className="mk3-chip">room session</div>
+          <h2>{sessionItem.title}</h2>
+          <div className="mk3-detail-meta">{formatDateTime(sessionItem.startsAtMs)}</div>
+        </div>
+        <div className="mk3-venue-stat-grid">
+          <article>
+            <span>Starts</span>
+            <strong>{formatDateTime(sessionItem.startsAtMs)}</strong>
+          </article>
+          <article>
+            <span>Visibility</span>
+            <strong>{sessionItem.visibility || "public"}</strong>
+          </article>
+          <article>
+            <span>Room Code</span>
+            <strong>{sessionItem.roomCode || "Private"}</strong>
+          </article>
         </div>
         <div className="mk3-profile-pill">
           <div className="mk3-profile-avatar" aria-hidden="true">
@@ -91,12 +102,8 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
             <span>{hostName}</span>
           </div>
         </div>
-        <div className="mk3-venue-gallery" aria-label="Room session media gallery">
-          {listingGallery.map((imageUrl, index) => (
-            <figure key={`${imageUrl}-${index}`}>
-              <img src={imageUrl} alt={`${sessionItem.title} visual ${index + 1}`} loading="lazy" />
-            </figure>
-          ))}
+        <div className="mk3-listing-hero">
+          <img src={heroImage} alt={`${sessionItem.title} room session visual`} loading="lazy" />
         </div>
         <DirectoryExperienceSpotlight
           entry={{
@@ -111,6 +118,13 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
           showUpgradePrompt={false}
         />
         <p>{sessionItem.description || "No session notes yet."}</p>
+        <div className="mk3-venue-gallery" aria-label="Room session media gallery">
+          {listingGallery.map((imageUrl, index) => (
+            <figure key={`${imageUrl}-${index}`}>
+              <img src={imageUrl} alt={`${sessionItem.title} visual ${index + 1}`} loading="lazy" />
+            </figure>
+          ))}
+        </div>
         <div className="mk3-sub-list">
           <div className="mk3-list-row static">
             <span>Visibility</span>

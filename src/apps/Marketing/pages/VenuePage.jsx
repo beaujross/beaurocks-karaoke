@@ -129,18 +129,10 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
   return (
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
-        <div className="mk3-venue-hero">
-          <img
-            src={heroImage}
-            alt={`${venue.title} listing visual`}
-            loading="lazy"
-            onError={(event) => applyImageFallback(event, fallbackVenueImage)}
-          />
-          <div className="mk3-venue-hero-content">
-            <div className="mk3-chip">venue</div>
-            <h2>{venue.title}</h2>
-            <div className="mk3-detail-meta">{[venue.city, venue.state, venue.address1].filter(Boolean).join(" | ")}</div>
-          </div>
+        <div className="mk3-listing-title-block">
+          <div className="mk3-chip">venue</div>
+          <h2>{venue.title}</h2>
+          <div className="mk3-detail-meta">{[venue.city, venue.state, venue.address1].filter(Boolean).join(" | ")}</div>
         </div>
 
         <div className="mk3-venue-stat-grid">
@@ -172,26 +164,6 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
             <span className="mk3-info-note">Cadence pending.</span>
           )}
         </div>
-
-        <div className="mk3-venue-gallery" aria-label="Venue gallery">
-          {listingGallery.map((imageUrl, index) => (
-            <figure key={`${imageUrl}-${index}`}>
-              <img
-                src={imageUrl}
-                alt={`${venue.title} visual ${index + 1}`}
-                loading="lazy"
-                onError={(event) => applyImageFallback(event, fallbackVenueImage)}
-              />
-            </figure>
-          ))}
-        </div>
-
-        <p>{venue.description || "No venue description provided yet."}</p>
-        <DirectoryExperienceSpotlight
-          entry={venueExperienceSource}
-          title="Why This Night Works"
-          eyebrow="karaoke personality"
-        />
         <div className="mk3-info-module">
           <strong>Contact / Info</strong>
           <div className="mk3-info-link-row">
@@ -228,6 +200,33 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
             )}
           </div>
         </div>
+        <div className="mk3-venue-hero">
+          <img
+            src={heroImage}
+            alt={`${venue.title} listing visual`}
+            loading="lazy"
+            onError={(event) => applyImageFallback(event, fallbackVenueImage)}
+          />
+        </div>
+        <div className="mk3-venue-gallery" aria-label="Venue gallery">
+          {listingGallery.map((imageUrl, index) => (
+            <figure key={`${imageUrl}-${index}`}>
+              <img
+                src={imageUrl}
+                alt={`${venue.title} visual ${index + 1}`}
+                loading="lazy"
+                onError={(event) => applyImageFallback(event, fallbackVenueImage)}
+              />
+            </figure>
+          ))}
+        </div>
+
+        <p>{venue.description || "No venue description provided yet."}</p>
+        <DirectoryExperienceSpotlight
+          entry={venueExperienceSource}
+          title="Why This Night Works"
+          eyebrow="karaoke personality"
+        />
         <div className="mk3-sub-list">
           <h3>Upcoming Karaoke Events</h3>
           {events.length === 0 && <div className="mk3-status">No approved events linked to this venue yet.</div>}

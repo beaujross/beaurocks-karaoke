@@ -11,19 +11,17 @@ const HOST_STACK_BADGES = [
   "One login, one control surface",
 ];
 
-const HOST_FLOW_STEPS = [
-  "Log in with your BeauRocks account.",
-  "Apply for host access so a super admin can review your request.",
-  "Approved hosts open Host Dashboard and create or resume rooms there.",
-  "Launch TV and audience links from the same control surface.",
-  "Run the show, then review recap and room history there.",
+const HOST_FLOW_NOTES = [
+  "Apply once, then head straight into the real host app when you are approved.",
+  "Create rooms, reopen recent nights, and launch TV and audience links from the same place.",
+  "Run the show, clean up after it, and revisit recaps without bouncing through extra setup pages.",
 ];
 
 const HOST_CORE_OUTCOMES = [
-  "All host applicants use the same apply-and-approval system.",
-  "Room setup, room manager, and live controls now live in Host Dashboard.",
-  "Marketing stays focused on discovery and conversion, not host operations.",
-  "Hosts do not need a separate launcher page before entering the real app.",
+  "Every host uses the same apply-and-approval flow, so access is clear instead of mysterious.",
+  "Room setup, room manager, and live controls all live in Host Dashboard now.",
+  "Marketing stays focused on discovery and conversion instead of pretending to be a control panel.",
+  "Approved hosts land closer to the real show and farther from unnecessary detours.",
 ];
 
 const ForHostsPage = ({ route, session, authFlow }) => {
@@ -159,14 +157,14 @@ const ForHostsPage = ({ route, session, authFlow }) => {
     <section className="mk3-page mk3-host-command mk3-host-rebuild">
       <article className="mk3-detail-card mk3-host-hero mk3-zone mk3-host-hero-rebuild mk3-host-canon-surface">
         <div className="mk3-host-kicker mk3-host-canon-kicker">host entry simplified</div>
-        <h1 className="mk3-host-canon-title is-xl">Apply once. Approved hosts run the room from the real app.</h1>
+        <h1 className="mk3-host-canon-title is-xl">Apply once. Get approved. Run the room from the real host app.</h1>
         <p className="mk3-host-canon-copy">
-          BeauRocks now uses a single host-access system: every prospective host can apply, and approved hosts go
-          straight into Host Dashboard for create, resume, launch, and recap.
+          BeauRocks uses one host-access system now: every future host can apply, and approved hosts go
+          straight into Host Dashboard for create, resume, launch, and recap without a bunch of ceremonial clicking first.
         </p>
         <div className="mk3-status mk3-status-warning">
           <strong>Account required to host</strong>
-          <span>Guests can join with a room code, but host setup and room operations stay account-backed.</span>
+          <span>Guests can join with a room code. Host setup and room controls stay account-backed, as they should.</span>
         </div>
         <div className="mk3-host-badge-row mk3-host-canon-chip-row">
           {HOST_STACK_BADGES.map((badge) => (
@@ -197,10 +195,10 @@ const ForHostsPage = ({ route, session, authFlow }) => {
                 </strong>
                 <span>
                   {hostApplicationStatus === "rejected"
-                    ? "This application is currently closed. Reach out if you need another review."
+                    ? "This application is closed for now. Reach out if you want another pass."
                     : hostApplicationStatus === "pending"
                       ? "A super admin is reviewing your request now."
-                      : "Every prospective host uses the same approval flow before Host Dashboard is enabled."}
+                      : "Every future host goes through the same approval flow before Host Dashboard opens up."}
                 </span>
               </div>
               <button
@@ -221,17 +219,14 @@ const ForHostsPage = ({ route, session, authFlow }) => {
       </article>
 
       <section className="mk3-detail-card mk3-host-manager-card mk3-host-canon-surface is-muted">
-        <h2 className="mk3-host-canon-title is-md">What happens now</h2>
+        <h2 className="mk3-host-canon-title is-md">How hosting works now</h2>
         <p className="mk3-host-setup-subcopy">
-          The core host app now owns room creation, recent rooms, cleanup, archive, launch links, and live controls.
+          The core host app now owns room creation, recent rooms, cleanup, archive, launch links, and live controls. Marketing gets to sell the night. The host app gets to run it.
         </p>
         <div className="mk3-sub-list compact">
-          {HOST_FLOW_STEPS.map((step, index) => (
-            <article key={step} className="mk3-review-card">
-              <div className="mk3-review-head">
-                <strong>Step {index + 1}</strong>
-              </div>
-              <p>{step}</p>
+          {HOST_FLOW_NOTES.map((note) => (
+            <article key={note} className="mk3-review-card">
+              <p>{note}</p>
             </article>
           ))}
         </div>

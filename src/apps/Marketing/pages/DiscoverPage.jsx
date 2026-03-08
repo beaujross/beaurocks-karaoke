@@ -1804,54 +1804,48 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
       id: "results",
       label: "Live listings",
       value: resultCountLabel,
-      detail: isInitialCountLoading ? "Pulling tonight's rooms, venues, and events." : `Across ${activeRegionLabel}`,
+      detail: isInitialCountLoading ? "Pulling in tonight's rooms, venues, and karaoke excuses." : `Across ${activeRegionLabel}`,
     },
     {
       id: "official",
       label: "Official rooms",
       value: officialBeauRocksRoomCount > 0 ? officialBeauRocksRoomCount.toLocaleString() : "Approval-based",
-      detail: "BeauRocks-backed host experiences with cleaner launch flow.",
+      detail: "BeauRocks-backed rooms with a cleaner, more buttoned-up launch flow.",
     },
     {
       id: "joinable",
       label: "Join by code",
       value: joinableRoomCount > 0 ? joinableRoomCount.toLocaleString() : "Live when open",
-      detail: "Audience can jump in fast without hunting for the host.",
+      detail: "Guests can jump in fast without wandering the room like lost backup singers.",
     },
     {
       id: "modern",
       label: "Modern karaoke",
       value: experienceCounts.modern > 0 ? experienceCounts.modern.toLocaleString() : "Host-first",
-      detail: "Rooms already tagged for interactive, recap-ready nights.",
+      detail: "Interactive, recap-ready nights with a little more spark than a flyer on Instagram.",
     },
   ];
   const surfaceHighlights = [
     {
       id: "host",
       title: "Host Deck",
-      copy: "Launch rooms, reopen recent shows, and keep live controls in one host workspace.",
+      copy: "Create rooms, reopen recent nights, and keep the whole show in one place.",
     },
     {
       id: "audience",
       title: "Party Mic",
-      copy: "Guests join with a code, request songs, and play along from their phones.",
+      copy: "Guests jump in with a code, request songs, and stir up a little chaos from their phones.",
     },
     {
       id: "tv",
       title: "Spotlight TV",
-      copy: "Bring the room together with a shared screen tuned for live karaoke nights.",
+      copy: "Put one big glowing screen in the room and suddenly everyone knows the assignment.",
     },
     {
       id: "finder",
       title: "Setlist Map",
-      copy: "Public rooms show up in real time so people can discover the night before they bounce.",
+      copy: "Public rooms pop onto the map in real time so the night can find its crowd.",
     },
-  ];
-  const launchLoopSteps = [
-    "Launch a room from Host Access.",
-    "Share the room code with the crowd.",
-    "Audience joins from mobile and the TV comes alive.",
-    "Public rooms land on the live setlist map automatically.",
   ];
   const openHostAccess = () => {
     trackEvent("mk_discover_premium_hero_host_access_click", { source: "discover_premium_hero" });
@@ -1875,10 +1869,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
       <section className="mk3-home-discover-hero mk3-zone mk3-zone-finder">
         <div className="mk3-home-discover-main">
           <span className="mk3-home-discover-kicker">Premium karaoke operating system</span>
-          <h1>Run smoother karaoke nights. Let the crowd find the room.</h1>
+          <h1>Run a smoother karaoke night. Make it easy for the crowd to find the fun.</h1>
           <p>
-            BeauRocks connects host launch, audience join, interactive TV, and a live public setlist map
-            so karaoke nights feel organized, modern, and easy to discover.
+            BeauRocks links host controls, audience join, Public TV, and the live map so karaoke night feels
+            less like herding cats and more like running a room people actually want to stay in.
           </p>
           <div className="mk3-finder-cta-row mk3-home-discover-cta-row">
             <button
@@ -1912,17 +1906,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
         </div>
         <aside className="mk3-home-discover-side">
           <div className="mk3-home-discover-side-head">
-            <span>Tonight's live signal</span>
+            <span>Tonight's karaoke radar</span>
             <strong>{activeRegionLabel}</strong>
             <p>{heroPulseLabel}</p>
           </div>
-          <div className="mk3-home-discover-loop">
-            {launchLoopSteps.map((step, index) => (
-              <article key={step}>
-                <span>{`0${index + 1}`}</span>
-                <p>{step}</p>
-              </article>
-            ))}
+          <div className="mk3-status">
+            <strong>One room, four surfaces, zero mystery</strong>
+            <span>Hosts run the night, guests join fast, the TV keeps the room together, and public nights can show up on the map while the energy is still hot.</span>
           </div>
           <div className="mk3-home-discover-surface-grid">
             {surfaceHighlights.map((surface) => (
@@ -1940,7 +1930,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
           <span>
             {isInitialCountLoading
               ? `Loading the live directory in ${activeRegionLabel}...`
-              : `Search by host, venue, city, or vibe, then tighten the list with quick shortcuts and advanced filters.`}
+              : `Search by host, venue, city, or vibe, then narrow things down with quick filters until the right room starts blinking back at you.`}
           </span>
           <div className="mk3-discover-hero-stats">
             <span>{isInitialCountLoading ? "Syncing live directory..." : `${resultCountLabel} results`}</span>

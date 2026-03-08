@@ -122,7 +122,7 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
         <h2>Best karaoke nights in {label}</h2>
         <p>
           Use this guide to find rooms with the right mix of host vibe, crowd energy, rotation speed,
-          and modern karaoke signals like live join and recap-ready nights.
+          and modern karaoke signals like live join and recap-ready nights, not just a lonely event post and a prayer.
         </p>
         <div className="mk3-filter-row">
           <label>
@@ -147,7 +147,7 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
             <strong>{experienceSummary.beauRocksPowered} modern karaoke nights stand out in this mix</strong>
             <span>
               BeauRocks-powered listings surface the signals static directories miss: live join, audience play,
-              recap proof, and fresher host workflow.
+              recap proof, and fresher host workflow that makes the night feel alive before you even get there.
             </span>
             <div className="mk3-experience-pill-row is-modern">
               {experienceSummary.liveJoin > 0 && <span className="mk3-experience-pill is-modern">{experienceSummary.liveJoin} live join</span>}
@@ -214,11 +214,11 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
       </article>
       <aside className="mk3-actions-card">
         <h4>How To Pick Tonight's Room</h4>
-        <p>Start with vibe, then trust the proof. The best nights usually show host energy, cadence, and modern room signals.</p>
+        <p>Start with vibe, then trust the proof. The best nights usually show host energy, cadence, and enough modern room signals to tell you somebody is actually minding the stage.</p>
         <div className="mk3-persona-checklist-list">
           <span>Look for fast rotation or beginner-friendly badges</span>
           <span>Prefer listings with live join, audience play, or recap proof</span>
-          <span>Use Discover when you want map view and deeper filtering</span>
+          <span>Use Discover when you want the big map and the nerdier filters</span>
         </div>
         <button type="button" onClick={() => navigate("submit", "", { intent: "listing_submit", targetType: "geo" })}>
           Add Karaoke Night

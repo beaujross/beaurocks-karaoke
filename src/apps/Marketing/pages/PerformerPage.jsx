@@ -75,13 +75,24 @@ const PerformerPage = ({ id, route, session, navigate, authFlow }) => {
   return (
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
-        <div className="mk3-listing-hero">
-          <img src={heroImage} alt={`${performerName} performer profile visual`} loading="lazy" />
-          <div className="mk3-listing-hero-content">
-            <div className="mk3-chip">performer profile</div>
-            <h2>{performerName}</h2>
-            <div className="mk3-detail-meta">{[profile.city, profile.state, profile.country].filter(Boolean).join(" | ")}</div>
-          </div>
+        <div className="mk3-listing-title-block">
+          <div className="mk3-chip">performer profile</div>
+          <h2>{performerName}</h2>
+          <div className="mk3-detail-meta">{[profile.city, profile.state, profile.country].filter(Boolean).join(" | ")}</div>
+        </div>
+        <div className="mk3-venue-stat-grid">
+          <article>
+            <span>Reviews</span>
+            <strong>{reviews.length}</strong>
+          </article>
+          <article>
+            <span>Stage Name</span>
+            <strong>{performerName}</strong>
+          </article>
+          <article>
+            <span>Region</span>
+            <strong>{[profile.city, profile.state].filter(Boolean).join(", ") || "Unspecified"}</strong>
+          </article>
         </div>
         <div className="mk3-profile-pill">
           <div className="mk3-profile-avatar" aria-hidden="true">
@@ -94,12 +105,8 @@ const PerformerPage = ({ id, route, session, navigate, authFlow }) => {
             <span>{performerName}</span>
           </div>
         </div>
-        <div className="mk3-venue-gallery" aria-label="Performer media gallery">
-          {listingGallery.map((imageUrl, index) => (
-            <figure key={`${imageUrl}-${index}`}>
-              <img src={imageUrl} alt={`${performerName} visual ${index + 1}`} loading="lazy" />
-            </figure>
-          ))}
+        <div className="mk3-listing-hero">
+          <img src={heroImage} alt={`${performerName} performer profile visual`} loading="lazy" />
         </div>
         <p>{profile.bio || "No performer bio yet."}</p>
         <div className="mk3-sub-list">
@@ -110,6 +117,13 @@ const PerformerPage = ({ id, route, session, navigate, authFlow }) => {
               <span>{readStars(review.rating)}</span>
               <span>{Array.isArray(review.tags) ? review.tags.join(", ") : ""}</span>
             </div>
+          ))}
+        </div>
+        <div className="mk3-venue-gallery" aria-label="Performer media gallery">
+          {listingGallery.map((imageUrl, index) => (
+            <figure key={`${imageUrl}-${index}`}>
+              <img src={imageUrl} alt={`${performerName} visual ${index + 1}`} loading="lazy" />
+            </figure>
           ))}
         </div>
       </article>
