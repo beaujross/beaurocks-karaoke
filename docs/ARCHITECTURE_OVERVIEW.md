@@ -16,6 +16,7 @@ flowchart LR
 
     subgraph Firebase[Firebase Platform]
         A[Auth\nAnonymous + Email Link + Phone OTP]
+        AC[App Check\nEnterprise + Debug Token QA]
         F[(Firestore)]
         S[(Storage)]
         CF[Cloud Functions\nfunctions/index.js]
@@ -37,6 +38,8 @@ flowchart LR
 
     M --> A
     H --> A
+    M --> AC
+    H --> AC
 
     M <--> F
     H <--> F
@@ -125,6 +128,12 @@ Key callable endpoints in `functions/index.js`:
 - Media/lyrics: `appleMusicLyrics`, `autoAppleLyrics`, `createAppleMusicToken`
 - Utility: `googleMapsKey`
 
+Key trigger-owned automations in `functions/index.js`:
+
+- `autoPopTrivia`: creates Pop Trivia when a karaoke song doc is created
+- scheduled pending recovery for stranded `popTriviaStatus: "pending"` songs
+- room-level backfill when Pop Trivia is enabled after songs already exist
+
 ## Game Architecture
 
 Game metadata and mappings:
@@ -151,8 +160,27 @@ From `firestore.rules`:
 - User profile writes restricted to owner UID.
 - Sensitive catalog/leaderboard writes blocked client-side; server writes via Admin SDK.
 
+Operational enforcement:
+
+- Production callables are App Check protected.
+- The web client initializes App Check in `src/lib/firebase.js` and defaults production to reCAPTCHA Enterprise.
+- Remote QA should use a registered App Check debug token instead of relying on headless browser attestation.
+
 ## Deployment Units
 
 - Frontend: Vite build (`npm run build`) deployed as static app.
 - Backend: Firebase Functions v2 (Node) in `us-west1`.
 - Shared identity: `APP_ID = bross-app` in `src/lib/assets.js`.
+
+## Pop Trivia Delivery Path
+
+Pop Trivia is a karaoke overlay feature, distinct from the standalone `trivia_pop` game mode.
+
+Current flow:
+
+1. Host enables `popTriviaEnabled` for the room.
+2. A karaoke song doc is created under `karaoke_songs`.
+3. Cloud Functions owns question generation and recovery.
+4. Questions resolve from cache, Gemini, or deterministic fallback.
+5. Audience (`SingerApp`) and TV (`PublicTV`) render the same active Pop Trivia state during `performing`.
+6. Round timing comes from `room.gameDefaults.triviaRoundSec` with client fallback defaults.

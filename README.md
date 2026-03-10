@@ -5,6 +5,7 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 ## Architecture and Assessment
 
 - Architecture overview: `docs/ARCHITECTURE_OVERVIEW.md`
+- Engineering execution plan (March 2026): `docs/ENGINEERING_EXECUTION_PLAN_2026-03.md`
 - Multi-surface expansion strategy (Discord, Apple TV, Vision Pro): `docs/MULTI_SURFACE_EXPANSION_STRATEGY.md`
 - Technical risks and priorities: `docs/TECH_RISKS_PRIORITIES.md`
 - Marketing operating playbook: `docs/marketing/MARKETING_OPERATING_PLAYBOOK.md`

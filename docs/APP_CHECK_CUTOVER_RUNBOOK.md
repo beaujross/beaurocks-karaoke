@@ -1,6 +1,6 @@
 # App Check Cutover Runbook
 
-Last updated: 2026-03-02
+Last updated: 2026-03-09
 
 ## Purpose
 
@@ -13,19 +13,24 @@ This runbook is designed for project `beaurocks-karaoke-v2` and current repo scr
 - Backend enforcement toggle: `APP_CHECK_MODE` (Cloud Functions runtime env).
 - Client tokening toggle: `VITE_APP_CHECK_ENABLED` (frontend build-time env).
 - Optional strict client behavior: `VITE_REQUIRE_APP_CHECK`.
+- Provider selection: `VITE_APP_CHECK_PROVIDER` (`enterprise` or `v3`, production defaults to `enterprise`).
+- Automation support: `QA_APP_CHECK_DEBUG_TOKEN` for remote Playwright smoke runs.
 
 ## Safety Principles
 
 1. Do not flip backend enforcement and client tokening at the same time.
 2. Enable client tokening first, observe, then enforce backend.
 3. Keep a one-command rollback ready (`APP_CHECK_MODE=log` + functions deploy).
+4. Treat browser automation as a separate trust path from real users: production users should use real attestation, automated remote QA should use a registered App Check debug token.
 
 ## Preflight
 
 1. Confirm current backend mode:
    - File: `functions/.env.beaurocks-karaoke-v2`
    - Expected before cutover: `APP_CHECK_MODE=log`
-2. Confirm production reCAPTCHA/App Check site key is valid for prod domains.
+2. Confirm production App Check provider + site key are valid for prod domains.
+   - Production web should use `ReCaptchaEnterpriseProvider` unless there is an explicit rollback reason.
+   - `window.__app_check_provider` or `VITE_APP_CHECK_PROVIDER` should resolve to `enterprise` for production.
 3. Ensure latest main is deployed and quality checks are green:
    - `npm test`
    - `npm run build`
@@ -39,7 +44,8 @@ Set frontend env for production build:
 
 - `VITE_APP_CHECK_ENABLED=true`
 - `VITE_REQUIRE_APP_CHECK=false`
-- `VITE_RECAPTCHA_V3_SITE_KEY=<prod-key>`
+- `VITE_RECAPTCHA_V3_SITE_KEY=<prod-site-key>`
+- `VITE_APP_CHECK_PROVIDER=enterprise`
 
 Deploy hosting only:
 
@@ -96,6 +102,23 @@ npm run qa:p0:host-join
 npm run qa:p0:users
 ```
 
+For remote Playwright production smoke, set a registered debug token first:
+
+```powershell
+setx QA_APP_CHECK_DEBUG_TOKEN "<registered-debug-token>"
+```
+
+Then open a fresh shell and run:
+
+```powershell
+npm run qa:golden:host-room-hands-off:secure
+```
+
+Expected:
+- real production users continue on normal App Check attestation
+- remote QA uses the official Firebase debug-token path
+- secure host smoke passes without `App attestation failed` or `appCheck/throttled`
+
 3. Optional full P0 suite:
 
 ```powershell
@@ -141,7 +164,16 @@ If needed, also set `VITE_APP_CHECK_ENABLED=false` and redeploy hosting.
 ## Release Checklist Snippet
 
 1. `APP_CHECK_MODE` verified before deploy.
-2. `VITE_APP_CHECK_ENABLED` and `VITE_RECAPTCHA_V3_SITE_KEY` verified in build env.
+2. `VITE_APP_CHECK_ENABLED`, `VITE_RECAPTCHA_V3_SITE_KEY`, and `VITE_APP_CHECK_PROVIDER=enterprise` verified in build env.
 3. `app-check-gate-smoke` run before and after cutover.
-4. `host-join` and `users-profile` smoke passed post-cutover.
-5. Rollback command validated and ready.
+4. `QA_APP_CHECK_DEBUG_TOKEN` verified for remote release QA.
+5. `host-join`, `users-profile`, and `qa:golden:host-room-hands-off:secure` passed post-cutover.
+6. Rollback command validated and ready.
+
+## Operating Notes
+
+- The current frontend runtime initializes App Check from `src/lib/firebase.js` and prefers Enterprise in production.
+- Remote headless browsers are not a reliable attestation surface for production. The permanent approach is:
+  - real users: normal App Check provider attestation
+  - automated QA: registered debug token injected before app boot
+- If production smoke suddenly starts failing with App Check errors, check debug-token registration before changing enforcement settings.
