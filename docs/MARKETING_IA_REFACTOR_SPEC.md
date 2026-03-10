@@ -9,6 +9,12 @@ Shift marketing information architecture from persona-first navigation to intent
 
 This spec is implemented as a non-breaking refinement layer. Existing routes remain valid.
 
+Marketing root behavior:
+
+- `/` acts as the BeauRocks overview page.
+- The root page should explain the hosted-night outcome first, then route people toward host setup, demo, and discover flows.
+- `for_fans` is currently the root overview surface, not just a narrow audience persona page.
+
 ## Canonical Route Map
 | Route Key | Canonical Path | IA Zone | Component Owner |
 | --- | --- | --- | --- |
@@ -66,5 +72,5 @@ Strategy: keep legacy aliases live while canonicalizing links and analytics to p
 ## Implementation Notes
 1. No route removal in this phase.
 2. Navigation behavior is centralized through `getMarketingNavModel()`.
-3. Brand click now routes to host product path (`/for-hosts`) to support host-first positioning.
+3. Brand click now routes to the root overview page so the main product story stays one click away.
 4. `host_access` remains an internal auth/access alias while public canonical host path is `/for-hosts`.

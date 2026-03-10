@@ -126,7 +126,7 @@ const Landing = ({ onJoin, hasBeauRocksAccount = false }) => {
     const marketingHref = typeof window !== 'undefined'
         ? (
             marketingFlags.routePathsEnabled
-                ? buildSurfaceUrl({ surface: 'marketing', path: 'discover' }, window.location)
+                ? buildSurfaceUrl({ surface: 'marketing' }, window.location)
                 : buildSurfaceUrl({ surface: 'marketing', params: { mode: 'marketing' } }, window.location)
         )
         : '/';

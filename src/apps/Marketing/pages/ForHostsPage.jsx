@@ -14,7 +14,7 @@ const HOST_STACK_BADGES = [
 const HOST_CORE_OUTCOMES = [
   "Every host uses the same apply-and-approval flow, so access is clear instead of mysterious.",
   "Room setup, room manager, and live controls all live in Host Dashboard now.",
-  "Marketing stays focused on discovery and conversion instead of pretending to be a control panel.",
+  "Marketing stays focused on the product story and house-party outcome instead of pretending to be a control panel.",
   "Approved hosts land closer to the real show and farther from unnecessary detours.",
 ];
 

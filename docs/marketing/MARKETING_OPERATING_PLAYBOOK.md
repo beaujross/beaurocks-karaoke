@@ -20,11 +20,12 @@ Last updated: 2026-03-01
   - Any claim implying licensing bypass, exemption, or legal coverage by default.
 
 ## IA + Primary Conversion Intent
-- Primary nav/canonical flow is now discovery-first:
-  - `/discover`: map + listing discovery first, then convert to join/host actions
+- Marketing root is now overview-first:
+  - `/`: BeauRocks product overview focused on the hosted-night outcome
+  - `/discover`: map + listing discovery path
   - `/join`: direct room entry by code
   - `/host-access`: authentication gate before host controls
-- Persona pages (`/for-hosts`, `/for-venues`, `/for-performers`, `/for-fans`) remain available but are secondary.
+- Persona pages (`/for-hosts`, `/for-venues`, `/for-performers`, `/for-fans`) remain available, but the root overview carries the broadest product story.
 - `/demo`: product trust/validation layer supporting conversion.
 
 ## CTA Hierarchy Standard
@@ -57,7 +58,8 @@ Last updated: 2026-03-01
   - when `Bounds-only list` is ON, sessions without coordinates can be filtered out from rail view.
 
 ## Current Conversion Narrative
-- Lead with map discovery and lightweight join path.
+- Lead with the hosted-night outcome on the root overview page.
+- Use discover as the task surface for finding public rooms and sessions.
 - Route host intent through account-first `/host-access` before host controls.
 - Keep copy minimal; discovery data and room/session actions should carry the page.
 
