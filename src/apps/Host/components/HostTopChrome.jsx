@@ -472,14 +472,12 @@ const HostTopChrome = ({
         const handleEscape = (event) => {
             if (event.key === 'Escape') closeAllTopMenus();
         };
-        // Avoid pointerdown-capture quirks on iOS Safari by listening to click/touch/mouse.
-        window.addEventListener('mousedown', handleWindowInteract, true);
-        window.addEventListener('touchstart', handleWindowInteract, true);
+        // iPad Safari is much more reliable when outside-close waits until the tap resolves.
+        window.addEventListener('pointerup', handleWindowInteract, true);
         window.addEventListener('click', handleWindowInteract, true);
         window.addEventListener('keydown', handleEscape);
         return () => {
-            window.removeEventListener('mousedown', handleWindowInteract, true);
-            window.removeEventListener('touchstart', handleWindowInteract, true);
+            window.removeEventListener('pointerup', handleWindowInteract, true);
             window.removeEventListener('click', handleWindowInteract, true);
             window.removeEventListener('keydown', handleEscape);
         };

@@ -90,6 +90,62 @@ async function run() {
       assert.equal(snap.get("lobbyOrbSkinUrl"), "https://example.com/orb.png");
     }],
 
+    ["host can archive and restore room metadata", async () => {
+      await updateRoomAsHost.run(requestFor(HOST_UID, {
+        archivedAt: { __hostOp: "serverTimestamp" },
+        archivedBy: HOST_UID,
+        archivedStatus: "archived",
+        closedAt: 12345,
+        updatedAt: { __hostOp: "serverTimestamp" },
+      }));
+
+      let snap = await roomRef.get();
+      let archivedAt = snap.get("archivedAt");
+      let updatedAt = snap.get("updatedAt");
+      assert.ok(archivedAt && typeof archivedAt.toMillis === "function");
+      assert.ok(updatedAt && typeof updatedAt.toMillis === "function");
+      assert.equal(snap.get("archivedBy"), HOST_UID);
+      assert.equal(snap.get("archivedStatus"), "archived");
+      assert.equal(snap.get("closedAt"), 12345);
+
+      await updateRoomAsHost.run(requestFor(HOST_UID, {
+        archivedAt: null,
+        archivedBy: null,
+        archivedStatus: "active",
+        closedAt: null,
+        updatedAt: { __hostOp: "serverTimestamp" },
+      }));
+
+      snap = await roomRef.get();
+      updatedAt = snap.get("updatedAt");
+      assert.equal(snap.get("archivedAt"), null);
+      assert.equal(snap.get("archivedBy"), null);
+      assert.equal(snap.get("archivedStatus"), "active");
+      assert.equal(snap.get("closedAt"), null);
+      assert.ok(updatedAt && typeof updatedAt.toMillis === "function");
+    }],
+
+    ["host can update volley orb and lobby playground controls", async () => {
+      await updateRoomAsHost.run(requestFor(HOST_UID, {
+        lightMode: "volley",
+        lobbyVolleyEnabled: true,
+        lobbyPlaygroundPaused: true,
+        lobbyPlaygroundVisualOnly: true,
+        lobbyPlaygroundStrictMode: true,
+        lobbyPlaygroundPerUserCooldownMs: 450,
+        lobbyPlaygroundMaxPerMinute: 8,
+      }));
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("lightMode"), "volley");
+      assert.equal(snap.get("lobbyVolleyEnabled"), true);
+      assert.equal(snap.get("lobbyPlaygroundPaused"), true);
+      assert.equal(snap.get("lobbyPlaygroundVisualOnly"), true);
+      assert.equal(snap.get("lobbyPlaygroundStrictMode"), true);
+      assert.equal(snap.get("lobbyPlaygroundPerUserCooldownMs"), 450);
+      assert.equal(snap.get("lobbyPlaygroundMaxPerMinute"), 8);
+    }],
+
     ["host can update approved dotted paths", async () => {
       await updateRoomAsHost.run(requestFor(HOST_UID, {
         "readyCheck.active": false,

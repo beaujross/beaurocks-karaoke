@@ -503,6 +503,20 @@ html, body, #root { height: 100%; width: 100%; }
   display: block;
 }
 
+/* Host touch targets need explicit tap semantics on iPad Safari. */
+.host-app button,
+.host-app a,
+.host-app summary,
+.host-app [role="button"],
+.host-app input[type="range"],
+.host-app input[type="checkbox"],
+.host-app input[type="radio"],
+.host-app select,
+.host-app label {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Public TV readability pass */
 .public-tv .text-xs {
   font-size: clamp(1rem, 1.05vw, 1.2rem);

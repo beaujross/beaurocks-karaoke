@@ -911,6 +911,9 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "allowSingerTrackSelect",
   "announcement",
   "applausePeak",
+  "archivedAt",
+  "archivedBy",
+  "archivedStatus",
   "appleMusicAutoPlaylistId",
   "appleMusicAutoPlaylistTitle",
   "appleMusicPlayback",
@@ -988,6 +991,12 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "layoutMode",
   "lightMode",
   "lobbyOrbSkinUrl",
+  "lobbyPlaygroundMaxPerMinute",
+  "lobbyPlaygroundPaused",
+  "lobbyPlaygroundPerUserCooldownMs",
+  "lobbyPlaygroundStrictMode",
+  "lobbyPlaygroundVisualOnly",
+  "lobbyVolleyEnabled",
   "logoUrl",
   "lyricsMode",
   "marqueeDurationMs",
@@ -1034,6 +1043,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "tipQrUrl",
   "tipUrl",
   "triviaQuestion",
+  "updatedAt",
   "tvPresentationProfile",
   "videoPlaying",
   "videoStartTimestamp",
@@ -1065,6 +1075,10 @@ const HOST_ROOM_BOOLEAN_ROOT_KEYS = new Set([
   "hideLogo",
   "hideOverlay",
   "hideWaveform",
+  "lobbyPlaygroundPaused",
+  "lobbyPlaygroundStrictMode",
+  "lobbyPlaygroundVisualOnly",
+  "lobbyVolleyEnabled",
   "marqueeEnabled",
   "popTriviaEnabled",
   "reduceMotionFx",
@@ -1093,6 +1107,8 @@ const HOST_ROOM_NUMBER_ROOT_KEYS = new Set([
   "gamePreviewAt",
   "gameRulesId",
   "guitarSessionId",
+  "lobbyPlaygroundMaxPerMinute",
+  "lobbyPlaygroundPerUserCooldownMs",
   "marqueeDurationMs",
   "marqueeIntervalMs",
   "mixFader",
@@ -1112,11 +1128,17 @@ const HOST_ROOM_NUMBER_ROOT_KEYS = new Set([
   "visualizerSensitivity",
   "visualizerSmoothing",
 ]);
+const HOST_ROOM_TIMESTAMP_ROOT_KEYS = new Set([
+  "archivedAt",
+  "updatedAt",
+]);
 const HOST_ROOM_STRING_ROOT_KEYS = new Set([
   "activeMode",
   "activeScreen",
   "appleMusicAutoPlaylistId",
   "appleMusicAutoPlaylistTitle",
+  "archivedBy",
+  "archivedStatus",
   "audienceVideoMode",
   "bgMusicUrl",
   "bingoBoardId",
@@ -1295,6 +1317,13 @@ const validateHostRoomUpdateValue = (value, depth = 0) => {
 };
 
 const validateHostRoomUpdateType = (key, value) => {
+  if (HOST_ROOM_TIMESTAMP_ROOT_KEYS.has(key)
+    && !(value === null || isFiniteNumber(value) || isHostServerTimestampMarker(value))) {
+    throw new HttpsError(
+      "invalid-argument",
+      `Room field "${key}" must be a finite number, server timestamp marker, or null.`,
+    );
+  }
   if (HOST_ROOM_BOOLEAN_ROOT_KEYS.has(key) && typeof value !== "boolean") {
     throw new HttpsError("invalid-argument", `Room field "${key}" must be a boolean.`);
   }
