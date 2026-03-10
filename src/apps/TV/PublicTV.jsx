@@ -3710,6 +3710,7 @@ const PublicTV = ({ roomCode }) => {
                 playerData={room.gameData}
                 isPlayer={tvIsPlayer}
                 users={roomUsers}
+                room={room}
                 inputSource={inputSource}
                 rulesToken={room?.gameRulesId}
                 view="tv"

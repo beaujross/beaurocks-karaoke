@@ -54,6 +54,11 @@ import {
     isVolleyOrbSceneActive,
     isVolleyOrbTargetInteraction
 } from '../../lib/volleyOrbUiState';
+import {
+    BRACKET_SIGNUP_MIN_READY_COUNT,
+    isBracketSignupOpen,
+    summarizeBracketSignup
+} from '../../lib/karaokeBracketSupport';
 
 // Helper Component for Animated Points
 const AnimatedPoints = ({ value, onClick, className = '' }) => {
@@ -5597,9 +5602,23 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             </div>
         );
     }
-    
+    const bracketSignupBracket = room?.activeMode === 'karaoke_bracket'
+        ? (room?.karaokeBracket || room?.gameData || null)
+        : null;
+    const bracketSignupActive = isBracketSignupOpen(bracketSignupBracket);
+    const bracketSignupSummary = bracketSignupActive
+        ? summarizeBracketSignup({
+            roomUsers: allUsers,
+            room,
+            bracket: bracketSignupBracket
+        })
+        : null;
+    const myBracketSignupEntry = bracketSignupSummary?.roster?.find((entry) => entry.uid === (activeUid || uid)) || null;
+
     // --- GAME INTERCEPTION ---
-    if (room?.activeMode && !['karaoke','applause','selfie_cam','selfie_challenge','applause_countdown','applause_result','doodle_oke'].includes(room.activeMode)) {
+    if (room?.activeMode
+        && !['karaoke','applause','selfie_cam','selfie_challenge','applause_countdown','applause_result','doodle_oke'].includes(room.activeMode)
+        && !(room.activeMode === 'karaoke_bracket' && bracketSignupActive)) {
         // Correct payload mapping for Mobile
         const isTrivia = room.activeMode.includes('trivia');
         const isWyr = room.activeMode.includes('wyr');
@@ -5856,7 +5875,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     playerData={gamePayload}
                     user={user}
                     users={allUsers}
+                    room={room}
                     onSuggest={isBingo && isParticipant && canSuggestBingo ? suggestBingo : undefined}
+                    onOpenTight15={() => {
+                        setTab('request');
+                        setSongsTab('tight15');
+                    }}
                     onClose={isBingo ? () => setShowBingoOverlay(false) : undefined}
                     rulesToken={room?.gameRulesId}
                     view="mobile"
@@ -7177,8 +7201,59 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             {/* Omnipresent Stage Area */}
             {(tab === 'home' || tab === 'request' || tab === 'social') && (
                 <div className={`bg-black/40 border-b-4 border-[#00C4D9]/30 z-10 relative ${isNativeMobileLayout ? 'mobile-native-stage-shell' : ''}`} style={{ paddingLeft: 'max(16px, env(safe-area-inset-left))', paddingRight: 'max(16px, env(safe-area-inset-right))', paddingTop: '16px', paddingBottom: '16px' }}>
+                    {bracketSignupActive && bracketSignupSummary && (
+                        <div data-feature-id="singer-bracket-signup-banner" className="mb-4 rounded-3xl border border-rose-300/30 bg-gradient-to-r from-rose-500/18 via-black/60 to-cyan-500/14 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <div className="text-[10px] uppercase tracking-[0.28em] text-rose-200">Sweet 16 Signup Live</div>
+                                    <div className="text-lg font-black text-white mt-2">Build your Tight 15 for bracket night.</div>
+                                    <div className="text-sm text-zinc-200 mt-1">
+                                        The host will launch once at least {BRACKET_SIGNUP_MIN_READY_COUNT} singers reach {(bracketSignupSummary.signup?.readySongMin || 5)}+ saved songs.
+                                    </div>
+                                </div>
+                                <div className="shrink-0 rounded-2xl border border-cyan-300/35 bg-cyan-500/10 px-3 py-2 text-right">
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-200">Countdown</div>
+                                    <div className="text-xl font-black text-white mt-1">
+                                        {Math.max(0, Math.ceil((bracketSignupSummary.remainingMs || 0) / 60000))} min
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 mt-3">
+                                <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Ready</div>
+                                    <div className="text-lg font-black text-white mt-1">{bracketSignupSummary.readyCount}</div>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Joined</div>
+                                    <div className="text-lg font-black text-white mt-1">{bracketSignupSummary.totalCount}</div>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">You</div>
+                                    <div className="text-sm font-black text-white mt-1">
+                                        {myBracketSignupEntry ? `${myBracketSignupEntry.tight15Count}/15` : 'Join room'}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-3 flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => { setTab('request'); setSongsTab('tight15'); }}
+                                    className="flex-1 rounded-2xl border border-cyan-300/40 bg-cyan-500/18 px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-cyan-100"
+                                >
+                                    Open Tight 15
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setTab('social'); setSocialTab('lobby'); }}
+                                    className="rounded-2xl border border-white/15 bg-white/8 px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-white"
+                                >
+                                    Lobby
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     {currentSinger ? (
-                        <div className={`bg-indigo-900/80 rounded-2xl border border-indigo-500/30 shadow-lg backdrop-blur-md relative overflow-hidden ${isNativeMobileLayout ? 'mobile-native-stage-card' : ''}`}>
+                        <div data-feature-id="singer-current-performance-card" className={`bg-indigo-900/80 rounded-2xl border border-indigo-500/30 shadow-lg backdrop-blur-md relative overflow-hidden ${isNativeMobileLayout ? 'mobile-native-stage-card' : ''}`}>
                             <div className={`px-4 py-3 border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70 ${isNativeMobileLayout ? 'mobile-native-stage-meta' : ''}`}>
                                 <div className="flex items-center justify-between gap-3">
                                     <div className="flex items-center gap-2">

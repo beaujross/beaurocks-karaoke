@@ -4,6 +4,19 @@ import { db, doc, onSnapshot, setDoc, updateDoc, serverTimestamp } from '../lib/
 import { APP_ID } from '../lib/assets';
 import { shuffleArray } from '../lib/utils';
 import { TRIVIA_BANK, WYR_BANK } from '../lib/gameDataConstants';
+import {
+    BRACKET_SIGNUP_DEFAULT_DURATION_MIN,
+    BRACKET_SIGNUP_DEFAULT_READY_COUNT,
+    BRACKET_SIGNUP_MIN_READY_COUNT,
+    getBracketSignupState,
+    summarizeBracketSignup
+} from '../lib/karaokeBracketSupport';
+import {
+    findRoomUserByUid,
+    getResolvedRoomUserUids,
+    resolveRoomUserUid,
+    selectQuickLaunchBingoBoard
+} from '../lib/gameLaunchSupport';
 
 const STYLES = {
     btnStd: "rounded-xl font-bold transition-all active:scale-95 shadow-md uppercase tracking-wider flex items-center justify-center border text-[11px] sm:text-xs py-2 px-3 cursor-pointer whitespace-nowrap backdrop-blur-sm gap-2 min-h-[34px] focus:outline-none focus-visible:outline-none focus-visible:ring-0",
@@ -59,8 +72,6 @@ const MYSTERY_PRESETS = {
         { title: 'Hey Ya', artist: 'OutKast', clue: 'Shake it like a Polaroid' }
     ]
 };
-
-const resolveRoomUserUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
 
 const getBracketMatchCrowdVotes = ({ users = [], bracketId = '', match = null }) => {
     const summary = {
@@ -279,6 +290,7 @@ const UnifiedGameLauncher = ({
     capabilities = {},
     entitlementStatus = {},
     bracketBusy = false,
+    onOpenSweet16BracketSignup,
     onCreateSweet16Bracket,
     onQueueNextBracketMatch,
     onClearSweet16Bracket,
@@ -303,9 +315,11 @@ const UnifiedGameLauncher = ({
     const [selectedGameForConfig, setSelectedGameForConfig] = useState(null);
     const [selectedSingerId, setSelectedSingerId] = useState('');
     const sortedUsers = [...users].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    const allUserIds = useMemo(() => sortedUsers.map(u => u.id.split('_')[1]), [sortedUsers]);
+    const allUserIds = useMemo(() => getResolvedRoomUserUids(sortedUsers), [sortedUsers]);
     const [bracketSeedUids, setBracketSeedUids] = useState([]);
     const [bracketSeedRandomize, setBracketSeedRandomize] = useState(false);
+    const [bracketSignupDurationMin, setBracketSignupDurationMin] = useState(BRACKET_SIGNUP_DEFAULT_DURATION_MIN);
+    const [bracketSignupReadySongMin, setBracketSignupReadySongMin] = useState(BRACKET_SIGNUP_DEFAULT_READY_COUNT);
     const bracketCandidates = useMemo(
         () => sortedUsers.filter((entry) => !isHostCandidate(room, entry)),
         [sortedUsers, room]
@@ -494,12 +508,16 @@ const UnifiedGameLauncher = ({
             const data = snap.data() || {};
             const nextTrivia = Array.isArray(data.trivia) && data.trivia.length ? normalizeTrivia(data.trivia) : normalizeTrivia(TRIVIA_BANK);
             const nextWyr = Array.isArray(data.wyr) && data.wyr.length ? normalizeWyr(data.wyr) : normalizeWyr(WYR_BANK);
+            const hasBingoBoards = Array.isArray(data.bingo) && data.bingo.length > 0;
+            const nextBingo = hasBingoBoards ? data.bingo : PRESET_BINGO_BOARDS;
             if (!snap.exists()) {
-                setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { trivia: nextTrivia, wyr: nextWyr }, { merge: true }).catch(() => {});
+                setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { trivia: nextTrivia, wyr: nextWyr, bingo: PRESET_BINGO_BOARDS }, { merge: true }).catch(() => {});
+            } else if (!hasBingoBoards) {
+                setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { bingo: PRESET_BINGO_BOARDS }, { merge: true }).catch(() => {});
             }
             setTriviaBank(nextTrivia);
             setWyrBank(nextWyr);
-            setBingoBoards(Array.isArray(data.bingo) ? data.bingo : []);
+            setBingoBoards(nextBingo);
         });
         return () => unsub();
     }, [roomCode]);
@@ -528,6 +546,21 @@ const UnifiedGameLauncher = ({
             return fallback;
         });
     }, [showGameConfig, selectedGameForConfig, bracketCandidates, room?.karaokeBracket?.id, room?.karaokeBracket?.contestantOrder]);
+
+    useEffect(() => {
+        if (!showGameConfig || selectedGameForConfig !== 'karaoke_bracket') return;
+        const signup = getBracketSignupState(room?.karaokeBracket);
+        setBracketSignupDurationMin(signup?.durationMin || BRACKET_SIGNUP_DEFAULT_DURATION_MIN);
+        setBracketSignupReadySongMin(signup?.readySongMin || BRACKET_SIGNUP_DEFAULT_READY_COUNT);
+    }, [
+        showGameConfig,
+        selectedGameForConfig,
+        room?.karaokeBracket,
+        room?.karaokeBracket?.status,
+        room?.karaokeBracket?.signup?.durationMin,
+        room?.karaokeBracket?.signup?.readySongMin,
+        room?.karaokeBracket?.signup?.deadlineMs
+    ]);
 
     useEffect(() => {
         if (!selectedTriviaId && triviaBank.length) {
@@ -639,7 +672,7 @@ const UnifiedGameLauncher = ({
         if (gameId === 'vocal_challenge') {
             const playableUsers = sortedUsers.filter((entry) => !isHostCandidate(room, entry));
             if (playableUsers.length === 1) {
-                return startVocalTurnsForParticipants([playableUsers[0].id.split('_')[1]], { quick: true });
+                return startVocalTurnsForParticipants([resolveRoomUserUid(playableUsers[0])], { quick: true });
             }
             return startVocalAmbient({ quick: true });
         }
@@ -648,7 +681,7 @@ const UnifiedGameLauncher = ({
         if (gameId === 'trivia_pop') return startRandomTrivia();
         if (gameId === 'wyr') return startRandomWyr();
         if (gameId === 'bingo') {
-            const board = bingoBoards[0];
+            const board = selectQuickLaunchBingoBoard({ bingoBoards, presetBoards: PRESET_BINGO_BOARDS });
             if (!board) {
                 toast('Add a bingo board first.');
                 return startGame(gameId);
@@ -681,6 +714,12 @@ const UnifiedGameLauncher = ({
                 toast('Bracket launched');
                 return;
             }
+            if (onOpenSweet16BracketSignup) {
+                return onOpenSweet16BracketSignup({
+                    durationMin: bracketSignupDurationMin,
+                    readySongMin: bracketSignupReadySongMin
+                });
+            }
             if (onCreateSweet16Bracket) {
                 return onCreateSweet16Bracket();
             }
@@ -703,7 +742,7 @@ const UnifiedGameLauncher = ({
     };
 
     const startFlappySoloForUser = async (selected, { quick = false } = {}) => {
-        const uid = selected?.id?.split('_')[1];
+        const uid = resolveRoomUserUid(selected);
         if (!selected || !uid) {
             toast("Pick a singer to start Solo Flappy.");
             return;
@@ -721,7 +760,7 @@ const UnifiedGameLauncher = ({
     };
     
     const startFlappySolo = async () => {
-        const selected = users.find(u => u.id?.split('_')[1] === selectedSingerId);
+        const selected = findRoomUserByUid(users, selectedSingerId);
         if (!selected) { toast("Pick a singer to start Solo Flappy."); return; }
         await startFlappySoloForUser(selected, { quick: false });
         setShowGameConfig(false);
@@ -756,12 +795,12 @@ const UnifiedGameLauncher = ({
     const startVocalTurnsForParticipants = async (participantIds = [], { quick = false } = {}) => {
         const participants = Array.isArray(participantIds) && participantIds.length
             ? participantIds
-            : (vocalParticipants.length ? vocalParticipants : sortedUsers.map(u => u.id.split('_')[1]));
+            : (vocalParticipants.length ? vocalParticipants : allUserIds);
         if (!participants.length) { toast("Select at least one participant."); return; }
-        const first = users.find(u => u.id?.split('_')[1] === participants[0]);
+        const first = findRoomUserByUid(users, participants[0]);
         const uid = participants[0];
         const participantMeta = participants.map((pid) => {
-            const found = users.find(u => u.id?.split('_')[1] === pid);
+            const found = findRoomUserByUid(users, pid);
             return { id: pid, name: found?.name || 'Singer', avatar: found?.avatar || 'O' };
         });
         await updateRoom({
@@ -832,12 +871,12 @@ const UnifiedGameLauncher = ({
     };
     
     const startRidingScalesTurns = async () => {
-        const participants = scaleParticipants.length ? scaleParticipants : sortedUsers.map(u => u.id.split('_')[1]);
+        const participants = scaleParticipants.length ? scaleParticipants : allUserIds;
         if (!participants.length) { toast("Select at least one participant."); return; }
-        const first = users.find(u => u.id?.split('_')[1] === participants[0]);
+        const first = findRoomUserByUid(users, participants[0]);
         const now = Date.now();
         const participantMeta = participants.map((pid) => {
-            const found = users.find(u => u.id?.split('_')[1] === pid);
+            const found = findRoomUserByUid(users, pid);
             return { id: pid, name: found?.name || 'Singer', avatar: found?.avatar || '🎤' };
         });
         await updateRoom({
@@ -894,7 +933,7 @@ const UnifiedGameLauncher = ({
         }
         
         const prompts = doodlePromptsText.trim().split('\n').filter(p => p.trim());
-        const allParticipants = doodleParticipants.length ? doodleParticipants : sortedUsers.map(u => u.id.split('_')[1]);
+        const allParticipants = doodleParticipants.length ? doodleParticipants : allUserIds;
         
         if (!allParticipants.length) {
             toast("Select at least one participant");
@@ -1123,7 +1162,7 @@ const UnifiedGameLauncher = ({
 
     const startBingo = async (board) => {
         if (!board?.tiles?.length) return;
-        const size = board.size || Math.sqrt(board.tiles.length) || 5;
+        const size = Math.max(1, Number(board.size || Math.sqrt(board.tiles.length) || 5) || 5);
         const mode = board.mode || (board.tiles[0]?.type || 'karaoke');
         const bingoSessionId = `bingo_${Date.now()}`;
         const initialRevealed = buildInitialBingoRevealed(board.tiles);
@@ -1586,6 +1625,11 @@ const UnifiedGameLauncher = ({
                 canUseAiGeneration={canUseAiGeneration}
                 aiGateMessage={aiGateMessage}
                 bracketBusy={bracketBusy}
+                bracketSignupDurationMin={bracketSignupDurationMin}
+                setBracketSignupDurationMin={setBracketSignupDurationMin}
+                bracketSignupReadySongMin={bracketSignupReadySongMin}
+                setBracketSignupReadySongMin={setBracketSignupReadySongMin}
+                onOpenSweet16BracketSignup={onOpenSweet16BracketSignup}
                 onCreateSweet16Bracket={onCreateSweet16Bracket}
                 onQueueNextBracketMatch={onQueueNextBracketMatch}
                 onClearSweet16Bracket={onClearSweet16Bracket}
@@ -1781,7 +1825,8 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                                 <>
                                     <div className="grid grid-cols-2 gap-2 max-h-28 overflow-y-auto custom-scrollbar">
                                         {users.map(u => {
-                                            const uid = u.id.split('_')[1];
+                                            const uid = resolveRoomUserUid(u);
+                                            if (!uid) return null;
                                             const selectedIds = participantConfig?.participants || [];
                                             const isSelected = selectedIds.includes(uid);
                                             return (
@@ -1799,7 +1844,7 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                                         })}
                                     </div>
                                     <div className="flex gap-2">
-                                        <button type="button" onClick={() => participantConfig?.setParticipants?.(users.map(u => u.id.split('_')[1]))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-xs`} style={touchButtonStyle}>Select all</button>
+                                        <button type="button" onClick={() => participantConfig?.setParticipants?.(getResolvedRoomUserUids(users))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-xs`} style={touchButtonStyle}>Select all</button>
                                         <button type="button" onClick={() => participantConfig?.setParticipants?.([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-xs`} style={touchButtonStyle}>Clear</button>
                                     </div>
                                 </>
@@ -1862,7 +1907,8 @@ const ParticipantSelector = ({ mode, setMode, participants, setParticipants, use
                 <>
                     <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto custom-scrollbar">
                         {users.map(u => {
-                            const uid = u.id.split('_')[1];
+                            const uid = resolveRoomUserUid(u);
+                            if (!uid) return null;
                             const selected = participants.includes(uid);
                             return (
                                 <button
@@ -1877,7 +1923,7 @@ const ParticipantSelector = ({ mode, setMode, participants, setParticipants, use
                         })}
                     </div>
                     <div className="flex gap-2">
-                        <button onClick={() => setParticipants(users.map(u => u.id.split('_')[1]))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Select all</button>
+                        <button onClick={() => setParticipants(getResolvedRoomUserUids(users))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Select all</button>
                         <button onClick={() => setParticipants([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Clear</button>
                     </div>
                 </>
@@ -2513,6 +2559,11 @@ const GameConfigModal = ({
     canUseAiGeneration,
     aiGateMessage,
     bracketBusy = false,
+    bracketSignupDurationMin = BRACKET_SIGNUP_DEFAULT_DURATION_MIN,
+    setBracketSignupDurationMin,
+    bracketSignupReadySongMin = BRACKET_SIGNUP_DEFAULT_READY_COUNT,
+    setBracketSignupReadySongMin,
+    onOpenSweet16BracketSignup,
     onCreateSweet16Bracket,
     onQueueNextBracketMatch,
     onClearSweet16Bracket,
@@ -2541,9 +2592,11 @@ const GameConfigModal = ({
                         <div className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Choose game mode</div>
                         <select value={selectedSingerId} onChange={e => setSelectedSingerId(e.target.value)} className={`${STYLES.input} w-full mb-3`}>
                             <option value="">Select singer or leave blank for crowd</option>
-                            {sortedUsers.map(u => (
-                                <option key={u.id} value={u.id.split('_')[1]}>{u.name || 'Singer'}</option>
-                            ))}
+                            {sortedUsers.map(u => {
+                                const uid = resolveRoomUserUid(u);
+                                if (!uid) return null;
+                                return <option key={u.id || uid} value={uid}>{u.name || 'Singer'}</option>;
+                            })}
                         </select>
                         <div className="flex gap-2">
                             <button onClick={onStartFlappyAmbient} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
@@ -2593,7 +2646,8 @@ const GameConfigModal = ({
                             <div className="text-xs uppercase tracking-widest text-zinc-500">Spotlight participants (turns)</div>
                             <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
                                 {sortedUsers.map(u => {
-                                    const uid = u.id.split('_')[1];
+                                    const uid = resolveRoomUserUid(u);
+                                    if (!uid) return null;
                                     const selected = vocalParticipants.includes(uid);
                                     return (
                                         <button key={u.id} onClick={() => setVocalParticipants(prev => (prev.includes(uid) ? prev.filter(v => v !== uid) : [...prev, uid]))} className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-left ${selected ? 'border-[#00C4D9] bg-[#00C4D9]/10' : 'border-zinc-700 bg-zinc-900/60'}`}>
@@ -2604,7 +2658,7 @@ const GameConfigModal = ({
                                 })}
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => setVocalParticipants(sortedUsers.map(u => u.id.split('_')[1]))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
+                                <button onClick={() => setVocalParticipants(getResolvedRoomUserUids(sortedUsers))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
                                     Select all
                                 </button>
                                 <button onClick={() => setVocalParticipants([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
@@ -2668,7 +2722,8 @@ const GameConfigModal = ({
                             <div className="text-xs uppercase tracking-widest text-zinc-500">Spotlight participants</div>
                             <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
                                 {sortedUsers.map(u => {
-                                    const uid = u.id.split('_')[1];
+                                    const uid = resolveRoomUserUid(u);
+                                    if (!uid) return null;
                                     const selected = scaleParticipants.includes(uid);
                                     return (
                                         <button key={u.id} onClick={() => setScaleParticipants(prev => (prev.includes(uid) ? prev.filter(v => v !== uid) : [...prev, uid]))} className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-left ${selected ? 'border-[#00C4D9] bg-[#00C4D9]/10' : 'border-zinc-700 bg-zinc-900/60'}`}>
@@ -2679,7 +2734,7 @@ const GameConfigModal = ({
                                 })}
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => setScaleParticipants(sortedUsers.map(u => u.id.split('_')[1]))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
+                                <button onClick={() => setScaleParticipants(getResolvedRoomUserUids(sortedUsers))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
                                     Select all
                                 </button>
                                 <button onClick={() => setScaleParticipants([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
@@ -2826,7 +2881,8 @@ const GameConfigModal = ({
                             <div className="text-xs uppercase tracking-widest text-zinc-500 mt-3">Participants</div>
                             <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto custom-scrollbar">
                                 {sortedUsers.map(u => {
-                                    const uid = u.id.split('_')[1];
+                                    const uid = resolveRoomUserUid(u);
+                                    if (!uid) return null;
                                     const selected = doodleParticipants.includes(uid);
                                     return (
                                         <button key={u.id} onClick={() => setDoodleParticipants(prev => (prev.includes(uid) ? prev.filter(v => v !== uid) : [...prev, uid]))} className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-left text-xs ${selected ? 'border-[#00C4D9] bg-[#00C4D9]/10' : 'border-zinc-700 bg-zinc-900/60'}`}>
@@ -2837,7 +2893,7 @@ const GameConfigModal = ({
                                 })}
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => setDoodleParticipants(sortedUsers.map(u => u.id.split('_')[1]))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Select all</button>
+                                <button onClick={() => setDoodleParticipants(getResolvedRoomUserUids(sortedUsers))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Select all</button>
                                 <button onClick={() => setDoodleParticipants([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Clear</button>
                             </div>
                         </div>
@@ -2900,7 +2956,8 @@ const GameConfigModal = ({
                             <div className="text-xs uppercase tracking-widest text-zinc-500 mt-3">Participants</div>
                             <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto custom-scrollbar">
                                 {sortedUsers.map(u => {
-                                    const uid = u.id.split('_')[1];
+                                    const uid = resolveRoomUserUid(u);
+                                    if (!uid) return null;
                                     const selected = selfieChallengeParticipants.includes(uid);
                                     return (
                                         <button key={u.id} onClick={() => setSelfieChallengeParticipants(prev => (prev.includes(uid) ? prev.filter(v => v !== uid) : [...prev, uid]))} className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-left text-xs ${selected ? 'border-rose-400 bg-rose-500/10' : 'border-zinc-700 bg-zinc-900/60'}`}>
@@ -2911,7 +2968,7 @@ const GameConfigModal = ({
                                 })}
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => setSelfieChallengeParticipants(sortedUsers.map(u => u.id.split('_')[1]))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Select all</button>
+                                <button onClick={() => setSelfieChallengeParticipants(getResolvedRoomUserUids(sortedUsers))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Select all</button>
                                 <button onClick={() => setSelfieChallengeParticipants([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Clear</button>
                             </div>
                         </div>
@@ -3113,14 +3170,27 @@ const GameConfigModal = ({
     }
     if (selectedGame === 'karaoke_bracket') {
         const activeBracket = room?.karaokeBracket || null;
+        const candidateEntries = (Array.isArray(bracketCandidates) && bracketCandidates.length ? bracketCandidates : sortedUsers)
+            .filter((entry) => !isHostCandidate(room, entry));
+        const bracketSignup = getBracketSignupState(activeBracket);
+        const signupSummary = summarizeBracketSignup({
+            roomUsers: candidateEntries,
+            room,
+            bracket: activeBracket
+        });
         const activeRoundIndex = Math.max(0, Number(activeBracket?.activeRoundIndex || 0));
         const activeRound = activeBracket?.rounds?.[activeRoundIndex] || null;
         const matches = Array.isArray(activeRound?.matches) ? activeRound.matches : [];
         const canQueueNextMatch = !!activeBracket?.rounds?.length && activeBracket?.status !== 'complete';
         const crowdVotingEnabled = activeBracket?.crowdVotingEnabled !== false;
         const showAdvancePrompt = !!activeBracket?.roundTransition && activeBracket?.status !== 'complete' && !activeBracket?.activeMatchId;
-        const candidateEntries = (Array.isArray(bracketCandidates) && bracketCandidates.length ? bracketCandidates : sortedUsers)
-            .filter((entry) => !isHostCandidate(room, entry));
+        const launchUnlocked = signupSummary.launchUnlocked;
+        const readyRoster = signupSummary.roster.filter((entry) => entry.ready);
+        const readyCount = signupSummary.readyCount;
+        const totalCount = signupSummary.totalCount;
+        const countdownMinutesRemaining = bracketSignup?.deadlineMs
+            ? Math.max(0, Math.ceil((signupSummary.remainingMs || 0) / 60000))
+            : 0;
         const seedSet = new Set(bracketSeedUids);
         const selectedSeedEntries = bracketSeedUids
             .map((uid) => candidateEntries.find((entry) => resolveRoomUserUid(entry) === uid))
@@ -3137,14 +3207,113 @@ const GameConfigModal = ({
         return (
             <GameConfigShell
                 title="Sweet 16 Bracket"
-                subtitle="Create or reseed a tournament, queue matches, and advance winners."
+                subtitle="Open a signup screen, let singers fill Tight 15, then seed and advance the bracket."
                 accentClass="text-rose-300"
                 onClose={onClose}
             >
                 <div className="space-y-4">
+                    <div className="rounded-2xl border border-rose-300/20 bg-rose-500/8 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <div className="text-xs uppercase tracking-[0.35em] text-rose-200">Bracket Signup</div>
+                                <div className="text-sm text-zinc-300 mt-2">
+                                    Put the signup explainer on TV, send singers into <span className="font-bold text-white">Songs -&gt; Tight 15</span>, and unlock launch once at least {BRACKET_SIGNUP_MIN_READY_COUNT} singers are ready.
+                                </div>
+                            </div>
+                            {bracketSignup && (
+                                <div className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-2 text-right">
+                                    <div className="text-[10px] uppercase tracking-[0.3em] text-cyan-200">Live Countdown</div>
+                                    <div className="text-lg font-black text-white mt-1">{countdownMinutesRemaining} min left</div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                            <label className="rounded-xl border border-zinc-700 bg-black/25 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Countdown</div>
+                                <select
+                                    value={String(bracketSignupDurationMin)}
+                                    onChange={(e) => setBracketSignupDurationMin(Number(e.target.value) || BRACKET_SIGNUP_DEFAULT_DURATION_MIN)}
+                                    className={`${STYLES.input} mt-2 w-full`}
+                                >
+                                    {[10, 15, 20].map((minutes) => (
+                                        <option key={minutes} value={minutes}>{minutes} minutes</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className="rounded-xl border border-zinc-700 bg-black/25 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Ready At</div>
+                                <select
+                                    value={String(bracketSignupReadySongMin)}
+                                    onChange={(e) => setBracketSignupReadySongMin(Number(e.target.value) || BRACKET_SIGNUP_DEFAULT_READY_COUNT)}
+                                    className={`${STYLES.input} mt-2 w-full`}
+                                >
+                                    {[3, 5].map((count) => (
+                                        <option key={count} value={count}>{count} songs in Tight 15</option>
+                                    ))}
+                                </select>
+                            </label>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                            <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Ready Singers</div>
+                                <div className="text-2xl font-black text-white mt-1">{readyCount}</div>
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Joined Singers</div>
+                                <div className="text-2xl font-black text-white mt-1">{totalCount}</div>
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Launch Status</div>
+                                <div className={`text-sm font-black mt-2 ${launchUnlocked ? 'text-emerald-200' : 'text-amber-200'}`}>
+                                    {launchUnlocked ? 'Ready to seed bracket' : `Waiting for ${BRACKET_SIGNUP_MIN_READY_COUNT} ready singers`}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                data-feature-id="host-bracket-signup-open"
+                                onClick={() => onOpenSweet16BracketSignup?.({
+                                    durationMin: bracketSignupDurationMin,
+                                    readySongMin: bracketSignupReadySongMin
+                                })}
+                                disabled={bracketBusy || !onOpenSweet16BracketSignup || !!activeBracket?.rounds?.length}
+                                className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-4 py-2 text-sm ${(bracketBusy || !onOpenSweet16BracketSignup || !!activeBracket?.rounds?.length) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                {bracketSignup ? 'Refresh Signup Screen' : 'Open Bracket Signup'}
+                            </button>
+                            {!!activeBracket?.rounds?.length && (
+                                <div className="text-xs text-zinc-500 self-center">
+                                    Clear the current bracket before opening a new signup round.
+                                </div>
+                            )}
+                        </div>
+                        <div className="mt-4 rounded-xl border border-zinc-700 bg-zinc-950/50 p-3">
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                                <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Readiness Board</div>
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Ready = {bracketSignup?.readySongMin || bracketSignupReadySongMin}+ songs</div>
+                            </div>
+                            <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                                {signupSummary.roster.map((entry) => (
+                                    <div key={entry.uid} className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="text-sm font-bold text-white truncate">{entry.avatar ? `${entry.avatar} ` : ''}{entry.name}</div>
+                                            <div className="text-[11px] text-zinc-500 mt-1">{entry.tight15Count}/15 songs saved</div>
+                                        </div>
+                                        <div className={`shrink-0 rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.24em] ${entry.ready ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : 'border-amber-300/40 bg-amber-500/12 text-amber-100'}`}>
+                                            {entry.ready ? 'Ready' : 'Needs songs'}
+                                        </div>
+                                    </div>
+                                ))}
+                                {!signupSummary.roster.length && (
+                                    <div className="text-[11px] text-zinc-500">No singers have joined yet.</div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                     <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
                         <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Participants + Seeding</div>
-                        <div className="text-xs text-zinc-400 mt-2">Select singers and set seed order. Only singers with Tight 15 entries will be kept when bracket is created.</div>
+                        <div className="text-xs text-zinc-400 mt-2">Select singers and set seed order. When signup is active, only singers who reached the ready threshold will be kept when the bracket is created.</div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
                             <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 p-3">
                                 <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mb-2">Available</div>
@@ -3220,10 +3389,10 @@ const GameConfigModal = ({
                                 seedUids: bracketSeedUids,
                                 randomize: !!bracketSeedRandomize
                             })}
-                            disabled={bracketBusy || !onCreateSweet16Bracket}
-                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm ${(bracketBusy || !onCreateSweet16Bracket) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            disabled={bracketBusy || !onCreateSweet16Bracket || (!!bracketSignup && !launchUnlocked)}
+                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm ${(bracketBusy || !onCreateSweet16Bracket || (!!bracketSignup && !launchUnlocked)) ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
-                            {bracketBusy ? 'Working...' : 'Create / Reseed From Seeds'}
+                            {bracketBusy ? 'Working...' : bracketSignup ? 'Create Bracket From Ready Singers' : 'Create / Reseed From Seeds'}
                         </button>
                         <button
                             onClick={() => onQueueNextBracketMatch?.()}
@@ -3266,7 +3435,7 @@ const GameConfigModal = ({
                     </div>
                     {!activeBracket?.rounds?.length ? (
                         <div className="text-sm text-zinc-400 bg-black/40 border border-white/10 rounded-2xl p-4">
-                            Creates single-elimination 1v1 matches. Each match auto-picks random songs from each singer&apos;s Tight 15.
+                            Creates single-elimination 1v1 matches. Each match auto-picks random songs from each singer&apos;s Tight 15. {bracketSignup ? `Current ready roster: ${readyRoster.length} singers.` : ''}
                         </div>
                     ) : (
                         <div className="space-y-3">

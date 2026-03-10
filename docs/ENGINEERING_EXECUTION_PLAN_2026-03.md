@@ -27,7 +27,7 @@ Everything else is secondary until this path is boringly reliable.
 
 ## Operating Rules
 
-- No deploy without the golden host-room smoke passing.
+- No deploy without the canonical core-night smoke passing.
 - No new client-owned critical workflow when a backend-owned workflow is feasible.
 - No business rule duplication across React effects and Cloud Functions.
 - No net-new large-file growth in `src/apps/Host/HostApp.jsx` or `functions/index.js`.
@@ -38,7 +38,7 @@ Everything else is secondary until this path is boringly reliable.
 Primary gate for production-facing changes:
 
 ```powershell
-npm run qa:golden:host-room-hands-off:secure
+npm run qa:release:core-night
 ```
 
 Supporting checks for launch-sensitive work:
@@ -64,10 +64,11 @@ npm run qa:p0
   - `README.md`
 - Exit criteria:
   - release-critical flow is explicitly named
-  - “nice to have” checks are separated from blocking checks
+  - "nice to have" checks are separated from blocking checks
   - another developer can tell what blocks a deploy
+- Status: completed 2026-03-09
 
-#### EX-02: Add a single “core-night release” command
+#### EX-02: Add a single "core-night release" command
 
 - Outcome: one command that expresses the real production release gate.
 - Primary targets:
@@ -78,6 +79,7 @@ npm run qa:p0
   - one command runs the required smoke
   - failure output points at likely operator action
   - release docs reference the same command
+- Status: completed 2026-03-09 via `npm run qa:release:core-night`
 
 #### EX-03: Expand smoke evidence for the active performance path
 
@@ -91,6 +93,7 @@ npm run qa:p0
   - smoke verifies request propagation to active performance state
   - smoke verifies Pop Trivia on audience and TV during a performing song
   - failure screenshots and errors are still readable
+- Status: completed 2026-03-09 via `npm run qa:release:core-night` on room `8SAJ`
 
 ### WS2: Operational Safety
 
@@ -118,6 +121,7 @@ npm run qa:p0
   - critical async pipelines define pending, failed, retry, and recovery behavior
   - production diagnostics can identify rooms/songs stranded in bad states
   - runbooks tell the operator what to inspect first
+- Status: completed 2026-03-09 via async pipeline audit tooling and overnight integration; local audit path verified, live Firestore scan requires admin credentials
 
 ### WS3: Ownership Boundaries
 
@@ -133,6 +137,7 @@ npm run qa:p0
   - host access state logic is pure/shared where possible
   - room launch orchestration is isolated from large render paths
   - changes to host approval do not require reading unrelated host UI code
+- Status: completed 2026-03-10 via `useHostLaunchFlow` + `useHostRoomEntry`; production release gate passed on room `43UU`
 
 #### EX-07: Split high-risk Cloud Functions domains out of `functions/index.js`
 
@@ -158,7 +163,7 @@ npm run qa:p0
   - `tests/integration/hostAccessGuardrails.test.cjs`
 - Exit criteria:
   - whitelist, super-admin, paid entitlement, and demo bypass rules are explicit
-  - “secret exists” never acts as authorization
+  - "secret exists" never acts as authorization
   - fallback behavior under quota/provider failure is documented and tested
 
 ### WS4: Public Launch Discipline

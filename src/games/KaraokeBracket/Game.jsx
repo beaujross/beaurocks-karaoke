@@ -1,6 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { db, doc, updateDoc, serverTimestamp } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
+import {
+    BRACKET_SIGNUP_MIN_READY_COUNT,
+    isBracketSignupOpen,
+    summarizeBracketSignup
+} from '../../lib/karaokeBracketSupport';
 
 const getContestant = (state, uid) => {
     if (!uid) return null;
@@ -39,8 +44,14 @@ const buildMatchVoteSummary = ({ users = [], bracketId = '', match = null }) => 
     return summary;
 };
 
-const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode = '' }) => {
+const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode = '', room = null, onOpenTight15 }) => {
     const state = gameState || {};
+    const signupSummary = summarizeBracketSignup({
+        roomUsers: users,
+        room,
+        bracket: state
+    });
+    const showSignup = isBracketSignupOpen(state);
     const rounds = Array.isArray(state?.rounds) ? state.rounds : [];
     const activeRoundIndex = Math.max(0, Number(state?.activeRoundIndex || 0));
     const round = rounds[activeRoundIndex] || rounds[0] || null;
@@ -91,6 +102,87 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
         && !localInActiveMatch
         && !isComplete
         && crowdVotingEnabled;
+
+    if (showSignup) {
+        const readySongMin = signupSummary.signup?.readySongMin || 5;
+        const countdownMinutesRemaining = signupSummary.signup?.deadlineMs
+            ? Math.max(0, Math.ceil((signupSummary.remainingMs || 0) / 60000))
+            : 0;
+        const rosterPreview = signupSummary.roster.slice(0, view === 'tv' ? 10 : 6);
+        return (
+            <div className="h-full w-full bg-gradient-to-br from-black via-[#240015] to-[#120012] text-white p-6 md:p-10 overflow-y-auto">
+                <div className="max-w-6xl mx-auto">
+                    <div className="rounded-[2.2rem] border border-rose-300/25 bg-black/45 p-6 md:p-10 shadow-[0_0_70px_rgba(244,63,94,0.15)]">
+                        <div className="text-center">
+                            <div className={metaLabelClass}>Karaoke Tournament Setup</div>
+                            <div className={`${titleSize} font-bebas text-rose-300 mt-3`}>Sweet 16 Signup</div>
+                            <div className={`${view === 'tv' ? 'text-2xl' : 'text-base'} text-zinc-200 mt-3 max-w-3xl mx-auto`}>
+                                Build your Tight 15 now. The host will launch the bracket once at least {BRACKET_SIGNUP_MIN_READY_COUNT} singers have {readySongMin}+ songs saved.
+                            </div>
+                            <div className="mt-4 inline-flex items-center rounded-full border border-cyan-300/40 bg-cyan-500/10 px-4 py-2 text-cyan-100">
+                                <span className={`${view === 'tv' ? 'text-base' : 'text-xs'} uppercase tracking-[0.22em]`}>On your phone: Songs -&gt; Tight 15</span>
+                            </div>
+                        </div>
+                        <div className={`grid grid-cols-1 ${view === 'tv' ? 'md:grid-cols-3' : ''} gap-4 mt-8`}>
+                            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                                <div className={subtleLabelClass}>Ready Singers</div>
+                                <div className={`${view === 'tv' ? 'text-5xl' : 'text-3xl'} font-black text-white mt-2`}>{signupSummary.readyCount}</div>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                                <div className={subtleLabelClass}>Joined Singers</div>
+                                <div className={`${view === 'tv' ? 'text-5xl' : 'text-3xl'} font-black text-white mt-2`}>{signupSummary.totalCount}</div>
+                            </div>
+                            <div className="rounded-2xl border border-cyan-300/30 bg-cyan-500/10 p-4">
+                                <div className={subtleLabelClass}>Countdown</div>
+                                <div className={`${view === 'tv' ? 'text-5xl' : 'text-3xl'} font-black text-white mt-2`}>{countdownMinutesRemaining} min</div>
+                            </div>
+                        </div>
+                        <div className="mt-6 rounded-3xl border border-white/10 bg-black/30 p-4 md:p-6">
+                            <div className="flex items-center justify-between gap-3 mb-3">
+                                <div className={subtleLabelClass}>Readiness Board</div>
+                                <div className={`${view === 'tv' ? 'text-sm' : 'text-[11px]'} uppercase tracking-[0.22em] text-zinc-400`}>Ready = {readySongMin}+ songs</div>
+                            </div>
+                            <div className={`grid grid-cols-1 ${view === 'tv' ? 'md:grid-cols-2' : ''} gap-3`}>
+                                {rosterPreview.map((entry) => (
+                                    <div key={entry.uid} className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className={`${view === 'tv' ? 'text-2xl' : 'text-base'} font-black text-white truncate`}>
+                                                {entry.avatar ? `${entry.avatar} ` : ''}{entry.name}
+                                            </div>
+                                            <div className={`${view === 'tv' ? 'text-base' : 'text-xs'} text-zinc-400 mt-1`}>
+                                                {entry.tight15Count}/15 songs saved
+                                            </div>
+                                        </div>
+                                        <div className={`shrink-0 rounded-full border px-3 py-1 ${entry.ready ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : 'border-amber-300/40 bg-amber-500/12 text-amber-100'}`}>
+                                            <span className={`${view === 'tv' ? 'text-sm' : 'text-[10px]'} uppercase tracking-[0.22em]`}>
+                                                {entry.ready ? 'Ready' : 'Build list'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                                {!rosterPreview.length && (
+                                    <div className={`${view === 'tv' ? 'text-lg' : 'text-sm'} text-zinc-400`}>
+                                        Waiting for singers to join the room.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        {view === 'mobile' && typeof onOpenTight15 === 'function' && (
+                            <div className="mt-6">
+                                <button
+                                    type="button"
+                                    onClick={onOpenTight15}
+                                    className="w-full rounded-2xl border border-cyan-300/40 bg-cyan-500/20 px-4 py-4 text-base font-black uppercase tracking-[0.18em] text-cyan-100"
+                                >
+                                    Open Tight 15
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const castVote = async (targetUid) => {
         if (!canVote || voteBusy || !targetUid) return;

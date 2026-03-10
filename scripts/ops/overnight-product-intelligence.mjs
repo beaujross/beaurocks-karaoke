@@ -69,6 +69,7 @@ const summaryPath = path.join(outDir, "overnight-summary.md");
 const cyclesDir = path.join(outDir, "cycles");
 const screenshotsDir = path.join(outDir, "screenshots");
 const stepLogsDir = path.join(outDir, "steps");
+const asyncAuditReportPath = path.join(stepLogsDir, "async-pipeline-audit-report.json");
 
 const ensurePlaywright = async () => {
   try {
@@ -507,6 +508,40 @@ const writeSummary = async (report = {}) => {
     lines.push("");
   }
 
+  const asyncAuditStep = Array.isArray(report.steps)
+    ? report.steps.find((step) => step.id === "async_pipeline_audit" && step.reportPath)
+    : null;
+  if (asyncAuditStep?.reportPath) {
+    try {
+      const auditRaw = await fs.readFile(asyncAuditStep.reportPath, "utf8");
+      const audit = JSON.parse(auditRaw);
+      if (audit?.skipped) {
+        lines.push("## Async Pipeline Audit");
+        lines.push("");
+        lines.push(`- Skipped: ${audit.reason || "unknown reason"}`);
+        lines.push("");
+      } else if (audit?.ok) {
+        lines.push("## Async Pipeline Audit");
+        lines.push("");
+        lines.push(`- Lyrics issues: ${audit.lyrics?.totalIssues || 0}`);
+        lines.push(`- Lyrics recovery eligible: ${audit.lyrics?.recoveryEligible || 0}`);
+        lines.push(`- Pop Trivia issues: ${audit.popTrivia?.totalIssues || 0}`);
+        lines.push(`- Pop Trivia recovery eligible: ${audit.popTrivia?.recoveryEligible || 0}`);
+        const topLyrics = Array.isArray(audit.lyrics?.samples) ? audit.lyrics.samples[0] : null;
+        const topTrivia = Array.isArray(audit.popTrivia?.samples) ? audit.popTrivia.samples[0] : null;
+        if (topLyrics) {
+          lines.push(`- Top lyrics issue: room ${topLyrics.roomCode || "UNKNOWN"} / ${topLyrics.songTitle || topLyrics.songDocId} / ${topLyrics.issueCode}`);
+        }
+        if (topTrivia) {
+          lines.push(`- Top Pop Trivia issue: room ${topTrivia.roomCode || "UNKNOWN"} / ${topTrivia.songTitle || topTrivia.songDocId} / ${topTrivia.issueCode}`);
+        }
+        lines.push("");
+      }
+    } catch {
+      // Ignore summary expansion failure and keep the core report intact.
+    }
+  }
+
   lines.push("## Artifacts");
   lines.push("");
   lines.push(`- JSON report: ${reportPath}`);
@@ -575,6 +610,25 @@ const run = async () => {
 
       if (!directoryAuditRun && !skipDirectoryAudit) {
         directoryAuditRun = true;
+        console.log("\n=== Async pipeline audit ===");
+        const asyncAuditStep = await runChildStep({
+          id: "async_pipeline_audit",
+          label: "Async pipeline audit",
+          command: process.execPath,
+          commandArgs: [
+            "scripts/ops/async-pipeline-audit.mjs",
+            "--lookback-hours",
+            "24",
+            "--limit",
+            "150",
+            "--report",
+            asyncAuditReportPath,
+          ],
+        });
+        asyncAuditStep.reportPath = asyncAuditReportPath;
+        report.steps.push(asyncAuditStep);
+        await writeJson(path.join(stepLogsDir, "async-pipeline-audit-step.json"), asyncAuditStep);
+
         console.log("\n=== Directory audit dry-run ===");
         const step = await runChildStep({
           id: "directory_audit",

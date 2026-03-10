@@ -33,6 +33,7 @@ import useQueueTabState from './hooks/useQueueTabState';
 import useModerationInboxState from './hooks/useModerationInboxState';
 import useHostSmokeTest from './hooks/useHostSmokeTest';
 import useHostLaunchFlow from './hooks/useHostLaunchFlow';
+import useHostRoomEntry from './hooks/useHostRoomEntry';
 import HOST_UI_FEATURE_CHECKLIST from './hostUiFeatureChecklist';
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
@@ -72,6 +73,11 @@ import {
     isRecoverableAppCheckError,
 } from '../../lib/appCheckErrors';
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
+import {
+    BRACKET_SIGNUP_MIN_READY_COUNT,
+    buildBracketSignupState,
+    getBracketSignupState
+} from '../../lib/karaokeBracketSupport';
 import {
     POP_TRIVIA_VOTE_TYPE
 } from '../../lib/popTrivia';
@@ -2835,7 +2841,7 @@ const AudienceMiniPreview = ({
                                     <div className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">Layout {layoutLabel}</div>
                                 </div>
                             ) : currentSong ? (
-                                <div className="absolute inset-0 p-3 flex flex-col justify-between">
+                                <div data-feature-id="host-now-performing-card" className="absolute inset-0 p-3 flex flex-col justify-between">
                                     <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Now Performing</div>
                                     <div className="flex items-center gap-2 min-w-0">
                                         {currentSong.albumArtUrl ? (
@@ -5162,7 +5168,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [tipAmount, setTipAmount] = useState('');
     const [tipGiftUserId, setTipGiftUserId] = useState('');
     const [tipGiftAmount, setTipGiftAmount] = useState('');
-    const [joiningRoom, setJoiningRoom] = useState(false);
     const [roomManagerBusyCode, setRoomManagerBusyCode] = useState('');
     const [roomManagerBusyAction, setRoomManagerBusyAction] = useState('');
     const [roomManagerError, setRoomManagerError] = useState('');
@@ -6743,6 +6748,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         trackEvent,
         hostRoomProvisionDeploymentWarning: HOST_ROOM_PROVISION_DEPLOYMENT_WARNING,
     });
+    const {
+        joiningRoom,
+        joinRoom,
+    } = useHostRoomEntry({
+        roomCodeInput,
+        ensureActiveUid,
+        runWithAppCheckWarmup,
+        assertRoomHostAccess,
+        isMarketingDemoEmbed,
+        callFunction,
+        hostLogger,
+        setRoomCode,
+        setRoomCodeInput,
+        setQuickStartChecklistRoomCode,
+        setQuickStartChecklistProgress,
+        setView,
+        setEntryError,
+        toast,
+    });
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -7600,125 +7624,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         nightSetupPrimaryMode
     ]);
 
-    const joinRoom = async (candidateCode, options = {}) => {
-        const silent = !!options?.silent;
-        if (joiningRoom) return;
-        const code = (candidateCode || roomCodeInput || '').trim().toUpperCase();
-        if (!code) {
-            if (!silent) {
-                toast('Enter a room code first');
-                setEntryError('Enter a room code first.');
-            }
-            return false;
-        }
-
-        setJoiningRoom(true);
-        setEntryError('');
-        try {
-            const activeUid = await ensureActiveUid();
-            if (!activeUid) {
-                if (!silent) {
-                    toast('Could not establish auth. Please retry.');
-                    setEntryError('Could not establish auth. Retry and join again.');
-                }
-                return false;
-            }
-            await runWithAppCheckWarmup(
-                () => assertRoomHostAccess(code),
-                { scope: 'assertRoomHostAccess' }
-            );
-
-            setRoomCode(code);
-            setRoomCodeInput(code);
-            setQuickStartChecklistRoomCode('');
-            setQuickStartChecklistProgress({
-                roomCode: '',
-                tvOpened: false,
-                joinLinkCopied: false,
-                roomSetupOpened: false,
-            });
-            setView('panel');
-            return true;
-        } catch (e) {
-            const errorCode = e?.code || '';
-            if (silent && isMarketingDemoEmbed && errorCode.includes('not-found')) {
-                try {
-                    const sequence = Date.now();
-                    await callFunction('runDemoDirectorAction', {
-                        roomCode: code,
-                        action: 'bootstrap',
-                        actionId: `host_embed_bootstrap_${sequence}`,
-                        sequence,
-                        sceneId: 'karaoke_kickoff',
-                        timelineMs: 0,
-                        progress: 0,
-                        playing: true,
-                        crowdSize: 12,
-                    });
-                    await runWithAppCheckWarmup(
-                        () => assertRoomHostAccess(code),
-                        { scope: 'assertRoomHostAccess' }
-                    );
-                    setRoomCode(code);
-                    setRoomCodeInput(code);
-                    setQuickStartChecklistRoomCode('');
-                    setQuickStartChecklistProgress({
-                        roomCode: '',
-                        tvOpened: false,
-                        joinLinkCopied: false,
-                        roomSetupOpened: false,
-                    });
-                    setView('panel');
-                    return true;
-                } catch (seedError) {
-                    hostLogger.debug('Marketing demo embed room bootstrap failed', { roomCode: code, error: seedError });
-                    setRoomCode(code);
-                    setRoomCodeInput(code);
-                    setQuickStartChecklistRoomCode('');
-                    setQuickStartChecklistProgress({
-                        roomCode: '',
-                        tvOpened: false,
-                        joinLinkCopied: false,
-                        roomSetupOpened: false,
-                    });
-                    setView('panel');
-                    return false;
-                }
-            }
-            if (!silent) {
-                if (errorCode.includes('not-found')) {
-                    toast(`Room ${(candidateCode || roomCodeInput || '').trim().toUpperCase()} not found`);
-                    setEntryError(`Room ${(candidateCode || roomCodeInput || '').trim().toUpperCase()} not found.`);
-                } else if (errorCode.includes('permission-denied')) {
-                    toast('Only room hosts can open host controls for this room.');
-                    setEntryError('Only room hosts can open host controls for this room.');
-                } else if (errorCode.includes('unauthenticated')) {
-                    toast('You are signed out. Please retry auth, then open room again.');
-                    setEntryError('You are signed out. Retry auth, then open room again.');
-                } else if (isRecoverableAppCheckError(e)) {
-                    toast('Security check is warming up. Please retry in a moment.');
-                    setEntryError('Security check is warming up. Please retry in a moment.');
-                } else if (errorCode.includes('unavailable') || errorCode.includes('network')) {
-                    toast('Network issue while opening room. Please retry.');
-                    setEntryError('Network issue while opening room. Please retry.');
-                } else {
-                    toast(`Failed to open room${errorCode ? ` (${errorCode})` : ''}`);
-                    setEntryError(`Failed to open room${errorCode ? ` (${errorCode})` : ''}.`);
-                }
-            }
-            return false;
-        } finally {
-            setJoiningRoom(false);
-        }
-    };
-
-    const openExistingRoomWorkspace = async (targetRoomCode = '', sectionId = 'queue.live_run') => {
-        const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
-        const joined = await joinRoom(normalizedCode || roomCodeInput);
-        if (!joined) return false;
-        if (sectionId) openAdminWorkspace(sectionId);
-        return true;
-    };
     const clearRoomDataForCode = async (targetRoomCode = '') => {
         const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
         if (!normalizedCode) return;
@@ -9476,6 +9381,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setTab('admin');
         setShowSettings(true);
     }, []);
+    const openExistingRoomWorkspace = useCallback(async (targetRoomCode = '', sectionId = 'queue.live_run') => {
+        const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
+        const joined = await joinRoom(normalizedCode || roomCodeInput);
+        if (!joined) return false;
+        if (sectionId) openAdminWorkspace(sectionId);
+        return true;
+    }, [joinRoom, openAdminWorkspace, roomCodeInput]);
     const handleStageQuickStartOpenRoomSetup = useCallback(() => {
         updateStageQuickStartProgress({ roomSetupOpened: true });
         openAdminWorkspace('ops.room_setup');
@@ -10133,10 +10045,76 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
 
+    const openSweet16BracketSignup = async (options = {}) => {
+        if (room?.karaokeBracket?.rounds?.length) {
+            toast('Clear the current bracket before opening a new signup round.');
+            return;
+        }
+        if (bracketBusy) return;
+        setBracketBusy(true);
+        try {
+            const openedAt = nowMs();
+            const signup = buildBracketSignupState({
+                durationMin: options?.durationMin,
+                readySongMin: options?.readySongMin,
+                openedAt
+            }, openedAt);
+            const bracketPayload = appendBracketAuditEvent({
+                id: room?.karaokeBracket?.id || `sweet16_${openedAt}`,
+                style: 'sweet16',
+                format: 'single_elimination',
+                roomCode,
+                size: 0,
+                status: 'signup',
+                createdAt: Number(room?.karaokeBracket?.createdAt || openedAt),
+                contestantOrder: [],
+                contestantsByUid: {},
+                rounds: [],
+                activeRoundIndex: 0,
+                activeMatchId: null,
+                crowdVotingEnabled: room?.karaokeBracket?.crowdVotingEnabled !== false,
+                roundTransition: null,
+                championCelebration: null,
+                seedMode: 'signup',
+                matchHistory: [],
+                auditTrail: Array.isArray(room?.karaokeBracket?.auditTrail) ? room.karaokeBracket.auditTrail : [],
+                championUid: null,
+                championName: '',
+                signup
+            }, {
+                type: 'signup_opened',
+                text: `Bracket signup opened (${signup.durationMin}m / ${signup.readySongMin}+ songs).`,
+                durationMin: signup.durationMin,
+                readySongMin: signup.readySongMin
+            });
+            await updateRoom({
+                activeMode: 'karaoke_bracket',
+                karaokeBracket: bracketPayload,
+                gameData: bracketPayload,
+                gameParticipantMode: 'all',
+                gameParticipants: []
+            });
+            await logActivity(
+                roomCode,
+                hostName || 'Host',
+                `opened Sweet 16 signup (${signup.durationMin} min / ${signup.readySongMin}+ songs).`,
+                EMOJI.star
+            );
+            toast('Bracket signup is live.');
+        } catch (error) {
+            hostLogger.error('Open Sweet 16 signup failed', error);
+            toast('Could not open bracket signup.');
+        } finally {
+            setBracketBusy(false);
+        }
+    };
+
     const createSweet16Bracket = async (options = {}) => {
         if (bracketBusy) return;
         setBracketBusy(true);
         try {
+            const bracketSignup = getBracketSignupState(room?.karaokeBracket);
+            const readySongMin = Math.max(1, Number(bracketSignup?.readySongMin || 1));
             const seedUids = Array.isArray(options?.seedUids) ? options.seedUids.filter(Boolean) : [];
             const seedMode = seedUids.length ? 'manual' : 'auto';
             const shouldRandomize = seedMode === 'manual' ? !!options?.randomize : true;
@@ -10152,9 +10130,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 uid: resolveRoomUserUid(u),
                 tight15: await getRoomUserTight15(u)
             })));
-            const eligible = hydrated.filter((entry) => entry.uid && entry.tight15.length > 0);
-            if (eligible.length < 2) {
-                toast('Need at least 2 singers with Tight 15 songs for a bracket.');
+            const eligible = hydrated.filter((entry) => entry.uid && entry.tight15.length >= readySongMin);
+            if (eligible.length < BRACKET_SIGNUP_MIN_READY_COUNT) {
+                toast(bracketSignup
+                    ? `Need at least ${BRACKET_SIGNUP_MIN_READY_COUNT} singers with ${readySongMin}+ Tight 15 songs for this bracket.`
+                    : 'Need at least 2 singers with Tight 15 songs for a bracket.'
+                );
                 return;
             }
             const eligibleByUid = new Map(eligible.map((entry) => [entry.uid, entry]));
@@ -10168,8 +10149,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     const entry = eligibleByUid.get(uid);
                     if (entry) ordered.push(entry);
                 });
-                if (ordered.length < 2) {
-                    toast('Need at least 2 selected singers with Tight 15 songs.');
+                if (ordered.length < BRACKET_SIGNUP_MIN_READY_COUNT) {
+                    toast(bracketSignup
+                        ? `Need at least ${BRACKET_SIGNUP_MIN_READY_COUNT} selected singers with ${readySongMin}+ Tight 15 songs.`
+                        : 'Need at least 2 selected singers with Tight 15 songs.'
+                    );
                     return;
                 }
                 seededPool = ordered;
@@ -10204,7 +10188,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 roomCode,
                 size: bracketSize,
                 status: 'setup',
-                createdAt: nowMs(),
+                createdAt: Number(room?.karaokeBracket?.createdAt || nowMs()),
                 contestantOrder,
                 contestantsByUid,
                 rounds: [firstRound],
@@ -10217,7 +10201,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 matchHistory: [],
                 auditTrail: [],
                 championUid: null,
-                championName: ''
+                championName: '',
+                signup: null
             };
             const seededNames = contestantOrder
                 .map((uid, idx) => `${idx + 1}. ${contestantsByUid?.[uid]?.name || 'Singer'}`)
@@ -13291,6 +13276,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 bracketShowAdvancePrompt={bracketShowAdvancePrompt}
                                 bracketNoShow={bracketNoShow}
                                 bracketNoShowCountdownSec={bracketNoShowCountdownSec}
+                                onOpenSweet16BracketSignup={openSweet16BracketSignup}
                                 onCreateSweet16Bracket={createSweet16Bracket}
                                 onQueueNextBracketMatch={queueNextBracketMatch}
                                 onClearSweet16Bracket={clearSweet16Bracket}

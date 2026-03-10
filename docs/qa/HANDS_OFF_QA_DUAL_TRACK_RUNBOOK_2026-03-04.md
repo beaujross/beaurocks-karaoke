@@ -9,10 +9,10 @@ Current production assumption:
 
 ## Track A: Scripted Golden Path (Gate)
 
-Recommended secure run (no plaintext password in shell history):
+Canonical release-gate run (no plaintext password in shell history):
 
 ```powershell
-npm run qa:golden:host-room-hands-off:secure
+npm run qa:release:core-night
 ```
 
 The secure runner:
@@ -30,6 +30,9 @@ setx QA_ALLOWED_HOST_EMAILS "qa-host@yourdomain.com"
 ```
 
 Open a fresh shell after `setx`, then run the secure smoke.
+
+Implementation note:
+- `npm run qa:release:core-night` currently resolves to the secure host-room hands-off runner.
 
 Optional policy hardening:
 - set `QA_ALLOWED_HOST_EMAILS` to enforce dedicated QA-only account(s)
@@ -54,6 +57,8 @@ Run:
 npm run qa:golden:host-room-hands-off
 ```
 
+Use the legacy command only when you explicitly want the direct runner surface. For release gating, prefer `npm run qa:release:core-night`.
+
 What it validates:
 1. Root-domain host login
 2. Host room creation
@@ -61,10 +66,12 @@ What it validates:
 4. TV load + QR + room code
 5. Audience join
 6. Host request and sync to TV
-7. Audience request and sync to host + TV
-8. Pop Trivia renders on audience during a performing song
-9. Audience can lock one Pop Trivia answer
-10. TV shows the Pop Trivia card and reflects locked answers
+7. Host request transitions into active performance
+8. Audience surface shows the active performance state
+9. Pop Trivia renders on audience during a performing song
+10. Audience can lock one Pop Trivia answer
+11. TV shows the Pop Trivia card and reflects locked answers
+12. Audience request and sync to host + TV
 
 If this fails: treat as release blocker.
 

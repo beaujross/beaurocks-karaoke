@@ -1,6 +1,6 @@
 # Backlog
 
-Last updated: 2026-03-09
+Last updated: 2026-03-10
 
 ## Purpose
 
@@ -23,19 +23,19 @@ Supporting risk assessment:
 
 These items are the active engineering priorities. Nothing below this section should outrank them without an explicit decision.
 
-- [ ] EX-01 Freeze and document the core-night release contract.
+- [x] EX-01 Freeze and document the core-night release contract.
   - Outcome: one canonical definition of the release-critical host/audience/TV flow.
   - Source: `docs/ENGINEERING_EXECUTION_PLAN_2026-03.md`
-- [ ] EX-02 Add one canonical production-facing release gate command.
+- [x] EX-02 Add one canonical production-facing release gate command.
   - Outcome: one smoke command that blocks deploys when the core night is broken.
-  - Target command: `npm run qa:golden:host-room-hands-off:secure`
-- [ ] EX-03 Expand release smoke coverage for the active performance path.
+  - Target command: `npm run qa:release:core-night`
+- [x] EX-03 Expand release smoke coverage for the active performance path.
   - Outcome: smoke proves request propagation, performing state, and Pop Trivia behavior on audience + TV.
 - [ ] EX-04 Keep App Check, QA account policy, and rollback steps in canonical runbooks.
   - Outcome: a second operator can run production QA safely without hidden setup knowledge.
-- [ ] EX-05 Add diagnostics and recovery clarity for stuck async states.
+- [x] EX-05 Add diagnostics and recovery clarity for stuck async states.
   - Outcome: pipelines like lyrics and Pop Trivia have explicit pending/failed/retry/recovery behavior.
-- [ ] EX-06 Continue extracting host access and room-launch logic from `src/apps/Host/HostApp.jsx`.
+- [x] EX-06 Continue extracting host access and room-launch logic from `src/apps/Host/HostApp.jsx`.
   - Outcome: host access changes stop requiring edits inside a monolithic app shell.
 - [ ] EX-07 Split high-risk Cloud Functions domains out of `functions/index.js`.
   - Outcome: lyrics, Pop Trivia, and host-access logic become separately owned/testable modules.
@@ -50,6 +50,12 @@ These items are the active engineering priorities. Nothing below this section sh
 
 These items matter after the current execution plan is materially complete.
 
+- [ ] Host-triggered game remediation from the full QA matrix.
+  - Scope: fix or hide game modes that are still exposed from the launcher but do not cleanly launch from the real host flow.
+  - Current production failures from the matrix: `doodle_oke`, `selfie_challenge`.
+  - Current split:
+    - `doodle_oke` and `selfie_challenge` need richer seeded host fixtures in automation or clearer quick-launch UX around required setup.
+  - Source of truth: `docs/qa/HOST_GAME_QA_MATRIX_2026-03-10.md`
 - [ ] Turnkey customer onboarding + subscriptions.
   - Scope: self-serve onboarding, provisioning, monthly subscription flow, entitlement sync.
 - [ ] Organization/workspace model hardening.
@@ -91,6 +97,20 @@ Recently completed items that materially changed the operating baseline:
   - AI access is no longer implicitly granted by the presence of `GEMINI_API_KEY`.
 - [x] Root marketing overview promoted live.
   - Root experience and related marketing routing/content changes are deployed.
+- [x] Core-night release contract and gate aligned.
+  - Release docs now point at one canonical command: `npm run qa:release:core-night`.
+- [x] Core-night smoke now proves active performance, not just queue propagation.
+  - Verified in production on 2026-03-09 via room `8SAJ`.
+- [x] Async pipeline diagnostics and overnight audit path added.
+  - `npm run ops:audit:async-pipelines` now summarizes stale lyrics/Pop Trivia states and overnight intelligence can include that report when Firebase admin credentials are available.
+- [x] Existing-room host entry flow extracted from `HostApp.jsx`.
+  - `useHostLaunchFlow` owns create-room and onboarding, and `useHostRoomEntry` now owns auth + host-access assertion + room open for existing rooms. Verified in production on 2026-03-10 via room `43UU`.
+- [x] Host-triggered game matrix automation added.
+  - `npm run qa:games:matrix:secure` now exercises every launcher-exposed game mode and records launch/render/end-mode status across host, audience, and TV.
+- [x] Host game matrix hardened against launcher false negatives.
+  - The runner now uses a fresh room per mode, dismisses the floating audience preview that can cover right-column cards, and verified `vocal_challenge` + `bingo` in production on 2026-03-10. Remaining gaps are fixture/setup dependent: `doodle_oke` and `selfie_challenge`.
+- [x] Karaoke bracket signup/onboarding mode added.
+  - `karaoke_bracket` now has a guided signup state instead of a silent Tight 15 hard-fail: host can open a TV explainer with countdown + readiness tracking, audience gets a direct Tight 15 CTA, and bracket launch uses the configured readiness threshold.
 - [x] P0 verification baseline established.
   - Production deploy, App Check enforcement, and auth/upload smoke documented in `docs/qa/P0_VERIFICATION_2026-02-12.md`.
 - [x] Host create/join reliability smoke established.

@@ -520,6 +520,64 @@ const waitForAudiencePopTriviaCard = async ({ audiencePage, timeoutMs }) => {
   throw new Error(`Audience pop trivia card did not render. Snippet="${bodyText.replace(/\s+/g, " ").slice(0, 220)}"`);
 };
 
+const waitForHostNowPerforming = async ({ hostPage, songTitle, timeoutMs }) => {
+  const normalizedSongTitle = String(songTitle || "").trim();
+  if (!normalizedSongTitle) {
+    throw new Error("Host performance song title is required.");
+  }
+  const started = Date.now();
+  const card = hostPage.locator('[data-feature-id="host-now-performing-card"]').first();
+  const titlePattern = new RegExp(escapeRegExp(normalizedSongTitle), "i");
+  const activePattern = /(now performing|now playing|current performance)/i;
+  while (Date.now() - started < timeoutMs) {
+    const visible = await card.isVisible().catch(() => false);
+    if (visible) {
+      const cardText = String(await card.innerText().catch(() => ""));
+      if (titlePattern.test(cardText)) {
+        return cardText.replace(/\s+/g, " ").slice(0, 220);
+      }
+    }
+    const bodyText = String(await hostPage.locator("body").innerText().catch(() => ""));
+    if (titlePattern.test(bodyText) && activePattern.test(bodyText)) {
+      return bodyText.replace(/\s+/g, " ").slice(0, 220);
+    }
+    await delay(700);
+  }
+  const bodyText = String(await hostPage.locator("body").innerText().catch(() => ""));
+  throw new Error(
+    `Host did not show active performance for "${normalizedSongTitle}". Snippet="${bodyText.replace(/\s+/g, " ").slice(0, 220)}"`
+  );
+};
+
+const waitForAudienceCurrentPerformance = async ({ audiencePage, songTitle, timeoutMs }) => {
+  const normalizedSongTitle = String(songTitle || "").trim();
+  if (!normalizedSongTitle) {
+    throw new Error("Audience performance song title is required.");
+  }
+  const started = Date.now();
+  const card = audiencePage.locator('[data-feature-id="singer-current-performance-card"]').first();
+  const titlePattern = new RegExp(escapeRegExp(normalizedSongTitle), "i");
+  const activePattern = /(now performing|live track|pop-up trivia)/i;
+  while (Date.now() - started < timeoutMs) {
+    const visible = await card.isVisible().catch(() => false);
+    if (visible) {
+      const cardText = String(await card.innerText().catch(() => ""));
+      if (titlePattern.test(cardText)) {
+        return cardText.replace(/\s+/g, " ").slice(0, 220);
+      }
+    }
+    const bodyText = String(await audiencePage.locator("body").innerText().catch(() => ""));
+    if (titlePattern.test(bodyText) && activePattern.test(bodyText)) {
+      return bodyText.replace(/\s+/g, " ").slice(0, 220);
+    }
+    await delay(700);
+  }
+  const bodyText = String(await audiencePage.locator("body").innerText().catch(() => ""));
+  throw new Error(
+    `Audience did not show active performance for "${normalizedSongTitle}". Snippet="${bodyText.replace(/\s+/g, " ").slice(0, 220)}"`
+  );
+};
+
 const waitForAudienceRequestEntry = async ({ audiencePage, songTitle, timeoutMs }) => {
   const normalizedSongTitle = String(songTitle || "").trim();
   if (!normalizedSongTitle) {
@@ -784,6 +842,22 @@ const run = async () => {
       });
       return `TV matched via ${tvState.matched}; queue=${tvState.queueCount}.`;
     });
+
+    await runCheck(checks, "host_request_transitions_to_active_performance", async () =>
+      waitForHostNowPerforming({
+        hostPage,
+        songTitle: hostSongTitle,
+        timeoutMs: Math.min(timeoutMs, 90000),
+      })
+    );
+
+    await runCheck(checks, "audience_surface_shows_active_performance", async () =>
+      waitForAudienceCurrentPerformance({
+        audiencePage,
+        songTitle: hostSongTitle,
+        timeoutMs: Math.min(timeoutMs, 90000),
+      })
+    );
 
     await runCheck(checks, "audience_pop_trivia_renders_and_accepts_answer", async () => {
       const triviaCard = await waitForAudiencePopTriviaCard({

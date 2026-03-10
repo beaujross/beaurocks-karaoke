@@ -28,8 +28,10 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 - `npm run preview` - preview built app
 - `npm run lint` - ESLint checks
 - `npm run ci` - full local CI suite (lint, unit, rules, callables, build)
+- `npm run qa:release:core-night` - canonical production-facing host/audience/TV release gate
 - `npm run test:rules` - Firestore + Storage emulator security checks (requires Java)
 - `npm run deploy:hosting` - build + deploy web app to Firebase Hosting
+- `npm run ops:audit:async-pipelines` - inspect stale lyrics/Pop Trivia pipeline states in Firestore (requires Firebase admin credentials)
 - `npm run seo:sitemap` - refresh tracked SEO artifacts in `public/` when you intentionally want to update them
 - Optional: set `VITE_BASE_PATH` only if deploying under a subpath (example: `/karaoke/`)
 

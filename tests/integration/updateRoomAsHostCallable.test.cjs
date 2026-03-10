@@ -185,6 +185,76 @@ async function run() {
       assert.equal(snap.get("tvPresentationProfile"), "simple");
     }],
 
+    ["host can launch vocal challenge payloads", async () => {
+      await updateRoomAsHost.run(requestFor(HOST_UID, {
+        activeMode: "vocal_challenge",
+        gameData: {
+          playerId: "guest-2",
+          playerName: "Guest",
+          playerAvatar: "O",
+          inputSource: "turns",
+          mode: "turns",
+          participants: ["guest-2"],
+          participantMeta: [{ id: "guest-2", name: "Guest", avatar: "O" }],
+          turnIndex: 0,
+          status: "playing",
+          score: 0,
+          streak: 0,
+          turnDurationMs: 30000,
+          difficulty: "standard",
+          guideTone: true,
+          timestamp: 12345,
+        },
+        gameParticipantMode: "selected",
+        gameParticipants: ["guest-2"],
+      }));
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("activeMode"), "vocal_challenge");
+      assert.equal(snap.get("gameData.playerId"), "guest-2");
+      assert.deepEqual(snap.get("gameData.participants"), ["guest-2"]);
+      assert.deepEqual(snap.get("gameParticipants"), ["guest-2"]);
+    }],
+
+    ["host can launch bingo payloads with string board ids", async () => {
+      await updateRoomAsHost.run(requestFor(HOST_UID, {
+        activeMode: "bingo",
+        bingoData: Array.from({ length: 25 }, (_, idx) => ({
+          id: idx,
+          type: "karaoke",
+          text: idx === 12 ? "FREE" : `Tile ${idx}`,
+          status: "hidden",
+          content: null,
+          free: idx === 12,
+        })),
+        bingoSize: 5,
+        bingoMode: "karaoke",
+        bingoSessionId: "bingo_test",
+        bingoBoardId: "preset-karaoke-tropes",
+        bingoVictory: null,
+        bingoWin: null,
+        bingoRevealed: { 12: true },
+        bingoSuggestions: {},
+        bingoVotingMode: "host+votes",
+        bingoAutoApprovePct: 50,
+        bingoShowTv: true,
+        bingoMysteryRng: null,
+        bingoTurnPick: null,
+        bingoTurnOrder: null,
+        bingoTurnIndex: null,
+        bingoPickerUid: null,
+        bingoPickerName: null,
+        bingoFocus: null,
+        gameParticipantMode: "all",
+        gameParticipants: [],
+      }));
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("activeMode"), "bingo");
+      assert.equal(snap.get("bingoBoardId"), "preset-karaoke-tropes");
+      assert.equal(snap.get("bingoData").length, 25);
+    }],
+
     ["guest cannot update room as host", async () => {
       await expectHttpsError(
         () => updateRoomAsHost.run(requestFor(GUEST_UID, { activeMode: "bingo" })),
