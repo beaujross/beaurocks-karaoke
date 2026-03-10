@@ -218,9 +218,10 @@ const AddToQueueFormBody = ({
         <div className="mb-2 rounded-xl border border-white/10 bg-black/30 p-3">
             <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Song Details</div>
             <div className="grid grid-cols-1 md:grid-cols-[2fr_1.4fr_1.4fr_1.1fr] gap-2">
-                <input value={manual.song} onChange={e=>setManual({...manual, song:e.target.value})} className={styles.input} placeholder="Song"/>
-                <input value={manual.artist} onChange={e=>setManual({...manual, artist:e.target.value})} className={styles.input} placeholder="Artist"/>
+                <input data-feature-id="host-manual-song-input" value={manual.song} onChange={e=>setManual({...manual, song:e.target.value})} className={styles.input} placeholder="Song"/>
+                <input data-feature-id="host-manual-artist-input" value={manual.artist} onChange={e=>setManual({...manual, artist:e.target.value})} className={styles.input} placeholder="Artist"/>
                 <select
+                    data-feature-id="host-manual-performer-select"
                     value={manualSingerMode === 'custom' ? '__custom' : manual.singer}
                     onChange={(e) => {
                         const value = e.target.value;
@@ -356,7 +357,7 @@ const AddToQueueFormBody = ({
             )}
         </div>
         <div className="mb-2 flex justify-end">
-            <button onClick={addSong} className={`${styles.btnStd} ${styles.btnHighlight} px-4`}>
+            <button data-feature-id="host-manual-queue-submit" onClick={addSong} className={`${styles.btnStd} ${styles.btnHighlight} px-4`}>
                 Add to Queue
             </button>
         </div>

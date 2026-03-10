@@ -4,6 +4,7 @@ const {
   bootstrapOnboardingWorkspace,
   provisionHostRoom,
   youtubeSearch,
+  geminiGenerate,
   createAppleMusicToken,
   setHostApprovalStatus,
 } = require("../../functions/index.js");
@@ -125,6 +126,32 @@ async function run() {
           requestFor(USER_UID, { query: "karaoke test" })
         ),
         "permission-denied"
+      );
+    }],
+    ["approved host access can reach youtube data api guardrail layer", async () => {
+      await grantPrivateHostAccess(USER_UID);
+      await expectHttpsError(
+        () => youtubeSearch.run(
+          requestFor(USER_UID, { query: "karaoke test" })
+        ),
+        "failed-precondition"
+      );
+    }],
+    ["free user cannot hit gemini callable", async () => {
+      await expectHttpsError(
+        () => geminiGenerate.run(
+          requestFor(USER_UID, { type: "lyrics", context: { title: "Golden Lights", artist: "Neon Crew" } })
+        ),
+        "permission-denied"
+      );
+    }],
+    ["approved host access can reach gemini guardrail layer", async () => {
+      await grantPrivateHostAccess(USER_UID);
+      await expectHttpsError(
+        () => geminiGenerate.run(
+          requestFor(USER_UID, { type: "lyrics", context: { title: "Golden Lights", artist: "Neon Crew" } })
+        ),
+        "failed-precondition"
       );
     }],
     ["free user cannot mint apple music token", async () => {

@@ -40,7 +40,6 @@ async function resetState() {
     roomCode: ROOM_CODE,
     hostUid: HOST_UID,
     hostUids: [HOST_UID],
-    lyricsPipelineV2Enabled: true,
   }, { merge: true });
   await queueRef.set({
     roomCode: ROOM_CODE,
@@ -95,12 +94,20 @@ async function run() {
       );
     }],
 
-    ["returns disabled when room pipeline v2 is off", async () => {
+    ["legacy room toggle does not disable the default-on lyrics pipeline", async () => {
       await roomRef.set({ lyricsPipelineV2Enabled: false }, { merge: true });
+      await lyricsRef.set({
+        songId: "song_a",
+        title: "Golden Lights",
+        artist: "Neon Crew",
+        lyrics: "Line one\nLine two",
+        lyricsTimed: null,
+        lyricsSource: "catalog",
+      }, { merge: true });
       const result = await resolveQueueSongLyrics.run(requestFor(HOST_UID));
       assert.equal(result.ok, true);
-      assert.equal(result.status, "disabled");
-      assert.equal(result.resolution, "pipeline_v2_disabled");
+      assert.equal(result.status, "resolved");
+      assert.equal(result.resolution, "catalog_text");
     }],
 
     ["resolves from canonical cache and writes queue fields", async () => {
@@ -163,4 +170,3 @@ run().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-

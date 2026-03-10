@@ -106,7 +106,7 @@ const run = () => {
     assert.equal(compiledNoAi.queueSettings.limitMode, 'per_night');
     assert.equal(compiledNoAi.queueSettings.limitCount, 2);
     assert.equal(compiledNoAi.queueSettings.firstTimeBoost, false);
-    assert.equal(compiledNoAi.autoLyricsOnQueue, false);
+    assert.equal(compiledNoAi.autoLyricsOnQueue, true);
     assert.equal(compiledNoAi.gamePreviewId, 'trivia_pop');
 
     const compiledWithAi = compileMissionDraftToRoomPayload(

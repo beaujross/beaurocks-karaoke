@@ -220,10 +220,10 @@ const useQueueSongActions = ({
             return 'Lyrics lookup is blocked for this account.';
         }
         if (status === 'capability_blocked' || resolution === 'capability_blocked') {
-            return 'AI fallback blocked by current workspace entitlement.';
+            return 'Lyrics fallback is unavailable right now.';
         }
         if (status === 'disabled' || resolution === 'pipeline_v2_disabled') {
-            return 'Lyrics pipeline is disabled for this room.';
+            return 'Lyrics pipeline is disabled right now.';
         }
         if (status === 'error') return 'Lyrics lookup hit a provider error.';
         if (timedOnly) return 'No timed lyrics found yet.';
@@ -544,15 +544,6 @@ const useQueueSongActions = ({
                     console.warn('Failed to persist manual queue song metadata', error);
                 }
 
-                if (!shouldAttemptLyricsEnrichment) return;
-                const enrichment = await resolveQueuedSongLyrics({
-                    songDocId: docRef.id,
-                    timedOnly: false,
-                    force: true
-                });
-                if (enrichment?.toastMessage) {
-                    toast(enrichment.toastMessage);
-                }
             })();
 
             setManual({
@@ -691,7 +682,6 @@ const useQueueSongActions = ({
                     }
                 }
 
-                const shouldAttemptLyricsEnrichment = !!room?.autoLyricsOnQueue;
                 try {
                     const songDocRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', docRef.id);
                     await updateDoc(songDocRef, {
@@ -703,16 +693,6 @@ const useQueueSongActions = ({
                         } : {})
                     });
 
-                    if (shouldAttemptLyricsEnrichment) {
-                        const enrichment = await resolveQueuedSongLyrics({
-                            songDocId: docRef.id,
-                            timedOnly: false,
-                            force: true
-                        });
-                        if (enrichment?.toastMessage) {
-                            toast(enrichment.toastMessage);
-                        }
-                    }
                 } catch (err) {
                     console.warn('Failed to apply queued song enrichment', err);
                 }

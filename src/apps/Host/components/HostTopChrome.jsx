@@ -955,16 +955,14 @@ const HostTopChrome = ({
                                     onClick={toggleAutoLyricsQueue}
                                     data-feature-id="deck-auto-lyrics-queue-toggle"
                                     className={`${styles.btnStd} ${autoLyricsOnQueue ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                    title={aiToolsConnected
-                                        ? 'Auto-generate lyrics for queued tracks when lyrics are missing.'
-                                        : 'AI tools are currently unavailable; this setting is saved and will activate when AI tools are enabled.'}
+                                    title="Automatically try cached, Apple Music, and AI lyric fallback for queued tracks when lyrics are missing."
                                 >
                                     <span className="inline-flex items-center gap-2">
                                         <i className="fa-solid fa-file-lines"></i>
-                                        Auto Lyrics (AI)
+                                        Auto Lyrics
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">
-                                        {autoLyricsOnQueue ? (aiToolsConnected ? 'On' : 'Armed') : 'Off'}
+                                        {autoLyricsOnQueue ? 'On' : 'Off'}
                                     </span>
                                 </button>
                                 <button

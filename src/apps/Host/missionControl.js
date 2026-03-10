@@ -41,7 +41,6 @@ const DEFAULT_FLOW_RULES = Object.freeze({
 
 const DEFAULT_ASSIST_LEVEL = 'smart_assist';
 const DEFAULT_ARCHETYPE = 'casual';
-const AI_CAPABILITY_KEY = 'ai.generate_content';
 
 const isObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 
@@ -124,7 +123,8 @@ export const buildMissionDraftFromRoom = (room = {}, options = {}) => {
     };
 };
 
-export const compileMissionDraftToRoomPayload = (draft = {}, capabilities = {}, options = {}) => {
+export const compileMissionDraftToRoomPayload = (draft = {}, _capabilities = {}, options = {}) => {
+    void _capabilities;
     const presets = options?.presets || {};
     const flowRules = options?.flowRules || DEFAULT_FLOW_RULES;
     const archetype = String(draft?.archetype || DEFAULT_ARCHETYPE).trim() || DEFAULT_ARCHETYPE;
@@ -133,7 +133,6 @@ export const compileMissionDraftToRoomPayload = (draft = {}, capabilities = {}, 
     const queueRule = flowRules[draft?.flowRule] || flowRules.balanced || DEFAULT_FLOW_RULES.balanced;
     const queueSettings = normalizeQueueSettings(queueRule?.queueSettings || presetSettings?.queueSettings || {});
     const gameDefaults = presetSettings.gameDefaults || {};
-    const canUseAi = !!capabilities?.[AI_CAPABILITY_KEY];
     const requestedSpotlight = String(draft?.spotlightMode || '').trim() || (presetSettings.gamePreviewId || 'karaoke');
     const spotlightMode = requestedSpotlight || 'karaoke';
 
@@ -160,7 +159,7 @@ export const compileMissionDraftToRoomPayload = (draft = {}, capabilities = {}, 
         bingoVotingMode: presetSettings.bingoVotingMode || 'host+votes',
         bingoAutoApprovePct: Math.max(10, Math.min(100, toNumber(presetSettings.bingoAutoApprovePct, 50))),
         bingoAudienceReopenEnabled: presetSettings.bingoAudienceReopenEnabled !== false,
-        autoLyricsOnQueue: !!presetSettings.autoLyricsOnQueue && canUseAi,
+        autoLyricsOnQueue: !!presetSettings.autoLyricsOnQueue,
         popTriviaEnabled: presetSettings.popTriviaEnabled !== false,
         gamePreviewId: spotlightMode === 'karaoke' ? null : spotlightMode,
         gameDefaults: {

@@ -66,12 +66,14 @@ import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabi
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
 import { buildSongKey, ensureSong, ensureTrack, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
 import { createLogger } from '../../lib/logger';
+import {
+    getAppCheckRetryDelayMs,
+    isAppCheckThrottledError,
+    isRecoverableAppCheckError,
+} from '../../lib/appCheckErrors';
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
 import {
-    DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
-    POP_TRIVIA_VOTE_TYPE,
-    normalizePopTriviaQuestions,
-    normalizePopTriviaSeedRows
+    POP_TRIVIA_VOTE_TYPE
 } from '../../lib/popTrivia';
 import {
     DEFAULT_LOGO_PRESETS,
@@ -141,8 +143,6 @@ const HOST_UPDATE_DEPLOYMENT_WARNING = "Host control updates are unavailable bec
 const HOST_ROOM_PROVISION_DEPLOYMENT_WARNING = "Room provisioning is unavailable because the backend callable `provisionHostRoom` is not deployed. Deploy functions and reload Host.";
 const HOST_UPDATE_OP_FIELD = '__hostOp';
 const HOST_UPDATE_SERVER_TIMESTAMP = 'serverTimestamp';
-const POP_TRIVIA_CACHE_FIELD = 'popTriviaSongCache';
-
 const decodeUriComponentSafe = (value = '') => {
     try {
         return decodeURIComponent(value);
@@ -1114,70 +1114,6 @@ const getTimestampMs = (value) => {
     return 0;
 };
 
-const sanitizePopTriviaCacheKey = (value = '') => String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 120);
-
-const buildPopTriviaCacheKey = (song = {}) => {
-    const title = String(song?.songTitle || song?.title || '').trim();
-    const artist = String(song?.artist || 'Unknown').trim() || 'Unknown';
-    if (!title) return '';
-    return sanitizePopTriviaCacheKey(buildSongKey(title, artist));
-};
-
-const buildPopTriviaSongContext = (song = {}) => {
-    const safeTitle = String(song?.songTitle || song?.title || '').trim();
-    const safeArtist = String(song?.artist || 'Unknown').trim() || 'Unknown';
-    const safeSinger = String(song?.singerName || '').trim();
-    const metadata = {};
-    const metadataPairs = [
-        ['album', song?.album || song?.albumName || ''],
-        ['releaseYear', song?.releaseYear || song?.year || ''],
-        ['genre', song?.genre || song?.primaryGenre || song?.primaryGenreName || ''],
-        ['language', song?.language || ''],
-        ['decade', song?.decade || ''],
-        ['source', song?.source || song?.trackSource || ''],
-        ['songId', song?.songId || ''],
-        ['appleMusicId', song?.appleMusicId || '']
-    ];
-    metadataPairs.forEach(([key, value]) => {
-        const clean = String(value || '').trim();
-        if (clean) metadata[key] = clean;
-    });
-    return {
-        songTitle: safeTitle,
-        artist: safeArtist,
-        singerName: safeSinger,
-        metadata,
-        style: 'funny_insightful'
-    };
-};
-
-const normalizePopTriviaSongCache = (value = {}) => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-    const next = {};
-    Object.entries(value).forEach(([key, entry]) => {
-        const safeKey = sanitizePopTriviaCacheKey(key);
-        if (!safeKey || !entry || typeof entry !== 'object' || Array.isArray(entry)) return;
-        const seedRows = normalizePopTriviaSeedRows(entry?.seedRows || entry?.rows || entry?.questions || [], {
-            limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS
-        });
-        if (!seedRows.length) return;
-        next[safeKey] = {
-            seedRows,
-            songTitle: String(entry?.songTitle || '').trim(),
-            artist: String(entry?.artist || '').trim(),
-            source: String(entry?.source || 'ai').trim() || 'ai',
-            updatedAtMs: Math.max(0, Number(entry?.updatedAtMs || toMs(entry?.updatedAt) || 0))
-        };
-    });
-    return next;
-};
-
 const summarizePopTriviaVotes = (entries = []) => {
     const participantKeys = new Set();
     const answerKeys = new Set();
@@ -1218,25 +1154,6 @@ const isDirectChatMessage = (message = {}) => (
 );
 
 const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
-
-const isAppCheckError = (error) => {
-    const code = String(error?.code || '').toLowerCase();
-    const message = String(error?.message || '').toLowerCase();
-    const mentionsAppCheck = (
-        message.includes('app check')
-        || message.includes('appcheck')
-        || message.includes('app check token')
-        || message.includes('token required')
-    );
-    return (
-        (
-            code.includes('failed-precondition')
-            || code.includes('invalid-argument')
-            || code.includes('unauthenticated')
-        )
-        && mentionsAppCheck
-    );
-};
 
 const BILLING_WARMUP_MESSAGE = 'Billing tools are warming up. You can keep hosting and retry in a moment.';
 
@@ -3095,9 +3012,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         const hasLyrics = !!String(song?.lyrics || '').trim();
         if (status === 'pending') return 'Queued. Finalizing lyrics...';
         if (status === 'needs_user_token') return 'Queued. Apple lyrics need host Apple Music authorization.';
-        if (status === 'capability_blocked') return 'Queued. AI fallback is blocked by workspace entitlement.';
+        if (status === 'capability_blocked') return 'Queued. Lyrics fallback is unavailable right now.';
         if (status === 'error') return 'Queued. Lyrics provider error; retry from queue actions.';
-        if (status === 'disabled') return 'Queued. Lyrics pipeline is disabled for this room.';
+        if (status === 'disabled') return 'Queued. Lyrics pipeline is disabled right now.';
         if (status === 'resolved') {
             if (hasTimed) return 'Queue enrichment complete: timed lyrics ready.';
             if (hasLyrics) return 'Queue enrichment complete: lyrics ready.';
@@ -5152,7 +5069,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [logoLibrary, setLogoLibrary] = useState([]);
     const [orbSkinUrl, setOrbSkinUrl] = useState('');
     const [orbSkinLibrary, setOrbSkinLibrary] = useState([]);
-    const [popTriviaSongCache, setPopTriviaSongCache] = useState({});
     const [logoUploading, setLogoUploading] = useState(false);
     const [logoUploadProgress, setLogoUploadProgress] = useState(0);
     const [orbSkinUploading, setOrbSkinUploading] = useState(false);
@@ -5544,7 +5460,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 setInvoiceHistory(invoiceItems);
             } catch (e) {
                 if (cancelled) return;
-                if (isAppCheckError(e)) {
+                if (isRecoverableAppCheckError(e)) {
                     hostLogger.debug('Org entitlements waiting on App Check', e);
                     setOrgContext(prev => ({ ...prev, loading: false, error: BILLING_WARMUP_MESSAGE }));
                     setUsageSummary(prev => ({ ...prev, loading: false, error: '' }));
@@ -5671,7 +5587,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const bingoTurnAdvanceRef = useRef(null);
     const roomRef = useRef(room);
     const songsRef = useRef(songs);
-    const popTriviaGeneratingRef = useRef(new Set());
     const stormTimersRef = useRef([]);
     const sfxPulseRef = useRef(null);
     const seededMarqueeRef = useRef(false);
@@ -6013,120 +5928,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         songsRef.current = songs;
     }, [songs]);
     useEffect(() => {
-        if (!roomCode) return;
-        if (room?.popTriviaEnabled === false) return;
-        if (!canUseAiTools && Object.keys(popTriviaSongCache || {}).length === 0) return;
-
-        const eligibleSongs = songs
-            .filter((song) => ['requested', 'pending', 'performing'].includes(song?.status))
-            .filter((song) => (song?.songTitle || '').trim())
-            .filter((song) => {
-                if (!song?.id) return false;
-                if (Array.isArray(song?.popTrivia) && song.popTrivia.length > 0) return false;
-                const status = String(song?.popTriviaStatus || '').toLowerCase();
-                return !['pending', 'ready', 'failed'].includes(status);
-            })
-            .slice(0, 4);
-
-        eligibleSongs.forEach((song) => {
-            if (!song?.id) return;
-            if (popTriviaGeneratingRef.current.has(song.id)) return;
-            popTriviaGeneratingRef.current.add(song.id);
-
-            const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id);
-            const cacheKey = buildPopTriviaCacheKey(song);
-            const cacheEntry = cacheKey ? popTriviaSongCache?.[cacheKey] : null;
-            (async () => {
-                try {
-                    const cachedSeedRows = normalizePopTriviaSeedRows(cacheEntry?.seedRows || [], {
-                        limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS
-                    });
-                    if (cachedSeedRows.length) {
-                        const cachedQuestions = normalizePopTriviaQuestions(cachedSeedRows, {
-                            limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
-                            idPrefix: `${roomCode}_${song.id}`
-                        });
-                        if (cachedQuestions.length) {
-                            await updateDoc(songRef, {
-                                popTrivia: cachedQuestions,
-                                popTriviaStatus: 'ready',
-                                popTriviaSource: cacheEntry?.source || 'cache',
-                                popTriviaCacheKey: cacheKey,
-                                popTriviaGeneratedAt: serverTimestamp(),
-                                popTriviaError: null
-                            });
-                            return;
-                        }
-                    }
-
-                    if (!canUseAiTools) {
-                        return;
-                    }
-
-                    await updateDoc(songRef, {
-                        popTriviaStatus: 'pending',
-                        popTriviaError: null
-                    });
-                    const context = buildPopTriviaSongContext(song);
-                    const result = await callFunction('geminiGenerate', { type: 'pop_trivia_song', context });
-                    const seedRows = normalizePopTriviaSeedRows(result?.result || result || [], {
-                        limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS
-                    });
-                    const triviaQuestions = normalizePopTriviaQuestions(seedRows, {
-                        limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
-                        idPrefix: `${roomCode}_${song.id}`
-                    });
-                    if (!triviaQuestions.length || !seedRows.length) {
-                        await updateDoc(songRef, {
-                            popTriviaStatus: 'failed',
-                            popTriviaError: 'AI returned no trivia questions.'
-                        });
-                        return;
-                    }
-                    await updateDoc(songRef, {
-                        popTrivia: triviaQuestions,
-                        popTriviaStatus: 'ready',
-                        popTriviaSource: 'ai',
-                        popTriviaCacheKey: cacheKey || null,
-                        popTriviaGeneratedAt: serverTimestamp(),
-                        popTriviaError: null
-                    });
-                    if (cacheKey) {
-                        const nextCacheEntry = {
-                            seedRows,
-                            songTitle: String(song?.songTitle || '').trim(),
-                            artist: String(song?.artist || '').trim(),
-                            source: 'ai',
-                            updatedAtMs: nowMs()
-                        };
-                        setPopTriviaSongCache((prev) => ({ ...prev, [cacheKey]: nextCacheEntry }));
-                        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), {
-                            [`${POP_TRIVIA_CACHE_FIELD}.${cacheKey}`]: nextCacheEntry
-                        }).catch(async () => {
-                            await setDoc(
-                                doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode),
-                                { [POP_TRIVIA_CACHE_FIELD]: { [cacheKey]: nextCacheEntry } },
-                                { merge: true }
-                            ).catch(() => {});
-                        });
-                    }
-                } catch (error) {
-                    if (isPermissionDeniedError(error)) {
-                        hostLogger.info('Pop trivia generation skipped (permission)', { songId: song.id });
-                    } else {
-                        hostLogger.warn('Pop trivia generation failed', { songId: song.id, error });
-                    }
-                    await updateDoc(songRef, {
-                        popTriviaStatus: 'failed',
-                        popTriviaError: String(error?.message || error?.code || 'Generation failed').slice(0, 180)
-                    }).catch(() => {});
-                } finally {
-                    popTriviaGeneratingRef.current.delete(song.id);
-                }
-            })();
-        });
-    }, [roomCode, room?.popTriviaEnabled, songs, canUseAiTools, popTriviaSongCache]);
-    useEffect(() => {
         const ctx = bgCtxRef.current;
         if (ctx && ctx.state === 'suspended' && playingBg) {
             ctx.resume().catch(() => {});
@@ -6323,7 +6124,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     if (!appleMusicStatus) setAppleMusicStatus('Connected');
                 }
             } catch (error) {
-                if (isAppCheckError(error)) {
+                if (isRecoverableAppCheckError(error)) {
                     hostLogger.debug('Apple Music account restore skipped while App Check warms up', error);
                     return;
                 }
@@ -6744,8 +6545,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (typeof action !== 'function') {
             throw new Error('runWithAppCheckWarmup requires an action callback.');
         }
-        const attemptsRaw = Number(options?.attempts ?? 3);
-        const attempts = Number.isFinite(attemptsRaw) ? Math.max(1, Math.min(5, Math.trunc(attemptsRaw))) : 3;
+        const attemptsRaw = Number(options?.attempts ?? 4);
+        const attempts = Number.isFinite(attemptsRaw) ? Math.max(1, Math.min(5, Math.trunc(attemptsRaw))) : 4;
         const scope = String(options?.scope || 'operation');
         let lastError = null;
         for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -6753,20 +6554,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 return await action();
             } catch (error) {
                 lastError = error;
-                if (!isAppCheckError(error) || attempt >= attempts - 1) {
+                if (!isRecoverableAppCheckError(error) || attempt >= attempts - 1) {
                     throw error;
                 }
+                const throttled = isAppCheckThrottledError(error);
                 try {
-                    await ensureAppCheckToken(true);
+                    await ensureAppCheckToken(!throttled);
                 } catch (tokenError) {
                     hostLogger.debug(`${scope} App Check warmup token retry failed`, tokenError);
                 }
                 hostLogger.debug(`${scope} waiting for App Check token`, {
                     attempt: attempt + 1,
                     maxAttempts: attempts,
+                    throttled,
                     error
                 });
-                await sleep(250 * (attempt + 1));
+                await sleep(getAppCheckRetryDelayMs(attempt, throttled));
             }
         }
         throw lastError || new Error(`${scope} failed after App Check warmup retries.`);
@@ -7509,11 +7312,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Open a room first.');
             return false;
         }
-        const canUseAi = !!canUseAiTools;
         const legacyPreset = HOST_NIGHT_PRESETS[nightSetupPresetId] || HOST_NIGHT_PRESETS.casual;
         const legacyPresetSettings = legacyPreset.settings || {};
         const legacyGameDefaults = legacyPresetSettings.gameDefaults || {};
-        const legacyAutoLyricsEnabled = !!legacyPresetSettings.autoLyricsOnQueue && canUseAi;
+        const legacyAutoLyricsEnabled = !!legacyPresetSettings.autoLyricsOnQueue;
         const legacyQueueLimitModeValue = nightSetupQueueLimitMode || 'none';
         const legacyQueueLimitCountValue = legacyQueueLimitModeValue === 'none'
             ? 0
@@ -7560,7 +7362,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const missionPayload = compileMissionPayloadWithAssist(missionDraft, missionAdvancedOverrides);
         const payload = missionControlEnabled ? missionPayload : legacyPayload;
         const payloadPreset = HOST_NIGHT_PRESETS[payload.hostNightPreset] || HOST_NIGHT_PRESETS.casual;
-        const payloadPresetSettings = payloadPreset?.settings || {};
         const resolvedSpotlightMode = String(
             missionControlEnabled
                 ? (missionDraft?.spotlightMode || payload.gamePreviewId || nightSetupPrimaryMode || 'karaoke')
@@ -7633,13 +7434,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             } catch (_err) {
                 // ignore local storage errors
             }
-            if (!!payloadPresetSettings.autoLyricsOnQueue && !canUseAi) {
-                toast(`${payloadPreset.label} applied. AI lyric auto-generation needs a Host subscription.`);
-            } else {
-                toast(intent === 'start_match'
-                    ? 'Setup saved. Match flow ready.'
-                    : (missionControlEnabled ? 'Mission control setup applied.' : 'Night setup applied.'));
-            }
+            toast(intent === 'start_match'
+                ? 'Setup saved. Match flow ready.'
+                : (missionControlEnabled ? 'Mission control setup applied.' : 'Night setup applied.'));
             setShowNightSetupWizard(false);
             setNightSetupStep(0);
             return true;
@@ -7668,7 +7465,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         missionAdvancedOverrides,
         room?.missionControl?.lastSuggestedAction,
         missionControlCohort,
-        canUseAiTools,
         compileMissionPayloadWithAssist,
         updateRoom,
         playingBg,
@@ -7899,7 +7695,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 } else if (errorCode.includes('unauthenticated')) {
                     toast('You are signed out. Please retry auth, then open room again.');
                     setEntryError('You are signed out. Retry auth, then open room again.');
-                } else if (isAppCheckError(e)) {
+                } else if (isRecoverableAppCheckError(e)) {
                     toast('Security check is warming up. Please retry in a moment.');
                     setEntryError('Security check is warming up. Please retry in a moment.');
                 } else if (errorCode.includes('unavailable') || errorCode.includes('network')) {
@@ -8576,8 +8372,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const presetSettings = preset.settings || {};
         const queueSettings = presetSettings.queueSettings || {};
         const gameDefaults = presetSettings.gameDefaults || {};
-        const canUseAi = !!canUseAiTools;
-        const autoLyricsEnabled = !!presetSettings.autoLyricsOnQueue && canUseAi;
+        const autoLyricsEnabled = !!presetSettings.autoLyricsOnQueue;
         const payload = {
             hostNightPreset: preset.id,
             autoDj: !!presetSettings.autoDj,
@@ -8667,10 +8462,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 openSpotlightFlowFromSetup('trivia_pop');
             }
 
-            if (!!presetSettings.autoLyricsOnQueue && !canUseAi) {
-                toast(`${preset.label} applied. AI lyric auto-generation needs a Host subscription.`);
-                return;
-            }
             toast(`${preset.label} applied.`);
         } catch (error) {
             hostLogger.error('Apply host preset failed', error);
@@ -8734,7 +8525,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 hostNightPreset: hostNightPreset || 'custom',
                 bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
                 autoLyricsOnQueue: !!autoLyricsOnQueue,
-                lyricsPipelineV2Enabled: true,
                 popTriviaEnabled: popTriviaEnabled !== false,
                 queueSettings: {
                     limitMode: queueLimitMode || 'none',
@@ -8929,7 +8719,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             } else {
                 setOrbSkinLibrary([]);
             }
-            setPopTriviaSongCache(normalizePopTriviaSongCache(data?.[POP_TRIVIA_CACHE_FIELD]));
         });
         return () => unsub();
     }, [roomCode]);
@@ -9798,7 +9587,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (showToast) toast('Billing status refreshed');
             return entitlements;
         } catch (e) {
-            if (isAppCheckError(e)) {
+            if (isRecoverableAppCheckError(e)) {
                 hostLogger.debug('Billing entitlement refresh waiting on App Check', e);
                 setOrgContext(prev => ({ ...prev, loading: false, error: BILLING_WARMUP_MESSAGE }));
                 if (showToast) toast('Billing tools are still warming up');
@@ -9826,7 +9615,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (showToast) toast('Usage summary refreshed');
             return usage;
         } catch (e) {
-            if (isAppCheckError(e)) {
+            if (isRecoverableAppCheckError(e)) {
                 hostLogger.debug('Usage summary waiting on App Check', e);
                 setUsageSummary(prev => ({ ...prev, loading: false, error: BILLING_WARMUP_MESSAGE }));
                 if (showToast) toast('Billing tools are still warming up');
@@ -10178,7 +9967,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             verifiedBy: hostName || 'host'
         });
         const songId = canonicalMatch?.songId || songRecord?.songId || buildSongKey(canonicalTitle, canonicalArtist);
-        const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
+        await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
             roomCode,
             songId,
             trackId: canonicalMatch?.trackId || null,
@@ -10204,51 +9993,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             audioOnly: false
         });
         toast(room?.autoLyricsOnQueue ? 'Queued (finalizing lyrics...)' : 'Added to queue');
-        if (!room?.autoLyricsOnQueue) return;
-        void (async () => {
-            try {
-                const result = await callFunction('resolveQueueSongLyrics', {
-                    roomCode,
-                    songId: docRef.id,
-                    timedOnly: false,
-                    force: true,
-                    musicUserToken: getAppleMusicUserToken?.() || ''
-                });
-                const hasTimedLyrics = !!result?.hasTimedLyrics;
-                const hasLyrics = !!result?.hasLyrics;
-                if (hasTimedLyrics) {
-                    toast('Timed lyrics ready.');
-                    return;
-                }
-                if (hasLyrics) {
-                    toast('Lyrics ready.');
-                    return;
-                }
-                const status = String(result?.status || '').toLowerCase();
-                const resolution = String(result?.resolution || '').toLowerCase();
-                if (status === 'needs_user_token' || resolution === 'needs_user_token') {
-                    toast('Apple lyrics need host Apple Music authorization.');
-                    return;
-                }
-                if (status === 'capability_blocked' || resolution === 'capability_blocked') {
-                    toast('Lyrics fallback is blocked by current workspace entitlements.');
-                    return;
-                }
-                toast('No lyrics match found yet.');
-            } catch (error) {
-                hostLogger.debug('Browse queue lyrics resolution failed', error);
-                try {
-                    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', docRef.id), {
-                        lyricsGenerationStatus: 'error',
-                        lyricsGenerationResolution: 'callable_error',
-                        lyricsGenerationUpdatedAt: serverTimestamp()
-                    });
-                } catch (updateError) {
-                    hostLogger.debug('Browse queue lyrics error status update failed', updateError);
-                }
-                toast('Lyrics lookup hit a provider error.');
-            }
-        })();
     };
 
     const resolveRoomUserUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
@@ -12912,7 +12656,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         hostNightPreset: hostNightPreset || 'custom',
         bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
         autoLyricsOnQueue: !!autoLyricsOnQueue,
-        lyricsPipelineV2Enabled: true,
         popTriviaEnabled: popTriviaEnabled !== false,
         queueSettings: {
             limitMode: queueLimitMode || 'none',
@@ -12947,7 +12690,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hostNightPreset: room.hostNightPreset || 'custom',
             bingoAudienceReopenEnabled: room.bingoAudienceReopenEnabled !== false,
             autoLyricsOnQueue: !!room.autoLyricsOnQueue,
-            lyricsPipelineV2Enabled: true,
             popTriviaEnabled: room.popTriviaEnabled !== false,
             queueSettings: {
                 limitMode: room.queueSettings?.limitMode || 'none',
@@ -14454,12 +14196,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                       onChange={e => setAutoLyricsOnQueue(e.target.checked)}
                                       className="accent-[#00C4D9]"
                                   />
-                                  Auto-generate lyrics on queue (AI)
+                                  Auto-generate lyrics on queue
                               </label>
                               <div className="host-form-helper">
-                                  {canUseAiTools
-                                      ? 'When no lyrics are available, generate fallback lyrics for queued songs.'
-                                      : 'Saved now; this activates when AI tools are enabled for the workspace (or demo bypass is on).'}
+                                  When no lyrics are available, BeauRocks checks cache, Apple lyrics, and AI fallback for queued songs.
                               </div>
                               <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
                                   <input

@@ -12,6 +12,12 @@ import {
   mergeAnonymousAccountData,
 } from "../../../lib/firebase";
 import { getMyHostAccessStatus, subscribeModeratorAccess } from "../api/directoryApi";
+import {
+  EMPTY_HOST_ACCESS,
+  buildHostAccessState,
+  fetchHostAccessStatusWithRetry,
+  isAppCheckWarmupError,
+} from "./hostAccessState";
 
 const normalizeAuthError = (error) =>
   String(error?.message || error?.code || "Auth failed.").replace(/^Firebase:\s*/i, "");
@@ -22,12 +28,8 @@ export const useDirectorySession = () => {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [modAccess, setModAccess] = useState({ isModerator: false, isAdmin: false, roles: [] });
-  const [hostAccess, setHostAccess] = useState({
-    hasHostWorkspaceAccess: false,
-    entitledHostAccess: false,
-    hostApprovalEnabled: false,
-    applicationStatus: "",
-  });
+  const [hostAccess, setHostAccess] = useState(() => buildHostAccessState());
+  const [hostAccessRefreshKey, setHostAccessRefreshKey] = useState(0);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (nextUser) => {
@@ -53,40 +55,47 @@ export const useDirectorySession = () => {
   useEffect(() => {
     let cancelled = false;
     if (!user?.uid || user?.isAnonymous) {
-      setHostAccess({
-        hasHostWorkspaceAccess: false,
-        entitledHostAccess: false,
-        hostApprovalEnabled: false,
-        applicationStatus: "",
-      });
+      setHostAccess(buildHostAccessState());
       return () => {
         cancelled = true;
       };
     }
+    setHostAccess((current) => (
+      current.resolvedUid === user.uid
+        ? buildHostAccessState({
+          ...current,
+          loading: true,
+          needsRetry: false,
+        })
+        : buildHostAccessState({
+          loading: true,
+        })
+    ));
     (async () => {
       try {
-        const payload = await getMyHostAccessStatus();
+        const payload = await fetchHostAccessStatusWithRetry(() => getMyHostAccessStatus());
         if (cancelled) return;
-        setHostAccess({
-          hasHostWorkspaceAccess: !!payload?.hasHostWorkspaceAccess,
-          entitledHostAccess: !!payload?.entitledHostAccess,
-          hostApprovalEnabled: !!payload?.hostApprovalEnabled || !!payload?.privateHostAccessEnabled,
-          applicationStatus: String(payload?.applicationStatus || "").trim().toLowerCase(),
-        });
-      } catch (_error) {
+        setHostAccess(buildHostAccessState({
+          ...payload,
+          resolvedUid: user.uid,
+        }));
+      } catch (error) {
         if (cancelled) return;
-        setHostAccess({
-          hasHostWorkspaceAccess: false,
-          entitledHostAccess: false,
-          hostApprovalEnabled: false,
-          applicationStatus: "",
-        });
+        if (isAppCheckWarmupError(error)) {
+          setHostAccess((current) => buildHostAccessState({
+            ...(current.resolvedUid === user.uid ? current : EMPTY_HOST_ACCESS),
+            resolvedUid: current.resolvedUid === user.uid ? current.resolvedUid : "",
+            needsRetry: true,
+          }));
+          return;
+        }
+        setHostAccess(buildHostAccessState());
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [user?.uid, user?.isAnonymous]);
+  }, [user?.uid, user?.isAnonymous, hostAccessRefreshKey]);
 
   const ensureProfile = useCallback(async (nextUser, fallbackName = "BeauRocks User") => {
     if (!nextUser?.uid) return;
@@ -190,6 +199,8 @@ export const useDirectorySession = () => {
     entitledHostAccess: !!hostAccess.entitledHostAccess,
     hostApprovalEnabled: !!hostAccess.hostApprovalEnabled,
     applicationStatus: hostAccess.applicationStatus || "",
+    hostAccessLoading: !!hostAccess.loading,
+    hostAccessRetryRequired: !!hostAccess.needsRetry,
     isModerator: !!modAccess.isModerator,
     isAdmin: !!modAccess.isAdmin,
     roles: modAccess.roles || [],
@@ -204,6 +215,7 @@ export const useDirectorySession = () => {
       signUpWithEmail,
       signOutAccount,
       requestPasswordReset,
+      refreshHostAccessStatus: () => setHostAccessRefreshKey((current) => current + 1),
       clearAuthError: () => setAuthError(""),
     },
   };

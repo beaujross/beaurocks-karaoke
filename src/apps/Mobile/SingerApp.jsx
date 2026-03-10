@@ -2659,7 +2659,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         });
         return () => unsub();
     }, [roomCode, room?.lightMode, room?.activeMode, currentSinger]);
-    const popTriviaRoundSec = Math.max(8, Number(room?.popTriviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC));
+    const popTriviaRoundSec = Math.max(
+        8,
+        Number(room?.popTriviaRoundSec || room?.gameDefaults?.triviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC)
+    );
     const popTriviaState = useMemo(() => {
         if (room?.activeMode !== 'karaoke') return null;
         if (room?.popTriviaEnabled === false) return null;
@@ -7380,7 +7383,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                 )}
                                 {popTriviaQuestion && (
-                                    <div className="mt-3 rounded-3xl border-2 border-cyan-300/55 bg-gradient-to-br from-[#070b1a]/95 via-[#11162b]/95 to-[#180a1f]/95 shadow-[0_16px_44px_rgba(0,0,0,0.45)] backdrop-blur p-4">
+                                    <div data-feature-id="pop-trivia-card" className="mt-3 rounded-3xl border-2 border-cyan-300/55 bg-gradient-to-br from-[#070b1a]/95 via-[#11162b]/95 to-[#180a1f]/95 shadow-[0_16px_44px_rgba(0,0,0,0.45)] backdrop-blur p-4">
                                         <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-[0.22em] text-cyan-100">
                                             <span>Pop-up Trivia</span>
                                             <span className="font-bold">{popTriviaState?.index + 1}/{popTriviaState?.total} | {popTriviaState?.timeLeftSec}s</span>
@@ -7393,6 +7396,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 return (
                                                     <button
                                                         key={`${popTriviaQuestion.id}_${idx}`}
+                                                        data-feature-id={`pop-trivia-option-${idx}`}
                                                         onClick={() => submitPopTriviaVote(idx)}
                                                         disabled={popTriviaMyVote !== null || popTriviaSubmitting}
                                                         className={`rounded-2xl border-2 px-3 py-3 text-left transition-all min-h-[72px] ${
@@ -8058,7 +8062,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <div className="flex flex-col h-full">
                         <div className="sticky top-0 z-20 -mx-4 px-4 pb-3 pt-1 bg-zinc-900/95 backdrop-blur">
                             <div className="grid grid-cols-4 gap-2 bg-zinc-800 p-2 rounded-xl">
-                                <button onClick={()=>setSongsTab('requests')} className={`py-2 rounded-lg text-base font-bold transition-all ${songsTab==='requests' ? 'bg-cyan-600 text-white shadow' : 'text-zinc-500'}`}>REQUESTS</button>
+                                <button data-feature-id="singer-requests-tab" onClick={()=>setSongsTab('requests')} className={`py-2 rounded-lg text-base font-bold transition-all ${songsTab==='requests' ? 'bg-cyan-600 text-white shadow' : 'text-zinc-500'}`}>REQUESTS</button>
                                 <button onClick={()=>setSongsTab('browse')} className={`py-2 rounded-lg text-base font-bold transition-all ${songsTab==='browse' ? 'bg-[#00C4D9] text-white shadow' : 'text-zinc-500'}`}>BROWSE</button>
                                 <button onClick={()=>setSongsTab('queue')} className={`py-2 rounded-lg text-base font-bold transition-all ${songsTab==='queue' ? 'bg-[#00C4D9] text-white shadow' : 'text-zinc-500'}`}>QUEUE</button>
                                 <button onClick={()=>setSongsTab('tight15')} className={`py-2 rounded-lg text-base font-bold transition-all ${songsTab==='tight15' ? 'bg-[#00C4D9] text-white shadow' : 'text-zinc-500'}`}>TIGHT 15</button>
@@ -8088,11 +8092,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </div>
                                     )}
                                     <div className="text-base text-zinc-400 text-center my-2">- OR MANUAL -</div>
-                                    <input value={form.song} onChange={e=>setForm({...form, song:e.target.value})} className="w-full bg-zinc-800 p-4 rounded-xl border border-zinc-600" placeholder="Song Title"/><input value={form.artist} onChange={e=>setForm({...form, artist:e.target.value})} className="w-full bg-zinc-800 p-4 rounded-xl border border-zinc-600" placeholder="Artist"/><button onClick={()=>submitSong()} className="w-full bg-[#00C4D9] text-black py-4 rounded-xl font-bold text-xl mt-4">SEND REQUEST</button>
+                                    <input data-feature-id="singer-request-song-title" value={form.song} onChange={e=>setForm({...form, song:e.target.value})} className="w-full bg-zinc-800 p-4 rounded-xl border border-zinc-600" placeholder="Song Title"/><input data-feature-id="singer-request-artist" value={form.artist} onChange={e=>setForm({...form, artist:e.target.value})} className="w-full bg-zinc-800 p-4 rounded-xl border border-zinc-600" placeholder="Artist"/><button data-feature-id="singer-request-submit" onClick={()=>submitSong()} className="w-full bg-[#00C4D9] text-black py-4 rounded-xl font-bold text-xl mt-4">SEND REQUEST</button>
                                 </div>
-                                <div className="mt-6 border-t border-zinc-800 pt-4 flex-1">
+                                <div data-feature-id="singer-my-requests-panel" className="mt-6 border-t border-zinc-800 pt-4 flex-1">
                                     <h3 className="text-sm uppercase tracking-[0.35em] text-zinc-400 mb-2">My Requests</h3>
-                                    {songs.filter(s=>s.singerName===user.name).length===0 ? <div className="text-zinc-600 text-base italic">No active requests</div> : songs.filter(s=>s.singerName===user.name).map(s=><div key={s.id} className="flex justify-between items-center bg-zinc-800 p-2 rounded mb-1"><span className="text-base">{s.songTitle}</span>
+                                    {songs.filter(s=>s.singerName===user.name).length===0 ? <div className="text-zinc-600 text-base italic">No active requests</div> : songs.filter(s=>s.singerName===user.name).map(s=><div key={s.id} data-feature-id={`singer-my-request-${s.id}`} className="flex justify-between items-center bg-zinc-800 p-2 rounded mb-1"><span className="text-base">{s.songTitle}</span>
                                     <div className="flex items-center gap-2">
                                         <span className={`text-base px-2 py-0.5 rounded ${s.status==='performed'?'bg-zinc-600':s.status==='performing'?'bg-[#00C4D9] animate-pulse':s.status==='requested'?'bg-blue-600':'bg-orange-600'}`}>{s.status.toUpperCase()}</span>
                                         {(s.status === 'requested' || s.status === 'pending') && <button onClick={()=>deleteMyRequest(s.id)} className="text-[#EC4899] hover:text-[#F472B6] px-2"><i className="fa-solid fa-trash"></i></button>}
@@ -8619,7 +8623,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     }}
                 >
                     <button onClick={()=>{ pulseNativeUiFeedback(); setTab('home'); }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='home' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]` : 'text-zinc-300'}`}><i className="fa-solid fa-champagne-glasses text-[28px]"></i><span className="text-base font-semibold">PARTY</span></button>
-                    <button onClick={()=>{ pulseNativeUiFeedback(); setTab('request'); }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='request' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]` : 'text-zinc-300'}`}><i className="fa-solid fa-music text-[28px]"></i><span className="text-base font-semibold">SONGS</span></button>
+                    <button data-feature-id="singer-nav-songs" onClick={()=>{ pulseNativeUiFeedback(); setTab('request'); }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='request' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]` : 'text-zinc-300'}`}><i className="fa-solid fa-music text-[28px]"></i><span className="text-base font-semibold">SONGS</span></button>
                     <button onClick={() => {
                         pulseNativeUiFeedback();
                         setTab('social');

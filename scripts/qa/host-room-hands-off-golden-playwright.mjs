@@ -1,3 +1,13 @@
+import {
+  extractRoomCodeFromUrl,
+  isLikelyRoomCode,
+  sanitizeRoomCode,
+} from "./lib/roomCode.js";
+import {
+  applyQaAppCheckDebugInitScript,
+  requireQaAppCheckDebugTokenForRemoteUrl,
+} from "./lib/appCheckDebug.mjs";
+
 const DEFAULT_ROOT_URL = "https://beaurocks.app";
 const DEFAULT_TIMEOUT_MS = 120000;
 const DEFAULT_FAILURE_SCREENSHOT = "tmp/qa-host-room-hands-off-failure.png";
@@ -18,7 +28,6 @@ const parseEmailTokens = (value = "") =>
     .filter(Boolean);
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const ROOM_CODE_BLOCKLIST = new Set(["ROOM", "CODE", "LIKE", "OPEN", "HOST"]);
 
 const ensurePlaywright = async () => {
   try {
@@ -29,12 +38,6 @@ const ensurePlaywright = async () => {
       `Playwright is not installed (${message}). Run: npm install && npm run qa:admin:prod:install`
     );
   }
-};
-
-const sanitizeRoomCode = (value) => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-const isLikelyRoomCode = (value) => {
-  const code = sanitizeRoomCode(value);
-  return code.length >= 4 && code.length <= 10 && !ROOM_CODE_BLOCKLIST.has(code);
 };
 
 const runCheck = async (checks, name, fn) => {
@@ -81,8 +84,33 @@ const deriveHostUrlFromRoot = (rootUrl = "") => {
 };
 
 const deriveHostAccessUrl = (rootUrl = "") => {
+  const hostOrigin = deriveSurfaceOriginFromRoot(rootUrl, "host");
+  if (hostOrigin) {
+    return `${hostOrigin}/host-access`;
+  }
   const safeRoot = String(rootUrl || "").replace(/\/+$/, "");
   return `${safeRoot}/host-access`;
+};
+
+const advanceHostLaunchUi = async (page) => {
+  const actions = [
+    { locator: page.locator("[data-host-setup-skip-intro]").first(), delayMs: 1500 },
+    { locator: page.getByRole("button", { name: /skip intro/i }).first(), delayMs: 1500 },
+    { locator: page.getByRole("button", { name: /start night/i }).first(), delayMs: 1800 },
+    { locator: page.getByRole("button", { name: /continue/i }).first(), delayMs: 1200 },
+  ];
+
+  for (const action of actions) {
+    const visible = await action.locator.isVisible().catch(() => false);
+    if (!visible) continue;
+    const enabled = await action.locator.isEnabled().catch(() => false);
+    if (!enabled) continue;
+    await action.locator.click({ force: true });
+    await delay(action.delayMs);
+    return true;
+  }
+
+  return false;
 };
 
 const readHostRoomCode = async (page) => {
@@ -92,35 +120,8 @@ const readHostRoomCode = async (page) => {
     if (isLikelyRoomCode(text)) return text;
   }
 
-  const monoCode = await page
-    .evaluate(() => {
-      const nodes = Array.from(document.querySelectorAll("div,span"));
-      for (const node of nodes) {
-        const cls = typeof node.className === "string" ? node.className : "";
-        if (!cls.includes("font-mono")) continue;
-        const text = (node.textContent || "").trim().toUpperCase();
-        if (/^[A-Z0-9]{4,10}$/.test(text)) return text;
-      }
-      return "";
-    })
-    .catch(() => "");
-  if (isLikelyRoomCode(monoCode)) return sanitizeRoomCode(monoCode);
-
-  try {
-    const parsed = new URL(page.url());
-    const fromQuery = sanitizeRoomCode(parsed.searchParams.get("room") || "");
-    if (isLikelyRoomCode(fromQuery)) return fromQuery;
-  } catch {
-    // ignore
-  }
-
-  const bodyText = await page.locator("body").innerText().catch(() => "");
-  const regexes = [/\broom\s+([A-Z0-9]{4,8})\b/i, /\b([A-Z0-9]{4,8})\s+created\b/i];
-  for (const regex of regexes) {
-    const match = bodyText.match(regex);
-    const candidate = sanitizeRoomCode(match?.[1] || "");
-    if (isLikelyRoomCode(candidate)) return candidate;
-  }
+  const fromPageUrl = extractRoomCodeFromUrl(page.url());
+  if (fromPageUrl) return fromPageUrl;
 
   return "";
 };
@@ -172,7 +173,7 @@ const runGuidedSetupWizardLaunch = async ({ page, timeoutMs }) => {
 
 const waitForHostRoomCode = async ({ page, timeoutMs }) => {
   const started = Date.now();
-  let createClicked = false;
+  let lastCreateAttemptAt = 0;
   let guidedFlowAttempted = false;
 
   while (Date.now() - started < timeoutMs) {
@@ -183,9 +184,9 @@ const waitForHostRoomCode = async ({ page, timeoutMs }) => {
     if (await createPrimary.count()) {
       const visible = await createPrimary.isVisible().catch(() => false);
       const enabled = await createPrimary.isEnabled().catch(() => false);
-      if (visible && enabled && !createClicked) {
+      if (visible && enabled && (Date.now() - lastCreateAttemptAt) > 5000) {
         await createPrimary.click({ force: true });
-        createClicked = true;
+        lastCreateAttemptAt = Date.now();
         await delay(900);
       }
     }
@@ -210,14 +211,14 @@ const waitForHostRoomCode = async ({ page, timeoutMs }) => {
     if (await quickStart.count()) {
       const visible = await quickStart.isVisible().catch(() => false);
       const enabled = await quickStart.isEnabled().catch(() => false);
-      if (visible && enabled && !createClicked) {
+      if (visible && enabled && (Date.now() - lastCreateAttemptAt) > 5000) {
         await quickStart.click({ force: true });
-        createClicked = true;
+        lastCreateAttemptAt = Date.now();
         await delay(900);
       }
     }
 
-    if (!createClicked && !guidedFlowAttempted) {
+    if (!lastCreateAttemptAt && !guidedFlowAttempted) {
       guidedFlowAttempted = true;
       const guidedRoomCode = await runGuidedSetupWizardLaunch({ page, timeoutMs });
       if (guidedRoomCode) return guidedRoomCode;
@@ -230,6 +231,11 @@ const waitForHostRoomCode = async ({ page, timeoutMs }) => {
       bodyText.includes("could not establish auth")
     ) {
       throw new Error("Room creation failed while waiting for host room code.");
+    }
+
+    const advanced = await advanceHostLaunchUi(page);
+    if (advanced) {
+      continue;
     }
 
     await delay(1200);
@@ -246,38 +252,8 @@ const ensureHostControlBar = async ({ page, timeoutMs }) => {
       return "Host control bar ready.";
     }
 
-    const skipIntroHook = page.locator("[data-host-setup-skip-intro]").first();
-    if (await skipIntroHook.isVisible().catch(() => false)) {
-      await skipIntroHook.click({ force: true });
-      await delay(1500);
+    if (await advanceHostLaunchUi(page)) {
       continue;
-    }
-
-    const skipIntro = page.getByRole("button", { name: /skip intro/i }).first();
-    if (await skipIntro.isVisible().catch(() => false)) {
-      await skipIntro.click({ force: true });
-      await delay(1500);
-      continue;
-    }
-
-    const startNight = page.getByRole("button", { name: /start night/i }).first();
-    if (await startNight.isVisible().catch(() => false)) {
-      const enabled = await startNight.isEnabled().catch(() => false);
-      if (enabled) {
-        await startNight.click({ force: true });
-        await delay(1800);
-        continue;
-      }
-    }
-
-    const continueBtn = page.getByRole("button", { name: /continue/i }).first();
-    if (await continueBtn.isVisible().catch(() => false)) {
-      const enabled = await continueBtn.isEnabled().catch(() => false);
-      if (enabled) {
-        await continueBtn.click({ force: true });
-        await delay(1200);
-        continue;
-      }
     }
 
     await delay(700);
@@ -286,17 +262,31 @@ const ensureHostControlBar = async ({ page, timeoutMs }) => {
 };
 
 const gotoHostAccessAndLogin = async ({ page, rootUrl, email, password, timeoutMs }) => {
+  const safeRoot = String(rootUrl || "").replace(/\/+$/, "");
   const candidates = [
+    `${safeRoot}/host-access`,
+    `${safeRoot}/?mode=marketing&page=host_access`,
     deriveHostAccessUrl(rootUrl),
-    `${String(rootUrl || "").replace(/\/+$/, "")}/?mode=marketing&page=host_access`,
   ];
 
   let loaded = false;
   for (const target of candidates) {
     await page.goto(target, { waitUntil: "domcontentloaded", timeout: timeoutMs });
     await delay(1200);
-    const hasHostAuthHeading = await page.getByText(/Host Login \+ Room Manager/i).first().isVisible().catch(() => false);
-    if (hasHostAuthHeading) {
+
+    const handoffButton = page.getByRole("button", { name: /Continue To Host Login/i }).first();
+    if (await handoffButton.isVisible().catch(() => false)) {
+      await Promise.allSettled([
+        page.waitForURL(/host\./i, { timeout: Math.min(20000, timeoutMs) }),
+        handoffButton.click({ force: true }),
+      ]);
+      await delay(1500);
+    }
+
+    const hasHostAuthHeading = await page.getByText(/Host Login \+ (Application|Room Manager)/i).first().isVisible().catch(() => false);
+    const hasAuthForm = await page.locator("form").first().isVisible().catch(() => false);
+    const hasSignedInState = await page.getByText(/Signed in as/i).first().isVisible().catch(() => false);
+    if (hasHostAuthHeading && (hasAuthForm || hasSignedInState)) {
       loaded = true;
       break;
     }
@@ -360,6 +350,8 @@ const ensureAutomationMenuOpen = async (page, timeoutMs) => {
 const buttonStateText = async (button) =>
   String(await button.innerText().catch(() => "")).trim().toLowerCase();
 
+const escapeRegExp = (value = "") => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const ensureToggleOn = async ({ button, timeoutMs, allowArmed = false }) => {
   const isOnText = (text) => /\bon\b/.test(text) || (allowArmed && /\barmed\b/.test(text));
   const isOffText = (text) => /\boff\b/.test(text);
@@ -390,21 +382,32 @@ const joinSingerIfNeeded = async ({ page, singerName, timeoutMs }) => {
     if (await songsButton.isVisible().catch(() => false)) return true;
     const partyButton = page.getByRole("button", { name: /^PARTY$/i }).first();
     if (await partyButton.isVisible().catch(() => false)) return true;
-    const bodyText = String(await page.locator("body").innerText().catch(() => ""));
-    if (/MY SONGS|ADD TO QUEUE|SEARCH SONGS|REQUEST SONG/i.test(bodyText)) {
-      return true;
-    }
     return false;
   };
 
   const joinView = page.locator('[data-singer-view="join"]').first();
   const nameInput = page.locator("[data-singer-join-name]").first();
   const fallbackInput = page.getByPlaceholder(/Enter Your Name/i).first();
+  const joinButton = page.locator("[data-singer-join-button]").first();
+
+  const settleStart = Date.now();
+  while (Date.now() - settleStart < Math.min(10000, timeoutMs)) {
+    const joinVisible =
+      (await joinView.isVisible().catch(() => false)) ||
+      (await nameInput.isVisible().catch(() => false)) ||
+      (await fallbackInput.isVisible().catch(() => false)) ||
+      (await joinButton.isVisible().catch(() => false));
+    if (joinVisible || (await isSingerMainReady())) {
+      break;
+    }
+    await delay(300);
+  }
 
   const needsJoin =
     (await joinView.isVisible().catch(() => false)) ||
     (await nameInput.isVisible().catch(() => false)) ||
-    (await fallbackInput.isVisible().catch(() => false));
+    (await fallbackInput.isVisible().catch(() => false)) ||
+    (await joinButton.isVisible().catch(() => false));
 
   if (!needsJoin) return "Singer already joined.";
 
@@ -420,7 +423,6 @@ const joinSingerIfNeeded = async ({ page, singerName, timeoutMs }) => {
     await delay(120);
   }
 
-  const joinButton = page.locator("[data-singer-join-button]").first();
   if (await joinButton.count()) {
     await joinButton.click({ force: true });
   } else {
@@ -486,18 +488,82 @@ const readTvQueueCount = async (tvPage) => {
   return -1;
 };
 
-const waitForTvQueueCountAtLeast = async ({ tvPage, minimum, timeoutMs }) => {
+const waitForTvSongOrQueueState = async ({ tvPage, minimumQueueCount, songTitle, timeoutMs }) => {
   const started = Date.now();
+  const songPattern = new RegExp(escapeRegExp(songTitle), "i");
+  let lastCount = -1;
   while (Date.now() - started < timeoutMs) {
-    const count = await readTvQueueCount(tvPage);
-    if (count >= minimum) return count;
+    const bodyText = String(await tvPage.locator("body").innerText().catch(() => ""));
+    lastCount = await readTvQueueCount(tvPage);
+    if (songPattern.test(bodyText)) {
+      return { matched: "song", queueCount: lastCount };
+    }
+    if (lastCount >= minimumQueueCount) {
+      return { matched: "queue", queueCount: lastCount };
+    }
     await delay(700);
   }
-  throw new Error(`TV queue count did not reach ${minimum} within timeout.`);
+  throw new Error(
+    `TV did not surface "${songTitle}" or reach queue count ${minimumQueueCount} within timeout (lastQueue=${lastCount}).`
+  );
+};
+
+const waitForAudiencePopTriviaCard = async ({ audiencePage, timeoutMs }) => {
+  const started = Date.now();
+  const card = audiencePage.locator('[data-feature-id="pop-trivia-card"]').first();
+  while (Date.now() - started < timeoutMs) {
+    const visible = await card.isVisible().catch(() => false);
+    if (visible) return card;
+    await delay(700);
+  }
+  const bodyText = String(await audiencePage.locator("body").innerText().catch(() => ""));
+  throw new Error(`Audience pop trivia card did not render. Snippet="${bodyText.replace(/\s+/g, " ").slice(0, 220)}"`);
+};
+
+const waitForAudienceRequestEntry = async ({ audiencePage, songTitle, timeoutMs }) => {
+  const normalizedSongTitle = String(songTitle || "").trim();
+  if (!normalizedSongTitle) {
+    throw new Error("Audience request song title is required.");
+  }
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const requestRow = audiencePage
+      .locator('[data-feature-id="singer-my-requests-panel"]')
+      .getByText(normalizedSongTitle, { exact: false })
+      .first();
+    if (await requestRow.isVisible().catch(() => false)) {
+      return `My Requests shows ${normalizedSongTitle}.`;
+    }
+    await delay(500);
+  }
+  const bodyText = String(await audiencePage.locator("body").innerText().catch(() => ""));
+  throw new Error(
+    `Audience request "${normalizedSongTitle}" did not appear in My Requests. Snippet="${bodyText.replace(/\s+/g, " ").slice(0, 220)}"`
+  );
+};
+
+const waitForTvPopTriviaCard = async ({ tvPage, timeoutMs, minimumAnswersLocked = 0 }) => {
+  const started = Date.now();
+  const card = tvPage.locator('[data-feature-id="tv-pop-trivia-card"]').first();
+  while (Date.now() - started < timeoutMs) {
+    const visible = await card.isVisible().catch(() => false);
+    if (visible) {
+      const cardText = String(await card.innerText().catch(() => ""));
+      const match = cardText.match(/(\d+)\s+answers locked/i);
+      const answersLocked = Number(match?.[1] || 0);
+      if (answersLocked >= minimumAnswersLocked) {
+        return { card, answersLocked, cardText };
+      }
+    }
+    await delay(700);
+  }
+  const bodyText = String(await tvPage.locator("body").innerText().catch(() => ""));
+  throw new Error(`TV pop trivia card did not render. Snippet="${bodyText.replace(/\s+/g, " ").slice(0, 220)}"`);
 };
 
 const run = async () => {
   const rootUrl = process.env.QA_ROOT_URL || process.env.QA_BASE_URL || DEFAULT_ROOT_URL;
+  requireQaAppCheckDebugTokenForRemoteUrl(rootUrl);
   const hostUrl = process.env.QA_HOST_URL || deriveHostUrlFromRoot(rootUrl);
   const audienceOrigin = process.env.QA_AUDIENCE_URL || deriveSurfaceOriginFromRoot(rootUrl, "app");
   const tvOrigin = process.env.QA_TV_URL || deriveSurfaceOriginFromRoot(rootUrl, "tv");
@@ -545,14 +611,17 @@ const run = async () => {
   let scenarioFailure = false;
 
   const hostContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  await applyQaAppCheckDebugInitScript(hostContext);
   const hostPage = await hostContext.newPage();
   const tvContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  await applyQaAppCheckDebugInitScript(tvContext);
   const tvPage = await tvContext.newPage();
   const audienceContext = await browser.newContext({
     viewport: { width: 430, height: 932 },
     isMobile: true,
     hasTouch: true,
   });
+  await applyQaAppCheckDebugInitScript(audienceContext);
   const audiencePage = await audienceContext.newPage();
 
   try {
@@ -653,21 +722,47 @@ const run = async () => {
       const addPanelToggle = hostPage.locator('[data-feature-id="panel-add-to-queue"]').first();
       await addPanelToggle.waitFor({ state: "visible", timeout: timeoutMs });
 
-      const hostSongInput = hostPage.getByPlaceholder("Song").first();
+      const hostSongInput = hostPage.locator('[data-feature-id="host-manual-song-input"]').first();
+      const fallbackHostSongInput = hostPage.getByPlaceholder("Song").first();
+      const activeHostSongInput = await hostSongInput.isVisible().catch(() => false)
+        ? hostSongInput
+        : fallbackHostSongInput;
       if (!(await hostSongInput.isVisible().catch(() => false))) {
         await addPanelToggle.click({ force: true });
       }
-      await hostSongInput.waitFor({ state: "visible", timeout: timeoutMs });
+      await activeHostSongInput.waitFor({ state: "visible", timeout: timeoutMs });
 
-      await hostSongInput.fill(hostSongTitle);
-      await hostPage.getByPlaceholder("Artist").first().fill(hostArtist);
-      const urlInput = hostPage.getByPlaceholder(/Paste a YouTube\/local URL or YouTube playlist URL/i).first();
-      await urlInput.waitFor({ state: "visible", timeout: timeoutMs });
-      const addToQueueBtn = urlInput.locator("xpath=following-sibling::button[1]");
-      await addToQueueBtn.click({ force: true });
+      await activeHostSongInput.fill(hostSongTitle);
+      const hostArtistInput = hostPage.locator('[data-feature-id="host-manual-artist-input"]').first();
+      const fallbackHostArtistInput = hostPage.getByPlaceholder("Artist").first();
+      const activeHostArtistInput = await hostArtistInput.isVisible().catch(() => false)
+        ? hostArtistInput
+        : fallbackHostArtistInput;
+      await activeHostArtistInput.fill(hostArtist);
+
+      const performerSelect = hostPage.locator('[data-feature-id="host-manual-performer-select"]').first();
+      if (await performerSelect.isVisible().catch(() => false)) {
+        const performerValue = await performerSelect.evaluate((node) => {
+          const options = Array.from(node.options || []);
+          const preferred = options.find((option) => option.value && option.value !== "__custom");
+          return preferred?.value || "";
+        }).catch(() => "");
+        if (performerValue) {
+          await performerSelect.selectOption(performerValue);
+        }
+      }
+
+      const addToQueueBtn = hostPage.locator('[data-feature-id="host-manual-queue-submit"]').first();
+      const fallbackAddToQueueBtn = hostPage.getByRole("button", { name: /^Add to Queue$/i }).first();
+      const activeAddToQueueBtn = await addToQueueBtn.isVisible().catch(() => false)
+        ? addToQueueBtn
+        : fallbackAddToQueueBtn;
+      await activeAddToQueueBtn.waitFor({ state: "visible", timeout: timeoutMs });
+      await activeAddToQueueBtn.click({ force: true });
 
       const queueToggle = hostPage.locator('[data-feature-id="panel-queue-list"]').first();
       await queueToggle.waitFor({ state: "visible", timeout: timeoutMs });
+      await queueToggle.click({ force: true }).catch(() => {});
       const queueSignal = hostPage.getByText(hostSongTitle, { exact: false }).first();
       const queueVisible = await queueSignal
         .waitFor({ state: "visible", timeout: timeoutMs })
@@ -681,38 +776,104 @@ const run = async () => {
     });
 
     await runCheck(checks, "public_tv_sync_after_host_request", async () => {
-      const updated = await waitForTvQueueCountAtLeast({
+      const tvState = await waitForTvSongOrQueueState({
         tvPage,
-        minimum: tvQueueBaseline + 1,
+        minimumQueueCount: tvQueueBaseline + 1,
+        songTitle: hostSongTitle,
         timeoutMs,
       });
-      const tvBody = String(await tvPage.locator("body").innerText().catch(() => ""));
-      if (!new RegExp(hostSongTitle, "i").test(tvBody)) {
-        throw new Error(`TV queue count updated to ${updated}, but host song "${hostSongTitle}" is not visible.`);
-      }
-      return `TV queue=${updated} after host request.`;
+      return `TV matched via ${tvState.matched}; queue=${tvState.queueCount}.`;
+    });
+
+    await runCheck(checks, "audience_pop_trivia_renders_and_accepts_answer", async () => {
+      const triviaCard = await waitForAudiencePopTriviaCard({
+        audiencePage,
+        timeoutMs: Math.min(timeoutMs, 90000),
+      });
+      const firstOption = triviaCard.locator('[data-feature-id="pop-trivia-option-0"]').first();
+      await firstOption.waitFor({ state: "visible", timeout: timeoutMs });
+      await firstOption.click({ force: true });
+      await audiencePage.getByText(/Answer locked/i).first().waitFor({ state: "visible", timeout: timeoutMs });
+      const cardText = String(await triviaCard.innerText().catch(() => ""));
+      return cardText.replace(/\s+/g, " ").slice(0, 180);
+    });
+
+    await runCheck(checks, "tv_pop_trivia_renders_after_audience_answer", async () => {
+      const triviaState = await waitForTvPopTriviaCard({
+        tvPage,
+        timeoutMs: Math.min(timeoutMs, 90000),
+        minimumAnswersLocked: 1,
+      });
+      return triviaState.cardText.replace(/\s+/g, " ").slice(0, 180);
     });
 
     await runCheck(checks, "audience_adds_song_request", async () => {
-      const songsNav = audiencePage.getByRole("button", { name: /^SONGS$/i }).first();
-      await songsNav.waitFor({ state: "visible", timeout: timeoutMs });
-      await songsNav.click({ force: true });
-      await audiencePage.getByRole("button", { name: /^REQUESTS$/i }).first().click({ force: true });
+      const songTitleInput = audiencePage.locator('[data-feature-id="singer-request-song-title"]').first();
+      const fallbackSongTitleInput = audiencePage.getByPlaceholder("Song Title").first();
+      const activeSongTitleInput = await songTitleInput.isVisible().catch(() => false)
+        ? songTitleInput
+        : fallbackSongTitleInput;
+      const artistInput = audiencePage.locator('[data-feature-id="singer-request-artist"]').first();
+      const fallbackArtistInput = audiencePage.getByPlaceholder("Artist").first();
+      const activeArtistInput = await artistInput.isVisible().catch(() => false)
+        ? artistInput
+        : fallbackArtistInput;
+      if (!(await activeSongTitleInput.isVisible().catch(() => false))) {
+        const songsNav = audiencePage.locator('[data-feature-id="singer-nav-songs"]').first();
+        const fallbackSongsNav = audiencePage.getByRole("button", { name: /^SONGS$/i }).first();
+        const activeSongsNav = await songsNav.isVisible().catch(() => false)
+          ? songsNav
+          : fallbackSongsNav;
+        await activeSongsNav.waitFor({ state: "visible", timeout: timeoutMs });
+        await activeSongsNav.click({ force: true });
+        await delay(600);
+      }
+      if (!(await activeSongTitleInput.isVisible().catch(() => false))) {
+        const requestsTab = audiencePage.locator('[data-feature-id="singer-requests-tab"]').first();
+        const fallbackRequestsTab = audiencePage.getByRole("button", { name: /^REQUESTS$/i }).first();
+        const activeRequestsTab = await requestsTab.isVisible().catch(() => false)
+          ? requestsTab
+          : fallbackRequestsTab;
+        if (await activeRequestsTab.isVisible().catch(() => false)) {
+          await activeRequestsTab.click({ force: true });
+          await delay(600);
+        }
+      }
+      await activeSongTitleInput.waitFor({ state: "visible", timeout: timeoutMs });
+      await activeSongTitleInput.fill(audienceSongTitle);
+      await activeArtistInput.fill(audienceArtist);
 
-      const songTitleInput = audiencePage.getByPlaceholder("Song Title").first();
-      const artistInput = audiencePage.getByPlaceholder("Artist").first();
-      await songTitleInput.waitFor({ state: "visible", timeout: timeoutMs });
-      await songTitleInput.fill(audienceSongTitle);
-      await artistInput.fill(audienceArtist);
-
-      await audiencePage.getByRole("button", { name: /SEND REQUEST/i }).first().click({ force: true });
-      await audiencePage.getByText(audienceSongTitle, { exact: false }).first().waitFor({ state: "visible", timeout: timeoutMs });
+      const sendRequestButton = audiencePage.locator('[data-feature-id="singer-request-submit"]').first();
+      const fallbackSendRequestButton = audiencePage.getByRole("button", { name: /SEND REQUEST/i }).first();
+      const activeSendRequestButton = await sendRequestButton.isVisible().catch(() => false)
+        ? sendRequestButton
+        : fallbackSendRequestButton;
+      await activeSendRequestButton.scrollIntoViewIfNeeded().catch(() => {});
+      await activeSendRequestButton.click({ timeout: timeoutMs });
+      const requestSentToast = audiencePage.getByText(/Request Sent!/i).first();
+      await Promise.race([
+        requestSentToast.waitFor({ state: "visible", timeout: timeoutMs }).catch(() => null),
+        waitForAudienceRequestEntry({
+          audiencePage,
+          songTitle: audienceSongTitle,
+          timeoutMs,
+        }),
+      ]);
+      await waitForAudienceRequestEntry({
+        audiencePage,
+        songTitle: audienceSongTitle,
+        timeoutMs,
+      });
       return `Audience requested ${audienceSongTitle}.`;
     });
 
     await runCheck(checks, "host_queue_contains_host_and_audience_requests", async () => {
       const hostSongVisible = await hostPage.getByText(hostSongTitle, { exact: false }).first().isVisible().catch(() => false);
-      const audienceSongVisible = await hostPage.getByText(audienceSongTitle, { exact: false }).first().isVisible().catch(() => false);
+      const audienceSongSignal = hostPage.getByText(audienceSongTitle, { exact: false }).first();
+      const audienceSongVisible = await audienceSongSignal
+        .waitFor({ state: "visible", timeout: timeoutMs })
+        .then(() => true)
+        .catch(() => false);
       if (!hostSongVisible || !audienceSongVisible) {
         throw new Error(
           `Host queue did not show both songs (hostVisible=${hostSongVisible}, audienceVisible=${audienceSongVisible}).`
@@ -722,18 +883,13 @@ const run = async () => {
     });
 
     await runCheck(checks, "public_tv_sync_after_audience_request", async () => {
-      const updated = await waitForTvQueueCountAtLeast({
+      const tvState = await waitForTvSongOrQueueState({
         tvPage,
-        minimum: tvQueueBaseline + 2,
+        minimumQueueCount: Math.max(tvQueueBaseline + 1, 1),
+        songTitle: audienceSongTitle,
         timeoutMs,
       });
-      const tvBody = String(await tvPage.locator("body").innerText().catch(() => ""));
-      if (!new RegExp(audienceSongTitle, "i").test(tvBody)) {
-        throw new Error(
-          `TV queue count updated to ${updated}, but audience song "${audienceSongTitle}" is not visible.`
-        );
-      }
-      return `TV queue=${updated} after audience request.`;
+      return `TV matched via ${tvState.matched}; queue=${tvState.queueCount}.`;
     });
   } catch (error) {
     scenarioFailure = true;

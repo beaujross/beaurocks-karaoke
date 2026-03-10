@@ -1,5 +1,5 @@
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
@@ -17,10 +17,27 @@ const {
   buildUsageMeterSummary,
 } = require("./lib/entitlementsUsage");
 const { resolveLyricsForSong } = require("./lib/lyrics/resolveLyricsForSong");
+const { buildLyricsAiAccessState } = require("./lib/lyrics/aiAccess");
+const {
+  GEMINI_DEFAULT_MODEL,
+  getGeminiModelPricing,
+  requestGeminiJson,
+} = require("./lib/geminiClient");
+const {
+  DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+  buildPopTriviaCacheKey,
+  buildFallbackPopTriviaSeedRows,
+  buildPopTriviaSongContext,
+  normalizePopTriviaQuestions,
+  normalizePopTriviaSeedRows,
+  normalizePopTriviaSongCache,
+  shouldAttemptPopTriviaGeneration,
+} = require("./lib/popTrivia");
 const REACTION_POINT_COSTS = require("./lib/reactionPointCosts.json");
 
 admin.initializeApp();
 const APP_ID = "bross-app";
+const POP_TRIVIA_CACHE_FIELD = "popTriviaSongCache";
 const ORGS_COLLECTION = "organizations";
 const STRIPE_SUBSCRIPTIONS_COLLECTION = "stripe_subscriptions";
 
@@ -43,9 +60,6 @@ const GOOGLE_MAPS_SERVER_API_KEY = defineSecret("GOOGLE_MAPS_SERVER_API_KEY");
 const YELP_API_KEY = defineSecret("YELP_API_KEY");
 const REMINDER_EMAIL_WEBHOOK_URL = defineSecret("REMINDER_EMAIL_WEBHOOK_URL");
 const REMINDER_SMS_WEBHOOK_URL = defineSecret("REMINDER_SMS_WEBHOOK_URL");
-const GEMINI_LYRICS_MODEL = "gemini-2.5-flash-preview-09-2025";
-const GEMINI_LYRICS_INPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_INPUT_USD_PER_1M || "0.3");
-const GEMINI_LYRICS_OUTPUT_USD_PER_1M = Number(process.env.GEMINI_LYRICS_OUTPUT_USD_PER_1M || "2.5");
 const LYRICS_PIPELINE_V2_ENABLED_DEFAULT = String(process.env.LYRICS_PIPELINE_V2_ENABLED || "true")
   .trim()
   .toLowerCase() === "true";
@@ -801,7 +815,6 @@ const buildProvisionedRoomData = ({
     hostNightPreset: "custom",
     bingoAudienceReopenEnabled: true,
     autoLyricsOnQueue: false,
-    lyricsPipelineV2Enabled: true,
     popTriviaEnabled: true,
     gameDefaults: {
       triviaRoundSec: 20,
@@ -974,7 +987,6 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "lastPerformance",
   "layoutMode",
   "lightMode",
-  "lyricsPipelineV2Enabled",
   "lobbyOrbSkinUrl",
   "logoUrl",
   "lyricsMode",
@@ -1053,7 +1065,6 @@ const HOST_ROOM_BOOLEAN_ROOT_KEYS = new Set([
   "hideLogo",
   "hideOverlay",
   "hideWaveform",
-  "lyricsPipelineV2Enabled",
   "marqueeEnabled",
   "popTriviaEnabled",
   "reduceMotionFx",
@@ -3698,6 +3709,11 @@ const resolveUserEntitlements = async (uid) => {
     };
   }
   const capabilities = normalizeCapabilities(entitlements.capabilities || {});
+  const hostApprovalEnabled = await hasHostApprovalAccess(uid);
+  if (hostApprovalEnabled) {
+    capabilities["ai.generate_content"] = true;
+    capabilities["api.youtube_data"] = true;
+  }
   const allowLegacyTierEntitlements = ["1", "true", "yes", "on"].includes(
     String(process.env.ALLOW_LEGACY_USER_TIER_ENTITLEMENTS || "").trim().toLowerCase()
   );
@@ -5353,6 +5369,349 @@ const isRoomAiDemoBypassEnabled = (roomData = {}) => {
 
 const isLyricsPipelineV2EnabledForRoom = () => LYRICS_PIPELINE_V2_ENABLED_DEFAULT;
 
+const buildLyricsAiMeterEntitlements = async ({
+  roomData = {},
+  entitlements = null,
+} = {}) => {
+  if (entitlements?.capabilities?.["ai.generate_content"]) return entitlements;
+  const hostUids = Array.isArray(roomData?.hostUids) ? roomData.hostUids : [];
+  const primaryHostUid = normalizeUidToken(roomData?.hostUid || hostUids[0] || "");
+  if (!primaryHostUid) return entitlements;
+  const [hostApprovalEnabled, superAdmin] = await Promise.all([
+    hasHostApprovalAccess(primaryHostUid),
+    isSuperAdminUid(primaryHostUid),
+  ]);
+  if (!hostApprovalEnabled && !superAdmin) return entitlements;
+  const currentPlanId = String(entitlements?.planId || "").trim();
+  const effectivePlan = getPlanDefinition(currentPlanId);
+  const effectivePlanId = effectivePlan?.tier === "host" ? effectivePlan.id : "host_monthly";
+  return {
+    ...(entitlements || {}),
+    planId: effectivePlanId,
+    status: "active",
+    source: superAdmin ? "lyrics_super_admin_metered" : "lyrics_host_approval_metered",
+    capabilities: normalizeCapabilities({
+      ...(entitlements?.capabilities || {}),
+      "ai.generate_content": true,
+    }),
+  };
+};
+
+const readPopTriviaRoomContext = async (roomCode = "") => {
+  const safeRoomCode = normalizeRoomCode(roomCode || "");
+  if (!safeRoomCode) {
+    return { roomCode: "", roomData: {}, popTriviaSongCache: {} };
+  }
+  const rootRef = getRootRef();
+  const [roomSnap, librarySnap] = await Promise.all([
+    rootRef.collection("rooms").doc(safeRoomCode).get(),
+    rootRef.collection("host_libraries").doc(safeRoomCode).get().catch(() => null),
+  ]);
+  return {
+    roomCode: safeRoomCode,
+    roomData: roomSnap?.data() || {},
+    popTriviaSongCache: normalizePopTriviaSongCache(
+      librarySnap?.exists ? librarySnap.get(POP_TRIVIA_CACHE_FIELD) : {}
+    ),
+  };
+};
+
+const writeResolvedPopTrivia = async ({
+  songRef,
+  cacheKey = "",
+  source = "ai",
+  questions = [],
+  model = "",
+} = {}) => {
+  if (!songRef) return;
+  await songRef.set({
+    popTrivia: Array.isArray(questions) ? questions : [],
+    popTriviaStatus: "ready",
+    popTriviaSource: String(source || "ai").trim() || "ai",
+    popTriviaCacheKey: String(cacheKey || "").trim() || null,
+    popTriviaGeneratedAt: admin.firestore.FieldValue.serverTimestamp(),
+    popTriviaUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    popTriviaModel: String(model || "").trim() || null,
+    popTriviaError: null,
+    popTriviaLeaseAtMs: admin.firestore.FieldValue.delete(),
+    popTriviaLeaseId: admin.firestore.FieldValue.delete(),
+  }, { merge: true });
+};
+
+const writePopTriviaCacheEntry = async ({
+  roomCode = "",
+  cacheKey = "",
+  seedRows = [],
+  songData = {},
+  source = "ai",
+} = {}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode || "");
+  const safeCacheKey = String(cacheKey || "").trim();
+  if (!safeRoomCode || !safeCacheKey || !Array.isArray(seedRows) || !seedRows.length) return;
+  const cacheEntry = {
+    seedRows,
+    songTitle: String(songData?.songTitle || songData?.title || "").trim(),
+    artist: String(songData?.artist || "").trim(),
+    source: String(source || "ai").trim() || "ai",
+    updatedAtMs: nowMs(),
+  };
+  await getRootRef().collection("host_libraries").doc(safeRoomCode).set({
+    [POP_TRIVIA_CACHE_FIELD]: {
+      [safeCacheKey]: cacheEntry,
+    },
+  }, { merge: true });
+};
+
+const writeFallbackPopTrivia = async ({
+  songRef,
+  roomCode = "",
+  cacheKey = "",
+  songData = {},
+  reason = "",
+} = {}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode || songData?.roomCode || "");
+  const seedRows = normalizePopTriviaSeedRows(buildFallbackPopTriviaSeedRows(songData), {
+    limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+  });
+  const questions = normalizePopTriviaQuestions(seedRows, {
+    limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+    idPrefix: `${safeRoomCode || "ROOM"}_${songRef?.id || "song"}`,
+  });
+  if (!songRef || !seedRows.length || !questions.length) {
+    return { ok: false, status: "failed", reason: "fallback_generation_failed" };
+  }
+  await writeResolvedPopTrivia({
+    songRef,
+    cacheKey,
+    source: "fallback",
+    questions,
+    model: "fallback",
+  });
+  if (safeRoomCode && cacheKey) {
+    await writePopTriviaCacheEntry({
+      roomCode: safeRoomCode,
+      cacheKey,
+      seedRows,
+      songData,
+      source: "fallback",
+    });
+  }
+  return {
+    ok: true,
+    status: "ready",
+    source: "fallback",
+    questionCount: questions.length,
+    reason: String(reason || "").trim() || "fallback",
+  };
+};
+
+const claimPopTriviaGeneration = async ({
+  songRef,
+  now = nowMs(),
+  leaseId = "",
+} = {}) => admin.firestore().runTransaction(async (tx) => {
+  const snap = await tx.get(songRef);
+  if (!snap.exists) return { claimed: false, reason: "missing_song", songData: {} };
+  const songData = snap.data() || {};
+  const attempt = shouldAttemptPopTriviaGeneration(songData, { now });
+  if (!attempt.ok) {
+    return { claimed: false, reason: attempt.reason, songData };
+  }
+  const activeLeaseAtMs = Math.max(0, Number(songData?.popTriviaLeaseAtMs || 0));
+  if (activeLeaseAtMs > 0 && (now - activeLeaseAtMs) < (2 * 60 * 1000)) {
+    return { claimed: false, reason: "lease_active", songData };
+  }
+  tx.set(songRef, {
+    popTriviaStatus: "pending",
+    popTriviaError: null,
+    popTriviaRequestedAtMs: now,
+    popTriviaUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    popTriviaLeaseAtMs: now,
+    popTriviaLeaseId: String(leaseId || `poptrivia_${songRef.id}_${now}`).slice(0, 180),
+  }, { merge: true });
+  return { claimed: true, reason: attempt.reason, songData };
+});
+
+const resolvePopTriviaAiAccess = async (roomData = {}) => {
+  const orgId = String(roomData?.orgId || "").trim();
+  let entitlements = null;
+  if (orgId) {
+    try {
+      entitlements = await readOrganizationEntitlements(orgId);
+    } catch (error) {
+      console.warn("popTrivia entitlements lookup failed", error?.message || error);
+    }
+  }
+  let aiMeterEntitlements = entitlements;
+  try {
+    aiMeterEntitlements = await buildLyricsAiMeterEntitlements({
+      roomData,
+      entitlements,
+    });
+  } catch (error) {
+    console.warn("popTrivia AI access entitlement lookup failed", error?.message || error);
+  }
+  const demoBypassEnabled = isRoomAiDemoBypassEnabled(roomData);
+  const aiCapabilityEnabled = !!aiMeterEntitlements?.capabilities?.["ai.generate_content"];
+  return {
+    orgId,
+    entitlements,
+    aiMeterEntitlements,
+    demoBypassEnabled,
+    aiCapabilityEnabled,
+    canCallAiProvider: demoBypassEnabled || aiCapabilityEnabled,
+    shouldMeterUsage: !!orgId && aiCapabilityEnabled && !demoBypassEnabled,
+  };
+};
+
+const processPopTriviaForSong = async ({
+  songRef,
+  songData = {},
+  leaseId = "",
+  reason = "",
+} = {}) => {
+  if (!songRef) {
+    return { ok: false, status: "skipped", reason: "missing_song_ref" };
+  }
+
+  const safeRoomCode = normalizeRoomCode(songData?.roomCode || "");
+  if (!safeRoomCode) {
+    return { ok: false, status: "skipped", reason: "missing_room_code" };
+  }
+
+  const { roomData, popTriviaSongCache } = await readPopTriviaRoomContext(safeRoomCode);
+  if (roomData?.popTriviaEnabled === false) {
+    return { ok: false, status: "skipped", reason: "pop_trivia_disabled" };
+  }
+
+  const claim = await claimPopTriviaGeneration({
+    songRef,
+    now: nowMs(),
+    leaseId: String(leaseId || reason || "auto_pop_trivia").slice(0, 180),
+  });
+  if (!claim.claimed) {
+    return { ok: false, status: "skipped", reason: claim.reason };
+  }
+
+  const latestSongSnap = await songRef.get();
+  const latestSong = latestSongSnap.data() || songData || {};
+  const cacheKey = buildPopTriviaCacheKey({
+    song: latestSong,
+    buildSongKey,
+  });
+  const cacheEntry = cacheKey ? popTriviaSongCache?.[cacheKey] : null;
+  const cachedSeedRows = normalizePopTriviaSeedRows(cacheEntry?.seedRows || [], {
+    limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+  });
+  if (cachedSeedRows.length) {
+    const cachedQuestions = normalizePopTriviaQuestions(cachedSeedRows, {
+      limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+      idPrefix: `${safeRoomCode}_${songRef.id}`,
+    });
+    if (cachedQuestions.length) {
+      await writeResolvedPopTrivia({
+        songRef,
+        cacheKey,
+        source: cacheEntry?.source || "cache",
+        questions: cachedQuestions,
+        model: "cache",
+      });
+      return { ok: true, status: "ready", source: "cache", questionCount: cachedQuestions.length };
+    }
+  }
+
+  const apiKey = GEMINI_API_KEY.value();
+  if (!String(apiKey || "").trim()) {
+    return writeFallbackPopTrivia({
+      songRef,
+      roomCode: safeRoomCode,
+      cacheKey,
+      songData: latestSong,
+      reason: "missing_api_key",
+    });
+  }
+
+  const aiAccess = await resolvePopTriviaAiAccess(roomData);
+  if (!aiAccess.canCallAiProvider) {
+    return writeFallbackPopTrivia({
+      songRef,
+      roomCode: safeRoomCode,
+      cacheKey,
+      songData: latestSong,
+      reason: "ai_access_blocked",
+    });
+  }
+
+  if (aiAccess.shouldMeterUsage) {
+    await reserveOrganizationUsageUnits({
+      orgId: aiAccess.orgId,
+      entitlements: aiAccess.aiMeterEntitlements || aiAccess.entitlements,
+      meterId: "ai_generate_content",
+      units: 1,
+    });
+  }
+
+  try {
+    const prompt = buildGeminiPrompt("pop_trivia_song", buildPopTriviaSongContext(latestSong));
+    const geminiPayload = await requestGeminiJson({
+      apiKey,
+      prompt,
+      responseMimeType: "application/json",
+    });
+    const rawText = geminiPayload?.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const cleanText = rawText.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleanText);
+    const seedRows = normalizePopTriviaSeedRows(parsed?.result || parsed || [], {
+      limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+    });
+    const triviaQuestions = normalizePopTriviaQuestions(seedRows, {
+      limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+      idPrefix: `${safeRoomCode}_${songRef.id}`,
+    });
+    if (!seedRows.length || !triviaQuestions.length) {
+      return writeFallbackPopTrivia({
+        songRef,
+        roomCode: safeRoomCode,
+        cacheKey,
+        songData: latestSong,
+        reason: "empty_ai_result",
+      });
+    }
+
+    await writeResolvedPopTrivia({
+      songRef,
+      cacheKey,
+      source: "ai",
+      questions: triviaQuestions,
+      model: geminiPayload?.model || GEMINI_DEFAULT_MODEL,
+    });
+    if (cacheKey) {
+      await writePopTriviaCacheEntry({
+        roomCode: safeRoomCode,
+        cacheKey,
+        seedRows,
+        songData: latestSong,
+        source: "ai",
+      });
+    }
+    return {
+      ok: true,
+      status: "ready",
+      source: "ai",
+      questionCount: triviaQuestions.length,
+      model: geminiPayload?.model || GEMINI_DEFAULT_MODEL,
+    };
+  } catch (error) {
+    return writeFallbackPopTrivia({
+      songRef,
+      roomCode: safeRoomCode,
+      cacheKey,
+      songData: latestSong,
+      reason: String(error?.message || error || "generation_failed"),
+    });
+  }
+};
+
 const isTimedAdapterEnabledForRoom = (roomCode = "") => {
   if (!LYRICS_TIMED_ADAPTER_ENABLED_DEFAULT) return false;
   if (!LYRICS_TIMED_ADAPTER_ROOM_CODES.size) return true;
@@ -5571,20 +5930,11 @@ const fetchAiLyricsFallbackText = async (title, artist) => {
   }
   const prompt = buildGeminiPrompt("lyrics", { title: safeTitle, artist: safeArtist });
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_LYRICS_MODEL}:generateContent?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" },
-      }),
+    const { data, model } = await requestGeminiJson({
+      apiKey,
+      prompt,
+      responseMimeType: "application/json",
     });
-    if (!res.ok) {
-      const text = await res.text();
-      console.warn("autoAppleLyrics AI fallback request failed", res.status, text?.slice(0, 300));
-      return null;
-    }
-    const data = await res.json();
     const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     const cleanText = rawText.replace(/```json|```/g, "").trim();
     if (!cleanText) return null;
@@ -5595,18 +5945,19 @@ const fetchAiLyricsFallbackText = async (title, artist) => {
     const promptTokens = Math.max(0, Number(usage?.promptTokenCount || 0));
     const outputTokens = Math.max(0, Number(usage?.candidatesTokenCount || 0));
     const totalTokens = Math.max(0, Number(usage?.totalTokenCount || (promptTokens + outputTokens)));
-    const estimatedCostUsd = ((promptTokens / 1000000) * GEMINI_LYRICS_INPUT_USD_PER_1M)
-      + ((outputTokens / 1000000) * GEMINI_LYRICS_OUTPUT_USD_PER_1M);
+    const pricing = getGeminiModelPricing(model);
+    const estimatedCostUsd = ((promptTokens / 1000000) * pricing.inputUsdPer1M)
+      + ((outputTokens / 1000000) * pricing.outputUsdPer1M);
     return {
       lyrics,
       usage: {
-        model: GEMINI_LYRICS_MODEL,
+        model,
         promptTokens,
         outputTokens,
         totalTokens,
         estimatedCostUsd: Number(estimatedCostUsd.toFixed(6)),
-        inputUsdPer1M: GEMINI_LYRICS_INPUT_USD_PER_1M,
-        outputUsdPer1M: GEMINI_LYRICS_OUTPUT_USD_PER_1M,
+        inputUsdPer1M: pricing.inputUsdPer1M,
+        outputUsdPer1M: pricing.outputUsdPer1M,
       },
     };
   } catch (err) {
@@ -6476,23 +6827,23 @@ exports.geminiGenerate = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "Gemini API key not configured.");
   }
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: "application/json" }
-    })
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new HttpsError("unavailable", `Gemini request failed: ${text}`);
+  let geminiPayload = null;
+  try {
+    geminiPayload = await requestGeminiJson({
+      apiKey,
+      prompt,
+      responseMimeType: "application/json",
+    });
+  } catch (error) {
+    throw new HttpsError("unavailable", String(error?.message || error));
   }
-  const data = await res.json();
-  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  const rawText = geminiPayload?.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
   const cleanText = rawText.replace(/```json|```/g, "").trim();
   try {
-    return { result: JSON.parse(cleanText) };
+    return {
+      result: JSON.parse(cleanText),
+      model: String(geminiPayload?.model || GEMINI_DEFAULT_MODEL),
+    };
   } catch (_err) {
     throw new HttpsError("data-loss", "Gemini response parse failed.");
   }
@@ -6586,6 +6937,7 @@ const runLyricsResolverForQueueSong = async ({
   const safeRoomCode = normalizeRoomCode(roomCode || songData?.roomCode || "");
   const orgId = String(roomData?.orgId || "").trim();
   let entitlements = null;
+  let aiMeterEntitlements = null;
   if (orgId) {
     try {
       entitlements = await readOrganizationEntitlements(orgId);
@@ -6593,26 +6945,44 @@ const runLyricsResolverForQueueSong = async ({
       console.warn("lyrics resolver entitlements lookup failed", error?.message || error);
     }
   }
+  try {
+    aiMeterEntitlements = await buildLyricsAiMeterEntitlements({
+      roomData,
+      entitlements,
+    });
+  } catch (error) {
+    console.warn("lyrics resolver AI metering entitlement lookup failed", error?.message || error);
+    aiMeterEntitlements = entitlements;
+  }
 
-  const aiCapabilityEnabled = !!entitlements?.capabilities?.["ai.generate_content"];
+  const aiFallbackConfigured = !!String(GEMINI_API_KEY.value() || "").trim();
+  const aiCapabilityEnabled = !!aiMeterEntitlements?.capabilities?.["ai.generate_content"];
+  const aiMetered = !!aiMeterEntitlements?.capabilities?.["ai.generate_content"];
   const demoBypassEnabled = isRoomAiDemoBypassEnabled(roomData);
-  const allowAiFallback = !timedOnly && (aiCapabilityEnabled || demoBypassEnabled);
+  const aiAccessState = buildLyricsAiAccessState({
+    timedOnly,
+    aiCapabilityEnabled,
+    demoBypassEnabled,
+    aiFallbackConfigured,
+  });
+  const allowAiFallback = aiAccessState.allowAiFallback;
   const timedAdapterEnabled = isTimedAdapterEnabledForRoom(safeRoomCode);
-  let aiCapabilityBlocked = !timedOnly && !allowAiFallback;
+  let aiCapabilityBlocked = aiAccessState.aiCapabilityBlocked;
   let aiMeterReserved = false;
 
   const deps = buildLyricsResolverDeps({ timedAdapterEnabled });
   deps.fetchAiLyricsFallbackText = async (title, artist) => {
     if (timedOnly) return null;
-    if (!aiCapabilityEnabled && !demoBypassEnabled) {
+    if (!allowAiFallback) {
       aiCapabilityBlocked = true;
       return null;
     }
-    if (aiCapabilityEnabled && !aiMeterReserved) {
+    if (!aiAccessState.canCallAiProvider) return null;
+    if (aiMetered && orgId && !aiMeterReserved) {
       try {
         await reserveOrganizationUsageUnits({
           orgId,
-          entitlements,
+          entitlements: aiMeterEntitlements || entitlements,
           meterId: "ai_generate_content",
           units: 1,
         });
@@ -7301,18 +7671,19 @@ exports.autoAppleLyrics = onDocumentCreated(
       if (appleMusicId) {
         nextPayload.appleMusicId = String(appleMusicId);
       }
-      if (aiUsage && typeof aiUsage === "object") {
-        nextPayload.aiLyricsUsage = {
-          model: String(aiUsage.model || GEMINI_LYRICS_MODEL),
-          promptTokens: Math.max(0, Number(aiUsage.promptTokens || 0)),
-          outputTokens: Math.max(0, Number(aiUsage.outputTokens || 0)),
-          totalTokens: Math.max(0, Number(aiUsage.totalTokens || 0)),
-          estimatedCostUsd: Math.max(0, Number(aiUsage.estimatedCostUsd || 0)),
-          inputUsdPer1M: Math.max(0, Number(aiUsage.inputUsdPer1M || GEMINI_LYRICS_INPUT_USD_PER_1M)),
-          outputUsdPer1M: Math.max(0, Number(aiUsage.outputUsdPer1M || GEMINI_LYRICS_OUTPUT_USD_PER_1M)),
-          generatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
-      }
+        if (aiUsage && typeof aiUsage === "object") {
+          const pricing = getGeminiModelPricing(aiUsage.model);
+          nextPayload.aiLyricsUsage = {
+            model: String(aiUsage.model || GEMINI_DEFAULT_MODEL),
+            promptTokens: Math.max(0, Number(aiUsage.promptTokens || 0)),
+            outputTokens: Math.max(0, Number(aiUsage.outputTokens || 0)),
+            totalTokens: Math.max(0, Number(aiUsage.totalTokens || 0)),
+            estimatedCostUsd: Math.max(0, Number(aiUsage.estimatedCostUsd || 0)),
+            inputUsdPer1M: Math.max(0, Number(aiUsage.inputUsdPer1M || pricing.inputUsdPer1M)),
+            outputUsdPer1M: Math.max(0, Number(aiUsage.outputUsdPer1M || pricing.outputUsdPer1M)),
+            generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          };
+        }
       await event.data.ref.set(nextPayload, { merge: true });
       await cacheSongLyricsFromQueueDoc({
         ...data,
@@ -7444,6 +7815,90 @@ exports.autoAppleLyrics = onDocumentCreated(
       });
     } catch (err) {
       console.error("autoAppleLyrics AI merge failed", err?.message || err);
+    }
+  }
+);
+
+exports.autoPopTrivia = onDocumentCreated(
+  {
+    document: `artifacts/${APP_ID}/public/data/karaoke_songs/{songId}`,
+    secrets: [GEMINI_API_KEY],
+  },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
+    const result = await processPopTriviaForSong({
+      songRef: event.data.ref,
+      songData: data,
+      leaseId: `create_${event.id || event.params?.songId || ""}`,
+      reason: "song_created",
+    });
+    console.info("[pop-trivia] create-trigger", {
+      roomCode: normalizeRoomCode(data.roomCode || ""),
+      songId: event.params?.songId || "",
+      status: result.status,
+      reason: result.reason || "",
+      source: result.source || "",
+    });
+  }
+);
+
+exports.backfillPopTriviaOnRoomEnable = onDocumentUpdated(
+  {
+    document: `artifacts/${APP_ID}/public/data/rooms/{roomCode}`,
+    secrets: [GEMINI_API_KEY],
+  },
+  async (event) => {
+    const before = event.data?.before?.data() || {};
+    const after = event.data?.after?.data() || {};
+    if (after?.popTriviaEnabled === false) return;
+    if (before?.popTriviaEnabled !== false) return;
+
+    const roomCode = normalizeRoomCode(event.params?.roomCode || after?.roomCode || "");
+    if (!roomCode) return;
+    const rootRef = getRootRef();
+    const songsSnap = await rootRef
+      .collection("karaoke_songs")
+      .where("roomCode", "==", roomCode)
+      .limit(20)
+      .get();
+
+    for (const songDoc of songsSnap.docs) {
+      const songData = songDoc.data() || {};
+      const eligibility = shouldAttemptPopTriviaGeneration(songData, { now: nowMs() });
+      if (!eligibility.ok) continue;
+      await processPopTriviaForSong({
+        songRef: songDoc.ref,
+        songData,
+        leaseId: `room_enable_${roomCode}_${songDoc.id}`,
+        reason: "room_enabled",
+      });
+    }
+  }
+);
+
+exports.recoverPendingPopTrivia = onSchedule(
+  {
+    schedule: "every 10 minutes",
+    secrets: [GEMINI_API_KEY],
+  },
+  async () => {
+    const pendingSnap = await getRootRef()
+      .collection("karaoke_songs")
+      .where("popTriviaStatus", "==", "pending")
+      .limit(25)
+      .get();
+
+    for (const songDoc of pendingSnap.docs) {
+      const songData = songDoc.data() || {};
+      const eligibility = shouldAttemptPopTriviaGeneration(songData, { now: nowMs() });
+      if (!eligibility.ok) continue;
+      await processPopTriviaForSong({
+        songRef: songDoc.ref,
+        songData,
+        leaseId: `pending_recovery_${songDoc.id}`,
+        reason: "pending_recovery",
+      });
     }
   }
 );

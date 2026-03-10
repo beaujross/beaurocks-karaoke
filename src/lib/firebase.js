@@ -1,6 +1,11 @@
 import { initializeApp } from "firebase/app";
 import { getAnalytics, logEvent } from "firebase/analytics";
-import { initializeAppCheck, ReCaptchaV3Provider, getToken as getAppCheckToken } from "firebase/app-check";
+import {
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
+  ReCaptchaV3Provider,
+  getToken as getAppCheckToken,
+} from "firebase/app-check";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { 
   getAuth, 
@@ -65,6 +70,17 @@ import {
   getDownloadURL,
   deleteObject
 } from "firebase/storage";
+import {
+  getAppCheckRetryDelayMs,
+  isAppCheckThrottledError,
+  isRecoverableAppCheckError,
+} from "./appCheckErrors";
+import {
+  parseOptionalBoolToken,
+  resolveAppCheckProviderMode,
+  resolveRuntimeAppCheckDebugToken,
+  shouldEnableRuntimeAppCheckDebug,
+} from "./appCheckConfig";
 import { createLogger } from "./logger";
 import { shouldBootstrapAnonymousAuth } from "./authBootstrap";
 
@@ -76,13 +92,7 @@ const readEnv = (name) => {
   return typeof value === "string" ? value.trim() : "";
 };
 
-const parseOptionalBool = (raw = "") => {
-  const token = String(raw || "").trim().toLowerCase();
-  if (!token) return null;
-  if (["1", "true", "yes", "on"].includes(token)) return true;
-  if (["0", "false", "no", "off"].includes(token)) return false;
-  return null;
-};
+const parseOptionalBool = parseOptionalBoolToken;
 
 const REQUIRED_FIREBASE_KEYS = [
   "apiKey",
@@ -192,6 +202,27 @@ const getAppCheckSiteKey = () => {
   return runtimeKey || envKey;
 };
 
+const getAppCheckProviderMode = () => {
+  if (typeof window === "undefined") return "enterprise";
+  const runtimeProvider = typeof window.__app_check_provider === "string"
+    ? window.__app_check_provider.trim()
+    : "";
+  const envProvider = readEnv("VITE_APP_CHECK_PROVIDER");
+  return resolveAppCheckProviderMode({
+    runtimeProvider,
+    envProvider,
+    fallback: "enterprise",
+  });
+};
+
+const createAppCheckProvider = (siteKey = "", providerMode = "enterprise") => {
+  if (!siteKey) return null;
+  if (providerMode === "v3") {
+    return new ReCaptchaV3Provider(siteKey);
+  }
+  return new ReCaptchaEnterpriseProvider(siteKey);
+};
+
 if (typeof window !== "undefined") {
   const host = window.location?.hostname || "";
   try {
@@ -199,8 +230,18 @@ if (typeof window !== "undefined") {
       ? window.__app_check_debug_token.trim()
       : "";
     const storedDebugToken = window.localStorage?.getItem("bross_app_check_debug_token") || "";
-    const debugToken = runtimeDebugToken || storedDebugToken;
-    if (debugToken && (host === "localhost" || host === "127.0.0.1")) {
+    const storedDebugEnabled = window.localStorage?.getItem("bross_app_check_debug_enabled") || "";
+    const debugToken = resolveRuntimeAppCheckDebugToken({
+      runtimeDebugToken,
+      storedDebugToken,
+    });
+    const debugEnabled = shouldEnableRuntimeAppCheckDebug({
+      host,
+      envEnabled: readEnv("VITE_APP_CHECK_DEBUG_ENABLED"),
+      runtimeEnabled: window.__app_check_debug_enabled === true,
+      storedEnabled: storedDebugEnabled,
+    });
+    if (debugToken && debugEnabled) {
       self.FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken === "true" ? true : debugToken;
     }
   } catch {
@@ -209,10 +250,15 @@ if (typeof window !== "undefined") {
 
   const appCheckEnabled = shouldEnableAppCheckClient();
   const siteKey = getAppCheckSiteKey();
+  const providerMode = getAppCheckProviderMode();
   if (appCheckEnabled && siteKey) {
     try {
+      const provider = createAppCheckProvider(siteKey, providerMode);
+      if (!provider) {
+        throw new Error("App Check provider could not be created.");
+      }
       appCheck = initializeAppCheck(app, {
-        provider: new ReCaptchaV3Provider(siteKey),
+        provider,
         isTokenAutoRefreshEnabled: true,
       });
       // Warm up token acquisition early so first callable requests include App Check.
@@ -260,17 +306,7 @@ const trackEvent = (name, params = {}) => {
   }
 };
 
-const isAppCheckRequiredError = (error) => {
-  const code = String(error?.code || "").toLowerCase();
-  const message = String(error?.message || "").toLowerCase();
-  return (
-    code.includes("failed-precondition")
-    && (
-      message.includes("app check token required")
-      || message.includes("appcheck")
-    )
-  );
-};
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const ensureAppCheckToken = async (forceRefresh = false) => {
   if (!appCheck) return false;
@@ -315,14 +351,27 @@ const callFunction = async (name, data = {}) => {
   try {
     return await invoke();
   } catch (error) {
-    if (appCheck && isAppCheckRequiredError(error)) {
-      try {
-        // App Check issuance can race on first load; force-refresh and retry once.
-        await getAppCheckToken(appCheck, true);
-        return await invoke();
-      } catch (retryError) {
-        firebaseLogger.warn("callable retry failed after app-check refresh", { name, retryError });
+    if (appCheck && isRecoverableAppCheckError(error)) {
+      let retryError = error;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          const throttled = isAppCheckThrottledError(retryError);
+          const waitMs = getAppCheckRetryDelayMs(attempt, throttled);
+          if (waitMs > 0) {
+            await delay(waitMs);
+          }
+          // Avoid force-refreshing while throttled; let the cached token path recover.
+          await getAppCheckToken(appCheck, !throttled);
+          return await invoke();
+        } catch (nextError) {
+          retryError = nextError;
+          if (!isRecoverableAppCheckError(nextError)) {
+            throw nextError;
+          }
+        }
       }
+      firebaseLogger.warn("callable retry failed after app-check refresh", { name, retryError });
+      throw retryError;
     }
     throw error;
   }

@@ -594,6 +594,8 @@ const MarketingSite = () => {
   }, [hasFullAccount, requireFullAuth, session.email, session.uid, withCampaignParams]);
 
   const hostApplicationStatus = String(session?.applicationStatus || "").trim().toLowerCase();
+  const hostAccessLoading = !!session?.hostAccessLoading;
+  const hostAccessRetryRequired = !!session?.hostAccessRetryRequired;
 
   useEffect(() => {
     if (!isHostAccessPage) return;
@@ -883,6 +885,27 @@ const MarketingSite = () => {
                     <div className="mk3-actions-inline">
                       <button className="mk3-host-canon-button is-primary" type="button" onClick={() => openHostDashboard("host_access_signed_in_open_dashboard")}>Open Host Dashboard</button>
                     </div>
+                  ) : (hostAccessLoading || hostAccessRetryRequired) ? (
+                    <>
+                      <div className="mk3-status">
+                        <strong>{hostAccessLoading ? "Checking host access" : "Secure sign-in still settling"}</strong>
+                        <span>
+                          {hostAccessLoading
+                            ? "We are confirming your host approval and workspace access before showing application actions."
+                            : "Secure attestation is still catching up. Check again in a moment instead of reapplying."}
+                        </span>
+                      </div>
+                      <div className="mk3-actions-inline">
+                        <button
+                          className="mk3-host-canon-button is-primary"
+                          type="button"
+                          onClick={() => actions.refreshHostAccessStatus?.()}
+                          disabled={session.authLoading || session.hostAccessLoading}
+                        >
+                          {session.hostAccessLoading ? "Checking..." : "Check Host Access Again"}
+                        </button>
+                      </div>
+                    </>
                   ) : (
                     <>
                       <div className="mk3-status mk3-status-warning">

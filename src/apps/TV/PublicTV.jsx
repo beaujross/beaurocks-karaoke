@@ -2657,7 +2657,10 @@ const PublicTV = ({ roomCode }) => {
     }, [applauseStep, countdown, measure, applauseMax, roomCode, triggerTipPulse]);
 
     const current = songs.find(s => s.status === 'performing');
-    const popTriviaRoundSec = Math.max(8, Number(room?.popTriviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC));
+    const popTriviaRoundSec = Math.max(
+        8,
+        Number(room?.popTriviaRoundSec || room?.gameDefaults?.triviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC)
+    );
     const popTriviaState = useMemo(() => {
         if (room?.activeMode !== 'karaoke') return null;
         if (room?.popTriviaEnabled === false) return null;
@@ -4295,7 +4298,7 @@ const PublicTV = ({ roomCode }) => {
                                 )}
                                 <Stage room={room} current={current} started={started} combo={combo} minimalUI={isMinimal} showVideo={!isMinimal} />
                                 {popTriviaQuestion && (
-                                    <div className="absolute top-2 right-2 md:top-4 md:right-4 2xl:top-5 2xl:right-5 z-[92] w-[min(94vw,470px)] md:w-[min(44vw,520px)] pointer-events-none">
+                                    <div data-feature-id="tv-pop-trivia-card" className="absolute top-2 right-2 md:top-4 md:right-4 2xl:top-5 2xl:right-5 z-[92] w-[min(94vw,470px)] md:w-[min(44vw,520px)] pointer-events-none">
                                         <div className="bg-black/66 border border-cyan-400/35 rounded-2xl px-3 py-3 md:px-4 md:py-4 shadow-[0_0_24px_rgba(34,211,238,0.22)] backdrop-blur">
                                             <div className="flex items-center justify-between gap-2 md:gap-3 text-[10px] md:text-xs uppercase tracking-[0.18em] text-cyan-200 mb-2">
                                                 <span>Pop-up Trivia</span>
