@@ -2201,29 +2201,58 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
             <span>{heroPulseLabel}</span>
           </div>
         </div>
-        <div className="mk3-finder-cta-row mk3-discover-intro-actions">
-          <button
-            type="button"
-            className="mk3-discover-hero-cta-primary"
-            onClick={openHostAccess}
-          >
-            {hasFullAccount ? "Open Host Access" : "Request Host Access"}
-          </button>
-          <button
-            type="button"
-            className="mk3-discover-hero-cta-secondary"
-            onClick={openJoinPage}
-          >
-            Join with code
-          </button>
-          <button
-            type="button"
-            className="mk3-discover-hero-cta-tertiary"
-            onClick={openListingSubmission}
-          >
-            List a public room
-          </button>
-        </div>
+        <aside className="mk3-discover-hero-side">
+          <div className="mk3-discover-hero-side-card is-brand">
+            <div className="mk3-discover-side-badge">
+              <img src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks badge" loading="lazy" />
+              <span>{activeRegionLabel}</span>
+            </div>
+            <strong>Live pulse</strong>
+            <p>
+              Browse official rooms, public sessions, and venue-backed karaoke nights from one cinematic map-first surface.
+            </p>
+          </div>
+          <div className="mk3-discover-hero-side-grid">
+            <article className="mk3-discover-hero-side-card">
+              <span>Official rooms</span>
+              <strong>{officialBeauRocksRoomCount}</strong>
+              <p>Operator-owned BeauRocks rooms surfaced directly in the directory.</p>
+            </article>
+            <article className="mk3-discover-hero-side-card">
+              <span>Joinable now</span>
+              <strong>{joinableRoomCount}</strong>
+              <p>Rooms currently accepting audience entry with a live code path.</p>
+            </article>
+            <article className="mk3-discover-hero-side-card">
+              <span>Map mix</span>
+              <strong>{listingTypeCounts.event + listingTypeCounts.room_session + listingTypeCounts.venue}</strong>
+              <p>{listingTypeCounts.event} events, {listingTypeCounts.room_session} sessions, {listingTypeCounts.venue} venues.</p>
+            </article>
+          </div>
+          <div className="mk3-finder-cta-row mk3-discover-intro-actions">
+            <button
+              type="button"
+              className="mk3-discover-hero-cta-primary"
+              onClick={openHostAccess}
+            >
+              {hasFullAccount ? "Open Host Access" : "Request Host Access"}
+            </button>
+            <button
+              type="button"
+              className="mk3-discover-hero-cta-secondary"
+              onClick={openJoinPage}
+            >
+              Join with code
+            </button>
+            <button
+              type="button"
+              className="mk3-discover-hero-cta-tertiary"
+              onClick={openListingSubmission}
+            >
+              List a public room
+            </button>
+          </div>
+        </aside>
       </div>
       {isMobileViewport && (
         <div className="mk3-mobile-discover-switch mk3-zone mk3-zone-mobile-controls">

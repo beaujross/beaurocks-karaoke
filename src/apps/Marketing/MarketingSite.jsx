@@ -722,9 +722,15 @@ const MarketingSite = () => {
   }, [activePage, requireFullAuth, route, navigate, mapsConfig, heroStats, session]);
 
   return (
-    <div className="mk3-site">
+    <div className="mk3-site mk3-site-cinematic" data-page={activePage}>
+      <div className="mk3-cinematic-backdrop" aria-hidden="true">
+        <span className="mk3-cinematic-orb is-gold" />
+        <span className="mk3-cinematic-orb is-cyan" />
+        <span className="mk3-cinematic-orb is-ember" />
+        <span className="mk3-cinematic-grid" />
+      </div>
       <header className="mk3-nav">
-        <div className="mk3-shell">
+        <div className="mk3-shell mk3-shell-nav">
           <div className="mk3-nav-inner">
             <button
               type="button"
@@ -832,7 +838,7 @@ const MarketingSite = () => {
       </header>
 
       <main className="mk3-main">
-        <div className="mk3-shell">
+        <div className="mk3-shell mk3-shell-main">
           {mapsConfigError && <div className="mk3-status mk3-status-error">{mapsConfigError}</div>}
 
           {!!route.params?.intent && (!session?.isAuthed || session?.isAnonymous) && (
@@ -1093,9 +1099,11 @@ const MarketingSite = () => {
           ) : null}
 
           {!isHostAccessPage && (
-            <Suspense fallback={<PageShellLoader />}>
-              {pageNode}
-            </Suspense>
+            <div className="mk3-page-stage">
+              <Suspense fallback={<PageShellLoader />}>
+                {pageNode}
+              </Suspense>
+            </div>
           )}
 
           {!isHostAccessPage && activePage !== MARKETING_ROUTE_PAGES.forFans && (
