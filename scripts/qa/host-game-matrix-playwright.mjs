@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   extractRoomCodeFromUrl,
   isLikelyRoomCode,
@@ -12,6 +14,11 @@ import { HOST_GAME_MATRIX } from "./lib/hostGameMatrix.mjs";
 const DEFAULT_ROOT_URL = "https://beaurocks.app";
 const DEFAULT_TIMEOUT_MS = 120000;
 const DEFAULT_FAILURE_SCREENSHOT = "tmp/qa-host-game-matrix-failure.png";
+const FIRESTORE_PROJECT_ID = "beaurocks-karaoke-v2";
+const FIRESTORE_APP_ID = "bross-app";
+const QA_SELFIE_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9sot8i0AAAAASUVORK5CYII=";
+const execFileAsync = promisify(execFile);
+let cachedGoogleAccessToken = "";
 
 const toBool = (value, fallback = false) => {
   if (value === undefined || value === null || value === "") return fallback;
@@ -23,6 +30,119 @@ const toBool = (value, fallback = false) => {
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const MAX_PAGE_DIAGNOSTICS = 8;
+const escapeRegex = (value = "") => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const toFirestoreValue = (value) => {
+  if (value instanceof Date) {
+    return { timestampValue: value.toISOString() };
+  }
+  if (Array.isArray(value)) {
+    return { arrayValue: { values: value.map((entry) => toFirestoreValue(entry)) } };
+  }
+  if (value && typeof value === "object") {
+    return {
+      mapValue: {
+        fields: Object.fromEntries(
+          Object.entries(value).map(([key, entryValue]) => [key, toFirestoreValue(entryValue)])
+        ),
+      },
+    };
+  }
+  if (typeof value === "boolean") return { booleanValue: value };
+  if (typeof value === "number") {
+    if (Number.isFinite(value) && Number.isInteger(value)) return { integerValue: String(value) };
+    return { doubleValue: Number.isFinite(value) ? value : 0 };
+  }
+  if (value === null || value === undefined) return { nullValue: null };
+  return { stringValue: String(value) };
+};
+
+const getGoogleAccessToken = async () => {
+  if (cachedGoogleAccessToken) return cachedGoogleAccessToken;
+  const { stdout } = await execFileAsync("powershell", [
+    "-NoProfile",
+    "-Command",
+    "gcloud auth print-access-token",
+  ]);
+  const token = String(stdout || "").trim();
+  if (!token) {
+    throw new Error("Could not resolve Google access token from gcloud.");
+  }
+  cachedGoogleAccessToken = token;
+  return token;
+};
+
+const patchFirestoreDocument = async ({ documentPath, fields = {}, updateMask = [] }) => {
+  const token = await getGoogleAccessToken();
+  const url = new URL(
+    `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/${documentPath}`
+  );
+  const maskEntries = Array.isArray(updateMask) ? updateMask.filter(Boolean) : [];
+  maskEntries.forEach((fieldPath) => url.searchParams.append("updateMask.fieldPaths", fieldPath));
+  const response = await fetch(
+    url,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        fields: Object.fromEntries(
+          Object.entries(fields).map(([key, value]) => [key, toFirestoreValue(value)])
+        ),
+      }),
+    }
+  );
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Firestore patch failed (${response.status}): ${body.slice(0, 280)}`);
+  }
+  return response.json().catch(() => ({}));
+};
+
+const getFirestoreDocument = async ({ documentPath }) => {
+  const token = await getGoogleAccessToken();
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/${documentPath}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Firestore get failed (${response.status}): ${body.slice(0, 280)}`);
+  }
+  return response.json();
+};
+
+const buildTight15FixtureEntries = (searchTerms = []) =>
+  searchTerms.map((term, index) => ({
+    id: `qa-tight15-${index + 1}-${String(term || "").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
+    songTitle: String(term || "").trim(),
+    artist: "QA Fixture",
+    addedAt: Date.now() + index,
+  }));
+
+const fromFirestoreValue = (value = null) => {
+  if (!value || typeof value !== "object") return null;
+  if ("stringValue" in value) return value.stringValue;
+  if ("booleanValue" in value) return !!value.booleanValue;
+  if ("integerValue" in value) return Number(value.integerValue || 0);
+  if ("doubleValue" in value) return Number(value.doubleValue || 0);
+  if ("timestampValue" in value) return value.timestampValue;
+  if ("arrayValue" in value) return Array.isArray(value.arrayValue?.values) ? value.arrayValue.values.map((entry) => fromFirestoreValue(entry)) : [];
+  if ("mapValue" in value) {
+    return Object.fromEntries(
+      Object.entries(value.mapValue?.fields || {}).map(([key, entry]) => [key, fromFirestoreValue(entry)])
+    );
+  }
+  if ("nullValue" in value) return null;
+  return null;
+};
 
 const createPageDiagnosticsBucket = () => [];
 
@@ -484,15 +604,13 @@ const prepareRoomForMode = async ({
       timeout: timeoutMs,
     });
     await delay(2200);
-    await joinSingerIfNeeded({ page: session.page, singerName: session.name || singerName, timeoutMs });
-    if (Array.isArray(session.tight15SearchTerms) && session.tight15SearchTerms.length) {
-      await seedSingerTight15({
-        page: session.page,
-        searchTerms: session.tight15SearchTerms,
-        timeoutMs,
-        failureScreenshotPath: `tmp/qa-singer-tight15-${String(session.name || "fixture").replace(/[^a-z0-9_-]/gi, "_")}.png`,
-      });
-    }
+    await ensureSingerFixtureSession({
+      page: session.page,
+      roomCode,
+      singerName: session.name || singerName,
+      tight15SearchTerms: session.tight15SearchTerms || [],
+      timeoutMs,
+    });
     await delay(1200);
   }
   await delay(3500);
@@ -506,29 +624,105 @@ const prepareRoomForMode = async ({
   return roomCode;
 };
 
-const joinSingerIfNeeded = async ({ page, singerName, timeoutMs }) => {
-  const isSingerMainReady = async () => {
+const readSingerFixtureIdentity = async (page) => {
+  const mainView = page.locator('[data-singer-view="main"]').first();
+  if (await mainView.isVisible().catch(() => false)) {
+    return {
+      authUid: String((await mainView.getAttribute("data-singer-room-user").catch(() => "")) || "").trim(),
+      joinedName: String((await mainView.getAttribute("data-singer-room-user-name").catch(() => "")) || "").trim(),
+      joined: true,
+    };
+  }
+  const joinView = page.locator('[data-singer-view="join"]').first();
+  if (await joinView.isVisible().catch(() => false)) {
+    return {
+      authUid: String((await joinView.getAttribute("data-singer-auth-uid").catch(() => "")) || "").trim(),
+      joinedName: "",
+      joined: false,
+    };
+  }
+  return { authUid: "", joinedName: "", joined: false };
+};
+
+const seedSingerFixtureMembership = async ({ roomCode, authUid, singerName, tight15SearchTerms = [] }) => {
+  if (!roomCode || !authUid) {
+    throw new Error("Cannot seed singer fixture without room code and auth uid.");
+  }
+  const docId = `${roomCode}_${authUid}`;
+  const now = new Date();
+  const fields = {
+    uid: authUid,
+    roomCode,
+    name: singerName,
+    avatar: "🎤",
+    isVip: false,
+    vipLevel: 0,
+    fameLevel: 0,
+    totalFamePoints: 0,
+    points: 100,
+    totalEmojis: 0,
+    lastActiveAt: now,
+    lastSeen: now,
+  };
+  if (Array.isArray(tight15SearchTerms) && tight15SearchTerms.length) {
+    fields.tight15Temp = buildTight15FixtureEntries(tight15SearchTerms);
+  }
+  await patchFirestoreDocument({
+    documentPath: `artifacts/${FIRESTORE_APP_ID}/public/data/room_users/${docId}`,
+    fields,
+  });
+  return docId;
+};
+
+const waitForSingerJoinedMarker = async ({ page, timeoutMs }) => {
+  const hasJoinedMarker = async () => {
     const mainView = page.locator('[data-singer-view="main"]').first();
-    if (await mainView.isVisible().catch(() => false)) return true;
-    const songsButton = page.getByRole("button", { name: /^SONGS$/i }).first();
-    if (await songsButton.isVisible().catch(() => false)) return true;
-    const partyButton = page.getByRole("button", { name: /^PARTY$/i }).first();
-    if (await partyButton.isVisible().catch(() => false)) return true;
-    const qaView = page.locator("[data-qa-player-view]").first();
-    if (await qaView.isVisible().catch(() => false)) return true;
-    return false;
+    if (!(await mainView.isVisible().catch(() => false))) return false;
+    const joinedUid = String((await mainView.getAttribute("data-singer-room-user").catch(() => "")) || "").trim();
+    const joinedName = String((await mainView.getAttribute("data-singer-room-user-name").catch(() => "")) || "").trim();
+    return !!(joinedUid && joinedName);
   };
 
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (await hasJoinedMarker()) return true;
+    await delay(300);
+  }
+  return false;
+};
+
+const joinSingerIfNeeded = async ({ page, singerName, timeoutMs }) => {
   const joinView = page.locator('[data-singer-view="join"]').first();
   const nameInput = page.locator('[data-singer-join-name]').first();
   const fallbackInput = page.getByPlaceholder(/Enter Your Name/i).first();
+  const joinAuthReady = async () => {
+    const authFlag = String((await joinView.getAttribute("data-singer-auth-ready").catch(() => "")) || "").trim().toLowerCase();
+    return authFlag === "true";
+  };
+  const awaitJoinStateStart = Date.now();
+  let needsJoin = false;
+  while (Date.now() - awaitJoinStateStart < Math.min(timeoutMs, 30000)) {
+    if (await hasJoinedMarker()) return "Singer already joined.";
+    needsJoin =
+      (await joinView.isVisible().catch(() => false)) ||
+      (await nameInput.isVisible().catch(() => false)) ||
+      (await fallbackInput.isVisible().catch(() => false));
+    if (needsJoin) break;
+    await delay(300);
+  }
+  if (!needsJoin) {
+    const snippet = String(await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, 260);
+    throw new Error(`Singer page never resolved to join or joined state. Snippet="${snippet}"`);
+  }
 
-  const needsJoin =
-    (await joinView.isVisible().catch(() => false)) ||
-    (await nameInput.isVisible().catch(() => false)) ||
-    (await fallbackInput.isVisible().catch(() => false));
-
-  if (!needsJoin) return "Singer already joined.";
+  const authReadyStart = Date.now();
+  while (Date.now() - authReadyStart < Math.min(timeoutMs, 30000)) {
+    if (await joinAuthReady()) break;
+    await delay(250);
+  }
+  if (!(await joinAuthReady())) {
+    throw new Error("Singer join screen never became auth-ready.");
+  }
 
   if (await nameInput.count()) {
     await nameInput.fill(singerName);
@@ -581,10 +775,74 @@ const joinSingerIfNeeded = async ({ page, singerName, timeoutMs }) => {
 
   const joinedStart = Date.now();
   while (Date.now() - joinedStart < timeoutMs) {
-    if (await isSingerMainReady()) return "Singer joined the room.";
+    if (await waitForSingerJoinedMarker({ page, timeoutMs: 500 })) return "Singer joined the room.";
     await delay(400);
   }
   throw new Error("Singer join did not reach main/game view within timeout.");
+};
+
+const ensureSingerFixtureSession = async ({ page, roomCode, singerName, tight15SearchTerms = [], timeoutMs }) => {
+  const initialIdentity = await readSingerFixtureIdentity(page);
+  if (initialIdentity.joined && initialIdentity.authUid && initialIdentity.joinedName) {
+    if (tight15SearchTerms.length) {
+      await seedSingerFixtureMembership({
+        roomCode,
+        authUid: initialIdentity.authUid,
+        singerName,
+        tight15SearchTerms,
+      });
+    }
+    return "Singer fixture already ready.";
+  }
+
+  try {
+    await joinSingerIfNeeded({ page, singerName, timeoutMs: Math.min(timeoutMs, 30000) });
+  } catch {
+    // Fall through to direct fixture seeding for deterministic game QA.
+  }
+
+  const identity = await readSingerFixtureIdentity(page);
+  const authUid = identity.authUid;
+  if (!authUid) {
+    throw new Error("Singer fixture never exposed an auth uid.");
+  }
+  await seedSingerFixtureMembership({ roomCode, authUid, singerName, tight15SearchTerms });
+  const joined = await waitForSingerJoinedMarker({ page, timeoutMs });
+  if (!joined) {
+    throw new Error("Seeded singer fixture did not hydrate the joined singer view within timeout.");
+  }
+  return tight15SearchTerms.length
+    ? `Singer fixture ready with ${tight15SearchTerms.length} Tight 15 entries.`
+    : "Singer fixture ready.";
+};
+
+const readRoomState = async (roomCode) => {
+  const payload = await getFirestoreDocument({
+    documentPath: `artifacts/${FIRESTORE_APP_ID}/public/data/rooms/${roomCode}`,
+  });
+  return fromFirestoreValue({ mapValue: { fields: payload?.fields || {} } }) || {};
+};
+
+const seedSelfieSubmissionFixture = async ({ roomCode, promptId, authUid, userName }) => {
+  if (!roomCode || !promptId || !authUid) {
+    throw new Error("Cannot seed selfie submission without room code, prompt id, and auth uid.");
+  }
+  const docId = `${roomCode}_${promptId}_${authUid}`;
+  const now = new Date();
+  await patchFirestoreDocument({
+    documentPath: `artifacts/${FIRESTORE_APP_ID}/public/data/selfie_submissions/${docId}`,
+    fields: {
+      roomCode,
+      promptId,
+      uid: authUid,
+      userName,
+      avatar: "🎤",
+      url: QA_SELFIE_DATA_URL,
+      approved: true,
+      timestamp: now,
+    },
+  });
+  return docId;
 };
 
 const getEntrySingerFixtures = (entry, fallbackSingerName = "QA Game Tester") => {
@@ -593,12 +851,13 @@ const getEntrySingerFixtures = (entry, fallbackSingerName = "QA Game Tester") =>
     return configured.map((item, index) => ({
       name: String(item?.name || `${fallbackSingerName} ${index + 1}`).trim(),
       tight15SearchTerms: Array.isArray(item?.tight15SearchTerms) ? item.tight15SearchTerms.filter(Boolean) : [],
+      role: String(item?.role || "").trim().toLowerCase(),
     }));
   }
-  return [{ name: String(fallbackSingerName || "QA Game Tester").trim(), tight15SearchTerms: [] }];
+  return [{ name: String(fallbackSingerName || "QA Game Tester").trim(), tight15SearchTerms: [], role: "" }];
 };
 
-const createSingerSessions = async ({ browser, fixtures = [] }) => {
+const createSingerSessions = async ({ browser, fixtures = [], appOrigin = "" }) => {
   const sessions = [];
   for (const fixture of fixtures) {
     const context = await browser.newContext({
@@ -607,12 +866,16 @@ const createSingerSessions = async ({ browser, fixtures = [] }) => {
       hasTouch: true,
     });
     await applyQaAppCheckDebugInitScript(context);
+    if (appOrigin) {
+      await context.grantPermissions(["camera"], { origin: appOrigin }).catch(() => {});
+    }
     const page = await context.newPage();
     sessions.push({
       context,
       page,
       name: fixture.name,
       tight15SearchTerms: fixture.tight15SearchTerms || [],
+      role: fixture.role || "",
     });
   }
   return sessions;
@@ -665,23 +928,38 @@ const seedSingerTight15 = async ({ page, searchTerms = [], timeoutMs, failureScr
   if (!opened) {
     throw new Error("Could not open Tight 15 tab for singer fixture.");
   }
+  const addNewButton = page.getByRole("button", { name: /\+\s*Add New/i }).first();
+  if (await addNewButton.isVisible().catch(() => false)) {
+    await addNewButton.click({ force: true }).catch(() => {});
+    await delay(400);
+  }
   const searchInput = page.getByPlaceholder(/Search songs to add to your Tight 15/i).first();
   await searchInput.waitFor({ state: "visible", timeout: timeoutMs });
 
   for (const term of searchTerms) {
     await searchInput.fill(term);
-    await delay(1800);
-    const clicked = await page.evaluate(() => {
-      const input = document.querySelector('input[placeholder*="Search songs to add to your Tight 15"]');
-      if (!(input instanceof HTMLInputElement)) return false;
-      const root = input.parentElement;
-      if (!root) return false;
-      const options = Array.from(root.querySelectorAll('div.cursor-pointer'));
-      const target = options.find((entry) => (entry.textContent || "").includes("Add"));
-      if (!(target instanceof HTMLElement)) return false;
-      target.click();
-      return true;
-    }).catch(() => false);
+    let clicked = false;
+    const waitStart = Date.now();
+    while (!clicked && Date.now() - waitStart < Math.min(12000, timeoutMs)) {
+      clicked = await page.evaluate((termText) => {
+        const input = document.querySelector('input[placeholder*="Search songs to add to your Tight 15"]');
+        if (!(input instanceof HTMLInputElement)) return false;
+        const root = input.parentElement;
+        if (!root) return false;
+        const options = Array.from(root.querySelectorAll('div.cursor-pointer'));
+        const exact = options.find((entry) => {
+          const text = String(entry.textContent || "").toLowerCase();
+          return text.includes(String(termText || "").toLowerCase()) && text.includes("add");
+        });
+        const fallback = options.find((entry) => String(entry.textContent || "").includes("Add"));
+        const target = exact || fallback;
+        if (!(target instanceof HTMLElement)) return false;
+        target.click();
+        return true;
+      }, term).catch(() => false);
+      if (clicked) break;
+      await delay(500);
+    }
     if (!clicked) {
       if (failureScreenshotPath) {
         await page.screenshot({ path: failureScreenshotPath, fullPage: true }).catch(() => {});
@@ -775,22 +1053,207 @@ const clickVisibleGameLaunchButton = async (page, gameId) => {
   }, gameId).catch(() => false);
 };
 
+const setCheckboxState = async (locator, nextChecked) => {
+  const visible = await locator.isVisible().catch(() => false);
+  if (!visible) return false;
+  const current = await locator.isChecked().catch(() => null);
+  if (current === null || current === nextChecked) return true;
+  if (nextChecked) {
+    await locator.check({ force: true }).catch(() => {});
+  } else {
+    await locator.uncheck({ force: true }).catch(() => {});
+  }
+  return true;
+};
+
+const selectParticipantsByNames = async ({ page, containerSelector, names = [] }) => {
+  const modal = page.locator(containerSelector).first();
+  if (!(await modal.isVisible().catch(() => false))) return false;
+  const targets = Array.isArray(names) ? names.filter(Boolean) : [];
+  if (!targets.length) return true;
+  for (const name of targets) {
+    const button = modal.getByRole("button", { name: new RegExp(escapeRegex(name), "i") }).first();
+    const visible = await button.waitFor({ state: "visible", timeout: 1200 }).then(() => true).catch(() => false);
+    if (!visible) return false;
+    await button.scrollIntoViewIfNeeded().catch(() => {});
+    await button.click({ force: true });
+    await delay(150);
+  }
+  return true;
+};
+
+const openGameConfigureModal = async ({ page, gameId, timeoutMs }) => {
+  const button = page.locator(`[data-game-configure="${gameId}"]`).first();
+  await button.waitFor({ state: "visible", timeout: timeoutMs });
+  await button.click({ force: true });
+  await delay(800);
+  return true;
+};
+
+const completeBracketReadyFlow = async ({ page, timeoutMs }) => {
+  await openGameConfigureModal({ page, gameId: "karaoke_bracket", timeoutMs });
+  const createButton = page.locator('[data-feature-id="host-bracket-create"]').first();
+  await createButton.waitFor({ state: "visible", timeout: timeoutMs });
+  const createEnabled = await createButton.isEnabled().catch(() => false);
+  if (!createEnabled) {
+    const snippet = String(await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, 260);
+    throw new Error(`Bracket create stayed disabled. Snippet="${snippet}"`);
+  }
+  await createButton.click({ force: true });
+  await delay(1200);
+
+  const queueNextButton = page.locator('[data-feature-id="host-bracket-queue-next"]').first();
+  const queueVisible = await queueNextButton.isVisible().catch(() => false);
+  const queueEnabled = await queueNextButton.isEnabled().catch(() => false);
+  if (queueVisible && queueEnabled) {
+    await queueNextButton.click({ force: true });
+    await delay(1200);
+  }
+
+  return "Bracket created from ready singers.";
+};
+
+const drawOnDoodleCanvas = async (page) => {
+  const canvas = page.locator('[data-feature-id="singer-doodle-canvas"]').first();
+  await canvas.waitFor({ state: "visible", timeout: 15000 });
+  await canvas.evaluate((node) => {
+    const canvasEl = node;
+    if (!(canvasEl instanceof HTMLCanvasElement)) return;
+    const ctx = canvasEl.getContext("2d");
+    if (!ctx) return;
+    const width = canvasEl.width || 320;
+    const height = canvasEl.height || 320;
+    ctx.fillStyle = "#00C4D9";
+    ctx.fillRect(width * 0.15, height * 0.2, width * 0.55, height * 0.1);
+    ctx.fillStyle = "#EC4899";
+    ctx.beginPath();
+    ctx.arc(width * 0.72, height * 0.35, Math.max(10, width * 0.08), 0, Math.PI * 2);
+    ctx.fill();
+  });
+};
+
+const completeDoodleScenario = async ({ drawerPage, voterPage, tvPage, timeoutMs }) => {
+  await drawOnDoodleCanvas(drawerPage);
+  const submitButton = drawerPage.locator('[data-feature-id="singer-doodle-submit"]').first();
+  await submitButton.click({ force: true });
+  await waitForBodySignal({
+    page: drawerPage,
+    selector: '[data-feature-id="singer-doodle-submit"]',
+    regex: /submitted|awaiting host approval/i,
+    timeoutMs: Math.min(12000, timeoutMs),
+  });
+  await waitForBodySignal({
+    page: tvPage,
+    selector: '[data-feature-id="tv-doodle-oke"]',
+    regex: /live sketches:\s*1|votes/i,
+    timeoutMs: Math.min(12000, timeoutMs),
+  });
+  await waitForBodySignal({
+    page: voterPage,
+    selector: '[data-feature-id^="singer-doodle-vote-"]',
+    regex: /vote for the best interpretation|gallery/i,
+    timeoutMs: Math.min(20000, timeoutMs),
+  });
+  const voteButton = voterPage.locator('[data-feature-id^="singer-doodle-vote-"]').first();
+  await voteButton.click({ force: true });
+  await waitForBodySignal({
+    page: voterPage,
+    selector: "",
+    regex: /voted/i,
+    timeoutMs: Math.min(8000, timeoutMs),
+  });
+  return "Doodle submitted and audience vote locked.";
+};
+
+const completeSelfieScenario = async ({ submitterPage, voterPage, tvPage, roomCode, submitterName, timeoutMs }) => {
+  const submitterIdentity = await readSingerFixtureIdentity(submitterPage);
+  const selfieRoomCode = sanitizeRoomCode(roomCode || extractRoomCodeFromUrl(submitterPage.url()));
+  let promptId = "";
+  let participantUid = String(submitterIdentity.authUid || "").trim();
+  const promptStarted = Date.now();
+  while (Date.now() - promptStarted < Math.min(15000, timeoutMs)) {
+    const roomState = await readRoomState(selfieRoomCode);
+    promptId = String(roomState?.selfieChallenge?.promptId || "").trim();
+    if (!participantUid) {
+      participantUid = String(roomState?.selfieChallenge?.participants?.[0] || "").trim();
+    }
+    if (promptId) break;
+    await delay(500);
+  }
+  await seedSelfieSubmissionFixture({
+    roomCode: selfieRoomCode,
+    promptId,
+    authUid: participantUid,
+    userName: submitterName,
+  });
+  const latestRoomState = await readRoomState(selfieRoomCode);
+  await patchFirestoreDocument({
+    documentPath: `artifacts/${FIRESTORE_APP_ID}/public/data/rooms/${selfieRoomCode}`,
+    fields: {
+      selfieChallenge: {
+        ...(latestRoomState?.selfieChallenge || {}),
+        status: "voting",
+      },
+    },
+    updateMask: ["selfieChallenge"],
+  });
+  await waitForBodySignal({
+    page: submitterPage,
+    selector: '[data-feature-id="singer-selfie-challenge"]',
+    regex: /submitted - waiting for votes|waiting for votes|status:\s*voting|selfie challenge/i,
+    timeoutMs: Math.min(12000, timeoutMs),
+  });
+  await waitForBodySignal({
+    page: tvPage,
+    selector: '[data-feature-id="tv-selfie-challenge"]',
+    regex: new RegExp(escapeRegex(submitterName), "i"),
+    timeoutMs: Math.min(20000, timeoutMs),
+  });
+  await waitForBodySignal({
+    page: voterPage,
+    selector: '[data-feature-id^="singer-selfie-vote-"]',
+    regex: /selfie challenge|vote/i,
+    timeoutMs: Math.min(20000, timeoutMs),
+  });
+  const voteButton = voterPage.locator('[data-feature-id^="singer-selfie-vote-"]').first();
+  await voteButton.click({ force: true });
+  await delay(700);
+  return "Selfie submitted and audience vote cast.";
+};
+
 const completeHostLaunchSetupIfNeeded = async ({ page, entry, timeoutMs }) => {
   const start = Date.now();
-  const modalVisible = async (pattern) =>
-    page.getByText(pattern).first().isVisible().catch(() => false);
+  const singerNames = Array.isArray(entry?.fixture?.singers)
+    ? entry.fixture.singers.map((item) => String(item?.name || "").trim()).filter(Boolean)
+    : [];
+  const primarySingerNames = singerNames.length ? [singerNames[0]] : [];
 
-  while (Date.now() - start < Math.min(12000, timeoutMs)) {
-    if (entry.id === "doodle_oke" && await modalVisible(/Configure prompts & participants/i)) {
-      const prompts = page.getByPlaceholder(/One prompt per line/i).first();
+  while (Date.now() - start < Math.min(25000, timeoutMs)) {
+    const doodleModalVisible = entry.id === "doodle_oke"
+      && await page.locator('[data-feature-id="host-doodle-prompts"]').first().isVisible().catch(() => false);
+    if (doodleModalVisible) {
+      const prompts = page.locator('[data-feature-id="host-doodle-prompts"]').first();
       if (await prompts.isVisible().catch(() => false)) {
         await prompts.fill("Draw a broken microphone\nDraw a dramatic key change");
       }
-      const selectAll = page.getByRole("button", { name: /^Select all$/i }).first();
-      if (await selectAll.isVisible().catch(() => false)) {
-        await selectAll.click({ force: true });
+      const drawSeconds = page.locator('[data-feature-id="host-doodle-draw-seconds"]').first();
+      const guessSeconds = page.locator('[data-feature-id="host-doodle-guess-seconds"]').first();
+      if (await drawSeconds.isVisible().catch(() => false)) await drawSeconds.fill("5");
+      if (await guessSeconds.isVisible().catch(() => false)) await guessSeconds.fill("5");
+      const clearParticipants = page.locator('[data-feature-id="host-doodle-clear-participants"]').first();
+      if (await clearParticipants.isVisible().catch(() => false)) {
+        await clearParticipants.click({ force: true });
       }
-      const startButton = page.getByRole("button", { name: /Start Doodle-oke/i }).first();
+      const selectedParticipants = await selectParticipantsByNames({
+        page,
+        containerSelector: '[data-feature-id="host-doodle-config"]',
+        names: primarySingerNames,
+      });
+      if (!selectedParticipants) {
+        await delay(400);
+        continue;
+      }
+      const startButton = page.locator('[data-feature-id="host-doodle-start"]').first();
       if (await startButton.isVisible().catch(() => false)) {
         await startButton.click({ force: true });
         await delay(700);
@@ -798,16 +1261,29 @@ const completeHostLaunchSetupIfNeeded = async ({ page, entry, timeoutMs }) => {
       }
     }
 
-    if (entry.id === "selfie_challenge" && await modalVisible(/Configure challenge/i)) {
-      const prompt = page.getByPlaceholder(/Make the silliest face possible/i).first();
+    const selfieModalVisible = entry.id === "selfie_challenge"
+      && await page.locator('[data-feature-id="host-selfie-prompt"]').first().isVisible().catch(() => false);
+    if (selfieModalVisible) {
+      const prompt = page.locator('[data-feature-id="host-selfie-prompt"]').first();
       if (await prompt.isVisible().catch(() => false)) {
         await prompt.fill("Show your best fake encore face");
       }
-      const selectAll = page.getByRole("button", { name: /^Select all$/i }).first();
-      if (await selectAll.isVisible().catch(() => false)) {
-        await selectAll.click({ force: true });
+      await setCheckboxState(page.locator('[data-feature-id="host-selfie-require-approval"]').first(), false);
+      await setCheckboxState(page.locator('[data-feature-id="host-selfie-auto-start-voting"]').first(), true);
+      const clearParticipants = page.locator('[data-feature-id="host-selfie-clear-participants"]').first();
+      if (await clearParticipants.isVisible().catch(() => false)) {
+        await clearParticipants.click({ force: true });
       }
-      const startButton = page.getByRole("button", { name: /Start Selfie Challenge/i }).first();
+      const selectedParticipants = await selectParticipantsByNames({
+        page,
+        containerSelector: '[data-feature-id="host-selfie-config"]',
+        names: primarySingerNames,
+      });
+      if (!selectedParticipants) {
+        await delay(400);
+        continue;
+      }
+      const startButton = page.locator('[data-feature-id="host-selfie-start"]').first();
       if (await startButton.isVisible().catch(() => false)) {
         await startButton.click({ force: true });
         await delay(700);
@@ -870,9 +1346,13 @@ const launchGameMode = async ({ page, entry, timeoutMs, diagnostics = [], failur
     const bodyText = String(await page.locator("body").innerText().catch(() => ""));
     const normalizedBodyText = bodyText.toLowerCase();
     if (entry.expectedHostModes.some((mode) => liveMode.includes(mode) || normalizedBodyText.includes(`live: ${mode}`))) {
+      if (entry.id === "karaoke_bracket") {
+        const bracketDetail = await completeBracketReadyFlow({ page, timeoutMs });
+        return `Host live mode: ${liveMode || "body-match"} | ${bracketDetail}`;
+      }
       return `Host live mode: ${liveMode || "body-match"}`;
     }
-    if (/add a prompt and pick participants|add prompts or a topic first|add a bingo board first|no trivia questions available|no wyr prompts available|need at least 2 singers with tight 15 songs for a bracket/i.test(bodyText)) {
+    if (/add a prompt and pick participants|add prompts or a topic first|add a bingo board first|no trivia questions available|no wyr prompts available|need at least \d+ (selected )?singers with .*tight 15 songs/i.test(bodyText)) {
       throw new Error(bodyText.replace(/\s+/g, " ").trim().slice(0, 220));
     }
     const completedConfig = await completeHostLaunchSetupIfNeeded({ page, entry, timeoutMs });
@@ -899,7 +1379,7 @@ const launchGameMode = async ({ page, entry, timeoutMs, diagnostics = [], failur
   throw new Error(`Mode launch did not become active for ${entry.id}. LastLiveMode="${lastLiveMode}". Snippet="${snippet}".${formatRecentDiagnostics(diagnostics)}`);
 };
 
-const endHostMode = async ({ page, timeoutMs }) => {
+const endHostMode = async ({ page, timeoutMs, entry = null }) => {
   const endModeButton = page.getByRole("button", { name: /End Mode/i }).first();
   if (!(await endModeButton.isVisible().catch(() => false))) {
     throw new Error("End Mode button is not visible on host controlpad.");
@@ -917,6 +1397,26 @@ const endHostMode = async ({ page, timeoutMs }) => {
       return `Host returned to ${attr || "karaoke"}.`;
     }
     await delay(500);
+  }
+  if (entry?.id === "karaoke_bracket") {
+    const clearBracketButton = page.locator('[data-feature-id="host-bracket-clear"]').first();
+    const clearVisible = await clearBracketButton.isVisible().catch(() => false);
+    const clearEnabled = await clearBracketButton.isEnabled().catch(() => false);
+    if (clearVisible && clearEnabled) {
+      await clearBracketButton.click({ force: true });
+      const retryStarted = Date.now();
+      while (Date.now() - retryStarted < Math.min(15000, timeoutMs)) {
+        const livePill = page.locator("[data-host-live-mode]").first();
+        if ((await livePill.count()) === 0) {
+          return "Host cleared bracket and returned to karaoke.";
+        }
+        const attr = String((await livePill.getAttribute("data-host-live-mode")) || "").trim().toLowerCase();
+        if (!attr || attr === "karaoke") {
+          return `Host cleared bracket and returned to ${attr || "karaoke"}.`;
+        }
+        await delay(500);
+      }
+    }
   }
   throw new Error("Host did not return to karaoke within timeout after End Mode.");
 };
@@ -950,7 +1450,13 @@ const run = async () => {
 
   requireQaAppCheckDebugTokenForRemoteUrl(rootUrl);
   const { chromium } = await ensurePlaywright();
-  const browser = await chromium.launch({ headless });
+  const browser = await chromium.launch({
+    headless,
+    args: [
+      "--use-fake-ui-for-media-stream",
+      "--use-fake-device-for-media-stream",
+    ],
+  });
   const checks = [];
   const modeResults = [];
   const hostDiagnostics = createPageDiagnosticsBucket();
@@ -982,6 +1488,7 @@ const run = async () => {
         singerSessions = await createSingerSessions({
           browser,
           fixtures: getEntrySingerFixtures(entry, singerName),
+          appOrigin,
         });
         const primarySingerPage = singerSessions[0]?.page;
 
@@ -1028,7 +1535,27 @@ const run = async () => {
             })
           );
 
-          if (entry.interaction) {
+          if (entry.id === "doodle_oke" && singerSessions[1]?.page) {
+            await runCheck(gameChecks, `${entry.id}:scenario`, async () =>
+              completeDoodleScenario({
+                drawerPage: singerSessions[0].page,
+                voterPage: singerSessions[1].page,
+                tvPage,
+                timeoutMs,
+              })
+            );
+          } else if (entry.id === "selfie_challenge" && singerSessions[1]?.page) {
+            await runCheck(gameChecks, `${entry.id}:scenario`, async () =>
+              completeSelfieScenario({
+                submitterPage: singerSessions[0].page,
+                voterPage: singerSessions[1].page,
+                tvPage,
+                roomCode,
+                submitterName: singerSessions[0]?.name || "Singer",
+                timeoutMs,
+              })
+            );
+          } else if (entry.interaction) {
             await runCheck(gameChecks, `${entry.id}:interaction`, async () =>
               performInteraction({
                 page: primarySingerPage,
@@ -1048,7 +1575,7 @@ const run = async () => {
           );
 
           await runCheck(gameChecks, `${entry.id}:end_mode`, async () =>
-            endHostMode({ page: hostPage, timeoutMs })
+            endHostMode({ page: hostPage, timeoutMs, entry })
           );
         }
 

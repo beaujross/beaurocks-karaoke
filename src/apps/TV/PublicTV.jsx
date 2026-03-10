@@ -3574,7 +3574,7 @@ const PublicTV = ({ roomCode }) => {
         const galleryCols = submissionsSorted.length > 4 ? 'grid-cols-3' : 'grid-cols-2';
 
         return (
-            <div className="fixed inset-0 z-[200] bg-zinc-950 flex flex-col items-center justify-center p-4 md:p-6 2xl:p-10 text-white">
+            <div data-feature-id="tv-doodle-oke" className="fixed inset-0 z-[200] bg-zinc-950 flex flex-col items-center justify-center p-4 md:p-6 2xl:p-10 text-white">
                 <div className="w-full max-w-6xl">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4 md:mb-6">
                         <div>
@@ -4613,7 +4613,7 @@ const PublicTV = ({ roomCode }) => {
             </div>
 
             {room?.activeMode === 'selfie_challenge' && (
-                <div className="absolute inset-0 z-[120] bg-black/70 backdrop-blur-sm flex flex-col p-4 md:p-6 2xl:p-10">
+                <div data-feature-id="tv-selfie-challenge" className="absolute inset-0 z-[120] bg-black/70 backdrop-blur-sm flex flex-col p-4 md:p-6 2xl:p-10">
                     <div className="text-center mb-4 md:mb-6">
                         <div className="text-xs md:text-sm uppercase tracking-[0.2em] md:tracking-[0.4em] text-zinc-300">Selfie Challenge</div>
                         <div className="text-2xl md:text-4xl font-bebas text-white">{room?.selfieChallenge?.prompt || 'Get ready'}</div>

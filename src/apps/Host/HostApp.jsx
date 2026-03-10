@@ -2180,8 +2180,8 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
             });
             if (message) toast(message);
         } catch (err) {
-            hostLogger.error('Host controlpad Q&A patch failed', err);
-            toast('Could not update Q&A round');
+            hostLogger.error('Host controlpad prompt round patch failed', err);
+            toast('Could not update prompt round');
         } finally {
             setBusy(false);
         }

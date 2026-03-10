@@ -50,12 +50,6 @@ These items are the active engineering priorities. Nothing below this section sh
 
 These items matter after the current execution plan is materially complete.
 
-- [ ] Host-triggered game remediation from the full QA matrix.
-  - Scope: fix or hide game modes that are still exposed from the launcher but do not cleanly launch from the real host flow.
-  - Current production failures from the matrix: `doodle_oke`, `selfie_challenge`.
-  - Current split:
-    - `doodle_oke` and `selfie_challenge` need richer seeded host fixtures in automation or clearer quick-launch UX around required setup.
-  - Source of truth: `docs/qa/HOST_GAME_QA_MATRIX_2026-03-10.md`
 - [ ] Turnkey customer onboarding + subscriptions.
   - Scope: self-serve onboarding, provisioning, monthly subscription flow, entitlement sync.
 - [ ] Organization/workspace model hardening.
@@ -108,7 +102,9 @@ Recently completed items that materially changed the operating baseline:
 - [x] Host-triggered game matrix automation added.
   - `npm run qa:games:matrix:secure` now exercises every launcher-exposed game mode and records launch/render/end-mode status across host, audience, and TV.
 - [x] Host game matrix hardened against launcher false negatives.
-  - The runner now uses a fresh room per mode, dismisses the floating audience preview that can cover right-column cards, and verified `vocal_challenge` + `bingo` in production on 2026-03-10. Remaining gaps are fixture/setup dependent: `doodle_oke` and `selfie_challenge`.
+  - The runner now uses a fresh room per mode, dismisses the floating audience preview that can cover right-column cards, and verified `vocal_challenge` + `bingo` in production on 2026-03-10.
+- [x] Setup-heavy game matrix gaps closed.
+  - `doodle_oke`, `selfie_challenge`, and `karaoke_bracket` now have passing production QA coverage via deterministic participant/Tight 15/selfie fixtures, with the latest targeted rerun passing on 2026-03-10 in rooms `4UHQ`, `RQTU`, and `2WYC`.
 - [x] Karaoke bracket signup/onboarding mode added.
   - `karaoke_bracket` now has a guided signup state instead of a silent Tight 15 hard-fail: host can open a TV explainer with countdown + readiness tracking, audience gets a direct Tight 15 CTA, and bracket launch uses the configured readiness threshold.
 - [x] P0 verification baseline established.

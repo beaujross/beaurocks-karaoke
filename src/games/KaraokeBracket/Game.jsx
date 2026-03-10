@@ -110,7 +110,7 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
             : 0;
         const rosterPreview = signupSummary.roster.slice(0, view === 'tv' ? 10 : 6);
         return (
-            <div className="h-full w-full bg-gradient-to-br from-black via-[#240015] to-[#120012] text-white p-6 md:p-10 overflow-y-auto">
+            <div data-feature-id={view === 'mobile' ? 'singer-bracket-signup' : 'tv-bracket-signup'} className="h-full w-full bg-gradient-to-br from-black via-[#240015] to-[#120012] text-white p-6 md:p-10 overflow-y-auto">
                 <div className="max-w-6xl mx-auto">
                     <div className="rounded-[2.2rem] border border-rose-300/25 bg-black/45 p-6 md:p-10 shadow-[0_0_70px_rgba(244,63,94,0.15)]">
                         <div className="text-center">
@@ -211,7 +211,7 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
 
     if (!round) {
         return (
-            <div className="h-full w-full bg-gradient-to-br from-black via-[#120026] to-[#080512] text-white flex items-center justify-center">
+            <div data-feature-id={view === 'mobile' ? 'singer-bracket-live' : 'tv-bracket-live'} className="h-full w-full bg-gradient-to-br from-black via-[#120026] to-[#080512] text-white flex items-center justify-center">
                 <div className="text-center">
                     <div className={metaLabelClass}>Karaoke Tournament</div>
                     <div className="text-4xl font-bebas text-cyan-300 mt-3">Bracket Not Ready</div>
@@ -224,7 +224,7 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
     if (isComplete) {
         const confettiCount = view === 'tv' ? 22 : 12;
         return (
-            <div className="h-full w-full relative overflow-hidden bg-gradient-to-br from-black via-[#230035] to-[#0a0420] text-white flex items-center justify-center p-6 md:p-12">
+            <div data-feature-id={view === 'mobile' ? 'singer-bracket-live' : 'tv-bracket-live'} className="h-full w-full relative overflow-hidden bg-gradient-to-br from-black via-[#230035] to-[#0a0420] text-white flex items-center justify-center p-6 md:p-12">
                 <div className="absolute inset-0 opacity-70">
                     {[...Array(confettiCount)].map((_, idx) => (
                         <span
@@ -256,7 +256,7 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
     }
 
     return (
-        <div className="h-full w-full bg-gradient-to-br from-black via-[#120026] to-[#080512] text-white p-6 md:p-10 overflow-y-auto">
+        <div data-feature-id={view === 'mobile' ? 'singer-bracket-live' : 'tv-bracket-live'} className="h-full w-full bg-gradient-to-br from-black via-[#120026] to-[#080512] text-white p-6 md:p-10 overflow-y-auto">
             <div className="max-w-6xl mx-auto">
                 <div className="text-center mb-6">
                     <div className={metaLabelClass}>Karaoke Tournament</div>

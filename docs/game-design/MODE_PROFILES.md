@@ -59,6 +59,10 @@ Cross-cutting systems such as voting, Tight 15, spotlight, combo/multiplier, que
   - Friendly competition, broad participation.
 - Risks:
   - Overly hard questions causing disengagement.
+- Terminology:
+  - These trivia rounds and `wyr` are host-launched prompt games.
+  - They are not "QA" in the quality-assurance sense.
+  - They are not the same feature as karaoke Pop Trivia.
 
 ## Would You Rather (`wyr`, `wyr_reveal`) - TBD
 

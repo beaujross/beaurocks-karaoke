@@ -263,8 +263,8 @@ const gameModeMeta = (gameMode = DEFAULT_GAME_MODE) => {
     return {
       mode,
       hostLabel: "Would You Rather",
-      singerView: "[data-qa-player-view='wyr']",
-      tvView: "[data-qa-tv-view='wyr']",
+      singerView: "[data-prompt-vote-player-view='wyr']",
+      tvView: "[data-prompt-vote-tv-view='wyr']",
       singerSuccessRegex: /VOTE CAST|NO VOTE SUBMITTED/i,
       tvLabelRegex: /would you rather/i,
     };
@@ -272,8 +272,8 @@ const gameModeMeta = (gameMode = DEFAULT_GAME_MODE) => {
   return {
     mode: mode || DEFAULT_GAME_MODE,
     hostLabel: "Trivia",
-    singerView: "[data-qa-player-view='trivia']",
-    tvView: "[data-qa-tv-view='trivia']",
+    singerView: "[data-prompt-vote-player-view='trivia']",
+    tvView: "[data-prompt-vote-tv-view='trivia']",
     singerSuccessRegex: /ANSWER LOCKED|CORRECT|NOT THIS TIME|NO ANSWER SUBMITTED/i,
     tvLabelRegex: /trivia/i,
   };
@@ -343,8 +343,8 @@ const joinSingerIfNeeded = async ({ page, singerName, timeoutMs }) => {
     if (await songsButton.isVisible().catch(() => false)) return true;
     const partyButton = page.getByRole("button", { name: /^PARTY$/i }).first();
     if (await partyButton.isVisible().catch(() => false)) return true;
-    const qaView = page.locator("[data-qa-player-view]").first();
-    if (await qaView.isVisible().catch(() => false)) return true;
+    const promptVoteView = page.locator("[data-prompt-vote-player-view]").first();
+    if (await promptVoteView.isVisible().catch(() => false)) return true;
     const bodyText = String(await page.locator("body").innerText().catch(() => ""));
     if (/TRIVIA CHALLENGE|WOULD YOU RATHER|ANSWER LOCKED|NO ANSWER SUBMITTED|MY SONGS|ADD TO QUEUE|SEARCH SONGS/i.test(bodyText)) {
       return true;
@@ -484,7 +484,7 @@ const run = async () => {
         const songsNav = singerPage.getByRole("button", { name: /^SONGS$/i }).first();
         const songsVisible = await songsNav.isVisible().catch(() => false);
         if (!songsVisible) {
-          const gameView = singerPage.locator("[data-qa-player-view]").first();
+          const gameView = singerPage.locator("[data-prompt-vote-player-view]").first();
           if (await gameView.isVisible().catch(() => false)) {
             return `${joinDetail} Game-first UI active; songs queue path skipped.`;
           }

@@ -45,42 +45,34 @@ Each mode should answer four questions:
 | `trivia_pop` | Quick Launch card | Trivia question on phone | Trivia board on TV | Smoke locks one answer. |
 | `wyr` | Quick Launch card | Would You Rather choice card | Split-vote board on TV | Smoke casts one vote. |
 | `bingo` | Quick Launch card | Bingo board or Bingo Live reopen entry | Bingo board or Bingo Live panel | Smoke looks for a suggestable tile when present. |
-| `doodle_oke` | Quick Launch card | Doodle-oke draw/vote surface | Doodle-oke gallery surface | Requires prompt inventory to be configured. |
-| `selfie_challenge` | Quick Launch card | Selfie capture or selfie voting surface | Selfie challenge gallery/voting surface | Requires prompt plus participant selection. |
-| `karaoke_bracket` | Quick Launch card | Bracket board or bracket-not-ready state | Bracket board or bracket-not-ready state | Requires seeded bracket data and usable contestants. |
+| `doodle_oke` | Quick Launch card | Doodle-oke draw/vote surface | Doodle-oke gallery surface | Matrix now seeds deterministic singer fixtures so the host config can select real participants and launch. |
+| `selfie_challenge` | Quick Launch card | Selfie capture or selfie voting surface | Selfie challenge gallery/voting surface | Matrix now uses deterministic room-user fixtures plus a seeded selfie submission to reach voting reliably in headless production QA. |
+| `karaoke_bracket` | Quick Launch card | Bracket board or bracket live matchup | Bracket board or bracket live matchup | Matrix now seeds ready singers with Tight 15 fixture data and clears bracket explicitly on exit. |
 
 ## Production Snapshot
 
-Latest full production run:
+Baseline full production sweep:
 
 - Date: 2026-03-10
 - Command: `npm run qa:games:matrix:secure`
 - Per-mode rooms: `UM22`, `W543`, `9MFU`, `M75F`, `JY6Z`, `H6XJ`, `1S1A`, `J156`, `UM66`, `PFNR`
 
-Passing in production:
+Targeted production remediation rerun for the three setup-heavy modes:
 
-- `flappy_bird`
-- `vocal_challenge`
-- `riding_scales`
-- `team_pong`
-- `trivia_pop`
-- `wyr`
-- `bingo`
+- Date: 2026-03-10
+- Command: `npm run qa:games:matrix`
+- Mode filter: `doodle_oke,selfie_challenge,karaoke_bracket`
+- Per-mode rooms: `4UHQ`, `RQTU`, `2WYC`
 
-Failing in production:
+Current production status:
 
-- `doodle_oke`
-  - Quick launch currently opens the host config modal and still requires seeded prompts plus at least one resolved participant before the mode can start.
-- `selfie_challenge`
-  - Quick launch currently opens the host config modal and still requires a prompt plus at least one resolved participant before the mode can start.
-- `karaoke_bracket`
-  - Launcher hard-blocks with `Need at least 2 singers with Tight 15 songs for a bracket.`
+- Passing: `flappy_bird`, `vocal_challenge`, `riding_scales`, `team_pong`, `trivia_pop`, `wyr`, `bingo`, `doodle_oke`, `selfie_challenge`, `karaoke_bracket`
 
 Interpretation:
 
-- `vocal_challenge` and `bingo` are verified working in production after fixing the launcher targeting and bingo payload issues.
-- `doodle_oke` and `selfie_challenge` are setup-heavy modes whose host modals still need richer fixture seeding in automation.
-- `karaoke_bracket` has a real fixture requirement and cannot be meaningfully verified in a one-singer room.
+- All currently launcher-exposed host game modes now have a passing production QA path.
+- Config-driven modes (`doodle_oke`, `selfie_challenge`, `karaoke_bracket`) rely on deterministic QA fixture seeding in the matrix so automation is not blocked by unrelated join/camera drift.
+- `karaoke_bracket` is no longer a silent hard-fail path; production QA now proves the signup-to-live bracket transition with ready-singer fixtures.
 
 ## Expected Failure Types
 
@@ -107,4 +99,7 @@ These failures are meaningful and should be treated as product findings, not jus
 - Remote production runs require `QA_APP_CHECK_DEBUG_TOKEN`.
 - Use the dedicated low-privilege QA host account, not a super admin.
 - If a mode is intentionally incubating or incomplete, it should either be hidden from the launcher or clearly marked in future product copy.
-- Config-driven modes need richer QA fixtures than one empty room plus one joined singer if they are going to stay in the default launcher matrix.
+- Config-driven modes use seeded QA fixtures in the matrix:
+  - room-user fixtures for setup-heavy participant pickers
+  - Tight 15 fixtures for `karaoke_bracket`
+  - a seeded selfie submission for headless `selfie_challenge` voting

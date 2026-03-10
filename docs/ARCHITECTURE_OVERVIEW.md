@@ -176,6 +176,11 @@ Operational enforcement:
 
 Pop Trivia is a karaoke overlay feature, distinct from the standalone `trivia_pop` game mode.
 
+Terminology note:
+- `QA` is no longer used as a product term.
+- `trivia_pop` and `wyr` share the internal `PromptVote` cartridge for host-launched prompt rounds.
+- `Pop Trivia` is the karaoke overlay that appears during songs.
+
 Current flow:
 
 1. Host enables `popTriviaEnabled` for the room.

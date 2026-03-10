@@ -1,6 +1,6 @@
 import FlappyGame from '../games/FlappyBird/Game';
 import BingoGame from '../games/Bingo/Game';
-import QAGame from '../games/QA/Game'; // The new file
+import PromptVoteGame from '../games/PromptVote/Game';
 import VocalChallengeGame from '../games/VocalChallenge/Game';
 import RidingScalesGame from '../games/RidingScales/Game';
 import KaraokeBracketGame from '../games/KaraokeBracket/Game';
@@ -13,11 +13,11 @@ export const GAME_REGISTRY = {
     'bingo': BingoGame,
     'karaoke_bracket': KaraokeBracketGame,
     'team_pong': TeamPongGame,
-    // Map multiple modes to the same "Cartridge"
-    'trivia_pop': QAGame,
-    'trivia_reveal': QAGame,
-    'wyr': QAGame,
-    'wyr_reveal': QAGame
+    // Map multiple prompt-vote modes to the same cartridge.
+    'trivia_pop': PromptVoteGame,
+    'trivia_reveal': PromptVoteGame,
+    'wyr': PromptVoteGame,
+    'wyr_reveal': PromptVoteGame
 };
 
 // Comprehensive game metadata for unified UI

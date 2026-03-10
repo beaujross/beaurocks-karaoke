@@ -2567,6 +2567,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     // Listeners
     useEffect(() => {
+        setUser(null);
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => setRoom(s.data()));
 
         // Subscribe to ALL users for Leaderboard
@@ -2594,6 +2595,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     setForm(prev => ({ ...prev, name: clampName(u.name || ''), emoji: u.avatar }));
                     setIsFormInitialized(true);
                 }
+            } else {
+                setUser(null);
             }
         });
         
@@ -4832,6 +4835,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         <>
         <div
             data-singer-view="join"
+            data-singer-auth-ready={activeUid ? 'true' : 'false'}
+            data-singer-auth-uid={String(activeUid || '').trim()}
             ref={joinContainerRef}
             className={`w-full bg-zinc-900 flex flex-col items-center p-3 text-center font-saira justify-start overflow-y-auto overflow-x-hidden relative custom-scrollbar ${tabletTouchViewport ? 'singer-tablet-touch min-h-[100dvh] h-auto' : 'h-screen'}`}
             style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
@@ -4912,6 +4917,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 </div>
                 <button
                     data-singer-join-button
+                    disabled={!activeUid}
                     onClick={() => {
                         if (!termsAccepted) {
                             setPendingJoin({ type: 'join', payload: null });
@@ -4920,9 +4926,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         }
                         join();
                     }}
-                    className="w-full max-w-sm py-3.5 rounded-xl font-bold text-white shadow-lg text-lg transition-transform bg-gradient-to-r from-pink-600 to-purple-600 active:scale-95 border-[5px] border-white/90"
+                    className={`w-full max-w-sm py-3.5 rounded-xl font-bold text-white shadow-lg text-lg transition-transform border-[5px] border-white/90 ${activeUid ? 'bg-gradient-to-r from-pink-600 to-purple-600 active:scale-95' : 'bg-zinc-700/90 border-zinc-400/50 text-zinc-200 cursor-wait'}`}
                 >
-                    JOIN THE PARTY
+                    {activeUid ? 'JOIN THE PARTY' : 'CONNECTING...'}
                 </button>
                 {returningProfile && showReturningPrompt ? (
                     <button
@@ -5289,7 +5295,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const submissionsSorted = [...visibleSubmissions].sort((a, b) => (voteCounts[b.uid] || 0) - (voteCounts[a.uid] || 0));
 
         return (
-            <div className="h-screen w-full bg-zinc-950 text-white font-saira flex flex-col items-center justify-center px-5 py-6 overflow-hidden">
+            <div data-feature-id="singer-doodle-oke" className="h-screen w-full bg-zinc-950 text-white font-saira flex flex-col items-center justify-center px-5 py-6 overflow-hidden">
                 <div className="w-full max-w-3xl text-center space-y-2">
                     <div className="text-[10px] uppercase tracking-[0.5em] text-zinc-500">Doodle-oke</div>
                     <div className="text-3xl font-bebas text-cyan-300">Lyric Line Showdown</div>
@@ -5360,6 +5366,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                     <div className="relative w-full aspect-square max-h-[60vh] bg-zinc-950 rounded-2xl overflow-hidden border border-white/10">
                                         <canvas
+                                            data-feature-id="singer-doodle-canvas"
                                             ref={doodleCanvasRef}
                                             className="w-full h-full touch-none"
                                             onPointerDown={handleDoodleStart}
@@ -5369,6 +5376,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         />
                                     </div>
                                     <button
+                                        data-feature-id="singer-doodle-submit"
                                         onClick={submitDoodleDrawing}
                                         disabled={doodleSubmitted}
                                         className={`mt-3 w-full py-3 rounded-xl font-bold ${doodleSubmitted ? 'bg-zinc-800 text-zinc-500' : 'bg-gradient-to-r from-cyan-500 to-pink-500 text-black'}`}
@@ -5407,6 +5415,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 <span>{voteCounts[s.uid] || 0} votes</span>
                                                 {phase === 'voting' && (
                                                     <button
+                                                        data-feature-id={`singer-doodle-vote-${s.uid}`}
                                                         onClick={() => submitDoodleVote(s.uid)}
                                                         disabled={!!doodleMyVote}
                                                         className={`px-3 py-1 rounded-full border ${doodleMyVote ? 'border-zinc-700 text-zinc-500' : 'border-cyan-400/40 text-cyan-200'}`}
@@ -5460,7 +5469,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         };
 
         return (
-            <div className="h-screen bg-black flex flex-col relative overflow-hidden text-white font-saira">
+            <div data-feature-id="singer-selfie-challenge" className="h-screen bg-black flex flex-col relative overflow-hidden text-white font-saira">
                 <div className="absolute top-6 left-1/2 -translate-x-1/2 text-center z-20">
                     <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">Selfie Challenge</div>
                     <div className="text-2xl font-bold text-white">{challenge?.prompt || 'Get ready'}</div>
@@ -5472,7 +5481,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover"></video>
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/40"></div>
                         <div className="absolute bottom-12 left-0 w-full flex justify-center z-30">
-                            <button onClick={submitSelfieChallenge} disabled={hasSubmitted} className="w-24 h-24 bg-white rounded-full border-4 border-zinc-300 shadow-xl active:scale-95 transition-transform disabled:opacity-50"></button>
+                            <button data-feature-id="singer-selfie-submit" onClick={submitSelfieChallenge} disabled={hasSubmitted} className="w-24 h-24 bg-white rounded-full border-4 border-zinc-300 shadow-xl active:scale-95 transition-transform disabled:opacity-50"></button>
                         </div>
                         <div className="absolute bottom-4 left-0 w-full text-center text-xs text-zinc-300 z-30">
                             {hasSubmitted ? 'Submitted - waiting for votes' : 'Tap to submit your selfie'}
@@ -5483,7 +5492,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         {challenge?.status === 'voting' ? (
                             <div className="grid grid-cols-2 gap-4">
                                 {visibleSubmissions.map(s => (
-                                    <button key={s.id} onClick={() => castVote(s.uid)} className={`relative rounded-2xl overflow-hidden border ${mySelfieVote === s.uid ? 'border-[#00C4D9]' : 'border-zinc-700'} bg-zinc-900/60`}>
+                                    <button data-feature-id={`singer-selfie-vote-${s.uid}`} key={s.id} onClick={() => castVote(s.uid)} className={`relative rounded-2xl overflow-hidden border ${mySelfieVote === s.uid ? 'border-[#00C4D9]' : 'border-zinc-700'} bg-zinc-900/60`}>
                                         <img src={s.url} alt={s.userName} className="w-full h-40 object-cover" />
                                         <div className="absolute inset-x-0 bottom-0 bg-black/70 px-3 py-2 text-sm flex items-center justify-between">
                                             <span className="truncate">{s.userName}</span>
@@ -7010,7 +7019,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     return (
-        <div data-singer-view="main" className={`relative ${tabletTouchViewport ? 'singer-tablet-touch min-h-[100dvh] h-auto overflow-y-auto overflow-x-hidden' : 'h-[100dvh] min-h-[100dvh] overflow-hidden'} bg-[#090612] text-white font-saira flex flex-col ${isNativeMobileLayout ? 'mobile-shell-native' : ''}`}>
+        <div
+            data-singer-view="main"
+            data-singer-room-user={String(user?.uid || activeUid || '').trim()}
+            data-singer-room-user-name={String(user?.name || '').trim()}
+            data-singer-room-code={String(roomCode || '').trim().toUpperCase()}
+            className={`relative ${tabletTouchViewport ? 'singer-tablet-touch min-h-[100dvh] h-auto overflow-y-auto overflow-x-hidden' : 'h-[100dvh] min-h-[100dvh] overflow-hidden'} bg-[#090612] text-white font-saira flex flex-col ${isNativeMobileLayout ? 'mobile-shell-native' : ''}`}
+        >
             {isNativeMobileLayout && (
                 <>
                     <div className="mobile-native-top-chrome absolute inset-x-0 top-0 z-[18] pointer-events-none"></div>

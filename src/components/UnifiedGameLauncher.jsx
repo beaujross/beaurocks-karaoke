@@ -2579,7 +2579,7 @@ const GameConfigModal = ({
 }) => {
     if (selectedGame === 'flappy_bird') {
         return (
-            <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
+            <div data-feature-id="host-doodle-config" className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
                 <div className="w-full max-w-3xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl">
                     <div className="flex items-center justify-between mb-4">
                         <div>
@@ -2613,7 +2613,7 @@ const GameConfigModal = ({
     }
     if (selectedGame === 'vocal_challenge') {
         return (
-            <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
+            <div data-feature-id="host-selfie-config" className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
                 <div className="w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl">
                     <div className="flex items-center justify-between mb-4">
                         <div>
@@ -2796,7 +2796,7 @@ const GameConfigModal = ({
     if (selectedGame === 'doodle_oke') {
         return (
             <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
-                <div className="w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div data-feature-id="host-doodle-config" className="w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
                     <div className="flex items-center justify-between mb-4">
                         <div>
                             <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Doodle-oke</div>
@@ -2808,6 +2808,7 @@ const GameConfigModal = ({
                         <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
                             <div className="text-xs uppercase tracking-widest text-zinc-500">Prompts</div>
                             <textarea 
+                                data-feature-id="host-doodle-prompts"
                                 value={doodlePromptsText} 
                                 onChange={(e) => setDoodlePromptsText(e.target.value)} 
                                 placeholder="One prompt per line&#10;e.g. A funny cat&#10;A spaceship&#10;Dancing robot"
@@ -2815,6 +2816,7 @@ const GameConfigModal = ({
                             />
                             <div className="flex gap-2">
                                 <input 
+                                    data-feature-id="host-doodle-ai-topic"
                                     type="text"
                                     value={doodleAiTopic}
                                     onChange={(e) => setDoodleAiTopic(e.target.value)}
@@ -2864,11 +2866,11 @@ const GameConfigModal = ({
                             <div className="space-y-2">
                                 <label className="text-xs text-zinc-400 flex flex-col gap-1">
                                     <span>Draw time (seconds)</span>
-                                    <input type="number" min="5" value={doodleDuration} onChange={(e) => setDoodleDuration(e.target.value)} className={`${STYLES.input}`} />
+                                    <input data-feature-id="host-doodle-draw-seconds" type="number" min="5" value={doodleDuration} onChange={(e) => setDoodleDuration(e.target.value)} className={`${STYLES.input}`} />
                                 </label>
                                 <label className="text-xs text-zinc-400 flex flex-col gap-1">
                                     <span>Guess time (seconds)</span>
-                                    <input type="number" min="5" value={doodleGuessDuration} onChange={(e) => setDoodleGuessDuration(e.target.value)} className={`${STYLES.input}`} />
+                                    <input data-feature-id="host-doodle-guess-seconds" type="number" min="5" value={doodleGuessDuration} onChange={(e) => setDoodleGuessDuration(e.target.value)} className={`${STYLES.input}`} />
                                 </label>
                             </div>
                         </div>
@@ -2885,7 +2887,7 @@ const GameConfigModal = ({
                                     if (!uid) return null;
                                     const selected = doodleParticipants.includes(uid);
                                     return (
-                                        <button key={u.id} onClick={() => setDoodleParticipants(prev => (prev.includes(uid) ? prev.filter(v => v !== uid) : [...prev, uid]))} className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-left text-xs ${selected ? 'border-[#00C4D9] bg-[#00C4D9]/10' : 'border-zinc-700 bg-zinc-900/60'}`}>
+                                        <button data-feature-id={`host-doodle-participant-${uid}`} key={u.id} onClick={() => setDoodleParticipants(prev => (prev.includes(uid) ? prev.filter(v => v !== uid) : [...prev, uid]))} className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-left text-xs ${selected ? 'border-[#00C4D9] bg-[#00C4D9]/10' : 'border-zinc-700 bg-zinc-900/60'}`}>
                                             <span className="text-lg">{u.avatar || '🎤'}</span>
                                             <span className="text-zinc-200 truncate">{u.name || 'Singer'}</span>
                                         </button>
@@ -2893,20 +2895,21 @@ const GameConfigModal = ({
                                 })}
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => setDoodleParticipants(getResolvedRoomUserUids(sortedUsers))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Select all</button>
-                                <button onClick={() => setDoodleParticipants([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Clear</button>
+                                <button data-feature-id="host-doodle-select-all" onClick={() => setDoodleParticipants(getResolvedRoomUserUids(sortedUsers))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Select all</button>
+                                <button data-feature-id="host-doodle-clear-participants" onClick={() => setDoodleParticipants([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Clear</button>
                             </div>
                         </div>
                     </div>
                     <div className="mt-4 flex gap-2">
                         <input 
+                            data-feature-id="host-doodle-custom-prompt"
                             type="text"
                             value={doodleCustomPrompt}
                             onChange={(e) => setDoodleCustomPrompt(e.target.value)}
                             placeholder="Or type a custom prompt for this round"
                             className={`${STYLES.input} flex-1`}
                         />
-                        <button onClick={onStartDoodleOke} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-6 py-2 text-sm`}>
+                        <button data-feature-id="host-doodle-start" onClick={onStartDoodleOke} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-6 py-2 text-sm`}>
                             <i className="fa-solid fa-palette mr-1"></i> Start Doodle-oke
                         </button>
                     </div>
@@ -2917,7 +2920,7 @@ const GameConfigModal = ({
     if (selectedGame === 'selfie_challenge') {
         return (
             <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-6">
-                <div className="w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div data-feature-id="host-selfie-config" className="w-full max-w-4xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
                     <div className="flex items-center justify-between mb-4">
                         <div>
                             <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Selfie Challenge</div>
@@ -2929,6 +2932,7 @@ const GameConfigModal = ({
                         <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
                             <div className="text-xs uppercase tracking-widest text-zinc-500">Challenge prompt</div>
                             <textarea 
+                                data-feature-id="host-selfie-prompt"
                                 value={selfiePrompt} 
                                 onChange={(e) => setSelfiePrompt(e.target.value)}
                                 placeholder="e.g. Make the silliest face possible"
@@ -2946,11 +2950,11 @@ const GameConfigModal = ({
                         <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
                             <div className="text-xs uppercase tracking-widest text-zinc-500">Settings</div>
                             <label className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/50 p-2 rounded-lg">
-                                <input type="checkbox" checked={selfieRequireApproval} onChange={(e) => setSelfieRequireApproval(e.target.checked)} className="w-4 h-4" />
+                                <input data-feature-id="host-selfie-require-approval" type="checkbox" checked={selfieRequireApproval} onChange={(e) => setSelfieRequireApproval(e.target.checked)} className="w-4 h-4" />
                                 <span>Require approval before voting</span>
                             </label>
                             <label className="flex items-center gap-2 text-xs text-zinc-300 bg-zinc-900/50 p-2 rounded-lg">
-                                <input type="checkbox" checked={selfieAutoStartVoting} onChange={(e) => setSelfieAutoStartVoting(e.target.checked)} className="w-4 h-4" />
+                                <input data-feature-id="host-selfie-auto-start-voting" type="checkbox" checked={selfieAutoStartVoting} onChange={(e) => setSelfieAutoStartVoting(e.target.checked)} className="w-4 h-4" />
                                 <span>Auto-start voting</span>
                             </label>
                             <div className="text-xs uppercase tracking-widest text-zinc-500 mt-3">Participants</div>
@@ -2960,7 +2964,7 @@ const GameConfigModal = ({
                                     if (!uid) return null;
                                     const selected = selfieChallengeParticipants.includes(uid);
                                     return (
-                                        <button key={u.id} onClick={() => setSelfieChallengeParticipants(prev => (prev.includes(uid) ? prev.filter(v => v !== uid) : [...prev, uid]))} className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-left text-xs ${selected ? 'border-rose-400 bg-rose-500/10' : 'border-zinc-700 bg-zinc-900/60'}`}>
+                                        <button data-feature-id={`host-selfie-participant-${uid}`} key={u.id} onClick={() => setSelfieChallengeParticipants(prev => (prev.includes(uid) ? prev.filter(v => v !== uid) : [...prev, uid]))} className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-left text-xs ${selected ? 'border-rose-400 bg-rose-500/10' : 'border-zinc-700 bg-zinc-900/60'}`}>
                                             <span className="text-lg">{u.avatar || '📸'}</span>
                                             <span className="text-zinc-200 truncate">{u.name || 'Singer'}</span>
                                         </button>
@@ -2968,13 +2972,13 @@ const GameConfigModal = ({
                                 })}
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => setSelfieChallengeParticipants(getResolvedRoomUserUids(sortedUsers))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Select all</button>
-                                <button onClick={() => setSelfieChallengeParticipants([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Clear</button>
+                                <button data-feature-id="host-selfie-select-all" onClick={() => setSelfieChallengeParticipants(getResolvedRoomUserUids(sortedUsers))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Select all</button>
+                                <button data-feature-id="host-selfie-clear-participants" onClick={() => setSelfieChallengeParticipants([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>Clear</button>
                             </div>
                         </div>
                     </div>
                     <div className="flex gap-3 mt-6">
-                        <button onClick={onStartSelfieChallenge} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-6 py-3 text-sm flex-1`}>
+                        <button data-feature-id="host-selfie-start" onClick={onStartSelfieChallenge} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-6 py-3 text-sm flex-1`}>
                             <i className="fa-solid fa-camera mr-1"></i> Start Selfie Challenge
                         </button>
                     </div>
@@ -3389,6 +3393,7 @@ const GameConfigModal = ({
                                 seedUids: bracketSeedUids,
                                 randomize: !!bracketSeedRandomize
                             })}
+                            data-feature-id="host-bracket-create"
                             disabled={bracketBusy || !onCreateSweet16Bracket || (!!bracketSignup && !launchUnlocked)}
                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm ${(bracketBusy || !onCreateSweet16Bracket || (!!bracketSignup && !launchUnlocked)) ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
@@ -3396,6 +3401,7 @@ const GameConfigModal = ({
                         </button>
                         <button
                             onClick={() => onQueueNextBracketMatch?.()}
+                            data-feature-id="host-bracket-queue-next"
                             disabled={bracketBusy || !canQueueNextMatch || !onQueueNextBracketMatch}
                             className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-4 py-2 text-sm ${(bracketBusy || !canQueueNextMatch || !onQueueNextBracketMatch) ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
@@ -3403,6 +3409,7 @@ const GameConfigModal = ({
                         </button>
                         <button
                             onClick={() => onClearSweet16Bracket?.()}
+                            data-feature-id="host-bracket-clear"
                             disabled={bracketBusy || !activeBracket || !onClearSweet16Bracket}
                             className={`${STYLES.btnStd} ${STYLES.btnDanger} px-4 py-2 text-sm ${(bracketBusy || !activeBracket || !onClearSweet16Bracket) ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
@@ -3427,6 +3434,7 @@ const GameConfigModal = ({
                                 });
                                 toast('Bracket launched');
                             }}
+                            data-feature-id="host-bracket-go-live"
                             disabled={!activeBracket?.rounds?.length}
                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm ${!activeBracket?.rounds?.length ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
