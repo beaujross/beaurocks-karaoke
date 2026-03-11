@@ -251,6 +251,14 @@ const getQueueSubmitErrorMessage = (error, fallback = 'Could not send request.')
     return fallback;
 };
 
+const getJoinErrorMessage = (error) => {
+    if (isQueueAppCheckError(error)) return 'Security check is still warming up. Refresh and try again.';
+    if (isQueueUnauthenticatedError(error)) return 'Session is still connecting. Try again.';
+    if (isQueuePermissionDeniedError(error)) return 'Join is still syncing. Wait a second and tap Join again.';
+    if (isQueueNetworkError(error)) return 'Network issue while joining. Try again.';
+    return 'Could not join room. Try again.';
+};
+
 const normalizeTight15Text = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
 const normalizeTight15Entry = (entry = {}) => {
@@ -3359,37 +3367,112 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const rawName = override?.name ?? form.name;
         const rawEmoji = override?.emoji ?? form.emoji;
         const safeName = clampName(rawName.trim());
-        if(!safeName) return;
-        const activeUid = String(auth.currentUser?.uid || authReadyUid || uid || '').trim();
-        if (!activeUid) {
-            toast('Session is still connecting. Try again.');
-            return;
-        }
-        markActive();
         const selectedStatus = getAvatarStatus(AVATAR_CATALOG.find(a => a.emoji === rawEmoji) || AVATAR_CATALOG[0]);
         const finalEmoji = selectedStatus.locked ? DEFAULT_EMOJI : rawEmoji;
-        const userRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`);
-        await setDoc(userRef, getRoomUserProjection({
-            uid: activeUid,
-            name: safeName,
-            avatar: finalEmoji,
-            points: 100,
-            totalEmojis: 0,
-            lastSeen: true
-        }));
-        try { await updateDoc(userRef, { visits: increment(1), lastSeen: serverTimestamp(), lastActiveAt: serverTimestamp() }); } catch {
-            // Ignore visit tracking failures.
-        }
-        if (typeof window !== 'undefined') {
-            const key = `beaurocks_returning_${uid || 'guest'}`;
-            try {
-                localStorage.setItem(key, JSON.stringify({ name: safeName, emoji: finalEmoji, lastRoom: roomCode || '' }));
-            } catch {
-                // Ignore storage failures.
+        if(!safeName) return false;
+
+        const waitForJoinAuthUid = async (timeoutMs = 2500) => {
+            const currentUid = String(auth.currentUser?.uid || '').trim();
+            if (currentUid) return currentUid;
+            if (typeof auth?.authStateReady === 'function') {
+                try {
+                    await Promise.race([
+                        auth.authStateReady(),
+                        new Promise(resolve => setTimeout(resolve, timeoutMs))
+                    ]);
+                } catch {
+                    // Fall through to the listener-based fallback below.
+                }
             }
+            const afterReadyUid = String(auth.currentUser?.uid || '').trim();
+            if (afterReadyUid) return afterReadyUid;
+            await new Promise((resolve) => {
+                let settled = false;
+                let unsub = () => {};
+                const finish = () => {
+                    if (settled) return;
+                    settled = true;
+                    try { unsub(); } catch {
+                        // Ignore unsubscribe failures.
+                    }
+                    resolve();
+                };
+                try {
+                    unsub = onAuthStateChanged(auth, () => finish(), () => finish());
+                } catch {
+                    finish();
+                    return;
+                }
+                setTimeout(() => finish(), timeoutMs);
+            });
+            return String(auth.currentUser?.uid || '').trim();
+        };
+
+        const writeJoinProjection = async (activeUid) => {
+            const userRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`);
+            await setDoc(userRef, getRoomUserProjection({
+                uid: activeUid,
+                name: safeName,
+                avatar: finalEmoji,
+                points: 100,
+                totalEmojis: 0,
+                lastSeen: true
+            }));
+            try {
+                await updateDoc(userRef, { visits: increment(1), lastSeen: serverTimestamp(), lastActiveAt: serverTimestamp() });
+            } catch {
+                // Ignore visit tracking failures.
+            }
+            return userRef;
+        };
+
+        try {
+            markActive();
+            let activeUid = await waitForJoinAuthUid();
+            if (!activeUid) {
+                toast('Session is still connecting. Try again.');
+                return false;
+            }
+
+            await ensureAppCheckToken(false).catch(() => false);
+
+            try {
+                await writeJoinProjection(activeUid);
+            } catch (error) {
+                const retryable = (
+                    isQueuePermissionDeniedError(error)
+                    || isQueueAppCheckError(error)
+                    || isQueueUnauthenticatedError(error)
+                );
+                if (!retryable) throw error;
+
+                await Promise.allSettled([
+                    waitForJoinAuthUid(),
+                    ensureAppCheckToken(true).catch(() => false)
+                ]);
+
+                const retryUid = String(auth.currentUser?.uid || '').trim();
+                if (!retryUid) throw error;
+                activeUid = retryUid;
+                await writeJoinProjection(activeUid);
+            }
+
+            if (typeof window !== 'undefined') {
+                const key = `beaurocks_returning_${activeUid || uid || 'guest'}`;
+                try {
+                    localStorage.setItem(key, JSON.stringify({ name: safeName, emoji: finalEmoji, lastRoom: roomCode || '' }));
+                } catch {
+                    // Ignore storage failures.
+                }
+            }
+            trackEvent('singer_join', { room_code: roomCode });
+            logActivity('joined the party', EMOJI.wave);
+            return true;
+        } catch (error) {
+            console.error('Audience join failed', error);
+            toast(getJoinErrorMessage(error));
+            return false;
         }
-        trackEvent('singer_join', { room_code: roomCode });
-        logActivity('joined the party', EMOJI.wave);
     };
     demoJoinRef.current = join;
 

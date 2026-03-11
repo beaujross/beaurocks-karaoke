@@ -452,6 +452,26 @@ async function run() {
       );
     }],
 
+    ["firestore: audience join payload can create own room_user doc", async () => {
+      const db = anonymousContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          name: "Guest",
+          avatar: "😀",
+          isVip: false,
+          vipLevel: 0,
+          fameLevel: 0,
+          totalFamePoints: 0,
+          lastActiveAt: new Date(),
+          points: 100,
+          totalEmojis: 0,
+          lastSeen: new Date(),
+        })
+      );
+    }],
+
     ["firestore: user cannot self-escalate room_user VIP projection", async () => {
       const db = testEnv.authenticatedContext(GUEST_UID).firestore();
       await assertFails(

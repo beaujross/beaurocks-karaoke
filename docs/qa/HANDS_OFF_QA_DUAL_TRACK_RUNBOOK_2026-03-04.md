@@ -31,6 +31,11 @@ setx QA_ALLOWED_HOST_EMAILS "qa-host@yourdomain.com"
 
 Open a fresh shell after `setx`, then run the secure smoke.
 
+Account policy:
+- Keep one dedicated non-superadmin QA host account for production smoke.
+- Store the email and password in your real secret store or password manager, not in repo markdown.
+- Keep `QA_ALLOWED_HOST_EMAILS` aligned with that exact account email so the secure runner rejects drift back to super-admin testing.
+
 Implementation note:
 - `npm run qa:release:core-night` currently resolves to the secure host-room hands-off runner.
 
@@ -58,6 +63,28 @@ npm run qa:golden:host-room-hands-off
 ```
 
 Use the legacy command only when you explicitly want the direct runner surface. For release gating, prefer `npm run qa:release:core-night`.
+
+### QA Host Account Recovery
+
+If the team forgets which QA host account is current:
+
+1. Export Firebase Auth users for `beaurocks-karaoke-v2` and look for `qa.host.*` or other dedicated smoke accounts.
+
+```powershell
+firebase auth:export tmp/auth-users.json --format json
+```
+
+2. If the account email is found but the password is unknown, do not fall back to super-admin for routine smoke.
+3. Create or reset a dedicated low-privilege QA host account instead.
+4. Grant host access by writing the normal approval records:
+   - `host_access_approvals/{uid}` with `hostApprovalEnabled=true`
+   - `marketing_private_access/{uid}` with `privateHostAccessEnabled=true`
+   - optional `users/{uid}.hostApproval.hostApprovalEnabled=true` for operator visibility
+5. Update the secret store with the new email/password and refresh `QA_ALLOWED_HOST_EMAILS`.
+6. Re-run `npm run qa:release:core-night`.
+
+Operational rule:
+- Do not commit the QA host password, temporary recovery password, or raw secret output into the repo.
 
 What it validates:
 1. Root-domain host login

@@ -1,6 +1,37 @@
 # Project History and Lessons Learned
 
-Last updated: 2026-03-08
+Last updated: 2026-03-11
+
+## 2026-03-10 Audience Join Recovery and QA Account Notes
+
+Scope delivered:
+- Hardened audience join so it waits for a real auth UID, warms App Check before the first `room_users` write, and retries once on the auth/App Check permission-denied path.
+- Deployed the audience join fix to Firebase Hosting project `beaurocks-karaoke-v2`.
+- Recovered production smoke capability without using super-admin by creating a fresh dedicated QA host account and granting normal host approval records.
+
+Validation evidence captured:
+- `npm run build`: pass.
+- `npx firebase-tools deploy --only hosting`: pass.
+- Production `host-room-hands-off` smoke with the dedicated QA host account:
+  - host login: pass
+  - host room creation: pass
+  - audience join: pass
+  - later audience performance/Pop Trivia progression: still failing and treated as a separate bug
+
+Important operational notes:
+- The audience join permission error was resolved in production; later audience-surface progression failures were not part of the same defect.
+- A dedicated non-superadmin QA host account is sufficient for production smoke when it has normal host approval records.
+- Do not rely on memory for the QA account. Keep the current email and password in a real secret store and keep `QA_ALLOWED_HOST_EMAILS` synchronized with that account.
+
+Lessons learned and process changes:
+
+1. Document the QA account recovery path, not just the happy path.
+- Lesson: the runbook described how to pass QA credentials into the smoke runner, but not how to recover when the team forgets which dedicated QA account is active.
+- Change adopted: the QA runbook now includes a concrete recovery/provisioning path based on Firebase Auth export plus `host_access_approvals` records.
+
+2. Separate join permission failures from post-join UI-state failures.
+- Lesson: a single audience smoke failure can hide multiple defects if the investigation stops at the first visible symptom.
+- Change adopted: treat "audience can join" and "audience advances into active performance state" as separate checkpoints during production smoke triage.
 
 ## 2026-03-08 Host Quick-Start and Production Smoke Notes
 
