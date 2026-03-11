@@ -14,10 +14,15 @@ const run = async () => {
 
   assert.equal(normalizeAppCheckProviderMode("enterprise"), "enterprise");
   assert.equal(normalizeAppCheckProviderMode("recaptcha_v3"), "v3");
-  assert.equal(normalizeAppCheckProviderMode("unknown"), "enterprise");
+  assert.equal(normalizeAppCheckProviderMode("unknown"), "v3");
+  assert.equal(normalizeAppCheckProviderMode("unknown", "enterprise"), "enterprise");
 
   assert.equal(
     resolveAppCheckProviderMode({ runtimeProvider: "", envProvider: "v3" }),
+    "v3"
+  );
+  assert.equal(
+    resolveAppCheckProviderMode({ runtimeProvider: "", envProvider: "" }),
     "v3"
   );
   assert.equal(

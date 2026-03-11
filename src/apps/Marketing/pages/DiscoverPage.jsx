@@ -412,35 +412,15 @@ const normalizeDiscoverBrandText = (...parts) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-const isAahfKaraokeKickoffOfficialListing = (entry = {}) => {
-  const text = normalizeDiscoverBrandText(
-    entry?.title,
-    entry?.hostName,
-    entry?.venueName,
-    entry?.description,
-    entry?.detailLine,
-    entry?.address1,
-    entry?.city,
-    entry?.state
-  );
-  if (
-    text.includes("aahf karaoke kickoff")
-    || ((text.includes("aahf") || text.includes("asian arts heritage festival"))
-      && text.includes("karaoke")
-      && text.includes("kickoff"))
-  ) {
-    return true;
-  }
-  const roomCode = String(entry?.roomCode || "").trim().toUpperCase();
-  return roomCode === "ST28" && entry?.isOfficialBeauRocksRoom === true;
-};
-
 const buildListingActionHref = (listing = null) => {
   if (!listing || typeof listing !== "object") return "";
   const listingType = normalizeListingType(listing?.listingType);
   const roomCode = String(listing?.roomCode || "").trim().toUpperCase();
   if (listingType === "room_session" && roomCode) {
     return buildMarketingPath({ page: "join", id: roomCode, params: { roomCode } });
+  }
+  if (String(listing?.sourceType || "").trim().toLowerCase() === "official_registry") {
+    return "";
   }
   const routePage = String(listing?.routePage || "").trim();
   const listingId = String(listing?.id || "").trim();
@@ -492,7 +472,8 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const hostName = String(entry?.hostName || "").trim();
   const avatarUrl = resolveProfileAvatarUrl(entry);
   const officialBadgeImageUrl = sanitizeMediaUrl(
-    entry?.logoUrl
+    entry?.officialBadgeImageUrl
+    || entry?.logoUrl
     || entry?.hostLogoUrl
     || entry?.brandLogoUrl
     || entry?.branding?.logoUrl
@@ -505,7 +486,8 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const virtualOnly = !!entry?.virtualOnly
     || !!entry?.isVirtualOnly
     || String(entry?.sessionMode || "").trim().toLowerCase() === "virtual";
-  const isOfficialBeauRocksRoom = listingType === "room_session" && isAahfKaraokeKickoffOfficialListing(entry);
+  const isOfficialBeauRocksListing = !!entry?.isOfficialBeauRocksListing || !!entry?.isOfficialBeauRocksRoom;
+  const isOfficialBeauRocksRoom = listingType === "room_session" && !!entry?.isOfficialBeauRocksRoom;
   const hasBeauRocksHostAccount = !!entry?.hasBeauRocksHostAccount;
   const hostLeaderboardRank = Math.max(0, Number(entry?.hostLeaderboardRank || 0) || 0);
   const hostLeaderboardScore = Math.max(0, Number(entry?.hostLeaderboardScore || 0) || 0);
@@ -520,7 +502,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const beauRocksElevatedReasons = Array.isArray(entry?.beauRocksElevatedReasons)
     ? entry.beauRocksElevatedReasons.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
     : [];
-  const isBeauRocksElevated = isOfficialBeauRocksRoom;
+  const isBeauRocksElevated = !!entry?.isBeauRocksElevated || isOfficialBeauRocksListing;
   const subtitle = virtualOnly
     ? "Virtual session"
     : locationLabel || [city, state].filter(Boolean).join(", ") || "Location pending";
@@ -539,6 +521,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const experience = deriveDirectoryExperience({
     ...entry,
     listingType,
+    isOfficialBeauRocksListing,
     isOfficialBeauRocksRoom,
     isBeauRocksElevated,
     hasBeauRocksHostAccount,
@@ -596,6 +579,9 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
     recurringRule,
     karaokeNightsLabel,
     isRecurringEvent,
+    officialBeauRocksStatus: String(entry?.officialBeauRocksStatus || "").trim().toLowerCase(),
+    officialBeauRocksStatusLabel: String(entry?.officialBeauRocksStatusLabel || "").trim(),
+    isOfficialBeauRocksListing,
     isOfficialBeauRocksRoom,
     isBeauRocksElevated,
     hasBeauRocksHostAccount,
@@ -1098,7 +1084,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
         ? Math.max(0, 32 - (distanceMiles * 1.8))
         : 0;
       const typeBonus = entry.listingType === "event" ? 12 : entry.listingType === "room_session" ? 8 : 5;
-      const elevatedBonus = entry.isOfficialBeauRocksRoom ? 32 : entry.isBeauRocksElevated ? 20 : 0;
+      const elevatedBonus = entry.isOfficialBeauRocksListing ? 32 : entry.isBeauRocksElevated ? 20 : 0;
       const score = computeTimePriority(entry.startsAtMs, rankingNowMs)
         + distanceScore
         + typeBonus
@@ -1195,7 +1181,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     [rankedListings]
   );
   useEffect(() => {
-    if (!mappableListings.some((entry) => entry.isOfficialBeauRocksRoom)) return () => {};
+    if (!mappableListings.some((entry) => entry.isOfficialBeauRocksListing)) return () => {};
     const timer = window.setInterval(() => {
       setOfficialMarkerPulsePhase((prev) => (prev ? 0 : 1));
     }, 900);
@@ -1371,6 +1357,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     if (!map || !listing.location) return;
     if (options.pan !== false) map.panTo(listing.location);
     if (options.zoom && (map.getZoom() || 0) < 12) map.setZoom(12);
+  }, []);
+
+  const revealListingInRail = useCallback((listing) => {
+    if (!listing) return;
+    setSelectedKey(listing.key);
+    const node = cardRefs.current.get(listing.key);
+    if (node && typeof node.scrollIntoView === "function") {
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   }, []);
 
   const recenterMap = useCallback(() => {
@@ -1583,7 +1578,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
         entry.markerColor,
         selected,
         !!entry.isBeauRocksElevated,
-        !!entry.isOfficialBeauRocksRoom,
+        !!entry.isOfficialBeauRocksListing,
         officialMarkerPulsePhase
       );
       const zIndex = selected ? 999 : entry.isBeauRocksElevated ? 320 : 180;
@@ -1636,7 +1631,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
               entry.markerColor,
               selected,
               !!entry.isBeauRocksElevated,
-              !!entry.isOfficialBeauRocksRoom,
+              !!entry.isOfficialBeauRocksListing,
               officialMarkerPulsePhase
             )
           );
@@ -1695,8 +1690,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     const elevatedBadgeImage = selectedListingInMap.isBeauRocksElevated && selectedListingInMap.officialBadgeImageUrl
       ? `<img class="mk3-map-chip-icon" src="${escapeHtml(selectedListingInMap.officialBadgeImageUrl)}" alt="Official BeauRocks logo" loading="lazy" />`
       : "";
-    const elevatedBadge = selectedListingInMap.isOfficialBeauRocksRoom
-      ? `<div class="mk3-chip mk3-chip-elevated mk3-map-marker-selected-badge">${elevatedBadgeImage}<span>Official BeauRocks Night</span></div>`
+    const elevatedBadge = selectedListingInMap.isOfficialBeauRocksListing
+      ? `<div class="mk3-chip mk3-chip-elevated mk3-map-marker-selected-badge">${elevatedBadgeImage}<span>${escapeHtml(selectedListingInMap.listingType === "room_session" ? "Official BeauRocks Room" : "Official BeauRocks Event")}</span></div>`
       : "";
     const selectedActionHref = buildListingActionHref(selectedListingInMap);
     const selectedActionLabel = selectedListingInMap.listingType === "room_session" && selectedListingInMap.roomCode
@@ -1731,6 +1726,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     if (token === "nationwide") return "Nationwide";
     return humanizeRegion(token) || token;
   }, [region]);
+  const officialBeauRocksListingCount = useMemo(
+    () => allListings.filter((entry) => entry.isOfficialBeauRocksListing).length,
+    [allListings]
+  );
   const officialBeauRocksRoomCount = useMemo(
     () => allListings.filter((entry) => entry.isOfficialBeauRocksRoom).length,
     [allListings]
@@ -1739,6 +1738,18 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     () => allListings.filter((entry) => entry.isBeauRocksElevated).length,
     [allListings]
   );
+  const officialUpcomingListings = useMemo(() => {
+    const nowFloor = Date.now() - (2 * 60 * 60 * 1000);
+    const official = allListings
+      .filter((entry) => entry.isOfficialBeauRocksListing)
+      .filter((entry) => {
+        const startsAtMs = Number(entry?.startsAtMs || 0);
+        return startsAtMs <= 0 || startsAtMs >= nowFloor;
+      })
+      .slice()
+      .sort(sortListings);
+    return official.slice(0, 3);
+  }, [allListings]);
   const joinableRoomCount = useMemo(
     () => countJoinableRoomListings(filteredByBeauRocks),
     [filteredByBeauRocks]
@@ -1803,8 +1814,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
       const cadenceLabel = EVENT_CADENCE_OPTIONS.find((option) => option.id === eventCadenceFilter)?.label || eventCadenceFilter;
       next.push(`Events: ${cadenceLabel}`);
     }
-    if (beauRocksFilter === "elevated") next.push("Official: BeauRocks spotlight");
-    if (officialRoomFilter === "official") next.push("Room: Official");
+    if (beauRocksFilter === "elevated") next.push("Official: BeauRocks");
+    if (officialRoomFilter === "official") next.push("Room: Official only");
     if (roomAccessFilter === "joinable") next.push("Access: Joinable by code");
     if (experienceFilter !== "all") {
       const label = EXPERIENCE_FILTER_OPTIONS.find((option) => option.id === experienceFilter)?.label || experienceFilter;
@@ -1987,18 +1998,17 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
             <span className="mk3-filter-chip-label">Popular shortcuts</span>
             <button
               type="button"
-              className={`mk3-discover-fast-chip ${officialRoomFilter === "official" ? "active" : ""}`}
+              className={`mk3-discover-fast-chip ${beauRocksFilter === "elevated" ? "active" : ""}`}
               onClick={() => {
-                setTypeFilter("room_session");
-                setOfficialRoomFilter("official");
+                setBeauRocksFilter("elevated");
                 trackEvent("mk_discover_official_room_filter_change", {
                   source: "discover_quick_filters",
                   mode: "official_only",
                 });
               }}
             >
-              Official BeauRocks Rooms
-              {officialBeauRocksRoomCount > 0 && <span className="mk3-filter-chip-count"> ({officialBeauRocksRoomCount})</span>}
+              Official BeauRocks
+              {officialBeauRocksListingCount > 0 && <span className="mk3-filter-chip-count"> ({officialBeauRocksListingCount})</span>}
             </button>
             <button
               type="button"
@@ -2247,11 +2257,11 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
           <span>
             {isInitialCountLoading
               ? `Loading the live directory in ${activeRegionLabel}...`
-              : `The map is the main event. Start there, then tighten the filters if you want to get picky about host, venue, city, or vibe.`}
+              : `Track official BeauRocks events, joinable rooms, and classic karaoke nights from one map-first surface.`}
           </span>
           <div className="mk3-discover-hero-stats">
             <span>{isInitialCountLoading ? "Syncing live directory..." : `${resultCountLabel} results`}</span>
-            {officialBeauRocksRoomCount > 0 && <span>{officialBeauRocksRoomCount} official rooms</span>}
+            {officialBeauRocksListingCount > 0 && <span>{officialBeauRocksListingCount} official BeauRocks listings</span>}
             {joinableRoomCount > 0 && <span>{joinableRoomCount} joinable by code</span>}
             <span>{heroPulseLabel}</span>
           </div>
@@ -2264,14 +2274,14 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
             </div>
             <strong>Live pulse</strong>
             <p>
-              Browse official rooms, public sessions, and venue-backed karaoke nights from one cinematic map-first surface.
+              Browse official BeauRocks drops, public sessions, and venue-backed karaoke nights from one cinematic map-first surface.
             </p>
           </div>
           <div className="mk3-discover-hero-side-grid">
             <article className="mk3-discover-hero-side-card">
-              <span>Official rooms</span>
-              <strong>{officialBeauRocksRoomCount}</strong>
-              <p>Operator-owned BeauRocks rooms surfaced directly in the directory.</p>
+              <span>Official BeauRocks</span>
+              <strong>{officialBeauRocksListingCount}</strong>
+              <p>Scheduled BeauRocks events and official room drops surfaced directly in the directory.</p>
             </article>
             <article className="mk3-discover-hero-side-card">
               <span>Joinable now</span>
@@ -2309,6 +2319,54 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
           </div>
         </aside>
       </div>
+      {officialUpcomingListings.length > 0 && (
+        <div className="mk3-zone mk3-zone-host mk3-discover-official-strip">
+          <div className="mk3-discover-official-strip-head">
+            <div>
+              <span>Official BeauRocks</span>
+              <strong>Upcoming scheduled drops</strong>
+            </div>
+            <p>These are the planned and scheduled BeauRocks-led nights currently featured on the map.</p>
+          </div>
+          <div className="mk3-discover-official-grid">
+            {officialUpcomingListings.map((entry) => (
+              <article key={`official_feature_${entry.key}`} className="mk3-discover-official-card">
+                <div className="mk3-discover-official-card-kicker">
+                  <span>{entry.officialBeauRocksStatusLabel || "Official"}</span>
+                  <span>{entry.typeLabel}</span>
+                </div>
+                <strong>{entry.title}</strong>
+                <p>{entry.timeLabel || entry.subtitle}</p>
+                <div className="mk3-discover-official-card-meta">
+                  <span>{entry.subtitle}</span>
+                  {entry.hostName && <span>Host: {entry.hostName}</span>}
+                </div>
+                <div className="mk3-discover-official-card-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isMobileViewport) dispatchView({ type: "show_map" });
+                      focusListing(entry, { pan: true, zoom: true });
+                    }}
+                    disabled={!entry.location}
+                  >
+                    Focus on map
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isMobileViewport) dispatchView({ type: "show_list" });
+                      revealListingInRail(entry);
+                    }}
+                  >
+                    Show in results
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
       {isMobileViewport && (
         <div className="mk3-mobile-discover-switch mk3-zone mk3-zone-mobile-controls">
           <button

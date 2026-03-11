@@ -6,7 +6,7 @@ const parseOptionalBoolToken = (raw = "") => {
   return null;
 };
 
-const normalizeAppCheckProviderMode = (value = "", fallback = "enterprise") => {
+const normalizeAppCheckProviderMode = (value = "", fallback = "v3") => {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "enterprise" || normalized === "recaptcha_enterprise") {
     return "enterprise";
@@ -20,7 +20,7 @@ const normalizeAppCheckProviderMode = (value = "", fallback = "enterprise") => {
 const resolveAppCheckProviderMode = ({
   runtimeProvider = "",
   envProvider = "",
-  fallback = "enterprise",
+  fallback = "v3",
 } = {}) => (
   normalizeAppCheckProviderMode(runtimeProvider, normalizeAppCheckProviderMode(envProvider, fallback))
 );

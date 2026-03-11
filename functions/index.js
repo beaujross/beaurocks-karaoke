@@ -34,6 +34,7 @@ const {
   shouldAttemptPopTriviaGeneration,
 } = require("./lib/popTrivia");
 const REACTION_POINT_COSTS = require("./lib/reactionPointCosts.json");
+const OFFICIAL_BEAUROCKS_DISCOVER_LISTINGS = require("./lib/officialBeauRocksDiscoverListings.json");
 
 admin.initializeApp();
 const APP_ID = "bross-app";
@@ -2231,7 +2232,129 @@ const normalizeDirectoryDiscoverBrandText = (...parts) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-const isAahfKaraokeKickoffShowcaseListing = (listing = {}) => {
+const parseOfficialDiscoverTimestampMs = (value) => {
+  if (value === null || value === undefined || value === "") return 0;
+  const direct = Number(value);
+  if (Number.isFinite(direct) && direct > 0) return Math.round(direct);
+  const parsed = Date.parse(String(value || "").trim());
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
+const OFFICIAL_BEAUROCKS_DISCOVER_REGISTRY = Object.freeze(
+  (Array.isArray(OFFICIAL_BEAUROCKS_DISCOVER_LISTINGS) ? OFFICIAL_BEAUROCKS_DISCOVER_LISTINGS : [])
+    .map((entry, index) => {
+      const listingTypeToken = normalizeDirectoryToken(entry?.listingType || "event", 40);
+      const listingType = ["venue", "event", "room_session"].includes(listingTypeToken)
+        ? listingTypeToken
+        : "event";
+      const id = safeDirectoryString(entry?.id || `official_beaurocks_listing_${index + 1}`, 180);
+      if (!id) return null;
+      const title = safeDirectoryString(entry?.title || "Official BeauRocks Event", 200);
+      const startsAtMs = parseOfficialDiscoverTimestampMs(entry?.startsAt || entry?.startsAtMs);
+      const officialStatus = normalizeDirectoryToken(
+        entry?.officialStatus || (startsAtMs > 0 ? "scheduled" : "planned"),
+        40
+      ) || (startsAtMs > 0 ? "scheduled" : "planned");
+      const officialStatusLabel = safeDirectoryString(
+        entry?.officialStatusLabel || (officialStatus === "scheduled" ? "Scheduled" : "Planned"),
+        60
+      );
+      const matchTerms = Array.from(new Set([
+        title,
+        ...(Array.isArray(entry?.matchTerms) ? entry.matchTerms : []),
+      ]
+        .map((value) => normalizeDirectoryDiscoverBrandText(value))
+        .filter(Boolean)));
+      const matchRoomCodes = Array.from(new Set((Array.isArray(entry?.matchRoomCodes) ? entry.matchRoomCodes : [])
+        .map((value) => normalizeRoomCode(value || ""))
+        .filter(Boolean)));
+      return {
+        id,
+        listingType,
+        title,
+        description: normalizeDirectoryTextBlock(entry?.description || "", 400),
+        city: safeDirectoryString(entry?.city || "", 80),
+        state: safeDirectoryString(entry?.state || "", 40),
+        region: normalizeDirectoryToken(entry?.region || "", 80),
+        startsAtMs,
+        endsAtMs: parseOfficialDiscoverTimestampMs(entry?.endsAt || entry?.endsAtMs),
+        venueId: safeDirectoryString(entry?.venueId || "", 180),
+        venueName: safeDirectoryString(entry?.venueName || "", 180),
+        hostUid: safeDirectoryString(entry?.hostUid || "", 180),
+        hostName: safeDirectoryString(entry?.hostName || "", 180),
+        ownerUid: safeDirectoryString(entry?.ownerUid || "", 180),
+        roomCode: normalizeRoomCode(entry?.roomCode || ""),
+        recurringRule: safeDirectoryString(entry?.recurringRule || "", 160),
+        karaokeNightsLabel: safeDirectoryString(entry?.karaokeNightsLabel || "", 200),
+        address1: safeDirectoryString(entry?.address1 || "", 160),
+        postalCode: safeDirectoryString(entry?.postalCode || "", 20),
+        country: safeDirectoryString(entry?.country || "", 60),
+        location: normalizeDirectoryLatLng(entry?.location || {}),
+        status: "approved",
+        visibility: "public",
+        virtualOnly: !!entry?.virtualOnly || !!entry?.isVirtualOnly,
+        sessionMode: safeDirectoryString(entry?.sessionMode || "", 40),
+        sourceType: "official_registry",
+        imageUrl: normalizeDirectoryOptionalUrl(entry?.imageUrl || ""),
+        photoUrl: normalizeDirectoryOptionalUrl(entry?.photoUrl || entry?.imageUrl || ""),
+        heroImageUrl: normalizeDirectoryOptionalUrl(entry?.heroImageUrl || entry?.imageUrl || ""),
+        coverImageUrl: normalizeDirectoryOptionalUrl(entry?.coverImageUrl || ""),
+        bannerUrl: normalizeDirectoryOptionalUrl(entry?.bannerUrl || ""),
+        imageUrls: normalizeDirectoryUrlArray([
+          entry?.imageUrls,
+          entry?.galleryUrls,
+          entry?.photos,
+          entry?.imageUrl,
+          entry?.photoUrl,
+        ], 12),
+        galleryUrls: normalizeDirectoryUrlArray([
+          entry?.galleryUrls,
+          entry?.imageUrls,
+          entry?.photos,
+          entry?.imageUrl,
+        ], 12),
+        photos: normalizeDirectoryUrlArray([
+          entry?.photos,
+          entry?.imageUrls,
+          entry?.galleryUrls,
+          entry?.imageUrl,
+        ], 12),
+        externalSources: entry?.externalSources && typeof entry.externalSources === "object"
+          ? entry.externalSources
+          : {},
+        experienceTags: normalizeDirectoryTokenArray(entry?.experienceTags || [], 10, 60),
+        hostStyleTags: normalizeDirectoryTokenArray(entry?.hostStyleTags || [], 6, 60),
+        crowdVibeTags: normalizeDirectoryTokenArray(entry?.crowdVibeTags || [], 8, 60),
+        bestForTags: normalizeDirectoryTokenArray(entry?.bestForTags || [], 6, 60),
+        rotationEstimate: normalizeDirectoryToken(entry?.rotationEstimate || "", 30),
+        beginnerFriendly: normalizeDirectoryExperienceLevel(entry?.beginnerFriendly || ""),
+        duetFriendly: normalizeDirectoryExperienceLevel(entry?.duetFriendly || ""),
+        beauRocksCapabilities: normalizeDirectoryTokenArray(entry?.beauRocksCapabilities || [], 10, 60),
+        scheduleVerifiedAtMs: startsAtMs || Number(entry?.scheduleVerifiedAtMs || 0) || 0,
+        lastActiveAtMs: Number(entry?.lastActiveAtMs || 0) || 0,
+        officialBadgeImageUrl: normalizeDirectoryOptionalUrl(entry?.officialBadgeImageUrl || ""),
+        officialBeauRocksStatus: officialStatus,
+        officialBeauRocksStatusLabel: officialStatusLabel,
+        isOfficialBeauRocksListing: true,
+        isOfficialBeauRocksRoom: listingType === "room_session",
+        matchTerms,
+        matchRoomCodes,
+      };
+    })
+    .filter(Boolean)
+);
+
+const isOfficialBeauRocksListing = (listing = {}) => {
+  const explicitOfficial = parseBooleanInput(
+    listing?.isOfficialBeauRocksListing
+      ?? listing?.isOfficialBeauRocksRoom
+      ?? listing?.officialBeauRocksListing
+      ?? listing?.officialBeauRocksRoom
+      ?? listing?.isOfficialRoom,
+    false
+  );
+  if (explicitOfficial) return true;
+  const roomCode = normalizeRoomCode(listing?.roomCode || "");
   const text = normalizeDirectoryDiscoverBrandText(
     listing?.title,
     listing?.hostName,
@@ -2241,21 +2364,15 @@ const isAahfKaraokeKickoffShowcaseListing = (listing = {}) => {
     listing?.city,
     listing?.state
   );
-  if (
-    text.includes("aahf karaoke kickoff")
-    || ((text.includes("aahf") || text.includes("asian arts heritage festival"))
-      && text.includes("karaoke")
-      && text.includes("kickoff"))
-  ) {
-    return true;
-  }
-  const roomCode = normalizeRoomCode(listing?.roomCode || "");
-  return roomCode === "ST28" && listing?.isOfficialBeauRocksRoom === true;
+  return OFFICIAL_BEAUROCKS_DISCOVER_REGISTRY.some((entry) => {
+    if (roomCode && entry.matchRoomCodes.includes(roomCode)) return true;
+    return entry.matchTerms.some((term) => text.includes(term));
+  });
 };
 
 const isOfficialBeauRocksRoomListing = (listing = {}) => {
   if (String(listing?.listingType || "") !== "room_session") return false;
-  return isAahfKaraokeKickoffShowcaseListing(listing);
+  return isOfficialBeauRocksListing(listing);
 };
 
 const getDirectoryDiscoverVenueId = (listing = {}) => {
@@ -2467,8 +2584,12 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
   const title = safeDirectoryString(data.title || "", 200);
   const hostName = safeDirectoryString(data.hostName || "", 180);
   const venueName = safeDirectoryString(data.venueName || "", 180);
-  const explicitOfficial = parseBooleanInput(
-    data.isOfficialBeauRocksRoom ?? data.officialBeauRocksRoom ?? data.isOfficialRoom,
+  const explicitOfficialListing = parseBooleanInput(
+    data.isOfficialBeauRocksListing
+      ?? data.officialBeauRocksListing
+      ?? data.isOfficialBeauRocksRoom
+      ?? data.officialBeauRocksRoom
+      ?? data.isOfficialRoom,
     false
   );
   const baseListing = {
@@ -2479,7 +2600,12 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     ownerUid,
     venueName,
     roomCode,
-    isOfficialBeauRocksRoom: explicitOfficial,
+    description: normalizeDirectoryTextBlock(data.description || "", 400),
+    address1: safeDirectoryString(data.address1 || data.address || "", 160),
+    city: safeDirectoryString(data.city || "", 80),
+    state: safeDirectoryString(data.state || "", 40),
+    isOfficialBeauRocksListing: explicitOfficialListing,
+    isOfficialBeauRocksRoom: explicitOfficialListing && listingType === "room_session",
   };
   const externalSources = buildDirectoryExternalLinks({ externalSources: data.externalSources || {} });
   const listingImageUrls = normalizeDirectoryUrlArray([
@@ -2508,9 +2634,12 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     id: docSnap.id,
     listingType,
     title,
-    description: normalizeDirectoryTextBlock(data.description || "", 400),
-    city: safeDirectoryString(data.city || "", 80),
-    state: safeDirectoryString(data.state || "", 40),
+    description: baseListing.description,
+    city: baseListing.city,
+    state: baseListing.state,
+    address1: baseListing.address1,
+    postalCode: safeDirectoryString(data.postalCode || "", 20),
+    country: safeDirectoryString(data.country || "", 60),
     region: normalizeDirectoryToken(data.region || "", 80),
     startsAtMs: Number(data.startsAtMs || 0) || 0,
     endsAtMs: Number(data.endsAtMs || 0) || 0,
@@ -2547,6 +2676,10 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     beauRocksCapabilities: normalizeDirectoryTokenArray(data.beauRocksCapabilities || [], 10, 60),
     scheduleVerifiedAtMs: Number(data.scheduleVerifiedAtMs || 0) || 0,
     lastActiveAtMs: Number(data.lastActiveAtMs || 0) || 0,
+    officialBadgeImageUrl: normalizeDirectoryOptionalUrl(data.officialBadgeImageUrl || ""),
+    officialBeauRocksStatus: normalizeDirectoryToken(data.officialBeauRocksStatus || "", 40),
+    officialBeauRocksStatusLabel: safeDirectoryString(data.officialBeauRocksStatusLabel || "", 60),
+    isOfficialBeauRocksListing: isOfficialBeauRocksListing(baseListing),
     isOfficialBeauRocksRoom: isOfficialBeauRocksRoomListing(baseListing),
   };
 };
@@ -9922,7 +10055,19 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     ...venueSnap.docs.map((docSnap) => buildDirectoryPublicListing(docSnap, "venue")),
     ...eventSnap.docs.map((docSnap) => buildDirectoryPublicListing(docSnap, "event")),
     ...sessionSnap.docs.map((docSnap) => buildDirectoryPublicListing(docSnap, "room_session")),
+    ...OFFICIAL_BEAUROCKS_DISCOVER_REGISTRY.map((entry) => ({
+      ...entry,
+      imageUrl: entry.imageUrl || entry.photoUrl || entry.heroImageUrl || "",
+    })),
   ];
+  const dedupedMerged = [];
+  const mergedKeys = new Set();
+  merged.forEach((item) => {
+    const key = `${String(item?.listingType || "").trim().toLowerCase()}:${String(item?.id || "").trim()}`;
+    if (!key || mergedKeys.has(key)) return;
+    mergedKeys.add(key);
+    dedupedMerged.push(item);
+  });
   const normalizeVenueLookupToken = (value = "") =>
     String(value || "")
       .trim()
@@ -9952,7 +10097,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
   };
   const venueById = new Map();
   const venueByLookup = new Map();
-  merged.forEach((item) => {
+  dedupedMerged.forEach((item) => {
     if (item.listingType !== "venue") return;
     const venueId = safeDirectoryString(item.id || "", 180);
     const venueName = safeDirectoryString(item.title || item.venueName || "", 180);
@@ -9975,7 +10120,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     const venueLookupKey = buildVenueLookupKey({ venueName, city, state });
     if (venueLookupKey && !venueByLookup.has(venueLookupKey)) venueByLookup.set(venueLookupKey, payload);
   });
-  const hydrated = merged.map((item) => {
+  const hydrated = dedupedMerged.map((item) => {
     if (item.listingType === "venue") return item;
     const venueId = safeDirectoryString(item.venueId || "", 180);
     const venueLookupKey = buildVenueLookupKey({
@@ -10025,7 +10170,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     if (item.listingType !== "venue" && String(item.visibility || "public") !== "public") return false;
     if (listingTypeFilter !== "all" && item.listingType !== listingTypeFilter) return false;
     if (hostUidFilter && String(item.hostUid || "") !== hostUidFilter) return false;
-    if (officialRoomOnly && !item.isOfficialBeauRocksRoom) return false;
+    if (officialRoomOnly && !item.isOfficialBeauRocksListing) return false;
     if (!matchesDirectoryDiscoverSearch(item, searchToken)) return false;
     if (!matchesDirectoryDiscoverTimeWindow(item, timeWindow, nowMs)) return false;
     if (bounds && !isDirectoryLocationInBounds(item.location, bounds)) return false;
@@ -10102,8 +10247,10 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     const hasBeauRocksHostAccount = !!hostAccountMeta?.hasAccount && (
       !!hostAccountMeta?.hasHostRole || !!hostAccountMeta?.hasHostPlan
     );
-    const beauRocksElevatedReasons = item.isOfficialBeauRocksRoom ? ["official_room"] : [];
-    const isBeauRocksElevated = item.isOfficialBeauRocksRoom === true;
+    const beauRocksElevatedReasons = item.isOfficialBeauRocksListing
+      ? [item.listingType === "room_session" ? "official_room" : "official_event"]
+      : [];
+    const isBeauRocksElevated = item.isOfficialBeauRocksListing === true;
     return {
       ...item,
       hasBeauRocksHostAccount,
@@ -10121,6 +10268,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
       venueAverageRating: Math.max(0, Number(venueMeta?.averageRating || 0) || 0),
       venueReviewCount: Math.max(0, Number(venueMeta?.reviewCount || 0) || 0),
       venueCheckinCount: Math.max(0, Number(venueMeta?.checkinCount || 0) || 0),
+      isOfficialBeauRocksListing: !!item.isOfficialBeauRocksListing,
       isBeauRocksElevated,
       beauRocksElevatedReasons,
     };
@@ -10132,6 +10280,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     venue: 0,
     event: 0,
     room_session: 0,
+    officialBeauRocksListings: 0,
     officialBeauRocksRooms: 0,
     beaurocksElevated: 0,
   };
@@ -10139,6 +10288,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     if (item.listingType === "event") counts.event += 1;
     else if (item.listingType === "room_session") counts.room_session += 1;
     else counts.venue += 1;
+    if (item.isOfficialBeauRocksListing) counts.officialBeauRocksListings += 1;
     if (item.isOfficialBeauRocksRoom) counts.officialBeauRocksRooms += 1;
     if (item.isBeauRocksElevated) counts.beaurocksElevated += 1;
 
@@ -10188,6 +10338,7 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
         venue: counts.venue,
         event: counts.event,
         room_session: counts.room_session,
+        officialBeauRocksListings: counts.officialBeauRocksListings,
         officialBeauRocksRooms: counts.officialBeauRocksRooms,
         beaurocksElevated: counts.beaurocksElevated,
         total,
@@ -10330,6 +10481,74 @@ exports.previewDirectoryRoomSessionByCode = onCall({ cors: true }, async (reques
       venueName: safeDirectoryString(top.venueName || "", 220),
       visibility: normalizeDirectoryVisibility(top.visibility || "private", "private"),
     },
+  };
+});
+
+exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "join_room_audience", { perMinute: 50, perHour: 300 });
+  enforceAppCheckIfEnabled(request, "join_room_audience");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+
+  const rawName = String(request.data?.name || "").trim();
+  const safeName = rawName.slice(0, 18) || "Guest";
+  const rawAvatar = String(request.data?.avatar || "").trim();
+  const safeAvatar = rawAvatar || String.fromCodePoint(0x1F600);
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const userRef = db.collection("users").doc(callerUid);
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+  const [roomSnap, userSnap] = await Promise.all([roomRef.get(), userRef.get()]);
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room code not found.");
+  }
+
+  const userData = userSnap.exists ? (userSnap.data() || {}) : {};
+  const vipLevel = Math.max(0, Number(userData.vipLevel || 0) || 0);
+  const totalFamePoints = Math.max(0, Number(userData.totalFamePoints || 0) || 0);
+  const fameLevel = Math.max(
+    0,
+    Number(
+      userData.currentLevel ?? userData.fameLevel ?? 0
+    ) || 0
+  );
+
+  await roomUserRef.set({
+    roomCode,
+    uid: callerUid,
+    name: safeName,
+    avatar: safeAvatar,
+    isVip: vipLevel > 0,
+    vipLevel,
+    fameLevel,
+    totalFamePoints,
+    lastActiveAt: serverNow,
+    points: 100,
+    totalEmojis: 0,
+    lastSeen: serverNow,
+  }, { merge: true });
+
+  try {
+    await roomUserRef.update({
+      visits: admin.firestore.FieldValue.increment(1),
+      lastSeen: serverNow,
+      lastActiveAt: serverNow,
+    });
+  } catch {
+    // Ignore visit tracking failures so join is not blocked.
+  }
+
+  return {
+    ok: true,
+    roomCode,
+    uid: callerUid,
   };
 });
 

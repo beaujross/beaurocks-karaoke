@@ -9,7 +9,8 @@ import {
     trackEvent,
     callFunction,
     ensureAppCheckToken,
-    setMyVipAccountStatus
+    setMyVipAccountStatus,
+    joinRoomAudience
 } from '../../lib/firebase';
 import { APP_ID, ASSETS, STORM_SFX } from '../../lib/assets';
 import { emoji, EMOJI } from '../../lib/emoji';
@@ -3408,23 +3409,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             return String(auth.currentUser?.uid || '').trim();
         };
 
-        const writeJoinProjection = async (activeUid) => {
-            const userRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`);
-            await setDoc(userRef, getRoomUserProjection({
-                uid: activeUid,
+        const writeJoinProjection = async () => (
+            joinRoomAudience({
+                roomCode,
                 name: safeName,
-                avatar: finalEmoji,
-                points: 100,
-                totalEmojis: 0,
-                lastSeen: true
-            }));
-            try {
-                await updateDoc(userRef, { visits: increment(1), lastSeen: serverTimestamp(), lastActiveAt: serverTimestamp() });
-            } catch {
-                // Ignore visit tracking failures.
-            }
-            return userRef;
-        };
+                avatar: finalEmoji
+            })
+        );
 
         try {
             markActive();
@@ -3437,7 +3428,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             await ensureAppCheckToken(false).catch(() => false);
 
             try {
-                await writeJoinProjection(activeUid);
+                await writeJoinProjection();
             } catch (error) {
                 const retryable = (
                     isQueuePermissionDeniedError(error)
@@ -3454,7 +3445,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 const retryUid = String(auth.currentUser?.uid || '').trim();
                 if (!retryUid) throw error;
                 activeUid = retryUid;
-                await writeJoinProjection(activeUid);
+                await writeJoinProjection();
             }
 
             if (typeof window !== 'undefined') {

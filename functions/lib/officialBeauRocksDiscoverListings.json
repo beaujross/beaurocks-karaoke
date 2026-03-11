@@ -1,0 +1,53 @@
+[
+  {
+    "id": "official_aahf_karaoke_kickoff_2026",
+    "listingType": "event",
+    "officialStatus": "scheduled",
+    "officialStatusLabel": "Scheduled",
+    "title": "AAHF Karaoke Kick-Off",
+    "matchTerms": [
+      "aahf karaoke kickoff",
+      "asian arts heritage festival karaoke kickoff"
+    ],
+    "matchRoomCodes": [
+      "ST28"
+    ],
+    "description": "Official BeauRocks showcase night for the 2026 Asian Arts & Heritage Festival kickoff on Bainbridge Island.",
+    "startsAt": "2026-05-01T17:00:00-07:00",
+    "endsAt": "2026-05-01T21:00:00-07:00",
+    "region": "wa_kitsap",
+    "venueName": "Bainbridge Island Museum of Art",
+    "hostName": "DJ BeauRocks",
+    "address1": "550 Winslow Way E",
+    "city": "Bainbridge Island",
+    "state": "WA",
+    "postalCode": "98110",
+    "country": "USA",
+    "location": {
+      "lat": 47.62654,
+      "lng": -122.52197
+    },
+    "imageUrl": "/images/marketing/aahf-karaoke-kickoff-2026.png",
+    "officialBadgeImageUrl": "/images/logo-library/AAHF 2026 Base Badge.png",
+    "beauRocksCapabilities": [
+      "audience_app",
+      "interactive_tv",
+      "modern_queue",
+      "verified_schedule"
+    ],
+    "bestForTags": [
+      "festival_crowds",
+      "community_events",
+      "big_room_energy"
+    ],
+    "crowdVibeTags": [
+      "crowd_energy",
+      "singalong",
+      "welcoming"
+    ],
+    "hostStyleTags": [
+      "hype",
+      "playful"
+    ]
+  }
+]

@@ -20,7 +20,7 @@ const DiscoverListingCard = ({
 }) => {
   const experience = entry?.experience || deriveDirectoryExperience(entry);
   const isBeauRocksPowered = isBeauRocksPoweredListing(entry) || !!experience?.isBeauRocksPowered;
-  const isOfficialBeauRocks = !!entry?.isOfficialBeauRocksRoom || !!entry?.isBeauRocksElevated;
+  const isOfficialBeauRocks = !!entry?.isOfficialBeauRocksListing || !!entry?.isOfficialBeauRocksRoom || !!entry?.isBeauRocksElevated;
   const beauRocksBadgeLabel = getBeauRocksBadgeLabel(entry, { defaultLabel: "BeauRocks-powered" });
   const badgeImageUrl = entry?.officialBadgeImageUrl || MARKETING_BRAND_BADGE_URL;
   const cardClasses = [
@@ -35,6 +35,13 @@ const DiscoverListingCard = ({
         label: "Join room",
         onClick: () => onJoinRoom?.(entry),
         disabled: false,
+      };
+    }
+    if (String(entry?.sourceType || "").trim().toLowerCase() === "official_registry") {
+      return {
+        label: isMobileViewport ? "Show on map" : "Focus feature",
+        onClick: () => onFocus?.(entry),
+        disabled: !entry.location || !mapsLoaded,
       };
     }
     if (typeof onOpenDetails === "function") {
@@ -92,6 +99,9 @@ const DiscoverListingCard = ({
       <div className="mk3-card-subtitle">{entry.subtitle}</div>
       {!!entry.distanceLabel && <div className="mk3-card-subtitle">{entry.distanceLabel}</div>}
       {entry.timeLabel && <div className="mk3-card-time">{entry.timeLabel}</div>}
+      {entry.officialBeauRocksStatusLabel && (
+        <div className="mk3-card-subtitle">Status: {entry.officialBeauRocksStatusLabel}</div>
+      )}
       {experience.storyLine && <div className="mk3-card-story">{experience.storyLine}</div>}
       {!!experience.capabilityBadges?.length && (
         <div className="mk3-experience-pill-row is-modern">

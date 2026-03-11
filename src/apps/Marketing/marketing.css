@@ -3745,6 +3745,121 @@
   align-self: end;
 }
 
+.mk3-discover-official-strip {
+  display: grid;
+  gap: 12px;
+  background:
+    radial-gradient(circle at 12% 20%, rgba(255, 216, 125, 0.18), transparent 28%),
+    radial-gradient(circle at 88% 14%, rgba(255, 79, 174, 0.18), transparent 34%),
+    linear-gradient(125deg, rgba(12, 14, 28, 0.94), rgba(9, 18, 30, 0.92));
+}
+
+.mk3-discover-official-strip-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: end;
+}
+
+.mk3-discover-official-strip-head span {
+  display: block;
+  color: #ffdba3;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mk3-discover-official-strip-head strong {
+  display: block;
+  color: #fff2cf;
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.mk3-discover-official-strip-head p {
+  margin: 0;
+  max-width: 56ch;
+  color: #cfe0f5;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.mk3-discover-official-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mk3-discover-official-card {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 219, 138, 0.36);
+  background:
+    linear-gradient(145deg, rgba(21, 18, 36, 0.94), rgba(12, 19, 31, 0.94));
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 235, 188, 0.06),
+    0 14px 28px rgba(2, 7, 20, 0.24);
+}
+
+.mk3-discover-official-card-kicker,
+.mk3-discover-official-card-meta,
+.mk3-discover-official-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mk3-discover-official-card-kicker span,
+.mk3-discover-official-card-meta span {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 220, 144, 0.28);
+  background: rgba(16, 18, 28, 0.78);
+  color: #f6dfb2;
+  padding: 0.18rem 0.46rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mk3-discover-official-card strong {
+  color: #fff5de;
+  font-size: 1rem;
+  line-height: 1.15;
+}
+
+.mk3-discover-official-card p {
+  margin: 0;
+  color: #d3e2f5;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.mk3-discover-official-card-actions button {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 220, 144, 0.32);
+  background: rgba(10, 16, 24, 0.92);
+  color: #f7ecd4;
+  min-height: 34px;
+  padding: 0.28rem 0.64rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mk3-discover-official-card-actions button:hover,
+.mk3-discover-official-card-actions button:focus-visible {
+  border-color: rgba(255, 216, 106, 0.58);
+  background: linear-gradient(116deg, rgba(255, 214, 106, 0.22), rgba(255, 86, 190, 0.2));
+  color: #fff8e5;
+}
+
 .mk3-finder-cta-row button.mk3-discover-hero-cta-primary {
   border-color: var(--mk3-btn-border-primary);
   color: var(--mk3-btn-ink-primary);
@@ -7077,6 +7192,14 @@
   .mk3-demo-director-grid,
   .mk3-demo-direction-grid,
   .mk3-demo-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mk3-discover-official-strip-head {
+    align-items: flex-start;
+  }
+
+  .mk3-discover-official-grid {
     grid-template-columns: 1fr;
   }
 

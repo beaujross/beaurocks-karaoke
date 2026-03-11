@@ -3,7 +3,8 @@ export const MARKETING_DJ_BEAUROCKS_AVATAR_URL = "/images/marketing/bross-host-b
 
 export const isBeauRocksPoweredListing = (entity = {}) => {
   const safe = entity && typeof entity === "object" ? entity : {};
-  return !!safe?.isOfficialBeauRocksRoom
+  return !!safe?.isOfficialBeauRocksListing
+    || !!safe?.isOfficialBeauRocksRoom
     || !!safe?.isBeauRocksElevated
     || !!safe?.hasBeauRocksHostAccount
     || !!safe?.hasBeauRocksHostPlan
@@ -13,6 +14,7 @@ export const isBeauRocksPoweredListing = (entity = {}) => {
 export const getBeauRocksBadgeLabel = (entity = {}, { defaultLabel = "BeauRocks-powered" } = {}) => {
   const safe = entity && typeof entity === "object" ? entity : {};
   const listingType = String(safe?.listingType || "").trim().toLowerCase();
+  if (listingType === "event" && !!safe?.isOfficialBeauRocksListing) return "Official BeauRocks Event";
   if (listingType === "room_session" && !!safe?.isOfficialBeauRocksRoom) return "Official BeauRocks Room";
   if (listingType === "host") return "BeauRocks Host";
   if (listingType === "venue") return "BeauRocks Venue";

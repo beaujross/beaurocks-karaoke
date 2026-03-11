@@ -53,7 +53,8 @@ const describeRotation = (token = "") => {
 
 const buildCapabilitySet = (entry = {}) => {
   const capabilities = new Set(normalizeTokenList(entry?.beauRocksCapabilities || [], 10));
-  const isBeauRocksPowered = !!entry?.isOfficialBeauRocksRoom
+  const isBeauRocksPowered = !!entry?.isOfficialBeauRocksListing
+    || !!entry?.isOfficialBeauRocksRoom
     || !!entry?.hasBeauRocksHostAccount
     || !!entry?.hasBeauRocksHostPlan
     || String(entry?.sourceType || "").trim().toLowerCase() === "host_room"
@@ -62,7 +63,7 @@ const buildCapabilitySet = (entry = {}) => {
   if (!isBeauRocksPowered) return { isBeauRocksPowered: false, capabilities };
 
   if (String(entry?.roomCode || "").trim()) capabilities.add("live_join");
-  if (entry?.isOfficialBeauRocksRoom || entry?.hasBeauRocksHostPlan || String(entry?.sourceType || "").trim().toLowerCase() === "host_room") {
+  if (entry?.isOfficialBeauRocksListing || entry?.isOfficialBeauRocksRoom || entry?.hasBeauRocksHostPlan || String(entry?.sourceType || "").trim().toLowerCase() === "host_room") {
     capabilities.add("audience_app");
     capabilities.add("interactive_tv");
     capabilities.add("modern_queue");

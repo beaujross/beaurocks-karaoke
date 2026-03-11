@@ -164,6 +164,7 @@ const firebaseConfig = resolveFirebaseConfig();
 // Initialize
 const app = initializeApp(firebaseConfig);
 let appCheck = null;
+let appCheckInitAttempted = false;
 
 const shouldEnableAppCheckClient = () => {
   const explicit = parseOptionalBool(readEnv("VITE_APP_CHECK_ENABLED"));
@@ -203,7 +204,7 @@ const getAppCheckSiteKey = () => {
 };
 
 const getAppCheckProviderMode = () => {
-  if (typeof window === "undefined") return "enterprise";
+  if (typeof window === "undefined") return "v3";
   const runtimeProvider = typeof window.__app_check_provider === "string"
     ? window.__app_check_provider.trim()
     : "";
@@ -211,7 +212,7 @@ const getAppCheckProviderMode = () => {
   return resolveAppCheckProviderMode({
     runtimeProvider,
     envProvider,
-    fallback: "enterprise",
+    fallback: "v3",
   });
 };
 
@@ -248,6 +249,12 @@ if (typeof window !== "undefined") {
     // Ignore storage access failures and continue without debug token.
   }
 
+}
+
+const initializeAppCheckClient = () => {
+  if (appCheck || appCheckInitAttempted || typeof window === "undefined") return appCheck;
+  appCheckInitAttempted = true;
+
   const appCheckEnabled = shouldEnableAppCheckClient();
   const siteKey = getAppCheckSiteKey();
   const providerMode = getAppCheckProviderMode();
@@ -261,18 +268,18 @@ if (typeof window !== "undefined") {
         provider,
         isTokenAutoRefreshEnabled: true,
       });
-      // Warm up token acquisition early so first callable requests include App Check.
-      getAppCheckToken(appCheck, false).catch((err) => {
-        firebaseLogger.debug("app-check initial token fetch failed", err);
-      });
+      return appCheck;
     } catch (err) {
       firebaseLogger.warn("app-check initialization failed", err);
+      return null;
     }
-  } else if (appCheckEnabled && !siteKey) {
+  }
+  if (appCheckEnabled && !siteKey) {
     firebaseLogger.debug("app-check enabled but missing site key: set VITE_RECAPTCHA_V3_SITE_KEY.");
   } else {
     firebaseLogger.debug("app-check disabled (set VITE_APP_CHECK_ENABLED=true to enable).");
   }
+  return null;
 }
 
 const auth = getAuth(app);
@@ -309,6 +316,7 @@ const trackEvent = (name, params = {}) => {
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const ensureAppCheckToken = async (forceRefresh = false) => {
+  initializeAppCheckClient();
   if (!appCheck) return false;
   try {
     const tokenResult = await getAppCheckToken(appCheck, !!forceRefresh);
@@ -334,6 +342,7 @@ const requireAppCheckToken = async (scope = "callable") => {
 };
 
 const callFunction = async (name, data = {}) => {
+  initializeAppCheckClient();
   const fn = httpsCallable(functions, name);
   const invoke = async () => {
     const res = await fn(data);
@@ -551,6 +560,12 @@ const resolveCatalogContribution = async (payload = {}) => {
 const previewDirectoryRoomSessionByCode = async (payload = {}) => {
   await requireAppCheckToken("previewDirectoryRoomSessionByCode");
   const data = await callFunction("previewDirectoryRoomSessionByCode", payload || {});
+  return data || null;
+};
+
+const joinRoomAudience = async (payload = {}) => {
+  await requireAppCheckToken("joinRoomAudience");
+  const data = await callFunction("joinRoomAudience", payload || {});
   return data || null;
 };
 
@@ -895,6 +910,7 @@ export {
   listCatalogContributionQueue,
   resolveCatalogContribution,
   previewDirectoryRoomSessionByCode,
+  joinRoomAudience,
   mergeAnonymousAccountData,
   ensureOrganization,
   bootstrapOnboardingWorkspace,
