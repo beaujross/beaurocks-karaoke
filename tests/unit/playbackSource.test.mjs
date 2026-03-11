@@ -3,6 +3,7 @@ import {
     normalizeBackingChoice,
     resolveStageMediaUrl,
     resolveQueuePlayback,
+    isQueueEntryPlayable,
     isBackingPlaying,
     getBackingSourceLabel
 } from '../../src/lib/playbackSource.js';
@@ -53,6 +54,10 @@ const run = () => {
     assert.equal(queueYoutubeWins.isYouTube, true);
     assert.equal(queueYoutubeWins.hasMedia, true);
     assert.equal(queueYoutubeWins.autoStartMedia, true);
+    assert.equal(isQueueEntryPlayable({ mediaUrl: 'https://youtu.be/abc12345', playbackReady: true }), true);
+    assert.equal(isQueueEntryPlayable({ appleMusicId: '777', playbackReady: true }, { appleMusicEnabled: true }), true);
+    assert.equal(isQueueEntryPlayable({ appleMusicId: '777', playbackReady: true }, { appleMusicEnabled: false }), false);
+    assert.equal(isQueueEntryPlayable({ mediaResolutionStatus: 'needs_backing', playbackReady: false }), false);
 
     assert.equal(
         isBackingPlaying({

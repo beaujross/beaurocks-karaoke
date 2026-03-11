@@ -636,6 +636,92 @@ const buildSceneSignalFlows = ({
   ];
 };
 
+const DEMO_STORY_BEATS = Object.freeze([
+  {
+    id: "host",
+    kicker: "Step 01",
+    title: "Start with the host panel.",
+    body: "The night begins with one control surface that searches, queues, and lines up the room before the TV ever lights up.",
+    bullets: [
+      "Search songs and cue the first singer fast.",
+      "Keep the queue visible instead of ad-hoc.",
+      "Launch the room without extra setup friction."
+    ],
+    flows: [
+      { lane: "Host -> Room", title: "One person sets the pace", detail: "The host decides what goes live first, so the room feels intentional immediately." },
+      { lane: "Host -> Queue", title: "The next move stays visible", detail: "Guests can see momentum building instead of waiting for a mystery handoff." }
+    ]
+  },
+  {
+    id: "launch",
+    kicker: "Step 02",
+    title: "Then the host launches the public TV.",
+    body: "As you move down the page, the host deck hands the spotlight to the big screen. That is the room handoff.",
+    bullets: [
+      "The TV becomes the shared focal point.",
+      "Lyrics and media take over the wall.",
+      "The host fades back into a steering role."
+    ],
+    flows: [
+      { lane: "Host -> TV", title: "Launch the room", detail: "A host action changes what everyone sees together." },
+      { lane: "TV -> Room", title: "The room understands the prompt", detail: "Big-screen lyrics make the next move obvious without explanation." }
+    ]
+  },
+  {
+    id: "perform",
+    kicker: "Step 03",
+    title: "Karaoke lands on the big screen.",
+    body: "This is the singalong moment: clear lyrics, visible energy, and a room that feels more like an event than a playlist handoff.",
+    bullets: [
+      "Lyrics stay readable from across the room.",
+      "Media and prompts keep the room in sync.",
+      "The TV keeps everyone following the same beat."
+    ],
+    flows: [
+      { lane: "TV -> Audience", title: "The screen cues the room", detail: "People know when to sing, clap, or jump in because the shared prompt is obvious." },
+      { lane: "Audience -> TV", title: "Reaction energy feeds back", detail: "The shared screen reflects the room getting louder and more engaged." }
+    ]
+  },
+  {
+    id: "audience",
+    kicker: "Step 04",
+    title: "Audience phones push the moment higher.",
+    body: "Once phones join the room, voting, reactions, and mini-games stop being side features and start shaping what happens on the TV.",
+    bullets: [
+      "Vote from the phone without breaking the song.",
+      "See the score rise on the shared screen.",
+      "Keep the whole room participating, not just the singer."
+    ],
+    flows: [
+      { lane: "Audience -> TV", title: "Phone input changes the room live", detail: "Votes and reactions show up on the public screen instead of disappearing into a private app." },
+      { lane: "TV -> Audience", title: "The TV rewards participation", detail: "The bigger screen makes every input feel public and worth doing." }
+    ]
+  },
+  {
+    id: "scale",
+    kicker: "Step 05",
+    title: "Then the ecosystem scales across the room.",
+    body: "One host, one room code, many guests, and multiple displays. The point is not more UI. The point is a karaoke night that grows without getting harder to run.",
+    bullets: [
+      "Multiple phones can join at once.",
+      "More than one display can echo the room state.",
+      "The whole setup still feels simple from the couch."
+    ],
+    flows: [
+      { lane: "Host -> Screens", title: "One control deck fans out", detail: "The same host panel can drive the main TV and supporting displays." },
+      { lane: "Audience -> Screens", title: "Many guests feed one shared atmosphere", detail: "The room feels bigger as more people join the same live loop." }
+    ]
+  }
+]);
+
+const DEMO_STORY_SCENE_BY_BEAT = Object.freeze({
+  host: "karaoke_kickoff",
+  launch: "karaoke_kickoff",
+  perform: "karaoke_singalong",
+  audience: "trivia_showdown",
+  scale: "finale_drop",
+});
+
 const DemoExperiencePage = ({ session = {} }) => {
   const isSessionReady = !!session?.ready;
   const hasCallableAuth = !!session?.isAuthed;
@@ -650,6 +736,7 @@ const DemoExperiencePage = ({ session = {} }) => {
   const [, setBeatPulseTick] = useState(0);
   const [surfaceReloadToken, setSurfaceReloadToken] = useState(0);
   const [syncState, setSyncState] = useState({ tone: "muted", message: "Scripted sync warming up." });
+  const [activeStoryBeat, setActiveStoryBeat] = useState(0);
 
   const latestStateRef = useRef(null);
   const inFlightRef = useRef(false);
@@ -662,6 +749,7 @@ const DemoExperiencePage = ({ session = {} }) => {
   const beatTimerRef = useRef(null);
   const audioContextRef = useRef(null);
   const previousTimelineMsRef = useRef(0);
+  const storyStepRefs = useRef([]);
   const [iframeMountReady, setIframeMountReady] = useState(false);
   const [sceneShiftActive, setSceneShiftActive] = useState(true);
   const isAutoplayShowcase = demoViewMode === DEMO_VIEW_MODES.autoplay;
@@ -880,6 +968,56 @@ const DemoExperiencePage = ({ session = {} }) => {
     () => getDemoAudienceActionLabel(activeScene),
     [activeScene]
   );
+  const storyBeat = useMemo(
+    () => DEMO_STORY_BEATS[activeStoryBeat] || DEMO_STORY_BEATS[0],
+    [activeStoryBeat]
+  );
+  const storyScene = useMemo(() => {
+    const targetSceneId = DEMO_STORY_SCENE_BY_BEAT[storyBeat.id] || TIMELINE[0].id;
+    return TIMELINE.find((entry) => entry.id === targetSceneId) || TIMELINE[0];
+  }, [storyBeat.id]);
+  const storyHostParams = useMemo(() => {
+    const baseParams = getAutoplayHostSurfaceParams(storyScene);
+    const beatId = String(storyBeat.id || "").trim().toLowerCase();
+    if (beatId === "host") {
+      return {
+        ...baseParams,
+        tab: "browse",
+        catalogue: "1",
+      };
+    }
+    if (beatId === "audience") {
+      return {
+        ...buildDemoHostParams("games", { game: "trivia" }),
+        tab: "games",
+      };
+    }
+    return {
+      ...baseParams,
+      tab: baseParams?.tab || (baseParams?.section === "queue.catalog" ? "browse" : baseParams?.section === "games.live_controls" ? "games" : "stage"),
+    };
+  }, [storyBeat.id, storyScene]);
+  const storyLaunchLinks = useMemo(() => ({
+    audience: buildSceneSurfaceUrl("app", {
+      mobile_layout: "native",
+      mkDemoEmbed: "1",
+      demoScene: storyScene.id,
+    }),
+    tv: buildSceneSurfaceUrl("tv", {
+      mode: "tv",
+      mkDemoEmbed: "1",
+      demoScene: storyScene.id,
+    }),
+    host: buildSceneSurfaceUrl("host", {
+      ...storyHostParams,
+      demoScene: storyScene.id,
+    }),
+  }), [buildSceneSurfaceUrl, storyHostParams, storyScene.id]);
+  const storyPerformanceScore = 72 + (activeStoryBeat * 9);
+  const storyVoteScore = 38 + (activeStoryBeat * 14);
+  const storyScaleCount = activeStoryBeat >= 4 ? 4 : activeStoryBeat >= 3 ? 2 : 1;
+  const storyLyricLead = storyScene?.lyrics?.[0] || activeScene?.lyrics?.[0] || "Hands up high now, the whole room sways in time";
+  const storyLyricNext = storyScene?.lyrics?.[1] || activeScene?.lyrics?.[1] || "Voices rising, every table joins the line";
 
   useEffect(() => {
     try {
@@ -915,6 +1053,32 @@ const DemoExperiencePage = ({ session = {} }) => {
     }
     previousTimelineMsRef.current = timelineMs;
   }, [timelineMs]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const nodes = storyStepRefs.current.filter(Boolean);
+    if (!nodes.length || typeof window.IntersectionObserver !== "function") return undefined;
+    let frameId = 0;
+    const observer = new window.IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((left, right) => right.intersectionRatio - left.intersectionRatio);
+      if (!visible.length) return;
+      const nextIndex = clampNumber(visible[0].target.dataset.storyIndex, 0, DEMO_STORY_BEATS.length - 1, 0);
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        setActiveStoryBeat((prev) => (prev === nextIndex ? prev : nextIndex));
+      });
+    }, {
+      threshold: [0.32, 0.5, 0.7],
+      rootMargin: "-10% 0px -18% 0px",
+    });
+    nodes.forEach((node) => observer.observe(node));
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, []);
 
   latestStateRef.current = {
     timelineMs,
@@ -1149,12 +1313,135 @@ const DemoExperiencePage = ({ session = {} }) => {
 
   return (
     <section className="mk3-page mk3-demo-page">
+      <article className="mk3-demo-story">
+        <div className="mk3-demo-story-intro">
+          <div className="mk3-chip">scroll story</div>
+          <h2>Watch one karaoke night come to life.</h2>
+          <p>
+            Start with the host deck, hand the room to the TV, pull phones into the moment, then show how the whole system scales without turning into work.
+          </p>
+        </div>
+        <div className="mk3-demo-story-grid">
+          <div className="mk3-demo-story-steps">
+            {DEMO_STORY_BEATS.map((beat, index) => (
+              <article
+                key={beat.id}
+                ref={(node) => {
+                  storyStepRefs.current[index] = node;
+                }}
+                data-story-index={index}
+                className={`mk3-demo-story-step${activeStoryBeat === index ? " is-active" : ""}`}
+              >
+                <span>{beat.kicker}</span>
+                <h3>{beat.title}</h3>
+                <p>{beat.body}</p>
+                <div className="mk3-demo-story-bullets">
+                  {beat.bullets.map((item) => (
+                    <strong key={`${beat.id}_${item}`}>{item}</strong>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="mk3-demo-story-stage">
+            <div className={`mk3-demo-story-stage-frame is-${storyBeat.id}`}>
+              <div className="mk3-demo-story-glow mk3-demo-story-glow-one" />
+              <div className="mk3-demo-story-glow mk3-demo-story-glow-two" />
+
+              <article className="mk3-demo-story-screen mk3-demo-story-screen-host">
+                <span>Host Panel</span>
+                <strong>{storyBeat.id === "host" ? "Catalog and queue live" : activeHostAction?.label || "Queue the room"}</strong>
+                <div className="mk3-demo-story-embed mk3-demo-story-embed-host">
+                  <iframe
+                    title="Demo story host surface"
+                    src={iframeMountReady ? storyLaunchLinks.host : "about:blank"}
+                    className="mk3-demo-iframe mk3-demo-story-iframe"
+                    loading={isAutoplayShowcase ? "eager" : "lazy"}
+                    allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
+                  />
+                </div>
+                <div className="mk3-demo-story-host-stats-strip">
+                  <div>
+                    <span>Room</span>
+                    <strong>{sanitizedRoomCode}</strong>
+                  </div>
+                  <div>
+                    <span>Workspace</span>
+                    <strong>{getDemoHostWorkspaceLabel(storyHostParams)}</strong>
+                  </div>
+                </div>
+              </article>
+
+              <article className="mk3-demo-story-screen mk3-demo-story-screen-tv">
+                <span>Public TV</span>
+                <strong>{storyScene.songTitle || "Big singalong moment"}</strong>
+                <div className="mk3-demo-story-embed mk3-demo-story-embed-tv">
+                  <iframe
+                    title="Demo story public TV surface"
+                    src={iframeMountReady ? storyLaunchLinks.tv : "about:blank"}
+                    className="mk3-demo-iframe mk3-demo-story-iframe"
+                    loading={isAutoplayShowcase ? "eager" : "lazy"}
+                    allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
+                  />
+                </div>
+                <div className="mk3-demo-story-tv-lyrics">
+                  <p>{storyLyricLead}</p>
+                  <small>{storyLyricNext}</small>
+                </div>
+                <div className="mk3-demo-story-tv-meter">
+                  <span>Room energy</span>
+                  <i style={{ width: `${Math.min(100, storyPerformanceScore)}%` }} />
+                </div>
+              </article>
+
+              <article className="mk3-demo-story-screen mk3-demo-story-screen-phone">
+                <span>Audience App</span>
+                <strong>{activeStoryBeat >= 3 ? "Vote and react live" : audienceStateLabel}</strong>
+                <div className="mk3-demo-story-embed mk3-demo-story-embed-phone">
+                  <iframe
+                    title="Demo story audience surface"
+                    src={iframeMountReady ? storyLaunchLinks.audience : "about:blank"}
+                    className="mk3-demo-iframe mk3-demo-story-iframe"
+                    loading={isAutoplayShowcase ? "eager" : "lazy"}
+                    allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
+                  />
+                </div>
+                <div className="mk3-demo-story-phone-votes" aria-hidden="true">
+                  <button type="button" tabIndex={-1}>Fire</button>
+                  <button type="button" tabIndex={-1}>Clap</button>
+                  <button type="button" tabIndex={-1}>Vote</button>
+                </div>
+                <div className="mk3-demo-story-phone-score">
+                  <span>TV score</span>
+                  <strong>+{storyVoteScore}</strong>
+                </div>
+              </article>
+
+              <div className="mk3-demo-story-scale-clones" aria-hidden="true">
+                {Array.from({ length: storyScaleCount }).map((_, index) => (
+                  <div key={`clone_${index}`} className={`mk3-demo-story-clone clone-${index + 1}`} />
+                ))}
+              </div>
+            </div>
+
+            <div className="mk3-demo-story-flow-grid">
+              {storyBeat.flows.map((flow) => (
+                <article key={`${storyBeat.id}_${flow.lane}`} className="mk3-demo-story-flow-card">
+                  <span>{flow.lane}</span>
+                  <strong>{flow.title}</strong>
+                  <p>{flow.detail}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </article>
+
       <article className="mk3-demo-overview">
         <div className="mk3-chip">demo brief</div>
         <h2>See one room move across TV, phone, and host.</h2>
         <p>
-          The guided run starts with a real catalog search, lands a singalong, flips into games, then closes on a finale chorus.
-          Same room code, three real BeauRocks surfaces.
+          Same room code. Three real BeauRocks surfaces. One guided run from host setup to full-room participation.
         </p>
         <div className="mk3-demo-overview-grid">
           <article>
@@ -1175,8 +1462,8 @@ const DemoExperiencePage = ({ session = {} }) => {
         </div>
         <div className="mk3-demo-overview-flow">
           <span>Scene flow</span>
-          <strong>Search, queue, singalong, guitar sync, vocal game, trivia, Would You Rather, finale.</strong>
-          <p>The timeline below shows not just what scene is active, but which surface is driving the room and where the response is landing next.</p>
+          <strong>Search, queue, singalong, games, reveal, finale.</strong>
+          <p>The live timeline below shows which surface is driving the room and where the response lands next.</p>
         </div>
       </article>
 
@@ -1377,8 +1664,9 @@ const DemoExperiencePage = ({ session = {} }) => {
         </div>
       </article>
 
-      <div ref={demoShellRef} className="mk3-demo-shell">
-        <article className={`mk3-demo-surface mk3-demo-tv is-${activeScene.mode}${sceneShiftActive ? " is-shifting" : ""}`}>
+      {!isAutoplayShowcase && (
+        <div ref={demoShellRef} className="mk3-demo-shell">
+          <article className={`mk3-demo-surface mk3-demo-tv is-${activeScene.mode}${sceneShiftActive ? " is-shifting" : ""}`}>
           <header>
             <span>Public TV</span>
             <strong>{activeScene.label}</strong>
@@ -1407,9 +1695,9 @@ const DemoExperiencePage = ({ session = {} }) => {
             <span>{isAutoplayShowcase ? surfacePlan.tvStatus : activeScene.title}</span>
             <strong>{activeScene.songTitle || stageModeLabel}</strong>
           </div>
-        </article>
+          </article>
 
-        <article className={`mk3-demo-surface mk3-demo-audience${sceneShiftActive ? " is-shifting" : ""}`}>
+          <article className={`mk3-demo-surface mk3-demo-audience${sceneShiftActive ? " is-shifting" : ""}`}>
           <header>
             <span>Audience View</span>
             <strong>{crowdSize} connected</strong>
@@ -1448,9 +1736,9 @@ const DemoExperiencePage = ({ session = {} }) => {
             </span>
             <strong>{sceneInteractionTotal} interactions this cycle</strong>
           </div>
-        </article>
+          </article>
 
-        <article className={`mk3-demo-surface mk3-demo-host${sceneShiftActive ? " is-shifting" : ""}`}>
+          <article className={`mk3-demo-surface mk3-demo-host${sceneShiftActive ? " is-shifting" : ""}`}>
           <header>
             <span>Host Deck</span>
             <strong>{isAutoplayShowcase ? surfacePlan.hostFocus : "Live host deck"}</strong>
@@ -1492,8 +1780,9 @@ const DemoExperiencePage = ({ session = {} }) => {
                     : "Interactive live view"}
             </strong>
           </div>
-        </article>
-      </div>
+          </article>
+        </div>
+      )}
 
       <article className="mk3-demo-launch">
         <h3>{isAutoplayShowcase ? "Guided Demo Is Running" : "Launch Real Surfaces From This Room Code"}</h3>

@@ -83,6 +83,12 @@ const EXPERIENCE_FILTER_OPTIONS = [
   { id: "beginner", label: "Beginner friendly" },
   { id: "fast_rotation", label: "Fast rotation" },
 ];
+const LISTING_TYPE_OPTIONS = Object.freeze([
+  { id: "event", label: "Events" },
+  { id: "venue", label: "Venues" },
+  { id: "room_session", label: "Room sessions" },
+]);
+const DEFAULT_SELECTED_LISTING_TYPES = Object.freeze(LISTING_TYPE_OPTIONS.map((option) => option.id));
 const TYPE_FILTER_LABELS = Object.freeze({
   event: "Events",
   venue: "Venues",
@@ -160,6 +166,19 @@ const normalizeListingType = (value = "") => {
   if (token === "event") return "event";
   if (token === "room_session") return "room_session";
   return "venue";
+};
+
+const normalizeSelectedListingTypes = (values = []) => {
+  const tokens = Array.isArray(values) ? values : [values];
+  const allowed = new Set(DEFAULT_SELECTED_LISTING_TYPES);
+  const selected = [];
+  tokens.forEach((value) => {
+    const token = normalizeListingType(value);
+    if (!allowed.has(token) || selected.includes(token)) return;
+    selected.push(token);
+  });
+  if (!selected.length) return [...DEFAULT_SELECTED_LISTING_TYPES];
+  return DEFAULT_SELECTED_LISTING_TYPES.filter((token) => selected.includes(token));
 };
 
 const toFiniteCoordinate = (value) => {
@@ -832,7 +851,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
   const initialRegion = initialIsMobile ? KITSAP_BOOTSTRAP_REGION : "";
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState(initialRegion);
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [selectedListingTypes, setSelectedListingTypes] = useState(() => [...DEFAULT_SELECTED_LISTING_TYPES]);
   const [timeWindow, setTimeWindow] = useState("all");
   const [sortMode, setSortMode] = useState("smart");
   const [mapFirst, setMapFirst] = useState(true);
@@ -903,7 +922,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
   } = useDirectoryDiscover({
     search,
     region,
-    listingType: typeFilter,
+    listingType: selectedListingTypes.length === 1 ? selectedListingTypes[0] : "all",
     timeWindow,
     sortMode: sortMode === "nearest" ? "smart" : sortMode,
     hostUid: "",
@@ -1046,10 +1065,18 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     if (effectiveHostFilter === "all") return allListings;
     return allListings.filter((entry) => String(entry?.hostUid || "").trim() === effectiveHostFilter);
   }, [allListings, effectiveHostFilter]);
+  const activeListingTypes = useMemo(
+    () => normalizeSelectedListingTypes(selectedListingTypes),
+    [selectedListingTypes]
+  );
+  const filteredByListingType = useMemo(() => {
+    const activeTypes = new Set(activeListingTypes);
+    return filteredByHost.filter((entry) => activeTypes.has(String(entry?.listingType || "").trim()));
+  }, [activeListingTypes, filteredByHost]);
   const filteredByBeauRocks = useMemo(() => {
-    if (beauRocksFilter !== "elevated") return filteredByHost;
-    return filteredByHost.filter((entry) => !!entry.isBeauRocksElevated);
-  }, [beauRocksFilter, filteredByHost]);
+    if (beauRocksFilter !== "elevated") return filteredByListingType;
+    return filteredByListingType.filter((entry) => !!entry.isBeauRocksElevated);
+  }, [beauRocksFilter, filteredByListingType]);
   const filteredByRoomAccess = useMemo(() => {
     if (roomAccessFilter !== "joinable") return filteredByBeauRocks;
     return filteredByBeauRocks.filter((entry) => isJoinableRoomListing(entry));
@@ -1211,6 +1238,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     });
     return counts;
   }, [rankedListings]);
+  const listingTypeToggleCounts = useMemo(() => {
+    const counts = { venue: 0, event: 0, room_session: 0 };
+    filteredByHost.forEach((entry) => {
+      if (entry.listingType === "event") counts.event += 1;
+      else if (entry.listingType === "room_session") counts.room_session += 1;
+      else counts.venue += 1;
+    });
+    return counts;
+  }, [filteredByHost]);
 
   const selectedListing = useMemo(
     () => visibleListings.find((entry) => entry.key === effectiveSelectedKey) || null,
@@ -1330,7 +1366,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
   const resetDiscoverFilters = useCallback(() => {
     setSearch("");
     setRegion(mobileBootstrapRegion);
-    setTypeFilter("all");
+    setSelectedListingTypes([...DEFAULT_SELECTED_LISTING_TYPES]);
     setTimeWindow("all");
     setSortMode("smart");
     setHostFilter("all");
@@ -1775,12 +1811,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     return counts;
   }, [filteredByHost]);
   const hasFullAccount = !!session?.isAuthed && !session?.isAnonymous;
-  const resultCount = (Number(total || 0) || visibleListings.length);
+  const hasAllListingTypesSelected = activeListingTypes.length === DEFAULT_SELECTED_LISTING_TYPES.length;
+  const resultCount = hasAllListingTypesSelected
+    ? (Number(total || 0) || visibleListings.length)
+    : visibleListings.length;
   const isInitialCountLoading = loading && !error && resultCount <= 0;
   const resultCountLabel = isInitialCountLoading ? "Loading" : resultCount.toLocaleString();
   const hasSearchFilters = !!String(search || "").trim()
     || !!String(region || "").trim()
-    || typeFilter !== "all"
+    || !hasAllListingTypesSelected
     || effectiveHostFilter !== "all"
     || beauRocksFilter !== "all"
     || sortMode !== "smart"
@@ -1800,8 +1839,11 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     if (regionToken && regionToken !== "nationwide") {
       next.push(`Region: ${activeRegionLabel}`);
     }
-    if (typeFilter !== "all" && TYPE_FILTER_LABELS[typeFilter]) {
-      next.push(`Type: ${TYPE_FILTER_LABELS[typeFilter]}`);
+    if (!hasAllListingTypesSelected) {
+      const categoryLabels = activeListingTypes
+        .map((token) => TYPE_FILTER_LABELS[token])
+        .filter(Boolean);
+      if (categoryLabels.length) next.push(`Categories: ${categoryLabels.join(", ")}`);
     }
     if (sortMode !== "smart" && SORT_MODE_LABELS[sortMode]) {
       next.push(`Rank: ${SORT_MODE_LABELS[sortMode]}`);
@@ -1839,7 +1881,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     sortMode,
     timeWindow,
     eventCadenceFilter,
-    typeFilter,
+    activeListingTypes,
+    hasAllListingTypesSelected,
   ]);
   const filterStackClasses = [
     "mk3-discover-filter-stack",
@@ -1908,6 +1951,25 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     trackEvent("mk_discover_premium_hero_list_click", { source: "discover_premium_hero" });
     navigate("submit", "", { intent: "listing_submit", targetType: "venue" });
   };
+  const toggleListingTypeFilter = useCallback((typeId = "") => {
+    const normalizedType = normalizeListingType(typeId);
+    setSelectedListingTypes((prev) => {
+      const current = normalizeSelectedListingTypes(prev);
+      if (current.includes(normalizedType)) {
+        if (current.length === 1) return current;
+        return current.filter((token) => token !== normalizedType);
+      }
+      return normalizeSelectedListingTypes([...current, normalizedType]);
+    });
+    trackEvent("mk_discover_listing_type_toggle", {
+      source: "discover_filters",
+      listingType: normalizedType,
+    });
+  }, []);
+  const setOnlyListingTypeFilter = useCallback((typeId = "") => {
+    const normalizedType = normalizeListingType(typeId);
+    setSelectedListingTypes([normalizedType]);
+  }, []);
   const renderDiscoverFilters = () => (
     <>
       <div className={filterStackClasses}>
@@ -1928,27 +1990,24 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
               onChange={(event) => setRegion(event.target.value)}
             />
           </label>
-          <label className="mk3-discover-filter-advanced-field">
-            Type
-            <select
-              value={typeFilter}
-              onChange={(event) => {
-                const nextType = event.target.value;
-                setTypeFilter(nextType);
-                if (nextType !== "room_session" && roomAccessFilter === "joinable") {
-                  setRoomAccessFilter("all");
-                }
-                if (nextType !== "event" && eventCadenceFilter !== "all") {
-                  setEventCadenceFilter("all");
-                }
-              }}
-            >
-              <option value="all">All</option>
-              <option value="event">Events</option>
-              <option value="venue">Venues</option>
-              <option value="room_session">Room Sessions</option>
-            </select>
-          </label>
+          <div className="mk3-discover-filter-advanced-field mk3-discover-category-filter">
+            <span>Categories</span>
+            <div className="mk3-discover-category-toggle-row">
+              {LISTING_TYPE_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={activeListingTypes.includes(option.id) ? "active" : ""}
+                  onClick={() => toggleListingTypeFilter(option.id)}
+                >
+                  {option.label}
+                  {Number(listingTypeToggleCounts[option.id] || 0) > 0 && (
+                    <span className="mk3-filter-chip-count"> ({Number(listingTypeToggleCounts[option.id] || 0)})</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
           <label className="mk3-discover-filter-advanced-field">
             Rank
             <select
@@ -2014,7 +2073,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
               type="button"
               className={`mk3-discover-fast-chip ${roomAccessFilter === "joinable" ? "active" : ""}`}
               onClick={() => {
-                setTypeFilter("room_session");
+                setOnlyListingTypeFilter("room_session");
                 setRoomAccessFilter("joinable");
                 trackEvent("mk_discover_room_access_filter_change", {
                   source: "discover_quick_filters",
@@ -2089,7 +2148,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
                 className={eventCadenceFilter === option.id ? "active" : ""}
                 onClick={() => {
                   setEventCadenceFilter(option.id);
-                  if (option.id !== "all") setTypeFilter("event");
+                  if (option.id !== "all") setOnlyListingTypeFilter("event");
                   trackEvent("mk_discover_event_cadence_filter_change", {
                     source: "discover_filters",
                     cadence: option.id,
@@ -2143,9 +2202,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
           <span className="mk3-filter-chip-label">Room filters</span>
           <button
             type="button"
-            className={typeFilter === "room_session" && officialRoomFilter === "all" && roomAccessFilter === "all" ? "active" : ""}
+            className={activeListingTypes.length === 1 && activeListingTypes[0] === "room_session" && officialRoomFilter === "all" && roomAccessFilter === "all" ? "active" : ""}
             onClick={() => {
-              setTypeFilter("room_session");
+              setOnlyListingTypeFilter("room_session");
               setOfficialRoomFilter("all");
               setRoomAccessFilter("all");
             }}
@@ -2156,7 +2215,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
             type="button"
             className={officialRoomFilter === "official" ? "active" : ""}
             onClick={() => {
-              setTypeFilter("room_session");
+              setOnlyListingTypeFilter("room_session");
               setOfficialRoomFilter("official");
               trackEvent("mk_discover_official_room_filter_change", {
                 source: "discover_filters",
@@ -2179,7 +2238,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
             className={roomAccessFilter === "joinable" ? "active" : ""}
             onClick={() => {
               setRoomAccessFilter("joinable");
-              setTypeFilter("room_session");
+              setOnlyListingTypeFilter("room_session");
               trackEvent("mk_discover_room_access_filter_change", {
                 source: "discover_filters",
                 mode: "joinable_only",

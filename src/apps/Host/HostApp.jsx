@@ -95,6 +95,7 @@ import {
     normalizeBackingChoice,
     resolveStageMediaUrl,
     resolveQueuePlayback,
+    isQueueEntryPlayable,
 } from '../../lib/playbackSource';
 import {
     HOST_WORKSPACE_VIEWS,
@@ -6232,7 +6233,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const list = songsRef.current || [];
         const performing = list.find(s => s.status === 'performing');
         if (performing) return;
-        const queued = list.filter(s => s.status === 'requested')
+        const queued = list.filter((s) => (
+            s.status === 'requested'
+            && isQueueEntryPlayable(s, { appleMusicEnabled: !!appleMusicAuthorized })
+        ))
             .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0));
         const next = queued[0];
         if (!next) return;
@@ -6276,7 +6280,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         }
         logActivity(roomCode, next.singerName, `took the stage!`, EMOJI.mic);
-    }, [playAppleMusicTrack, roomCode, stopAppleMusic, updateRoom, logActivity]);
+    }, [appleMusicAuthorized, playAppleMusicTrack, roomCode, stopAppleMusic, updateRoom, logActivity]);
     useEffect(() => {
         if (autoDjTimerRef.current) {
             clearTimeout(autoDjTimerRef.current);

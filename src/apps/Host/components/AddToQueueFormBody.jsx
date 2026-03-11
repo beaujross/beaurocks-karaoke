@@ -35,7 +35,7 @@ const AddToQueueFormBody = ({
     appleMusicAuthorized
 }) => {
     const mediaSummaryLabel = manualBackingChip.label === 'Apple Music'
-        ? 'Apple default'
+        ? 'Saved / Apple default'
         : manualBackingChip.label;
 
     return (
@@ -257,14 +257,14 @@ const AddToQueueFormBody = ({
         <div className="mb-2 rounded-xl border border-white/10 bg-black/30 p-3">
             <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
                 <div>
-                    <div className="text-xs uppercase tracking-widest text-zinc-400">Optional Song Materials</div>
+                    <div className="text-xs uppercase tracking-widest text-zinc-400">Advanced Playback And Lyrics</div>
                     <div className="mt-1 text-xs text-zinc-500">
-                        Only use these when the default track is not enough for the room.
+                        Most songs work without this. Open it when you need to change what plays in the room or what words show on screen.
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
-                    <span className={statusPill}>Backing: {mediaSummaryLabel}</span>
-                    <span className={statusPill}>Lyrics: {manual.lyrics ? 'Added' : 'None'}</span>
+                    <span className={statusPill}>Playback: {mediaSummaryLabel}</span>
+                    <span className={statusPill}>Lyrics: {manual.lyrics ? 'Custom' : 'Auto / None'}</span>
                 </div>
             </div>
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
@@ -272,13 +272,13 @@ const AddToQueueFormBody = ({
                     <div className="flex items-start justify-between gap-3 mb-2">
                         <div>
                             <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-widest text-zinc-400">
-                                <span>Singer Lyrics</span>
+                                <span>Lyrics On Screen</span>
                                 <span className={statusPill}>
-                                    {manual.lyrics ? 'Added' : 'None'}
+                                    {manual.lyrics ? 'Custom' : 'Auto / None'}
                                 </span>
                             </div>
                             <div className="mt-1 text-xs text-zinc-500">
-                                Paste lyrics or generate them for the singer and TV views.
+                                This controls the words shown to the singer and TV.
                             </div>
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -286,7 +286,7 @@ const AddToQueueFormBody = ({
                                 onClick={() => setLyricsOpen(v => !v)}
                                 className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-xs min-h-[30px]`}
                             >
-                                {lyricsOpen ? 'Hide Editor' : 'Paste / Edit'}
+                                {lyricsOpen ? 'Hide Lyrics Box' : 'Add Custom Lyrics'}
                             </button>
                             <button
                                 onClick={onGenerateManualLyrics}
@@ -294,7 +294,7 @@ const AddToQueueFormBody = ({
                                 title="Generate lyrics with AI"
                             >
                                 <i className="fa-solid fa-wand-magic-sparkles"></i>
-                                Generate Lyrics
+                                Auto-Generate
                             </button>
                         </div>
                     </div>
@@ -303,7 +303,7 @@ const AddToQueueFormBody = ({
                             value={manual.lyrics}
                             onChange={e=>setManual({...manual, lyrics:e.target.value})}
                             className={`${styles.input} w-full h-24 font-mono resize-none host-lyrics-input`}
-                            placeholder="Paste lyrics here if this song needs custom lyrics..."
+                            placeholder="Paste custom lyrics if the default lyrics are missing or wrong..."
                         />
                     )}
                 </div>
@@ -311,22 +311,22 @@ const AddToQueueFormBody = ({
                     <div className="flex items-start justify-between gap-3 mb-2">
                         <div>
                             <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-widest text-zinc-400">
-                                <span>Backing Source</span>
+                                <span>Playback For The Room</span>
                                 <span
                                     className={statusPill}
                                     title={manualBackingChip.label === 'Apple Music'
-                                        ? 'Default backing: Apple Music'
-                                        : `Selected backing: ${manualBackingChip.label}`
+                                        ? 'Current playback: saved or Apple default'
+                                        : `Current playback: ${manualBackingChip.label}`
                                     }
                                 >
                                     {manualBackingChip.label === 'Apple Music'
-                                        ? 'Default: Apple Music'
+                                        ? 'Saved / Apple default'
                                         : manualBackingChip.label
                                     }
                                 </span>
                             </div>
                             <div className="mt-1 text-xs text-zinc-500">
-                                Choose what the room will actually play behind this queue entry.
+                                This is what the room hears and what plays behind the singer.
                             </div>
                         </div>
                     </div>
@@ -334,28 +334,28 @@ const AddToQueueFormBody = ({
                         <button
                             onClick={() => setManual(prev => ({ ...prev, url: '', backingAudioOnly: false }))}
                             className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-[#00C4D9] border-[#00C4D9]`}
-                            title="Use the default Apple Music track"
+                            title="Use the saved or default backing for this song"
                         >
                             <i className="fa-brands fa-apple mr-1"></i>
-                            Use Apple Default
+                            Use Saved / Default
                         </button>
                         <button
                             onClick={() => openYtSearch('manual', `${manual.song} ${manual.artist}`.trim() || searchQ)}
                             className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-[#00C4D9] border-[#00C4D9]`}
-                            title="Search YouTube and pick a backing track"
+                            title="Search YouTube and choose the backing that should play"
                         >
                             <i className="fa-brands fa-youtube mr-1"></i>
-                            Pick YouTube Backing
+                            Choose YouTube Backing
                         </button>
                     </div>
                     <input
                         value={manual.url}
                         onChange={e=>setManual({...manual, url:e.target.value})}
                         className={styles.input}
-                        placeholder="Optional: paste a YouTube, local, or playlist URL"
+                        placeholder="Optional: paste a YouTube, local, or playlist URL directly"
                     />
                     <div className="host-form-helper mt-2">
-                        Playlist URLs queue up to 1000 tracks.
+                        Leave this blank to use the saved/default backing. Playlist URLs queue up to 1000 tracks.
                     </div>
                 </div>
             </div>

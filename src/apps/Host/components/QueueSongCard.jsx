@@ -1,7 +1,7 @@
 import React from 'react';
 import { doc, deleteDoc, db } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
-import { normalizeBackingChoice } from '../../../lib/playbackSource';
+import { normalizeBackingChoice, isQueueEntryPlayable } from '../../../lib/playbackSource';
 
 const QueueSongCard = ({
     song,
@@ -29,6 +29,7 @@ const QueueSongCard = ({
     const queueMediaUrl = queueBacking.mediaUrl;
     const queueUsesAppleBacking = queueBacking.usesAppleBacking;
     const queueIsYouTube = queueBacking.isYouTube;
+    const queuePlaybackReady = isQueueEntryPlayable(song);
     const hasTimedLyrics = Array.isArray(song?.lyricsTimed) && song.lyricsTimed.length > 0;
     const hasLyrics = !!String(song?.lyrics || '').trim();
     const lyricsStatus = String(song?.lyricsGenerationStatus || '').trim().toLowerCase();
@@ -106,7 +107,10 @@ const QueueSongCard = ({
                                     {queueIsYouTube ? 'YouTube' : 'Custom'}
                                 </span>
                             ) : (
-                                <span className={statusPill}><i className="fa-solid fa-file-audio mr-1"></i>No Track</span>
+                                <span className={`${statusPill}${queuePlaybackReady ? '' : ' border-amber-300/45 text-amber-100 bg-amber-500/10'}`}>
+                                    <i className={`fa-solid ${queuePlaybackReady ? 'fa-file-audio' : 'fa-triangle-exclamation'} mr-1`}></i>
+                                    {queuePlaybackReady ? 'No Track' : 'Needs Backing'}
+                                </span>
                             )}
                             <span className={`${statusPill}${lyricsChipTone}`} title={lyricsResolution || 'lyrics status'}>
                                 <i className={`fa-solid ${

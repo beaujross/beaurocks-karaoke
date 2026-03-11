@@ -34,6 +34,15 @@ export const resolveQueuePlayback = (song, autoPlayEnabled = true) => {
     };
 };
 
+export const isQueueEntryPlayable = (song = {}, { appleMusicEnabled = true } = {}) => {
+    const status = String(song?.mediaResolutionStatus || '').trim().toLowerCase();
+    if (status === 'needs_backing') return false;
+    if (song?.playbackReady === false) return false;
+    const backing = normalizeBackingChoice(song || {});
+    if (backing.usesAppleBacking) return !!appleMusicEnabled;
+    return !!backing.mediaUrl;
+};
+
 export const isBackingPlaying = ({ usesAppleBacking = false, room, appleMusicPlaying = false } = {}) => {
     if (usesAppleBacking) {
         const status = (room?.appleMusicPlayback?.status || '').toLowerCase();

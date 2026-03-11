@@ -22,7 +22,7 @@ import { PARTY_LIGHTS_STYLE, SINGER_APP_CONFIG } from '../../lib/uiConstants';
 import { POINTS_PACKS, SUBSCRIPTIONS } from '../../billing/catalog';
 import { BILLING_PLATFORMS, createBillingProvider, detectBillingPlatform } from '../../billing/provider';
 import { DEFAULT_TIP_CRATES } from '../Host/hostAppData';
-import { ensureSong, ensureTrack, extractYouTubeId, buildSongKey } from '../../lib/songCatalog';
+import { resolveSongCatalog, extractYouTubeId, buildSongKey } from '../../lib/songCatalog';
 import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
 import GameContainer from '../../components/GameContainer';
 import AppleLyricsRenderer from '../../components/AppleLyricsRenderer';
@@ -168,9 +168,6 @@ const LOBBY_PLAYGROUND_INTERACTIONS = [
 ];
 const LOBBY_PLAYGROUND_WINDOW_MS = 60 * 1000;
 const LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE = 12;
-let singerCatalogPermissionSkipLogged = false;
-let singerCatalogWriteEnabled = true;
-
 const timestampToMs = (value) => {
     if (!value) return 0;
     if (typeof value === 'number') return value;
@@ -180,27 +177,6 @@ const timestampToMs = (value) => {
         return (value.seconds * 1000) + Math.floor(nanos / 1000000);
     }
     return 0;
-};
-
-const isCatalogPermissionDeniedError = (error) => {
-    const code = String(error?.code || '').toLowerCase();
-    const message = String(error?.message || '').toLowerCase();
-    return (
-        code.includes('permission-denied')
-        || code.includes('forbidden')
-        || message.includes('permission-denied')
-        || message.includes('forbidden')
-        || message.includes('403')
-        || message.includes('host or moderator access required')
-        || message.includes('catalog song')
-        || message.includes('catalog track')
-    );
-};
-
-const logSingerCatalogPermissionSkip = (scope = 'ensureSong/ensureTrack') => {
-    if (singerCatalogPermissionSkipLogged) return;
-    singerCatalogPermissionSkipLogged = true;
-    console.info(`[SingerApp] ${scope} skipped: catalog write access unavailable, queueing with fallback metadata.`);
 };
 
 const isQueuePermissionDeniedError = (error) => {
@@ -4140,43 +4116,33 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 return;
             }
 
-            let songId = buildSongKey(song, artist || 'Unknown');
-            if (singerCatalogWriteEnabled) {
-                try {
-                    const songRecord = await ensureSong({
-                        title: song,
-                        artist: artist || 'Unknown',
-                        artworkUrl: artwork || '',
-                        itunesId: options.itunesId || ''
-                    });
-                    songId = songRecord?.songId || songId;
-                } catch (catalogError) {
-                    if (isCatalogPermissionDeniedError(catalogError)) {
-                        singerCatalogWriteEnabled = false;
-                        logSingerCatalogPermissionSkip('ensureSong');
-                    } else {
-                        console.warn('Singer ensureSong failed', catalogError);
-                    }
-                }
-            }
+            const fallbackSongId = buildSongKey(song, artist || 'Unknown');
+            let songId = fallbackSongId;
+            let trackId = null;
+            let resolvedTrackSource = backingUrl ? trackSource : null;
+            let resolvedMediaUrl = backingUrl || '';
+            let resolvedAppleMusicId = '';
+            let playbackReady = !!backingUrl;
+            let mediaResolutionStatus = backingUrl ? 'audience_selected' : 'needs_backing';
 
-            let trackRecord = null;
-            if (backingUrl && singerCatalogWriteEnabled) {
+            if (!backingUrl) {
                 try {
-                    trackRecord = await ensureTrack({
-                        songId: songId || '',
-                        source: trackSource,
-                        mediaUrl: backingUrl,
-                        label: options.trackLabel || (options.mediaUrl ? 'Host index' : 'Singer selected'),
-                        addedBy: singerUid
+                    const resolved = await resolveSongCatalog({
+                        songId: fallbackSongId,
+                        title: song,
+                        artist: artist || 'Unknown'
                     });
-                } catch (catalogError) {
-                    if (isCatalogPermissionDeniedError(catalogError)) {
-                        singerCatalogWriteEnabled = false;
-                        logSingerCatalogPermissionSkip('ensureTrack');
-                    } else {
-                        console.warn('Singer ensureTrack failed', catalogError);
+                    if (resolved?.songId) songId = resolved.songId;
+                    if (resolved?.track && (resolved.track.mediaUrl || resolved.track.appleMusicId)) {
+                        trackId = resolved.track.id || null;
+                        resolvedTrackSource = resolved.track.source || null;
+                        resolvedMediaUrl = resolved.track.mediaUrl || '';
+                        resolvedAppleMusicId = resolved.track.appleMusicId || '';
+                        playbackReady = true;
+                        mediaResolutionStatus = 'catalog_ready';
                     }
+                } catch (catalogError) {
+                    console.warn('Singer resolveSongCatalog failed', catalogError);
                 }
             }
 
@@ -4192,13 +4158,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 timestamp: serverTimestamp(),
                 priorityScore,
                 songId: songId || null,
-                trackId: trackRecord?.trackId || null,
-                trackSource: backingUrl ? trackSource : null,
-                mediaUrl: backingUrl || ''
+                trackId,
+                trackSource: resolvedTrackSource,
+                mediaUrl: resolvedMediaUrl,
+                appleMusicId: resolvedAppleMusicId,
+                playbackReady,
+                mediaResolutionStatus,
+                requestedBackingMode: allowTrack ? 'audience_optional' : 'host_or_catalog_only'
             }); 
             trackEvent('song_request', { room_code: roomCode, source: room?.bouncerMode ? 'bouncer' : 'standard' });
             setForm(prev => ({...prev, song:'', artist:'', art:'', backingUrl: ''})); 
-            setSearchQ(''); setResults([]); toast("Request Sent!"); 
+            setSearchQ(''); setResults([]);
+            toast(playbackReady ? "Request Sent!" : "Request Sent! Host may need to add backing."); 
             logActivity(`requested ${song}`, EMOJI.musicNotes);
             syncPoints(true);
         } catch (err) {

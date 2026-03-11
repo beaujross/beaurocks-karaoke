@@ -40,7 +40,9 @@ const AppleLyricsRenderer = ({
     pausedAt,
     isPlaying,
     showAll = false,
-    overlayMode = false
+    overlayMode = false,
+    roomCode = '',
+    joinUrlLabel = ''
 }) => {
     const containerRef = useRef(null);
     const lineRefs = useRef([]);
@@ -149,12 +151,45 @@ const AppleLyricsRenderer = ({
                 </div>
             )}
 
-            <div className="absolute top-6 left-6 z-30 flex items-center gap-3 bg-black/60 border border-white/15 rounded-full px-4 py-2 backdrop-blur">
-                <img src={art || ASSETS.logo} alt="Album art" className="w-10 h-10 rounded-full object-cover border border-white/20" />
-                <div className="min-w-0">
-                    <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-300">Lyrics Live</div>
-                    <div className="text-sm font-bold text-white truncate">{title || 'Now Playing'}</div>
-                    <div className="text-[11px] text-zinc-400 truncate">{artist || 'Stay synced with the track'}</div>
+            <div className={`absolute left-5 bottom-5 md:left-7 md:bottom-7 z-30 border border-white/15 backdrop-blur-md shadow-[0_0_28px_rgba(0,0,0,0.28)] pointer-events-none ${
+                overlayMode
+                    ? 'rounded-2xl bg-black/58 px-4 py-3 max-w-[min(44vw,540px)]'
+                    : 'rounded-[24px] bg-black/66 px-5 py-4 max-w-[min(48vw,680px)]'
+            }`}>
+                <div className="flex items-start gap-3 md:gap-4">
+                    <img
+                        src={art || ASSETS.logo}
+                        alt="Album art"
+                        className={`${overlayMode ? 'w-12 h-12 md:w-14 md:h-14' : 'w-14 h-14 md:w-20 md:h-20'} rounded-2xl object-cover border border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.1)]`}
+                    />
+                    <div className="min-w-0 flex-1">
+                        <div className={`${overlayMode ? 'text-[10px] md:text-[11px]' : 'text-[11px] md:text-[13px]'} uppercase tracking-[0.28em] text-zinc-300`}>Now Playing</div>
+                        <div className={`${overlayMode ? 'text-lg md:text-2xl' : 'text-2xl md:text-4xl'} font-black text-white leading-tight truncate`}>
+                            {title || 'Now Playing'}
+                        </div>
+                        <div className={`${overlayMode ? 'text-sm md:text-base' : 'text-base md:text-xl'} text-zinc-300 truncate`}>
+                            {artist || 'Stay synced with the track'}
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <div className={`inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-500/10 ${overlayMode ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px] md:text-xs'} font-bold uppercase tracking-[0.18em] text-cyan-100`}>
+                                <span className={`inline-block rounded-full ${isPlaying ? 'bg-emerald-400' : 'bg-amber-300'} ${overlayMode ? 'w-2 h-2' : 'w-2.5 h-2.5'}`}></span>
+                                {isPlaying ? 'Synced' : 'Paused'}
+                            </div>
+                            {!!roomCode && (
+                                <div className={`inline-flex rounded-full border border-white/15 bg-black/40 ${overlayMode ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px] md:text-xs'} font-bold uppercase tracking-[0.18em] text-white`}>
+                                    Room {roomCode}
+                                </div>
+                            )}
+                        </div>
+                        {!!joinUrlLabel && (
+                            <div className="mt-2">
+                                <div className={`${overlayMode ? 'text-[10px]' : 'text-[11px] md:text-xs'} uppercase tracking-[0.24em] text-zinc-400`}>Join On Your Phone</div>
+                                <div className={`${overlayMode ? 'text-sm md:text-base' : 'text-lg md:text-2xl'} font-black text-cyan-100 tracking-[0.06em] leading-tight break-all`}>
+                                    {joinUrlLabel}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 

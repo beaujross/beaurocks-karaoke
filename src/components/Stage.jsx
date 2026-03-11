@@ -223,6 +223,8 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
                         isPlaying={room.videoPlaying}
                         showAll={room?.lyricsMode === 'full'}
                         overlayMode={showVisualizerTv}
+                        roomCode={roomCode}
+                        joinUrlLabel={joinUrlLabel}
                     />
                 </div>
             )}
@@ -291,3 +293,5 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
 
 export default Stage;
 
+    const roomCode = String(room?.roomCode || room?.code || '').trim().toUpperCase();
+    const joinUrlLabel = String(room?.joinUrlLabel || '').trim();

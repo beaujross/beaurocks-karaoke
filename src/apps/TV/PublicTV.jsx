@@ -1304,6 +1304,7 @@ const PublicTV = ({ roomCode }) => {
     }, [audioCtx]);
 
     const lobbyCueLastPlayedRef = useRef({});
+    const lobbyCueNoiseCacheRef = useRef({});
     const playLobbyVolleyCue = useCallback((cue = 'hit', { intensity = 1 } = {}) => {
         if (!audioCtx) return;
         const ctx = audioCtx;
@@ -1342,35 +1343,97 @@ const PublicTV = ({ roomCode }) => {
             osc.start(startAt);
             osc.stop(startAt + Math.max(0.07, durationSec + 0.05));
         };
+        const getNoiseBuffer = (kind = 'white', durationSec = 0.2) => {
+            const cacheKey = `${kind}:${durationSec.toFixed(3)}`;
+            if (lobbyCueNoiseCacheRef.current[cacheKey]) return lobbyCueNoiseCacheRef.current[cacheKey];
+            const frameCount = Math.max(1, Math.floor(ctx.sampleRate * durationSec));
+            const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
+            const channel = buffer.getChannelData(0);
+            let lastBrown = 0;
+            for (let i = 0; i < frameCount; i += 1) {
+                const white = (Math.random() * 2) - 1;
+                if (kind === 'brown') {
+                    lastBrown = (lastBrown + (0.02 * white)) / 1.02;
+                    channel[i] = lastBrown * 3.5;
+                } else {
+                    channel[i] = white;
+                }
+            }
+            lobbyCueNoiseCacheRef.current[cacheKey] = buffer;
+            return buffer;
+        };
+        const scheduleNoise = ({
+            startOffsetSec = 0,
+            durationSec = 0.18,
+            gainScale = 0.01,
+            type = 'bandpass',
+            frequency = 1200,
+            q = 0.8,
+            sweepTo = 4200,
+            sweepCurve = 'exponential',
+            noiseKind = 'white'
+        } = {}) => {
+            const startAt = now + startOffsetSec;
+            const source = ctx.createBufferSource();
+            source.buffer = getNoiseBuffer(noiseKind, durationSec + 0.08);
+            const filter = ctx.createBiquadFilter();
+            filter.type = type;
+            filter.frequency.setValueAtTime(Math.max(40, frequency), startAt);
+            if (sweepTo && sweepTo !== frequency) {
+                const targetAt = startAt + Math.max(0.04, durationSec);
+                if (sweepCurve === 'linear') {
+                    filter.frequency.linearRampToValueAtTime(Math.max(40, sweepTo), targetAt);
+                } else {
+                    filter.frequency.exponentialRampToValueAtTime(Math.max(40, sweepTo), targetAt);
+                }
+            }
+            filter.Q.setValueAtTime(Math.max(0.0001, q), startAt);
+            const gain = ctx.createGain();
+            gain.gain.setValueAtTime(0.0001, startAt);
+            gain.gain.exponentialRampToValueAtTime(Math.max(0.00015, gainScale * gainBoost), startAt + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.0001, startAt + Math.max(0.05, durationSec));
+            source.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            source.start(startAt);
+            source.stop(startAt + durationSec + 0.08);
+        };
         switch (cue) {
             case 'launch':
                 scheduleTone(262, 0.38, 0, 0.022, 'sine');
                 scheduleTone(392, 0.42, 0.04, 0.028, 'triangle');
                 scheduleTone(523, 0.48, 0.08, 0.02, 'sine');
+                scheduleNoise({ startOffsetSec: 0.02, durationSec: 0.28, gainScale: 0.008, frequency: 380, sweepTo: 2200, q: 0.8, noiseKind: 'brown' });
                 break;
             case 'relay':
-                scheduleTone(466, 0.16, 0, 0.024, 'triangle');
-                scheduleTone(698, 0.2, 0.04, 0.022, 'sine');
-                scheduleTone(988, 0.24, 0.1, 0.018, 'square');
+                scheduleTone(466, 0.12, 0, 0.022, 'triangle');
+                scheduleTone(740, 0.16, 0.03, 0.025, 'sawtooth');
+                scheduleTone(1174, 0.18, 0.085, 0.017, 'square');
+                scheduleNoise({ startOffsetSec: 0, durationSec: 0.16, gainScale: 0.01, frequency: 980, sweepTo: 5200, q: 1.6 });
+                scheduleNoise({ startOffsetSec: 0.12, durationSec: 0.09, gainScale: 0.006, frequency: 2600, sweepTo: 6200, q: 3.4 });
                 break;
             case 'tier':
                 scheduleTone(220, 0.2, 0, 0.018, 'sine');
                 scheduleTone(330, 0.28, 0.03, 0.022, 'triangle');
                 scheduleTone(494, 0.36, 0.08, 0.024, 'sine');
+                scheduleNoise({ startOffsetSec: 0.04, durationSec: 0.22, gainScale: 0.005, frequency: 1400, sweepTo: 4600, q: 1.2 });
                 break;
             case 'warning':
                 scheduleTone(174, 0.18, 0, 0.013, 'sine');
                 scheduleTone(207, 0.18, 0.16, 0.011, 'triangle');
+                scheduleNoise({ startOffsetSec: 0.01, durationSec: 0.12, gainScale: 0.0035, frequency: 300, sweepTo: 900, q: 0.9, noiseKind: 'brown' });
                 break;
             case 'reset':
                 scheduleTone(392, 0.14, 0, 0.012, 'triangle');
                 scheduleTone(262, 0.28, 0.08, 0.016, 'sine');
                 scheduleTone(174, 0.34, 0.16, 0.012, 'triangle');
+                scheduleNoise({ startOffsetSec: 0.03, durationSec: 0.18, gainScale: 0.007, frequency: 1900, sweepTo: 180, q: 1.4, noiseKind: 'brown' });
                 break;
             case 'hit':
             default:
                 scheduleTone(220, 0.12, 0, 0.012, 'sine');
                 scheduleTone(330, 0.16, 0.04, 0.009, 'triangle');
+                scheduleNoise({ startOffsetSec: 0.01, durationSec: 0.08, gainScale: 0.0038, frequency: 1500, sweepTo: 3400, q: 2.2 });
                 break;
         }
     }, [audioCtx]);
@@ -3298,6 +3361,10 @@ const PublicTV = ({ roomCode }) => {
     const joinUrlPieces = joinUrlDisplay.split('?');
     const joinUrlBaseDisplay = joinUrlPieces[0];
     const joinUrlQueryDisplay = joinUrlPieces[1] ? `?${joinUrlPieces[1]}` : `?room=${roomCode}`;
+    const marketingJoinBase = (() => {
+        const base = typeof window !== 'undefined' ? getSurfaceBaseHref('marketing', window.location) : '/';
+        return `${String(base || '/').replace(/^https?:\/\//, '').replace(/\/$/, '')}/join`;
+    })();
     useEffect(() => {
         if (!room?.gamePreviewId || room?.activeMode !== 'karaoke') {
             setPreviewSession((prev) => (prev.startMs || prev.key ? { key: '', startMs: 0 } : prev));
@@ -4297,7 +4364,18 @@ const PublicTV = ({ roomCode }) => {
                                         />
                                     </div>
                                 )}
-                                <Stage room={room} current={current} started={started} combo={combo} minimalUI={isMinimal} showVideo={!isMinimal} />
+                                <Stage
+                                    room={{
+                                        ...(room || {}),
+                                        roomCode,
+                                        joinUrlLabel: marketingJoinBase
+                                    }}
+                                    current={current}
+                                    started={started}
+                                    combo={combo}
+                                    minimalUI={isMinimal}
+                                    showVideo={!isMinimal}
+                                />
                                 {popTriviaQuestion && (
                                     <div data-feature-id="tv-pop-trivia-card" className="absolute top-2 right-2 md:top-4 md:right-4 2xl:top-5 2xl:right-5 z-[92] w-[min(94vw,470px)] md:w-[min(44vw,520px)] pointer-events-none">
                                         <div className="bg-black/66 border border-cyan-400/35 rounded-2xl px-3 py-3 md:px-4 md:py-4 shadow-[0_0_24px_rgba(34,211,238,0.22)] backdrop-blur">
@@ -4448,37 +4526,37 @@ const PublicTV = ({ roomCode }) => {
                                                 </span>
                                             )}
                                         </div>
-                                        <div className="rounded-2xl border border-cyan-300/35 bg-black/35 px-3 py-3 mb-3">
+                                        <div className="rounded-[26px] border border-cyan-300/40 bg-black/40 px-4 py-4 mb-4 shadow-[0_0_30px_rgba(34,211,238,0.14)]">
                                             {autoCrowdMomentActive && autoCrowdMomentType === 'volley' && (
                                                 <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-200 mb-1">{autoCrowdMomentTitle}</div>
                                             )}
-                                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/90 mb-1">Now</div>
-                                            <div className="text-sm md:text-lg font-semibold text-white leading-tight">{lobbyInstructionHeadline}</div>
-                                            <div className="mt-1 text-xs md:text-sm text-cyan-100/90">{lobbyInstructionSecondary}</div>
+                                            <div className="text-[12px] md:text-[14px] uppercase tracking-[0.24em] text-cyan-100/90 mb-1.5">Now</div>
+                                            <div className="text-lg md:text-2xl 2xl:text-3xl font-black text-white leading-tight">{lobbyInstructionHeadline}</div>
+                                            <div className="mt-1.5 text-sm md:text-lg text-cyan-100/90 leading-snug">{lobbyInstructionSecondary}</div>
                                             {autoCrowdMomentActive && autoCrowdMomentType === 'volley' && (
                                                 <div className="mt-2 text-[11px] md:text-xs text-cyan-100/85">{autoCrowdMomentDetail}</div>
                                             )}
                                         </div>
-                                        <div className="rounded-2xl border border-fuchsia-300/35 bg-gradient-to-r from-cyan-500/14 via-indigo-500/14 to-fuchsia-500/16 px-3 py-3 mb-3">
+                                        <div className="rounded-[26px] border border-fuchsia-300/40 bg-gradient-to-r from-cyan-500/16 via-indigo-500/16 to-fuchsia-500/18 px-4 py-4 mb-4 shadow-[0_0_34px_rgba(236,72,153,0.12)]">
                                             <div className="flex items-center justify-between gap-2">
-                                                <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100">Teamwork</div>
-                                                <div className="px-2 py-1 rounded-full border border-white/25 bg-black/35 text-[10px] uppercase tracking-[0.15em] text-white">
+                                                <div className="text-[12px] md:text-[14px] uppercase tracking-[0.22em] text-cyan-100">Teamwork</div>
+                                                <div className="px-3 py-1.5 rounded-full border border-white/25 bg-black/35 text-[11px] md:text-xs uppercase tracking-[0.17em] text-white">
                                                     Tier {lobbyVolleyState?.currentTier || 0}{lobbyCurrentTierMeta?.name ? `: ${lobbyCurrentTierMeta.name}` : ''}
                                                 </div>
                                             </div>
                                             <div className="mt-2 flex items-end justify-between gap-3">
-                                                <div className="text-2xl md:text-3xl font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
-                                                <div className="text-xs md:text-sm text-cyan-100">
+                                                <div className="text-[2.5rem] md:text-[4rem] leading-none font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
+                                                <div className="text-sm md:text-lg text-cyan-100 text-right">
                                                     {lobbyHasActiveVolley ? `${lobbyAirborneSec}s airborne` : (lobbyVolleyExpired ? 'ready to relaunch' : 'waiting for launch')}
                                                 </div>
                                             </div>
-                                            <div className="mt-2 h-2 rounded-full overflow-hidden border border-white/20 bg-black/45">
+                                            <div className="mt-3 h-3 md:h-4 rounded-full overflow-hidden border border-white/20 bg-black/45">
                                                 <div
                                                     className="h-full bg-gradient-to-r from-red-300 via-amber-300 to-emerald-300 transition-all duration-200"
                                                     style={{ width: `${lobbyStreakDecayPct}%` }}
                                                 />
                                             </div>
-                                            <div className="mt-1 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-cyan-100/90">
+                                            <div className="mt-1.5 flex items-center justify-between text-[11px] md:text-[13px] uppercase tracking-[0.16em] text-cyan-100/90">
                                                 <span>{lobbyObjectiveStreakLabel}</span>
                                                 <span>{lobbyActiveParticipants.length} active</span>
                                             </div>
@@ -4866,16 +4944,34 @@ const PublicTV = ({ roomCode }) => {
                                         y1={fromY}
                                         x2={toX}
                                         y2={toY}
+                                        stroke={link.color || 'rgba(125,211,252,0.32)'}
+                                        strokeWidth={Math.max(8, Number(link.width || 4) * 1.9)}
+                                        strokeLinecap="round"
+                                        className="lobby-volley-link-glow"
+                                    />
+                                    <line
+                                        x1={fromX}
+                                        y1={fromY}
+                                        x2={toX}
+                                        y2={toY}
                                         stroke={link.color || 'rgba(125,211,252,0.75)'}
                                         strokeWidth={Math.max(2, Number(link.width || 4))}
                                         strokeLinecap="round"
                                         className="lobby-volley-link"
                                     />
                                     <circle
+                                        cx={(fromX + toX) / 2}
+                                        cy={(fromY + toY) / 2}
+                                        r={Math.max(2.4, Number(link.width || 4) * 0.55)}
+                                        fill={link.color || 'rgba(147,197,253,0.9)'}
+                                        className="lobby-volley-link-node"
+                                    />
+                                    <circle
                                         cx={toX}
                                         cy={toY}
                                         r={Math.max(1.6, Number(link.width || 4) * 0.45)}
                                         fill={link.color || 'rgba(147,197,253,0.9)'}
+                                        className="lobby-volley-link-node"
                                     />
                                 </g>
                             );
@@ -4903,10 +4999,10 @@ const PublicTV = ({ roomCode }) => {
                                     className="absolute -translate-x-1/2 -translate-y-1/2 transition-[top,left] duration-160 ease-out"
                                     style={{ top: `${lobbyPongState.ballTopPct}%`, left: `${lobbyPongState.ballLeftPct}%` }}
                                 >
-                                    <div className="w-[86px] h-[86px] rounded-full border border-cyan-200/55 bg-gradient-to-br from-teal-300/45 via-cyan-300/42 to-pink-400/46 shadow-[0_0_32px_rgba(45,212,191,0.5),0_0_28px_rgba(236,72,153,0.42)] flex flex-col items-center justify-center">
-                                        <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100">{lobbyObjectiveLabel}</div>
-                                        <div className="text-2xl font-bebas text-white leading-none">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
-                                        <div className="text-[10px] uppercase tracking-[0.12em] text-white/75">{lobbyObjectiveStreakLabel}</div>
+                                    <div className="w-[118px] h-[118px] md:w-[138px] md:h-[138px] rounded-full border border-cyan-200/55 bg-gradient-to-br from-teal-300/45 via-cyan-300/42 to-pink-400/46 shadow-[0_0_40px_rgba(45,212,191,0.54),0_0_34px_rgba(236,72,153,0.46)] flex flex-col items-center justify-center">
+                                        <div className="text-[12px] md:text-[13px] uppercase tracking-[0.2em] text-cyan-100">{lobbyObjectiveLabel}</div>
+                                        <div className="text-4xl md:text-5xl font-bebas text-white leading-none">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
+                                        <div className="text-[11px] md:text-xs uppercase tracking-[0.14em] text-white/75">{lobbyObjectiveStreakLabel}</div>
                                     </div>
                                 </div>
                                 <div className="absolute top-[12%] left-[7.5%] rounded-xl border border-cyan-200/35 bg-black/45 px-2 py-1.5 text-[10px] uppercase tracking-[0.14em] text-cyan-100 min-w-[86px]">
@@ -4956,7 +5052,7 @@ const PublicTV = ({ roomCode }) => {
                                             }`}
                                             style={{ left: `${anchor.x}%`, top: `${anchor.y}%` }}
                                         >
-                                            <div className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] backdrop-blur ${
+                                            <div className={`rounded-full border px-4 py-2 text-[14px] md:text-[18px] font-black uppercase tracking-[0.16em] backdrop-blur shadow-[0_0_28px_rgba(0,0,0,0.2)] ${
                                                 isRelayTarget
                                                     ? 'border-emerald-200/80 bg-emerald-400/35 text-emerald-50 shadow-[0_0_20px_rgba(16,185,129,0.45)]'
                                                     : isRecent
@@ -4974,7 +5070,7 @@ const PublicTV = ({ roomCode }) => {
                                     style={{ top: `${lobbyOrbRenderTopPct}%`, left: `${lobbyOrbRenderLeftPct}%` }}
                                 >
                                     <div
-                                        className={`lobby-volley-orb-shell ${motionSafeFx ? 'lobby-volley-orb-shell-safe' : ''} ${lobbyOrbSkinUrl ? 'lobby-volley-orb-shell-custom' : ''}`}
+                                        className={`lobby-volley-orb-shell ${motionSafeFx ? 'lobby-volley-orb-shell-safe' : ''} ${lobbyOrbSkinUrl ? 'lobby-volley-orb-shell-custom' : ''} ${lobbyRelayObjective.active ? 'lobby-volley-orb-shell-relay' : ''}`}
                                         style={{ '--orb-energy-norm': `${Math.max(0, Math.min(1, lobbyOrbEnergy / 100))}` }}
                                     >
                                         {!!lobbyOrbSkinUrl && (
@@ -5016,12 +5112,12 @@ const PublicTV = ({ roomCode }) => {
                                                 </>
                                             )}
                                             <div className="lobby-volley-orb-core-content">
-                                                <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100">{lobbyObjectiveLabel}</div>
-                                                <div className="text-3xl md:text-4xl font-bebas text-white leading-none">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
-                                                <div className="text-[10px] uppercase tracking-[0.16em] text-white/80">
+                                                <div className="text-[14px] md:text-[16px] uppercase tracking-[0.24em] text-cyan-100">{lobbyObjectiveLabel}</div>
+                                                <div className="text-[3.5rem] md:text-[4.75rem] font-bebas text-white leading-none">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
+                                                <div className="text-[12px] md:text-[14px] uppercase tracking-[0.18em] text-white/80">
                                                     {lobbyHasActiveVolley ? `${lobbyAirborneSec}s airborne` : 'tap to launch'}
                                                 </div>
-                                                <div className="text-[10px] uppercase tracking-[0.12em] text-white/70">
+                                                <div className="text-[11px] md:text-[13px] uppercase tracking-[0.14em] text-white/70">
                                                     {lobbyObjectiveStreakLabel}
                                                 </div>
                                             </div>
@@ -5049,63 +5145,63 @@ const PublicTV = ({ roomCode }) => {
                     className="absolute top-[4.5%] text-right pointer-events-none"
                     style={{ right: lobbyObjectiveHudRight, width: lobbyObjectiveHudWidth }}
                 >
-                    <div className="text-[12px] md:text-[14px] uppercase tracking-[0.22em] text-cyan-200/90">
+                    <div className="text-[14px] md:text-[18px] uppercase tracking-[0.24em] text-cyan-200/90">
                         {lobbyObjectiveLabel}
                     </div>
-                    <div className="mt-0.5 text-[42px] md:text-[58px] 2xl:text-[68px] leading-[0.9] font-bebas text-white drop-shadow-[0_0_12px_rgba(0,0,0,0.45)]">
+                    <div className="mt-1 text-[56px] md:text-[86px] 2xl:text-[102px] leading-[0.9] font-bebas text-white drop-shadow-[0_0_16px_rgba(0,0,0,0.52)]">
                         {lobbyInstructionHeadline}
                     </div>
-                    <div className="mt-1 text-[13px] md:text-[16px] text-cyan-100/90 leading-tight">
+                    <div className="mt-2 text-[18px] md:text-[24px] text-cyan-100/90 leading-tight max-w-[34vw] ml-auto">
                         {lobbyInstructionSecondary}
                     </div>
                     <div className="mt-2 space-y-1.5">
                         <div className="flex items-end justify-between gap-4">
-                            <div className="text-[12px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100/85">Teamwork</div>
-                            <div className="text-[34px] md:text-[48px] leading-none font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
+                            <div className="text-[14px] md:text-[18px] uppercase tracking-[0.2em] text-cyan-100/85">Teamwork</div>
+                            <div className="text-[48px] md:text-[66px] leading-none font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
                         </div>
                         <div className="flex items-end justify-between gap-4">
-                            <div className="text-[12px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100/85">Status</div>
-                            <div className="text-[22px] md:text-[32px] leading-none font-bebas text-white">{lobbyObjectiveProgressLabel}</div>
+                            <div className="text-[14px] md:text-[18px] uppercase tracking-[0.2em] text-cyan-100/85">Status</div>
+                            <div className="text-[30px] md:text-[42px] leading-none font-bebas text-white">{lobbyObjectiveProgressLabel}</div>
                         </div>
                         <div className="flex items-end justify-between gap-4">
-                            <div className="text-[12px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100/85">Relay</div>
-                            <div className="text-[16px] md:text-[22px] leading-none font-bebas text-white">
+                            <div className="text-[14px] md:text-[18px] uppercase tracking-[0.2em] text-cyan-100/85">Relay</div>
+                            <div className="text-[22px] md:text-[30px] leading-none font-bebas text-white">
                                 {lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s | chain x${lobbyRelayObjective.chainCount || 0}` : 'idle'}
                             </div>
                         </div>
                     </div>
                     <div className="mt-2.5 space-y-2">
                         <div>
-                            <div className="flex items-center justify-between text-[12px] md:text-[14px] uppercase tracking-[0.17em] text-cyan-100/90 mb-1">
+                            <div className="flex items-center justify-between text-[14px] md:text-[18px] uppercase tracking-[0.18em] text-cyan-100/90 mb-1.5">
                                 <span>Momentum</span>
                                 <span>{lobbyObjectiveStreakLabel}</span>
                             </div>
-                            <div className="h-[10px] md:h-[12px] rounded-full overflow-hidden bg-white/18">
+                            <div className="h-[14px] md:h-[16px] rounded-full overflow-hidden bg-white/18">
                                 <div className="h-full bg-gradient-to-r from-red-300 via-amber-300 to-emerald-300 transition-all duration-200" style={{ width: `${lobbyStreakDecayPct}%` }} />
                             </div>
                         </div>
                         <div>
-                            <div className="flex items-center justify-between text-[12px] md:text-[14px] uppercase tracking-[0.17em] text-cyan-100/90 mb-1">
+                            <div className="flex items-center justify-between text-[14px] md:text-[18px] uppercase tracking-[0.18em] text-cyan-100/90 mb-1.5">
                                 <span>Orb Energy</span>
                                 <span>{Math.round(lobbyOrbEnergy)}%</span>
                             </div>
-                            <div className="h-[10px] md:h-[12px] rounded-full overflow-hidden bg-white/18">
+                            <div className="h-[14px] md:h-[16px] rounded-full overflow-hidden bg-white/18">
                                 <div className="h-full bg-cyan-300/90 transition-all duration-150" style={{ width: `${lobbyOrbEnergy}%` }} />
                             </div>
                         </div>
                     </div>
                 </div>
                 {!lobbyObjectiveIsTeamPong && (
-                    <div className="absolute top-[4.5%] left-[4%] w-[min(35vw,430px)] rounded-2xl border border-cyan-200/30 bg-black/45 backdrop-blur px-3 py-2.5 shadow-[0_0_24px_rgba(34,211,238,0.2)]">
+                    <div className="absolute top-[4.5%] left-[4%] w-[min(40vw,560px)] rounded-[26px] border border-cyan-200/30 bg-black/50 backdrop-blur px-4 py-3.5 shadow-[0_0_28px_rgba(34,211,238,0.22)]">
                         <div className="flex items-center justify-between gap-2 mb-2">
-                            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-cyan-100/90 font-black">Relay Targets</div>
-                            <div className="text-[10px] md:text-xs uppercase tracking-[0.15em] text-zinc-200">
+                            <div className="text-[14px] md:text-[16px] uppercase tracking-[0.22em] text-cyan-100/90 font-black">Relay Targets</div>
+                            <div className="text-[11px] md:text-[13px] uppercase tracking-[0.16em] text-zinc-200">
                                 {lobbyLastInteraction && lobbyLastInteractionAgeMs < 4500
                                     ? `Last: ${lobbyLastInteraction.user} ${lobbyLastInteraction.icon || ''}`
                                     : 'Watch the glow'}
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-1.5">
+                        <div className="grid grid-cols-2 gap-2.5">
                             {LOBBY_PLAY_GUIDE.map((guide) => {
                                 const effect = getLobbyPlayEffectByInteractionType(guide.id);
                                 const isRelayTarget = isVolleyOrbTargetInteraction({
@@ -5117,7 +5213,7 @@ const PublicTV = ({ roomCode }) => {
                                 return (
                                     <div
                                         key={`lobby-guide-card-${guide.id}`}
-                                        className={`rounded-xl border px-2 py-1.5 ${
+                                        className={`rounded-2xl border px-3 py-2.5 ${
                                             isRelayTarget
                                                 ? 'border-emerald-300/75 bg-emerald-500/18'
                                             : isRecent
@@ -5126,12 +5222,12 @@ const PublicTV = ({ roomCode }) => {
                                         }`}
                                     >
                                         <div className="flex items-center justify-between gap-2">
-                                            <div className="text-[11px] md:text-xs uppercase tracking-[0.13em] text-white/90 font-black">
+                                            <div className="text-[15px] md:text-[18px] uppercase tracking-[0.14em] text-white/90 font-black">
                                                 {effect?.icon || EMOJI.sparkle} {guide.action}
                                             </div>
-                                            {isRelayTarget && <span className="text-[9px] uppercase tracking-[0.12em] text-emerald-100 font-black">Target</span>}
+                                            {isRelayTarget && <span className="text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-emerald-100 font-black">Target</span>}
                                         </div>
-                                        <div className="mt-1 text-[10px] md:text-[11px] uppercase tracking-[0.1em] text-zinc-300">
+                                        <div className="mt-1.5 text-[12px] md:text-[14px] uppercase tracking-[0.11em] text-zinc-300">
                                             {isRelayTarget ? 'Tap now' : 'Ready'}
                                         </div>
                                     </div>
@@ -5169,10 +5265,10 @@ const PublicTV = ({ roomCode }) => {
                         return (
                             <div
                                 key={assist.id}
-                                className="rounded-full border border-emerald-100/55 bg-gradient-to-r from-emerald-300/70 via-cyan-300/65 to-sky-300/70 px-4 py-1.5 text-black font-black uppercase tracking-[0.13em] text-[11px] shadow-[0_0_26px_rgba(52,211,153,0.42)]"
+                                className="rounded-full border border-emerald-100/55 bg-gradient-to-r from-emerald-300/70 via-cyan-300/65 to-sky-300/70 px-5 py-2 text-black font-black uppercase tracking-[0.14em] text-[13px] md:text-[15px] shadow-[0_0_30px_rgba(52,211,153,0.45)]"
                                 style={{ opacity: Math.max(0, 1 - (progress * 0.75)) }}
                             >
-                                {assist.passerName} to {assist.receiverName} chain x{assist.chainCount}
+                                {assist.passerName} passes to {assist.receiverName} chain x{assist.chainCount}
                                 {nextEffect ? ` | Next ${nextEffect.icon} ${nextEffect.label}` : ''}
                             </div>
                         );
@@ -5417,8 +5513,10 @@ const PublicTV = ({ roomCode }) => {
               @keyframes lobby-screen-laser-sweep { 0% { opacity: 0; transform: translateX(-110%) rotate(var(--beam-tilt, 0deg)); } 20% { opacity: 0.88; } 80% { opacity: 0.7; } 100% { opacity: 0; transform: translateX(130%) rotate(var(--beam-tilt, 0deg)); } }
               @keyframes lobby-screen-confetti-fall { 0% { opacity: 0; transform: translate3d(0, -12vh, 0) rotate(0deg) scale(0.8); } 12% { opacity: 0.95; } 100% { opacity: 0; transform: translate3d(var(--fall-sway, 0px), 108vh, 0) rotate(var(--fall-rot, 80deg)) scale(1.04); } }
               @keyframes lobby-link-pulse { 0% { stroke-dashoffset: 22; } 100% { stroke-dashoffset: 0; } }
+              @keyframes lobby-link-node-pop { 0%, 100% { transform: scale(0.86); opacity: 0.8; } 50% { transform: scale(1.38); opacity: 1; } }
               @keyframes lobby-orb-float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-6px); } }
               @keyframes lobby-orb-glow { 0%, 100% { filter: drop-shadow(0 0 18px rgba(45,212,191,0.56)); } 50% { filter: drop-shadow(0 0 38px rgba(236,72,153,0.64)); } }
+              @keyframes lobby-orb-relay-thrum { 0%, 100% { transform: scale(1); } 35% { transform: scale(1.035); } 70% { transform: scale(1.01); } }
               @keyframes lobby-combo-chip-pop { 0% { transform: translateY(8px) scale(0.92); opacity: 0; } 20% { transform: translateY(0) scale(1.02); opacity: 1; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
               .bonus-drop-burst { 
                 min-width: min(80vw, 980px);
@@ -5485,10 +5583,10 @@ const PublicTV = ({ roomCode }) => {
                 position: absolute;
                 left: -25%;
                 width: 150%;
-                height: 8px;
+                height: 12px;
                 border-radius: 9999px;
                 background: linear-gradient(90deg, rgba(0,0,0,0), rgba(232,121,249,0.92), rgba(34,211,238,0.92), rgba(0,0,0,0));
-                box-shadow: 0 0 20px rgba(232,121,249,0.65), 0 0 34px rgba(34,211,238,0.55);
+                box-shadow: 0 0 24px rgba(232,121,249,0.72), 0 0 42px rgba(34,211,238,0.62);
                 animation: lobby-screen-laser-sweep var(--beam-dur, 980ms) ease-out forwards;
                 transform-origin: center;
               }
@@ -5499,10 +5597,18 @@ const PublicTV = ({ roomCode }) => {
                 filter: drop-shadow(0 0 8px rgba(255,255,255,0.45));
                 animation: lobby-screen-confetti-fall var(--fall-dur, 1700ms) ease-in forwards;
               }
+              .lobby-volley-link-glow {
+                stroke-linecap: round;
+                filter: blur(3px) drop-shadow(0 0 16px rgba(125,211,252,0.62));
+              }
               .lobby-volley-link {
-                stroke-dasharray: 12 10;
-                animation: lobby-link-pulse 0.9s linear infinite;
-                filter: drop-shadow(0 0 10px rgba(125,211,252,0.52));
+                stroke-dasharray: 16 12;
+                animation: lobby-link-pulse 0.82s linear infinite;
+                filter: drop-shadow(0 0 12px rgba(125,211,252,0.62));
+              }
+              .lobby-volley-link-node {
+                filter: drop-shadow(0 0 12px rgba(134,239,172,0.75));
+                animation: lobby-link-node-pop 0.82s ease-out infinite;
               }
               .lobby-volley-ground-line {
                 position: absolute;
@@ -5548,8 +5654,8 @@ const PublicTV = ({ roomCode }) => {
               }
               .lobby-volley-orb-shell {
                 --orb-energy-norm: 0.4;
-                width: clamp(198px, 20vw, 292px);
-                height: clamp(198px, 20vw, 292px);
+                width: clamp(250px, 24vw, 360px);
+                height: clamp(250px, 24vw, 360px);
                 border-radius: 9999px;
                 background:
                   radial-gradient(circle at 24% 16%, rgba(255,255,255,0.95), rgba(255,255,255,0.14) 36%, rgba(0,0,0,0) 56%),
@@ -5581,6 +5687,12 @@ const PublicTV = ({ roomCode }) => {
                   0 0 calc(36px + (48px * var(--orb-energy-norm))) rgba(45,212,191,0.58),
                   0 0 calc(48px + (54px * var(--orb-energy-norm))) rgba(236,72,153,0.5);
                 animation: lobby-orb-float 2.8s ease-in-out infinite, lobby-orb-glow 2.8s ease-in-out infinite;
+              }
+              .lobby-volley-orb-shell-relay {
+                animation:
+                  lobby-orb-float 2.2s ease-in-out infinite,
+                  lobby-orb-glow 2.2s ease-in-out infinite,
+                  lobby-orb-relay-thrum 0.9s ease-in-out infinite;
               }
               .lobby-volley-orb-shell::before {
                 content: '';
@@ -5709,8 +5821,8 @@ const PublicTV = ({ roomCode }) => {
               .lobby-volley-orb-core {
                 --orb-glow: 0.4;
                 --orb-scale: 1;
-                width: 60%;
-                height: 60%;
+                width: 62%;
+                height: 62%;
                 border-radius: 9999px;
                 position: relative;
                 overflow: hidden;
@@ -5778,23 +5890,24 @@ const PublicTV = ({ roomCode }) => {
               }
               .lobby-volley-orb-activity {
                 position: absolute;
-                bottom: 10%;
+                bottom: 9%;
                 left: 50%;
                 transform: translateX(-50%);
                 display: flex;
-                gap: 6px;
+                gap: 8px;
                 z-index: 3;
               }
               .lobby-volley-participant {
-                width: 24px;
-                height: 24px;
+                width: 30px;
+                height: 30px;
                 border-radius: 9999px;
                 border: 1px solid rgba(255,255,255,0.3);
                 background: rgba(2,6,23,0.7);
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 13px;
+                font-size: 16px;
+                box-shadow: 0 0 14px rgba(34,211,238,0.16);
               }
               .lobby-combo-chip {
                 animation: lobby-combo-chip-pop 0.36s ease-out;
@@ -5805,6 +5918,9 @@ const PublicTV = ({ roomCode }) => {
               }
               .motion-safe-fx .lobby-volley-link {
                 animation-duration: 1.6s;
+              }
+              .motion-safe-fx .lobby-volley-link-node {
+                animation: none;
               }
               .motion-safe-fx .lobby-combo-chip {
                 animation: none;
