@@ -385,6 +385,56 @@ const hexToRgba = (hex = "", alpha = 1) => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
+const mixHexColors = (baseHex = "", mixHex = "", mixRatio = 0.5) => {
+  const normalizeHex = (value = "") => String(value || "").trim().replace(/^#/, "");
+  const base = normalizeHex(baseHex);
+  const mix = normalizeHex(mixHex);
+  if (!/^[0-9a-f]{6}$/i.test(base) || !/^[0-9a-f]{6}$/i.test(mix)) return `#${base || mix || "ffffff"}`;
+  const baseInt = Number.parseInt(base, 16);
+  const mixInt = Number.parseInt(mix, 16);
+  const ratio = Math.max(0, Math.min(1, Number(mixRatio || 0)));
+  const channel = (shift) => {
+    const from = (baseInt >> shift) & 255;
+    const to = (mixInt >> shift) & 255;
+    return Math.round((from * (1 - ratio)) + (to * ratio));
+  };
+  const r = channel(16).toString(16).padStart(2, "0");
+  const g = channel(8).toString(16).padStart(2, "0");
+  const b = channel(0).toString(16).padStart(2, "0");
+  return `#${r}${g}${b}`;
+};
+
+const normalizeDiscoverBrandText = (...parts) =>
+  parts
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const isAahfKaraokeKickoffOfficialListing = (entry = {}) => {
+  const text = normalizeDiscoverBrandText(
+    entry?.title,
+    entry?.hostName,
+    entry?.venueName,
+    entry?.description,
+    entry?.detailLine,
+    entry?.address1,
+    entry?.city,
+    entry?.state
+  );
+  if (
+    text.includes("aahf karaoke kickoff")
+    || ((text.includes("aahf") || text.includes("asian arts heritage festival"))
+      && text.includes("karaoke")
+      && text.includes("kickoff"))
+  ) {
+    return true;
+  }
+  const roomCode = String(entry?.roomCode || "").trim().toUpperCase();
+  return roomCode === "ST28" && entry?.isOfficialBeauRocksRoom === true;
+};
+
 const buildListingActionHref = (listing = null) => {
   if (!listing || typeof listing !== "object") return "";
   const listingType = normalizeListingType(listing?.listingType);
@@ -455,7 +505,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const virtualOnly = !!entry?.virtualOnly
     || !!entry?.isVirtualOnly
     || String(entry?.sessionMode || "").trim().toLowerCase() === "virtual";
-  const isOfficialBeauRocksRoom = listingType === "room_session" && !!entry?.isOfficialBeauRocksRoom;
+  const isOfficialBeauRocksRoom = listingType === "room_session" && isAahfKaraokeKickoffOfficialListing(entry);
   const hasBeauRocksHostAccount = !!entry?.hasBeauRocksHostAccount;
   const hostLeaderboardRank = Math.max(0, Number(entry?.hostLeaderboardRank || 0) || 0);
   const hostLeaderboardScore = Math.max(0, Number(entry?.hostLeaderboardScore || 0) || 0);
@@ -470,7 +520,7 @@ const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const beauRocksElevatedReasons = Array.isArray(entry?.beauRocksElevatedReasons)
     ? entry.beauRocksElevatedReasons.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
     : [];
-  const isBeauRocksElevated = !!entry?.isBeauRocksElevated || isOfficialBeauRocksRoom || hasBeauRocksHostAccount;
+  const isBeauRocksElevated = isOfficialBeauRocksRoom;
   const subtitle = virtualOnly
     ? "Virtual session"
     : locationLabel || [city, state].filter(Boolean).join(", ") || "Location pending";
@@ -590,42 +640,43 @@ const buildMarkerVisual = (
   isOfficialRoom = false,
   pulsePhase = 0
 ) => {
+  const mutedAccentColor = mixHexColors(color || "#26d7e8", "#667487", selected ? 0.36 : 0.52);
   const accentColor = isOfficialRoom
     ? (pulsePhase ? "#ff72c1" : "#ff4fae")
     : isElevated
       ? "#f1c76f"
-      : color || "#26d7e8";
+      : mutedAccentColor;
   const ringColor = isOfficialRoom
     ? "#f1c76f"
     : isElevated
       ? (selected ? "#fff3c7" : "#f1c76f")
       : selected
-        ? "#dffcff"
-        : hexToRgba(accentColor, 0.54);
-  const bodyColor = isElevated ? "#120d18" : selected ? "#07182b" : "#091326";
+        ? "#c7d3df"
+        : hexToRgba(accentColor, 0.34);
+  const bodyColor = isElevated ? "#120d18" : selected ? "#0c141c" : "#091018";
   const coreColor = isOfficialRoom
     ? "#f1c76f"
     : isElevated
       ? "#ffd987"
       : selected
-        ? "#37efff"
-        : accentColor;
+        ? mixHexColors(accentColor, "#d9e4ee", 0.22)
+        : mixHexColors(accentColor, "#97a5b5", 0.18);
   const haloColor = isOfficialRoom
     ? hexToRgba("#ff4fae", selected ? 0.34 : 0.26)
     : isElevated
       ? hexToRgba("#f1c76f", selected ? 0.3 : 0.2)
-      : hexToRgba(accentColor, selected ? 0.3 : 0.18);
+      : hexToRgba(accentColor, selected ? 0.15 : 0.08);
   const haloRingColor = isOfficialRoom
     ? hexToRgba("#f1c76f", selected ? 0.24 : 0.18)
     : isElevated
       ? hexToRgba("#fff3c7", selected ? 0.22 : 0.14)
-      : hexToRgba(accentColor, selected ? 0.18 : 0.1);
+      : hexToRgba(accentColor, selected ? 0.09 : 0.05);
   const radius = selected
-    ? (isOfficialRoom ? (16 + (pulsePhase ? 1 : 0)) : isElevated ? 15 : 14)
-    : (isOfficialRoom ? (13 + (pulsePhase ? 1 : 0)) : isElevated ? 12 : 11);
+    ? (isOfficialRoom ? (17 + (pulsePhase ? 1 : 0)) : isElevated ? 15 : 12)
+    : (isOfficialRoom ? (14 + (pulsePhase ? 1 : 0)) : isElevated ? 12 : 9);
   const strokeWidth = selected
-    ? (isOfficialRoom ? 3.8 : isElevated ? 3.3 : 3.1)
-    : (isOfficialRoom ? 3 : isElevated ? 2.5 : 2.2);
+    ? (isOfficialRoom ? 4 : isElevated ? 3.3 : 2.3)
+    : (isOfficialRoom ? 3.2 : isElevated ? 2.5 : 1.8);
   return {
     accentColor,
     bodyColor,
@@ -637,18 +688,18 @@ const buildMarkerVisual = (
     strokeColor: ringColor,
     strokeWidth,
     radius,
-    fillOpacity: selected ? 1 : (isOfficialRoom ? 0.98 : 0.94),
+    fillOpacity: selected ? (isOfficialRoom ? 1 : 0.94) : (isOfficialRoom ? 0.98 : 0.88),
     shadow: selected
       ? isOfficialRoom
-        ? `0 0 0 4px ${hexToRgba("#f1c76f", 0.18)}, 0 0 30px ${hexToRgba("#ff4fae", 0.42)}, 0 14px 32px rgba(2, 7, 20, 0.62)`
+        ? `0 0 0 4px ${hexToRgba("#f1c76f", 0.2)}, 0 0 34px ${hexToRgba("#ff4fae", 0.46)}, 0 16px 34px rgba(2, 7, 20, 0.66)`
         : isElevated
           ? `0 0 0 4px ${hexToRgba("#f1c76f", 0.16)}, 0 0 28px ${hexToRgba("#f1c76f", 0.28)}, 0 12px 28px rgba(2, 7, 20, 0.56)`
-        : `0 0 0 4px ${hexToRgba(accentColor, 0.16)}, 0 0 26px ${hexToRgba(accentColor, 0.34)}, 0 12px 28px rgba(2, 7, 20, 0.54)`
+        : `0 0 0 2px ${hexToRgba(accentColor, 0.08)}, 0 0 12px ${hexToRgba(accentColor, 0.14)}, 0 10px 22px rgba(2, 7, 20, 0.38)`
       : isOfficialRoom
-        ? `0 0 0 3px ${hexToRgba("#f1c76f", 0.12)}, 0 0 18px ${hexToRgba("#ff4fae", 0.22)}, 0 8px 24px rgba(2, 7, 20, 0.46)`
+        ? `0 0 0 3px ${hexToRgba("#f1c76f", 0.16)}, 0 0 20px ${hexToRgba("#ff4fae", 0.28)}, 0 10px 26px rgba(2, 7, 20, 0.5)`
         : isElevated
           ? `0 0 0 2px ${hexToRgba("#f1c76f", 0.1)}, 0 0 16px ${hexToRgba("#f1c76f", 0.16)}, 0 8px 22px rgba(2, 7, 20, 0.4)`
-        : `0 0 0 2px ${hexToRgba(accentColor, 0.08)}, 0 6px 18px rgba(2, 7, 20, 0.36)`,
+        : `0 0 0 1px ${hexToRgba(accentColor, 0.05)}, 0 4px 12px rgba(2, 7, 20, 0.26)`,
     scale: radius,
     selected,
     isElevated,
@@ -1645,9 +1696,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
       ? `<img class="mk3-map-chip-icon" src="${escapeHtml(selectedListingInMap.officialBadgeImageUrl)}" alt="Official BeauRocks logo" loading="lazy" />`
       : "";
     const elevatedBadge = selectedListingInMap.isOfficialBeauRocksRoom
-      ? `<div class="mk3-chip mk3-chip-elevated mk3-map-marker-selected-badge">${elevatedBadgeImage}<span>Official BeauRocks Room</span></div>`
-      : selectedListingInMap.isBeauRocksElevated
-        ? `<div class="mk3-chip mk3-chip-elevated mk3-map-marker-selected-badge">${elevatedBadgeImage}<span>Featured BeauRocks Host</span></div>`
+      ? `<div class="mk3-chip mk3-chip-elevated mk3-map-marker-selected-badge">${elevatedBadgeImage}<span>Official BeauRocks Night</span></div>`
       : "";
     const selectedActionHref = buildListingActionHref(selectedListingInMap);
     const selectedActionLabel = selectedListingInMap.listingType === "room_session" && selectedListingInMap.roomCode
@@ -1682,8 +1731,14 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     if (token === "nationwide") return "Nationwide";
     return humanizeRegion(token) || token;
   }, [region]);
-  const officialBeauRocksRoomCount = Number(facets?.counts?.officialBeauRocksRooms || 0) || 0;
-  const beauRocksElevatedCount = Number(facets?.counts?.beaurocksElevated || 0) || officialBeauRocksRoomCount;
+  const officialBeauRocksRoomCount = useMemo(
+    () => allListings.filter((entry) => entry.isOfficialBeauRocksRoom).length,
+    [allListings]
+  );
+  const beauRocksElevatedCount = useMemo(
+    () => allListings.filter((entry) => entry.isBeauRocksElevated).length,
+    [allListings]
+  );
   const joinableRoomCount = useMemo(
     () => countJoinableRoomListings(filteredByBeauRocks),
     [filteredByBeauRocks]
@@ -1748,7 +1803,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
       const cadenceLabel = EVENT_CADENCE_OPTIONS.find((option) => option.id === eventCadenceFilter)?.label || eventCadenceFilter;
       next.push(`Events: ${cadenceLabel}`);
     }
-    if (beauRocksFilter === "elevated") next.push("Featured: Official BeauRocks Rooms");
+    if (beauRocksFilter === "elevated") next.push("Official: BeauRocks spotlight");
     if (officialRoomFilter === "official") next.push("Room: Official");
     if (roomAccessFilter === "joinable") next.push("Access: Joinable by code");
     if (experienceFilter !== "all") {
@@ -2361,7 +2416,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
                 <span className="mk3-map-legend-item is-event">Events {listingTypeCounts.event}</span>
                 <span className="mk3-map-legend-item is-venue">Venues {listingTypeCounts.venue}</span>
                 <span className="mk3-map-legend-item is-session">Sessions {listingTypeCounts.room_session}</span>
-                <span className="mk3-map-legend-item is-elevated">Featured BeauRocks {listingTypeCounts.elevated}</span>
+                <span className="mk3-map-legend-item is-elevated">Official BeauRocks {listingTypeCounts.elevated}</span>
                 {userLocation && <span className="mk3-map-legend-item is-you">You are centered</span>}
               </div>
               {mapEnabled && mapsLoaded && mappableListings.length > 0

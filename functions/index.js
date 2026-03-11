@@ -2223,17 +2223,39 @@ const isDirectoryLocationInBounds = (location = null, bounds = null) => {
   return inLat && inLng;
 };
 
-const hasBeauRocksBrandHint = (...parts) =>
-  parts.some((value) => String(value || "").toLowerCase().includes("beaurocks"));
+const normalizeDirectoryDiscoverBrandText = (...parts) =>
+  parts
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+const isAahfKaraokeKickoffShowcaseListing = (listing = {}) => {
+  const text = normalizeDirectoryDiscoverBrandText(
+    listing?.title,
+    listing?.hostName,
+    listing?.venueName,
+    listing?.description,
+    listing?.address1,
+    listing?.city,
+    listing?.state
+  );
+  if (
+    text.includes("aahf karaoke kickoff")
+    || ((text.includes("aahf") || text.includes("asian arts heritage festival"))
+      && text.includes("karaoke")
+      && text.includes("kickoff"))
+  ) {
+    return true;
+  }
+  const roomCode = normalizeRoomCode(listing?.roomCode || "");
+  return roomCode === "ST28" && listing?.isOfficialBeauRocksRoom === true;
+};
 
 const isOfficialBeauRocksRoomListing = (listing = {}) => {
   if (String(listing?.listingType || "") !== "room_session") return false;
-  if (listing?.isOfficialBeauRocksRoom === true) return true;
-  const hostUid = String(listing?.hostUid || "").trim();
-  const roomCode = normalizeRoomCode(listing?.roomCode || "");
-  if (hostUid && MARKETING_DISCOVER_OFFICIAL_HOST_UIDS.has(hostUid)) return true;
-  if (roomCode && MARKETING_DISCOVER_OFFICIAL_ROOM_CODES.has(roomCode)) return true;
-  return hasBeauRocksBrandHint(listing?.title, listing?.hostName, listing?.venueName);
+  return isAahfKaraokeKickoffShowcaseListing(listing);
 };
 
 const getDirectoryDiscoverVenueId = (listing = {}) => {
@@ -10080,13 +10102,8 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     const hasBeauRocksHostAccount = !!hostAccountMeta?.hasAccount && (
       !!hostAccountMeta?.hasHostRole || !!hostAccountMeta?.hasHostPlan
     );
-    const beauRocksElevatedReasons = [];
-    if (item.isOfficialBeauRocksRoom) beauRocksElevatedReasons.push("official_room");
-    if (hasBeauRocksHostAccount) beauRocksElevatedReasons.push("host_account");
-    if (hostAccountMeta?.hasHostPlan) beauRocksElevatedReasons.push("host_plan");
-    if (hostLeaderboardRank > 0 && hostLeaderboardRank <= 25) beauRocksElevatedReasons.push("host_leaderboard");
-    if (venueLeaderboardRank > 0 && venueLeaderboardRank <= 25) beauRocksElevatedReasons.push("venue_leaderboard");
-    const isBeauRocksElevated = beauRocksElevatedReasons.length > 0;
+    const beauRocksElevatedReasons = item.isOfficialBeauRocksRoom ? ["official_room"] : [];
+    const isBeauRocksElevated = item.isOfficialBeauRocksRoom === true;
     return {
       ...item,
       hasBeauRocksHostAccount,

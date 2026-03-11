@@ -20,12 +20,14 @@ const DiscoverListingCard = ({
 }) => {
   const experience = entry?.experience || deriveDirectoryExperience(entry);
   const isBeauRocksPowered = isBeauRocksPoweredListing(entry) || !!experience?.isBeauRocksPowered;
+  const isOfficialBeauRocks = !!entry?.isOfficialBeauRocksRoom || !!entry?.isBeauRocksElevated;
   const beauRocksBadgeLabel = getBeauRocksBadgeLabel(entry, { defaultLabel: "BeauRocks-powered" });
   const badgeImageUrl = entry?.officialBadgeImageUrl || MARKETING_BRAND_BADGE_URL;
   const cardClasses = [
     "mk3-discover-card",
     isSelected ? "is-selected" : "",
-    isBeauRocksPowered ? "is-elevated" : "",
+    isOfficialBeauRocks ? "is-elevated" : "",
+    !isOfficialBeauRocks && isBeauRocksPowered ? "is-powered" : "",
   ].filter(Boolean).join(" ");
   const primaryAction = (() => {
     if (entry.listingType === "room_session" && entry.roomCode) {
@@ -65,7 +67,7 @@ const DiscoverListingCard = ({
         <div className="mk3-discover-chip-row">
           <div className="mk3-chip">{entry.typeLabel}</div>
           {isBeauRocksPowered && (
-            <div className="mk3-chip mk3-chip-elevated">
+            <div className={`mk3-chip ${isOfficialBeauRocks ? "mk3-chip-elevated" : "mk3-chip-powered"}`}>
               {badgeImageUrl && (
                 <img
                   className="mk3-chip-icon"
