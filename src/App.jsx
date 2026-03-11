@@ -79,6 +79,38 @@ const getCanonicalSurfaceRedirectUrl = (locationLike = null) => {
     }
 };
 
+const getCanonicalInteractiveSurfaceRedirectUrl = (locationLike = null) => {
+    if (!locationLike) return '';
+    const params = new URLSearchParams(locationLike.search || '');
+    const pathname = String(locationLike.pathname || '/').trim() || '/';
+    const normalizedPathname = pathname.replace(/\/+$/, '') || '/';
+    const detectedSurface = inferSurfaceFromHostname(locationLike.hostname, locationLike);
+    const roomCode = String(params.get('room') || '').trim();
+    const mode = String(params.get('mode') || '').trim().toLowerCase();
+
+    let expectedSurface = '';
+    if (mode === 'host' || normalizedPathname === '/host' || normalizedPathname === '/host-dashboard') {
+        expectedSurface = 'host';
+    } else if (mode === 'tv') {
+        expectedSurface = 'tv';
+    } else if (roomCode || mode === 'recap') {
+        expectedSurface = 'app';
+    }
+
+    if (!expectedSurface || expectedSurface === detectedSurface) return '';
+
+    try {
+        const targetUrl = new URL(buildSurfaceUrl({ surface: expectedSurface }, locationLike));
+        targetUrl.pathname = pathname;
+        targetUrl.search = locationLike.search || '';
+        targetUrl.hash = locationLike.hash || '';
+        if (targetUrl.origin === normalizeOrigin(locationLike.origin || '')) return '';
+        return targetUrl.toString();
+    } catch {
+        return '';
+    }
+};
+
 const getInitialRouteState = () => {
     if (typeof window === 'undefined') {
         return { view: 'landing', roomCode: '' };
@@ -213,7 +245,8 @@ const App = () => {
     const [canonicalRedirectUrl] = useState(() => {
         if (typeof window === 'undefined') return '';
         return getCanonicalManagedHostRedirectUrl(window.location)
-            || getCanonicalSurfaceRedirectUrl(window.location);
+            || getCanonicalSurfaceRedirectUrl(window.location)
+            || getCanonicalInteractiveSurfaceRedirectUrl(window.location);
     });
     const initialRoute = getInitialRouteState();
     const [view, setView] = useState(() => initialRoute.view);

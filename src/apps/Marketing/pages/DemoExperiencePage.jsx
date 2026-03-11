@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
 import { directoryActions } from "../api/directoryApi";
-import { STORM_SOUND_URL } from "../../../lib/assets";
 import { buildSurfaceUrl as buildCanonicalSurfaceUrl } from "../../../lib/surfaceDomains";
 
 const DEMO_SCENES = [
@@ -326,16 +325,37 @@ const DEMO_HOST_BASE_PARAMS = Object.freeze({
   mkDemoEmbed: "1",
   hostUiVersion: "v2",
 });
+const DEMO_HOST_WORKSPACE_PRESETS = Object.freeze({
+  catalog: Object.freeze({
+    view: "queue",
+    section: "queue.catalog",
+    tab: "browse",
+  }),
+  stage: Object.freeze({
+    view: "queue",
+    section: "queue.live_run",
+    tab: "stage",
+  }),
+  games: Object.freeze({
+    view: "games",
+    section: "games.live_controls",
+    tab: "games",
+  }),
+});
+
+const buildDemoHostParams = (workspace = "stage", extras = {}) => ({
+  ...DEMO_HOST_BASE_PARAMS,
+  ...(DEMO_HOST_WORKSPACE_PRESETS[workspace] || DEMO_HOST_WORKSPACE_PRESETS.stage),
+  ...(extras || {}),
+});
 const DEMO_SCENE_SURFACE_PLANS = Object.freeze({
   karaoke_kickoff: {
     hostFocus: "Search and cue the opener",
     hostStatus: "The real host deck opens in Browse with a seeded search so the room starts with an actual catalog moment.",
-    hostParams: {
-      ...DEMO_HOST_BASE_PARAMS,
-      tab: "browse",
+    hostParams: buildDemoHostParams("catalog", {
       catalogue: "1",
       demo_search: "sweet caroline karaoke",
-    },
+    }),
     audienceFocus: "Guests join and react",
     audienceStatus: "Audience phones join the room, warm up with reactions, and catch the first lyric prompt immediately.",
     tvFocus: "Lyrics and backing video lock in",
@@ -344,10 +364,7 @@ const DEMO_SCENE_SURFACE_PLANS = Object.freeze({
   karaoke_singalong: {
     hostFocus: "Queue and now playing",
     hostStatus: "The host deck shifts to the live queue so the next singer handoff feels visible instead of hidden.",
-    hostParams: {
-      ...DEMO_HOST_BASE_PARAMS,
-      tab: "stage",
-    },
+    hostParams: buildDemoHostParams("stage"),
     audienceFocus: "Crowd singalong momentum",
     audienceStatus: "Audience reactions keep stacking while the room settles into the main singalong groove.",
     tvFocus: "Chorus energy on the big screen",
@@ -356,10 +373,7 @@ const DEMO_SCENE_SURFACE_PLANS = Object.freeze({
   guitar_vibe_sync: {
     hostFocus: "Live effects on deck",
     hostStatus: "The host stays on the live deck while Guitar Vibe Sync takes over and the room flips from lyrics to crowd play.",
-    hostParams: {
-      ...DEMO_HOST_BASE_PARAMS,
-      tab: "stage",
-    },
+    hostParams: buildDemoHostParams("stage"),
     audienceFocus: "Phones become instruments",
     audienceStatus: "Audience phones switch from passive viewing into strum controls and power spikes.",
     tvFocus: "Solo visuals replace lyrics",
@@ -368,10 +382,7 @@ const DEMO_SCENE_SURFACE_PLANS = Object.freeze({
   vocal_game_challenge: {
     hostFocus: "Games workspace",
     hostStatus: "The host moves into the real Games view for a quick vocal challenge between songs.",
-    hostParams: {
-      ...DEMO_HOST_BASE_PARAMS,
-      tab: "games",
-    },
+    hostParams: buildDemoHostParams("games"),
     audienceFocus: "Combo chase between singers",
     audienceStatus: "Audience players trade reaction spam for score chasing while the queue keeps moving.",
     tvFocus: "Mini-game interlude",
@@ -380,11 +391,9 @@ const DEMO_SCENE_SURFACE_PLANS = Object.freeze({
   trivia_showdown: {
     hostFocus: "Trivia round control",
     hostStatus: "The real host deck stays in Games and opens the trivia context so the scene reads like an intentional mode switch.",
-    hostParams: {
-      ...DEMO_HOST_BASE_PARAMS,
-      tab: "games",
+    hostParams: buildDemoHostParams("games", {
       game: "trivia",
-    },
+    }),
     audienceFocus: "Fast live voting",
     audienceStatus: "Audience phones turn into voting pads while the room keeps the same code and the same momentum.",
     tvFocus: "Question, votes, reveal",
@@ -393,11 +402,9 @@ const DEMO_SCENE_SURFACE_PLANS = Object.freeze({
   wyr_split_decision_one: {
     hostFocus: "Would You Rather round",
     hostStatus: "The host keeps the Games view open so the WYR round feels like a repeatable show tool, not a one-off stunt.",
-    hostParams: {
-      ...DEMO_HOST_BASE_PARAMS,
-      tab: "games",
+    hostParams: buildDemoHostParams("games", {
       game: "wyr",
-    },
+    }),
     audienceFocus: "Pick a side live",
     audienceStatus: "Audience phones split the room in real time while the music stays moving under the prompt.",
     tvFocus: "Crowd split in motion",
@@ -406,11 +413,9 @@ const DEMO_SCENE_SURFACE_PLANS = Object.freeze({
   wyr_split_decision_two: {
     hostFocus: "Repeatable social beat",
     hostStatus: "The host stays in the same WYR tool so the second round reads as fast, reusable format instead of setup work.",
-    hostParams: {
-      ...DEMO_HOST_BASE_PARAMS,
-      tab: "games",
+    hostParams: buildDemoHostParams("games", {
       game: "wyr",
-    },
+    }),
     audienceFocus: "Instant re-engagement",
     audienceStatus: "The second prompt proves people will jump back in quickly when the room flow is tight.",
     tvFocus: "Second reveal lands faster",
@@ -419,10 +424,7 @@ const DEMO_SCENE_SURFACE_PLANS = Object.freeze({
   finale_drop: {
     hostFocus: "Back to the live deck",
     hostStatus: "The host returns to the live deck for the final singalong and a clean handoff into a real-room CTA.",
-    hostParams: {
-      ...DEMO_HOST_BASE_PARAMS,
-      tab: "stage",
-    },
+    hostParams: buildDemoHostParams("stage"),
     audienceFocus: "Encore reactions and join CTA",
     audienceStatus: "Audience phones come back to easy participation, bigger reactions, and a final push toward the join moment.",
     tvFocus: "Big singalong finish",
@@ -435,10 +437,7 @@ const getDemoSceneSurfacePlan = (scene = null) => {
   return DEMO_SCENE_SURFACE_PLANS[sceneId] || {
     hostFocus: "Live host deck",
     hostStatus: "The host surface stays on the real control deck for the current room state.",
-    hostParams: {
-      ...DEMO_HOST_BASE_PARAMS,
-      tab: "stage",
-    },
+    hostParams: buildDemoHostParams("stage"),
     audienceFocus: "Audience interaction live",
     audienceStatus: "Audience phones stay connected to the live room state for this scene.",
     tvFocus: "Public TV live",
@@ -568,6 +567,75 @@ const buildReactionEvents = (scene, sceneProgress = 0) => {
   }));
 };
 
+const getDemoAudienceStateLabel = (scene = null) => {
+  const mode = String(scene?.mode || "karaoke").toLowerCase();
+  if (mode === "guitar") return "Signed in and strumming";
+  if (mode === "trivia") return "Signed in and voting";
+  if (mode === "vocal") return "Signed in and chasing combo";
+  if (mode === "wyr") return "Signed in and picking a side";
+  if (mode === "finale") return "Signed in for the encore";
+  return "Signed in and ready";
+};
+
+const getDemoAudienceActionLabel = (scene = null) => {
+  const mode = String(scene?.mode || "karaoke").toLowerCase();
+  if (mode === "guitar") return "Phones act like instruments";
+  if (mode === "trivia") return "Phones become live vote pads";
+  if (mode === "vocal") return "Phones react around the mini-game";
+  if (mode === "wyr") return "Phones split the room instantly";
+  if (mode === "finale") return "Phones push reactions to the finish";
+  return "Phones join, react, and follow lyrics";
+};
+
+const getDemoHostWorkspaceLabel = (hostParams = {}) => {
+  const section = String(hostParams?.section || "").trim().toLowerCase();
+  if (section === "queue.catalog") return "Host panel in catalog";
+  if (section === "games.live_controls") return "Host panel in games";
+  return "Host panel in live run";
+};
+
+const buildSceneSignalFlows = ({
+  scene = null,
+  activeHostAction = null,
+  surfacePlan = null,
+  crowdSize = 0,
+  interactionTotal = 0,
+}) => {
+  const mode = String(scene?.mode || "karaoke").toLowerCase();
+  const sceneLabel = String(scene?.label || "Demo scene").trim();
+  const defaultHostLabel = String(activeHostAction?.label || surfacePlan?.hostFocus || "Host steers the next beat").trim();
+  const defaultHostDetail = String(activeHostAction?.result || surfacePlan?.hostStatus || "Host pushes the room into the next visible state.").trim();
+  const audienceDetail = `${Math.max(1, interactionTotal)} scripted audience interactions from ${Math.max(1, crowdSize)} connected guests shape the room in this scene.`;
+  const tvFeedback = String(surfacePlan?.tvStatus || "The TV reflects the room mode, prompts, and reveals live.").trim();
+
+  if (mode === "guitar") {
+    return [
+      { lane: "Host -> TV", title: defaultHostLabel, detail: defaultHostDetail },
+      { lane: "Audience -> TV", title: "Strums drive the solo visuals", detail: audienceDetail },
+      { lane: "TV -> Audience", title: "The big screen cues the next input", detail: tvFeedback },
+    ];
+  }
+  if (mode === "trivia" || mode === "wyr") {
+    return [
+      { lane: "Host -> Audience", title: defaultHostLabel, detail: defaultHostDetail },
+      { lane: "Audience -> TV", title: `${sceneLabel} results build live`, detail: audienceDetail },
+      { lane: "TV -> Audience", title: "Reveal timing comes from the shared screen", detail: tvFeedback },
+    ];
+  }
+  if (mode === "vocal") {
+    return [
+      { lane: "Host -> TV", title: defaultHostLabel, detail: defaultHostDetail },
+      { lane: "Audience -> Audience", title: "Phones feed combo pressure back into the room", detail: audienceDetail },
+      { lane: "TV -> Audience", title: "The objective stays visible while scores move", detail: tvFeedback },
+    ];
+  }
+  return [
+    { lane: "Host -> TV", title: defaultHostLabel, detail: defaultHostDetail },
+    { lane: "Audience -> TV", title: "Reactions and singalong energy stay visible", detail: audienceDetail },
+    { lane: "TV -> Audience", title: "Lyrics and prompts tell phones what happens next", detail: tvFeedback },
+  ];
+};
+
 const DemoExperiencePage = ({ session = {} }) => {
   const isSessionReady = !!session?.ready;
   const hasCallableAuth = !!session?.isAuthed;
@@ -578,7 +646,7 @@ const DemoExperiencePage = ({ session = {} }) => {
   const [roomCode, setRoomCode] = useState(() => getInitialDemoRoomCode());
   const [liveSync, setLiveSync] = useState(() => getInitialDemoViewMode() === DEMO_VIEW_MODES.autoplay);
   const [autoPauseCues, setAutoPauseCues] = useState(false);
-  const [audioBedEnabled, setAudioBedEnabled] = useState(true);
+  const [audioBedEnabled, setAudioBedEnabled] = useState(false);
   const [, setBeatPulseTick] = useState(0);
   const [surfaceReloadToken, setSurfaceReloadToken] = useState(0);
   const [syncState, setSyncState] = useState({ tone: "muted", message: "Scripted sync warming up." });
@@ -591,7 +659,6 @@ const DemoExperiencePage = ({ session = {} }) => {
   const demoShellRef = useRef(null);
   const autoRoomRetryRef = useRef(false);
   const cuePauseHistoryRef = useRef(new Set());
-  const ambienceAudioRef = useRef(null);
   const beatTimerRef = useRef(null);
   const audioContextRef = useRef(null);
   const previousTimelineMsRef = useRef(0);
@@ -699,6 +766,12 @@ const DemoExperiencePage = ({ session = {} }) => {
     if (mode === "finale") return "Finale";
     return "Karaoke";
   }, [activeScene]);
+  const scenePercent = useMemo(() => Math.round(sceneProgress * 100), [sceneProgress]);
+  const nextScene = useMemo(() => {
+    const currentIndex = TIMELINE.findIndex((entry) => entry.id === activeScene.id);
+    if (currentIndex < 0 || currentIndex >= TIMELINE.length - 1) return null;
+    return TIMELINE[currentIndex + 1];
+  }, [activeScene.id]);
 
   const triviaModel = useMemo(() => {
     if (activeScene.mode !== "trivia") return null;
@@ -775,10 +848,7 @@ const DemoExperiencePage = ({ session = {} }) => {
   const hostLaunchParams = useMemo(() => (
     isAutoplayShowcase
       ? getAutoplayHostSurfaceParams(activeScene)
-      : {
-        ...DEMO_HOST_BASE_PARAMS,
-        tab: "stage",
-      }
+      : buildDemoHostParams("stage")
   ), [activeScene, isAutoplayShowcase]);
 
   const launchLinks = useMemo(() => ({
@@ -790,6 +860,25 @@ const DemoExperiencePage = ({ session = {} }) => {
   const sceneInteractionTotal = useMemo(
     () => reactionEvents.reduce((sum, entry) => sum + Math.max(0, Number(entry.count || 0)), 0),
     [reactionEvents]
+  );
+  const demoSignalFlows = useMemo(() => buildSceneSignalFlows({
+    scene: activeScene,
+    activeHostAction,
+    surfacePlan,
+    crowdSize,
+    interactionTotal: sceneInteractionTotal,
+  }), [activeHostAction, activeScene, crowdSize, sceneInteractionTotal, surfacePlan]);
+  const hostWorkspaceLabel = useMemo(
+    () => getDemoHostWorkspaceLabel(hostLaunchParams),
+    [hostLaunchParams]
+  );
+  const audienceStateLabel = useMemo(
+    () => getDemoAudienceStateLabel(activeScene),
+    [activeScene]
+  );
+  const audienceActionLabel = useMemo(
+    () => getDemoAudienceActionLabel(activeScene),
+    [activeScene]
   );
 
   useEffect(() => {
@@ -1005,28 +1094,15 @@ const DemoExperiencePage = ({ session = {} }) => {
     const gain = context.createGain();
     const mode = String(activeScene?.mode || "karaoke").toLowerCase();
     oscillator.type = mode === "trivia" || mode === "wyr" ? "triangle" : "sine";
-    oscillator.frequency.setValueAtTime(mode === "guitar" ? 196 : mode === "vocal" ? 247 : mode === "wyr" ? 262 : 220, now);
+    oscillator.frequency.setValueAtTime(mode === "guitar" ? 164 : mode === "vocal" ? 174 : mode === "wyr" ? 196 : 146, now);
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(mode === "finale" ? 0.08 : 0.055, now + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+    gain.gain.exponentialRampToValueAtTime(mode === "finale" ? 0.026 : 0.018, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
     oscillator.connect(gain);
     gain.connect(context.destination);
     oscillator.start(now);
-    oscillator.stop(now + 0.2);
+    oscillator.stop(now + 0.3);
   }, [activeScene]);
-
-  useEffect(() => {
-    const ambienceNode = ambienceAudioRef.current;
-    if (!ambienceNode) return;
-    const mode = String(activeScene?.mode || "karaoke").toLowerCase();
-    ambienceNode.volume = mode === "trivia" ? 0.08 : mode === "wyr" ? 0.09 : mode === "guitar" ? 0.16 : 0.12;
-    if (!audioBedEnabled) {
-      ambienceNode.pause();
-      ambienceNode.currentTime = 0;
-      return;
-    }
-    ambienceNode.play().catch(() => {});
-  }, [audioBedEnabled, activeScene]);
 
   useEffect(() => {
     if (beatTimerRef.current) {
@@ -1052,7 +1128,6 @@ const DemoExperiencePage = ({ session = {} }) => {
   useEffect(() => () => {
     if (beatTimerRef.current) clearInterval(beatTimerRef.current);
     beatTimerRef.current = null;
-    if (ambienceAudioRef.current) ambienceAudioRef.current.pause();
     if (audioContextRef.current && typeof audioContextRef.current.close === "function") {
       audioContextRef.current.close().catch(() => {});
     }
@@ -1101,6 +1176,7 @@ const DemoExperiencePage = ({ session = {} }) => {
         <div className="mk3-demo-overview-flow">
           <span>Scene flow</span>
           <strong>Search, queue, singalong, guitar sync, vocal game, trivia, Would You Rather, finale.</strong>
+          <p>The timeline below shows not just what scene is active, but which surface is driving the room and where the response is landing next.</p>
         </div>
       </article>
 
@@ -1197,7 +1273,7 @@ const DemoExperiencePage = ({ session = {} }) => {
               trackEvent("mk_demo_audio_bed_toggle", { enabled: next ? 1 : 0 });
             }}
           >
-            Music + Ambience: {audioBedEnabled ? "On" : "Off"}
+            Subtle Pulse: {audioBedEnabled ? "On" : "Off"}
           </button>
           {!isAutoplayShowcase && (
             <button
@@ -1241,13 +1317,64 @@ const DemoExperiencePage = ({ session = {} }) => {
             </button>
           ))}
         </div>
-        <audio
-          ref={ambienceAudioRef}
-          src={STORM_SOUND_URL}
-          preload="auto"
-          loop
-          aria-hidden="true"
-        />
+      </article>
+
+      <article className="mk3-demo-director">
+        <div className="mk3-demo-director-head">
+          <div>
+            <span>timeline view</span>
+            <strong>{activeScene.label}</strong>
+          </div>
+          <div>
+            <span>scene progress</span>
+            <strong>{scenePercent}%</strong>
+          </div>
+          <div>
+            <span>next up</span>
+            <strong>{nextScene?.label || "Finale close"}</strong>
+          </div>
+        </div>
+        <div className="mk3-demo-timeline-track" aria-hidden="true">
+          {TIMELINE.map((scene) => {
+            const isActive = scene.id === activeScene.id;
+            const isPast = timelineMs > scene.endMs;
+            return (
+              <div
+                key={scene.id}
+                className={`mk3-demo-timeline-stop${isActive ? " active" : ""}${isPast ? " is-past" : ""}`}
+              >
+                <span>{scene.label}</span>
+                <i style={{ width: isActive ? `${scenePercent}%` : isPast ? "100%" : "0%" }} />
+              </div>
+            );
+          })}
+        </div>
+        <div className="mk3-demo-director-grid">
+          <article className="mk3-demo-director-card">
+            <span>host move</span>
+            <strong>{activeHostAction?.label || surfacePlan.hostFocus}</strong>
+            <p>{activeHostAction?.explain || surfacePlan.hostStatus}</p>
+          </article>
+          <article className="mk3-demo-director-card">
+            <span>audience state</span>
+            <strong>{audienceStateLabel}</strong>
+            <p>{audienceActionLabel}</p>
+          </article>
+          <article className="mk3-demo-director-card">
+            <span>room state</span>
+            <strong>{sanitizedRoomCode}</strong>
+            <p>{syncState.message}</p>
+          </article>
+        </div>
+        <div className="mk3-demo-direction-grid">
+          {demoSignalFlows.map((flow) => (
+            <article key={`${activeScene.id}_${flow.lane}_${flow.title}`} className="mk3-demo-direction-card">
+              <span>{flow.lane}</span>
+              <strong>{flow.title}</strong>
+              <p>{flow.detail}</p>
+            </article>
+          ))}
+        </div>
       </article>
 
       <div ref={demoShellRef} className="mk3-demo-shell">
@@ -1262,6 +1389,10 @@ const DemoExperiencePage = ({ session = {} }) => {
           <div className="mk3-demo-surface-kicker">
             <span>{surfacePlan.tvFocus}</span>
             <strong>{activeScene.songTitle || stageModeLabel}</strong>
+          </div>
+          <div className="mk3-demo-surface-pill-row">
+            <span>TV receiving host cues</span>
+            <span>TV reflecting audience input</span>
           </div>
           <div className="mk3-demo-frame-wrap mk3-demo-tv-frame-wrap">
             <iframe
@@ -1289,6 +1420,11 @@ const DemoExperiencePage = ({ session = {} }) => {
           <div className="mk3-demo-surface-kicker">
             <span>{surfacePlan.audienceFocus}</span>
             <strong>{sceneInteractionTotal} scripted interactions</strong>
+          </div>
+          <div className="mk3-demo-surface-pill-row">
+            <span>{audienceStateLabel}</span>
+            <span>Joined to {sanitizedRoomCode}</span>
+            <span>{audienceActionLabel}</span>
           </div>
           <div className="mk3-demo-frame-wrap mk3-demo-audience-frame-wrap">
             <div className="mk3-demo-phone-shell">
@@ -1325,6 +1461,11 @@ const DemoExperiencePage = ({ session = {} }) => {
           <div className="mk3-demo-surface-kicker">
             <span>{surfacePlan.hostFocus}</span>
             <strong>{activeHostAction?.label || "Room flow in progress"}</strong>
+          </div>
+          <div className="mk3-demo-surface-pill-row">
+            <span>{hostWorkspaceLabel}</span>
+            <span>Room attached: {sanitizedRoomCode}</span>
+            <span>{activeHostAction?.control || activeScene.mode}</span>
           </div>
           <div className="mk3-demo-frame-wrap mk3-demo-host-frame-wrap mk3-demo-host-frame-wrap-live">
             <iframe
