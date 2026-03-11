@@ -6,38 +6,56 @@ import { MARKETING_ROUTE_PAGES } from "../routing";
 import { marketingFlags } from "../featureFlags";
 
 const HOST_STACK_BADGES = [
-  "Early host partner intake",
-  "Limited 2026 invite waves",
-  "Approved hosts unlock the real dashboard",
+  "VIP host access",
+  "Founding 2026 cohort",
+  "Reviewed by invite wave",
 ];
 
 const HOST_CORE_OUTCOMES = [
-  "New host access should feel earned, not like another open signup form.",
-  "We are inviting a small set of early host partners in 2026 instead of opening the floodgates all at once.",
-  "Approved partners go straight into the real Host Dashboard for room setup, launch, and nightly operations.",
-  "The queue helps us onboard the right hosts, markets, and event formats in deliberate waves.",
+  "VIP access is reviewed manually. This is not open host registration.",
+  "The first 2026 cohort is intentionally small so the product and partner support stay high-touch.",
+  "Invited partners skip the fake-tour layer and go directly into the real Host Dashboard.",
+  "We are prioritizing operators who can anchor repeat nights, venue programs, and memorable rooms.",
 ];
 
 const HOST_STORY_POINTS = [
-  "Join the early-access line with your email so we know who to invite first.",
-  "We are prioritizing hosts who can run standout karaoke nights, fundraisers, venue programs, and repeatable community events.",
-  "When your invite wave opens in 2026, hosting happens in the real Host Dashboard instead of a marketing-side fake panel.",
+  "Join the private line with your email so we know who to screen first.",
+  "We are looking for hosts who can run standout karaoke nights, fundraisers, venue programs, and repeatable community events.",
+  "When your invite opens in 2026, you launch from the real Host Dashboard instead of a public demo shell.",
+];
+
+const HOST_VIP_SIGNALS = [
+  {
+    label: "Best Fit",
+    title: "Repeatable rooms",
+    copy: "Hosts with a clear room concept, recurring calendar, or venue relationship move faster than curiosity signups.",
+  },
+  {
+    label: "Priority",
+    title: "Operator polish",
+    copy: "We are leaning toward hosts who care about pacing, crowd energy, room control, and a premium guest experience.",
+  },
+  {
+    label: "Access",
+    title: "Real controls",
+    copy: "Invited partners get the actual operating surface for room setup, live launch, TV links, and nightly tools.",
+  },
 ];
 
 const HOST_SIGNAL_CARDS = [
   {
-    label: "Invite Model",
-    title: "Deliberately scarce",
-    copy: "We are onboarding a limited number of early host partners in 2026 so the product and partner support stay tight.",
+    label: "Access Type",
+    title: "Invitation only",
+    copy: "We are not opening host tools to everyone at once. Each 2026 wave is hand-selected and deliberately small.",
   },
   {
-    label: "Operator Fit",
-    title: "Built for serious hosts",
-    copy: "The queue is for hosts who want to run real rooms, build repeat nights, and help shape the operator product.",
+    label: "Cohort",
+    title: "Founding partners",
+    copy: "This line is for hosts who want to help define the operator product, not just try a generic dashboard.",
   },
   {
-    label: "Post-Invite",
-    title: "Real host tools only",
+    label: "After Invite",
+    title: "Straight to ops",
     copy: "Approved partners unlock Host Dashboard for room manager, live deck launch, TV links, and nightly controls.",
   },
 ];
@@ -213,15 +231,34 @@ const ForHostsPage = ({ route, session, authFlow }) => {
       <article className="mk3-detail-card mk3-host-hero mk3-zone mk3-host-hero-rebuild mk3-host-canon-surface">
         <div className="mk3-host-hero-grid">
           <div className="mk3-host-hero-copy">
-            <div className="mk3-host-kicker mk3-host-canon-kicker">2026 early host partner intake</div>
-            <h1 className="mk3-host-canon-title is-xl">Request access now. We are inviting early host partners in 2026.</h1>
+            <div className="mk3-host-kicker mk3-host-canon-kicker">VIP host access | founding 2026 cohort</div>
+            <h1 className="mk3-host-canon-title is-xl">This is the private line for BeauRocks host partners.</h1>
             <p className="mk3-host-canon-copy">
-              This is not a mass-market host signup yet. We are building an invite-first line for early testers,
-              standout karaoke operators, and host partners we want to onboard in controlled 2026 waves.
+              We are inviting a limited set of early hosts and testers in 2026. Access is reviewed manually,
+              cohort by cohort, for operators we believe can run distinctive rooms and help shape the real product.
             </p>
-            <div className="mk3-status mk3-status-warning">
-              <strong>Exclusive by design</strong>
-              <span>Join the line now. We will review fit, market, and event style before sending early host invites in 2026.</span>
+            <div className="mk3-host-vip-brief mk3-host-canon-surface is-muted">
+              <div className="mk3-host-vip-brief-head">
+                <span className="mk3-host-canon-kicker">Private consideration</span>
+                <strong>Not everyone who requests access gets invited in the first wave.</strong>
+              </div>
+              <div className="mk3-host-vip-brief-grid">
+                <article>
+                  <span>Wave 01</span>
+                  <strong>Selective intake</strong>
+                  <p>We are screening for hosts with a real venue, audience, or room concept, not casual interest.</p>
+                </article>
+                <article>
+                  <span>Positioning</span>
+                  <strong>VIP partner feel</strong>
+                  <p>The experience should feel earned. The first cohort is meant to feel like access to the real room behind the curtain.</p>
+                </article>
+                <article>
+                  <span>Outcome</span>
+                  <strong>Direct dashboard entry</strong>
+                  <p>Once invited, you do not land in a marketing mockup. You go straight into the actual host operating surface.</p>
+                </article>
+              </div>
             </div>
             <div className="mk3-host-badge-row mk3-host-canon-chip-row">
               {HOST_STACK_BADGES.map((badge) => (
@@ -271,14 +308,30 @@ const ForHostsPage = ({ route, session, authFlow }) => {
                 <span>We will reach out when your 2026 invite wave opens or when we need more info.</span>
               </div>
             )}
+            <div className="mk3-host-vip-signal-strip">
+              {HOST_VIP_SIGNALS.map((signal) => (
+                <article key={signal.title} className="mk3-host-vip-signal">
+                  <span>{signal.label}</span>
+                  <strong>{signal.title}</strong>
+                  <p>{signal.copy}</p>
+                </article>
+              ))}
+            </div>
           </div>
           <aside className="mk3-host-hero-visual">
-            <article ref={intakeFormRef} className="mk3-detail-card mk3-host-canon-surface is-muted">
-              <div className="mk3-host-kicker mk3-host-canon-kicker">Early access queue</div>
-              <h2 className="mk3-host-canon-title is-md">Get in line for the 2026 host cohort.</h2>
+            <article ref={intakeFormRef} className="mk3-detail-card mk3-host-canon-surface is-muted mk3-host-vip-intake">
+              <div className="mk3-host-vip-intake-topline">
+                <span className="mk3-host-canon-kicker">VIP consideration queue</span>
+                <span className="mk3-host-vip-ledger">Limited release</span>
+              </div>
+              <h2 className="mk3-host-canon-title is-md">Ask to be considered for the first invite waves.</h2>
               <p className="mk3-host-canon-copy is-muted">
-                Drop your email and we will use it to line up early testers and host partners for the first invite waves.
+                Leave your email and we will place you in the private review line for the early BeauRocks host cohort.
               </p>
+              <div className="mk3-host-vip-proof">
+                <strong>What this means</strong>
+                <span>Your submission reserves consideration, not instant access. We will invite early host partners in deliberate 2026 waves.</span>
+              </div>
               {session?.hasHostWorkspaceAccess ? (
                 <div className="mk3-status">
                   <strong>You already have host access.</strong>
@@ -301,8 +354,8 @@ const ForHostsPage = ({ route, session, authFlow }) => {
                     />
                   </label>
                   <div className="mk3-status mk3-status-warning">
-                    <strong>Invite-first rollout</strong>
-                    <span>Submitting here does not grant instant access. It puts you in the early host partner line for 2026 review waves.</span>
+                    <strong>Invitation-only rollout</strong>
+                    <span>Submitting here does not unlock the host panel immediately. It puts you into the VIP review queue for 2026 waves.</span>
                   </div>
                   {!!session?.email && (
                     <div className="mk3-auth-hint">Signed in as {session.email}. We will review this email for future host invites.</div>
@@ -312,7 +365,7 @@ const ForHostsPage = ({ route, session, authFlow }) => {
                     type="submit"
                     disabled={requestBusy}
                   >
-                    {requestBusy ? "Saving spot..." : "Join The 2026 List"}
+                    {requestBusy ? "Saving spot..." : "Request VIP Access"}
                   </button>
                   {!!requestNotice && <div className="mk3-status">{requestNotice}</div>}
                   <div className="mk3-auth-support-row">
@@ -333,9 +386,9 @@ const ForHostsPage = ({ route, session, authFlow }) => {
             <article className="mk3-host-visual-stage">
               <img src="/images/marketing/BeauRocks-HostPanel.png" alt="BeauRocks Host Dashboard" loading="lazy" />
               <div className="mk3-host-visual-overlay">
-                <div className="mk3-persona-kicker">approved host surface</div>
-                <strong>When invited, you go straight to the real control room.</strong>
-                <span>Create, resume, launch, and run the night from Host Dashboard once your partner access is approved.</span>
+                <div className="mk3-persona-kicker">behind the velvet rope</div>
+                <strong>Approved partners skip the preview and enter the real control room.</strong>
+                <span>Create, resume, launch, and run the night from Host Dashboard once your invite clears review.</span>
               </div>
             </article>
             <div className="mk3-host-signal-grid">
@@ -353,10 +406,9 @@ const ForHostsPage = ({ route, session, authFlow }) => {
 
       <div className="mk3-two-col mk3-persona-late-grid">
         <section className="mk3-detail-card mk3-host-manager-card mk3-host-canon-surface is-muted">
-          <h2 className="mk3-host-canon-title is-md">What early host partners are lining up for</h2>
+          <h2 className="mk3-host-canon-title is-md">What the private line is actually for</h2>
           <p className="mk3-host-setup-subcopy">
-            The waitlist is not for casual curiosity clicks. It is for hosts who want a cleaner operator stack,
-            tighter room control, and a sharper guest experience once invites open in 2026.
+            This is for hosts who want better room command, cleaner guest flow, and a real operating stack once invites open in 2026.
           </p>
           <div className="mk3-sub-list compact">
             {HOST_STORY_POINTS.map((note) => (
@@ -368,10 +420,10 @@ const ForHostsPage = ({ route, session, authFlow }) => {
         </section>
 
         <aside className="mk3-actions-card mk3-persona-checklist">
-          <h4>How Invites Work</h4>
+          <h4>How VIP Access Works</h4>
           <div className="mk3-status">
             <strong>Small cohort first</strong>
-            <span>We are inviting early host partners in controlled 2026 waves instead of opening host access all at once.</span>
+            <span>We are inviting early host partners in controlled 2026 waves instead of opening host access to everyone at once.</span>
           </div>
           <div className="mk3-persona-checklist-list">
             {HOST_CORE_OUTCOMES.map((item) => (
