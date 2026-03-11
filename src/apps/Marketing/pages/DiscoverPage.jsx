@@ -1832,7 +1832,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
       : `Live now in ${activeRegionLabel}`;
   const openHostAccess = () => {
     trackEvent("mk_discover_premium_hero_host_access_click", { source: "discover_premium_hero" });
-    navigate("host_access");
+    navigate(hasFullAccount ? "host_access" : "for_hosts");
   };
   const openJoinPage = () => {
     trackEvent("mk_discover_premium_hero_join_click", { source: "discover_premium_hero" });
@@ -2235,7 +2235,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
               className="mk3-discover-hero-cta-primary"
               onClick={openHostAccess}
             >
-              {hasFullAccount ? "Open Host Access" : "Request Host Access"}
+              {hasFullAccount ? "Open Host Access" : "Request Early Host Access"}
             </button>
             <button
               type="button"

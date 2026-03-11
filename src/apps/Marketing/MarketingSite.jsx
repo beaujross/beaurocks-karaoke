@@ -851,14 +851,14 @@ const MarketingSite = () => {
           {isHostAccessPage ? (
           <section className="mk3-auth-panel mk3-host-canon-surface" ref={authPanelRef}>
             <div>
-              <h1 className="mk3-host-canon-title is-xl">Host Login + Application</h1>
+              <h1 className="mk3-host-canon-title is-xl">Approved Host Login + 2026 Access Queue</h1>
               <p className="mk3-host-canon-copy">
-                Hosting is approval-based. Create your BeauRocks account, apply once, and approved hosts go straight into Host Dashboard for room setup, room manager, and live controls.
+                Approved hosts log in here to open Host Dashboard. New operators can request early access, and we are inviting early host partners in limited 2026 waves.
               </p>
               <div className="mk3-private-pill-row mk3-host-canon-chip-row">
                 <span className="mk3-private-pill mk3-host-canon-chip">BeauRocks account required</span>
+                <span className="mk3-private-pill mk3-host-canon-chip">2026 early partner invites</span>
                 <span className="mk3-private-pill mk3-host-canon-chip">Direct Host Dashboard entry</span>
-                <span className="mk3-private-pill mk3-host-canon-chip">Room history built into Host</span>
               </div>
               {heroStats?.total > 0 && (
                 <div className="mk3-status mk3-hero-proof">
@@ -868,7 +868,7 @@ const MarketingSite = () => {
               )}
               <div className="mk3-value-points">
                 <span>Guests can still join with a room code, but hosting always stays account-backed.</span>
-                <span>Host access is granted by admin approval, not by self-serve unlock codes.</span>
+                <span>Host access is granted by admin approval and early invite waves, not by self-serve unlock codes.</span>
                 <span>Once approved, you create rooms and run the night from Host Dashboard instead of bouncing back through marketing pages.</span>
               </div>
               {hasFullAccount && session.hasHostWorkspaceAccess && (
@@ -921,8 +921,8 @@ const MarketingSite = () => {
                             : hostApplicationStatus === "rejected"
                               ? "Host application not approved"
                               : hostApplicationStatus === "pending"
-                                ? "Host application pending review"
-                                : "Apply for host approval"}
+                                ? "Early host request pending review"
+                                : "Request 2026 early host access"}
                         </strong>
                         <span>
                           {hostApplicationStatus === "approved"
@@ -930,8 +930,8 @@ const MarketingSite = () => {
                             : hostApplicationStatus === "rejected"
                               ? "This application is currently closed. Reach out if you need another review."
                               : hostApplicationStatus === "pending"
-                                ? "A super admin will review your request before host tools are enabled."
-                                : "Submit your application and a super admin can onboard your host account."}
+                                ? "A super admin will review your request before early partner invites and host tools are enabled."
+                                : "Join the queue now and we will invite early host partners in 2026."}
                         </span>
                       </div>
                       <div className="mk3-actions-inline">
@@ -941,7 +941,7 @@ const MarketingSite = () => {
                           onClick={() => applyForHostAccess("host_access_signed_in_apply")}
                           disabled={hostApplicationBusy || hostApplicationStatus === "pending"}
                         >
-                          {hostApplicationBusy ? "Applying..." : (hostApplicationStatus === "pending" ? "Application Submitted" : "Apply To Host")}
+                          {hostApplicationBusy ? "Saving..." : (hostApplicationStatus === "pending" ? "Request Submitted" : "Join Early Host Queue")}
                         </button>
                       </div>
                       {!!hostApplicationNotice && <div className="mk3-status">{hostApplicationNotice}</div>}

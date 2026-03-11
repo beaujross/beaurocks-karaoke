@@ -96,17 +96,17 @@ const buildRouteSeo = (route = {}) => {
   if (page === MARKETING_ROUTE_PAGES.hostAccess) {
     return {
       title: "Host Access | BeauRocks Karaoke",
-      description: "Log in with your BeauRocks account to open host dashboard access and launch room controls.",
+      description: "Approved hosts log in here to open Host Dashboard. New host partners can request early access for 2026 invite waves.",
       robots: "noindex,nofollow",
       structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Host Access" },
     };
   }
   if (page === MARKETING_ROUTE_PAGES.forHosts) {
     return {
-      title: "For Hosts | BeauRocks Karaoke",
-      description: "Run premium karaoke nights with synced host, TV, and audience surfaces that turn one-offs into signature events.",
+      title: "Early Host Access | BeauRocks Karaoke",
+      description: "Join the line for BeauRocks early host partner access. We are inviting a limited 2026 cohort of hosts and testers.",
       robots: "index,follow",
-      structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "For Hosts" },
+      structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Early Host Access" },
     };
   }
   if (page === MARKETING_ROUTE_PAGES.forVenues) {

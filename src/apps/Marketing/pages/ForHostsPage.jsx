@@ -6,47 +6,59 @@ import { MARKETING_ROUTE_PAGES } from "../routing";
 import { marketingFlags } from "../featureFlags";
 
 const HOST_STACK_BADGES = [
-  "Approval-based host onboarding",
-  "Host Dashboard owns room operations",
-  "One login, one control surface",
+  "Early host partner intake",
+  "Limited 2026 invite waves",
+  "Approved hosts unlock the real dashboard",
 ];
 
 const HOST_CORE_OUTCOMES = [
-  "Every host uses the same apply-and-approval flow, so access is clear instead of mysterious.",
-  "Room setup, room manager, and live controls all live in Host Dashboard now.",
-  "Marketing stays focused on the product story and house-party outcome instead of pretending to be a control panel.",
-  "Approved hosts land closer to the real show and farther from unnecessary detours.",
+  "New host access should feel earned, not like another open signup form.",
+  "We are inviting a small set of early host partners in 2026 instead of opening the floodgates all at once.",
+  "Approved partners go straight into the real Host Dashboard for room setup, launch, and nightly operations.",
+  "The queue helps us onboard the right hosts, markets, and event formats in deliberate waves.",
 ];
 
 const HOST_STORY_POINTS = [
-  "Apply once, then head into the real host app when you are approved.",
-  "Create rooms, reopen nights, launch TV and audience links, and run the show from the same place.",
-  "Cleanup, archive, and recap belong inside Host Dashboard too, not scattered across marketing pages.",
+  "Join the early-access line with your email so we know who to invite first.",
+  "We are prioritizing hosts who can run standout karaoke nights, fundraisers, venue programs, and repeatable community events.",
+  "When your invite wave opens in 2026, hosting happens in the real Host Dashboard instead of a marketing-side fake panel.",
 ];
 
 const HOST_SIGNAL_CARDS = [
   {
-    label: "Host Access",
-    title: "Approval-backed, not vague",
-    copy: "Future hosts go through one visible path instead of guessing which buttons unlock the real product.",
+    label: "Invite Model",
+    title: "Deliberately scarce",
+    copy: "We are onboarding a limited number of early host partners in 2026 so the product and partner support stay tight.",
   },
   {
-    label: "Room Control",
-    title: "Live deck first",
-    copy: "Open rooms, launch TV, share guest entry, and run the night from the dashboard that owns the room.",
+    label: "Operator Fit",
+    title: "Built for serious hosts",
+    copy: "The queue is for hosts who want to run real rooms, build repeat nights, and help shape the operator product.",
   },
   {
-    label: "Operations",
-    title: "Setup stays inside the host app",
-    copy: "Branding, defaults, and room operations stay with the operator surface instead of leaking into marketing.",
+    label: "Post-Invite",
+    title: "Real host tools only",
+    copy: "Approved partners unlock Host Dashboard for room manager, live deck launch, TV links, and nightly controls.",
   },
 ];
+
+const deriveWaitlistName = (email = "") => {
+  const local = String(email || "").split("@")[0] || "";
+  const normalized = local
+    .replace(/[._+-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+  return normalized || "Early Host Applicant";
+};
 
 const ForHostsPage = ({ route, session, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
   const autoLaunchIntentRef = useRef("");
-  const [applyBusy, setApplyBusy] = useState(false);
-  const [applyNotice, setApplyNotice] = useState("");
+  const intakeFormRef = useRef(null);
+  const [requestBusy, setRequestBusy] = useState(false);
+  const [requestNotice, setRequestNotice] = useState("");
+  const [requestEmail, setRequestEmail] = useState(() => String(session?.email || "").trim().toLowerCase());
   const hostApplicationStatus = String(session?.applicationStatus || "").trim().toLowerCase();
 
   const trackPersonaCta = (cta = "") => {
@@ -102,6 +114,15 @@ const ForHostsPage = ({ route, session, authFlow }) => {
     return inferSurfaceFromHostname(window.location.hostname, window.location);
   }, []);
 
+  useEffect(() => {
+    if (!session?.email) return;
+    setRequestEmail((current) => current || String(session.email || "").trim().toLowerCase());
+  }, [session?.email]);
+
+  const scrollToIntake = useCallback(() => {
+    intakeFormRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }, []);
+
   const openHostSetup = useCallback(() => {
     if (!canSubmit) {
       authFlow?.requireFullAuth?.({
@@ -126,36 +147,52 @@ const ForHostsPage = ({ route, session, authFlow }) => {
     window.location.href = nextHref;
   }, [authFlow, canSubmit, currentSurface, hostAccessResumeHref, hostSetupHref]);
 
-  const applyForHostAccess = useCallback(async () => {
+  const openHostLogin = useCallback(() => {
     if (!canSubmit) {
       authFlow?.requireFullAuth?.({
-        intent: "host_apply",
+        intent: "host_dashboard_resume",
         targetType: "session",
         returnRoute: {
           page: MARKETING_ROUTE_PAGES.hostAccess,
-          params: {},
+          params: {
+            intent: "host_dashboard_resume",
+            targetType: "session",
+          },
         },
         preferHostSurface: true,
       });
       return;
     }
-    setApplyBusy(true);
-    setApplyNotice("");
+    window.location.href = currentSurface === "host" ? hostSetupHref : hostAccessResumeHref;
+  }, [authFlow, canSubmit, currentSurface, hostAccessResumeHref, hostSetupHref]);
+
+  const requestEarlyHostAccess = useCallback(async (event) => {
+    event?.preventDefault?.();
+    const email = String(requestEmail || "").trim().toLowerCase();
+    if (!email) {
+      setRequestNotice("Enter your email to join the early host partner line.");
+      return;
+    }
+    setRequestBusy(true);
+    setRequestNotice("");
     try {
       const payload = await directoryActions.submitMarketingWaitlist({
-        name: session.email || session.uid || "BeauRocks Host Applicant",
-        email: session.email || "",
+        name: deriveWaitlistName(email),
+        email,
         useCase: "host_application",
-        source: "for_hosts_page",
+        source: "for_hosts_early_access_2026",
       });
-      setApplyNotice(String(payload?.message || "Application submitted. We will review your host request."));
-      trackEvent("mk_host_application_submitted", { source: "for_hosts_page" });
+      setRequestNotice(String(payload?.message || "You are in line. We will invite early host partners in 2026."));
+      trackEvent("mk_host_application_submitted", {
+        source: "for_hosts_early_access_2026",
+        authed: canSubmit ? 1 : 0,
+      });
     } catch (error) {
-      setApplyNotice(String(error?.message || "Could not submit host application right now."));
+      setRequestNotice(String(error?.message || "Could not submit your early host request right now."));
     } finally {
-      setApplyBusy(false);
+      setRequestBusy(false);
     }
-  }, [authFlow, canSubmit, session.email, session.uid]);
+  }, [canSubmit, requestEmail]);
 
   useEffect(() => {
     const intent = String(route?.params?.intent || "").trim().toLowerCase();
@@ -176,15 +213,15 @@ const ForHostsPage = ({ route, session, authFlow }) => {
       <article className="mk3-detail-card mk3-host-hero mk3-zone mk3-host-hero-rebuild mk3-host-canon-surface">
         <div className="mk3-host-hero-grid">
           <div className="mk3-host-hero-copy">
-            <div className="mk3-host-kicker mk3-host-canon-kicker">host entry simplified</div>
-            <h1 className="mk3-host-canon-title is-xl">Apply once. Get approved. Run the room from the real host app.</h1>
+            <div className="mk3-host-kicker mk3-host-canon-kicker">2026 early host partner intake</div>
+            <h1 className="mk3-host-canon-title is-xl">Request access now. We are inviting early host partners in 2026.</h1>
             <p className="mk3-host-canon-copy">
-              BeauRocks uses one host-access system now: every future host can apply, and approved hosts go
-              straight into Host Dashboard for create, resume, launch, and recap without a bunch of ceremonial clicking first.
+              This is not a mass-market host signup yet. We are building an invite-first line for early testers,
+              standout karaoke operators, and host partners we want to onboard in controlled 2026 waves.
             </p>
             <div className="mk3-status mk3-status-warning">
-              <strong>Account required to host</strong>
-              <span>Guests can join with a room code. Host setup and room controls stay account-backed, as they should.</span>
+              <strong>Exclusive by design</strong>
+              <span>Join the line now. We will review fit, market, and event style before sending early host invites in 2026.</span>
             </div>
             <div className="mk3-host-badge-row mk3-host-canon-chip-row">
               {HOST_STACK_BADGES.map((badge) => (
@@ -204,46 +241,101 @@ const ForHostsPage = ({ route, session, authFlow }) => {
                   {canSubmit ? "Open Host Dashboard" : "Host Log In"}
                 </button>
               ) : (
-                <div className="mk3-sub-list compact">
-                  <div className="mk3-status mk3-status-warning">
-                    <strong>
-                      {hostApplicationStatus === "rejected"
-                        ? "Application not approved"
-                        : hostApplicationStatus === "pending"
-                          ? "Application pending review"
-                          : "Apply for host approval"}
-                    </strong>
-                    <span>
-                      {hostApplicationStatus === "rejected"
-                        ? "This application is closed for now. Reach out if you want another pass."
-                        : hostApplicationStatus === "pending"
-                          ? "A super admin is reviewing your request now."
-                          : "Every future host goes through the same approval flow before Host Dashboard opens up."}
-                    </span>
-                  </div>
+                <>
                   <button
                     className="mk3-host-canon-button is-primary"
                     type="button"
                     onClick={() => {
-                      trackPersonaCta(canSubmit ? "hero_apply_to_host" : "hero_host_auth_gate");
-                      applyForHostAccess();
+                      trackPersonaCta("hero_scroll_early_access");
+                      scrollToIntake();
                     }}
-                    disabled={applyBusy || hostApplicationStatus === "pending"}
                   >
-                    {applyBusy ? "Applying..." : hostApplicationStatus === "pending" ? "Application Submitted" : (canSubmit ? "Apply To Host" : "Create Account To Apply")}
+                    Request Early Access
                   </button>
-                </div>
+                  <button
+                    className="mk3-host-canon-button"
+                    type="button"
+                    onClick={() => {
+                      trackPersonaCta(canSubmit ? "hero_host_login_existing" : "hero_host_login_gate");
+                      openHostLogin();
+                    }}
+                  >
+                    Already Approved? Host Login
+                  </button>
+                </>
               )}
             </div>
-            {!!applyNotice && <div className="mk3-status">{applyNotice}</div>}
+            {hostApplicationStatus === "pending" && (
+              <div className="mk3-status">
+                <strong>Your request is already in review.</strong>
+                <span>We will reach out when your 2026 invite wave opens or when we need more info.</span>
+              </div>
+            )}
           </div>
           <aside className="mk3-host-hero-visual">
+            <article ref={intakeFormRef} className="mk3-detail-card mk3-host-canon-surface is-muted">
+              <div className="mk3-host-kicker mk3-host-canon-kicker">Early access queue</div>
+              <h2 className="mk3-host-canon-title is-md">Get in line for the 2026 host cohort.</h2>
+              <p className="mk3-host-canon-copy is-muted">
+                Drop your email and we will use it to line up early testers and host partners for the first invite waves.
+              </p>
+              {session?.hasHostWorkspaceAccess ? (
+                <div className="mk3-status">
+                  <strong>You already have host access.</strong>
+                  <span>Use Host Dashboard for room creation, room manager, and live controls.</span>
+                </div>
+              ) : (
+                <form className="mk3-auth-state" onSubmit={requestEarlyHostAccess}>
+                  <label>
+                    Email address
+                    <input
+                      type="email"
+                      autoComplete="email"
+                      value={requestEmail}
+                      onChange={(event) => {
+                        setRequestEmail(event.target.value);
+                        if (requestNotice) setRequestNotice("");
+                      }}
+                      placeholder="host@example.com"
+                      required
+                    />
+                  </label>
+                  <div className="mk3-status mk3-status-warning">
+                    <strong>Invite-first rollout</strong>
+                    <span>Submitting here does not grant instant access. It puts you in the early host partner line for 2026 review waves.</span>
+                  </div>
+                  {!!session?.email && (
+                    <div className="mk3-auth-hint">Signed in as {session.email}. We will review this email for future host invites.</div>
+                  )}
+                  <button
+                    className="mk3-host-canon-button is-primary"
+                    type="submit"
+                    disabled={requestBusy}
+                  >
+                    {requestBusy ? "Saving spot..." : "Join The 2026 List"}
+                  </button>
+                  {!!requestNotice && <div className="mk3-status">{requestNotice}</div>}
+                  <div className="mk3-auth-support-row">
+                    <button
+                      className="mk3-auth-link"
+                      type="button"
+                      onClick={() => {
+                        trackPersonaCta(canSubmit ? "intake_host_login_existing" : "intake_host_login_gate");
+                        openHostLogin();
+                      }}
+                    >
+                      Already approved? Continue to host login
+                    </button>
+                  </div>
+                </form>
+              )}
+            </article>
             <article className="mk3-host-visual-stage">
               <img src="/images/marketing/BeauRocks-HostPanel.png" alt="BeauRocks Host Dashboard" loading="lazy" />
               <div className="mk3-host-visual-overlay">
-                <div className="mk3-persona-kicker">host dashboard</div>
-                <strong>One room. One operator surface.</strong>
-                <span>Create, resume, launch, and tune the room from the app that actually runs the show.</span>
+                <div className="mk3-persona-kicker">approved host surface</div>
+                <strong>When invited, you go straight to the real control room.</strong>
+                <span>Create, resume, launch, and run the night from Host Dashboard once your partner access is approved.</span>
               </div>
             </article>
             <div className="mk3-host-signal-grid">
@@ -261,10 +353,10 @@ const ForHostsPage = ({ route, session, authFlow }) => {
 
       <div className="mk3-two-col mk3-persona-late-grid">
         <section className="mk3-detail-card mk3-host-manager-card mk3-host-canon-surface is-muted">
-          <h2 className="mk3-host-canon-title is-md">Host the night from the app that actually runs the night</h2>
+          <h2 className="mk3-host-canon-title is-md">What early host partners are lining up for</h2>
           <p className="mk3-host-setup-subcopy">
-            Marketing should explain the value. The host app should handle the room.
-            BeauRocks is finally set up that way.
+            The waitlist is not for casual curiosity clicks. It is for hosts who want a cleaner operator stack,
+            tighter room control, and a sharper guest experience once invites open in 2026.
           </p>
           <div className="mk3-sub-list compact">
             {HOST_STORY_POINTS.map((note) => (
@@ -276,10 +368,10 @@ const ForHostsPage = ({ route, session, authFlow }) => {
         </section>
 
         <aside className="mk3-actions-card mk3-persona-checklist">
-          <h4>What Changed</h4>
+          <h4>How Invites Work</h4>
           <div className="mk3-status">
-            <strong>Fewer detours, clearer ownership</strong>
-            <span>Approved hosts get pushed toward the real host workflow instead of wandering through extra setup theater.</span>
+            <strong>Small cohort first</strong>
+            <span>We are inviting early host partners in controlled 2026 waves instead of opening host access all at once.</span>
           </div>
           <div className="mk3-persona-checklist-list">
             {HOST_CORE_OUTCOMES.map((item) => (

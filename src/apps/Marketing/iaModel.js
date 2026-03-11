@@ -178,7 +178,7 @@ export const MARKETING_NAV_CONFIG = Object.freeze({
     navItem(MARKETING_ROUTE_PAGES.admin, "Marketing Admin"),
   ]),
   ctas: Object.freeze({
-    startHosting: Object.freeze({ id: MARKETING_ROUTE_PAGES.forHosts, label: "Start Hosting" }),
+    startHosting: Object.freeze({ id: MARKETING_ROUTE_PAGES.forHosts, label: "Request Access" }),
     openHostDashboard: Object.freeze({ id: "host_dashboard", label: "Host Dashboard" }),
   }),
 });
