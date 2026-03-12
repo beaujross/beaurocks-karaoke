@@ -31,6 +31,7 @@ import {
 import {
   MARKETING_BRAND_BADGE_URL,
   formatDateTime,
+  getInitials,
 } from "./shared";
 
 const FINDER_BRAND = "Setlist";
@@ -1244,11 +1245,12 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     const selectedActionMeta = getListingActionMeta(selectedListingInMap);
     const selectedActionHref = selectedActionMeta.href;
     const selectedActionLabel = selectedActionMeta.label;
+    const selectedHeroImageUrl = String(selectedListingInMap.imageUrl || "").trim();
+    const hasSelectedHeroImage = !!selectedHeroImageUrl && !selectedHeroImageUrl.includes("venue-location-fallback.svg");
     const selectedAction = selectedActionHref
       ? `<a class="mk3-map-marker-selected-action" href="${escapeHtml(selectedActionHref)}">${escapeHtml(selectedActionLabel)}</a>`
       : "";
-    infoWindow.setContent(
-      `<div class="mk3-map-marker-selected">
+    const selectedContent = `
         <div class="mk3-map-marker-selected-kicker">Selected</div>
         ${elevatedBadge}
         <strong>${escapeHtml(selectedListingInMap.title)}</strong>
@@ -1256,7 +1258,18 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
         ${statsLine ? `<small>${escapeHtml(statsLine)}</small>` : ""}
         ${experienceLine ? `<small>${escapeHtml(experienceLine)}</small>` : ""}
         ${selectedAction}
-      </div>`
+    `;
+    infoWindow.setContent(
+      hasSelectedHeroImage
+        ? `<div class="mk3-map-marker-selected is-with-hero">
+            <div class="mk3-map-marker-selected-hero" style="background-image: url('${escapeHtml(selectedHeroImageUrl)}');"></div>
+            <div class="mk3-map-marker-selected-content">
+              ${selectedContent}
+            </div>
+          </div>`
+        : `<div class="mk3-map-marker-selected">
+            ${selectedContent}
+          </div>`
     );
     infoWindow.open({ map, anchor: markerEntry.marker });
   }, [mappableListings, effectiveSelectedKey, focusListing, officialMarkerPulsePhase, hasCloudStyledMapId]);
@@ -1884,6 +1897,19 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
           <div className="mk3-discover-official-grid">
             {officialUpcomingListings.map((entry) => (
               <article key={`official_feature_${entry.key}`} className="mk3-discover-official-card">
+                <div className="mk3-discover-official-card-media">
+                  <img
+                    src={entry.imageUrl}
+                    alt={`${entry.title} featured visual`}
+                    loading="lazy"
+                    onError={(event) => applyFallbackImage(event, entry.imageFallbackUrls)}
+                  />
+                  <div className="mk3-discover-official-card-avatar" aria-hidden="true">
+                    {entry.avatarUrl
+                      ? <img src={entry.avatarUrl} alt={`${entry.avatarLabel} avatar`} loading="lazy" />
+                      : <span>{getInitials(entry.avatarLabel || entry.hostName || entry.title)}</span>}
+                  </div>
+                </div>
                 <div className="mk3-discover-official-card-kicker">
                   <span>{entry.officialBeauRocksStatusLabel || "Official"}</span>
                   <span>{entry.typeLabel}</span>

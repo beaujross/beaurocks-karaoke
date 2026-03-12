@@ -852,6 +852,17 @@ async function run() {
     }],
 
     ["listDirectoryDiscover paginates and filters by search", async () => {
+      await db.doc("directory_profiles/discover_host_1").set({
+        displayName: "DJ Neon",
+        roles: ["host"],
+        profilePictureUrl: "https://cdn.example.com/discover-host.png",
+        photoUrl: "https://cdn.example.com/discover-host-photo.png",
+        heroImageUrl: "https://cdn.example.com/discover-host-hero.png",
+        imageUrls: [
+          "https://cdn.example.com/discover-host-hero.png",
+          "https://cdn.example.com/discover-host-gallery.png",
+        ],
+      });
       await db.doc("venues/discover_venue_1").set({
         title: "Neon Karaoke House",
         status: "approved",
@@ -867,6 +878,7 @@ async function run() {
         city: "Seattle",
         state: "WA",
         region: "wa_seattle",
+        hostUid: "discover_host_1",
         startsAtMs: Date.now() + 3600000,
       });
       await db.doc("room_sessions/discover_session_1").set({
@@ -876,6 +888,7 @@ async function run() {
         city: "Seattle",
         state: "WA",
         region: "wa_seattle",
+        hostUid: "discover_host_1",
         roomCode: "NEON1",
       });
       const first = await listDirectoryDiscover.run(
@@ -890,6 +903,22 @@ async function run() {
       assert.equal(first.items.length, 2);
       assert.equal(Number(first.total || 0) >= 3, true);
       assert.equal(!!String(first.nextCursor || "").trim(), true);
+      assert.equal(
+        first.items.some((item) => String(item.hostUid || "") === "discover_host_1" && String(item.avatarUrl || "").includes("discover-host.png")),
+        true
+      );
+      assert.equal(
+        first.items.some((item) =>
+          String(item.hostUid || "") === "discover_host_1"
+          && [
+            item.hostProfileImageUrl,
+            item.hostHeroImageUrl,
+            item.hostPhotoUrl,
+            ...(Array.isArray(item.hostImageUrls) ? item.hostImageUrls : []),
+          ].some((value) => String(value || "").includes("discover-host"))
+        ),
+        true
+      );
 
       const second = await listDirectoryDiscover.run(
         requestFor("", {

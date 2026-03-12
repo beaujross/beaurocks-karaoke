@@ -88,3 +88,84 @@ test("discoverListingViewModel.test builds venue listing fallback presentation",
   assert.equal(listing.venueAverageRating, 4.8);
   assert.equal(listing.venueReviewCount, 27);
 });
+
+test("discoverListingViewModel.test resolves profile-picture and beaurocks avatar fallbacks", () => {
+  const profilePictureListing = buildDiscoverListing({
+    id: "event-1",
+    title: "BeauRocks Friday",
+    listingType: "event",
+    hostName: "DJ BeauRocks",
+    profilePictureUrl: "http://cdn.example.com/host-avatar.png",
+  }, "event", {
+    allowGoogleImageApis: false,
+    resolvedLocationFields: {
+      city: "Seattle",
+      state: "WA",
+    },
+  });
+  assert.equal(profilePictureListing.avatarUrl, "https://cdn.example.com/host-avatar.png");
+
+  const officialFallbackListing = buildDiscoverListing({
+    id: "event-2",
+    title: "Official BeauRocks Night",
+    listingType: "event",
+    hostName: "DJ BeauRocks",
+    isOfficialBeauRocksListing: true,
+  }, "event", {
+    allowGoogleImageApis: false,
+    resolvedLocationFields: {
+      city: "Seattle",
+      state: "WA",
+    },
+  });
+  assert.equal(officialFallbackListing.avatarUrl, "/images/marketing/bross-host-beaurocks.png");
+});
+
+test("discoverListingViewModel.test uses host profile imagery before generic rail fallback", () => {
+  const listing = buildDiscoverListing({
+    id: "event-3",
+    title: "Host-driven event",
+    listingType: "event",
+    hostName: "DJ Neon",
+    hostProfileImageUrl: "http://cdn.example.com/host-profile-hero.png",
+    hostImageUrls: [
+      "http://cdn.example.com/host-gallery-1.png",
+      "https://cdn.example.com/host-gallery-2.png",
+    ],
+    hostAvatarUrl: "http://cdn.example.com/host-avatar.png",
+  }, "event", {
+    allowGoogleImageApis: false,
+    resolvedLocationFields: {
+      city: "Seattle",
+      state: "WA",
+    },
+  });
+
+  assert.equal(listing.imageUrl, "https://cdn.example.com/host-profile-hero.png");
+  assert.deepEqual(listing.imageFallbackUrls, [
+    "https://cdn.example.com/host-gallery-1.png",
+    "https://cdn.example.com/host-gallery-2.png",
+    "https://cdn.example.com/host-avatar.png",
+    "/images/marketing/venue-location-fallback.svg",
+  ]);
+  assert.equal(listing.avatarUrl, "https://cdn.example.com/host-avatar.png");
+});
+
+test("discoverListingViewModel.test uses curated AAHF artwork for matching discover listings", () => {
+  const listing = buildDiscoverListing({
+    id: "event-4",
+    title: "AAHF: Karaoke Kickoff",
+    listingType: "event",
+    hostName: "DJ BeauRocks",
+    venueName: "The Pavilion on Bainbridge",
+    address1: "403 Madison Ave N",
+  }, "event", {
+    allowGoogleImageApis: false,
+    resolvedLocationFields: {
+      city: "Bainbridge Island",
+      state: "WA",
+    },
+  });
+
+  assert.equal(listing.imageUrl, "/images/marketing/aahf-karaoke-kickoff-draft-clean.png");
+});

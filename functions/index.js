@@ -2300,6 +2300,12 @@ const OFFICIAL_BEAUROCKS_DISCOVER_REGISTRY = Object.freeze(
         heroImageUrl: normalizeDirectoryOptionalUrl(entry?.heroImageUrl || entry?.imageUrl || ""),
         coverImageUrl: normalizeDirectoryOptionalUrl(entry?.coverImageUrl || ""),
         bannerUrl: normalizeDirectoryOptionalUrl(entry?.bannerUrl || ""),
+        avatarUrl: normalizeDirectoryOptionalUrl(
+          entry?.avatarUrl
+          || entry?.profilePictureUrl
+          || entry?.hostAvatarUrl
+          || ""
+        ),
         imageUrls: normalizeDirectoryUrlArray([
           entry?.imageUrls,
           entry?.galleryUrls,
@@ -2489,11 +2495,75 @@ const fetchDirectoryDiscoverHostAccountMeta = async (db, hostUids = []) => {
     const tier = normalizeDirectoryToken(userData?.subscription?.tier || "", 40);
     const hasHostRole = roles.includes("host") || roles.includes("venue_owner") || roles.includes("directory_admin");
     const hasHostPlan = !!tier && DIRECTORY_DISCOVER_HOST_PLAN_TIERS.has(tier);
+    const profileImageUrls = normalizeDirectoryUrlArray([
+      profileData?.imageUrls,
+      profileData?.galleryUrls,
+      profileData?.photos,
+      profileData?.photoUrls,
+      profileData?.photoUrl,
+      profileData?.imageUrl,
+      profileData?.profileImageUrl,
+      profileData?.heroImageUrl,
+      profileData?.coverImageUrl,
+      profileData?.avatarUrl,
+      profileData?.profilePictureUrl,
+      userData?.profilePictureUrl,
+    ], 12);
+    const avatarUrl = normalizeDirectoryOptionalUrl(
+      profileData?.avatarUrl
+      || profileData?.profilePictureUrl
+      || profileData?.profileImageUrl
+      || profileData?.photoUrl
+      || profileData?.imageUrl
+      || userData?.profilePictureUrl
+      || ""
+    );
+    const photoUrl = normalizeDirectoryOptionalUrl(
+      profileData?.photoUrl
+      || profileData?.profileImageUrl
+      || profileData?.imageUrl
+      || profileData?.heroImageUrl
+      || profileImageUrls[0]
+      || avatarUrl
+      || ""
+    );
+    const heroImageUrl = normalizeDirectoryOptionalUrl(
+      profileData?.heroImageUrl
+      || profileData?.profileImageUrl
+      || profileData?.imageUrl
+      || profileData?.photoUrl
+      || profileImageUrls[0]
+      || photoUrl
+      || avatarUrl
+      || ""
+    );
+    const coverImageUrl = normalizeDirectoryOptionalUrl(
+      profileData?.coverImageUrl
+      || profileImageUrls[1]
+      || profileImageUrls[0]
+      || heroImageUrl
+      || photoUrl
+      || avatarUrl
+      || ""
+    );
+    const profileImageUrl = normalizeDirectoryOptionalUrl(
+      profileData?.profileImageUrl
+      || photoUrl
+      || heroImageUrl
+      || avatarUrl
+      || ""
+    );
     byHostUid.set(uid, {
       hasAccount: !!(profileSnaps[index]?.exists || userSnaps[index]?.exists),
       hasHostRole,
       hasHostPlan,
       tier,
+      avatarUrl,
+      photoUrl,
+      profileImageUrl,
+      heroImageUrl,
+      coverImageUrl,
+      imageUrls: profileImageUrls,
     });
   });
   return byHostUid;
@@ -10253,6 +10323,49 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     const isBeauRocksElevated = item.isOfficialBeauRocksListing === true;
     return {
       ...item,
+      avatarUrl: normalizeDirectoryOptionalUrl(
+        item.avatarUrl
+        || hostAccountMeta?.avatarUrl
+        || hostAccountMeta?.profileImageUrl
+        || ""
+      ),
+      hostAvatarUrl: normalizeDirectoryOptionalUrl(
+        item.hostAvatarUrl
+        || item.avatarUrl
+        || hostAccountMeta?.avatarUrl
+        || hostAccountMeta?.profileImageUrl
+        || ""
+      ),
+      hostPhotoUrl: normalizeDirectoryOptionalUrl(
+        item.hostPhotoUrl
+        || hostAccountMeta?.photoUrl
+        || hostAccountMeta?.profileImageUrl
+        || hostAccountMeta?.avatarUrl
+        || ""
+      ),
+      hostProfileImageUrl: normalizeDirectoryOptionalUrl(
+        item.hostProfileImageUrl
+        || hostAccountMeta?.profileImageUrl
+        || hostAccountMeta?.photoUrl
+        || hostAccountMeta?.heroImageUrl
+        || hostAccountMeta?.coverImageUrl
+        || ""
+      ),
+      hostHeroImageUrl: normalizeDirectoryOptionalUrl(
+        item.hostHeroImageUrl
+        || hostAccountMeta?.heroImageUrl
+        || hostAccountMeta?.profileImageUrl
+        || hostAccountMeta?.photoUrl
+        || ""
+      ),
+      hostImageUrls: normalizeDirectoryUrlArray([
+        item.hostImageUrls,
+        hostAccountMeta?.imageUrls,
+        hostAccountMeta?.photoUrl,
+        hostAccountMeta?.profileImageUrl,
+        hostAccountMeta?.heroImageUrl,
+        hostAccountMeta?.coverImageUrl,
+      ], 12),
       hasBeauRocksHostAccount,
       hasBeauRocksHostRole: !!hostAccountMeta?.hasHostRole,
       hasBeauRocksHostPlan: !!hostAccountMeta?.hasHostPlan,

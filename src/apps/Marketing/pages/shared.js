@@ -1,5 +1,6 @@
 export const MARKETING_BRAND_BADGE_URL = "/images/marketing/beaurocks-karaoke-logo 2.png";
 export const MARKETING_DJ_BEAUROCKS_AVATAR_URL = "/images/marketing/bross-host-beaurocks.png";
+export const MARKETING_AAHF_DISCOVER_FEATURE_URL = "/images/marketing/aahf-karaoke-kickoff-draft-clean.png";
 
 export const isBeauRocksPoweredListing = (entity = {}) => {
   const safe = entity && typeof entity === "object" ? entity : {};
@@ -108,6 +109,37 @@ const isPlaceholderMediaCandidate = (value = "") => {
   const token = String(value || "").trim().toLowerCase();
   if (!token) return false;
   return MARKETING_PLACEHOLDER_IMAGE_TOKENS.some((entry) => token.includes(entry));
+};
+
+const isBeauRocksIdentity = (entity = {}) => {
+  const safe = entity && typeof entity === "object" ? entity : {};
+  const text = [
+    safe.displayName,
+    safe.handle,
+    safe.hostName,
+    safe.title,
+  ]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean)
+    .join(" ");
+  return text.includes("beaurocks") || text.includes("dj beau");
+};
+
+const isAahfDiscoverListing = (entity = {}) => {
+  const safe = entity && typeof entity === "object" ? entity : {};
+  const text = [
+    safe.title,
+    safe.venueName,
+    safe.hostName,
+    safe.address1,
+    safe.city,
+    safe.state,
+    safe.description,
+  ]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean)
+    .join(" ");
+  return text.includes("aahf") || text.includes("asian arts heritage festival");
 };
 
 const normalizeLocation = (entity = {}) => {
@@ -219,6 +251,18 @@ export const resolveListingImageCandidates = (entity = {}, listingType = "defaul
   appendMediaCandidate(rawCandidates, safe.externalSources?.yelp?.photoUrl);
   appendMediaCandidate(rawCandidates, safe.externalSources?.yelp?.images);
   appendMediaCandidate(rawCandidates, safe.externalSources?.yelp?.photos);
+  if (isAahfDiscoverListing(safe)) {
+    appendMediaCandidate(rawCandidates, MARKETING_AAHF_DISCOVER_FEATURE_URL);
+  }
+  appendMediaCandidate(rawCandidates, safe.hostHeroImageUrl);
+  appendMediaCandidate(rawCandidates, safe.hostProfileImageUrl);
+  appendMediaCandidate(rawCandidates, safe.hostPhotoUrl);
+  appendMediaCandidate(rawCandidates, safe.hostImageUrls);
+  appendMediaCandidate(rawCandidates, safe.hostAvatarUrl);
+  appendMediaCandidate(rawCandidates, safe.avatarUrl);
+  appendMediaCandidate(rawCandidates, safe.profilePictureUrl);
+  appendMediaCandidate(rawCandidates, safe.profileImageUrl);
+  appendMediaCandidate(rawCandidates, safe.performerAvatarUrl);
 
   const primaryCandidates = rawCandidates.filter((url) => !isPlaceholderMediaCandidate(url));
   const placeholderCandidates = rawCandidates.filter((url) => isPlaceholderMediaCandidate(url));
@@ -239,10 +283,15 @@ export const resolveProfileAvatarUrl = (entity = {}) => {
   const safe = entity && typeof entity === "object" ? entity : {};
   const candidates = [
     safe.avatarUrl,
+    safe.profilePictureUrl,
     safe.profileImageUrl,
+    safe.hostAvatarUrl,
+    safe.hostProfileImageUrl,
+    safe.hostPhotoUrl,
+    safe.hostHeroImageUrl,
+    Array.isArray(safe.hostImageUrls) ? safe.hostImageUrls[0] : "",
     safe.photoUrl,
     safe.imageUrl,
-    safe.hostAvatarUrl,
     safe.performerAvatarUrl,
     safe.externalSources?.avatarUrl,
     safe.externalSources?.photoUrl,
@@ -250,8 +299,10 @@ export const resolveProfileAvatarUrl = (entity = {}) => {
   for (const entry of candidates) {
     const value = String(entry || "").trim();
     if (!value) continue;
-    if (/^https?:\/\//i.test(value) || value.startsWith("/")) return value;
+    if (value.startsWith("/")) return value;
+    if (/^https?:\/\//i.test(value)) return value.replace(/^http:\/\//i, "https://");
   }
+  if (isBeauRocksIdentity(safe)) return MARKETING_DJ_BEAUROCKS_AVATAR_URL;
   return "";
 };
 
