@@ -640,87 +640,192 @@ const DEMO_STORY_BEATS = Object.freeze([
   {
     id: "host",
     kicker: "Step 01",
-    title: "Start with the host panel.",
-    body: "The night begins with one control surface that searches, queues, and lines up the room before the TV ever lights up.",
+    title: "Start with a host deck that already feels live.",
+    body: "The demo should open on music intent, not setup friction. Search, queue, and room sharing need to read instantly so the host looks ready from the first second.",
     bullets: [
-      "Search songs and cue the first singer fast.",
-      "Keep the queue visible instead of ad-hoc.",
-      "Launch the room without extra setup friction."
+      "Show search and queue movement immediately.",
+      "Bring the room code and audience join path in right away.",
+      "Keep the host focused on the first singer, not room creation."
     ],
     flows: [
-      { lane: "Host -> Room", title: "One person sets the pace", detail: "The host decides what goes live first, so the room feels intentional immediately." },
-      { lane: "Host -> Queue", title: "The next move stays visible", detail: "Guests can see momentum building instead of waiting for a mystery handoff." }
-    ]
+      { lane: "Host -> Queue", title: "The opener gets lined up fast", detail: "The host searches, picks a song, and makes the first singer visible before the TV takes over." },
+      { lane: "Host -> Audience", title: "Phones get the room code immediately", detail: "Guests do not wait for a later reveal. They see the room, now playing, and request path from the start." }
+    ],
+    host: {
+      workspace: "Browse + queue",
+      title: "Search feeds a real queue, not a setup screen",
+      search: "sweet caroline karaoke",
+      queue: [
+        { title: "Sweet Caroline", meta: "Amy | Ready now" },
+        { title: "Mr. Brightside", meta: "Chris | Next up" },
+        { title: "Dancing Queen", meta: "Maya | In line" }
+      ],
+      footer: "The first singer is ready before the big screen takes the room."
+    },
+    tv: {
+      badge: "Room warming up",
+      headline: "The TV stays calm until the queue is ready",
+      lyrics: [
+        "Room code on screen first",
+        "Lyrics step up only when the room is ready to sing"
+      ],
+      note: "No visual storm. Just one clear invitation and one obvious next step.",
+      progressLabel: "Room ready",
+      progressValue: 28
+    },
+    phone: {
+      title: "Audience app shows up immediately",
+      subtitle: "Guests join early enough to matter: room code, now playing, and request lane are already visible.",
+      chips: ["Join room", "See queue", "Request song"],
+      request: "Phones are connected before the first chorus begins.",
+      metricLabel: "Connected guests",
+      metricValue: "12"
+    }
   },
   {
-    id: "launch",
+    id: "karaoke",
     kicker: "Step 02",
-    title: "Then the host launches the public TV.",
-    body: "As you move down the page, the host deck hands the spotlight to the big screen. That is the room handoff.",
+    title: "Then let karaoke own the page.",
+    body: "The public screen should become the star, but it needs to stay readable. Bigger lyrics, less clutter, and just enough movement to prove the room is alive.",
     bullets: [
-      "The TV becomes the shared focal point.",
-      "Lyrics and media take over the wall.",
-      "The host fades back into a steering role."
+      "Give the TV the most visual weight.",
+      "Keep the host visible but secondary.",
+      "Let phones react without hijacking the song."
     ],
     flows: [
-      { lane: "Host -> TV", title: "Launch the room", detail: "A host action changes what everyone sees together." },
-      { lane: "TV -> Room", title: "The room understands the prompt", detail: "Big-screen lyrics make the next move obvious without explanation." }
-    ]
-  },
-  {
-    id: "perform",
-    kicker: "Step 03",
-    title: "Karaoke lands on the big screen.",
-    body: "This is the singalong moment: clear lyrics, visible energy, and a room that feels more like an event than a playlist handoff.",
-    bullets: [
-      "Lyrics stay readable from across the room.",
-      "Media and prompts keep the room in sync.",
-      "The TV keeps everyone following the same beat."
+      { lane: "Host -> TV", title: "The host hands the room to karaoke", detail: "Once the opener is ready, the TV becomes the focal point and the host shifts into steering the next beat." },
+      { lane: "TV -> Audience", title: "The chorus teaches the room what to do", detail: "Readable lyrics and clear timing cues tell guests when to sing, clap, and lean in together." }
     ],
-    flows: [
-      { lane: "TV -> Audience", title: "The screen cues the room", detail: "People know when to sing, clap, or jump in because the shared prompt is obvious." },
-      { lane: "Audience -> TV", title: "Reaction energy feeds back", detail: "The shared screen reflects the room getting louder and more engaged." }
-    ]
+    host: {
+      workspace: "Live run",
+      title: "Host keeps the next singer ready without stealing focus",
+      search: "",
+      queue: [
+        { title: "Sweet Caroline", meta: "Now singing | Amy" },
+        { title: "Mr. Brightside", meta: "Queued next | Chris" },
+        { title: "Dancing Queen", meta: "Audience request | Maya" }
+      ],
+      footer: "The host is still active, but the room is watching the TV now."
+    },
+    tv: {
+      badge: "Karaoke live",
+      headline: "Big lyrics and timing carry the room",
+      lyrics: [
+        "Sweet Caroline",
+        "Good times never felt so good"
+      ],
+      note: "The TV feels energetic because the crowd is engaged, not because the screen is overloaded.",
+      progressLabel: "Room energy",
+      progressValue: 67
+    },
+    phone: {
+      title: "Phones stay light during the chorus",
+      subtitle: "Audience reactions stay available, but the song never loses its center of gravity on the big screen.",
+      chips: ["Clap", "Cheer", "Fire"],
+      request: "Phones support the moment without pulling eyes off the lyrics.",
+      metricLabel: "Room energy",
+      metricValue: "67%"
+    }
   },
   {
     id: "audience",
-    kicker: "Step 04",
-    title: "Audience phones push the moment higher.",
-    body: "Once phones join the room, voting, reactions, and mini-games stop being side features and start shaping what happens on the TV.",
+    kicker: "Step 03",
+    title: "Show the audience app actually feeding the host.",
+    body: "The value of the phone is not just reactions. It is the handoff: a guest submits a song, the host sees it fast, and the current karaoke moment keeps running cleanly.",
     bullets: [
-      "Vote from the phone without breaking the song.",
-      "See the score rise on the shared screen.",
-      "Keep the whole room participating, not just the singer."
+      "Bring the phone into the sequence earlier.",
+      "Make the request-to-host handoff explicit.",
+      "Keep the TV on the current singer while the next song lines up."
     ],
     flows: [
-      { lane: "Audience -> TV", title: "Phone input changes the room live", detail: "Votes and reactions show up on the public screen instead of disappearing into a private app." },
-      { lane: "TV -> Audience", title: "The TV rewards participation", detail: "The bigger screen makes every input feel public and worth doing." }
-    ]
+      { lane: "Audience -> Host", title: "A phone request lands in the queue fast", detail: "The guest submits a song, the host sees it, and the night keeps moving without a separate explanation." },
+      { lane: "Host -> TV", title: "The current song stays intact while the next one lines up", detail: "Audience input changes what happens next, not the lyric readability of the song already on stage." }
+    ],
+    host: {
+      workspace: "Queue intake",
+      title: "New audience requests show up right inside the host flow",
+      search: "",
+      queue: [
+        { title: "Sweet Caroline", meta: "Now singing | Amy" },
+        { title: "Shallow", meta: "Jamie | Requested from audience app" },
+        { title: "Mr. Brightside", meta: "Queued next | Chris" }
+      ],
+      incoming: {
+        label: "Fresh request received",
+        detail: "Jamie just sent “Shallow” from the audience app."
+      },
+      footer: "The host sees the request without leaving the live queue."
+    },
+    tv: {
+      badge: "Current singer live",
+      headline: "The TV keeps the chorus readable while the next request lands",
+      lyrics: [
+        "Hands touching hands",
+        "Reaching out, touching me, touching you"
+      ],
+      note: "The room stays in the song that is live now, even while the queue updates underneath it.",
+      progressLabel: "Queue response",
+      progressValue: 74
+    },
+    phone: {
+      title: "A guest submits the next song from the phone",
+      subtitle: "This is the audience moment to show first: request, confirm, and see it reach the host queue in seconds.",
+      chips: ["Request song", "Attach backing", "View queue"],
+      request: "Request sent: Shallow | Jamie",
+      metricLabel: "Host response",
+      metricValue: "Seen live"
+    }
   },
   {
-    id: "scale",
-    kicker: "Step 05",
-    title: "Then the ecosystem scales across the room.",
-    body: "One host, one room code, many guests, and multiple displays. The point is not more UI. The point is a karaoke night that grows without getting harder to run.",
+    id: "autodj",
+    kicker: "Step 04",
+    title: "Then show what Auto DJ actually fixes.",
+    body: "Skip the side-trip into extra modes here. The better comparison is practical: when Auto DJ is off the room sags, and when it is on the night keeps moving between singers.",
     bullets: [
-      "Multiple phones can join at once.",
-      "More than one display can echo the room state.",
-      "The whole setup still feels simple from the couch."
+      "Compare dead air against continuous momentum.",
+      "Keep the host in control of the room flow.",
+      "Let audience requests keep feeding the queue while Auto DJ bridges transitions."
     ],
     flows: [
-      { lane: "Host -> Screens", title: "One control deck fans out", detail: "The same host panel can drive the main TV and supporting displays." },
-      { lane: "Audience -> Screens", title: "Many guests feed one shared atmosphere", detail: "The room feels bigger as more people join the same live loop." }
-    ]
+      { lane: "Host -> Room", title: "Auto DJ fills the gap between singers", detail: "Instead of a reset between songs, the host can keep the room warm while the next singer gets ready." },
+      { lane: "Audience -> Queue", title: "Phones keep feeding the next handoff", detail: "Audience requests stay useful because Auto DJ buys the room time without losing momentum." }
+    ],
+    host: {
+      workspace: "Stage + Auto DJ",
+      title: "Host toggles Auto DJ to keep the room moving",
+      search: "",
+      queue: [
+        { title: "Sweet Caroline", meta: "Ending now" },
+        { title: "Shallow", meta: "Jamie | Up next" },
+        { title: "Auto DJ bridge", meta: "Warm transition | 18 sec" }
+      ],
+      footer: "Auto DJ reduces dead air, but the host still owns the room."
+    },
+    tv: {
+      badge: "Auto DJ live",
+      headline: "The public screen never drops into silence between singers",
+      lyrics: [
+        "Bridge music keeps the room warm",
+        "Next singer steps in without a hard stop"
+      ],
+      note: "This is the useful demo contrast: manual gap versus smooth continuity.",
+      progressLabel: "Transition gap",
+      progressValue: 88
+    },
+    phone: {
+      title: "Audience keeps submitting while Auto DJ carries transitions",
+      subtitle: "Phones keep the next queue items coming while Auto DJ prevents the room from falling flat.",
+      chips: ["Request next song", "Track queue", "Stay engaged"],
+      request: "Auto DJ bridge active | next singer loading",
+      metricLabel: "Transition gap",
+      metricValue: "Near zero"
+    },
+    autoDj: {
+      off: "Auto DJ off: the song ends, the room waits, and the host has to rebuild momentum.",
+      on: "Auto DJ on: bridge audio and queue logic carry the room until the next singer is ready."
+    }
   }
 ]);
-
-const DEMO_STORY_SCENE_BY_BEAT = Object.freeze({
-  host: "karaoke_kickoff",
-  launch: "karaoke_kickoff",
-  perform: "karaoke_singalong",
-  audience: "trivia_showdown",
-  scale: "finale_drop",
-});
 
 const DemoExperiencePage = ({ session = {} }) => {
   const isSessionReady = !!session?.ready;
@@ -732,8 +837,6 @@ const DemoExperiencePage = ({ session = {} }) => {
   const [roomCode, setRoomCode] = useState(() => getInitialDemoRoomCode());
   const [liveSync, setLiveSync] = useState(() => getInitialDemoViewMode() === DEMO_VIEW_MODES.autoplay);
   const [autoPauseCues, setAutoPauseCues] = useState(false);
-  const [audioBedEnabled, setAudioBedEnabled] = useState(false);
-  const [, setBeatPulseTick] = useState(0);
   const [surfaceReloadToken, setSurfaceReloadToken] = useState(0);
   const [syncState, setSyncState] = useState({ tone: "muted", message: "Scripted sync warming up." });
   const [activeStoryBeat, setActiveStoryBeat] = useState(0);
@@ -746,8 +849,6 @@ const DemoExperiencePage = ({ session = {} }) => {
   const demoShellRef = useRef(null);
   const autoRoomRetryRef = useRef(false);
   const cuePauseHistoryRef = useRef(new Set());
-  const beatTimerRef = useRef(null);
-  const audioContextRef = useRef(null);
   const previousTimelineMsRef = useRef(0);
   const storyStepRefs = useRef([]);
   const [iframeMountReady, setIframeMountReady] = useState(false);
@@ -972,52 +1073,6 @@ const DemoExperiencePage = ({ session = {} }) => {
     () => DEMO_STORY_BEATS[activeStoryBeat] || DEMO_STORY_BEATS[0],
     [activeStoryBeat]
   );
-  const storyScene = useMemo(() => {
-    const targetSceneId = DEMO_STORY_SCENE_BY_BEAT[storyBeat.id] || TIMELINE[0].id;
-    return TIMELINE.find((entry) => entry.id === targetSceneId) || TIMELINE[0];
-  }, [storyBeat.id]);
-  const storyHostParams = useMemo(() => {
-    const baseParams = getAutoplayHostSurfaceParams(storyScene);
-    const beatId = String(storyBeat.id || "").trim().toLowerCase();
-    if (beatId === "host") {
-      return {
-        ...baseParams,
-        tab: "browse",
-        catalogue: "1",
-      };
-    }
-    if (beatId === "audience") {
-      return {
-        ...buildDemoHostParams("games", { game: "trivia" }),
-        tab: "games",
-      };
-    }
-    return {
-      ...baseParams,
-      tab: baseParams?.tab || (baseParams?.section === "queue.catalog" ? "browse" : baseParams?.section === "games.live_controls" ? "games" : "stage"),
-    };
-  }, [storyBeat.id, storyScene]);
-  const storyLaunchLinks = useMemo(() => ({
-    audience: buildSceneSurfaceUrl("app", {
-      mobile_layout: "native",
-      mkDemoEmbed: "1",
-      demoScene: storyScene.id,
-    }),
-    tv: buildSceneSurfaceUrl("tv", {
-      mode: "tv",
-      mkDemoEmbed: "1",
-      demoScene: storyScene.id,
-    }),
-    host: buildSceneSurfaceUrl("host", {
-      ...storyHostParams,
-      demoScene: storyScene.id,
-    }),
-  }), [buildSceneSurfaceUrl, storyHostParams, storyScene.id]);
-  const storyPerformanceScore = 72 + (activeStoryBeat * 9);
-  const storyVoteScore = 38 + (activeStoryBeat * 14);
-  const storyScaleCount = activeStoryBeat >= 4 ? 4 : activeStoryBeat >= 3 ? 2 : 1;
-  const storyLyricLead = storyScene?.lyrics?.[0] || activeScene?.lyrics?.[0] || "Hands up high now, the whole room sways in time";
-  const storyLyricNext = storyScene?.lyrics?.[1] || activeScene?.lyrics?.[1] || "Voices rising, every table joins the line";
 
   useEffect(() => {
     try {
@@ -1042,6 +1097,19 @@ const DemoExperiencePage = ({ session = {} }) => {
       setSyncState({ tone: "muted", message: "Live Lab uses the native surfaces. Sign in to enable scripted sync controls." });
     }
   }, [canRunLiveSync, isAutoplayShowcase, liveSync]);
+
+  useEffect(() => {
+    if (!isAutoplayShowcase) return;
+    setSyncState((prev) => {
+      if (prev.message === "Focused story mode active. Open Live Lab to inspect the real room surfaces.") {
+        return prev;
+      }
+      return {
+        tone: "muted",
+        message: "Focused story mode active. Open Live Lab to inspect the real room surfaces."
+      };
+    });
+  }, [isAutoplayShowcase]);
 
   useEffect(() => {
     autoRoomRetryRef.current = false;
@@ -1241,62 +1309,6 @@ const DemoExperiencePage = ({ session = {} }) => {
     sendDirectorAction
   ]);
 
-  const triggerBeatPulse = useCallback(() => {
-    if (typeof window === "undefined") return;
-    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextCtor) return;
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContextCtor();
-    }
-    const context = audioContextRef.current;
-    if (!context) return;
-    if (context.state === "suspended") {
-      context.resume().catch(() => {});
-    }
-    const now = context.currentTime;
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    const mode = String(activeScene?.mode || "karaoke").toLowerCase();
-    oscillator.type = mode === "trivia" || mode === "wyr" ? "triangle" : "sine";
-    oscillator.frequency.setValueAtTime(mode === "guitar" ? 164 : mode === "vocal" ? 174 : mode === "wyr" ? 196 : 146, now);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(mode === "finale" ? 0.026 : 0.018, now + 0.03);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start(now);
-    oscillator.stop(now + 0.3);
-  }, [activeScene]);
-
-  useEffect(() => {
-    if (beatTimerRef.current) {
-      clearInterval(beatTimerRef.current);
-      beatTimerRef.current = null;
-    }
-    if (!audioBedEnabled) return () => {};
-    const mode = String(activeScene?.mode || "karaoke").toLowerCase();
-    const bpm = mode === "trivia" ? 108 : mode === "wyr" ? 112 : mode === "guitar" ? 132 : mode === "vocal" ? 122 : mode === "finale" ? 136 : 118;
-    const intervalMs = Math.max(260, Math.round(60000 / bpm));
-    const tick = () => {
-      setBeatPulseTick((prev) => prev + 1);
-      triggerBeatPulse();
-    };
-    tick();
-    beatTimerRef.current = setInterval(tick, intervalMs);
-    return () => {
-      if (beatTimerRef.current) clearInterval(beatTimerRef.current);
-      beatTimerRef.current = null;
-    };
-  }, [audioBedEnabled, activeScene, triggerBeatPulse]);
-
-  useEffect(() => () => {
-    if (beatTimerRef.current) clearInterval(beatTimerRef.current);
-    beatTimerRef.current = null;
-    if (audioContextRef.current && typeof audioContextRef.current.close === "function") {
-      audioContextRef.current.close().catch(() => {});
-    }
-  }, []);
-
   const jumpToScene = (sceneId = "") => {
     const target = TIMELINE.find((entry) => entry.id === sceneId);
     if (!target) return;
@@ -1316,9 +1328,9 @@ const DemoExperiencePage = ({ session = {} }) => {
       <article className="mk3-demo-story">
         <div className="mk3-demo-story-intro">
           <div className="mk3-chip">scroll story</div>
-          <h2>Watch one karaoke night come to life.</h2>
+          <h2>Watch one karaoke night move from host to TV to phone.</h2>
           <p>
-            Start with the host deck, hand the room to the TV, pull phones into the moment, then show how the whole system scales without turning into work.
+            This version stays focused on the core night: host setup, readable karaoke on the public screen, audience submission to the queue, and the difference Auto DJ makes between singers.
           </p>
         </div>
         <div className="mk3-demo-story-grid">
@@ -1347,81 +1359,101 @@ const DemoExperiencePage = ({ session = {} }) => {
             <div className={`mk3-demo-story-stage-frame is-${storyBeat.id}`}>
               <div className="mk3-demo-story-glow mk3-demo-story-glow-one" />
               <div className="mk3-demo-story-glow mk3-demo-story-glow-two" />
+              <div className="mk3-demo-story-stage-header">
+                <div>
+                  <span>Focused Demo</span>
+                  <strong>{storyBeat.title}</strong>
+                </div>
+                <div className="mk3-demo-story-stage-meta">
+                  <span>{sanitizedRoomCode}</span>
+                  <strong>{storyBeat.host.workspace}</strong>
+                </div>
+              </div>
 
               <article className="mk3-demo-story-screen mk3-demo-story-screen-host">
                 <span>Host Panel</span>
-                <strong>{storyBeat.id === "host" ? "Catalog and queue live" : activeHostAction?.label || "Queue the room"}</strong>
-                <div className="mk3-demo-story-embed mk3-demo-story-embed-host">
-                  <iframe
-                    title="Demo story host surface"
-                    src={iframeMountReady ? storyLaunchLinks.host : "about:blank"}
-                    className="mk3-demo-iframe mk3-demo-story-iframe"
-                    loading={isAutoplayShowcase ? "eager" : "lazy"}
-                    allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
-                  />
-                </div>
-                <div className="mk3-demo-story-host-stats-strip">
-                  <div>
-                    <span>Room</span>
-                    <strong>{sanitizedRoomCode}</strong>
+                <strong>{storyBeat.host.title}</strong>
+                {!!storyBeat.host.search && (
+                  <div className="mk3-demo-story-host-search">
+                    <span>Search</span>
+                    <strong>{storyBeat.host.search}</strong>
                   </div>
-                  <div>
-                    <span>Workspace</span>
-                    <strong>{getDemoHostWorkspaceLabel(storyHostParams)}</strong>
+                )}
+                <div className="mk3-demo-story-host-queue">
+                  <span>Live queue</span>
+                  <div className="mk3-demo-story-host-queue-list">
+                    {storyBeat.host.queue.map((entry) => (
+                      <article key={`${storyBeat.id}_${entry.title}`}>
+                        <strong>{entry.title}</strong>
+                        <span>{entry.meta}</span>
+                      </article>
+                    ))}
                   </div>
                 </div>
+                {storyBeat.host.incoming && (
+                  <div className="mk3-demo-story-host-incoming">
+                    <span>{storyBeat.host.incoming.label}</span>
+                    <strong>{storyBeat.host.incoming.detail}</strong>
+                  </div>
+                )}
+                <p className="mk3-demo-story-surface-note">{storyBeat.host.footer}</p>
               </article>
 
               <article className="mk3-demo-story-screen mk3-demo-story-screen-tv">
-                <span>Public TV</span>
-                <strong>{storyScene.songTitle || "Big singalong moment"}</strong>
-                <div className="mk3-demo-story-embed mk3-demo-story-embed-tv">
-                  <iframe
-                    title="Demo story public TV surface"
-                    src={iframeMountReady ? storyLaunchLinks.tv : "about:blank"}
-                    className="mk3-demo-iframe mk3-demo-story-iframe"
-                    loading={isAutoplayShowcase ? "eager" : "lazy"}
-                    allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
-                  />
+                <div className="mk3-demo-story-tv-stage">
+                  <div className="mk3-demo-story-tv-badge">
+                    <span>Public TV</span>
+                    <strong>{storyBeat.tv.badge}</strong>
+                  </div>
+                  <div className="mk3-demo-story-tv-headline">
+                    <strong>{storyBeat.tv.headline}</strong>
+                  </div>
+                  <div className="mk3-demo-story-tv-lyrics">
+                    {storyBeat.tv.lyrics.map((line, index) => (
+                      <p key={`${storyBeat.id}_tv_${index}`}>{line}</p>
+                    ))}
+                  </div>
+                  <div className="mk3-demo-story-tv-meter">
+                    <span>{storyBeat.tv.progressLabel}</span>
+                    <i style={{ width: `${Math.min(100, Number(storyBeat.tv.progressValue || 0))}%` }} />
+                  </div>
                 </div>
-                <div className="mk3-demo-story-tv-lyrics">
-                  <p>{storyLyricLead}</p>
-                  <small>{storyLyricNext}</small>
-                </div>
-                <div className="mk3-demo-story-tv-meter">
-                  <span>Room energy</span>
-                  <i style={{ width: `${Math.min(100, storyPerformanceScore)}%` }} />
-                </div>
+                <p className="mk3-demo-story-surface-note">{storyBeat.tv.note}</p>
               </article>
 
               <article className="mk3-demo-story-screen mk3-demo-story-screen-phone">
                 <span>Audience App</span>
-                <strong>{activeStoryBeat >= 3 ? "Vote and react live" : audienceStateLabel}</strong>
-                <div className="mk3-demo-story-embed mk3-demo-story-embed-phone">
-                  <iframe
-                    title="Demo story audience surface"
-                    src={iframeMountReady ? storyLaunchLinks.audience : "about:blank"}
-                    className="mk3-demo-iframe mk3-demo-story-iframe"
-                    loading={isAutoplayShowcase ? "eager" : "lazy"}
-                    allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
-                  />
-                </div>
+                <strong>{storyBeat.phone.title}</strong>
+                <p className="mk3-demo-story-phone-copy">{storyBeat.phone.subtitle}</p>
                 <div className="mk3-demo-story-phone-votes" aria-hidden="true">
-                  <button type="button" tabIndex={-1}>Fire</button>
-                  <button type="button" tabIndex={-1}>Clap</button>
-                  <button type="button" tabIndex={-1}>Vote</button>
+                  {storyBeat.phone.chips.map((chip) => (
+                    <button key={`${storyBeat.id}_${chip}`} type="button" tabIndex={-1}>{chip}</button>
+                  ))}
+                </div>
+                <div className="mk3-demo-story-phone-request">
+                  <span>Phone state</span>
+                  <strong>{storyBeat.phone.request}</strong>
                 </div>
                 <div className="mk3-demo-story-phone-score">
-                  <span>TV score</span>
-                  <strong>+{storyVoteScore}</strong>
+                  <span>{storyBeat.phone.metricLabel}</span>
+                  <strong>{storyBeat.phone.metricValue}</strong>
                 </div>
               </article>
 
-              <div className="mk3-demo-story-scale-clones" aria-hidden="true">
-                {Array.from({ length: storyScaleCount }).map((_, index) => (
-                  <div key={`clone_${index}`} className={`mk3-demo-story-clone clone-${index + 1}`} />
-                ))}
-              </div>
+              {storyBeat.autoDj && (
+                <div className="mk3-demo-story-autodj-compare" aria-hidden="true">
+                  <article>
+                    <span>Auto DJ Off</span>
+                    <strong>Manual gap</strong>
+                    <p>{storyBeat.autoDj.off}</p>
+                  </article>
+                  <article className="is-on">
+                    <span>Auto DJ On</span>
+                    <strong>Continuous momentum</strong>
+                    <p>{storyBeat.autoDj.on}</p>
+                  </article>
+                </div>
+              )}
             </div>
 
             <div className="mk3-demo-story-flow-grid">
@@ -1437,6 +1469,7 @@ const DemoExperiencePage = ({ session = {} }) => {
         </div>
       </article>
 
+      {!isAutoplayShowcase && (
       <article className="mk3-demo-overview">
         <div className="mk3-chip">demo brief</div>
         <h2>See one room move across TV, phone, and host.</h2>
@@ -1466,12 +1499,15 @@ const DemoExperiencePage = ({ session = {} }) => {
           <p>The live timeline below shows which surface is driving the room and where the response lands next.</p>
         </div>
       </article>
+      )}
 
       <article className="mk3-demo-controls">
         <header>
           <h3>Demo Controls</h3>
           <p>
-            Guided Demo runs the sequence for you. Live Lab keeps the same real surfaces but lets you poke around more directly.
+            {isAutoplayShowcase
+              ? "Guided Demo is now a focused scroll story. Switch to Live Lab when you want the full embedded surfaces and timeline controls."
+              : "Live Lab keeps the same real surfaces but lets you poke around directly with the timeline and room controls."}
           </p>
         </header>
         <div className="mk3-demo-toolbar">
@@ -1498,32 +1534,38 @@ const DemoExperiencePage = ({ session = {} }) => {
               setDemoViewMode(DEMO_VIEW_MODES.autoplay);
               setLiveSync(true);
               setPlaying(true);
-              setSyncState({ tone: "muted", message: "Guided sequence is driving the real room surfaces." });
+              setSyncState({ tone: "muted", message: "Focused story mode active. Open Live Lab to inspect the real room surfaces." });
               trackEvent("mk_demo_view_mode", { mode: DEMO_VIEW_MODES.autoplay });
             }}
           >
             Guided Demo (Recommended)
           </button>
-          <button type="button" onClick={onTogglePlayback}>
-            {playing ? "Pause Demo" : "Play Demo"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTimelineMs(0);
-              setPlaying(true);
-              cuePauseHistoryRef.current = new Set();
-              if (liveSync) sendDirectorAction("seek", { timelineMs: 0, sceneId: TIMELINE[0].id });
-            }}
-          >
-            Restart
-          </button>
-          <button
-            type="button"
-            onClick={() => setLoopPlayback((prev) => !prev)}
-          >
-            Loop: {loopPlayback ? "On" : "Off"}
-          </button>
+          {!isAutoplayShowcase && (
+            <button type="button" onClick={onTogglePlayback}>
+              {playing ? "Pause Demo" : "Play Demo"}
+            </button>
+          )}
+          {!isAutoplayShowcase && (
+            <button
+              type="button"
+              onClick={() => {
+                setTimelineMs(0);
+                setPlaying(true);
+                cuePauseHistoryRef.current = new Set();
+                if (liveSync) sendDirectorAction("seek", { timelineMs: 0, sceneId: TIMELINE[0].id });
+              }}
+            >
+              Restart
+            </button>
+          )}
+          {!isAutoplayShowcase && (
+            <button
+              type="button"
+              onClick={() => setLoopPlayback((prev) => !prev)}
+            >
+              Loop: {loopPlayback ? "On" : "Off"}
+            </button>
+          )}
           {!isAutoplayShowcase && (
             <button
               type="button"
@@ -1552,16 +1594,6 @@ const DemoExperiencePage = ({ session = {} }) => {
               Cue Pause: {autoPauseCues ? "On" : "Off"}
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              const next = !audioBedEnabled;
-              setAudioBedEnabled(next);
-              trackEvent("mk_demo_audio_bed_toggle", { enabled: next ? 1 : 0 });
-            }}
-          >
-            Subtle Pulse: {audioBedEnabled ? "On" : "Off"}
-          </button>
           {!isAutoplayShowcase && (
             <button
               type="button"
@@ -1574,6 +1606,7 @@ const DemoExperiencePage = ({ session = {} }) => {
             </button>
           )}
         </div>
+        {!isAutoplayShowcase && (
         <div className="mk3-demo-progress">
           <strong>{formatClock(timelineMs)}</strong>
           <input
@@ -1592,6 +1625,8 @@ const DemoExperiencePage = ({ session = {} }) => {
           />
           <span>{formatClock(DEMO_TOTAL_MS)}</span>
         </div>
+        )}
+        {!isAutoplayShowcase && (
         <div className="mk3-demo-scene-nav">
           {TIMELINE.map((scene) => (
             <button
@@ -1604,8 +1639,10 @@ const DemoExperiencePage = ({ session = {} }) => {
             </button>
           ))}
         </div>
+        )}
       </article>
 
+      {!isAutoplayShowcase && (
       <article className="mk3-demo-director">
         <div className="mk3-demo-director-head">
           <div>
@@ -1663,6 +1700,7 @@ const DemoExperiencePage = ({ session = {} }) => {
           ))}
         </div>
       </article>
+      )}
 
       {!isAutoplayShowcase && (
         <div ref={demoShellRef} className="mk3-demo-shell">
@@ -1785,10 +1823,10 @@ const DemoExperiencePage = ({ session = {} }) => {
       )}
 
       <article className="mk3-demo-launch">
-        <h3>{isAutoplayShowcase ? "Guided Demo Is Running" : "Launch Real Surfaces From This Room Code"}</h3>
+        <h3>{isAutoplayShowcase ? "Open The Real Surfaces Behind This Story" : "Launch Real Surfaces From This Room Code"}</h3>
         <p>
           {isAutoplayShowcase
-            ? "This mode runs the actual BeauRocks surfaces in a compact storyboard shell while the script drives search, queue, media, and mode changes."
+            ? "The scroll story is the focused pitch. These links still open the real BeauRocks host, TV, and audience surfaces if you want to inspect the live product underneath it."
             : "Live Interactive Lab embeds the native room surfaces so you can inspect the actual product behavior and controls for this demo room."}
         </p>
         <div className={`mk3-inline-status ${syncState.tone === "error" ? "mk3-status-error" : syncState.tone === "ok" ? "mk3-inline-next" : ""}`}>

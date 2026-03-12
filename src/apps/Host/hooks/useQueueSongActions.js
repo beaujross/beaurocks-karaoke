@@ -22,6 +22,7 @@ import {
     extractYouTubeId
 } from '../../../lib/songCatalog';
 import { normalizeBackingChoice } from '../../../lib/playbackSource';
+import { getTrackDurationSecFromSearchResult } from '../hostPlaybackAutomation';
 
 const YOUTUBE_PLAYLIST_QUEUE_MAX = 1000;
 let catalogPermissionSkipLogged = false;
@@ -573,7 +574,7 @@ const useQueueSongActions = ({
         const explicitAppleId = isApple ? String(r.trackId || '') : '';
         const preferAppleDefault = isApple && !!explicitAppleId;
         const itunesArt = (r.artworkUrl100 || '').replace('100x100', '600x600');
-        const selectedDuration = manual.duration || 180;
+        const selectedDuration = getTrackDurationSecFromSearchResult(r, manual.duration || 180);
         const trackSource = preferAppleDefault
             ? 'apple'
             : (r.source === 'youtube' ? 'youtube' : r.source === 'local' ? 'custom' : (isApple ? 'apple' : ''));

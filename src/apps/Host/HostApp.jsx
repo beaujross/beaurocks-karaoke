@@ -132,6 +132,10 @@ import {
     describeAutoDjSequenceState
 } from './autoDjStateMachine';
 import { normalizeHostPermissionLevel, canQuickStartForRole } from './launchAccess';
+import {
+    getAutoEndSchedule,
+    getTrackDurationSecFromSearchResult
+} from './hostPlaybackAutomation';
 
 // --- CONSTANTS & CONFIG ---
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || '';
@@ -3424,13 +3428,14 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             return;
         }
         const audioOnly = r.mediaType === 'audio' || isAudioUrl(r.url);
+        const selectedDuration = getTrackDurationSecFromSearchResult(r, manual.duration || 180);
         if (r.source === 'local') {
-            setManual({ ...manual, song: r.trackName, artist: r.artistName, url: r.url, art: '', audioOnly, appleMusicId: '', duration: manual.duration || 180 });
+            setManual({ ...manual, song: r.trackName, artist: r.artistName, url: r.url, art: '', audioOnly, appleMusicId: '', duration: selectedDuration });
         } else if (r.source === 'youtube') {
-            setManual({ ...manual, song: r.trackName, artist: r.artistName, url: r.url, art: r.artworkUrl100, audioOnly: false, appleMusicId: '', duration: manual.duration || 180 });
+            setManual({ ...manual, song: r.trackName, artist: r.artistName, url: r.url, art: r.artworkUrl100, audioOnly: false, appleMusicId: '', duration: selectedDuration });
         } else {
             const appleId = r.trackId ? String(r.trackId) : '';
-            setManual({ ...manual, song: r.trackName, artist: r.artistName, url: '', art: r.artworkUrl100.replace('100x100','600x600'), audioOnly: true, appleMusicId: appleId, duration: manual.duration || 180 });
+            setManual({ ...manual, song: r.trackName, artist: r.artistName, url: '', art: r.artworkUrl100.replace('100x100','600x600'), audioOnly: true, appleMusicId: appleId, duration: selectedDuration });
         }
 
         if (r.source === 'local' && r.url) {
@@ -3675,7 +3680,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             const useAppleBacking = effectiveBacking.usesAppleBacking;
             const autoStartMedia = !!(room?.autoPlayMedia !== false) && !!(songMediaUrl || useAppleBacking);
             if (useAppleBacking && autoStartMedia) {
-                await playAppleMusicTrack(s.appleMusicId, { title: s.songTitle, artist: s.artist });
+                await playAppleMusicTrack(s.appleMusicId, { title: s.songTitle, artist: s.artist, duration: s.duration });
                 await updateRoom({
                     activeMode: 'karaoke',
                     'announcement.active': false,
@@ -3961,31 +3966,38 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     }, [autoDj, clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
 
     useEffect(() => {
-        if (!autoDj) return;
-        if (room?.autoEndOnTrackFinish === false) return;
-        if (!current?.id) return;
-        if (autoDjApplausePendingSongRef.current) return;
-        if (String(room?.activeMode || '').trim().toLowerCase() !== 'karaoke') return;
-        const appleStatus = String(room?.appleMusicPlayback?.status || '').trim().toLowerCase();
-        const applePlaying = !!current?.appleMusicId && appleStatus === 'playing';
-        const mediaRunning = applePlaying || !!room?.videoPlaying;
-        if (!mediaRunning) return;
-        const startedAt = applePlaying
-            ? Number(room?.appleMusicPlayback?.startedAt || 0)
-            : Number(room?.videoStartTimestamp || 0);
-        const durationSec = Number(current?.duration || 0);
-        if (!Number.isFinite(startedAt) || startedAt <= 0) return;
-        if (!Number.isFinite(durationSec) || durationSec < 20) return;
-        const elapsedSec = (nowMs() - startedAt) / 1000;
-        if (elapsedSec < durationSec + 1.5) return;
-        const autoEndKey = `${current.id}:${startedAt}`;
-        if (autoDjAutoEndKeyRef.current === autoEndKey) return;
-        autoDjAutoEndKeyRef.current = autoEndKey;
-        handleEndPerformance(current.id).catch((error) => {
-            hostLogger.warn('Auto-DJ timed end-performance trigger failed', error);
+        const schedule = getAutoEndSchedule({
+            autoEndEnabled: room?.autoEndOnTrackFinish !== false,
+            currentId: current?.id,
+            applausePendingSongId: autoDjApplausePendingSongRef.current,
+            activeMode: room?.activeMode,
+            appleMusicId: current?.appleMusicId,
+            appleStatus: room?.appleMusicPlayback?.status,
+            appleStartedAt: room?.appleMusicPlayback?.startedAt,
+            appleDurationSec: room?.appleMusicPlayback?.durationSec,
+            videoPlaying: room?.videoPlaying,
+            videoStartTimestamp: room?.videoStartTimestamp,
+            currentDurationSec: current?.duration,
+            now: nowMs()
         });
+        if (!schedule) return;
+
+        const triggerAutoEnd = () => {
+            if (autoDjAutoEndKeyRef.current === schedule.autoEndKey) return;
+            autoDjAutoEndKeyRef.current = schedule.autoEndKey;
+            handleEndPerformance(String(current?.id || '')).catch((error) => {
+                hostLogger.warn('Timed end-performance trigger failed', error);
+            });
+        };
+
+        if (schedule.delayMs <= 0) {
+            triggerAutoEnd();
+            return;
+        }
+
+        const timer = setTimeout(triggerAutoEnd, schedule.delayMs);
+        return () => clearTimeout(timer);
     }, [
-        autoDj,
         current?.id,
         current?.appleMusicId,
         current?.duration,
@@ -3993,6 +4005,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         room?.autoEndOnTrackFinish,
         room?.appleMusicPlayback?.status,
         room?.appleMusicPlayback?.startedAt,
+        room?.appleMusicPlayback?.durationSec,
         room?.videoPlaying,
         room?.videoStartTimestamp,
         handleEndPerformance
@@ -4027,7 +4040,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             } else if (appleStatus === 'paused') {
                 await resumeAppleMusic();
             } else {
-                await playAppleMusicTrack(current.appleMusicId, { title: current.songTitle, artist: current.artist });
+                await playAppleMusicTrack(current.appleMusicId, { title: current.songTitle, artist: current.artist, duration: current.duration });
             }
             await updateRoom({ mediaUrl: '', videoPlaying: false, videoStartTimestamp: null, pausedAt: null });
             return;
@@ -4770,6 +4783,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await instance.setQueue({ song: String(trackId) });
         await instance.play();
         setAppleMusicPlaying(true);
+        const nowPlayingDurationMs = Number(
+            instance?.nowPlayingItem?.attributes?.durationInMillis
+            || instance?.nowPlayingItem?.durationInMillis
+            || 0
+        );
+        const resolvedDurationSec = Number.isFinite(nowPlayingDurationMs) && nowPlayingDurationMs > 0
+            ? Math.max(1, Math.round(nowPlayingDurationMs / 1000))
+            : getTrackDurationSecFromSearchResult({}, meta.duration || 0);
         if (roomCode) {
             await updateRoom({
                 appleMusicPlayback: {
@@ -4778,7 +4799,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     title: meta.title || '',
                     artist: meta.artist || '',
                     startedAt: nowMs(),
-                    status: 'playing'
+                    status: 'playing',
+                    durationSec: resolvedDurationSec || null
                 }
             });
         }
@@ -4806,11 +4828,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await instance.play();
         setAppleMusicPlaying(true);
         if (roomCode) {
+            const now = nowMs();
+            const previousPlayback = room?.appleMusicPlayback || {};
+            const previousStartedAt = Number(previousPlayback?.startedAt || 0);
+            const pausedAt = Number(previousPlayback?.pausedAt || 0);
+            const adjustedStartedAt = previousStartedAt > 0 && pausedAt > 0
+                ? previousStartedAt + Math.max(0, now - pausedAt)
+                : (previousStartedAt || now);
             await updateRoom({
                 appleMusicPlayback: {
-                    ...(room?.appleMusicPlayback || {}),
+                    ...previousPlayback,
                     status: 'playing',
-                    resumedAt: nowMs()
+                    startedAt: adjustedStartedAt,
+                    resumedAt: now,
+                    pausedAt: null
                 }
             });
         }
@@ -6254,7 +6285,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             showLyricsSinger: !!activeRoom?.showLyricsSinger
         };
         if (useAppleBacking && autoStartMedia) {
-            await playAppleMusicTrack(next.appleMusicId, { title: next.songTitle, artist: next.artist });
+            await playAppleMusicTrack(next.appleMusicId, { title: next.songTitle, artist: next.artist, duration: next.duration });
             await updateRoom({
                 activeMode: 'karaoke',
                 'announcement.active': false,
@@ -8814,7 +8845,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             showLyricsSinger: !!roomSnapshot?.showLyricsSinger
         };
         if (useAppleBacking && autoStartMedia) {
-            await playAppleMusicTrack(song.appleMusicId, { title: song.songTitle, artist: song.artist });
+            await playAppleMusicTrack(song.appleMusicId, { title: song.songTitle, artist: song.artist, duration: song.duration });
             await updateRoom({
                 activeMode: 'karaoke',
                 'announcement.active': false,

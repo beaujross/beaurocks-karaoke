@@ -2736,6 +2736,10 @@ const PublicTV = ({ roomCode }) => {
     }, [current, popTriviaNow, popTriviaRoundSec, room?.activeMode, room?.popTriviaEnabled]);
     const popTriviaQuestion = popTriviaState?.question || null;
     const popTriviaQuestionId = popTriviaQuestion?.id || '';
+    const showPopTriviaEndState = (
+        popTriviaState?.status === 'complete'
+        && (popTriviaNow - Number(popTriviaState?.completedAtMs || 0)) < 8000
+    );
     const popTriviaVoteCounts = useMemo(() => {
         const count = Array.from({ length: popTriviaQuestion?.options?.length || 0 }, () => 0);
         popTriviaVotes.forEach((vote) => {
@@ -4376,34 +4380,6 @@ const PublicTV = ({ roomCode }) => {
                                     minimalUI={isMinimal}
                                     showVideo={!isMinimal}
                                 />
-                                {popTriviaQuestion && (
-                                    <div data-feature-id="tv-pop-trivia-card" className="absolute top-2 right-2 md:top-4 md:right-4 2xl:top-5 2xl:right-5 z-[92] w-[min(94vw,470px)] md:w-[min(44vw,520px)] pointer-events-none">
-                                        <div className="bg-black/66 border border-cyan-400/35 rounded-2xl px-3 py-3 md:px-4 md:py-4 shadow-[0_0_24px_rgba(34,211,238,0.22)] backdrop-blur">
-                                            <div className="flex items-center justify-between gap-2 md:gap-3 text-[10px] md:text-xs uppercase tracking-[0.18em] text-cyan-200 mb-2">
-                                                <span>Pop-up Trivia</span>
-                                                <span>
-                                                    {popTriviaState?.index + 1}/{popTriviaState?.total} | {popTriviaState?.timeLeftSec}s
-                                                </span>
-                                            </div>
-                                            <div className="text-sm md:text-lg 2xl:text-xl font-bold text-white leading-snug mb-2">
-                                                {popTriviaQuestion.q}
-                                            </div>
-                                            <div className="grid grid-cols-1 gap-1.5">
-                                                {popTriviaQuestion.options?.map((option, idx) => (
-                                                    <div key={`${popTriviaQuestion.id}_${idx}`} className="rounded-lg border border-white/15 bg-black/40 px-2.5 py-1.5 text-white text-xs md:text-sm font-semibold flex items-center justify-between gap-2">
-                                                        <span className="text-cyan-300 font-black text-[11px] tracking-[0.14em]">{String.fromCharCode(65 + idx)}</span>
-                                                        <span className="min-w-0 flex-1 truncate">{option}</span>
-                                                        <span className="text-zinc-300 font-mono text-[11px]">{popTriviaVoteCounts[idx] || 0}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <div className="mt-2 flex items-center justify-between gap-2 text-[10px] md:text-xs uppercase tracking-[0.12em] text-zinc-200">
-                                                <span>{popTriviaTotalVotes} answers locked</span>
-                                                <span className="text-cyan-100">Vote in Party app</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
                             </>
                         )}
                     </div>
@@ -4412,6 +4388,56 @@ const PublicTV = ({ roomCode }) => {
                 {/* SIDEBAR: Hidden in Cinema Mode */}
                 {!isCinema && (
                     <div className={`col-span-12 ${lobbyCompactHudMode ? 'lg:col-span-3' : 'lg:col-span-4'} flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden`}>
+                         {(popTriviaQuestion || showPopTriviaEndState) && (
+                            <div
+                                data-feature-id="tv-pop-trivia-card"
+                                className={`rounded-2xl md:rounded-3xl border shadow-[0_0_30px_rgba(34,211,238,0.18)] backdrop-blur overflow-hidden ${
+                                    popTriviaQuestion
+                                        ? 'border-cyan-300/45 bg-gradient-to-br from-[#050916]/96 via-[#0b1220]/96 to-[#160a21]/96'
+                                        : 'border-emerald-300/35 bg-gradient-to-br from-[#07141a]/96 via-[#08151f]/96 to-[#102115]/96'
+                                }`}
+                            >
+                                <div className={`${lobbyCompactHudMode ? 'px-3 py-3' : 'px-4 py-4 md:px-5 md:py-5'} flex items-center justify-between gap-3 border-b ${popTriviaQuestion ? 'border-cyan-300/15' : 'border-emerald-300/15'} text-[11px] md:text-xs uppercase tracking-[0.2em]`}>
+                                    <span className={popTriviaQuestion ? 'text-cyan-200' : 'text-emerald-200'}>
+                                        {popTriviaQuestion ? 'Pop-up Trivia' : 'Pop-up Trivia Complete'}
+                                    </span>
+                                    <span className={popTriviaQuestion ? 'text-cyan-100' : 'text-emerald-100'}>
+                                        {popTriviaQuestion
+                                            ? `${popTriviaState?.index + 1}/${popTriviaState?.total} | ${popTriviaState?.timeLeftSec}s`
+                                            : `${popTriviaState?.total || 0} questions`}
+                                    </span>
+                                </div>
+                                {popTriviaQuestion ? (
+                                    <div className={`${lobbyCompactHudMode ? 'px-3 py-3' : 'px-4 py-4 md:px-5 md:py-5'} min-h-[40vh] md:min-h-[46vh] flex flex-col`}>
+                                        <div className="text-2xl md:text-[2rem] 2xl:text-[2.35rem] font-black text-white leading-[1.02]">
+                                            {popTriviaQuestion.q}
+                                        </div>
+                                        <div className="mt-4 grid grid-cols-1 gap-2.5">
+                                            {popTriviaQuestion.options?.map((option, idx) => (
+                                                <div key={`${popTriviaQuestion.id}_${idx}`} className="rounded-2xl border border-white/12 bg-black/32 px-4 py-3 md:px-4 md:py-3.5 text-white flex items-center justify-between gap-3">
+                                                    <span className="text-cyan-300 font-black text-sm md:text-base tracking-[0.16em]">{String.fromCharCode(65 + idx)}</span>
+                                                    <span className="min-w-0 flex-1 text-base md:text-lg 2xl:text-xl font-bold leading-tight">{option}</span>
+                                                    <span className="text-zinc-300 font-mono text-sm md:text-base">{popTriviaVoteCounts[idx] || 0}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-auto pt-4 flex items-center justify-between gap-3 text-[11px] md:text-xs uppercase tracking-[0.16em] text-zinc-200">
+                                            <span>{popTriviaTotalVotes} answers locked</span>
+                                            <span className="text-cyan-100">Vote in Party app</span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className={`${lobbyCompactHudMode ? 'px-3 py-4' : 'px-4 py-5 md:px-5 md:py-6'} min-h-[28vh] flex flex-col justify-center`}>
+                                        <div className="text-2xl md:text-[2rem] 2xl:text-[2.3rem] font-black text-white leading-[1.02]">
+                                            Trivia complete. Back to karaoke.
+                                        </div>
+                                        <div className="mt-3 text-base md:text-lg text-emerald-100/90 leading-relaxed">
+                                            The side round is done. Keep the lyrics clean, let the next singer land, and open the Party app for the next song request.
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                         )}
                          <div className={`${lobbyCompactHudMode ? 'p-2 md:p-3' : 'p-3 md:p-4'} rounded-2xl md:rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20`}>
                             <div className={`${lobbyCompactHudMode ? 'text-lg md:text-xl 2xl:text-2xl' : 'text-xl md:text-2xl 2xl:text-3xl'} font-black text-cyan-100 mb-1 uppercase tracking-[0.14em] md:tracking-[0.18em]`}>JOIN</div>
                             <div className={`bg-white ${lobbyCompactHudMode ? 'p-1.5 md:p-2' : 'p-2 md:p-3'} rounded-2xl md:rounded-3xl inline-block shadow-[0_0_45px_rgba(255,255,255,0.2)]`}>

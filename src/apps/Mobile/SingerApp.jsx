@@ -794,6 +794,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [popTriviaNow, setPopTriviaNow] = useState(Date.now());
     const [popTriviaVotes, setPopTriviaVotes] = useState([]);
     const [popTriviaSubmitting, setPopTriviaSubmitting] = useState(false);
+    const [dismissedPopTriviaCardKey, setDismissedPopTriviaCardKey] = useState('');
 
     // Phone/SMS account + VIP state
     const [showPhoneModal, setShowPhoneModal] = useState(false);
@@ -2668,6 +2669,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [currentSinger, popTriviaNow, popTriviaRoundSec, room?.activeMode, room?.popTriviaEnabled]);
     const popTriviaQuestion = popTriviaState?.question || null;
     const popTriviaQuestionId = popTriviaQuestion?.id || '';
+    const showPopTriviaEndState = (
+        popTriviaState?.status === 'complete'
+        && (popTriviaNow - Number(popTriviaState?.completedAtMs || 0)) < 8000
+    );
+    const popTriviaCardKey = popTriviaQuestionId || (
+        showPopTriviaEndState
+            ? `complete_${Number(popTriviaState?.completedAtMs || 0)}`
+            : ''
+    );
+    const showPopTriviaCard = !!popTriviaCardKey && dismissedPopTriviaCardKey !== popTriviaCardKey;
+    const showPopTriviaReopenCta = !!popTriviaCardKey && !showPopTriviaCard;
     const popTriviaVoteCounts = useMemo(() => {
         const count = Array.from({ length: popTriviaQuestion?.options?.length || 0 }, () => 0);
         popTriviaVotes.forEach((vote) => {
@@ -4017,45 +4029,85 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
         setPopTriviaSubmitting(true);
         try {
-            const existingQuery = query(
-                collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
-                where('roomCode', '==', roomCode),
-                where('questionId', '==', popTriviaQuestionId)
-            );
-            const existingSnap = await getDocs(existingQuery);
-            const deduped = dedupeQuestionVotes(
-                existingSnap.docs.map((docSnap) => docSnap.data()),
-                POP_TRIVIA_VOTE_TYPE
-            );
             const voteName = String(user?.name || form.name || 'Guest').trim() || 'Guest';
             const voteAvatar = String(user?.avatar || form.emoji || DEFAULT_EMOJI);
-            const alreadyVoted = deduped.some((vote) => {
-                if (vote?.uid && activeUid) return vote.uid === activeUid;
-                return String(vote?.userName || 'Guest') === voteName
-                    && String(vote?.avatar || DEFAULT_EMOJI) === voteAvatar;
-            });
-            if (alreadyVoted) {
+            const waitForVoteAuthUid = async (timeoutMs = 2500) => {
+                const currentUid = String(auth.currentUser?.uid || '').trim();
+                if (currentUid) return currentUid;
+                if (typeof auth?.authStateReady === 'function') {
+                    try {
+                        await Promise.race([
+                            auth.authStateReady(),
+                            new Promise((resolve) => setTimeout(resolve, timeoutMs))
+                        ]);
+                    } catch {
+                        // Fall through to the latest available uid below.
+                    }
+                }
+                return String(auth.currentUser?.uid || '').trim();
+            };
+            const submitVoteOnce = async () => {
+                const voteUid = await waitForVoteAuthUid();
+                const existingQuery = query(
+                    collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
+                    where('roomCode', '==', roomCode),
+                    where('questionId', '==', popTriviaQuestionId)
+                );
+                const existingSnap = await getDocs(existingQuery);
+                const deduped = dedupeQuestionVotes(
+                    existingSnap.docs.map((docSnap) => docSnap.data()),
+                    POP_TRIVIA_VOTE_TYPE
+                );
+                const alreadyVoted = deduped.some((vote) => {
+                    if (vote?.uid && voteUid) return vote.uid === voteUid;
+                    return String(vote?.userName || 'Guest') === voteName
+                        && String(vote?.avatar || DEFAULT_EMOJI) === voteAvatar;
+                });
+                if (alreadyVoted) {
+                    return { alreadyVoted: true };
+                }
+
+                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
+                    roomCode,
+                    type: POP_TRIVIA_VOTE_TYPE,
+                    val: optionIndex,
+                    questionId: popTriviaQuestionId,
+                    songId: currentSinger?.id || '',
+                    performanceId: currentSinger?.id || null,
+                    performanceSongId: currentSinger?.songId || null,
+                    performanceSingerUid: currentSinger?.singerUid || null,
+                    performanceSingerName: currentSinger?.singerName || null,
+                    performanceStartedAtMs: timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || null,
+                    userName: voteName,
+                    avatar: voteAvatar,
+                    uid: voteUid || null,
+                    isVote: true,
+                    timestamp: serverTimestamp()
+                });
+                return { alreadyVoted: false };
+            };
+
+            await ensureAppCheckToken(false).catch(() => false);
+            let result;
+            try {
+                result = await submitVoteOnce();
+            } catch (error) {
+                const retryable = (
+                    isQueuePermissionDeniedError(error)
+                    || isQueueAppCheckError(error)
+                    || isQueueUnauthenticatedError(error)
+                );
+                if (!retryable) throw error;
+                await Promise.allSettled([
+                    waitForVoteAuthUid(),
+                    ensureAppCheckToken(true).catch(() => false)
+                ]);
+                result = await submitVoteOnce();
+            }
+            if (result?.alreadyVoted) {
                 toast('Answer already locked.');
                 return;
             }
-
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
-                roomCode,
-                type: POP_TRIVIA_VOTE_TYPE,
-                val: optionIndex,
-                questionId: popTriviaQuestionId,
-                songId: currentSinger?.id || '',
-                performanceId: currentSinger?.id || null,
-                performanceSongId: currentSinger?.songId || null,
-                performanceSingerUid: currentSinger?.singerUid || null,
-                performanceSingerName: currentSinger?.singerName || null,
-                performanceStartedAtMs: timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || null,
-                userName: voteName,
-                avatar: voteAvatar,
-                uid: activeUid || null,
-                isVote: true,
-                timestamp: serverTimestamp()
-            });
             toast('Answer locked.');
         } catch (error) {
             console.error('Failed to submit pop trivia vote', error);
@@ -7517,41 +7569,67 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         ) : null}
                                     </div>
                                 )}
-                                {popTriviaQuestion && (
+                                {showPopTriviaCard && (
                                     <div data-feature-id="pop-trivia-card" className="mt-3 rounded-3xl border-2 border-cyan-300/55 bg-gradient-to-br from-[#070b1a]/95 via-[#11162b]/95 to-[#180a1f]/95 shadow-[0_16px_44px_rgba(0,0,0,0.45)] backdrop-blur p-4">
                                         <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-[0.22em] text-cyan-100">
-                                            <span>Pop-up Trivia</span>
-                                            <span className="font-bold">{popTriviaState?.index + 1}/{popTriviaState?.total} | {popTriviaState?.timeLeftSec}s</span>
+                                            <span>{popTriviaQuestion ? 'Pop-up Trivia' : 'Pop-up Trivia Complete'}</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold">
+                                                    {popTriviaQuestion
+                                                        ? `${popTriviaState?.index + 1}/${popTriviaState?.total} | ${popTriviaState?.timeLeftSec}s`
+                                                        : `${popTriviaState?.total || 0} questions`}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setDismissedPopTriviaCardKey(popTriviaCardKey)}
+                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/35 text-zinc-200 transition-colors hover:border-white/30 hover:bg-black/55 hover:text-white"
+                                                    title="Hide pop-up trivia"
+                                                    aria-label="Hide pop-up trivia"
+                                                >
+                                                    <i className="fa-solid fa-xmark"></i>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div className="mt-2 text-base font-black text-white leading-snug">{popTriviaQuestion.q}</div>
-                                        <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                                            {popTriviaQuestion.options?.map((option, idx) => {
-                                                const isSelected = popTriviaMyVote === idx;
-                                                const optionVotes = popTriviaVoteCounts[idx] || 0;
-                                                return (
-                                                    <button
-                                                        key={`${popTriviaQuestion.id}_${idx}`}
-                                                        data-feature-id={`pop-trivia-option-${idx}`}
-                                                        onClick={() => submitPopTriviaVote(idx)}
-                                                        disabled={popTriviaMyVote !== null || popTriviaSubmitting}
-                                                        className={`rounded-2xl border-2 px-3 py-3 text-left transition-all min-h-[72px] ${
-                                                            isSelected
-                                                                ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.25)]'
-                                                                : 'border-white/20 bg-black/45 text-white hover:border-cyan-300/75 hover:bg-black/60'
-                                                        } ${(popTriviaMyVote !== null || popTriviaSubmitting) ? 'opacity-90' : 'active:scale-[0.99]'}`}
-                                                    >
-                                                        <div className="flex items-center justify-between gap-2">
-                                                            <span className="text-xs font-black tracking-[0.24em] text-cyan-300">{String.fromCharCode(65 + idx)}</span>
-                                                            <span className="text-xs font-mono text-zinc-300">{optionVotes}</span>
-                                                        </div>
-                                                        <div className="mt-1.5 text-sm font-bold leading-snug">{option}</div>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                        <div className="mt-2 text-xs uppercase tracking-[0.22em] text-zinc-300">
-                                            {popTriviaMyVote !== null ? 'Answer locked' : 'Tap an answer to join the recap'}
-                                        </div>
+                                        {popTriviaQuestion ? (
+                                            <>
+                                                <div className="mt-2 text-base font-black text-white leading-snug">{popTriviaQuestion.q}</div>
+                                                <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                                                    {popTriviaQuestion.options?.map((option, idx) => {
+                                                        const isSelected = popTriviaMyVote === idx;
+                                                        const optionVotes = popTriviaVoteCounts[idx] || 0;
+                                                        return (
+                                                            <button
+                                                                key={`${popTriviaQuestion.id}_${idx}`}
+                                                                data-feature-id={`pop-trivia-option-${idx}`}
+                                                                onClick={() => submitPopTriviaVote(idx)}
+                                                                disabled={popTriviaMyVote !== null || popTriviaSubmitting}
+                                                                className={`rounded-2xl border-2 px-3 py-3 text-left transition-all min-h-[72px] ${
+                                                                    isSelected
+                                                                        ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.25)]'
+                                                                        : 'border-white/20 bg-black/45 text-white hover:border-cyan-300/75 hover:bg-black/60'
+                                                                } ${(popTriviaMyVote !== null || popTriviaSubmitting) ? 'opacity-90' : 'active:scale-[0.99]'}`}
+                                                            >
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <span className="text-xs font-black tracking-[0.24em] text-cyan-300">{String.fromCharCode(65 + idx)}</span>
+                                                                    <span className="text-xs font-mono text-zinc-300">{optionVotes}</span>
+                                                                </div>
+                                                                <div className="mt-1.5 text-sm font-bold leading-snug">{option}</div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <div className="mt-2 text-xs uppercase tracking-[0.22em] text-zinc-300">
+                                                    {popTriviaMyVote !== null ? 'Answer locked' : 'Tap an answer to join the recap'}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="mt-3">
+                                                <div className="text-lg font-black text-white leading-snug">Trivia complete. Back to the song.</div>
+                                                <div className="mt-2 text-sm text-zinc-200 leading-relaxed">
+                                                    The side round is done. Keep singing, then send the next request when you are ready.
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -8715,6 +8793,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 >
                     <i className="fa-solid fa-table-cells mr-2"></i>
                     Bingo Live
+                </button>
+            )}
+            {showPopTriviaReopenCta && (
+                <button
+                    onClick={() => {
+                        pulseNativeUiFeedback();
+                        setDismissedPopTriviaCardKey('');
+                        setTab('home');
+                    }}
+                    className="fixed right-4 z-[95] rounded-full border border-cyan-300/55 bg-cyan-500/22 text-cyan-100 shadow-[0_10px_28px_rgba(34,211,238,0.35)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.22em]"
+                    style={{ bottom: `calc(${mobileFloatingBottomInset} + 4.75rem)` }}
+                >
+                    <i className={`fa-solid ${popTriviaQuestion ? 'fa-brain' : 'fa-flag-checkered'} mr-2`}></i>
+                    {popTriviaQuestion ? 'Trivia Live' : 'Trivia Recap'}
                 </button>
             )}
             {floatingEngagementPrompt && (

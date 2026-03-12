@@ -138,6 +138,21 @@ export const getActivePopTriviaQuestion = ({ song = null, now = Date.now(), roun
         || Number(now || Date.now());
     const elapsedMs = Math.max(0, Number(now || Date.now()) - startMs);
     const elapsedSec = Math.floor(elapsedMs / 1000);
+    const totalDurationSec = questions.length * safeRoundSec;
+    const completedAtMs = startMs + (totalDurationSec * 1000);
+    if (elapsedSec >= totalDurationSec) {
+        return {
+            question: null,
+            index: questions.length,
+            total: questions.length,
+            elapsedSec,
+            timeLeftSec: 0,
+            roundSec: safeRoundSec,
+            startMs,
+            status: 'complete',
+            completedAtMs
+        };
+    }
     const rawIndex = Math.floor(elapsedSec / safeRoundSec);
     const index = Math.min(questions.length - 1, Math.max(0, rawIndex));
     const timeLeftSec = Math.max(0, safeRoundSec - (elapsedSec % safeRoundSec));
@@ -149,7 +164,9 @@ export const getActivePopTriviaQuestion = ({ song = null, now = Date.now(), roun
         elapsedSec,
         timeLeftSec,
         roundSec: safeRoundSec,
-        startMs
+        startMs,
+        status: 'live',
+        completedAtMs
     };
 };
 
