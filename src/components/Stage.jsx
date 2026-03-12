@@ -9,6 +9,8 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
     const isBackingAudioOnly = current?.backingAudioOnly || false;
     const applePlayback = room?.appleMusicPlayback || null;
     const applePlaybackActive = !!applePlayback?.id;
+    const roomCode = String(room?.roomCode || room?.code || '').trim().toUpperCase();
+    const joinUrlLabel = String(room?.joinUrlLabel || '').trim();
     const showVisualizerTv = !!room?.showVisualizerTv;
     const hideVideoVisuals = showVisualizerTv;
     const hasLyrics = !!(current?.lyrics && String(current.lyrics).trim()) || (Array.isArray(current?.lyricsTimed) && current.lyricsTimed.length > 0);
@@ -292,6 +294,3 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
 };
 
 export default Stage;
-
-    const roomCode = String(room?.roomCode || room?.code || '').trim().toUpperCase();
-    const joinUrlLabel = String(room?.joinUrlLabel || '').trim();

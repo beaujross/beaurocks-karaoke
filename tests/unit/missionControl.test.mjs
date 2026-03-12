@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { test } from "vitest";
 import {
     buildMissionDraftFromRoom,
     buildMissionPartyFromRoom,
@@ -82,7 +83,7 @@ const PRESETS = {
     }
 };
 
-const run = () => {
+test("missionControl.test", () => {
     const fromRoom = buildMissionDraftFromRoom({
         hostNightPreset: 'competition',
         queueSettings: { limitMode: 'per_night', limitCount: 2, rotation: 'round_robin', firstTimeBoost: false },
@@ -195,8 +196,4 @@ const run = () => {
     assert.equal(defaultParty.karaokeFirst, true);
     assert.equal(defaultParty.minSingingSharePct, 70);
     assert.equal(defaultParty.maxConsecutiveNonKaraokeModes, 1);
-
-    console.log('missionControl tests passed');
-};
-
-run();
+});

@@ -6,7 +6,7 @@ const {
   requestGeminiJson,
 } = require("../../functions/lib/geminiClient");
 
-const run = async () => {
+test("geminiClient.test", async () => {
   assert.deepEqual(
     getGeminiModelCandidates({
       preferredModel: "gemini-2.5-flash",
@@ -66,8 +66,4 @@ const run = async () => {
     }),
     /Gemini request failed for gemini-2.5-flash/i
   );
-
-  console.log("PASS geminiClient");
-};
-
-run();
+});

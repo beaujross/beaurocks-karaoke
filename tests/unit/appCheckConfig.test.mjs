@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import {
   normalizeAppCheckProviderMode,
   parseOptionalBoolToken,
@@ -7,7 +8,7 @@ import {
   shouldEnableRuntimeAppCheckDebug,
 } from "../../src/lib/appCheckConfig.js";
 
-const run = async () => {
+test("appCheckConfig.test", async () => {
   assert.equal(parseOptionalBoolToken("true"), true);
   assert.equal(parseOptionalBoolToken("0"), false);
   assert.equal(parseOptionalBoolToken(""), null);
@@ -72,8 +73,4 @@ const run = async () => {
     }),
     "stored-token"
   );
-
-  console.log("PASS appCheckConfig");
-};
-
-run();
+});

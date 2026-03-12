@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import {
   countJoinableRoomListings,
   isJoinableRoomListing,
 } from "../../src/apps/Marketing/pages/discoverFilters.js";
 
-const run = () => {
+test("discoverJoinableFilter.test", () => {
   const joinableRoom = { listingType: "room_session", roomCode: "VIP123" };
   const nonJoinableRoom = { listingType: "room_session", roomCode: "" };
   const venueWithCode = { listingType: "venue", roomCode: "VIP999" };
@@ -22,8 +23,4 @@ const run = () => {
   ]);
   assert.equal(count, 2);
   assert.equal(countJoinableRoomListings(null), 0);
-
-  console.log("PASS discoverJoinableFilter");
-};
-
-run();
+});

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { test } from "vitest";
 import {
     deriveBangerModeState,
     deriveBalladModeState,
@@ -8,7 +9,7 @@ import {
     VIBE_MODE_ENGINE_CONSTANTS
 } from '../../src/apps/TV/vibeModeEngine.js';
 
-const run = () => {
+test("vibeModeEngine.test", () => {
     const now = 100000;
 
     const spamEvents = [
@@ -79,8 +80,4 @@ const run = () => {
     );
     assert.equal(rewardCooldown.shouldProcess, false);
     assert.equal(rewardCooldown.reason, 'cooldown');
-
-    console.log('vibeModeEngine tests passed');
-};
-
-run();
+});

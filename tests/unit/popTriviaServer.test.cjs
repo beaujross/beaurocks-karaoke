@@ -9,7 +9,7 @@ const {
   shouldAttemptPopTriviaGeneration,
 } = require("../../functions/lib/popTrivia");
 
-const run = async () => {
+test("popTriviaServer.test", async () => {
   const seedRows = normalizePopTriviaSeedRows([
     {
       q: "Which decade broke this song big?",
@@ -117,8 +117,4 @@ const run = async () => {
     }, { now }).reason,
     "song_status_ineligible"
   );
-
-  console.log("PASS popTriviaServer");
-};
-
-run();
+});

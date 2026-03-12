@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
+import { test } from "vitest";
 import {
     buildModerationQueueSnapshot,
     deriveModerationSeverity,
     moderationNeedsAttention
 } from '../../src/apps/Host/moderationInboxLogic.js';
 
-const run = () => {
+test("moderationInbox.test", () => {
     const snapshot = buildModerationQueueSnapshot({
         doodleRequireReview: true,
         selfieRequireApproval: true,
@@ -65,8 +66,4 @@ const run = () => {
     assert.equal(moderationNeedsAttention('active'), false);
     assert.equal(moderationNeedsAttention('stale'), true);
     assert.equal(moderationNeedsAttention('critical'), true);
-
-    console.log('moderationInbox tests passed');
-};
-
-run();
+});

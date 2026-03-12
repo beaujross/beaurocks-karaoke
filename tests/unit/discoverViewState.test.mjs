@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import { createDiscoverViewState, reduceDiscoverViewState } from "../../src/apps/Marketing/pages/discoverViewState.js";
 
-const run = () => {
+test("discoverViewState.test", () => {
   const mobileInitial = createDiscoverViewState({ isMobile: true });
   assert.equal(mobileInitial.mobileSurface, "list");
   assert.equal(mobileInitial.mobileFiltersExpanded, false);
@@ -25,8 +26,4 @@ const run = () => {
   const viewportDesktop = reduceDiscoverViewState(tilesState, { type: "viewport_changed", isMobile: false });
   assert.equal(viewportDesktop.mobileSurface, "list");
   assert.equal(viewportDesktop.mobileFiltersExpanded, true);
-
-  console.log("PASS discoverViewState");
-};
-
-run();
+});

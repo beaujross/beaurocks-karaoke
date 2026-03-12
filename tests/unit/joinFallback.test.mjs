@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import { getJoinPreviewFallback } from "../../src/apps/Marketing/pages/joinFallback.js";
 
-const run = () => {
+test("joinFallback.test", () => {
   const notFound = getJoinPreviewFallback({
     error: { code: "not-found", message: "Room code not found." },
     roomCode: "vip123",
@@ -28,8 +29,4 @@ const run = () => {
   });
   assert.equal(unknown.tone, "error");
   assert.equal(unknown.message, "Something went wrong.");
-
-  console.log("PASS joinFallback");
-};
-
-run();
+});

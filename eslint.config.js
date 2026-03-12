@@ -8,6 +8,7 @@ export default defineConfig([
   {
     ignores: [
       'archive/**',
+      'coverage/**',
       'dist/**',
       'docs/**',
       'google-cloud-sdk/**',

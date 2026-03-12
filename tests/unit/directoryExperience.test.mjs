@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import {
   deriveDirectoryExperience,
   matchesDirectoryExperienceFilter,
   summarizeGeoExperience,
 } from "../../src/apps/Marketing/lib/directoryExperience.js";
 
-const run = () => {
+test("directoryExperience.test", () => {
   const beauRocksRoom = deriveDirectoryExperience({
     listingType: "room_session",
     roomCode: "BR123",
@@ -60,8 +61,4 @@ const run = () => {
     beginnerFriendly: 1,
     fastRotation: 1,
   });
-
-  console.log("PASS directoryExperience");
-};
-
-run();
+});

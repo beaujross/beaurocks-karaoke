@@ -9,18 +9,29 @@ import DiscoverListingCard from "./DiscoverListingCard";
 import { createDiscoverViewState, reduceDiscoverViewState } from "./discoverViewState";
 import { countJoinableRoomListings, isJoinableRoomListing } from "./discoverFilters";
 import {
+  buildHostFacetOptions,
+  countEventCadenceListings,
+  countListingTypes,
+  resolveEffectiveHostFilter,
+} from "./discoverFacets";
+import {
+  getListingActionMeta,
+  normalizeListingType,
+  normalizeSelectedListingTypes,
+  setOnlySelectedListingType,
+  toggleSelectedListingType,
+} from "./discoverListingTypes";
+import { buildDiscoverListing } from "./discoverListingViewModel";
+import { buildOfficialListingSummary } from "./discoverOfficialSummary";
+import { LIVE_LOOKBACK_MS, rankDiscoverListings, sortDiscoverListings } from "./discoverRanking";
+import {
   deriveDirectoryExperience,
   matchesDirectoryExperienceFilter,
 } from "../lib/directoryExperience";
 import {
   MARKETING_BRAND_BADGE_URL,
-  buildPublicLocationImageUrl,
-  extractCadenceBadges,
   formatDateTime,
-  resolveListingImageCandidates,
-  resolveProfileAvatarUrl,
 } from "./shared";
-import { buildMarketingPath } from "../routing";
 
 const FINDER_BRAND = "Setlist";
 const MAP_DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
@@ -56,12 +67,6 @@ const MAP_BRAND_STYLES = [
   { featureType: "water", elementType: "geometry", stylers: [{ color: "#03384f" }] },
   { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#37efff" }] },
 ];
-const MAP_TYPE_META = {
-  venue: { label: "venue", routePage: "venue", markerColor: "#26d7e8" },
-  event: { label: "event", routePage: "event", markerColor: "#f1c76f" },
-  room_session: { label: "room session", routePage: "session", markerColor: "#ff4fae" },
-};
-const OFFICIAL_ROOM_MARKER_COLOR = "#ff4fae";
 const DEMO_MAP_ID = "DEMO_MAP_ID";
 const TIME_WINDOW_OPTIONS = [
   { id: "all", label: "All Times" },
@@ -99,87 +104,11 @@ const SORT_MODE_LABELS = Object.freeze({
   nearest: "Nearest to me",
   host_first: "Host-first",
 });
-const EARTH_RADIUS_MILES = 3958.8;
-const MS_PER_HOUR = 60 * 60 * 1000;
-const MS_PER_DAY = 24 * MS_PER_HOUR;
-const LIVE_LOOKBACK_MS = 2 * MS_PER_HOUR;
-const SOON_LOOKAHEAD_MS = 8 * MS_PER_HOUR;
 const ENV_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED = typeof import.meta !== "undefined" && import.meta?.env
   ? String(import.meta.env.VITE_MARKETING_DISCOVER_GOOGLE_STATIC_IMAGES_ENABLED || "")
   : "";
 const DISCOVER_DEFAULT_LIMIT_DESKTOP = 120;
 const DISCOVER_DEFAULT_LIMIT_MOBILE = 48;
-
-const toRadians = (value = 0) => (Number(value || 0) * Math.PI) / 180;
-
-const calculateDistanceMiles = (from = null, to = null) => {
-  if (!from || !to) return null;
-  const lat1 = Number(from.lat);
-  const lng1 = Number(from.lng);
-  const lat2 = Number(to.lat);
-  const lng2 = Number(to.lng);
-  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return null;
-  const dLat = toRadians(lat2 - lat1);
-  const dLng = toRadians(lng2 - lng1);
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Number((EARTH_RADIUS_MILES * c).toFixed(2));
-};
-
-const formatDistanceLabel = (distanceMiles = null) => {
-  const miles = Number(distanceMiles);
-  if (!Number.isFinite(miles) || miles < 0) return "";
-  if (miles < 0.2) {
-    const feet = Math.max(100, Math.round(miles * 5280));
-    return `${feet.toLocaleString()} ft away`;
-  }
-  return `${miles.toFixed(1)} mi away`;
-};
-
-const computeTimePriority = (startsAtMs = 0, nowMs = Date.now()) => {
-  const starts = Number(startsAtMs || 0);
-  if (starts <= 0) return 0;
-  const delta = starts - nowMs;
-  if (delta >= -LIVE_LOOKBACK_MS && delta <= SOON_LOOKAHEAD_MS) return 44;
-  if (delta > SOON_LOOKAHEAD_MS && delta <= 24 * MS_PER_HOUR) return 28;
-  if (delta > 24 * MS_PER_HOUR && delta <= 72 * MS_PER_HOUR) return 16;
-  if (delta < -LIVE_LOOKBACK_MS && delta >= -24 * MS_PER_HOUR) return 12;
-  return 6;
-};
-
-const scoreSearchRelevance = (entry = {}, searchQuery = "") => {
-  const query = String(searchQuery || "").trim().toLowerCase();
-  if (!query) return 0;
-  const title = String(entry?.title || "").toLowerCase();
-  const subtitle = String(entry?.subtitle || "").toLowerCase();
-  const detail = String(entry?.detailLine || "").toLowerCase();
-  if (title.startsWith(query)) return 26;
-  if (title.includes(query)) return 18;
-  if (subtitle.includes(query)) return 12;
-  if (detail.includes(query)) return 8;
-  return 0;
-};
-
-const normalizeListingType = (value = "") => {
-  const token = String(value || "").trim().toLowerCase();
-  if (token === "event") return "event";
-  if (token === "room_session") return "room_session";
-  return "venue";
-};
-
-const normalizeSelectedListingTypes = (values = []) => {
-  const tokens = Array.isArray(values) ? values : [values];
-  const allowed = new Set(DEFAULT_SELECTED_LISTING_TYPES);
-  const selected = [];
-  tokens.forEach((value) => {
-    const token = normalizeListingType(value);
-    if (!allowed.has(token) || selected.includes(token)) return;
-    selected.push(token);
-  });
-  if (!selected.length) return [...DEFAULT_SELECTED_LISTING_TYPES];
-  return DEFAULT_SELECTED_LISTING_TYPES.filter((token) => selected.includes(token));
-};
 
 const toFiniteCoordinate = (value) => {
   if (value === null || value === undefined) return null;
@@ -287,74 +216,6 @@ const resolveListingLocationData = (entry = {}, venueIndex = null) => {
   };
 };
 
-const toAddressLine = (entry = {}) =>
-  [entry?.address1, entry?.city, entry?.state, entry?.postalCode, entry?.country]
-    .filter(Boolean)
-    .join(", ");
-
-const buildStreetViewImageUrl = ({ location = null, addressLine = "", mapsApiKey = "" } = {}) => {
-  const key = String(mapsApiKey || "").trim();
-  if (!key) return "";
-  const locationToken = location
-    ? `${Number(location.lat).toFixed(6)},${Number(location.lng).toFixed(6)}`
-    : String(addressLine || "").trim();
-  if (!locationToken) return "";
-  return `https://maps.googleapis.com/maps/api/streetview?size=960x540&location=${encodeURIComponent(locationToken)}&source=outdoor&fov=95&pitch=4&key=${encodeURIComponent(key)}`;
-};
-
-const buildStaticMapImageUrl = ({ location = null, mapsApiKey = "" } = {}) => {
-  const key = String(mapsApiKey || "").trim();
-  if (!key || !location) return "";
-  const marker = `${Number(location.lat).toFixed(6)},${Number(location.lng).toFixed(6)}`;
-  return `https://maps.googleapis.com/maps/api/staticmap?size=960x540&maptype=roadmap&markers=color:0xff4fae%7C${encodeURIComponent(marker)}&style=feature:all%7Csaturation:-75&style=feature:all%7Clightness:-32&style=feature:road.highway%7Ccolor:0x7a2558&style=feature:water%7Ccolor:0x03384f&key=${encodeURIComponent(key)}`;
-};
-
-const buildGooglePlacePhotoUrls = ({ entry = {}, mapsApiKey = "" } = {}) => {
-  const key = String(mapsApiKey || "").trim();
-  if (!key) return [];
-  const googleExternal = entry?.externalSources?.google || {};
-  const refs = [
-    googleExternal.photoRef,
-    ...(Array.isArray(googleExternal.photoRefs) ? googleExternal.photoRefs : []),
-    ...(Array.isArray(googleExternal.photoReferences) ? googleExternal.photoReferences : []),
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-  if (!refs.length) return [];
-  const seen = new Set();
-  const urls = [];
-  refs.forEach((ref) => {
-    if (seen.has(ref)) return;
-    seen.add(ref);
-    urls.push(`https://maps.googleapis.com/maps/api/place/photo?maxwidth=1400&photo_reference=${encodeURIComponent(ref)}&key=${encodeURIComponent(key)}`);
-  });
-  return urls.slice(0, 6);
-};
-
-const getHostToken = ({ hostUid = "", hostName = "" } = {}) => {
-  const uid = String(hostUid || "").trim();
-  if (uid) return `uid:${uid.toLowerCase()}`;
-  const name = String(hostName || "").trim().toLowerCase();
-  return name ? `name:${name}` : "";
-};
-
-const PLACEHOLDER_SCREEN_IMAGE_TOKENS = [
-  "/images/marketing/app-landing-live.png",
-  "/images/marketing/audience-surface-live.png",
-  "/images/marketing/tv-surface-live.png",
-  "/images/marketing/beaurocks-hostpanel.png",
-  "/images/marketing/beaurocks-audienceapp.png",
-  MARKETING_BRAND_BADGE_URL,
-  "/images/logo-library/beaurocks-karaoke-logo-2.png",
-  "/images/logo-library/bross-entertainment",
-];
-
-const isScreenPlaceholderImage = (value = "") => {
-  const token = String(value || "").trim().toLowerCase();
-  if (!token) return false;
-  return PLACEHOLDER_SCREEN_IMAGE_TOKENS.some((entry) => token.includes(entry));
-};
-
 const dedupeUrls = (entries = []) =>
   entries.filter((value, index, array) => String(value || "").trim() && array.indexOf(value) === index);
 
@@ -386,14 +247,6 @@ const escapeHtml = (value = "") =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const sanitizeMediaUrl = (value = "") => {
-  const token = String(value || "").trim();
-  if (!token) return "";
-  if (token.startsWith("/")) return token;
-  if (/^https?:\/\//i.test(token)) return token.replace(/^http:\/\//i, "https://");
-  return "";
-};
-
 const hexToRgba = (hex = "", alpha = 1) => {
   const token = String(hex || "").trim().replace(/^#/, "");
   if (!/^[0-9a-f]{6}$/i.test(token)) return `rgba(255, 255, 255, ${alpha})`;
@@ -421,212 +274,6 @@ const mixHexColors = (baseHex = "", mixHex = "", mixRatio = 0.5) => {
   const g = channel(8).toString(16).padStart(2, "0");
   const b = channel(0).toString(16).padStart(2, "0");
   return `#${r}${g}${b}`;
-};
-
-const normalizeDiscoverBrandText = (...parts) =>
-  parts
-    .map((value) => String(value || "").trim().toLowerCase())
-    .filter(Boolean)
-    .join(" ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-
-const buildListingActionHref = (listing = null) => {
-  if (!listing || typeof listing !== "object") return "";
-  const listingType = normalizeListingType(listing?.listingType);
-  const roomCode = String(listing?.roomCode || "").trim().toUpperCase();
-  if (listingType === "room_session" && roomCode) {
-    return buildMarketingPath({ page: "join", id: roomCode, params: { roomCode } });
-  }
-  if (String(listing?.sourceType || "").trim().toLowerCase() === "official_registry") {
-    return "";
-  }
-  const routePage = String(listing?.routePage || "").trim();
-  const listingId = String(listing?.id || "").trim();
-  if (!routePage || !listingId) return "";
-  return buildMarketingPath({ page: routePage, id: listingId });
-};
-
-const toListing = (entry = {}, fallbackType = "venue", options = {}) => {
-  const mapsApiKey = String(options?.mapsApiKey || "").trim();
-  const allowGoogleImageApis = options?.allowGoogleImageApis !== false;
-  const allowGoogleStaticFallback = options?.allowGoogleStaticFallback === true;
-  const listingType = normalizeListingType(entry?.listingType || fallbackType);
-  const meta = MAP_TYPE_META[listingType] || MAP_TYPE_META.venue;
-  const location = options?.resolvedLocation || normalizeLocation(entry);
-  const resolvedFields = options?.resolvedLocationFields || {};
-  const address1 = String(resolvedFields?.address1 || entry?.address1 || entry?.address || "").trim();
-  const city = String(resolvedFields?.city || entry?.city || "").trim();
-  const state = String(resolvedFields?.state || entry?.state || "").trim();
-  const postalCode = String(resolvedFields?.postalCode || entry?.postalCode || "").trim();
-  const country = String(resolvedFields?.country || entry?.country || "").trim();
-  const startsAtMs = Number(entry?.startsAtMs || 0) || 0;
-  const mediaType = listingType === "room_session" ? "session" : listingType;
-  const explicitImageCandidates = resolveListingImageCandidates(entry, mediaType, { includeFallback: false })
-    .filter((url) => !isScreenPlaceholderImage(url));
-  const addressLine = toAddressLine({ address1, city, state, postalCode, country });
-  const venueImageUrl = allowGoogleImageApis && allowGoogleStaticFallback
-    ? buildStreetViewImageUrl({ location, addressLine, mapsApiKey })
-    : "";
-  const mapFallbackImageUrl = allowGoogleImageApis && allowGoogleStaticFallback
-    ? buildStaticMapImageUrl({ location, mapsApiKey })
-    : "";
-  const publicLocationFallbackUrl = buildPublicLocationImageUrl({ location });
-  const hardFallbackImageUrl = "/images/marketing/venue-location-fallback.svg";
-  const googlePhotoUrls = allowGoogleImageApis
-    ? buildGooglePlacePhotoUrls({ entry, mapsApiKey })
-    : [];
-  const googleImageCandidates = dedupeUrls([
-    ...googlePhotoUrls,
-    ...(allowGoogleStaticFallback ? [venueImageUrl, mapFallbackImageUrl] : []),
-  ]);
-  const imageCandidates = dedupeUrls([
-    ...explicitImageCandidates,
-    publicLocationFallbackUrl,
-    hardFallbackImageUrl,
-  ]).filter((url) => !isScreenPlaceholderImage(url) || url === hardFallbackImageUrl);
-  const imageUrl = imageCandidates[0] || hardFallbackImageUrl;
-  const imageFallbackUrls = imageCandidates.slice(1);
-  const hostUid = String(entry?.hostUid || "").trim();
-  const hostName = String(entry?.hostName || "").trim();
-  const avatarUrl = resolveProfileAvatarUrl(entry);
-  const officialBadgeImageUrl = sanitizeMediaUrl(
-    entry?.officialBadgeImageUrl
-    || entry?.logoUrl
-    || entry?.hostLogoUrl
-    || entry?.brandLogoUrl
-    || entry?.branding?.logoUrl
-    || avatarUrl
-    || imageUrl
-    || MARKETING_BRAND_BADGE_URL
-  );
-  const locationLabel = [city, state, address1].filter(Boolean).join(", ");
-  const roomCode = String(entry?.roomCode || "").trim().toUpperCase();
-  const virtualOnly = !!entry?.virtualOnly
-    || !!entry?.isVirtualOnly
-    || String(entry?.sessionMode || "").trim().toLowerCase() === "virtual";
-  const isOfficialBeauRocksListing = !!entry?.isOfficialBeauRocksListing || !!entry?.isOfficialBeauRocksRoom;
-  const isOfficialBeauRocksRoom = listingType === "room_session" && !!entry?.isOfficialBeauRocksRoom;
-  const hasBeauRocksHostAccount = !!entry?.hasBeauRocksHostAccount;
-  const hostLeaderboardRank = Math.max(0, Number(entry?.hostLeaderboardRank || 0) || 0);
-  const hostLeaderboardScore = Math.max(0, Number(entry?.hostLeaderboardScore || 0) || 0);
-  const hostHostedRooms = Math.max(0, Number(entry?.hostHostedRooms || 0) || 0);
-  const hostRecapCount = Math.max(0, Number(entry?.hostRecapCount || 0) || 0);
-  const venueLeaderboardRank = Math.max(0, Number(entry?.venueLeaderboardRank || 0) || 0);
-  const venueLeaderboardScore = Math.max(0, Number(entry?.venueLeaderboardScore || 0) || 0);
-  const venueAverageRating = Math.max(0, Number(entry?.venueAverageRating || 0) || 0);
-  const venueReviewCount = Math.max(0, Number(entry?.venueReviewCount || 0) || 0);
-  const venueCheckinCount = Math.max(0, Number(entry?.venueCheckinCount || 0) || 0);
-  const beauRocksHostTier = String(entry?.beauRocksHostTier || "").trim().toLowerCase();
-  const beauRocksElevatedReasons = Array.isArray(entry?.beauRocksElevatedReasons)
-    ? entry.beauRocksElevatedReasons.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
-    : [];
-  const isBeauRocksElevated = !!entry?.isBeauRocksElevated || isOfficialBeauRocksListing;
-  const subtitle = virtualOnly
-    ? "Virtual session"
-    : locationLabel || [city, state].filter(Boolean).join(", ") || "Location pending";
-  const timeLabel = listingType === "venue"
-    ? String(entry?.karaokeNightsLabel || "").trim()
-    : startsAtMs > 0 ? formatDateTime(startsAtMs) : "Time TBD";
-  const cadenceBadges = extractCadenceBadges({
-    karaokeNightsLabel: entry?.karaokeNightsLabel,
-    recurringRule: entry?.recurringRule,
-    startsAtMs,
-    max: listingType === "venue" ? 4 : 3,
-  });
-  const recurringRule = String(entry?.recurringRule || "").trim();
-  const karaokeNightsLabel = String(entry?.karaokeNightsLabel || "").trim();
-  const isRecurringEvent = listingType === "event" && (!!recurringRule || !!karaokeNightsLabel);
-  const experience = deriveDirectoryExperience({
-    ...entry,
-    listingType,
-    isOfficialBeauRocksListing,
-    isOfficialBeauRocksRoom,
-    isBeauRocksElevated,
-    hasBeauRocksHostAccount,
-    beauRocksHostTier,
-    beauRocksElevatedReasons,
-    hostLeaderboardRank,
-    hostLeaderboardScore,
-    hostHostedRooms,
-    hostRecapCount,
-    venueLeaderboardRank,
-    venueLeaderboardScore,
-    venueAverageRating,
-    venueReviewCount,
-    venueCheckinCount,
-    startsAtMs,
-    roomCode,
-    recurringRule,
-    karaokeNightsLabel,
-  });
-  return {
-    key: `${listingType}:${entry.id}`,
-    id: entry.id,
-    listingType,
-    routePage: meta.routePage,
-    markerColor: isBeauRocksElevated ? OFFICIAL_ROOM_MARKER_COLOR : meta.markerColor,
-    typeLabel: meta.label,
-    title: String(entry?.title || "Untitled listing"),
-    imageUrl,
-    imageFallbackUrl: hardFallbackImageUrl,
-    imageFallbackUrls,
-    googleImageCandidates,
-    avatarUrl,
-    avatarLabel: listingType === "event"
-      ? String(entry?.hostName || entry?.venueName || entry?.title || "").trim()
-      : listingType === "room_session"
-        ? String(entry?.hostName || entry?.roomCode || entry?.title || "").trim()
-        : String(entry?.title || "").trim(),
-    officialBadgeImageUrl,
-    subtitle,
-    detailLine: listingType === "event"
-      ? [entry?.hostName, entry?.venueName].filter(Boolean).join(" | ")
-      : listingType === "room_session"
-        ? [virtualOnly ? "Virtual" : "", entry?.venueName, roomCode].filter(Boolean).join(" | ")
-        : String(entry?.description || "").trim().slice(0, 120),
-    hostUid,
-    hostName,
-    hostToken: getHostToken({ hostUid, hostName }),
-    performerUid: String(entry?.performerUid || "").trim(),
-    timeLabel,
-    cadenceBadges,
-    startsAtMs,
-    location,
-    roomCode,
-    virtualOnly,
-    recurringRule,
-    karaokeNightsLabel,
-    isRecurringEvent,
-    officialBeauRocksStatus: String(entry?.officialBeauRocksStatus || "").trim().toLowerCase(),
-    officialBeauRocksStatusLabel: String(entry?.officialBeauRocksStatusLabel || "").trim(),
-    isOfficialBeauRocksListing,
-    isOfficialBeauRocksRoom,
-    isBeauRocksElevated,
-    hasBeauRocksHostAccount,
-    beauRocksHostTier,
-    beauRocksElevatedReasons,
-    hostLeaderboardRank,
-    hostLeaderboardScore,
-    hostHostedRooms,
-    hostRecapCount,
-    venueLeaderboardRank,
-    venueLeaderboardScore,
-    venueAverageRating,
-    venueReviewCount,
-    venueCheckinCount,
-    locationSource: String(options?.locationSource || "").trim() || (location ? "entry" : "missing"),
-    experience,
-  };
-};
-
-const sortListings = (a, b) => {
-  const aStarts = Number(a?.startsAtMs || 0);
-  const bStarts = Number(b?.startsAtMs || 0);
-  if (aStarts > 0 && bStarts > 0 && aStarts !== bStarts) return aStarts - bStarts;
-  if (aStarts > 0 && bStarts <= 0) return -1;
-  if (aStarts <= 0 && bStarts > 0) return 1;
-  return String(a?.title || "").localeCompare(String(b?.title || ""));
 };
 
 const pointInBounds = (location = null, bounds = null) => {
@@ -992,7 +639,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     const next = [];
     data.events.forEach((entry) => {
       const resolved = resolveListingLocationData(entry, venueLocationIndex);
-      next.push(toListing(entry, "event", {
+      next.push(buildDiscoverListing(entry, "event", {
         mapsApiKey,
         allowGoogleImageApis,
         allowGoogleStaticFallback: discoverGoogleStaticFallbackEnabled,
@@ -1003,7 +650,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     });
     data.sessions.forEach((entry) => {
       const resolved = resolveListingLocationData(entry, venueLocationIndex);
-      next.push(toListing(entry, "room_session", {
+      next.push(buildDiscoverListing(entry, "room_session", {
         mapsApiKey,
         allowGoogleImageApis,
         allowGoogleStaticFallback: discoverGoogleStaticFallbackEnabled,
@@ -1014,7 +661,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     });
     data.venues.forEach((entry) => {
       const resolved = resolveListingLocationData(entry, venueLocationIndex);
-      next.push(toListing(entry, "venue", {
+      next.push(buildDiscoverListing(entry, "venue", {
         mapsApiKey,
         allowGoogleImageApis,
         allowGoogleStaticFallback: discoverGoogleStaticFallbackEnabled,
@@ -1026,47 +673,21 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     return next;
   }, [allowGoogleImageApis, data.events, data.sessions, data.venues, discoverGoogleStaticFallbackEnabled, mapsApiKey, venueLocationIndex]);
 
-  const hostFacetOptions = useMemo(() => {
-    const fromServer = Array.isArray(facets?.host) ? facets.host : [];
-    if (fromServer.length) {
-      return fromServer
-        .map((entry) => ({
-          id: String(entry?.hostUid || "").trim(),
-          hostUid: String(entry?.hostUid || "").trim(),
-          hostName: String(entry?.hostName || "").trim() || "Host",
-          count: Number(entry?.count || 0) || 0,
-        }))
-        .filter((entry) => !!entry.id)
-        .slice(0, 16);
-    }
-
-    const byHost = new Map();
-    allListings.forEach((entry) => {
-      const hostUid = String(entry?.hostUid || "").trim();
-      if (!hostUid) return;
-      const existing = byHost.get(hostUid) || {
-        id: hostUid,
-        hostUid,
-        hostName: String(entry?.hostName || "").trim() || "Host",
-        count: 0,
-      };
-      existing.count += 1;
-      byHost.set(hostUid, existing);
-    });
-    return Array.from(byHost.values())
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 16);
-  }, [allListings, facets]);
-  const effectiveHostFilter = useMemo(() => {
-    if (hostFilter === "all") return "all";
-    return hostFacetOptions.some((entry) => entry.id === hostFilter) ? hostFilter : "all";
-  }, [hostFacetOptions, hostFilter]);
+  const hostFacetOptions = useMemo(() => buildHostFacetOptions({
+    facets,
+    listings: allListings,
+    limit: 16,
+  }), [allListings, facets]);
+  const effectiveHostFilter = useMemo(() => resolveEffectiveHostFilter({
+    hostFilter,
+    hostFacetOptions,
+  }), [hostFacetOptions, hostFilter]);
   const filteredByHost = useMemo(() => {
     if (effectiveHostFilter === "all") return allListings;
     return allListings.filter((entry) => String(entry?.hostUid || "").trim() === effectiveHostFilter);
   }, [allListings, effectiveHostFilter]);
   const activeListingTypes = useMemo(
-    () => normalizeSelectedListingTypes(selectedListingTypes),
+    () => normalizeSelectedListingTypes(selectedListingTypes, DEFAULT_SELECTED_LISTING_TYPES),
     [selectedListingTypes]
   );
   const filteredByListingType = useMemo(() => {
@@ -1085,16 +706,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     if (experienceFilter === "all") return filteredByRoomAccess;
     return filteredByRoomAccess.filter((entry) => matchesDirectoryExperienceFilter(entry.experience || entry, experienceFilter));
   }, [experienceFilter, filteredByRoomAccess]);
-  const eventCadenceCounts = useMemo(() => {
-    const counts = { total: 0, recurring: 0, one_time: 0 };
-    filteredByExperience.forEach((entry) => {
-      if (entry.listingType !== "event") return;
-      counts.total += 1;
-      if (entry.isRecurringEvent) counts.recurring += 1;
-      else counts.one_time += 1;
-    });
-    return counts;
-  }, [filteredByExperience]);
+  const eventCadenceCounts = useMemo(
+    () => countEventCadenceListings(filteredByExperience),
+    [filteredByExperience]
+  );
   const filteredByEventCadence = useMemo(() => {
     if (eventCadenceFilter === "all") return filteredByExperience;
     if (eventCadenceFilter === "recurring") {
@@ -1103,105 +718,14 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     return filteredByExperience.filter((entry) => entry.listingType === "event" && !entry.isRecurringEvent);
   }, [eventCadenceFilter, filteredByExperience]);
 
-  const rankedListings = useMemo(() => {
-    const withSignals = filteredByEventCadence.map((entry) => {
-      const experience = entry.experience || deriveDirectoryExperience(entry);
-      const distanceMiles = calculateDistanceMiles(userLocation, entry.location);
-      const distanceScore = Number.isFinite(distanceMiles)
-        ? Math.max(0, 32 - (distanceMiles * 1.8))
-        : 0;
-      const typeBonus = entry.listingType === "event" ? 12 : entry.listingType === "room_session" ? 8 : 5;
-      const elevatedBonus = entry.isOfficialBeauRocksListing ? 32 : entry.isBeauRocksElevated ? 20 : 0;
-      const score = computeTimePriority(entry.startsAtMs, rankingNowMs)
-        + distanceScore
-        + typeBonus
-        + elevatedBonus
-        + Number(experience.discoveryBoost || 0)
-        + scoreSearchRelevance(entry, search);
-      return {
-        ...entry,
-        experience,
-        distanceMiles: Number.isFinite(distanceMiles) ? distanceMiles : null,
-        distanceLabel: formatDistanceLabel(distanceMiles),
-        score,
-      };
-    });
-
-    if (sortMode === "soonest") {
-      return withSignals.slice().sort(sortListings);
-    }
-    if (sortMode === "nearest") {
-      return withSignals.slice().sort((a, b) => {
-        const aDistance = Number(a?.distanceMiles);
-        const bDistance = Number(b?.distanceMiles);
-        const aHasDistance = Number.isFinite(aDistance);
-        const bHasDistance = Number.isFinite(bDistance);
-        if (aHasDistance && bHasDistance && aDistance !== bDistance) return aDistance - bDistance;
-        if (aHasDistance && !bHasDistance) return -1;
-        if (!aHasDistance && bHasDistance) return 1;
-        return sortListings(a, b);
-      });
-    }
-    if (sortMode === "host_first") {
-      const hostRanks = new Map();
-      withSignals.forEach((entry) => {
-        const token = String(entry?.hostToken || "").trim();
-        if (!token) return;
-        const existing = hostRanks.get(token) || {
-          bestScore: Number.NEGATIVE_INFINITY,
-          soonestMs: Number.POSITIVE_INFINITY,
-          count: 0,
-        };
-        existing.bestScore = Math.max(existing.bestScore, Number(entry?.score || 0));
-        const startsAtMs = Number(entry?.startsAtMs || 0);
-        if (startsAtMs > 0) existing.soonestMs = Math.min(existing.soonestMs, startsAtMs);
-        existing.count += 1;
-        hostRanks.set(token, existing);
-      });
-
-      return withSignals.slice().sort((a, b) => {
-        const aToken = String(a?.hostToken || "").trim();
-        const bToken = String(b?.hostToken || "").trim();
-        const aHasHost = !!aToken;
-        const bHasHost = !!bToken;
-        if (aHasHost !== bHasHost) return aHasHost ? -1 : 1;
-
-        if (aHasHost && bHasHost && aToken !== bToken) {
-          const aRank = hostRanks.get(aToken) || {
-            bestScore: Number.NEGATIVE_INFINITY,
-            soonestMs: Number.POSITIVE_INFINITY,
-            count: 0,
-          };
-          const bRank = hostRanks.get(bToken) || {
-            bestScore: Number.NEGATIVE_INFINITY,
-            soonestMs: Number.POSITIVE_INFINITY,
-            count: 0,
-          };
-          if (aRank.bestScore !== bRank.bestScore) return bRank.bestScore - aRank.bestScore;
-          if (aRank.soonestMs !== bRank.soonestMs) return aRank.soonestMs - bRank.soonestMs;
-          if (aRank.count !== bRank.count) return bRank.count - aRank.count;
-          const aHostName = String(a?.hostName || "");
-          const bHostName = String(b?.hostName || "");
-          const hostNameCompare = aHostName.localeCompare(bHostName);
-          if (hostNameCompare !== 0) return hostNameCompare;
-        }
-
-        if (aHasHost && bHasHost && aToken === bToken) {
-          const withinHost = sortListings(a, b);
-          if (withinHost !== 0) return withinHost;
-          if (a.score !== b.score) return b.score - a.score;
-          return String(a?.title || "").localeCompare(String(b?.title || ""));
-        }
-
-        if (a.score !== b.score) return b.score - a.score;
-        return sortListings(a, b);
-      });
-    }
-    return withSignals.slice().sort((a, b) => {
-      if (a.score !== b.score) return b.score - a.score;
-      return sortListings(a, b);
-    });
-  }, [filteredByEventCadence, sortMode, userLocation, search, rankingNowMs]);
+  const rankedListings = useMemo(() => rankDiscoverListings({
+    listings: filteredByEventCadence,
+    userLocation,
+    search,
+    rankingNowMs,
+    sortMode,
+    deriveExperience: deriveDirectoryExperience,
+  }), [filteredByEventCadence, sortMode, userLocation, search, rankingNowMs]);
 
   const mappableListings = useMemo(
     () => rankedListings.filter((entry) => !!entry.location),
@@ -1228,25 +752,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     return "";
   }, [visibleListings, selectedKey]);
 
-  const listingTypeCounts = useMemo(() => {
-    const counts = { venue: 0, event: 0, room_session: 0, elevated: 0 };
-    rankedListings.forEach((entry) => {
-      if (entry.listingType === "event") counts.event += 1;
-      else if (entry.listingType === "room_session") counts.room_session += 1;
-      else counts.venue += 1;
-      if (entry.isBeauRocksElevated) counts.elevated += 1;
-    });
-    return counts;
-  }, [rankedListings]);
-  const listingTypeToggleCounts = useMemo(() => {
-    const counts = { venue: 0, event: 0, room_session: 0 };
-    filteredByHost.forEach((entry) => {
-      if (entry.listingType === "event") counts.event += 1;
-      else if (entry.listingType === "room_session") counts.room_session += 1;
-      else counts.venue += 1;
-    });
-    return counts;
-  }, [filteredByHost]);
+  const listingTypeCounts = useMemo(() => countListingTypes({
+    listings: rankedListings,
+    includeElevated: true,
+  }), [rankedListings]);
+  const listingTypeToggleCounts = useMemo(() => countListingTypes({
+    listings: filteredByHost,
+  }), [filteredByHost]);
 
   const selectedListing = useMemo(
     () => visibleListings.find((entry) => entry.key === effectiveSelectedKey) || null,
@@ -1729,10 +1241,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     const elevatedBadge = selectedListingInMap.isOfficialBeauRocksListing
       ? `<div class="mk3-chip mk3-chip-elevated mk3-map-marker-selected-badge">${elevatedBadgeImage}<span>${escapeHtml(selectedListingInMap.listingType === "room_session" ? "Official BeauRocks Room" : "Official BeauRocks Event")}</span></div>`
       : "";
-    const selectedActionHref = buildListingActionHref(selectedListingInMap);
-    const selectedActionLabel = selectedListingInMap.listingType === "room_session" && selectedListingInMap.roomCode
-      ? "Open room"
-      : "Open details";
+    const selectedActionMeta = getListingActionMeta(selectedListingInMap);
+    const selectedActionHref = selectedActionMeta.href;
+    const selectedActionLabel = selectedActionMeta.label;
     const selectedAction = selectedActionHref
       ? `<a class="mk3-map-marker-selected-action" href="${escapeHtml(selectedActionHref)}">${escapeHtml(selectedActionLabel)}</a>`
       : "";
@@ -1762,30 +1273,20 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     if (token === "nationwide") return "Nationwide";
     return humanizeRegion(token) || token;
   }, [region]);
-  const officialBeauRocksListingCount = useMemo(
-    () => allListings.filter((entry) => entry.isOfficialBeauRocksListing).length,
-    [allListings]
+  const officialSummary = useMemo(
+    () => buildOfficialListingSummary({
+      listings: allListings,
+      nowMs: rankingNowMs,
+      liveLookbackMs: LIVE_LOOKBACK_MS,
+      sortListings: sortDiscoverListings,
+      limit: 3,
+    }),
+    [allListings, rankingNowMs]
   );
-  const officialBeauRocksRoomCount = useMemo(
-    () => allListings.filter((entry) => entry.isOfficialBeauRocksRoom).length,
-    [allListings]
-  );
-  const beauRocksElevatedCount = useMemo(
-    () => allListings.filter((entry) => entry.isBeauRocksElevated).length,
-    [allListings]
-  );
-  const officialUpcomingListings = useMemo(() => {
-    const nowFloor = Date.now() - (2 * 60 * 60 * 1000);
-    const official = allListings
-      .filter((entry) => entry.isOfficialBeauRocksListing)
-      .filter((entry) => {
-        const startsAtMs = Number(entry?.startsAtMs || 0);
-        return startsAtMs <= 0 || startsAtMs >= nowFloor;
-      })
-      .slice()
-      .sort(sortListings);
-    return official.slice(0, 3);
-  }, [allListings]);
+  const officialBeauRocksListingCount = officialSummary.officialBeauRocksListingCount;
+  const officialBeauRocksRoomCount = officialSummary.officialBeauRocksRoomCount;
+  const beauRocksElevatedCount = officialSummary.beauRocksElevatedCount;
+  const officialUpcomingListings = officialSummary.officialUpcomingListings;
   const joinableRoomCount = useMemo(
     () => countJoinableRoomListings(filteredByBeauRocks),
     [filteredByBeauRocks]
@@ -1952,23 +1453,16 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     navigate("submit", "", { intent: "listing_submit", targetType: "venue" });
   };
   const toggleListingTypeFilter = useCallback((typeId = "") => {
-    const normalizedType = normalizeListingType(typeId);
     setSelectedListingTypes((prev) => {
-      const current = normalizeSelectedListingTypes(prev);
-      if (current.includes(normalizedType)) {
-        if (current.length === 1) return current;
-        return current.filter((token) => token !== normalizedType);
-      }
-      return normalizeSelectedListingTypes([...current, normalizedType]);
+      return toggleSelectedListingType(prev, typeId, DEFAULT_SELECTED_LISTING_TYPES);
     });
     trackEvent("mk_discover_listing_type_toggle", {
       source: "discover_filters",
-      listingType: normalizedType,
+      listingType: normalizeListingType(typeId),
     });
   }, []);
   const setOnlyListingTypeFilter = useCallback((typeId = "") => {
-    const normalizedType = normalizeListingType(typeId);
-    setSelectedListingTypes([normalizedType]);
+    setSelectedListingTypes(setOnlySelectedListingType(typeId, DEFAULT_SELECTED_LISTING_TYPES));
   }, []);
   const renderDiscoverFilters = () => (
     <>

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import {
   toMillis,
   toRoomManagerEntryFromData,
 } from "../../src/apps/Marketing/pages/hostRoomManagerUtils.js";
 
-const run = () => {
+test("hostRoomManagerUtils.test", () => {
   assert.equal(toMillis(1700000000000), 1700000000000);
   assert.equal(toMillis({ seconds: 100, nanoseconds: 500000000 }), 100500);
   assert.equal(toMillis({ toMillis: () => 42 }), 42);
@@ -37,8 +38,4 @@ const run = () => {
   assert.equal(recapRoom.isArchived, true);
   assert.equal(recapRoom.hasRecap, true);
   assert.equal(recapRoom.recapAtMs, 321);
-
-  console.log("PASS hostRoomManagerUtils");
-};
-
-run();
+});

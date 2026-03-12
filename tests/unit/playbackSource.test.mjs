@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { test } from "vitest";
 import {
     normalizeBackingChoice,
     resolveStageMediaUrl,
@@ -8,7 +9,7 @@ import {
     getBackingSourceLabel
 } from '../../src/lib/playbackSource.js';
 
-const run = () => {
+test("playbackSource.test", () => {
     const explicitMedia = normalizeBackingChoice({
         mediaUrl: ' https://www.youtube.com/watch?v=abc12345 ',
         appleMusicId: '12345'
@@ -101,8 +102,4 @@ const run = () => {
     assert.equal(getBackingSourceLabel({ usesAppleBacking: false, mediaUrl: 'https://youtu.be/abc12345' }), 'YouTube');
     assert.equal(getBackingSourceLabel({ usesAppleBacking: false, mediaUrl: 'https://example.com/a.mp4' }), 'Local');
     assert.equal(getBackingSourceLabel({ usesAppleBacking: false, mediaUrl: '' }), 'No backing');
-
-    console.log('playbackSource tests passed');
-};
-
-run();
+});

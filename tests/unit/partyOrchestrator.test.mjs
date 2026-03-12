@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { test } from "vitest";
 import {
     PARTY_AUTO_MOMENT_DEFAULTS,
     PARTY_POLICY_DEFAULTS,
@@ -10,7 +11,7 @@ import {
     recommendAutoCrowdMoment
 } from '../../src/apps/Host/partyOrchestrator.js';
 
-const run = () => {
+test("partyOrchestrator.test", () => {
     const defaults = normalizeMissionParty({});
     assert.equal(defaults.karaokeFirst, true);
     assert.equal(defaults.minSingingSharePct, PARTY_POLICY_DEFAULTS.minSingingSharePct);
@@ -127,8 +128,4 @@ const run = () => {
     });
     assert.equal(disabledAuto.allowed, false);
     assert.equal(disabledAuto.reason, 'disabled');
-
-    console.log('partyOrchestrator tests passed');
-};
-
-run();
+});

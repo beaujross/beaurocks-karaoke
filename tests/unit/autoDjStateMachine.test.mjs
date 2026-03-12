@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { test } from "vitest";
 import {
     AUTO_DJ_EVENTS,
     createAutoDjSequenceState,
@@ -7,7 +8,7 @@ import {
     describeAutoDjSequenceState
 } from '../../src/apps/Host/autoDjStateMachine.js';
 
-const run = () => {
+test("autoDjStateMachine.test", () => {
     let state = createAutoDjSequenceState(1000);
     state = transitionAutoDjSequenceState(state, AUTO_DJ_EVENTS.START, { songId: 'song_a' }, 1200);
     assert.equal(state.phase, 'stage');
@@ -38,8 +39,4 @@ const run = () => {
 
     const reset = transitionAutoDjSequenceState(failState, AUTO_DJ_EVENTS.RESET, {}, 3700);
     assert.equal(reset.phase, 'idle');
-
-    console.log('autoDjStateMachine tests passed');
-};
-
-run();
+});

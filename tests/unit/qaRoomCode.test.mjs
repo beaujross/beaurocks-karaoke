@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import {
   extractRoomCodeFromBodyText,
   extractRoomCodeFromUrl,
@@ -6,7 +7,7 @@ import {
   sanitizeRoomCode,
 } from "../../scripts/qa/lib/roomCode.js";
 
-const run = () => {
+test("qaRoomCode.test", () => {
   assert.equal(sanitizeRoomCode(" xjf2 "), "XJF2");
   assert.equal(isLikelyRoomCode("XJF2"), true);
   assert.equal(isLikelyRoomCode("SETUP"), false);
@@ -23,8 +24,4 @@ const run = () => {
     extractRoomCodeFromBodyText("FIRST ROOM SETUP"),
     ""
   );
-
-  console.log("PASS qaRoomCode");
-};
-
-run();
+});

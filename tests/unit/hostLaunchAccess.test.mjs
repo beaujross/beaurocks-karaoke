@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import {
   normalizeHostPermissionLevel,
   canQuickStartForRole,
 } from "../../src/apps/Host/launchAccess.js";
 
-const run = () => {
+test("hostLaunchAccess.test", () => {
   assert.equal(normalizeHostPermissionLevel("owner"), "owner");
   assert.equal(normalizeHostPermissionLevel(" ADMIN "), "admin");
   assert.equal(normalizeHostPermissionLevel("member"), "member");
@@ -15,8 +16,4 @@ const run = () => {
   assert.equal(canQuickStartForRole("admin"), true);
   assert.equal(canQuickStartForRole("member"), false);
   assert.equal(canQuickStartForRole("moderator"), false);
-
-  console.log("PASS hostLaunchAccess");
-};
-
-run();
+});

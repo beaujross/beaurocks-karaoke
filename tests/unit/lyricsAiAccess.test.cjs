@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { buildLyricsAiAccessState } = require("../../functions/lib/lyrics/aiAccess");
 
-const run = () => {
+test("lyricsAiAccess.test", () => {
   const secretOnly = buildLyricsAiAccessState({
     timedOnly: false,
     aiCapabilityEnabled: false,
@@ -51,8 +51,4 @@ const run = () => {
   assert.equal(timedOnly.allowAiFallback, false);
   assert.equal(timedOnly.aiCapabilityBlocked, false);
   assert.equal(timedOnly.canCallAiProvider, false);
-
-  console.log("lyrics AI access tests passed");
-};
-
-run();
+});

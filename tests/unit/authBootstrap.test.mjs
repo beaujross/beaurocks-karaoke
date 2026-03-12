@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import { shouldBootstrapAnonymousAuth } from "../../src/lib/authBootstrap.js";
 
-const run = () => {
+test("authBootstrap.test", () => {
   assert.equal(
     shouldBootstrapAnonymousAuth({ customToken: "custom-token", currentUser: null }),
     false
@@ -21,9 +22,4 @@ const run = () => {
     shouldBootstrapAnonymousAuth({ customToken: "", currentUser: null }),
     true
   );
-
-  console.log("PASS authBootstrap");
-};
-
-run();
-
+});

@@ -6,7 +6,7 @@ const {
   buildUsageMeterSummary,
 } = require("../../functions/lib/entitlementsUsage");
 
-const run = () => {
+test("entitlementsUsage.test", () => {
   const inactiveFree = buildCapabilitiesForPlan("free", "inactive");
   assert.deepEqual(inactiveFree, BASE_CAPABILITIES);
 
@@ -56,8 +56,4 @@ const run = () => {
   });
   assert.equal(hardLimitSummary.hardLimitReached, true);
   assert.equal(hardLimitSummary.remainingToHardLimit, 0);
-
-  console.log("entitlements usage tests passed");
-};
-
-run();
+});

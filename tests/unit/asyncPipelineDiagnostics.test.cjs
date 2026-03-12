@@ -4,7 +4,7 @@ const {
   classifyPopTriviaPipeline,
 } = require("../../functions/lib/asyncPipelineDiagnostics");
 
-const run = async () => {
+test("asyncPipelineDiagnostics.test", async () => {
   const now = Date.now();
 
   const staleLyrics = classifyLyricsPipeline({
@@ -50,8 +50,4 @@ const run = async () => {
     popTrivia: [],
   }, { now });
   assert.equal(brokenReadyPopTrivia.issueCode, "ready_without_payload");
-
-  console.log("PASS asyncPipelineDiagnostics");
-};
-
-run();
+});

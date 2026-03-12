@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import {
   getVolleyOrbMobileMainLine,
   getVolleyOrbTvInstructionCopy,
@@ -6,7 +7,7 @@ import {
   isVolleyOrbTargetInteraction,
 } from "../../src/lib/volleyOrbUiState.js";
 
-const run = () => {
+test("volleyOrbUiState.test", () => {
   assert.equal(
     isVolleyOrbSceneActive({
       hasCurrentSinger: false,
@@ -142,8 +143,4 @@ const run = () => {
     }),
     false,
   );
-
-  console.log("PASS volleyOrbUiState");
-};
-
-run();
+});

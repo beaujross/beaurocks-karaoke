@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import {
   MARKETING_ROUTE_PAGES,
   isMarketingPath,
   parseMarketingRouteFromLocation,
 } from "../../src/apps/Marketing/routing.js";
 
-const run = () => {
+test("marketingRoutingLegacy.test", () => {
   const fromLegacyQuery = parseMarketingRouteFromLocation({
     pathname: "/",
     search: "?mode=marketing&page=for_hosts&utm_source=test_suite",
@@ -50,8 +51,4 @@ const run = () => {
     search: "",
   });
   assert.equal(fromRootFallback.page, MARKETING_ROUTE_PAGES.forFans);
-
-  console.log("PASS marketingRoutingLegacy");
-};
-
-run();
+});

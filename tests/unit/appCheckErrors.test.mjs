@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import {
   getAppCheckRetryDelayMs,
   isAppCheckRequiredError,
@@ -6,7 +7,7 @@ import {
   isRecoverableAppCheckError,
 } from "../../src/lib/appCheckErrors.js";
 
-const run = async () => {
+test("appCheckErrors.test", async () => {
   assert.equal(
     isAppCheckRequiredError({
       code: "failed-precondition",
@@ -42,8 +43,4 @@ const run = async () => {
   assert.equal(getAppCheckRetryDelayMs(0, false), 250);
   assert.equal(getAppCheckRetryDelayMs(0, true), 1500);
   assert.equal(getAppCheckRetryDelayMs(99, true), 12000);
-
-  console.log("PASS appCheckErrors");
-};
-
-run();
+});

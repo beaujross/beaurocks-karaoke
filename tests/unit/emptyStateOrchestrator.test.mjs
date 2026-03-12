@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import {
   EMPTY_STATE_CONTEXT,
   getEmptyStateConfig,
@@ -7,7 +8,7 @@ import {
 const getActionLabels = (config = {}) =>
   (Array.isArray(config.actions) ? config.actions : []).map((action) => String(action?.label || ""));
 
-const run = () => {
+test("emptyStateOrchestrator.test", () => {
   const discoverNoResultsSignedOut = getEmptyStateConfig({
     context: EMPTY_STATE_CONTEXT.DISCOVER_NO_RESULTS,
     hasFilters: false,
@@ -36,8 +37,4 @@ const run = () => {
 
   const fallback = getEmptyStateConfig({});
   assert.equal(getActionLabels(fallback).length > 0, true);
-
-  console.log("PASS emptyStateOrchestrator");
-};
-
-run();
+});

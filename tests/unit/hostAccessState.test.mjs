@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { test } from "vitest";
 import {
   EMPTY_HOST_ACCESS,
   fetchHostAccessStatusWithRetry,
@@ -6,7 +7,7 @@ import {
   normalizeHostAccessPayload,
 } from "../../src/apps/Marketing/hooks/hostAccessState.js";
 
-const run = async () => {
+test("hostAccessState.test", async () => {
   assert.deepEqual(normalizeHostAccessPayload(), EMPTY_HOST_ACCESS);
 
   assert.equal(
@@ -56,8 +57,4 @@ const run = async () => {
     }, { retryDelaysMs: [0, 0, 0] }),
     /Permission denied/i
   );
-
-  console.log("PASS hostAccessState");
-};
-
-run();
+});
