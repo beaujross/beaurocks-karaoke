@@ -1,6 +1,7 @@
 export const MARKETING_ROUTE_PAGES = {
   discover: "discover",
   demo: "demo",
+  demoAuto: "demo_auto",
   changelog: "changelog",
   hostAccess: "host_access",
   venue: "venue",
@@ -38,6 +39,8 @@ const QUERY_PARAM_KEYS = new Set([
 const LEGACY_PAGE_TO_CANONICAL = {
   discover: { page: MARKETING_ROUTE_PAGES.discover },
   demo: { page: MARKETING_ROUTE_PAGES.demo },
+  demo_auto: { page: MARKETING_ROUTE_PAGES.demoAuto },
+  "demo-auto": { page: MARKETING_ROUTE_PAGES.demoAuto },
   changelog: { page: MARKETING_ROUTE_PAGES.changelog },
   host_access: { page: MARKETING_ROUTE_PAGES.hostAccess },
   "host-access": { page: MARKETING_ROUTE_PAGES.hostAccess },
@@ -102,6 +105,7 @@ const routeForPathTokens = (parts = []) => {
 
   if (parts[0] === "discover") return { page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} };
   if (parts[0] === "demo") return { page: MARKETING_ROUTE_PAGES.demo, id: "", params: {} };
+  if (parts[0] === "demo-auto") return { page: MARKETING_ROUTE_PAGES.demoAuto, id: "", params: {} };
   if (parts[0] === "changelog") return { page: MARKETING_ROUTE_PAGES.changelog, id: "", params: {} };
   if (parts[0] === "host-access") return { page: MARKETING_ROUTE_PAGES.hostAccess, id: "", params: {} };
   if (parts[0] === "for-hosts") return { page: MARKETING_ROUTE_PAGES.forHosts, id: "", params: {} };
@@ -260,6 +264,7 @@ export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.discover, id =
   const safeId = String(id || "").trim();
   if (page === MARKETING_ROUTE_PAGES.discover) return applyBasePath("/discover");
   if (page === MARKETING_ROUTE_PAGES.demo) return applyBasePath("/demo");
+  if (page === MARKETING_ROUTE_PAGES.demoAuto) return applyBasePath("/demo-auto");
   if (page === MARKETING_ROUTE_PAGES.changelog) return applyBasePath("/changelog");
   if (page === MARKETING_ROUTE_PAGES.hostAccess) return applyBasePath("/host-access");
   if (page === MARKETING_ROUTE_PAGES.forHosts) return applyBasePath("/for-hosts");
@@ -316,6 +321,7 @@ export const buildLegacyMarketingQuery = ({ page = MARKETING_ROUTE_PAGES.discove
   const pageMap = {
     [MARKETING_ROUTE_PAGES.discover]: "discover",
     [MARKETING_ROUTE_PAGES.demo]: "demo",
+    [MARKETING_ROUTE_PAGES.demoAuto]: "demo_auto",
     [MARKETING_ROUTE_PAGES.changelog]: "changelog",
     [MARKETING_ROUTE_PAGES.hostAccess]: "host_access",
     [MARKETING_ROUTE_PAGES.venue]: "venue",

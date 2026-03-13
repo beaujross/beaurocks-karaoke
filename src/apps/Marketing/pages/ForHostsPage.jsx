@@ -12,33 +12,33 @@ const HOST_STACK_BADGES = [
 ];
 
 const HOST_CORE_OUTCOMES = [
-  "Every host application is reviewed before access is granted.",
-  "Approved hosts get the live Host Dashboard, not a stripped-down tour.",
-  "BeauRocks is best suited to hosts running recurring nights, venue programs, and standout private events.",
-  "We onboard in stages so setup, training, and support stay strong.",
+  "Every host application is reviewed.",
+  "Approved hosts get the real Host Dashboard.",
+  "Best fit: recurring nights, venue programs, and standout private events.",
+  "We onboard in stages so support stays strong.",
 ];
 
 const HOST_STORY_POINTS = [
-  "Tell us where you host or what kind of karaoke night you run.",
-  "We review applications for hosts running recurring shows, fundraisers, private events, and venue programs.",
-  "Once approved, you can create rooms, launch the TV view, and manage the night from the Host Dashboard.",
+  "Tell us where you host or what kind of night you run.",
+  "We review applications for recurring shows, fundraisers, private events, and venue programs.",
+  "Once approved, you can create rooms, launch TV, and run the night from Host Dashboard.",
 ];
 
 const HOST_VIP_SIGNALS = [
   {
     label: "Best fit",
     title: "Hosts with a real night to run",
-    copy: "Applications move faster when there is a clear venue, event type, or recurring room behind them.",
+    copy: "Applications move faster with a clear venue, event type, or recurring room behind them.",
   },
   {
     label: "What we look for",
     title: "Hosts who care about the room experience",
-    copy: "We prioritize hosts who care about pacing, crowd energy, smooth queue flow, and a better guest experience.",
+    copy: "We look for pacing, crowd energy, and a better guest experience.",
   },
   {
     label: "What you get",
     title: "The real host tools",
-    copy: "Approved hosts get access to room setup, live launch tools, TV links, and the full Host Dashboard.",
+    copy: "Approved hosts get room setup, launch tools, TV links, and the full Host Dashboard.",
   },
 ];
 
@@ -46,17 +46,17 @@ const HOST_SIGNAL_CARDS = [
   {
     label: "Approval",
     title: "Application review",
-    copy: "We review each host application so new partners launch with the right setup and support.",
+    copy: "We review each application before launch.",
   },
   {
     label: "Onboarding",
     title: "High-touch launch",
-    copy: "We onboard hosts in stages so each new room gets real attention instead of a rushed self-serve setup.",
+    copy: "We onboard in stages instead of pushing a rushed self-serve setup.",
   },
   {
     label: "After approval",
     title: "Straight to Host Dashboard",
-    copy: "Once approved, you go directly into the live host tools for room creation, launch, and nightly control.",
+    copy: "Once approved, you go straight into the live host tools.",
   },
 ];
 
@@ -233,10 +233,7 @@ const ForHostsPage = ({ route, session, authFlow }) => {
           <div className="mk3-host-hero-copy">
             <div className="mk3-host-kicker mk3-host-canon-kicker">host applications | beaurocks karaoke</div>
             <h1 className="mk3-host-canon-title is-xl">Apply to host karaoke nights with BeauRocks.</h1>
-            <p className="mk3-host-canon-copy">
-              We review every host application so new partners launch with the right setup, support,
-              and access to the real host tools.
-            </p>
+            <p className="mk3-host-canon-copy">We review every host application before granting access to the real host tools.</p>
             <div className="mk3-host-vip-brief mk3-host-canon-surface is-muted">
               <div className="mk3-host-vip-brief-head">
                 <span className="mk3-host-canon-kicker">How approval works</span>
@@ -246,17 +243,17 @@ const ForHostsPage = ({ route, session, authFlow }) => {
                 <article>
                   <span>Applications</span>
                   <strong>Reviewed by hand</strong>
-                  <p>We look for hosts with a real venue, event concept, or recurring night behind the application.</p>
+                  <p>We look for hosts with a real venue, event concept, or recurring night.</p>
                 </article>
                 <article>
                   <span>Launch</span>
                   <strong>Hands-on onboarding</strong>
-                  <p>New hosts get a cleaner launch when onboarding stays deliberate instead of becoming a rushed self-serve queue.</p>
+                  <p>New hosts get a cleaner launch when onboarding stays deliberate.</p>
                 </article>
                 <article>
                   <span>Access</span>
                   <strong>Real host tools</strong>
-                  <p>Once approved, you go straight into Host Dashboard to create rooms, launch the TV view, and run the night.</p>
+                  <p>Once approved, you go straight into Host Dashboard.</p>
                 </article>
               </div>
             </div>
@@ -305,7 +302,7 @@ const ForHostsPage = ({ route, session, authFlow }) => {
             {hostApplicationStatus === "pending" && (
                 <div className="mk3-status">
                   <strong>Your request is already in review.</strong>
-                  <span>We will reach out when there is an opening for your account or if we need more information.</span>
+                  <span>We will follow up if we need more information.</span>
                 </div>
             )}
             <div className="mk3-host-vip-signal-strip">
@@ -325,17 +322,15 @@ const ForHostsPage = ({ route, session, authFlow }) => {
                 <span className="mk3-host-vip-ledger">Application review</span>
               </div>
               <h2 className="mk3-host-canon-title is-md">Tell us you want to host with BeauRocks.</h2>
-              <p className="mk3-host-canon-copy is-muted">
-                Leave your email and we will place you in the host application queue.
-              </p>
+              <p className="mk3-host-canon-copy is-muted">Leave your email and we will place you in the host application queue.</p>
               <div className="mk3-host-vip-proof">
                 <strong>What happens next</strong>
-                <span>Your submission starts the review process. When host access is available for your account, we will follow up with next steps.</span>
+                <span>Your submission starts the review process. We will follow up with next steps.</span>
               </div>
               {session?.hasHostWorkspaceAccess ? (
                 <div className="mk3-status">
                   <strong>You already have host access.</strong>
-                  <span>Use Host Dashboard for room creation, launch, queue control, and live night management.</span>
+                  <span>Use Host Dashboard for room creation, TV launch, and live night control.</span>
                 </div>
               ) : (
                 <form className="mk3-auth-state" onSubmit={requestEarlyHostAccess}>
@@ -355,7 +350,7 @@ const ForHostsPage = ({ route, session, authFlow }) => {
                   </label>
                   <div className="mk3-status mk3-status-warning">
                     <strong>Application review required</strong>
-                    <span>Submitting here does not unlock the host dashboard immediately. It adds your account to the host review queue.</span>
+                    <span>Submitting here adds your account to the host review queue.</span>
                   </div>
                   {!!session?.email && (
                     <div className="mk3-auth-hint">Signed in as {session.email}. We will review this email for host access.</div>
@@ -388,7 +383,7 @@ const ForHostsPage = ({ route, session, authFlow }) => {
               <div className="mk3-host-visual-overlay">
                 <div className="mk3-persona-kicker">host dashboard</div>
                 <strong>Approved hosts go straight into the real host tools.</strong>
-                <span>Create rooms, launch the TV view, manage the queue, and run the night from Host Dashboard.</span>
+                <span>Create rooms, launch TV, manage the queue, and run the night.</span>
               </div>
             </article>
             <div className="mk3-host-signal-grid">
@@ -407,9 +402,7 @@ const ForHostsPage = ({ route, session, authFlow }) => {
       <div className="mk3-two-col mk3-persona-late-grid">
         <section className="mk3-detail-card mk3-host-manager-card mk3-host-canon-surface is-muted">
           <h2 className="mk3-host-canon-title is-md">What host access is for</h2>
-          <p className="mk3-host-setup-subcopy">
-            This is for hosts who want better room control, smoother guest flow, and the tools to run a stronger karaoke night.
-          </p>
+          <p className="mk3-host-setup-subcopy">For hosts who want better room control, smoother guest flow, and a stronger night.</p>
           <div className="mk3-sub-list compact">
             {HOST_STORY_POINTS.map((note) => (
               <article key={note} className="mk3-review-card">
@@ -423,7 +416,7 @@ const ForHostsPage = ({ route, session, authFlow }) => {
           <h4>How Host Access Works</h4>
           <div className="mk3-status">
             <strong>Reviewed before approval</strong>
-            <span>We onboard hosts in stages so setup, training, and support stay strong.</span>
+            <span>We onboard in stages so setup and support stay strong.</span>
           </div>
           <div className="mk3-persona-checklist-list">
             {HOST_CORE_OUTCOMES.map((item) => (

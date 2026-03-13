@@ -1823,7 +1823,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
           <span>
             {isInitialCountLoading
               ? `Loading the live directory in ${activeRegionLabel}...`
-              : `See upcoming karaoke events, live rooms you can join from your phone, and local venues that host regular nights all in one place.`}
+              : "See upcoming events, live rooms, and local karaoke spots in one place."}
           </span>
           <div className="mk3-discover-hero-stats">
             <span>{isInitialCountLoading ? "Syncing live directory..." : `${resultCountLabel} results`}</span>
@@ -1839,20 +1839,18 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
               <span>{activeRegionLabel}</span>
             </div>
             <strong>Live pulse</strong>
-            <p>
-              Browse official BeauRocks events, public karaoke rooms, and local spots from one map-driven directory.
-            </p>
+            <p>Browse official events, public rooms, and local spots from one map.</p>
           </div>
           <div className="mk3-discover-hero-side-grid">
             <article className="mk3-discover-hero-side-card">
               <span>Official BeauRocks</span>
               <strong>{officialBeauRocksListingCount}</strong>
-              <p>Featured BeauRocks events and official nights highlighted directly in the directory.</p>
+              <p>Featured BeauRocks events and official nights.</p>
             </article>
             <article className="mk3-discover-hero-side-card">
               <span>Joinable now</span>
               <strong>{joinableRoomCount}</strong>
-              <p>Rooms guests can join right now with a code from their phone.</p>
+              <p>Rooms guests can join right now by code.</p>
             </article>
             <article className="mk3-discover-hero-side-card">
               <span>Map mix</span>

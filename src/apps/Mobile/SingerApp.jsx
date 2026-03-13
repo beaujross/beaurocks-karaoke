@@ -61,6 +61,8 @@ import {
     summarizeBracketSignup
 } from '../../lib/karaokeBracketSupport';
 
+const PHONE_AUTH_RECAPTCHA_CONTAINER_ID = 'audience-phone-auth-recaptcha';
+
 // Helper Component for Animated Points
 const AnimatedPoints = ({ value, onClick, className = '' }) => {
     const [display, setDisplay] = useState(value);
@@ -4567,6 +4569,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
 
     const recapVerifierRef = useRef(null);
+    const recapVerifierWidgetIdRef = useRef(null);
+    const recapVerifierInitPromiseRef = useRef(null);
     const recapReadyRef = useRef(false);
     const recapContainerIdRef = useRef('');
 
@@ -4577,44 +4581,86 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         return cleaned.startsWith('+') ? cleaned : `+${cleaned}`;
     };
 
-    const initRecaptchaVerifier = async (containerId) => {
-        if (typeof window === 'undefined') return false;
-        const targetContainerId = containerId || 'recap-container-vip';
-        const hasContainerChanged = recapContainerIdRef.current && recapContainerIdRef.current !== targetContainerId;
-        if (hasContainerChanged && recapVerifierRef.current) {
-            try { recapVerifierRef.current.clear(); } catch {
-                // Ignore recaptcha cleanup errors.
-            }
-            recapVerifierRef.current = null;
-            recapReadyRef.current = false;
-            recapContainerIdRef.current = '';
-        }
-        if (recapReadyRef.current && recapVerifierRef.current && recapContainerIdRef.current === targetContainerId) return true;
+    const ensureSharedRecaptchaContainer = useCallback(() => {
+        if (typeof document === 'undefined') return null;
+        let el = document.getElementById(PHONE_AUTH_RECAPTCHA_CONTAINER_ID);
+        if (el) return el;
+        el = document.createElement('div');
+        el.id = PHONE_AUTH_RECAPTCHA_CONTAINER_ID;
+        el.dataset.owner = 'singer-app';
+        el.setAttribute('aria-hidden', 'true');
+        el.style.position = 'fixed';
+        el.style.left = '-9999px';
+        el.style.top = '0';
+        el.style.width = '1px';
+        el.style.height = '1px';
+        el.style.pointerEvents = 'none';
+        el.style.opacity = '0';
+        document.body.appendChild(el);
+        return el;
+    }, []);
 
-        const el = document.getElementById(targetContainerId);
-        if (!el) {
-            console.warn('reCAPTCHA container missing', targetContainerId);
-            return false;
-        }
+    useEffect(() => () => {
         if (recapVerifierRef.current) {
             try { recapVerifierRef.current.clear(); } catch {
                 // Ignore recaptcha cleanup errors.
             }
         }
-        recapVerifierRef.current = new RecaptchaVerifier(auth, targetContainerId, { size: 'invisible' });
-        try {
-            await recapVerifierRef.current.render();
-            recapReadyRef.current = true;
-            recapContainerIdRef.current = targetContainerId;
-            return true;
-        } catch (e) {
-            console.warn('reCAPTCHA render failed', e);
-            return false;
+        recapVerifierRef.current = null;
+        recapVerifierWidgetIdRef.current = null;
+        recapVerifierInitPromiseRef.current = null;
+        recapReadyRef.current = false;
+        recapContainerIdRef.current = '';
+        if (typeof document !== 'undefined') {
+            const el = document.getElementById(PHONE_AUTH_RECAPTCHA_CONTAINER_ID);
+            if (el?.dataset?.owner === 'singer-app') {
+                el.remove();
+            }
         }
+    }, []);
+
+    const initRecaptchaVerifier = async () => {
+        if (typeof window === 'undefined') return false;
+        const targetContainerId = PHONE_AUTH_RECAPTCHA_CONTAINER_ID;
+        if (recapReadyRef.current && recapVerifierRef.current && recapContainerIdRef.current === targetContainerId) return true;
+        if (recapVerifierInitPromiseRef.current) {
+            return recapVerifierInitPromiseRef.current;
+        }
+
+        recapVerifierInitPromiseRef.current = (async () => {
+            const el = ensureSharedRecaptchaContainer();
+            if (!el) return false;
+            if (!recapVerifierRef.current) {
+                recapVerifierRef.current = new RecaptchaVerifier(auth, targetContainerId, { size: 'invisible' });
+            }
+            try {
+                const widgetId = await recapVerifierRef.current.render();
+                recapVerifierWidgetIdRef.current = Number.isFinite(widgetId)
+                    ? widgetId
+                    : recapVerifierWidgetIdRef.current;
+                recapReadyRef.current = true;
+                recapContainerIdRef.current = targetContainerId;
+                return true;
+            } catch (e) {
+                console.warn('reCAPTCHA render failed', e);
+                try { recapVerifierRef.current?.clear(); } catch {
+                    // Ignore recaptcha cleanup errors.
+                }
+                recapVerifierRef.current = null;
+                recapVerifierWidgetIdRef.current = null;
+                recapReadyRef.current = false;
+                recapContainerIdRef.current = '';
+                return false;
+            } finally {
+                recapVerifierInitPromiseRef.current = null;
+            }
+        })();
+
+        return recapVerifierInitPromiseRef.current;
     };
 
     // Phone/SMS account + VIP flow: send SMS and upgrade current anonymous session.
-    const startPhoneAuth = async (containerId) => {
+    const startPhoneAuth = async () => {
         const normalizedPhone = normalizePhoneNumber(phoneNumber);
         if (!/^\+\d{7,15}$/.test(normalizedPhone)) {
             toast('Enter a valid phone number in E.164 format (example: +15555555555)');
@@ -4632,13 +4678,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 auth.settings.appVerificationDisabledForTesting = true;
             }
             let appVerifier = null;
-            const ready = await initRecaptchaVerifier(containerId);
+            const ready = await initRecaptchaVerifier();
             if (!ready) {
                 toast('reCAPTCHA failed to initialize. Reload and try again.');
                 setPhoneLoading(false);
                 return;
             }
             appVerifier = recapVerifierRef.current;
+            if (typeof window !== 'undefined' && typeof window.grecaptcha?.reset === 'function' && recapVerifierWidgetIdRef.current !== null) {
+                try {
+                    window.grecaptcha.reset(recapVerifierWidgetIdRef.current);
+                } catch {
+                    // Ignore grecaptcha reset errors and continue with the verifier instance.
+                }
+            }
             const confirmation = await signInWithPhoneNumber(auth, normalizedPhone, appVerifier);
             // confirmation may expose verificationId
             const vid = confirmation.verificationId || null;
@@ -6568,7 +6621,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 {!smsSent ? (
                     <div className="flex gap-2">
                         <button onClick={()=>setShowPhoneModal(false)} className="flex-1 bg-zinc-700 py-3 rounded">Cancel</button>
-                        <button onClick={() => startPhoneAuth('recap-container-modal')} className="flex-1 bg-cyan-500 py-3 rounded font-bold">{phoneLoading ? 'Sending...' : 'Send SMS'}</button>
+                        <button onClick={startPhoneAuth} className="flex-1 bg-cyan-500 py-3 rounded font-bold">{phoneLoading ? 'Sending...' : 'Send SMS'}</button>
                     </div>
                 ) : (
                     <>
@@ -6579,9 +6632,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         </div>
                     </>
                 )}
-
-                {/* reCAPTCHA container for invisible verifier */}
-                <div id="recap-container-modal" className="mt-4"></div>
             </div>
         </div>
     );
@@ -8263,7 +8313,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <label className="text-xs uppercase tracking-widest text-zinc-400">Phone Number</label>
                                     <input value={phoneNumber} onChange={e=>setPhoneNumber(e.target.value)} placeholder="+1 555 555 5555" className="w-full p-3 mt-2 rounded bg-zinc-800 border border-zinc-700 text-white" />
                                     {!smsSent ? (
-                                        <button onClick={() => startPhoneAuth('recap-container-vip')} className="w-full bg-cyan-500 text-black py-3 rounded-lg font-bold mt-3">{phoneLoading ? 'Sending...' : 'Send SMS'}</button>
+                                        <button onClick={startPhoneAuth} className="w-full bg-cyan-500 text-black py-3 rounded-lg font-bold mt-3">{phoneLoading ? 'Sending...' : 'Send SMS'}</button>
                                     ) : (
                                         <>
                                             <label className="text-xs uppercase tracking-widest text-zinc-400 mt-4 block">Verification Code</label>
@@ -8274,7 +8324,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             </div>
                                         </>
                                     )}
-                                    <div id="recap-container-vip" className="mt-3"></div>
                                 </div>
                                 <p className="text-xs text-zinc-400 mb-3">Fast SMS verification. No password needed.</p>
                                 <button onClick={()=>setTab('home')} className="text-zinc-500 underline block">Maybe Later</button>

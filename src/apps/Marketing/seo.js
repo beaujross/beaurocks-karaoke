@@ -79,10 +79,18 @@ const buildRouteSeo = (route = {}) => {
   }
   if (page === MARKETING_ROUTE_PAGES.demo) {
     return {
-      title: "Live Demo Arena | BeauRocks Karaoke",
-      description: "Watch TV, audience, and host surfaces run in sync through karaoke, game modes, and live crowd interaction.",
+      title: "Abstract Demo | BeauRocks Karaoke",
+      description: "See the conceptual system story behind BeauRocks across host, TV, audience, and singer surfaces.",
       robots: "index,follow",
-      structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Live Demo Arena" },
+      structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Abstract Demo" },
+    };
+  }
+  if (page === MARKETING_ROUTE_PAGES.demoAuto) {
+    return {
+      title: "Auto Demo | BeauRocks Karaoke",
+      description: "Watch a local-only autoplay walkthrough of the BeauRocks host, TV, and audience room experience.",
+      robots: "index,follow",
+      structuredData: { "@context": "https://schema.org", "@type": "WebPage", name: "Auto Demo" },
     };
   }
   if (page === MARKETING_ROUTE_PAGES.changelog) {

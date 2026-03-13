@@ -35,6 +35,22 @@ const dedupeOptionList = (items = []) => {
     });
 };
 
+const getSongDurationSec = (song = null) => {
+    if (!song || typeof song !== 'object') return 0;
+    const candidates = [
+        song?.durationSec,
+        song?.duration,
+        song?.trackDurationSec,
+        song?.currentDurationSec,
+        song?.appleDurationSec
+    ];
+    for (const candidate of candidates) {
+        const value = Number(candidate);
+        if (Number.isFinite(value) && value > 0) return value;
+    }
+    return 0;
+};
+
 export const normalizePopTriviaSeedRows = (rows = [], options = {}) => {
     if (!Array.isArray(rows)) return [];
     const limit = Math.max(1, Number(options?.limit || DEFAULT_POP_TRIVIA_MAX_QUESTIONS));
@@ -132,15 +148,40 @@ export const getActivePopTriviaQuestion = ({ song = null, now = Date.now(), roun
     if (!questions.length) return null;
 
     const safeRoundSec = Math.max(8, Number(roundSec || DEFAULT_POP_TRIVIA_ROUND_SEC));
+    const songDurationSec = getSongDurationSec(song);
     const startMs = getTimestampMs(song?.performingStartedAt)
         || getTimestampMs(song?.stageStartedAt)
         || getTimestampMs(song?.timestamp)
         || Number(now || Date.now());
     const elapsedMs = Math.max(0, Number(now || Date.now()) - startMs);
     const elapsedSec = Math.floor(elapsedMs / 1000);
-    const totalDurationSec = questions.length * safeRoundSec;
-    const completedAtMs = startMs + (totalDurationSec * 1000);
-    if (elapsedSec >= totalDurationSec) {
+    const sequentialDurationSec = questions.length * safeRoundSec;
+    const introBufferSec = Math.min(18, Math.max(6, Math.round(safeRoundSec * 0.6)));
+    const outroBufferSec = Math.min(18, Math.max(8, Math.round(safeRoundSec * 0.65)));
+    const usableSongSec = Math.max(0, songDurationSec - introBufferSec - outroBufferSec);
+    const canSpreadAcrossSong = usableSongSec >= sequentialDurationSec && songDurationSec > 0;
+    const schedule = canSpreadAcrossSong
+        ? questions.map((question, index) => {
+            const slotSpanSec = usableSongSec / questions.length;
+            const slotStartSec = introBufferSec + (slotSpanSec * index);
+            const centeredOffsetSec = Math.max(0, (slotSpanSec - safeRoundSec) / 2);
+            const questionStartSec = Math.max(0, Math.floor(slotStartSec + centeredOffsetSec));
+            return {
+                question,
+                index,
+                startSec: questionStartSec,
+                endSec: questionStartSec + safeRoundSec
+            };
+        })
+        : questions.map((question, index) => ({
+            question,
+            index,
+            startSec: index * safeRoundSec,
+            endSec: (index + 1) * safeRoundSec
+        }));
+    const completedAtSec = schedule.length ? schedule[schedule.length - 1].endSec : sequentialDurationSec;
+    const completedAtMs = startMs + (completedAtSec * 1000);
+    if (elapsedSec >= completedAtSec) {
         return {
             question: null,
             index: questions.length,
@@ -148,22 +189,37 @@ export const getActivePopTriviaQuestion = ({ song = null, now = Date.now(), roun
             elapsedSec,
             timeLeftSec: 0,
             roundSec: safeRoundSec,
+            songDurationSec,
             startMs,
             status: 'complete',
             completedAtMs
         };
     }
-    const rawIndex = Math.floor(elapsedSec / safeRoundSec);
-    const index = Math.min(questions.length - 1, Math.max(0, rawIndex));
-    const timeLeftSec = Math.max(0, safeRoundSec - (elapsedSec % safeRoundSec));
+    const activeWindow = schedule.find((entry) => elapsedSec >= entry.startSec && elapsedSec < entry.endSec) || null;
+    if (!activeWindow) {
+        return {
+            question: null,
+            index: -1,
+            total: questions.length,
+            elapsedSec,
+            timeLeftSec: 0,
+            roundSec: safeRoundSec,
+            songDurationSec,
+            startMs,
+            status: 'gap',
+            completedAtMs
+        };
+    }
+    const timeLeftSec = Math.max(0, Math.ceil(activeWindow.endSec - elapsedSec));
 
     return {
-        question: questions[index],
-        index,
+        question: activeWindow.question,
+        index: activeWindow.index,
         total: questions.length,
         elapsedSec,
         timeLeftSec,
         roundSec: safeRoundSec,
+        songDurationSec,
         startMs,
         status: 'live',
         completedAtMs

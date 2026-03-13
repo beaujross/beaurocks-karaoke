@@ -8,9 +8,9 @@ const VENUE_BADGES = [
 ];
 
 const VENUE_STORY_POINTS = [
-  "The best karaoke nights become part of someone's weekly routine, not a lucky accident.",
-  "Clear listings and reliable schedules help regulars return and help new guests trust the plan.",
-  "A venue page should answer the basics quickly instead of making people play detective.",
+  "The best karaoke nights become part of someone's weekly routine.",
+  "Clear listings and schedules help guests trust the plan.",
+  "A venue page should answer the basics fast.",
 ];
 
 const VENUE_OUTCOME_POINTS = [
@@ -24,17 +24,17 @@ const VENUE_SIGNAL_CARDS = [
   {
     label: "Schedule",
     title: "Reliable nights beat random hype",
-    copy: "The karaoke nights that grow are the ones guests can count on without checking three social feeds first.",
+    copy: "Guests come back to nights they can count on.",
   },
   {
     label: "Trust",
     title: "A clear listing removes guesswork",
-    copy: "Date, host, venue details, and what to expect should all line up before you ask anyone to show up.",
+    copy: "Date, host, and venue details should all line up.",
   },
   {
     label: "Demand",
     title: "Repeat guests start with a clear plan",
-    copy: "Reliable discovery turns karaoke into a night people return to, not a lucky one-off find.",
+    copy: "Reliable discovery turns drop-ins into regulars.",
   },
 ];
 
@@ -42,22 +42,22 @@ const VENUE_FLOW_STEPS = [
   {
     step: "01",
     title: "Claim the venue",
-    copy: "Make sure the listing belongs to the people actually running the night so updates stay accurate.",
+    copy: "Keep updates in the right hands.",
   },
   {
     step: "02",
     title: "Publish the schedule",
-    copy: "Make the recurring night obvious so regulars and first-timers know when karaoke is actually happening.",
+    copy: "Make the karaoke night easy to find.",
   },
   {
     step: "03",
     title: "Match the host details",
-    copy: "Keep the listing, host name, and venue details aligned so guests know exactly what they are showing up for.",
+    copy: "Keep the listing, host, and venue aligned.",
   },
   {
     step: "04",
     title: "Grow repeat attendance",
-    copy: "Use follows, RSVPs, and repeat visits as proof that the night is becoming part of someone's weekly plan.",
+    copy: "Turn discovery into return visits.",
   },
 ];
 
@@ -78,10 +78,7 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
           <div className="mk3-persona-hero-copy">
             <div className="mk3-persona-kicker">for venues</div>
             <h1>Turn karaoke into a night guests plan around.</h1>
-            <p>
-              Claim your venue, publish a clear schedule, and make it easier for regulars and first-timers to know
-              when your room is worth the trip.
-            </p>
+            <p>Claim your venue, publish a clear schedule, and make the night easy to trust.</p>
             <div className="mk3-persona-badge-row">
               {VENUE_BADGES.map((badge) => (
                 <span key={badge}>{badge}</span>
@@ -90,7 +87,7 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
             <div className="mk3-persona-stat-row">
               <article className="mk3-persona-stat-card">
                 <strong>Reliable schedule</strong>
-                <span>Help guests trust the schedule enough to build your karaoke night into their week.</span>
+                <span>Help guests build your night into their week.</span>
               </article>
               <article className="mk3-persona-stat-card">
                 <strong>Clear ownership</strong>
@@ -98,7 +95,7 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
               </article>
               <article className="mk3-persona-stat-card">
                 <strong>Repeat demand</strong>
-                <span>Turn discovery into return attendance instead of random drop-ins.</span>
+                <span>Turn discovery into return attendance.</span>
               </article>
             </div>
             <div className="mk3-actions-inline">
@@ -137,7 +134,7 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
               <div className="mk3-persona-visual-overlay">
                 <div className="mk3-persona-kicker">for venues</div>
                 <strong>Make the night feel real before guests even arrive.</strong>
-                <span>A strong listing, a clear schedule, and accurate host details build the trust repeat nights depend on.</span>
+                <span>A strong listing and a clear schedule build trust fast.</span>
               </div>
             </article>
             <div className="mk3-persona-signal-grid">
@@ -158,7 +155,7 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
           <article key={point} className="mk3-detail-card mk3-zone">
             <span>{`Outcome 0${index + 1}`}</span>
             <strong>{point}</strong>
-            <p>One less question a guest has to answer before deciding your karaoke night is worth the trip.</p>
+            <p>One less question before a guest decides to show up.</p>
           </article>
         ))}
       </section>
@@ -180,10 +177,7 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
         <section className="mk3-detail-card mk3-zone mk3-persona-playbook">
           <div className="mk3-persona-kicker">why venue pages matter</div>
           <h2>People come back to the nights they can count on.</h2>
-          <p className="mk3-card-story">
-            BeauRocks helps venues make karaoke feel dependable, current, and worth planning around,
-            which is a much better growth strategy than hoping people decode a blurry social post.
-          </p>
+          <p className="mk3-card-story">BeauRocks helps venues make karaoke feel dependable, current, and worth planning around.</p>
           <div className="mk3-sub-list compact">
             {VENUE_STORY_POINTS.map((point) => (
               <article key={point} className="mk3-review-card">
@@ -197,7 +191,7 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
           <h4>What Good Setup Looks Like</h4>
           <div className="mk3-status">
             <strong>Keep the listing accurate</strong>
-            <span>Ownership, schedule, and host details should all agree before you ask anyone to show up.</span>
+            <span>Ownership, schedule, and host details should agree.</span>
           </div>
           <div className="mk3-persona-checklist-list">
             {VENUE_OUTCOME_POINTS.map((point) => (

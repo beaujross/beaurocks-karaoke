@@ -3831,88 +3831,220 @@ const PublicTV = ({ roomCode }) => {
         const topFan = recap.topFan;
         const vibeStats = recap.vibeStats;
         const popTriviaSummary = recap.popTriviaSummary;
+        const vibeScore = Math.max(0, Number(recap.hypeScore || 0));
+        const applauseScore = Math.max(0, Math.round(recap.applauseScore || 0));
+        const hostBonus = Math.max(0, Number(recap.hostBonus || 0));
+        const totalPoints = vibeScore + applauseScore + hostBonus;
+        const performanceTier = totalPoints >= 260
+            ? 'Room Shaker'
+            : totalPoints >= 190
+                ? 'Crowd Favorite'
+                : totalPoints >= 120
+                    ? 'Strong Finish'
+                    : 'Warm Applause';
+        const guitarHits = Math.max(0, Number(vibeStats?.guitar?.totalHits || 0));
+        const beatTaps = Math.max(0, Number(vibeStats?.strobe?.totalTaps || 0));
+        const triviaQuestions = Math.max(0, Number(popTriviaSummary?.questionCount || 0));
+        const triviaPlayers = Math.max(0, Number(popTriviaSummary?.participantCount || 0));
+        const triviaAnswers = Math.max(0, Number(popTriviaSummary?.answerCount || 0));
         return (
-            <div className="fixed inset-0 z-[200] bg-zinc-900 flex flex-col items-center justify-center p-4 md:p-8 2xl:p-12 text-center animate-in zoom-in duration-500">
-                <div className="bg-gradient-to-r from-purple-900 to-indigo-900 p-4 md:p-8 2xl:p-12 rounded-2xl md:rounded-3xl border-2 md:border-4 border-yellow-400 shadow-[0_0_100px_rgba(250,204,21,0.3)] max-w-5xl w-full relative overflow-hidden">
-                    <h2 className="text-2xl md:text-3xl 2xl:text-4xl font-bebas text-yellow-400 mb-2 tracking-[0.16em] md:tracking-widest relative z-10">PERFORMANCE SUMMARY</h2>
-                    {recap.hallOfFame?.newAllTime && (
-                        <div className="inline-flex items-center gap-2 md:gap-3 px-3 py-1.5 md:px-6 md:py-2 rounded-full bg-yellow-400/20 border border-yellow-300 text-yellow-200 uppercase tracking-[0.12em] md:tracking-widest font-bold text-xs md:text-xl mb-4 md:mb-6 relative z-10">
-                            <i className="fa-solid fa-trophy"></i> New Global High Score
-                        </div>
-                    )}
-                    <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-6 mb-5 md:mb-8 relative z-10">
-                        {recap.albumArtUrl && (
-                            <img src={recap.albumArtUrl} alt={recap.songTitle} className="w-24 h-24 md:w-36 md:h-36 rounded-2xl object-cover border-2 border-white/10 shadow-xl" />
-                        )}
-                        <div>
-                            <div className="text-2xl md:text-4xl 2xl:text-6xl font-black text-white">{recap.songTitle}</div>
-                            <div className="text-lg md:text-2xl 2xl:text-3xl text-zinc-300 font-bold mt-1 md:mt-2">{recap.singerName}</div>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-8 mb-6 md:mb-12 relative z-10">
-                        <div className="bg-black/30 p-4 rounded-xl border border-pink-500/30">
-                            <div className="text-sm md:text-xl text-pink-400 uppercase font-bold">Vibe</div>
-                            <div className="text-3xl md:text-6xl font-mono text-white">{recap.hypeScore || 0}</div>
-                        </div>
-                        <div className="bg-black/30 p-4 rounded-xl border border-yellow-500/30">
-                            <div className="text-sm md:text-xl text-yellow-400 uppercase font-bold">Applause</div>
-                            <div className="text-3xl md:text-6xl font-mono text-white">{Math.round(recap.applauseScore || 0)}</div>
-                        </div>
-                        <div className="bg-black/30 p-4 rounded-xl border border-green-500/30">
-                            <div className="text-sm md:text-xl text-green-400 uppercase font-bold">Bonus</div>
-                            <div className="text-3xl md:text-6xl font-mono text-white">{recap.hostBonus || 0}</div>
-                        </div>
-                    </div>
-                    <div className="text-4xl md:text-6xl 2xl:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-white to-yellow-300 relative z-10">{(recap.hypeScore||0)+(Math.round(recap.applauseScore||0))+(recap.hostBonus||0)} PTS</div>
-                    {(topFan || vibeStats) && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mt-5 md:mt-10 relative z-10">
-                            {topFan && (
-                                <div className="bg-black/30 border border-cyan-400/30 rounded-2xl p-4">
-                                    <div className="text-xs uppercase tracking-[0.4em] text-cyan-200 mb-2">Top Fan</div>
-                                    <div className="text-2xl md:text-4xl font-black text-white flex items-center justify-center gap-3">
-                                        <span>{topFan.avatar || EMOJI.sparkle}</span>
-                                        <span className="truncate max-w-[240px]">{topFan.name}</span>
+            <div className="fixed inset-0 z-[200] overflow-hidden bg-[#05070f] text-white animate-in fade-in duration-500">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(139,92,246,0.28),_transparent_32%),radial-gradient(circle_at_18%_30%,_rgba(244,114,182,0.18),_transparent_24%),radial-gradient(circle_at_82%_24%,_rgba(34,211,238,0.22),_transparent_22%),linear-gradient(180deg,_rgba(9,12,22,0.96),_rgba(3,5,10,0.98))]" />
+                <div className="absolute -left-16 top-[14%] h-56 w-56 rounded-full bg-fuchsia-500/18 blur-3xl" />
+                <div className="absolute right-[-4rem] top-[10%] h-72 w-72 rounded-full bg-cyan-400/16 blur-3xl" />
+                <div className="absolute bottom-[-5rem] left-[28%] h-64 w-64 rounded-full bg-amber-300/12 blur-3xl" />
+
+                <div className="relative z-10 flex min-h-full items-center justify-center p-4 md:p-8 2xl:p-12">
+                    <div className="w-full max-w-7xl overflow-hidden rounded-[2rem] border border-white/12 bg-[linear-gradient(145deg,rgba(16,20,35,0.95),rgba(8,10,20,0.92))] shadow-[0_30px_120px_rgba(0,0,0,0.6)]">
+                        <div className="relative overflow-hidden border-b border-white/10 px-5 py-4 md:px-8 md:py-5">
+                            <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(251,191,36,0.16),rgba(244,114,182,0.08),rgba(34,211,238,0.12))]" />
+                            <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <div className="inline-flex items-center gap-2 rounded-full border border-yellow-300/35 bg-yellow-300/12 px-3 py-1.5 text-[11px] uppercase tracking-[0.3em] text-yellow-100">
+                                        <i className="fa-solid fa-stars" />
+                                        Performance Recap
                                     </div>
-                                    <div className="text-sm text-cyan-200 mt-2">{topFan.pointsGifted || 0} pts gifted</div>
+                                    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] uppercase tracking-[0.22em] text-zinc-200">
+                                        <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.9)]" />
+                                        {performanceTier}
+                                    </div>
+                                    {recap.preview && (
+                                        <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1.5 text-[11px] uppercase tracking-[0.24em] text-cyan-100">
+                                            Preview on TV
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                            {vibeStats && (
-                                <div className="bg-black/30 border border-pink-400/30 rounded-2xl p-4">
-                                    <div className="text-xs uppercase tracking-[0.4em] text-pink-200 mb-2">Vibe Sync</div>
-                                    <div className="text-sm text-zinc-200 space-y-2">
-                                        {vibeStats.guitar && (
-                                            <div className="flex items-center justify-between">
+                                {recap.hallOfFame?.newAllTime && (
+                                    <div className="inline-flex items-center gap-2 rounded-full border border-yellow-300/45 bg-yellow-300/15 px-4 py-2 text-xs md:text-sm uppercase tracking-[0.28em] text-yellow-100 shadow-[0_0_32px_rgba(250,204,21,0.18)]">
+                                        <i className="fa-solid fa-trophy" />
+                                        New Global High Score
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="grid gap-5 p-5 md:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.82fr)] md:gap-6 md:p-8 2xl:p-10">
+                            <div className="space-y-5 md:space-y-6">
+                                <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(16,18,34,0.94),rgba(26,11,37,0.9),rgba(5,28,40,0.9))] p-5 md:p-7">
+                                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(250,204,21,0.18),transparent_24%),radial-gradient(circle_at_82%_18%,rgba(34,211,238,0.16),transparent_18%)]" />
+                                    <div className="relative z-10 flex flex-col gap-5 md:flex-row md:items-center md:gap-6">
+                                        <div className="relative shrink-0">
+                                            {recap.albumArtUrl ? (
+                                                <img
+                                                    src={recap.albumArtUrl}
+                                                    alt={recap.songTitle}
+                                                    className="h-28 w-28 rounded-[1.5rem] object-cover border border-white/15 shadow-[0_18px_45px_rgba(0,0,0,0.4)] md:h-40 md:w-40"
+                                                />
+                                            ) : (
+                                                <div className="flex h-28 w-28 items-center justify-center rounded-[1.5rem] border border-white/15 bg-white/6 text-5xl text-yellow-200 shadow-[0_18px_45px_rgba(0,0,0,0.35)] md:h-40 md:w-40">
+                                                    <i className="fa-solid fa-microphone-lines" />
+                                                </div>
+                                            )}
+                                            <div className="absolute -bottom-3 left-4 rounded-full border border-white/15 bg-black/70 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-zinc-100 backdrop-blur">
+                                                On Stage
+                                            </div>
+                                        </div>
+                                        <div className="min-w-0 flex-1 text-left">
+                                            <div className="text-[11px] uppercase tracking-[0.35em] text-zinc-300">Room spotlight</div>
+                                            <div className="mt-2 text-3xl font-black leading-[0.95] text-white md:text-5xl 2xl:text-6xl">
+                                                {recap.songTitle}
+                                            </div>
+                                            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-lg md:text-2xl 2xl:text-3xl">
+                                                <span className="font-black text-fuchsia-200">{recap.singerName}</span>
+                                                <span className="hidden text-zinc-500 md:inline">/</span>
+                                                <span className="text-zinc-300">just closed a strong round</span>
+                                            </div>
+                                            <div className="mt-4 flex flex-wrap gap-2">
+                                                <div className="rounded-full border border-white/12 bg-white/7 px-3 py-1.5 text-xs uppercase tracking-[0.22em] text-zinc-100">
+                                                    {vibeScore} vibe
+                                                </div>
+                                                <div className="rounded-full border border-white/12 bg-white/7 px-3 py-1.5 text-xs uppercase tracking-[0.22em] text-zinc-100">
+                                                    {applauseScore} applause
+                                                </div>
+                                                <div className="rounded-full border border-white/12 bg-white/7 px-3 py-1.5 text-xs uppercase tracking-[0.22em] text-zinc-100">
+                                                    {hostBonus} bonus
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4">
+                                    <div className="rounded-[1.6rem] border border-fuchsia-400/24 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(244,114,182,0.08))] p-4 md:p-5">
+                                        <div className="text-[11px] uppercase tracking-[0.32em] text-fuchsia-200">Vibe</div>
+                                        <div className="mt-3 text-4xl font-black text-white md:text-6xl">{vibeScore}</div>
+                                        <div className="mt-2 text-sm text-zinc-300">Crowd energy generated during the song.</div>
+                                    </div>
+                                    <div className="rounded-[1.6rem] border border-amber-300/24 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(251,191,36,0.08))] p-4 md:p-5">
+                                        <div className="text-[11px] uppercase tracking-[0.32em] text-amber-100">Applause</div>
+                                        <div className="mt-3 text-4xl font-black text-white md:text-6xl">{applauseScore}</div>
+                                        <div className="mt-2 text-sm text-zinc-300">Reaction lift from the room as the round landed.</div>
+                                    </div>
+                                    <div className="rounded-[1.6rem] border border-emerald-300/24 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(74,222,128,0.08))] p-4 md:p-5">
+                                        <div className="text-[11px] uppercase tracking-[0.32em] text-emerald-100">Bonus</div>
+                                        <div className="mt-3 text-4xl font-black text-white md:text-6xl">{hostBonus}</div>
+                                        <div className="mt-2 text-sm text-zinc-300">Any extra lift awarded by the room setup.</div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4">
+                                    <div className="rounded-[1.6rem] border border-cyan-300/18 bg-black/25 p-4 md:col-span-1">
+                                        <div className="text-[11px] uppercase tracking-[0.32em] text-cyan-100">Top fan</div>
+                                        <div className="mt-3 flex items-center gap-3">
+                                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-300/25 bg-cyan-300/10 text-3xl">
+                                                {topFan?.avatar || EMOJI.sparkle}
+                                            </div>
+                                            <div className="min-w-0 text-left">
+                                                <div className="truncate text-xl font-black text-white md:text-2xl">
+                                                    {topFan?.name || 'Crowd favorite'}
+                                                </div>
+                                                <div className="text-sm text-cyan-100/90">
+                                                    {Math.max(0, Number(topFan?.pointsGifted || 0))} pts gifted
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="rounded-[1.6rem] border border-fuchsia-300/18 bg-black/25 p-4">
+                                        <div className="text-[11px] uppercase tracking-[0.32em] text-fuchsia-100">Vibe Sync</div>
+                                        <div className="mt-3 space-y-3 text-left text-sm text-zinc-200">
+                                            <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/5 px-3 py-2.5">
                                                 <span>Guitar hits</span>
-                                                <span className="text-white font-bold">{vibeStats.guitar.totalHits}</span>
+                                                <span className="text-lg font-black text-white">{guitarHits}</span>
                                             </div>
-                                        )}
-                                        {vibeStats.strobe && (
-                                            <div className="flex items-center justify-between">
+                                            <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/5 px-3 py-2.5">
                                                 <span>Beat taps</span>
-                                                <span className="text-white font-bold">{vibeStats.strobe.totalTaps}</span>
+                                                <span className="text-lg font-black text-white">{beatTaps}</span>
                                             </div>
-                                        )}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-[1.6rem] border border-cyan-300/18 bg-black/25 p-4">
+                                        <div className="text-[11px] uppercase tracking-[0.32em] text-cyan-100">Pop Trivia</div>
+                                        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                                            <div className="rounded-2xl border border-white/8 bg-white/5 px-2 py-3">
+                                                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-400">Qs</div>
+                                                <div className="mt-1 text-2xl font-black text-white">{triviaQuestions}</div>
+                                            </div>
+                                            <div className="rounded-2xl border border-white/8 bg-white/5 px-2 py-3">
+                                                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-400">Players</div>
+                                                <div className="mt-1 text-2xl font-black text-white">{triviaPlayers}</div>
+                                            </div>
+                                            <div className="rounded-2xl border border-white/8 bg-white/5 px-2 py-3">
+                                                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-400">Answers</div>
+                                                <div className="mt-1 text-2xl font-black text-white">{triviaAnswers}</div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            )}
-                        </div>
-                    )}
-                    {popTriviaSummary && (
-                        <div className="mt-4 md:mt-6 rounded-2xl border border-cyan-300/35 bg-black/35 p-4 relative z-10">
-                            <div className="text-xs uppercase tracking-[0.35em] text-cyan-200 mb-2">Pop Trivia</div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm md:text-base text-zinc-100">
-                                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
-                                    Questions: <span className="font-black text-white">{Math.max(0, Number(popTriviaSummary.questionCount || 0))}</span>
+                            </div>
+
+                            <div className="space-y-4 md:space-y-5">
+                                <div className="relative overflow-hidden rounded-[2rem] border border-yellow-300/24 bg-[linear-gradient(180deg,rgba(255,214,102,0.10),rgba(255,255,255,0.03),rgba(255,255,255,0.02))] p-5 md:p-6">
+                                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-yellow-200/60 to-transparent" />
+                                    <div className="text-[11px] uppercase tracking-[0.36em] text-yellow-100">Final score</div>
+                                    <div className="mt-3 text-6xl font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-white to-yellow-300 md:text-8xl 2xl:text-[7rem]">
+                                        {totalPoints}
+                                    </div>
+                                    <div className="mt-2 text-lg font-bold uppercase tracking-[0.28em] text-yellow-100/90">
+                                        Total points
+                                    </div>
+                                    <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-black/25 p-4">
+                                        <div className="flex items-center justify-between text-sm text-zinc-300">
+                                            <span>Crowd reaction level</span>
+                                            <span className="font-black text-white">{performanceTier}</span>
+                                        </div>
+                                        <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/8">
+                                            <div
+                                                className="h-full rounded-full bg-gradient-to-r from-fuchsia-400 via-amber-300 to-cyan-300"
+                                                style={{ width: `${Math.max(14, Math.min(100, Math.round((totalPoints / 300) * 100)))}%` }}
+                                            />
+                                        </div>
+                                        <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                                            <span>Building</span>
+                                            <span>Peak room energy</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
-                                    Players: <span className="font-black text-white">{Math.max(0, Number(popTriviaSummary.participantCount || 0))}</span>
-                                </div>
-                                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2">
-                                    Answers: <span className="font-black text-white">{Math.max(0, Number(popTriviaSummary.answerCount || 0))}</span>
+
+                                <div className="rounded-[2rem] border border-white/10 bg-black/20 p-5 md:p-6">
+                                    <div className="text-[11px] uppercase tracking-[0.34em] text-zinc-300">Night snapshot</div>
+                                    <div className="mt-4 space-y-3">
+                                        <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+                                            <span className="text-zinc-300">Singer</span>
+                                            <span className="max-w-[60%] truncate text-right font-black text-white">{recap.singerName}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+                                            <span className="text-zinc-300">Song</span>
+                                            <span className="max-w-[60%] truncate text-right font-black text-white">{recap.songTitle}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
+                                            <span className="text-zinc-300">Top fan gift</span>
+                                            <span className="font-black text-white">{Math.max(0, Number(topFan?.pointsGifted || 0))} pts</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    )}
+                    </div>
                 </div>
             </div>
         );
@@ -4445,20 +4577,20 @@ const PublicTV = ({ roomCode }) => {
                                     </span>
                                 </div>
                                 {popTriviaQuestion ? (
-                                    <div className={`${lobbyCompactHudMode ? 'px-3 py-3' : 'px-4 py-4 md:px-5 md:py-5'} min-h-[40vh] md:min-h-[46vh] flex flex-col`}>
-                                        <div className="text-2xl md:text-[2rem] 2xl:text-[2.35rem] font-black text-white leading-[1.02]">
+                                    <div className={`${lobbyCompactHudMode ? 'px-3 py-3' : 'px-4 py-4 md:px-5 md:py-5'} flex max-h-[32vh] md:max-h-[36vh] min-h-0 flex-col`}>
+                                        <div className="text-xl md:text-[1.6rem] 2xl:text-[1.9rem] font-black text-white leading-[1.06]">
                                             {popTriviaQuestion.q}
                                         </div>
-                                        <div className="mt-4 grid grid-cols-1 gap-2.5">
+                                        <div className="mt-3 grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto pr-1">
                                             {popTriviaQuestion.options?.map((option, idx) => (
-                                                <div key={`${popTriviaQuestion.id}_${idx}`} className="rounded-2xl border border-white/12 bg-black/32 px-4 py-3 md:px-4 md:py-3.5 text-white flex items-center justify-between gap-3">
-                                                    <span className="text-cyan-300 font-black text-sm md:text-base tracking-[0.16em]">{String.fromCharCode(65 + idx)}</span>
-                                                    <span className="min-w-0 flex-1 text-base md:text-lg 2xl:text-xl font-bold leading-tight">{option}</span>
-                                                    <span className="text-zinc-300 font-mono text-sm md:text-base">{popTriviaVoteCounts[idx] || 0}</span>
+                                                <div key={`${popTriviaQuestion.id}_${idx}`} className="rounded-2xl border border-white/12 bg-black/32 px-3 py-2.5 md:px-3.5 md:py-3 text-white flex items-center justify-between gap-3">
+                                                    <span className="text-cyan-300 font-black text-sm tracking-[0.16em]">{String.fromCharCode(65 + idx)}</span>
+                                                    <span className="min-w-0 flex-1 text-sm md:text-[0.95rem] 2xl:text-lg font-bold leading-snug">{option}</span>
+                                                    <span className="text-zinc-300 font-mono text-sm">{popTriviaVoteCounts[idx] || 0}</span>
                                                 </div>
                                             ))}
                                         </div>
-                                        <div className="mt-auto pt-4 flex items-center justify-between gap-3 text-[11px] md:text-xs uppercase tracking-[0.16em] text-zinc-200">
+                                        <div className="mt-3 flex items-center justify-between gap-3 text-[11px] md:text-xs uppercase tracking-[0.16em] text-zinc-200">
                                             <span>{popTriviaTotalVotes} answers locked</span>
                                             <span className="text-cyan-100">Vote in Party app</span>
                                         </div>

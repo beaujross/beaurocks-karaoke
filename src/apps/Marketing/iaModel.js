@@ -13,6 +13,7 @@ export const MARKETING_CANONICAL_ROUTE_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.forHosts]: "/for-hosts",
   [MARKETING_ROUTE_PAGES.hostAccess]: "/host-access",
   [MARKETING_ROUTE_PAGES.demo]: "/demo",
+  [MARKETING_ROUTE_PAGES.demoAuto]: "/demo-auto",
   [MARKETING_ROUTE_PAGES.changelog]: "/changelog",
   [MARKETING_ROUTE_PAGES.discover]: "/discover",
   [MARKETING_ROUTE_PAGES.join]: "/join",
@@ -48,7 +49,13 @@ export const MARKETING_ROUTE_OWNERSHIP = Object.freeze({
     zone: MARKETING_IA_ZONES.market,
     owner: "Marketing/Product",
     audience: "public",
-    intent: "Product proof and conversion",
+    intent: "Conceptual product proof",
+  },
+  [MARKETING_ROUTE_PAGES.demoAuto]: {
+    zone: MARKETING_IA_ZONES.market,
+    owner: "Marketing/Product",
+    audience: "public",
+    intent: "Auto-play product walkthrough",
   },
   [MARKETING_ROUTE_PAGES.changelog]: {
     zone: MARKETING_IA_ZONES.market,

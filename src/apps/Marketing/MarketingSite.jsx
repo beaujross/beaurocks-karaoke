@@ -88,6 +88,7 @@ const normalizePage = (value = "") => {
   if (safe === "home") return MARKETING_ROUTE_PAGES.forFans;
   if (safe === "discover") return MARKETING_ROUTE_PAGES.discover;
   if (safe === "demo") return MARKETING_ROUTE_PAGES.demo;
+  if (safe === "demo_auto" || safe === "demo-auto") return MARKETING_ROUTE_PAGES.demoAuto;
   if (safe === "changelog") return MARKETING_ROUTE_PAGES.changelog;
   if (safe === "host_access" || safe === "host-access") return MARKETING_ROUTE_PAGES.hostAccess;
   if (safe === "venue") return MARKETING_ROUTE_PAGES.venue;
@@ -699,7 +700,8 @@ const MarketingSite = () => {
       },
     };
     if (activePage === MARKETING_ROUTE_PAGES.discover) return <DiscoverPage {...pageProps} />;
-    if (activePage === MARKETING_ROUTE_PAGES.demo) return <DemoExperiencePage {...pageProps} />;
+    if (activePage === MARKETING_ROUTE_PAGES.demo) return <DemoExperiencePage {...pageProps} demoMode="abstract" />;
+    if (activePage === MARKETING_ROUTE_PAGES.demoAuto) return <DemoExperiencePage {...pageProps} demoMode="auto" />;
     if (activePage === MARKETING_ROUTE_PAGES.changelog) return <ChangelogPage {...pageProps} />;
     if (activePage === MARKETING_ROUTE_PAGES.hostAccess) return <ForHostsPage {...pageProps} />;
     if (activePage === MARKETING_ROUTE_PAGES.venue) return <VenuePage {...pageProps} />;
@@ -1135,7 +1137,11 @@ const MarketingSite = () => {
 
         </div>
       </main>
-      {!isHostProductPage && activePage !== MARKETING_ROUTE_PAGES.discover && activePage !== MARKETING_ROUTE_PAGES.forFans && activePage !== MARKETING_ROUTE_PAGES.demo && (
+      {!isHostProductPage
+        && activePage !== MARKETING_ROUTE_PAGES.discover
+        && activePage !== MARKETING_ROUTE_PAGES.forFans
+        && activePage !== MARKETING_ROUTE_PAGES.demo
+        && activePage !== MARKETING_ROUTE_PAGES.demoAuto && (
         <Suspense fallback={null}>
           <GoldenPathRail
             navigate={navigate}

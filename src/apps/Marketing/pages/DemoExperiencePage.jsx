@@ -1,5 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
+import {
+  DemoAudienceRoomShell,
+  DemoHostRoomShell,
+  DemoTvRoomShell,
+} from "../components/DemoProductShells";
 
 const clampNumber = (value, min, max, fallback = min) => {
   const parsed = Number(value);
@@ -433,6 +438,7 @@ const TV_VARIANTS_BY_SCENE = {
   auto_dj_handoff: "finale",
 };
 
+const DEMO_ROOM_CODE = "DEMOPEEYV3GWZW";
 const getTvSurfaceVariant = (sceneId = "") => TV_VARIANTS_BY_SCENE[sceneId] || "karaoke";
 
 const getHostResults = (scene, typedSearch = "") => {
@@ -502,14 +508,6 @@ const getSceneQueue = (scene, nextScene) => [
   },
 ];
 
-const getAudienceRoster = (activeIndex = 0, singerName = "") => {
-  const names = ["Alex", "Jordan", "Taylor", "Casey", "Morgan", "Riley", "Sky", "Jules"];
-  return names.map((name, index) => ({
-    label: name,
-    live: index <= activeIndex + 3 || name === singerName,
-  }));
-};
-
 const getReactionItems = (scene, progress = 0) => {
   const labels = scene.audience.actions.slice(0, 4).map((entry) => entry.split(" x")[0]);
   const baselines = [12, 18, 24, 30];
@@ -529,13 +527,122 @@ const getTriviaRows = (scene, progress = 0) => {
   }));
 };
 
-const DemoExperiencePage = ({ navigate }) => {
+const getHostFocusFrame = (sceneId = "") => {
+  switch (sceneId) {
+    case "join_identity":
+      return { left: "61%", top: "20%", width: "28%", height: "16%", label: "Share room code" };
+    case "karaoke_launch":
+      return { left: "17%", top: "17%", width: "42%", height: "14%", label: "Search + cue song" };
+    case "crowd_hype":
+      return { left: "35%", top: "50%", width: "28%", height: "13%", label: "Reaction burst" };
+    case "guitar_vibe_sync":
+      return { left: "35%", top: "49%", width: "32%", height: "14%", label: "Mode trigger" };
+    case "trivia_break":
+      return { left: "27%", top: "49%", width: "28%", height: "14%", label: "Launch trivia" };
+    case "auto_dj_handoff":
+      return { left: "9%", top: "49%", width: "27%", height: "14%", label: "Auto DJ bridge" };
+    default:
+      return { left: "18%", top: "17%", width: "34%", height: "14%", label: "Host action" };
+  }
+};
+
+const getTvFocusFrame = (sceneId = "") => {
+  switch (sceneId) {
+    case "join_identity":
+      return { left: "63%", top: "60%", width: "25%", height: "22%", label: "Join cue lands on TV" };
+    case "guitar_vibe_sync":
+      return { left: "32%", top: "27%", width: "36%", height: "28%", label: "TV flips into Vibe Sync" };
+    case "trivia_break":
+      return { left: "18%", top: "23%", width: "64%", height: "42%", label: "Live vote reveal" };
+    case "auto_dj_handoff":
+      return { left: "15%", top: "25%", width: "50%", height: "24%", label: "Next singer handoff" };
+    case "crowd_hype":
+      return { left: "18%", top: "62%", width: "64%", height: "16%", label: "Reactions hit the room" };
+    case "karaoke_launch":
+    default:
+      return { left: "18%", top: "50%", width: "64%", height: "20%", label: "Lyrics take over" };
+  }
+};
+
+const getAudienceFocusFrame = (sceneId = "", activeIndex = 0) => {
+  if (sceneId === "join_identity") {
+    const joinFrames = [
+      { left: "10%", top: "16%", width: "23%", height: "15%" },
+      { left: "39%", top: "16%", width: "23%", height: "15%" },
+      { left: "67%", top: "16%", width: "23%", height: "15%" },
+      { left: "39%", top: "33%", width: "23%", height: "15%" },
+    ];
+    return {
+      ...joinFrames[activeIndex] || joinFrames[0],
+      label: "Pick name + emoji",
+    };
+  }
+  const actionFrames = [
+    { left: "10%", top: "58%", width: "22%", height: "14%" },
+    { left: "39%", top: "58%", width: "22%", height: "14%" },
+    { left: "68%", top: "58%", width: "22%", height: "14%" },
+    { left: "10%", top: "74%", width: "22%", height: "14%" },
+  ];
+  return {
+    ...actionFrames[activeIndex] || actionFrames[0],
+    label: sceneId === "guitar_vibe_sync" ? "Phone becomes an instrument" : "Audience taps in",
+  };
+};
+
+const getActionDisplayLabel = (value = "") => String(value || "").split(" x")[0].trim();
+
+const getTapCoach = (scene, activeIndex = 0) => {
+  const currentAction = getActionDisplayLabel(scene?.audience?.actions?.[activeIndex] || scene?.audience?.actions?.[0] || "");
+  switch (scene?.id) {
+    case "join_identity":
+      return {
+        title: "Pick an identity",
+        prompt: currentAction || "Alex + crown",
+        detail: "Show that joining feels instant before the music even starts.",
+      };
+    case "karaoke_launch":
+      return {
+        title: "Tap along",
+        prompt: currentAction || "Clap",
+        detail: "The prompt stays simple so viewers can track the crowd role immediately.",
+      };
+    case "crowd_hype":
+      return {
+        title: "Hit the room prompt",
+        prompt: currentAction || "Fire",
+        detail: "Use one obvious tap target and let the TV reflect the burst.",
+      };
+    case "guitar_vibe_sync":
+      return {
+        title: "Phones become instruments",
+        prompt: currentAction || "Strum",
+        detail: "The tap cue should feel playful and unmistakable.",
+      };
+    case "trivia_break":
+      return {
+        title: "Vote now",
+        prompt: currentAction || "Public TV",
+        detail: "Push a single answer target and show the live tally.",
+      };
+    case "auto_dj_handoff":
+    default:
+      return {
+        title: "Keep the handoff alive",
+        prompt: currentAction || "Clap through bridge",
+        detail: "Encourage one lightweight action while the room bridges to the next singer.",
+      };
+  }
+};
+
+const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
+  const isAutoPage = String(demoMode || "").trim().toLowerCase() === "auto";
   const [timelineMs, setTimelineMs] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [activeAbstractBeat, setActiveAbstractBeat] = useState(0);
   const abstractStepRefs = useRef([]);
 
   useEffect(() => {
+    if (!isAutoPage) return () => {};
     if (!playing) return () => {};
     let lastMs = Date.now();
     const timer = window.setInterval(() => {
@@ -549,9 +656,10 @@ const DemoExperiencePage = ({ navigate }) => {
       });
     }, 140);
     return () => window.clearInterval(timer);
-  }, [playing]);
+  }, [isAutoPage, playing]);
 
   useEffect(() => {
+    if (isAutoPage) return undefined;
     if (typeof window === "undefined" || typeof window.IntersectionObserver !== "function") return undefined;
     const nodes = abstractStepRefs.current.filter(Boolean);
     if (!nodes.length) return undefined;
@@ -575,7 +683,7 @@ const DemoExperiencePage = ({ navigate }) => {
       window.cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, []);
+  }, [isAutoPage]);
 
   const sceneState = useMemo(() => getSceneAtMs(timelineMs), [timelineMs]);
   const activeScene = sceneState.scene;
@@ -598,7 +706,6 @@ const DemoExperiencePage = ({ navigate }) => {
     [activeScene.host.search, sceneProgress]
   );
   const hostControlProgress = clampNumber((sceneProgress - 0.22) / 0.62, 0, 1, 0);
-  const singerMeter = 42 + Math.round(sceneProgress * 44);
   const roomEnergy = 28 + Math.round(sceneProgress * 58);
   const scenePercent = Math.round(sceneProgress * 100);
   const nextScene = useMemo(() => {
@@ -619,10 +726,6 @@ const DemoExperiencePage = ({ navigate }) => {
   const queueSnapshot = useMemo(
     () => getSceneQueue(activeScene, nextScene),
     [activeScene, nextScene]
-  );
-  const audienceRoster = useMemo(
-    () => getAudienceRoster(activeActionIndex, activeScene.singer.name),
-    [activeActionIndex, activeScene.singer.name]
   );
   const reactionItems = useMemo(
     () => getReactionItems(activeScene, sceneProgress),
@@ -665,16 +768,28 @@ const DemoExperiencePage = ({ navigate }) => {
     const source = activeScene.id === "join_identity" ? sceneOnePositions : positions;
     return source[activeActionIndex] || source[0];
   }, [activeActionIndex, activeScene.id]);
+  const hostFocusFrame = useMemo(() => getHostFocusFrame(activeScene.id), [activeScene.id]);
+  const tvFocusFrame = useMemo(() => getTvFocusFrame(activeScene.id), [activeScene.id]);
+  const audienceFocusFrame = useMemo(
+    () => getAudienceFocusFrame(activeScene.id, activeActionIndex),
+    [activeActionIndex, activeScene.id]
+  );
+  const tapCoach = useMemo(
+    () => getTapCoach(activeScene, activeActionIndex),
+    [activeActionIndex, activeScene]
+  );
   const activeLyric = activeScene.tv.lines[activeTvLineIndex] || activeScene.tv.lines[0] || "";
   const nextLyric = activeScene.tv.lines[Math.min(activeScene.tv.lines.length - 1, activeTvLineIndex + 1)] || "";
   const totalConnectedLabel = activeScene.id === "join_identity" ? "08 joined" : activeScene.audience.metricValue;
 
   useEffect(() => {
+    if (!isAutoPage) return undefined;
     trackEvent("mk_demo_scene_view", {
       scene: activeScene.id,
       label: activeScene.label,
     });
-  }, [activeScene.id, activeScene.label]);
+    return undefined;
+  }, [activeScene.id, activeScene.label, isAutoPage]);
 
   const jumpToScene = (sceneId = "") => {
     const nextSceneTarget = WALKTHROUGH_TIMELINE.find((scene) => scene.id === sceneId);
@@ -690,21 +805,27 @@ const DemoExperiencePage = ({ navigate }) => {
     <section className="mk3-page mk3-demo-page mk3-demo-sales-page">
       <article className="mk3-demo-sales-hero">
         <div>
-          <div className="mk3-chip">demo redesign</div>
-          <h1>Concept first. Product choreography second.</h1>
+          <div className="mk3-chip">{isAutoPage ? "auto demo" : "abstract demo"}</div>
+          <h1>{isAutoPage ? "Auto-play the product story across the room." : "Show the system logic before the product UI."}</h1>
           <p>
-            The top section stays conceptual so the system is easy to read. The section below uses local-only UI
-            simulations to auto-play six synchronized product moments without touching the live app or the database.
+            {isAutoPage
+              ? "This page is the deterministic sales walkthrough: local-only host, TV, and audience shells with simulated taps, typing, and mode shifts."
+              : "This page stays conceptual on purpose. It sells how host, TV, audience, and singer influence one another without pretending to be the live product."}
           </p>
         </div>
         <div className="mk3-demo-sales-hero-pills">
-          <span>Abstract story</span>
-          <span>Auto demo</span>
-          <span>Actual-looking product UI</span>
+          <span>{isAutoPage ? "Dedicated auto demo page" : "Dedicated abstract page"}</span>
+          <span>{isAutoPage ? "Real room shells" : "Concept-first motion"}</span>
           <span>Zero live reads or writes</span>
+          {typeof navigate === "function" && (
+            <button type="button" onClick={() => navigate(isAutoPage ? "demo" : "demo_auto")}>
+              {isAutoPage ? "Open Abstract Demo" : "Open Auto Demo"}
+            </button>
+          )}
         </div>
       </article>
 
+      {!isAutoPage && (
       <article className="mk3-demo-story">
         <div className="mk3-demo-story-intro">
           <div className="mk3-chip">abstract demo</div>
@@ -842,15 +963,14 @@ const DemoExperiencePage = ({ navigate }) => {
           </div>
         </div>
       </article>
+      )}
 
+      {isAutoPage && (
       <article className="mk3-demo-guided">
         <div className="mk3-demo-guided-intro">
           <div className="mk3-chip">auto demo</div>
-          <h2>Auto-play six sellable moments with simulated typing, clicks, taps, and mode shifts.</h2>
-          <p>
-            This is a deterministic sales tool, not a live lab. The screen shells below are local-only simulations
-            of the product UI, driven by the same six-scene script every time.
-          </p>
+          <h2>Auto-play six sellable moments across the actual host, TV, and audience UI.</h2>
+          <p>Use one obvious tap prompt at a time so viewers can follow the action without participating.</p>
         </div>
 
         <div className="mk3-demo-guided-toolbar">
@@ -904,7 +1024,16 @@ const DemoExperiencePage = ({ navigate }) => {
 
         <div className="mk3-demo-guided-summary">
           <strong>{activeScene.headline}</strong>
-          <p>{activeScene.summary}</p>
+          <div className="mk3-demo-guided-summary-pills">
+            {activeScene.callouts.map((callout) => (
+              <span key={`${activeScene.id}_${callout.title}`}>{callout.title}</span>
+            ))}
+          </div>
+        </div>
+        <div className="mk3-demo-guided-tap-coach">
+          <span>{tapCoach.title}</span>
+          <strong>{tapCoach.prompt}</strong>
+          <p>{tapCoach.detail}</p>
         </div>
 
         <div className="mk3-demo-shell mk3-demo-shell-testing">
@@ -918,93 +1047,25 @@ const DemoExperiencePage = ({ navigate }) => {
               <strong>{activeScene.host.actionLabel}</strong>
             </div>
             <div className="mk3-demo-surface-pill-row">
-              <span>Simulated host UI</span>
+              <span>Actual host UI</span>
               <span>Scene {sceneNumber}</span>
               <span>{activeScene.kicker}</span>
             </div>
             <div className="mk3-demo-frame-wrap mk3-demo-host-frame-wrap">
-              <div className="mk3-demo-host-sim mk3-demo-host-stage">
-                <div className="mk3-demo-host-top-row">
-                  <span>room live</span>
-                  <span>{activeScene.label}</span>
-                  <span>{activeScene.singer.name} on deck</span>
-                </div>
-                <div className="mk3-demo-host-search-panel">
-                  <span>Workspace</span>
-                  <strong>{activeScene.host.panel}</strong>
-                  <div className="mk3-demo-host-search-input">
-                    <span>{activeScene.host.search ? "Catalog search" : "Primary action"}</span>
-                    <strong>{activeScene.host.search ? (hostTypedSearch || " ") : activeScene.host.actionLabel}</strong>
-                    {activeScene.host.search && <i />}
-                  </div>
-                </div>
-                <div className="mk3-demo-host-result-list">
-                  {hostResults.map((result, index) => (
-                    <article key={`${activeScene.id}_${result.title}`} className={index === 0 ? "is-primary" : ""}>
-                      <div>
-                        <strong>{result.title}</strong>
-                        <span>{result.meta}</span>
-                      </div>
-                      <b>{result.state}</b>
-                    </article>
-                  ))}
-                </div>
-                <div className="mk3-demo-host-queue-stack">
-                  <span>Live queue</span>
-                  <div className="mk3-demo-story-host-queue-list">
-                    {queueSnapshot.map((entry) => (
-                      <article key={`${activeScene.id}_${entry.title}`}>
-                        <strong>{entry.title}</strong>
-                        <span>{entry.meta}</span>
-                      </article>
-                    ))}
-                  </div>
-                </div>
-                <div className="mk3-demo-host-controls">
-                  {activeScene.host.controls.map((control, index) => (
-                    <button
-                      key={`${activeScene.id}_${control}`}
-                      type="button"
-                      className={index === activeScene.host.activeControl && hostControlProgress > 0.22 ? "active" : ""}
-                      tabIndex={-1}
-                    >
-                      {control}
-                    </button>
-                  ))}
-                </div>
-                <div className="mk3-demo-host-tooltip">
-                  <span className="mk3-demo-host-tooltip-kicker">Viewer takeaway</span>
-                  <strong>{activeScene.host.actionCopy}</strong>
-                  <p>{activeScene.summary}</p>
-                  <div className="mk3-demo-host-tooltip-result">{activeScene.callouts[0]?.detail}</div>
-                </div>
-                <div className="mk3-demo-host-actions-mini">
-                  <span className="active">Host</span>
-                  <span className={roomEnergy > 44 ? "active" : ""}>TV</span>
-                  <span className={activeActionIndex > 0 ? "active" : ""}>Audience</span>
-                  <span className={singerMeter > 58 ? "active" : ""}>Singer</span>
-                </div>
-                <div className="mk3-demo-host-stats">
-                  <div>
-                    <span>scene progress</span>
-                    <strong>{scenePercent}%</strong>
-                  </div>
-                  <div>
-                    <span>room energy</span>
-                    <strong>{roomEnergy}</strong>
-                  </div>
-                  <div>
-                    <span>singer ready</span>
-                    <strong>{singerMeter}%</strong>
-                  </div>
-                </div>
-                <div className="mk3-demo-sim-cursor is-host" style={hostCursorStyle}>
-                  <span>{activeScene.host.search ? "type" : "click"}</span>
-                </div>
-              </div>
+              <DemoHostRoomShell
+                roomCode={DEMO_ROOM_CODE}
+                activeScene={activeScene}
+                hostTypedSearch={hostTypedSearch}
+                hostResults={hostResults}
+                queueSnapshot={queueSnapshot}
+                hostControlProgress={hostControlProgress}
+                hostFocusFrame={hostFocusFrame}
+                hostCursorStyle={hostCursorStyle}
+                tapCoach={tapCoach}
+              />
             </div>
             <div className="mk3-demo-surface-status">
-              <span>Host action remains readable, so every downstream change feels caused instead of random.</span>
+              <span>The host action stays legible, so every downstream change feels caused.</span>
               <strong>{activeScene.host.actionLabel}</strong>
             </div>
           </article>
@@ -1019,68 +1080,28 @@ const DemoExperiencePage = ({ navigate }) => {
               <strong>{activeScene.tv.title}</strong>
             </div>
             <div className="mk3-demo-surface-pill-row">
-              <span>Shared room state</span>
+              <span>Actual TV UI</span>
               <span>{activeScene.singer.name} live context</span>
               <span>{totalConnectedLabel}</span>
             </div>
             <div className="mk3-demo-frame-wrap mk3-demo-tv-frame-wrap">
-              <div className="mk3-demo-tv-overlay">
-                <div className="mk3-demo-tv-badges">
-                  <span>Public TV</span>
-                  <strong>{activeScene.label}</strong>
-                </div>
-                <div className={`mk3-demo-beat-light${sceneProgress > 0.22 ? " is-live" : ""}`} />
-                <div className="mk3-demo-tv-stage">
-                  <div className="mk3-demo-tv-singer-card">
-                    <span>{activeScene.singer.name}</span>
-                    <strong>{activeScene.singer.prompt}</strong>
-                  </div>
-                  {activeScene.id === "trivia_break" ? (
-                    <div className="mk3-demo-trivia">
-                      <span>{activeScene.tv.mode}</span>
-                      <strong>{activeScene.tv.title}</strong>
-                      <div className="mk3-demo-trivia-options">
-                        {triviaRows.map((row) => (
-                          <div key={`${activeScene.id}_${row.label}`} className={`mk3-demo-trivia-option${row.highlight ? " is-highlight" : ""}`}>
-                            <span>{row.label}</span>
-                            <div className="mk3-demo-trivia-bar">
-                              <div style={{ width: `${Math.min(100, row.value)}%` }} />
-                            </div>
-                            <b>{row.value}%</b>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className={`mk3-demo-lyrics${activeScene.id === "guitar_vibe_sync" ? " is-instrumental" : ""}`}>
-                      <div className="mk3-demo-lyric-meta">
-                        <span>{activeScene.tv.mode}</span>
-                        <span>{formatClock(totalSceneElapsedMs)}</span>
-                      </div>
-                      <p className="mk3-demo-tv-lyric-active">{activeLyric}</p>
-                      <p className="mk3-demo-tv-lyric-next">{nextLyric}</p>
-                      <p className="mk3-demo-tv-mode-note">{activeScene.tv.footer}</p>
-                    </div>
-                  )}
-                  <div className="mk3-demo-vibe-meter">
-                    <span>Room energy</span>
-                    <div>
-                      <i style={{ width: `${roomEnergy}%` }} />
-                    </div>
-                  </div>
-                  <div className="mk3-demo-reaction-rail">
-                    {reactionItems.map((item) => (
-                      <div key={`${activeScene.id}_${item.label}`} className="mk3-demo-reaction-item">
-                        <span>{item.label.slice(0, 1)}</span>
-                        <small>{item.count}</small>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <DemoTvRoomShell
+                roomCode={DEMO_ROOM_CODE}
+                activeScene={activeScene}
+                activeLyric={activeLyric}
+                nextLyric={nextLyric}
+                totalConnectedLabel={totalConnectedLabel}
+                reactionItems={reactionItems}
+                triviaRows={triviaRows}
+                roomEnergy={roomEnergy}
+                tvFocusFrame={tvFocusFrame}
+                formatClockLabel={formatClock(totalSceneElapsedMs)}
+                tvSurfaceVariant={tvSurfaceVariant}
+                tapCoach={tapCoach}
+              />
             </div>
             <div className="mk3-demo-surface-status">
-              <span>TV makes the shared moment obvious for the whole room.</span>
+              <span>The TV makes the shared moment obvious for the whole room.</span>
               <strong>{activeScene.tv.mode}</strong>
             </div>
           </article>
@@ -1103,58 +1124,20 @@ const DemoExperiencePage = ({ navigate }) => {
               <div className="mk3-demo-phone-shell">
                 <div className="mk3-demo-phone-notch" />
                 <div className="mk3-demo-phone-screen">
-                  <div className="mk3-demo-surface-body mk3-demo-audience-sim">
-                    <div className="mk3-demo-phone-appbar">
-                      <span>Audience App</span>
-                      <strong>{activeScene.label}</strong>
-                    </div>
-                    <div className="mk3-demo-audience-identity-card">
-                      <span>Signed in</span>
-                      <strong>{activeScene.singer.name}</strong>
-                      <p>{activeScene.singer.status}</p>
-                    </div>
-                    <div className="mk3-demo-audience-grid">
-                      {audienceRoster.map((entry) => (
-                        <div key={`${activeScene.id}_${entry.label}`} className={entry.live ? "online" : ""}>
-                          {entry.label}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mk3-demo-mini-actions">
-                      {activeScene.audience.actions.map((action, index) => (
-                        <button
-                          key={`${activeScene.id}_${action}`}
-                          type="button"
-                          className={index <= activeActionIndex ? "active" : ""}
-                          tabIndex={-1}
-                        >
-                          {action}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mk3-demo-audience-feed">
-                      {activeScene.audience.feed.map((item, index) => (
-                        <div key={`${activeScene.id}_${item}`} className={index === activeFeedIndex ? "is-active" : ""}>
-                          <strong>{index === activeFeedIndex ? "Live update" : "Queued"}</strong>
-                          <span>{item}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mk3-demo-audience-banner">
-                      <span>{activeScene.audience.metricLabel}</span>
-                      <strong>{activeScene.audience.metricValue}</strong>
-                      <p>{activeScene.callouts[1]?.detail}</p>
-                    </div>
-                  </div>
-                  <div className="mk3-demo-sim-tap" style={audienceTapStyle}>
-                    <i />
-                    <span>tap</span>
-                  </div>
+                  <DemoAudienceRoomShell
+                    roomCode={DEMO_ROOM_CODE}
+                    activeScene={activeScene}
+                    activeActionIndex={activeActionIndex}
+                    activeFeedIndex={activeFeedIndex}
+                    audienceTapStyle={audienceTapStyle}
+                    audienceFocusFrame={audienceFocusFrame}
+                    tapCoach={tapCoach}
+                  />
                 </div>
               </div>
             </div>
             <div className="mk3-demo-surface-status">
-              <span>Audience input looks lightweight, but it changes the room state visibly.</span>
+              <span>Audience input stays lightweight, but the room reacts visibly.</span>
               <strong>{activeScene.audience.metricValue}</strong>
             </div>
           </article>
@@ -1188,6 +1171,7 @@ const DemoExperiencePage = ({ navigate }) => {
           </div>
         </div>
       </article>
+      )}
     </section>
   );
 };

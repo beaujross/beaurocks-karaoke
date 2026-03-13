@@ -8,9 +8,9 @@ const PERFORMER_BADGES = [
 ];
 
 const PERFORMER_STORY_POINTS = [
-  "The best karaoke nights are the ones where you can relax, sing well, and want to come back.",
-  "A reliable weekly room beats guessing your way through random listings every time.",
-  "Good hosts, a steady crowd, and a clear schedule make it easier to pick the right room for your songs.",
+  "Find rooms you actually want to revisit.",
+  "Reliable weekly nights beat random guesses.",
+  "Good hosts and clear schedules make song choice easier.",
 ];
 
 const PERFORMER_PROOF_POINTS = [
@@ -23,17 +23,17 @@ const PERFORMER_SIGNAL_CARDS = [
   {
     label: "Hosts",
     title: "See who is running the night",
-    copy: "Good karaoke nights usually have a visible host, a clear format, and enough information to know what you are walking into.",
+    copy: "Know who is running the room before you go.",
   },
   {
     label: "Schedule",
     title: "Build a weekly rotation",
-    copy: "The best karaoke habits come from dependable nights you can plan around, not one-off guesses.",
+    copy: "Find nights worth building into your week.",
   },
   {
     label: "Fit",
     title: "Bring your best songs to the right room",
-    copy: "A better room means better energy, a better crowd, and a stronger reason to come back next week.",
+    copy: "Pick the room that fits your songs and your crowd.",
   },
 ];
 
@@ -41,22 +41,22 @@ const PERFORMER_FLOW_STEPS = [
   {
     step: "01",
     title: "Browse the map",
-    copy: "Start with rooms that show a current schedule, clear host info, and enough detail to feel trustworthy.",
+    copy: "Start with current schedules and clear host info.",
   },
   {
     step: "02",
     title: "Check the schedule",
-    copy: "Look for nights that are dependable enough to become part of your routine instead of a gamble.",
+    copy: "Look for nights you can count on.",
   },
   {
     step: "03",
     title: "Pick the right fit",
-    copy: "Choose rooms with the pace, crowd, and feel that match the songs you want to bring.",
+    copy: "Choose the crowd and pace that fit your songs.",
   },
   {
     step: "04",
     title: "Come back on purpose",
-    copy: "The goal is not one lucky night. It is a short list of karaoke rooms worth repeating.",
+    copy: "Build a short list worth repeating.",
   },
 ];
 
@@ -76,7 +76,7 @@ const ForPerformersPage = ({ navigate }) => {
           <div className="mk3-persona-hero-copy">
             <div className="mk3-persona-kicker">for performers</div>
             <h1>Find karaoke nights worth making part of your week.</h1>
-            <p>Skip the guesswork. Find hosts and venues with a real crowd, a clear schedule, and the kind of room you will actually want to revisit.</p>
+            <p>Skip the guesswork. Find rooms with a real crowd and a clear schedule.</p>
             <div className="mk3-persona-badge-row">
               {PERFORMER_BADGES.map((badge) => (
                 <span key={badge}>{badge}</span>
@@ -85,15 +85,15 @@ const ForPerformersPage = ({ navigate }) => {
             <div className="mk3-persona-stat-row">
               <article className="mk3-persona-stat-card">
                 <strong>Clearer room info</strong>
-                <span>See which nights look organized before you commit your evening.</span>
+                <span>See which nights look organized before you go.</span>
               </article>
               <article className="mk3-persona-stat-card">
                 <strong>Better planning</strong>
-                <span>Find nights that can become part of your weekly rotation instead of a one-off guess.</span>
+                <span>Find nights that can become part of your week.</span>
               </article>
               <article className="mk3-persona-stat-card">
                 <strong>Better fit</strong>
-                <span>Bring your best songs to rooms with the pace and crowd to support them.</span>
+                <span>Bring your best songs to the right room.</span>
               </article>
             </div>
             <div className="mk3-actions-inline">
@@ -123,7 +123,7 @@ const ForPerformersPage = ({ navigate }) => {
               <div className="mk3-persona-visual-overlay">
                 <div className="mk3-persona-kicker">for performers</div>
                 <strong>Stop wasting your best songs on random rooms.</strong>
-                <span>Use the directory to find karaoke nights with enough consistency, energy, and clarity to be worth repeating.</span>
+                <span>Use the directory to find nights worth repeating.</span>
               </div>
             </article>
             <div className="mk3-persona-signal-grid">
@@ -144,7 +144,7 @@ const ForPerformersPage = ({ navigate }) => {
           <article key={point} className="mk3-detail-card mk3-zone">
             <span>{`Proof 0${index + 1}`}</span>
             <strong>{point}</strong>
-            <p>The more clearly a room explains itself before you go, the easier it is to build an actual routine around it.</p>
+            <p>Clearer rooms are easier to come back to.</p>
           </article>
         ))}
       </section>
@@ -166,10 +166,7 @@ const ForPerformersPage = ({ navigate }) => {
         <section className="mk3-detail-card mk3-zone mk3-persona-playbook">
           <div className="mk3-persona-kicker">build your run</div>
           <h2>Stop leaving your karaoke nights up to chance.</h2>
-          <p className="mk3-card-story">
-            BeauRocks helps performers find rooms with the right energy, the right crowd,
-            and a schedule reliable enough to build into a routine.
-          </p>
+          <p className="mk3-card-story">Use BeauRocks to find rooms with the energy, crowd, and schedule you want.</p>
           <div className="mk3-sub-list compact">
             {PERFORMER_STORY_POINTS.map((point) => (
               <article key={point} className="mk3-review-card">
@@ -183,7 +180,7 @@ const ForPerformersPage = ({ navigate }) => {
           <h4>What To Look For</h4>
           <div className="mk3-status">
             <strong>Choose rooms worth repeating</strong>
-            <span>Look for the hosts, schedules, and room feel that make you want to come back next week too.</span>
+            <span>Look for hosts, schedules, and room feel that make you want to come back.</span>
           </div>
           <div className="mk3-persona-checklist-list">
             {PERFORMER_PROOF_POINTS.map((point) => (

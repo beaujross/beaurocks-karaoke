@@ -11,20 +11,26 @@ const FAN_BADGES = [
   "Keep the room engaged",
 ];
 
+const HERO_PROOF_POINTS = [
+  "Start faster",
+  "Keep guests involved",
+  "Run a cleaner room",
+];
+
 const VISUAL_CARDS = [
   {
     title: "Playback that fits the room",
-    copy: "Use the music sources your night already depends on, from streaming picks to local media.",
+    copy: "Stream, local media, or both.",
     imageUrl: "/images/marketing/tv-surface-live.png",
   },
   {
     title: "Guests join fast",
-    copy: "Guests can join, react, vote, and play along from their phones in seconds.",
+    copy: "Join, react, vote, and play from a phone.",
     imageUrl: "/images/marketing/BeauRocks-Audienceapp.png",
   },
   {
     title: "Real host controls when you want them",
-    copy: "Keep the queue moving, switch the TV view, and steer the night without losing the room.",
+    copy: "Keep the queue and TV moving without losing the room.",
     imageUrl: "/images/marketing/BeauRocks-HostPanel.png",
   },
 ];
@@ -32,30 +38,15 @@ const VISUAL_CARDS = [
 const QUICK_PROOF = [
   {
     title: "Feels organized from the start",
-    copy: "Music starts quickly, guests know how to join, and the night feels hosted instead of improvised.",
+    copy: "Guests know how to join. The music starts fast.",
   },
   {
     title: "More people stay involved",
-    copy: "Lyrics, reactions, games, and TV moments keep the whole room engaged, not just the singer on stage.",
+    copy: "The whole room stays in it, not just the singer.",
   },
   {
     title: "Simple when you want it, deeper when you need it",
-    copy: "Run a relaxed karaoke night or open up the full host dashboard when the room needs more control.",
-  },
-];
-
-const HERO_SIGNAL_CARDS = [
-  {
-    title: "Easy for guests to join",
-    copy: "Guests can get into the room quickly instead of stopping to create another account.",
-    imageUrl: "/images/marketing/BeauRocks-Audienceapp.png",
-    imageAlt: "BeauRocks audience app",
-  },
-  {
-    title: "Hosts still get a real control center",
-    copy: "When the night needs direction, the host dashboard is ready with the tools to keep it moving.",
-    imageUrl: MARKETING_BRAND_BADGE_URL,
-    imageAlt: "BeauRocks badge",
+    copy: "Keep it simple or open up the full host tools.",
   },
 ];
 
@@ -77,89 +68,90 @@ const ForFansPage = ({ navigate, heroStats }) => {
             <img src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks badge" />
             <span>Easy to host. Easy to join. Built for a room that stays engaged.</span>
           </div>
-          <h1>Run a karaoke night that feels smooth from the first song to the last encore.</h1>
-          <p>
-            BeauRocks helps you start quickly, keep guests involved, and give the room a better
-            experience than passing around a paper slip and hoping for the best.
-          </p>
-          <div className="mk3-persona-badge-row">
-            {FAN_BADGES.map((badge) => (
-              <span key={badge}>{badge}</span>
-            ))}
-          </div>
-          <div className="mk3-fans-home-stat-row">
-            {heroStats?.total > 0 && (
-              <div className="mk3-fans-home-stat-card">
-                <strong>{heroStats.total.toLocaleString()}</strong>
-                <span>live listings in the directory</span>
-              </div>
-            )}
-            <div className="mk3-fans-home-stat-card">
-              <strong>Flexible playback</strong>
-              <span>Streaming, local files, and web video for the kind of night you want to run</span>
+          {heroStats?.total > 0 && (
+            <div className="mk3-fans-home-live-proof">
+              <strong>{heroStats.total.toLocaleString()} live listings tracked</strong>
             </div>
-            <div className="mk3-fans-home-stat-card">
-              <strong>Guest-friendly flow</strong>
-              <span>People can join and interact without turning the night into a signup process</span>
-            </div>
-          </div>
+          )}
+          <h1>Karaoke nights that are easier to run and more fun to join.</h1>
+          <p>Start faster, let guests join from their phones, and keep the room moving.</p>
           <div className="mk3-actions-inline">
             <button
               type="button"
               onClick={() => {
-                trackPersonaCta("primary_open_host_overview");
-                navigate("for_hosts");
-              }}
-            >
-              See Host Setup
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                trackPersonaCta("secondary_open_discover");
+                trackPersonaCta("primary_open_discover");
                 navigate("discover");
               }}
             >
               Explore Live Nights
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                trackPersonaCta("secondary_open_host_overview");
+                navigate("for_hosts");
+              }}
+            >
+              See Host Tools
+            </button>
           </div>
-          <div className="mk3-fans-home-signal-row">
-            {HERO_SIGNAL_CARDS.map((card) => (
-              <article key={card.title} className="mk3-fans-home-signal-card">
-                <img src={card.imageUrl} alt={card.imageAlt} loading="lazy" />
-                <div>
-                  <strong>{card.title}</strong>
-                  <span>{card.copy}</span>
-                </div>
+          <div className="mk3-persona-badge-row">
+            {FAN_BADGES.map((badge) => (
+              <span key={badge}>{badge}</span>
+            ))}
+          </div>
+          <div className="mk3-fans-home-proof-list">
+            {HERO_PROOF_POINTS.map((item) => (
+              <article key={item}>
+                <strong>{item}</strong>
               </article>
             ))}
           </div>
         </div>
 
         <div className="mk3-fans-home-visual">
-          <article className="mk3-fans-home-feature-card">
+          <article className="mk3-fans-home-stage">
             <img
+              className="mk3-fans-home-stage-poster"
               src="/images/marketing/aahf-karaoke-kickoff-2026.png"
               alt="AAHF Karaoke Kickoff event poster"
               loading="lazy"
             />
-            <div className="mk3-fans-home-feature-overlay">
-              <div className="mk3-chip mk3-chip-elevated">
-                <img className="mk3-chip-icon" src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks badge" loading="lazy" />
-                <span>Hosted with BeauRocks</span>
+            <div className="mk3-fans-home-stage-overlay">
+              <div className="mk3-fans-home-stage-topline">
+                <div className="mk3-chip mk3-chip-elevated">
+                  <img className="mk3-chip-icon" src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks badge" loading="lazy" />
+                  <span>Hosted with BeauRocks</span>
+                </div>
+                <div className="mk3-fans-home-host-pill">
+                  <img src={MARKETING_DJ_BEAUROCKS_AVATAR_URL} alt="DJ BeauRocks" loading="lazy" />
+                  <span>DJ BeauRocks</span>
+                </div>
               </div>
-              <div className="mk3-fans-home-host-pill">
-                <img src={MARKETING_DJ_BEAUROCKS_AVATAR_URL} alt="DJ BeauRocks" loading="lazy" />
-                <span>DJ BeauRocks</span>
+              <div className="mk3-fans-home-stage-copy">
+                <strong>One night. Three synchronized views. A room that feels fully hosted.</strong>
+                <span>TV leads. Phones join in. The host stays in control.</span>
               </div>
-              <strong>AAHF: Karaoke Kickoff</strong>
-              <span>A hosted karaoke night built to feel bigger, louder, and more connected</span>
+              <div className="mk3-fans-home-stage-stack" aria-hidden="true">
+                <article className="mk3-fans-home-stage-panel is-audience">
+                  <span>Audience App</span>
+                  <img src="/images/marketing/BeauRocks-Audienceapp.png" alt="" loading="lazy" />
+                </article>
+                <article className="mk3-fans-home-stage-panel is-tv">
+                  <span>Public TV</span>
+                  <img src="/images/marketing/tv-surface-live.png" alt="" loading="lazy" />
+                </article>
+                <article className="mk3-fans-home-stage-panel is-host">
+                  <span>Host Dashboard</span>
+                  <img src="/images/marketing/BeauRocks-HostPanel.png" alt="" loading="lazy" />
+                </article>
+              </div>
             </div>
           </article>
 
-          <div className="mk3-fans-home-visual-grid">
+          <div className="mk3-fans-home-system-grid">
             {VISUAL_CARDS.map((card) => (
-              <article key={card.title} className="mk3-fans-home-visual-card">
+              <article key={card.title} className="mk3-fans-home-system-card">
                 <img src={card.imageUrl} alt={card.title} loading="lazy" />
                 <div>
                   <strong>{card.title}</strong>
@@ -183,18 +175,9 @@ const ForFansPage = ({ navigate, heroStats }) => {
       <section className="mk3-detail-card mk3-fans-home-action-band mk3-zone">
         <div>
           <div className="mk3-persona-kicker">what beaurocks is for</div>
-          <h2>Start with the basics. Add more when your night is ready for it.</h2>
+          <h2>Start with karaoke basics. Add more when your night is ready for it.</h2>
         </div>
         <div className="mk3-actions-inline">
-          <button
-            type="button"
-            onClick={() => {
-              trackPersonaCta("tertiary_open_host_overview");
-              navigate("for_hosts");
-            }}
-          >
-            See Host Tools
-          </button>
           <button
             type="button"
             onClick={() => {
@@ -203,6 +186,15 @@ const ForFansPage = ({ navigate, heroStats }) => {
             }}
           >
             Browse Karaoke Nights
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              trackPersonaCta("tertiary_open_host_overview");
+              navigate("for_hosts");
+            }}
+          >
+            See Host Tools
           </button>
         </div>
       </section>
