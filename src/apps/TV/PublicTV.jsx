@@ -47,6 +47,7 @@ import {
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
 import {
     getVolleyOrbTvInstructionCopy,
+    getVolleyOrbResponsiveMetrics,
     isVolleyOrbSceneActive,
     isVolleyOrbTargetInteraction
 } from '../../lib/volleyOrbUiState';
@@ -815,6 +816,7 @@ const PublicTV = ({ roomCode }) => {
     const [lobbyPlayBursts, setLobbyPlayBursts] = useState([]);
     const [lobbyPlayScreenFx, setLobbyPlayScreenFx] = useState([]);
     const [lobbyVolleyState, setLobbyVolleyState] = useState(() => createLobbyVolleyState());
+    const [lobbyVolleySceneMetrics, setLobbyVolleySceneMetrics] = useState(() => getVolleyOrbResponsiveMetrics());
     const [lobbyComboMoments, setLobbyComboMoments] = useState([]);
     const [lobbyAssistMoments, setLobbyAssistMoments] = useState([]);
     const [lobbyVolleyLinks, setLobbyVolleyLinks] = useState([]);
@@ -891,6 +893,7 @@ const PublicTV = ({ roomCode }) => {
     const stormAnalyserUnavailableRef = useRef(false);
     const playStormLayerPulseRef = useRef(() => {});
     const playLobbyVolleyCueRef = useRef(() => {});
+    const lobbyVolleySceneRef = useRef(null);
     const triggerStormLightningRef = useRef(() => {});
     const lastPromptAt = useRef(0);
     const lastRealMessageAt = useRef(0);
@@ -3069,6 +3072,40 @@ const PublicTV = ({ roomCode }) => {
     const lobbyWarningCueActiveRef = useRef(false);
     const lobbyResetCueActiveRef = useRef(false);
     useEffect(() => {
+        const node = lobbyVolleySceneRef.current;
+        if (!node) return undefined;
+
+        const applyMetrics = () => {
+            const rect = node.getBoundingClientRect();
+            const next = getVolleyOrbResponsiveMetrics({
+                sceneWidth: rect.width,
+                sceneHeight: rect.height
+            });
+            setLobbyVolleySceneMetrics((prev) => {
+                if (
+                    Number(prev?.orbSizePx || 0) === next.orbSizePx
+                    && Number(prev?.participantSizePx || 0) === next.participantSizePx
+                    && Number(prev?.orbScale || 0) === next.orbScale
+                    && Number(prev?.orbContentScale || 0) === next.orbContentScale
+                ) {
+                    return prev;
+                }
+                return next;
+            });
+        };
+
+        applyMetrics();
+
+        if (typeof ResizeObserver === 'function') {
+            const observer = new ResizeObserver(() => applyMetrics());
+            observer.observe(node);
+            return () => observer.disconnect();
+        }
+
+        window.addEventListener('resize', applyMetrics);
+        return () => window.removeEventListener('resize', applyMetrics);
+    }, [lobbyVolleySceneActive, lobbyObjectiveIsTeamPong]);
+    useEffect(() => {
         if (!lobbyVolleySceneActive) {
             setLobbyLastInteraction(null);
             lobbyWarningCueActiveRef.current = false;
@@ -4949,7 +4986,7 @@ const PublicTV = ({ roomCode }) => {
             </div>
 
             {/* Lobby Playground Objective Visuals + Banners */}
-            <div className={`absolute inset-0 z-[198] pointer-events-none overflow-hidden transition-opacity duration-700 ${lobbyTransitionPhase === 'exiting' ? 'opacity-0' : 'opacity-100'}`}>
+            <div ref={lobbyVolleySceneRef} className={`absolute inset-0 z-[198] pointer-events-none overflow-hidden transition-opacity duration-700 ${lobbyTransitionPhase === 'exiting' ? 'opacity-0' : 'opacity-100'}`}>
                 {lobbyVolleyLinks.length > 0 && (
                     <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
                         {lobbyVolleyLinks.map((link) => {
@@ -5097,7 +5134,13 @@ const PublicTV = ({ roomCode }) => {
                                 >
                                     <div
                                         className={`lobby-volley-orb-shell ${motionSafeFx ? 'lobby-volley-orb-shell-safe' : ''} ${lobbyOrbSkinUrl ? 'lobby-volley-orb-shell-custom' : ''} ${lobbyRelayObjective.active ? 'lobby-volley-orb-shell-relay' : ''}`}
-                                        style={{ '--orb-energy-norm': `${Math.max(0, Math.min(1, lobbyOrbEnergy / 100))}` }}
+                                        style={{
+                                            '--orb-energy-norm': `${Math.max(0, Math.min(1, lobbyOrbEnergy / 100))}`,
+                                            '--lobby-volley-orb-size': `${Math.max(120, Number(lobbyVolleySceneMetrics?.orbSizePx || 280))}px`,
+                                            '--lobby-volley-orb-scale': `${Number(lobbyVolleySceneMetrics?.orbScale || 0.78)}`,
+                                            '--lobby-volley-orb-content-scale': `${Number(lobbyVolleySceneMetrics?.orbContentScale || 0.84)}`,
+                                            '--lobby-volley-participant-size': `${Math.max(18, Number(lobbyVolleySceneMetrics?.participantSizePx || 27))}px`
+                                        }}
                                     >
                                         {!!lobbyOrbSkinUrl && (
                                             <img
@@ -5680,8 +5723,12 @@ const PublicTV = ({ roomCode }) => {
               }
               .lobby-volley-orb-shell {
                 --orb-energy-norm: 0.4;
-                width: clamp(250px, 24vw, 360px);
-                height: clamp(250px, 24vw, 360px);
+                --lobby-volley-orb-size: 320px;
+                --lobby-volley-orb-scale: 0.88;
+                --lobby-volley-orb-content-scale: 0.92;
+                --lobby-volley-participant-size: 28px;
+                width: var(--lobby-volley-orb-size);
+                height: var(--lobby-volley-orb-size);
                 border-radius: 9999px;
                 background:
                   radial-gradient(circle at 24% 16%, rgba(255,255,255,0.95), rgba(255,255,255,0.14) 36%, rgba(0,0,0,0) 56%),
@@ -5895,6 +5942,8 @@ const PublicTV = ({ roomCode }) => {
                 justify-content: center;
                 text-align: center;
                 text-shadow: 0 0 10px rgba(0,0,0,0.45);
+                transform: scale(var(--lobby-volley-orb-content-scale));
+                transform-origin: center;
               }
               .lobby-volley-orb-ring {
                 position: absolute;
@@ -5924,15 +5973,15 @@ const PublicTV = ({ roomCode }) => {
                 z-index: 3;
               }
               .lobby-volley-participant {
-                width: 30px;
-                height: 30px;
+                width: var(--lobby-volley-participant-size);
+                height: var(--lobby-volley-participant-size);
                 border-radius: 9999px;
                 border: 1px solid rgba(255,255,255,0.3);
                 background: rgba(2,6,23,0.7);
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 16px;
+                font-size: calc(var(--lobby-volley-participant-size) * 0.53);
                 box-shadow: 0 0 14px rgba(34,211,238,0.16);
               }
               .lobby-combo-chip {

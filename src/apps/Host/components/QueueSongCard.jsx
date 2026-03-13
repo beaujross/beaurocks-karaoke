@@ -20,7 +20,8 @@ const QueueSongCard = ({
     onRetryLyrics,
     onFetchTimedLyrics,
     statusPill,
-    styles
+    styles,
+    compactViewport = false
 }) => {
     const queueBacking = normalizeBackingChoice({
         mediaUrl: song.mediaUrl,
@@ -79,26 +80,26 @@ const QueueSongCard = ({
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             onTouchCancel={handleTouchEnd}
-            className={`bg-zinc-900/50 p-2 rounded-lg border ${dragOverId === song.id ? 'border-[#00C4D9]' : 'border-white/5'}`}
+            className={`bg-zinc-900/50 ${compactViewport ? 'p-1.5 rounded-md' : 'p-2 rounded-lg'} border ${dragOverId === song.id ? 'border-[#00C4D9]' : 'border-white/5'}`}
         >
-            <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex items-start gap-2">
-                    <span className="font-mono text-zinc-500 w-5 text-center text-xs mt-1">{index + 1}</span>
+            <div className={`flex items-start justify-between ${compactViewport ? 'gap-1.5' : 'gap-2'}`}>
+                <div className={`min-w-0 flex items-start ${compactViewport ? 'gap-1.5' : 'gap-2'}`}>
+                    <span className={`font-mono text-zinc-500 text-center text-xs ${compactViewport ? 'w-4 mt-0.5' : 'w-5 mt-1'}`}>{index + 1}</span>
                     <button
                         type="button"
                         data-queue-drag-handle="true"
-                        className="inline-flex min-h-[28px] min-w-[28px] items-center justify-center rounded-md border border-white/10 bg-black/20 text-zinc-500 transition hover:text-zinc-300"
+                        className={`inline-flex items-center justify-center rounded-md border border-white/10 bg-black/20 text-zinc-500 transition hover:text-zinc-300 ${compactViewport ? 'min-h-[24px] min-w-[24px]' : 'min-h-[28px] min-w-[28px]'}`}
                         title={touchReorderEnabled ? 'Press and drag to reorder the queue' : 'Drag to reorder the queue'}
                         aria-label="Reorder queue item"
                         style={touchReorderEnabled ? { touchAction: 'none' } : undefined}
                     >
                         <i className="fa-solid fa-grip-lines text-xs"></i>
                     </button>
-                    {song.albumArtUrl && <img src={song.albumArtUrl} className="w-8 h-8 rounded shadow-sm mt-0.5"/>}
+                    {song.albumArtUrl && <img src={song.albumArtUrl} className={`${compactViewport ? 'w-7 h-7' : 'w-8 h-8'} rounded shadow-sm mt-0.5`}/>}
                     <div className="min-w-0">
-                        <div className="font-bold text-white text-sm truncate">{song.songTitle}</div>
-                        <div className="text-xs text-zinc-400 truncate">{song.singerName}</div>
-                        <div className="mt-1 flex flex-wrap gap-1 text-[10px] uppercase tracking-widest">
+                        <div className={`font-bold text-white truncate ${compactViewport ? 'text-[13px] leading-tight' : 'text-sm'}`}>{song.songTitle}</div>
+                        <div className={`text-zinc-400 truncate ${compactViewport ? 'text-[11px] leading-tight' : 'text-xs'}`}>{song.singerName}</div>
+                        <div className={`mt-1 flex flex-wrap gap-1 text-[10px] uppercase ${compactViewport ? 'tracking-[0.12em]' : 'tracking-widest'}`}>
                             {queueUsesAppleBacking ? (
                                 <span className={statusPill}><i className="fa-brands fa-apple mr-1"></i>Apple</span>
                             ) : queueMediaUrl ? (
@@ -123,36 +124,56 @@ const QueueSongCard = ({
                         </div>
                     </div>
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
+                <div className={`shrink-0 ${compactViewport ? 'flex items-center gap-1' : 'flex flex-col items-end gap-1'}`}>
                     <div className="flex items-center gap-1">
-                        <button onClick={() => updateStatus(song.id, 'performing')} className={`${styles.btnStd} ${styles.btnPrimary} px-2 py-1 text-[10px] min-h-[28px]`}>
+                        <button onClick={() => updateStatus(song.id, 'performing')} className={`${styles.btnStd} ${styles.btnPrimary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[28px]'}`}>
                             <i className="fa-solid fa-play mr-1"></i>Play
                         </button>
-                        <button onClick={() => startEdit(song)} className={`${styles.btnStd} ${styles.btnSecondary} px-2 py-1 text-[10px] min-h-[28px]`}>
+                        <button onClick={() => startEdit(song)} className={`${styles.btnStd} ${styles.btnSecondary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[28px]'}`}>
                             <i className="fa-solid fa-pen-to-square"></i>
                         </button>
-                        <button onClick={() => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id))} className={`${styles.btnStd} ${styles.btnDanger} px-2 py-1 text-[10px] min-h-[28px]`}>
+                        <button onClick={() => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id))} className={`${styles.btnStd} ${styles.btnDanger} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[28px]'}`}>
                             <i className="fa-solid fa-trash"></i>
                         </button>
                     </div>
-                    <div className="flex items-center gap-1">
-                        <button
-                            onClick={() => onRetryLyrics?.(song)}
-                            className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-[10px] min-h-[26px]`}
-                            title="Retry lyrics resolution"
-                        >
-                            Retry Lyrics
-                        </button>
-                        <button
-                            onClick={() => onFetchTimedLyrics?.(song)}
-                            className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-[10px] min-h-[26px]`}
-                            title="Fetch timed lyrics only"
-                        >
-                            Fetch Timed
-                        </button>
-                    </div>
+                    {!compactViewport && (
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => onRetryLyrics?.(song)}
+                                className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-[10px] min-h-[26px]`}
+                                title="Retry lyrics resolution"
+                            >
+                                Retry Lyrics
+                            </button>
+                            <button
+                                onClick={() => onFetchTimedLyrics?.(song)}
+                                className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-[10px] min-h-[26px]`}
+                                title="Fetch timed lyrics only"
+                            >
+                                Fetch Timed
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
+            {compactViewport && (
+                <div className="mt-1 flex items-center gap-1">
+                    <button
+                        onClick={() => onRetryLyrics?.(song)}
+                        className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-[10px] min-h-[22px]`}
+                        title="Retry lyrics resolution"
+                    >
+                        Retry Lyrics
+                    </button>
+                    <button
+                        onClick={() => onFetchTimedLyrics?.(song)}
+                        className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-[10px] min-h-[22px]`}
+                        title="Fetch timed lyrics only"
+                    >
+                        Fetch Timed
+                    </button>
+                </div>
+            )}
         </div>
     );
 };

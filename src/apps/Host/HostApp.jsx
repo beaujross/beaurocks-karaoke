@@ -4244,12 +4244,12 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     );
 
     const queueListSection = (
-        <div className="flex-1 overflow-y-auto p-2 space-y-2">
+        <div className={`flex-1 overflow-y-auto ${compactViewport ? 'p-1.5 space-y-1.5' : 'p-2 space-y-2'} custom-scrollbar`}>
             <SectionHeader
                 label="Queue"
                 open={showQueueList}
                 onToggle={() => setShowQueueList(v => !v)}
-                toneClass="text-base font-black text-[#00C4D9] px-1"
+                toneClass={`text-base font-black text-[#00C4D9] px-1 sticky top-0 z-20 bg-zinc-950/95 backdrop-blur ${compactViewport ? 'py-2 rounded-lg border border-white/10' : ''}`}
                 featureId="panel-queue-list"
             />
             <QueueListPanel
@@ -4273,6 +4273,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 onFetchTimedLyrics={fetchTimedLyricsForSong}
                 statusPill={statusPill}
                 styles={STYLES}
+                compactViewport={compactViewport}
             />
         </div>
     );
@@ -4355,7 +4356,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             )}
             <div className={`flex-1 min-h-0 ${compactViewport ? 'flex flex-col gap-3' : 'grid grid-cols-3 gap-6'} overflow-hidden`}>
             {/* LEFT CONTROLS */}
-            <div className={`w-full ${compactViewport ? 'order-2 max-h-[40vh]' : 'min-h-0'} overflow-y-auto ${compactViewport ? 'pr-2' : 'pr-1'} custom-scrollbar`}>
+            <div className={`w-full ${compactViewport ? 'order-2 max-h-[32vh]' : 'min-h-0'} overflow-y-auto ${compactViewport ? 'pr-2' : 'pr-1'} custom-scrollbar`}>
                 <div className={`${STYLES.panel} overflow-hidden`}>
                     <section className="px-4 py-4 border-b border-white/10 bg-zinc-950/90 sticky top-0 z-20 backdrop-blur-md">
                         <div className="rounded-xl border border-cyan-400/25 bg-gradient-to-r from-cyan-500/12 via-black/45 to-pink-500/10 p-3">
@@ -4634,7 +4635,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             </div>
 
             {compactViewport ? (
-                <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0 order-1 min-h-[52vh]`}>
+                <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0 order-1 min-h-[60vh]`}>
                     {queueListSection}
                     {addToQueueSection}
                 </div>

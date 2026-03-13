@@ -772,6 +772,7 @@ const SingerApp = ({ roomCode, uid }) => {
     // UI State
     const [searchQ, setSearchQ] = useState('');
     const [results, setResults] = useState([]);
+    const [catalogSearchOpen, setCatalogSearchOpen] = useState(false);
     const [tight15SearchQ, setTight15SearchQ] = useState('');
     const [tight15Results, setTight15Results] = useState([]);
     const [dragIndex, setDragIndex] = useState(null);
@@ -1841,6 +1842,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [hallOfFameMode, setHallOfFameMode] = useState('all_time');
     const [hallOfFameEntries, setHallOfFameEntries] = useState([]);
     const [hallOfFameFilter, setHallOfFameFilter] = useState('');
+    const audienceCatalogSearchInputRef = useRef(null);
     const filteredHallOfFame = useMemo(() => {
         const q = hallOfFameFilter.trim().toLowerCase();
         if (!q) return hallOfFameEntries;
@@ -3246,6 +3248,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [searchQ]);
 
     useEffect(() => {
+        if (tab !== 'request' || !['requests', 'browse'].includes(songsTab)) {
+            setCatalogSearchOpen(false);
+        }
+    }, [songsTab, tab]);
+
+    useEffect(() => {
+        if (!catalogSearchOpen) return;
+        const raf = requestAnimationFrame(() => {
+            audienceCatalogSearchInputRef.current?.focus?.();
+        });
+        return () => cancelAnimationFrame(raf);
+    }, [catalogSearchOpen]);
+
+    useEffect(() => {
         if (songsTab === 'browse') return;
         setActiveBrowseList(null);
         setShowTop100(false);
@@ -4231,6 +4247,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
     
     const deleteMyRequest = async (id) => { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id)); toast("Request Deleted"); };
+
+    const handleAudienceCatalogResultSelect = (result) => {
+        if (!result) return;
+        submitSong(
+            result.trackName,
+            result.artistName,
+            result.artworkUrl100.replace('100x100', '600x600'),
+            { itunesId: result.trackId }
+        );
+        setResults([]);
+        setSearchQ('');
+        setCatalogSearchOpen(false);
+    };
     
 
     const updateProfile = async () => { 
@@ -8281,6 +8310,91 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <button onClick={()=>setSongsTab('tight15')} className={`py-2 rounded-lg text-base font-bold transition-all ${songsTab==='tight15' ? 'bg-[#00C4D9] text-white shadow' : 'text-zinc-500'}`}>TIGHT 15</button>
                             </div>
                         </div>
+                        {catalogSearchOpen && ['requests', 'browse'].includes(songsTab) && (
+                            <React.Fragment>
+                                <button
+                                    type="button"
+                                    aria-label="Close song search"
+                                    onClick={() => setCatalogSearchOpen(false)}
+                                    className="fixed inset-0 z-[82] bg-black/60 backdrop-blur-sm"
+                                ></button>
+                                <div
+                                    className="fixed z-[83] rounded-[1.75rem] border border-cyan-300/25 bg-[#090d18]/96 shadow-[0_22px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl flex flex-col min-h-0"
+                                    style={{
+                                        top: `calc(${mobileHeaderTopInset} + 5rem)`,
+                                        left: mobileSideInsetLeft,
+                                        right: mobileSideInsetRight,
+                                        bottom: `calc(${mobileBottomInset} + 1rem)`
+                                    }}
+                                >
+                                    <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 border-b border-white/10">
+                                        <div>
+                                            <div className="text-xs uppercase tracking-[0.3em] text-cyan-200/80">Apple Music Catalog</div>
+                                            <div className="text-lg font-black text-white">
+                                                {searchQ.trim().length >= 3
+                                                    ? `${results.length} match${results.length === 1 ? '' : 'es'}`
+                                                    : 'Search song + artist'}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCatalogSearchOpen(false)}
+                                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/35 text-zinc-200"
+                                        >
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div className="px-4 py-3 border-b border-white/10">
+                                        <div className="rounded-2xl border border-cyan-300/20 bg-black/30 px-4 py-3">
+                                            <div className="flex items-center gap-3">
+                                                <i className="fa-solid fa-magnifying-glass text-cyan-200/80"></i>
+                                                <input
+                                                    ref={audienceCatalogSearchInputRef}
+                                                    value={searchQ}
+                                                    onChange={(e) => setSearchQ(e.target.value)}
+                                                    className="flex-1 bg-transparent text-base text-white outline-none"
+                                                    placeholder="Search Apple Music songs..."
+                                                />
+                                            </div>
+                                            <div className="mt-2 text-xs uppercase tracking-[0.24em] text-zinc-400">
+                                                Search results come from Apple Music. Host-curated YouTube picks live below in Browse.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar touch-scroll-y px-3 py-3">
+                                        {searchQ.trim().length < 3 ? (
+                                            <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
+                                                Type at least 3 characters. Song + artist works best.
+                                            </div>
+                                        ) : results.length > 0 ? (
+                                            <div className="space-y-2">
+                                                {results.map((r) => (
+                                                    <button
+                                                        key={r.trackId}
+                                                        type="button"
+                                                        onClick={() => handleAudienceCatalogResultSelect(r)}
+                                                        className="w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-left transition-colors hover:border-cyan-300/45 hover:bg-black/45"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <img src={r.artworkUrl100} className="h-12 w-12 rounded-xl object-cover" />
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="truncate text-base font-black text-white">{r.trackName}</div>
+                                                                <div className="truncate text-sm text-zinc-400">{r.artistName}</div>
+                                                            </div>
+                                                            <div className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300">Add</div>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
+                                                No Apple Music matches yet. Try a more specific song + artist search.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </React.Fragment>
+                        )}
                         {songsTab === 'requests' && (
                             <div className="flex flex-col h-full">
                                 <div className="space-y-4">
@@ -8288,9 +8402,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="text-sm uppercase tracking-[0.35em] text-zinc-400">Requests</div>
                                         <h2 className="text-2xl font-bebas text-cyan-400">Request Song</h2>
                                     </div>
-                                    <div className="relative z-50">
-                                        <input id="song-search" value={searchQ} onChange={e=>setSearchQ(e.target.value)} className="w-full bg-zinc-800 border border-zinc-600 rounded-lg p-2.5 text-base text-white outline-none" placeholder="Search song..." />
-                                        {results.length > 0 && <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 z-50 shadow-xl max-h-60 touch-scroll-y custom-scrollbar">{results.map(r=><div key={r.trackId} onClick={()=>{submitSong(r.trackName, r.artistName, r.artworkUrl100.replace('100x100','600x600'), { itunesId: r.trackId }); setResults([]); setSearchQ('');}} className="p-3 border-b border-zinc-800 hover:bg-zinc-800 flex gap-3"><img src={r.artworkUrl100} className="w-10 h-10 rounded"/><div><div className="font-bold text-base">{r.trackName}</div><div className="text-base text-zinc-400">{r.artistName}</div></div></div>)}</div>}
+                                    <div className="space-y-2">
+                                        <input
+                                            id="song-search"
+                                            value={searchQ}
+                                            onChange={e=>setSearchQ(e.target.value)}
+                                            onFocus={() => setCatalogSearchOpen(true)}
+                                            className="w-full bg-zinc-800 border border-zinc-600 rounded-lg p-2.5 text-base text-white outline-none"
+                                            placeholder="Search Apple Music songs..."
+                                        />
+                                        <div className="text-sm text-zinc-500">
+                                            Search opens a full-screen Apple Music picker so results stay visible above the keyboard.
+                                        </div>
                                     </div>
                                     {room?.allowSingerTrackSelect && (
                                         <div className="space-y-2">
@@ -8325,35 +8448,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <div className="text-2xl font-bebas text-cyan-400">Popular Categories</div>
                                     <div className="text-base text-zinc-300">Tap a category to explore hits.</div>
                                 </div>
-                                <div className="relative z-50">
+                                <div className="space-y-2">
                                     <input
                                         value={searchQ}
                                         onChange={e => setSearchQ(e.target.value)}
+                                        onFocus={() => setCatalogSearchOpen(true)}
                                         className="w-full bg-zinc-900/60 border border-zinc-700 rounded-2xl p-4 text-base text-white outline-none"
-                                        placeholder="Search songs to request..."
+                                        placeholder="Search Apple Music songs..."
                                     />
-                                    {results.length > 0 && (
-                                        <div className="absolute top-full left-0 w-full bg-zinc-900 border border-zinc-700 z-50 shadow-xl max-h-60 touch-scroll-y custom-scrollbar">
-                                            {results.map(r => (
-                                                <div
-                                                    key={r.trackId}
-                                                    onClick={() => {
-                                                        submitSong(r.trackName, r.artistName, r.artworkUrl100.replace('100x100','600x600'), { itunesId: r.trackId });
-                                                        setResults([]);
-                                                        setSearchQ('');
-                                                    }}
-                                                    className="p-3 border-b border-zinc-800 hover:bg-zinc-800 flex gap-3 cursor-pointer"
-                                                >
-                                                    <img src={r.artworkUrl100} className="w-10 h-10 rounded" />
-                                                    <div className="min-w-0 flex-1">
-                                                        <div className="font-bold text-base truncate">{r.trackName}</div>
-                                                        <div className="text-base text-zinc-400 truncate">{r.artistName}</div>
-                                                    </div>
-                                                    <div className="text-base font-bold text-cyan-300">+ Request</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
+                                    <div className="text-sm text-zinc-500">
+                                        Search uses Apple Music. The YouTube section below is a separate host-curated list.
+                                    </div>
                                 </div>
                                 {room?.allowSingerTrackSelect && (
                                     <div className="space-y-2">

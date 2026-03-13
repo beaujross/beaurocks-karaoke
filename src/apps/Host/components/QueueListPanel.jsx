@@ -21,21 +21,34 @@ const QueueListPanel = ({
     onRetryLyrics,
     onFetchTimedLyrics,
     statusPill,
-    styles
+    styles,
+    compactViewport = false
 }) => {
     if (!showQueueList) return null;
 
     return (
         <>
+            <div className={`sticky top-0 z-10 mb-2 rounded-xl border border-white/10 bg-zinc-950/92 backdrop-blur px-3 ${compactViewport ? 'py-2' : 'py-2.5'}`}>
+                <div className="flex items-center justify-between gap-2">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-200">Queue Monitor</div>
+                    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.15em]">
+                        <span className="rounded-full border border-orange-300/30 bg-orange-500/10 px-2 py-1 text-orange-100">Pending {pending.length}</span>
+                        <span className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-cyan-100">Ready {queue.length}</span>
+                    </div>
+                </div>
+            </div>
             {pending.length > 0 && (
-                <div className="mb-4 border-b border-white/10 pb-2">
-                    <div className="text-sm text-orange-400 font-bold mb-2 uppercase">PENDING ({pending.length})</div>
+                <div className={`mb-3 border-b border-white/10 ${compactViewport ? 'pb-1.5' : 'pb-2'}`}>
+                    <div className="text-sm text-orange-400 font-bold mb-2 uppercase">Pending ({pending.length})</div>
                     {pending.map(s => (
-                        <div key={s.id} className="bg-orange-950/30 p-2 rounded flex justify-between items-center border border-orange-500/30 mb-2">
-                            <div><div className="text-sm font-bold">{s.songTitle}</div><div className="text-sm text-zinc-400">{s.singerName}</div></div>
+                        <div key={s.id} className={`bg-orange-950/30 rounded border border-orange-500/30 mb-2 ${compactViewport ? 'p-1.5' : 'p-2'} flex justify-between items-center gap-2`}>
+                            <div className="min-w-0">
+                                <div className={`${compactViewport ? 'text-[13px]' : 'text-sm'} font-bold truncate`}>{s.songTitle}</div>
+                                <div className={`${compactViewport ? 'text-[11px]' : 'text-sm'} text-zinc-400 truncate`}>{s.singerName}</div>
+                            </div>
                             <div className="flex gap-2">
-                                <button onClick={() => onApprovePending(s.id)} className={`${styles.btnStd} ${styles.btnSuccess} px-2`}>OK</button>
-                                <button onClick={() => onDeletePending(s.id)} className={`${styles.btnStd} ${styles.btnDanger} px-2`}>X</button>
+                                <button onClick={() => onApprovePending(s.id)} className={`${styles.btnStd} ${styles.btnSuccess} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2'}`}>OK</button>
+                                <button onClick={() => onDeletePending(s.id)} className={`${styles.btnStd} ${styles.btnDanger} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2'}`}>X</button>
                             </div>
                         </div>
                     ))}
@@ -72,6 +85,7 @@ const QueueListPanel = ({
                     onFetchTimedLyrics={onFetchTimedLyrics}
                     statusPill={statusPill}
                     styles={styles}
+                    compactViewport={compactViewport}
                 />
             ))}
         </>

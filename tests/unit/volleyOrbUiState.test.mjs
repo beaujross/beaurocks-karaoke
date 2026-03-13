@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
+  getVolleyOrbResponsiveMetrics,
   getVolleyOrbMobileMainLine,
   getVolleyOrbTvInstructionCopy,
   isVolleyOrbSceneActive,
@@ -142,5 +143,31 @@ test("volleyOrbUiState.test", () => {
       interactionId: "lobby_play_echo",
     }),
     false,
+  );
+
+  assert.deepEqual(
+    getVolleyOrbResponsiveMetrics({
+      sceneWidth: 1280,
+      sceneHeight: 720,
+    }),
+    {
+      orbSizePx: 331,
+      orbScale: 0.9194,
+      orbContentScale: 1,
+      participantSizePx: 29,
+    },
+  );
+
+  assert.deepEqual(
+    getVolleyOrbResponsiveMetrics({
+      sceneWidth: 1280,
+      sceneHeight: 260,
+    }),
+    {
+      orbSizePx: 120,
+      orbScale: 0.34,
+      orbContentScale: 0.52,
+      participantSizePx: 22,
+    },
   );
 });
