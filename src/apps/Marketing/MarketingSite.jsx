@@ -851,14 +851,14 @@ const MarketingSite = () => {
           {isHostAccessPage ? (
           <section className="mk3-auth-panel mk3-host-canon-surface" ref={authPanelRef}>
             <div>
-              <h1 className="mk3-host-canon-title is-xl">Approved Host Login + 2026 Access Queue</h1>
+              <h1 className="mk3-host-canon-title is-xl">Host Login And Applications</h1>
               <p className="mk3-host-canon-copy">
-                Approved hosts log in here to open Host Dashboard. New operators can request early access, and we are inviting early host partners in limited 2026 waves.
+                Approved hosts sign in here to open Host Dashboard. New hosts can apply for access, and every application is reviewed before approval.
               </p>
               <div className="mk3-private-pill-row mk3-host-canon-chip-row">
                 <span className="mk3-private-pill mk3-host-canon-chip">BeauRocks account required</span>
-                <span className="mk3-private-pill mk3-host-canon-chip">2026 early partner invites</span>
-                <span className="mk3-private-pill mk3-host-canon-chip">Direct Host Dashboard entry</span>
+                <span className="mk3-private-pill mk3-host-canon-chip">Application review</span>
+                <span className="mk3-private-pill mk3-host-canon-chip">Direct Host Dashboard access</span>
               </div>
               {heroStats?.total > 0 && (
                 <div className="mk3-status mk3-hero-proof">
@@ -868,8 +868,8 @@ const MarketingSite = () => {
               )}
               <div className="mk3-value-points">
                 <span>Guests can still join with a room code, but hosting always stays account-backed.</span>
-                <span>Host access is granted by admin approval and early invite waves, not by self-serve unlock codes.</span>
-                <span>Once approved, you create rooms and run the night from Host Dashboard instead of bouncing back through marketing pages.</span>
+                <span>Host access is granted through application review, not self-serve unlock codes.</span>
+                <span>Once approved, you create rooms and run the night from Host Dashboard.</span>
               </div>
               {hasFullAccount && session.hasHostWorkspaceAccess && (
                 <div className="mk3-auth-cta-row">
@@ -897,8 +897,8 @@ const MarketingSite = () => {
                         <strong>{hostAccessLoading ? "Checking host access" : "Secure sign-in still settling"}</strong>
                         <span>
                           {hostAccessLoading
-                            ? "We are confirming your host approval and workspace access before showing application actions."
-                            : "Secure attestation is still catching up. Check again in a moment instead of reapplying."}
+                            ? "We are confirming your host approval before showing application actions."
+                            : "Your secure sign-in is still finishing. Check again in a moment instead of reapplying."}
                         </span>
                       </div>
                       <div className="mk3-actions-inline">
@@ -921,8 +921,8 @@ const MarketingSite = () => {
                             : hostApplicationStatus === "rejected"
                               ? "Host application not approved"
                               : hostApplicationStatus === "pending"
-                                ? "Early host request pending review"
-                                : "Request 2026 early host access"}
+                                ? "Host application pending review"
+                                : "Apply for host access"}
                         </strong>
                         <span>
                           {hostApplicationStatus === "approved"
@@ -930,8 +930,8 @@ const MarketingSite = () => {
                             : hostApplicationStatus === "rejected"
                               ? "This application is currently closed. Reach out if you need another review."
                               : hostApplicationStatus === "pending"
-                                ? "A super admin will review your request before early partner invites and host tools are enabled."
-                                : "Join the queue now and we will invite early host partners in 2026."}
+                                ? "Your application will be reviewed before host tools are enabled for this account."
+                                : "Apply now and we will follow up when host access is available for your account."}
                         </span>
                       </div>
                       <div className="mk3-actions-inline">
@@ -957,7 +957,7 @@ const MarketingSite = () => {
                 <div className="mk3-auth-state">
                   <div className="mk3-status mk3-status-warning">
                     <strong>Host sign-in continues on the host app.</strong>
-                    <span>Root-domain marketing pages explain the flow, but host authentication now completes on `host.beaurocks.app` so your session can open the real dashboard correctly.</span>
+                    <span>The marketing site explains the flow, but host authentication finishes on `host.beaurocks.app` so your session can open the real dashboard correctly.</span>
                   </div>
                   <div className="mk3-actions-inline">
                     <button
@@ -982,7 +982,7 @@ const MarketingSite = () => {
                       Continue To Host Login
                     </button>
                   </div>
-                  <div className="mk3-auth-hint">If you already have host access, sign in there and you will resume into Host Dashboard.</div>
+                  <div className="mk3-auth-hint">If you already have host access, sign in there and you will land in Host Dashboard.</div>
                 </div>
               ) : (
                 <form onSubmit={onAuthSubmit}>

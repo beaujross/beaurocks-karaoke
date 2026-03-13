@@ -1823,7 +1823,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
           <span>
             {isInitialCountLoading
               ? `Loading the live directory in ${activeRegionLabel}...`
-              : `Track official BeauRocks events, joinable rooms, and classic karaoke nights from one map-first surface.`}
+              : `See upcoming karaoke events, live rooms you can join from your phone, and local venues that host regular nights all in one place.`}
           </span>
           <div className="mk3-discover-hero-stats">
             <span>{isInitialCountLoading ? "Syncing live directory..." : `${resultCountLabel} results`}</span>
@@ -1840,24 +1840,24 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
             </div>
             <strong>Live pulse</strong>
             <p>
-              Browse official BeauRocks drops, public sessions, and venue-backed karaoke nights from one cinematic map-first surface.
+              Browse official BeauRocks events, public karaoke rooms, and local spots from one map-driven directory.
             </p>
           </div>
           <div className="mk3-discover-hero-side-grid">
             <article className="mk3-discover-hero-side-card">
               <span>Official BeauRocks</span>
               <strong>{officialBeauRocksListingCount}</strong>
-              <p>Scheduled BeauRocks events and official room drops surfaced directly in the directory.</p>
+              <p>Featured BeauRocks events and official nights highlighted directly in the directory.</p>
             </article>
             <article className="mk3-discover-hero-side-card">
               <span>Joinable now</span>
               <strong>{joinableRoomCount}</strong>
-              <p>Rooms currently accepting audience entry with a live code path.</p>
+              <p>Rooms guests can join right now with a code from their phone.</p>
             </article>
             <article className="mk3-discover-hero-side-card">
               <span>Map mix</span>
               <strong>{listingTypeCounts.event + listingTypeCounts.room_session + listingTypeCounts.venue}</strong>
-              <p>{listingTypeCounts.event} events, {listingTypeCounts.room_session} sessions, {listingTypeCounts.venue} venues.</p>
+              <p>{listingTypeCounts.event} events, {listingTypeCounts.room_session} live rooms, and {listingTypeCounts.venue} venues.</p>
             </article>
           </div>
           <div className="mk3-finder-cta-row mk3-discover-intro-actions">
@@ -1866,7 +1866,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
               className="mk3-discover-hero-cta-primary"
               onClick={openHostAccess}
             >
-              {hasFullAccount ? "Open Host Access" : "Request Early Host Access"}
+              {hasFullAccount ? "Open Host Access" : "Apply To Host"}
             </button>
             <button
               type="button"
@@ -1880,7 +1880,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
               className="mk3-discover-hero-cta-tertiary"
               onClick={openListingSubmission}
             >
-              List a public room
+              List A Venue Or Event
             </button>
           </div>
         </aside>
@@ -1890,9 +1890,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
           <div className="mk3-discover-official-strip-head">
             <div>
               <span>Official BeauRocks</span>
-              <strong>Upcoming scheduled drops</strong>
+              <strong>Upcoming featured events</strong>
             </div>
-            <p>These are the planned and scheduled BeauRocks-led nights currently featured on the map.</p>
+            <p>These featured BeauRocks events are coming up next.</p>
           </div>
           <div className="mk3-discover-official-grid">
             {officialUpcomingListings.map((entry) => (
@@ -1987,12 +1987,12 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
                   checked={boundsOnly}
                   onChange={(event) => setBoundsOnly(event.target.checked)}
                 />
-                Bounds-only list
+                Show only results inside the map
               </label>
             )}
             {!isMobileViewport && (
               <button type="button" onClick={recenterMap} disabled={!mappableListings.length || !mapsLoaded}>
-                Recenter to markers
+                Fit map to results
               </button>
             )}
             <button
@@ -2013,29 +2013,29 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
                 });
               }}
             >
-              {mapOnly ? "Show results rail" : "Map only"}
+              {mapOnly ? "Show results" : "Map only"}
             </button>
             <button
               type="button"
               onClick={toggleMapFullscreen}
               disabled={!mapEnabled || !mapsLoaded}
             >
-              {mapFullscreen ? "Exit fullscreen" : "Fullscreen map"}
+              {mapFullscreen ? "Exit full screen" : "Full screen map"}
             </button>
             {isMobileViewport ? (
               <button type="button" onClick={() => dispatchView({ type: "show_list" })}>
-                Show list
+                Show results
               </button>
             ) : (
               <button type="button" onClick={() => setMapFirst((prev) => !prev)}>
-                {mapFirst ? "Balanced layout" : "Map-first layout"}
+                {mapFirst ? "Split layout" : "Map-first layout"}
               </button>
             )}
           </div>
 
           {!mapEnabled && (
             <div className="mk3-status">
-              Live map is off in config right now, but browsing still works.
+              The live map is temporarily unavailable, but you can still browse listings below.
             </div>
           )}
           {!!mapsError && <div className="mk3-status mk3-status-error">{mapsError}</div>}
@@ -2045,7 +2045,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
               <div ref={mapContainerRef} className="mk3-map-canvas" />
             ) : (
               <div className="mk3-map-grid">
-                <div className="mk3-map-placeholder">{mapEnabled ? "Loading live map..." : "Map unavailable."}</div>
+                <div className="mk3-map-placeholder">{mapEnabled ? "Loading map..." : "Map unavailable."}</div>
               </div>
             )}
             <div className="mk3-map-stage-overlay">
@@ -2059,8 +2059,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
               {mapEnabled && mapsLoaded && mappableListings.length > 0
                 && !mappableListings.some((entry) => entry.key === effectiveSelectedKey) && (
                 <div className="mk3-map-discovery-hint" role="status" aria-live="polite">
-                  <span>{mappableListings.length.toLocaleString()} map pins ready. Recenter to zoom in and tap a pin.</span>
-                  <button type="button" onClick={recenterMap}>Recenter</button>
+                  <span>{mappableListings.length.toLocaleString()} map pins ready. Fit the map to results and choose a pin.</span>
+                  <button type="button" onClick={recenterMap}>Fit map</button>
                 </div>
               )}
             </div>
@@ -2068,7 +2068,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
 
           <div className="mk3-map-footer">
               <span>{mapOnly ? `${mappableListings.length} shown on map` : `${visibleListings.length} shown in rail`}</span>
-              <span>{featuredListing ? `selected: ${featuredListing.title}` : "select a marker or card"}</span>
+              <span>{featuredListing ? `selected: ${featuredListing.title}` : "select a pin or listing"}</span>
               <span className="mk3-map-footer-bounds">{mapBoundsLabel}</span>
             </div>
           </article>
@@ -2107,8 +2107,8 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
           )}
           {!loading && indexError && (
             <div className="mk3-status mk3-status-warning">
-              <strong>The directory is still warming up.</strong>
-              <span>Give it about a minute while indexes finish syncing.</span>
+              <strong>Search is still catching up.</strong>
+              <span>Give it about a minute, then refresh to try again.</span>
               <div className="mk3-actions-inline">
                 <button type="button" onClick={() => window.location.reload()}>
                   Refresh now
@@ -2128,7 +2128,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
           )}
           {!loading && !error && boundsOnly && hiddenWithoutCoords > 0 && (
             <div className="mk3-status">
-              {hiddenWithoutCoords} listing(s) hidden in bounds mode because location coordinates are missing.
+              {hiddenWithoutCoords} listing(s) are hidden in map-only bounds mode because they do not have coordinates yet.
             </div>
           )}
           {!loading && !error && visibleListings.length === 0 && (

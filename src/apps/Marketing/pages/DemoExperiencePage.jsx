@@ -1,463 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
-import { directoryActions } from "../api/directoryApi";
-import { buildSurfaceUrl as buildCanonicalSurfaceUrl } from "../../../lib/surfaceDomains";
-
-const DEMO_SCENES = [
-  {
-    id: "karaoke_kickoff",
-    label: "Karaoke Kickoff",
-    mode: "karaoke",
-    durationMs: 28000,
-    title: "Lyrics lead the room while audience joins in",
-    description: "Karaoke stays front and center with a Sweet Caroline-style singalong moment.",
-    songTitle: "Sweet Caroline",
-    artist: "Classic Singalong (Demo Adaptation)",
-    lyrics: [
-      "Hands up high now, the whole room sways in time",
-      "Voices rising, every table joins the line",
-      "Call and answer, crowd glow left and right",
-      "Big singalong energy all through the night"
-    ],
-    hostActions: [
-      {
-        id: "host_karaoke_mode",
-        at: 0.14,
-        control: "karaoke",
-        label: "Host taps Karaoke Mode",
-        explain: "Keep TV lyrics primary so new guests instantly understand what to do.",
-        result: "TV locks into lyric-first mode with clear sing-along prompts.",
-        pauseCue: true
-      },
-      {
-        id: "host_wave_prompt",
-        at: 0.58,
-        control: "wave",
-        label: "Host calls a Wave Tunnel warm-up",
-        explain: "Invite everyone to send quick wave taps while the first verse builds.",
-        result: "Audience reactions form a stabilizing energy bed for the next segment."
-      }
-    ],
-    reactions: [
-      { type: "clap", label: "Clap", seed: 2 },
-      { type: "fire", label: "Fire", seed: 1 },
-      { type: "heart", label: "Heart", seed: 1 },
-      { type: "wow", label: "Wow", seed: 1 },
-    ],
-  },
-  {
-    id: "karaoke_singalong",
-    label: "Karaoke Singalong",
-    mode: "karaoke",
-    durationMs: 24000,
-    title: "Second karaoke pass with call-and-response",
-    description: "This shows high-participation karaoke before switching into games.",
-    songTitle: "Sweet Caroline",
-    artist: "Classic Singalong (Demo Adaptation)",
-    lyrics: [
-      "One more chorus, crowd response in stereo",
-      "Host keeps cadence while the phone reactions grow",
-      "Verse to hook and everybody knows the cue",
-      "Shared room anthem with a modern social view"
-    ],
-    hostActions: [
-      {
-        id: "host_queue_lock",
-        at: 0.24,
-        control: "queue",
-        label: "Host bumps next singer into the queue",
-        explain: "Queue movement is visible so people know their turn is coming.",
-        result: "Audience sees momentum, not dead air."
-      },
-      {
-        id: "host_echo_link",
-        at: 0.64,
-        control: "echo",
-        label: "Host asks for Echo Ring links",
-        explain: "Echo extends relay windows and keeps interaction chains alive.",
-        result: "Relay timer stretches so more guests can join each pass."
-      }
-    ],
-    reactions: [
-      { type: "clap", label: "Clap", seed: 2 },
-      { type: "fire", label: "Fire", seed: 2 },
-      { type: "party", label: "Party", seed: 1 },
-      { type: "cheer", label: "Cheer", seed: 2 },
-    ],
-  },
-  {
-    id: "guitar_vibe_sync",
-    label: "Guitar Vibe Sync",
-    mode: "guitar",
-    durationMs: 22000,
-    title: "Lyrics drop, crowd drives guitar mode",
-    description: "When the solo hits, lyrics step back and audience strumming takes over.",
-    songTitle: "Instrumental Break",
-    artist: "BeauRocks Demo Band",
-    hostActions: [
-      {
-        id: "host_guitar_toggle",
-        at: 0.18,
-        control: "guitar",
-        label: "Host launches Guitar Vibe Sync",
-        explain: "This flips from lyric mode to crowd strum gameplay instantly.",
-        result: "Audience viewport shows strum controls and TV enters solo visuals.",
-        pauseCue: true
-      },
-      {
-        id: "host_laser_call",
-        at: 0.62,
-        control: "laser",
-        label: "Host calls Laser Pop for power spikes",
-        explain: "Laser gives the orb an aggressive energy jump mid-solo.",
-        result: "TV effects punch harder while multiplier climbs."
-      }
-    ],
-    reactions: [
-      { type: "strum", label: "Strum", seed: 2 },
-      { type: "fire", label: "Fire", seed: 1 },
-      { type: "clap", label: "Clap", seed: 1 },
-      { type: "cheer", label: "Cheer", seed: 1 },
-    ],
-  },
-  {
-    id: "vocal_game_challenge",
-    label: "Vocal Game Challenge",
-    mode: "vocal",
-    durationMs: 22000,
-    title: "Quick vocal mini-game between songs",
-    description: "Shows game mode variety without losing the karaoke backbone.",
-    songTitle: "Pitch Duel Interlude",
-    artist: "BeauRocks Demo Band",
-    lyrics: [
-      "Hold the note and ride the line",
-      "Pitch and timing, right on time",
-      "Win the round then back to songs",
-      "Game moments that still feel like karaoke"
-    ],
-    hostActions: [
-      {
-        id: "host_vocal_game",
-        at: 0.22,
-        control: "vocal",
-        label: "Host triggers Vocal Game mode",
-        explain: "A fast challenge keeps crowd attention during transitions.",
-        result: "TV shows vocal objective while audience chases combo points."
-      },
-      {
-        id: "host_confetti_push",
-        at: 0.67,
-        control: "confetti",
-        label: "Host cues Confetti momentum burst",
-        explain: "Confetti pushes streak steps so tiers climb visibly.",
-        result: "Audience gets faster progression and bigger reward moments."
-      }
-    ],
-    reactions: [
-      { type: "vote", label: "Vote", seed: 1 },
-      { type: "clap", label: "Clap", seed: 2 },
-      { type: "party", label: "Party", seed: 2 },
-      { type: "cheer", label: "Cheer", seed: 2 },
-    ],
-  },
-  {
-    id: "trivia_showdown",
-    label: "Trivia Showdown",
-    mode: "trivia",
-    durationMs: 22000,
-    title: "Switch from music to crowd trivia",
-    description: "Audience votes pile up live, then the answer reveal lands.",
-    songTitle: "Trivia Break",
-    artist: "BeauRocks Demo Band",
-    hostActions: [
-      {
-        id: "host_trivia_launch",
-        at: 0.16,
-        control: "trivia",
-        label: "Host launches Trivia Showdown",
-        explain: "Mid-show trivia keeps phones active without killing room energy.",
-        result: "Audience votes stream in and reveal animates on TV."
-      }
-    ],
-    trivia: {
-      question: "Which surface keeps host, TV, and audience in sync?",
-      options: ["Public TV", "Host Deck", "Audience App", "All three"],
-      correctIndex: 3,
-      votes: [18, 12, 14, 26],
-    },
-    reactions: [
-      { type: "vote", label: "Vote", seed: 2 },
-      { type: "wow", label: "Wow", seed: 1 },
-      { type: "clap", label: "Clap", seed: 1 },
-      { type: "cheer", label: "Cheer", seed: 1 },
-    ],
-  },
-  {
-    id: "wyr_split_decision_one",
-    label: "Would You Rather I",
-    mode: "wyr",
-    durationMs: 18000,
-    title: "Would You Rather starts with a fast crowd split",
-    description: "Audience chooses sides live, then the winning side expands on reveal.",
-    songTitle: "Would You Rather Pulse",
-    artist: "BeauRocks Demo Band",
-    hostActions: [
-      {
-        id: "host_wyr_launch_one",
-        at: 0.18,
-        control: "wyr",
-        label: "Host launches Would You Rather",
-        explain: "The question runs while music stays moving so the room never stalls.",
-        result: "Audience picks A or B, then TV reveals the crowd split."
-      },
-      {
-        id: "host_wyr_reveal_one",
-        at: 0.7,
-        control: "wyr",
-        label: "Host reveals the first result",
-        explain: "Reveal phase resolves the question and spotlights the larger side.",
-        result: "Percentages lock in and the room gets instant payoff."
-      }
-    ],
-    wyr: {
-      question: "Would you rather open with a duet or start solo with the crowd singing backup?",
-      optionA: "Open with a duet",
-      optionB: "Start solo, crowd backup",
-      votes: [28, 34],
-      revealAt: 0.62,
-      points: 50,
-      durationSec: 18
-    },
-    reactions: [
-      { type: "vote", label: "Vote", seed: 2 },
-      { type: "party", label: "Party", seed: 1 },
-      { type: "wow", label: "Wow", seed: 1 },
-      { type: "cheer", label: "Cheer", seed: 1 },
-    ],
-  },
-  {
-    id: "wyr_split_decision_two",
-    label: "Would You Rather II",
-    mode: "wyr",
-    durationMs: 18000,
-    title: "Second Would You Rather proves repeatable format",
-    description: "A fresh question shows this can run repeatedly between songs.",
-    songTitle: "Would You Rather Pulse",
-    artist: "BeauRocks Demo Band",
-    hostActions: [
-      {
-        id: "host_wyr_launch_two",
-        at: 0.16,
-        control: "wyr",
-        label: "Host fires a second WYR question",
-        explain: "Running two rounds demonstrates variety, not a one-off gimmick.",
-        result: "Audience re-engages instantly with a new social prompt."
-      },
-      {
-        id: "host_wyr_reveal_two",
-        at: 0.7,
-        control: "wyr",
-        label: "Host resolves the second result",
-        explain: "Resolution keeps pace and closes the question with clarity.",
-        result: "TV shows final split before returning to music-forward flow."
-      }
-    ],
-    wyr: {
-      question: "Would you rather control song order by crowd vote or let the host curate the full set?",
-      optionA: "Crowd votes each round",
-      optionB: "Host curates the full set",
-      votes: [36, 30],
-      revealAt: 0.62,
-      points: 50,
-      durationSec: 18
-    },
-    reactions: [
-      { type: "vote", label: "Vote", seed: 2 },
-      { type: "clap", label: "Clap", seed: 1 },
-      { type: "party", label: "Party", seed: 1 },
-      { type: "cheer", label: "Cheer", seed: 1 },
-    ],
-  },
-  {
-    id: "finale_drop",
-    label: "Finale Drop",
-    mode: "finale",
-    durationMs: 24000,
-    title: "Back to karaoke for the close",
-    description: "Finish with lyrics, crowd effects, and one clear call to join a real room.",
-    songTitle: "Sweet Caroline",
-    artist: "Classic Singalong (Demo Adaptation)",
-    lyrics: [
-      "Final round now, everybody lean in close",
-      "Host and audience lock into the biggest moment",
-      "Find your next night and bring your whole crew back",
-      "Sing it louder, then run that room right back"
-    ],
-    hostActions: [
-      {
-        id: "host_finale_fire",
-        at: 0.2,
-        control: "finale",
-        label: "Host fires Finale mode",
-        explain: "Stack visual energy while keeping the last hook singable.",
-        result: "TV pushes high-energy finish and wraps with a join CTA.",
-        pauseCue: true
-      }
-    ],
-    reactions: [
-      { type: "fire", label: "Fire", seed: 3 },
-      { type: "cheer", label: "Cheer", seed: 3 },
-      { type: "clap", label: "Clap", seed: 2 },
-      { type: "party", label: "Party", seed: 2 },
-    ],
-  },
-];
-
-const DEMO_TOTAL_MS = DEMO_SCENES.reduce((sum, scene) => sum + scene.durationMs, 0);
-const DEMO_ROOM_STORAGE_KEY = "mk_demo_room_code_v2";
-const DEMO_VIEW_STORAGE_KEY = "mk_demo_view_mode_v1";
-const DEMO_VIEW_MODES = Object.freeze({
-  interactive: "interactive",
-  autoplay: "autoplay",
-});
-const DEMO_HOST_BASE_PARAMS = Object.freeze({
-  mode: "host",
-  mkDemoEmbed: "1",
-  hostUiVersion: "v2",
-});
-const DEMO_HOST_WORKSPACE_PRESETS = Object.freeze({
-  catalog: Object.freeze({
-    view: "queue",
-    section: "queue.catalog",
-    tab: "browse",
-  }),
-  stage: Object.freeze({
-    view: "queue",
-    section: "queue.live_run",
-    tab: "stage",
-  }),
-  games: Object.freeze({
-    view: "games",
-    section: "games.live_controls",
-    tab: "games",
-  }),
-});
-
-const buildDemoHostParams = (workspace = "stage", extras = {}) => ({
-  ...DEMO_HOST_BASE_PARAMS,
-  ...(DEMO_HOST_WORKSPACE_PRESETS[workspace] || DEMO_HOST_WORKSPACE_PRESETS.stage),
-  ...(extras || {}),
-});
-const DEMO_SCENE_SURFACE_PLANS = Object.freeze({
-  karaoke_kickoff: {
-    hostFocus: "Search and cue the opener",
-    hostStatus: "The real host deck opens in Browse with a seeded search so the room starts with an actual catalog moment.",
-    hostParams: buildDemoHostParams("catalog", {
-      catalogue: "1",
-      demo_search: "sweet caroline karaoke",
-    }),
-    audienceFocus: "Guests join and react",
-    audienceStatus: "Audience phones join the room, warm up with reactions, and catch the first lyric prompt immediately.",
-    tvFocus: "Lyrics and backing video lock in",
-    tvStatus: "Public TV opens straight into lyric-first karaoke with backing media already rolling."
-  },
-  karaoke_singalong: {
-    hostFocus: "Queue and now playing",
-    hostStatus: "The host deck shifts to the live queue so the next singer handoff feels visible instead of hidden.",
-    hostParams: buildDemoHostParams("stage"),
-    audienceFocus: "Crowd singalong momentum",
-    audienceStatus: "Audience reactions keep stacking while the room settles into the main singalong groove.",
-    tvFocus: "Chorus energy on the big screen",
-    tvStatus: "TV stays centered on the active singer, lyrics, and a room that already feels in motion."
-  },
-  guitar_vibe_sync: {
-    hostFocus: "Live effects on deck",
-    hostStatus: "The host stays on the live deck while Guitar Vibe Sync takes over and the room flips from lyrics to crowd play.",
-    hostParams: buildDemoHostParams("stage"),
-    audienceFocus: "Phones become instruments",
-    audienceStatus: "Audience phones switch from passive viewing into strum controls and power spikes.",
-    tvFocus: "Solo visuals replace lyrics",
-    tvStatus: "The TV proves the room can pivot from karaoke into a crowd-driven instrument moment without losing energy."
-  },
-  vocal_game_challenge: {
-    hostFocus: "Games workspace",
-    hostStatus: "The host moves into the real Games view for a quick vocal challenge between songs.",
-    hostParams: buildDemoHostParams("games"),
-    audienceFocus: "Combo chase between singers",
-    audienceStatus: "Audience players trade reaction spam for score chasing while the queue keeps moving.",
-    tvFocus: "Mini-game interlude",
-    tvStatus: "The TV shows a short game beat instead of dead air, then hands the room back to music."
-  },
-  trivia_showdown: {
-    hostFocus: "Trivia round control",
-    hostStatus: "The real host deck stays in Games and opens the trivia context so the scene reads like an intentional mode switch.",
-    hostParams: buildDemoHostParams("games", {
-      game: "trivia",
-    }),
-    audienceFocus: "Fast live voting",
-    audienceStatus: "Audience phones turn into voting pads while the room keeps the same code and the same momentum.",
-    tvFocus: "Question, votes, reveal",
-    tvStatus: "The TV shows the voting window first, then pays it off with a proper reveal instead of a static card."
-  },
-  wyr_split_decision_one: {
-    hostFocus: "Would You Rather round",
-    hostStatus: "The host keeps the Games view open so the WYR round feels like a repeatable show tool, not a one-off stunt.",
-    hostParams: buildDemoHostParams("games", {
-      game: "wyr",
-    }),
-    audienceFocus: "Pick a side live",
-    audienceStatus: "Audience phones split the room in real time while the music stays moving under the prompt.",
-    tvFocus: "Crowd split in motion",
-    tvStatus: "The TV turns a simple question into a live room poll with visible percentages and reveal timing."
-  },
-  wyr_split_decision_two: {
-    hostFocus: "Repeatable social beat",
-    hostStatus: "The host stays in the same WYR tool so the second round reads as fast, reusable format instead of setup work.",
-    hostParams: buildDemoHostParams("games", {
-      game: "wyr",
-    }),
-    audienceFocus: "Instant re-engagement",
-    audienceStatus: "The second prompt proves people will jump back in quickly when the room flow is tight.",
-    tvFocus: "Second reveal lands faster",
-    tvStatus: "The TV shortens the payoff cycle so the repeated format still feels punchy instead of repetitive."
-  },
-  finale_drop: {
-    hostFocus: "Back to the live deck",
-    hostStatus: "The host returns to the live deck for the final singalong and a clean handoff into a real-room CTA.",
-    hostParams: buildDemoHostParams("stage"),
-    audienceFocus: "Encore reactions and join CTA",
-    audienceStatus: "Audience phones come back to easy participation, bigger reactions, and a final push toward the join moment.",
-    tvFocus: "Big singalong finish",
-    tvStatus: "The TV closes on a familiar chorus, visible energy, and a clear sense of what the room feels like live."
-  },
-});
-
-const getDemoSceneSurfacePlan = (scene = null) => {
-  const sceneId = String(scene?.id || "").trim().toLowerCase();
-  return DEMO_SCENE_SURFACE_PLANS[sceneId] || {
-    hostFocus: "Live host deck",
-    hostStatus: "The host surface stays on the real control deck for the current room state.",
-    hostParams: buildDemoHostParams("stage"),
-    audienceFocus: "Audience interaction live",
-    audienceStatus: "Audience phones stay connected to the live room state for this scene.",
-    tvFocus: "Public TV live",
-    tvStatus: "The TV surface reflects the current room mode and media state."
-  };
-};
-
-const getAutoplayHostSurfaceParams = (scene = null) => {
-  return getDemoSceneSurfacePlan(scene).hostParams;
-};
-const REACTION_TOKENS = {
-  clap: "CLAP",
-  fire: "FIRE",
-  heart: "HEART",
-  wow: "WOW",
-  party: "PARTY",
-  cheer: "CHEER",
-  strum: "STRUM",
-  vote: "VOTE",
-};
 
 const clampNumber = (value, min, max, fallback = min) => {
   const parsed = Number(value);
@@ -475,69 +17,388 @@ const formatClock = (ms = 0) => {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
 
-const normalizeRoomCode = (value = "") => {
-  let token = String(value || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9_-]/g, "")
-    .slice(0, 24);
-  if (!token) return "DEMO001";
-  if (!token.startsWith("DEMO")) {
-    token = `DEMO${token}`.slice(0, 24);
-  }
-  return token;
+const ABSTRACT_SURFACES = {
+  host: { label: "Host Deck", short: "Host", accent: "amber" },
+  tv: { label: "Public TV", short: "TV", accent: "cyan" },
+  audience: { label: "Audience Phones", short: "Audience", accent: "pink" },
+  singer: { label: "Singer View", short: "Singer", accent: "lime" },
 };
 
-const createDemoRoomCode = () => {
-  const stamp = Date.now().toString(36).slice(-4).toUpperCase();
-  const random = Math.random().toString(36).slice(2, 8).toUpperCase();
-  return normalizeRoomCode(`DEMO${stamp}${random}`);
-};
+const ABSTRACT_BEATS = [
+  {
+    id: "arrival",
+    kicker: "abstract system map",
+    title: "Four surfaces wake up around one room moment.",
+    body: "This top section should read like motion design, not a literal product capture. It establishes who is driving the room and where the energy lands next.",
+    bullets: [
+      "Host steers the moment",
+      "TV broadcasts the shared state",
+      "Audience and singer respond instantly",
+    ],
+    activeSurface: "host",
+    mood: "amber",
+    stageVariant: "host",
+    signals: [
+      { from: "host", to: "tv", label: "Cue opener" },
+      { from: "host", to: "audience", label: "Join prompt" },
+      { from: "host", to: "singer", label: "You are up" },
+    ],
+    notes: {
+      host: "Host selects the first room beat.",
+      tv: "TV waits for the first cue.",
+      audience: "Audience joins with low-friction prompts.",
+      singer: "Singer claims the mic identity.",
+    },
+  },
+  {
+    id: "singalong",
+    kicker: "shared room energy",
+    title: "The room becomes a loop, not a one-way broadcast.",
+    body: "The TV leads the room, the audience feeds momentum back in, and the singer gets visible support instead of dead air.",
+    bullets: [
+      "Lyrics stay readable",
+      "Audience reactions visibly matter",
+      "Singer confidence rises with crowd support",
+    ],
+    activeSurface: "tv",
+    mood: "cyan",
+    stageVariant: "karaoke",
+    signals: [
+      { from: "tv", to: "audience", label: "Sing along cue" },
+      { from: "audience", to: "tv", label: "Reaction burst" },
+      { from: "audience", to: "singer", label: "Backup energy" },
+    ],
+    notes: {
+      host: "Host monitors momentum instead of scrambling.",
+      tv: "The main room state is big and legible.",
+      audience: "Phones feel participatory, not passive.",
+      singer: "Singer gets timing and crowd reassurance.",
+    },
+  },
+  {
+    id: "mode_shift",
+    kicker: "sellable mode switch",
+    title: "A host-triggered mode shift can repurpose every surface at once.",
+    body: "This is where the abstract layer should sell the system power: one input from the host can flip TV visuals, phone controls, and singer expectations without looking chaotic.",
+    bullets: [
+      "Single host action",
+      "Multi-surface reaction",
+      "No explanation-heavy UI needed",
+    ],
+    activeSurface: "audience",
+    mood: "pink",
+    stageVariant: "audience",
+    signals: [
+      { from: "host", to: "tv", label: "Launch Vibe Sync" },
+      { from: "host", to: "audience", label: "Phones become instruments" },
+      { from: "tv", to: "singer", label: "Instrumental handoff" },
+    ],
+    notes: {
+      host: "Host flips the room from karaoke into a crowd mode.",
+      tv: "TV swaps lyrics for a playable scene.",
+      audience: "Audience gets a new interaction model instantly.",
+      singer: "Singer knows when to lean back in or hand off.",
+    },
+  },
+  {
+    id: "handoff",
+    kicker: "continuous momentum",
+    title: "The room hands off cleanly between moments and between performers.",
+    body: "The sales story should end on continuity: a room that can keep moving through handoffs, reveals, and the next singer without awkward resets.",
+    bullets: [
+      "Auto DJ bridges the gap",
+      "Next singer is already staged",
+      "Audience never loses the thread",
+    ],
+    activeSurface: "singer",
+    mood: "lime",
+    stageVariant: "autodj",
+    signals: [
+      { from: "host", to: "singer", label: "Next singer ready" },
+      { from: "singer", to: "tv", label: "New lead arrives" },
+      { from: "audience", to: "host", label: "Room stays hot" },
+    ],
+    notes: {
+      host: "Host stays ahead of the room handoff.",
+      tv: "TV resolves one scene and tees up the next.",
+      audience: "Audience attention stays in rhythm.",
+      singer: "Singer enters with context, not confusion.",
+    },
+  },
+];
 
-const normalizeDemoViewMode = (value = "") => {
-  const token = String(value || "").trim().toLowerCase();
-  if (token === DEMO_VIEW_MODES.autoplay) return DEMO_VIEW_MODES.autoplay;
-  return DEMO_VIEW_MODES.interactive;
-};
+const GUIDED_SCENES = [
+  {
+    id: "join_identity",
+    label: "Join + Identity",
+    durationMs: 9000,
+    accent: "pink",
+    kicker: "scene 01",
+    headline: "Guests join fast, pick a vibe, and the singer claims the mic.",
+    summary: "Use this to sell the low-friction start: a guest picks a name and emoji, while the singer stakes out the next moment before the room is even fully warmed up.",
+    host: {
+      panel: "Room launch",
+      status: "Opening room and sharing join prompt",
+      search: "",
+      actionLabel: "Broadcast room code",
+      actionCopy: "Host opens the night and pushes one clean join path.",
+      controls: ["Room live", "Join prompt", "Queue open", "Singer ready"],
+      activeControl: 1,
+    },
+    audience: {
+      title: "Audience picks an identity",
+      subtitle: "Name, emoji, join, react",
+      actions: ["Alex + crown", "Jordan + fire", "Taylor + heart", "Casey + wow"],
+      feed: ["Alex joined", "Jordan tapped fire", "Taylor picked heart"],
+      metricLabel: "joined in under",
+      metricValue: "08 sec",
+    },
+    singer: {
+      name: "Jordan",
+      emoji: "fire",
+      status: "Singer selected",
+      note: "Claiming the mic before the opener starts.",
+      prompt: "You are up second",
+    },
+    tv: {
+      mode: "Room intro",
+      title: "JOIN THE ROOM",
+      lines: ["Scan or type the room code", "Pick your icon", "Watch the room light up"],
+      footer: "The room state gets legible before the first lyric even lands.",
+    },
+    callouts: [
+      { title: "Host -> Audience", detail: "One clear join action creates the first shared moment." },
+      { title: "Audience -> TV", detail: "Identity picks give the room visible life right away." },
+      { title: "Singer -> Host", detail: "The next performer is already accounted for." },
+    ],
+  },
+  {
+    id: "karaoke_launch",
+    label: "Karaoke Launch",
+    durationMs: 9000,
+    accent: "amber",
+    kicker: "scene 02",
+    headline: "Host search and cueing is visible, then lyrics take over the room.",
+    summary: "This is the direct karaoke sell: people can see the host doing something concrete, then instantly understand what changed on the TV and on the singer side.",
+    host: {
+      panel: "Catalog search",
+      status: "Typing and cueing the opener",
+      search: "sweet caroline karaoke",
+      actionLabel: "Cue song",
+      actionCopy: "The host action is readable enough that the switch to karaoke feels earned.",
+      controls: ["Search", "Preview", "Cue song", "Go live"],
+      activeControl: 2,
+    },
+    audience: {
+      title: "Audience settles into singalong mode",
+      subtitle: "Phones move from join to lightweight support",
+      actions: ["Clap", "Fire", "Heart", "Cheer"],
+      feed: ["Crowd synced", "Phones ready", "Encore energy building"],
+      metricLabel: "ready phones",
+      metricValue: "17 connected",
+    },
+    singer: {
+      name: "Jordan",
+      emoji: "fire",
+      status: "Singer on deck",
+      note: "Singer sees confidence-building context, not chaos.",
+      prompt: "Sweet Caroline queued",
+    },
+    tv: {
+      mode: "Lyrics live",
+      title: "HANDS UP HIGH NOW",
+      lines: ["The whole room sways in time", "Voices rise from left to right", "Big singalong, easy cue"],
+      footer: "The room instantly understands what to do next.",
+    },
+    callouts: [
+      { title: "Host -> TV", detail: "Typing and cueing become a visible switch to lyric-first mode." },
+      { title: "TV -> Audience", detail: "The TV tells the audience when to sing and when to react." },
+      { title: "TV -> Singer", detail: "Singer sees the exact room moment they are stepping into." },
+    ],
+  },
+  {
+    id: "crowd_hype",
+    label: "Crowd Hype",
+    durationMs: 8500,
+    accent: "cyan",
+    kicker: "scene 03",
+    headline: "Audience reactions visibly feed the moment instead of sitting off to the side.",
+    summary: "This is the social proof beat. The crowd is not just watching the singer. The crowd is part of the room logic and that shows up on the big screen.",
+    host: {
+      panel: "Live run",
+      status: "Calling for a reaction burst",
+      search: "",
+      actionLabel: "Trigger hype prompt",
+      actionCopy: "A lightweight host prompt is enough to push the room into a louder state.",
+      controls: ["Lyrics", "Reaction burst", "Spotlight", "Queue peek"],
+      activeControl: 1,
+    },
+    audience: {
+      title: "Audience fires off quick reactions",
+      subtitle: "Fast taps, no setup tax",
+      actions: ["Clap x12", "Fire x18", "Heart x09", "Cheer x14"],
+      feed: ["Fire streak rising", "Cheer combo linked", "Heart wave crossed the room"],
+      metricLabel: "reaction burst",
+      metricValue: "53 taps",
+    },
+    singer: {
+      name: "Jordan",
+      emoji: "fire",
+      status: "Singer backed by the room",
+      note: "The performer feels the room support visually and rhythmically.",
+      prompt: "Crowd glow climbing",
+    },
+    tv: {
+      mode: "Crowd support",
+      title: "ROOM ENERGY RISING",
+      lines: ["Reactions stack in real time", "Momentum pushes the chorus", "The crowd becomes visible"],
+      footer: "Audience input is not decorative. It changes the feel of the room.",
+    },
+    callouts: [
+      { title: "Audience -> TV", detail: "The crowd produces a visible shared payoff." },
+      { title: "Audience -> Singer", detail: "The singer gets a confidence signal, not just noise." },
+      { title: "Host -> Crowd", detail: "A simple cue amplifies the room without adding friction." },
+    ],
+  },
+  {
+    id: "guitar_vibe_sync",
+    label: "Guitar Vibe Sync",
+    durationMs: 9500,
+    accent: "violet",
+    kicker: "scene 04",
+    headline: "One host trigger repurposes every surface into a playable mode switch.",
+    summary: "This is the most sellable systems moment on the page. The host launches Guitar Vibe Sync, the TV drops into solo visuals, audience phones become instruments, and the singer gets a clean handoff.",
+    host: {
+      panel: "Mode trigger",
+      status: "Launching Guitar Vibe Sync",
+      search: "",
+      actionLabel: "Activate Vibe Sync",
+      actionCopy: "The host presses one button and every surface immediately changes role.",
+      controls: ["Karaoke", "Guitar Vibe Sync", "Confetti", "Laser pop"],
+      activeControl: 1,
+    },
+    audience: {
+      title: "Phones become instruments",
+      subtitle: "Tap, hold, strum, power spike",
+      actions: ["Strum", "Power chord", "Pulse", "Cheer"],
+      feed: ["Strum lane synced", "Power spike ready", "Crowd chain extended"],
+      metricLabel: "active strummers",
+      metricValue: "14 live",
+    },
+    singer: {
+      name: "Jordan",
+      emoji: "fire",
+      status: "Instrumental handoff",
+      note: "The singer can step back while the room carries the solo moment.",
+      prompt: "Re-enter on the next vocal cue",
+    },
+    tv: {
+      mode: "Vibe Sync",
+      title: "SOLO MODE LIVE",
+      lines: ["Lyrics step away", "Phones drive the groove", "The TV becomes a crowd instrument"],
+      footer: "A mode switch feels dramatic without feeling confusing.",
+    },
+    callouts: [
+      { title: "Host -> All", detail: "One action updates host, TV, audience, and singer expectations." },
+      { title: "Audience -> TV", detail: "Phones stop being passive and start driving the scene." },
+      { title: "TV -> Singer", detail: "The singer knows exactly when the room is carrying the moment." },
+    ],
+  },
+  {
+    id: "trivia_break",
+    label: "Trivia Break",
+    durationMs: 8500,
+    accent: "teal",
+    kicker: "scene 05",
+    headline: "Between-song moments stay active with a fast room-wide prompt.",
+    summary: "This beat proves the room can stay alive between singers. It sells the app as a night-running system, not just a lyric renderer.",
+    host: {
+      panel: "Games workspace",
+      status: "Launching a quick trivia beat",
+      search: "",
+      actionLabel: "Start trivia",
+      actionCopy: "A short interlude keeps the room engaged while the queue resets.",
+      controls: ["Queue", "Trivia", "Would you rather", "Auto DJ"],
+      activeControl: 1,
+    },
+    audience: {
+      title: "Audience votes live",
+      subtitle: "Phones become voting pads",
+      actions: ["Public TV", "Host Deck", "Audience App", "All three"],
+      feed: ["Votes rising", "Reveal almost ready", "Crowd split still moving"],
+      metricLabel: "votes in",
+      metricValue: "70 total",
+    },
+    singer: {
+      name: "Casey",
+      emoji: "crown",
+      status: "Next singer staged",
+      note: "The next singer can get ready while the room stays occupied.",
+      prompt: "Mic check in progress",
+    },
+    tv: {
+      mode: "Trivia reveal",
+      title: "WHICH SURFACE RUNS THE NIGHT?",
+      lines: ["The room keeps moving", "Votes stream in live", "Reveal lands without dead air"],
+      footer: "This sells continuity, not just novelty.",
+    },
+    callouts: [
+      { title: "Host -> Audience", detail: "The host can repurpose the room without losing momentum." },
+      { title: "Audience -> TV", detail: "Voting becomes a visible shared reveal." },
+      { title: "Trivia -> Queue", detail: "The next singer gets cover while the room stays active." },
+    ],
+  },
+  {
+    id: "auto_dj_handoff",
+    label: "Auto DJ Handoff",
+    durationMs: 9000,
+    accent: "lime",
+    kicker: "scene 06",
+    headline: "Auto DJ and queue awareness make the handoff feel intentional, not awkward.",
+    summary: "This closes the sales walkthrough on a practical operator value prop: smoother transitions, less dead time, and a room that feels continuously run.",
+    host: {
+      panel: "Handoff control",
+      status: "Bridging to the next singer",
+      search: "",
+      actionLabel: "Auto DJ bridge live",
+      actionCopy: "The host gets breathing room while the next performer steps in cleanly.",
+      controls: ["Auto DJ", "Next singer", "Room pulse", "Finale cue"],
+      activeControl: 0,
+    },
+    audience: {
+      title: "Audience stays with the room",
+      subtitle: "No awkward reset between performers",
+      actions: ["Clap through bridge", "Cheer next singer", "Heart the handoff", "Stay locked in"],
+      feed: ["Bridge audio carrying", "Next singer visible", "Room never drops"],
+      metricLabel: "handoff gap",
+      metricValue: "near zero",
+    },
+    singer: {
+      name: "Casey",
+      emoji: "crown",
+      status: "Now stepping on stage",
+      note: "The next performer inherits a live room, not a cold restart.",
+      prompt: "Chorus re-entry in 3...",
+    },
+    tv: {
+      mode: "Smooth handoff",
+      title: "NEXT SINGER READY",
+      lines: ["Bridge audio keeps the room warm", "The queue handoff stays visible", "Momentum carries into the next lead"],
+      footer: "The room feels managed, not improvised.",
+    },
+    callouts: [
+      { title: "Auto DJ -> Room", detail: "Transitions stop feeling like operational dead space." },
+      { title: "Host -> Singer", detail: "The next singer enters with timing and context." },
+      { title: "Audience -> Night", detail: "Attention stays continuous between performers." },
+    ],
+  },
+];
 
-const getInitialDemoViewMode = () => {
-  if (typeof window === "undefined") return DEMO_VIEW_MODES.autoplay;
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const queryModeRaw = params.get("demo_view") || params.get("demoView") || "";
-    if (queryModeRaw) return normalizeDemoViewMode(queryModeRaw);
-    if (params.get("autoplay") === "1") return DEMO_VIEW_MODES.autoplay;
-    const storedRaw = window.sessionStorage.getItem(DEMO_VIEW_STORAGE_KEY) || "";
-    if (storedRaw) return normalizeDemoViewMode(storedRaw);
-    return DEMO_VIEW_MODES.autoplay;
-  } catch {
-    return DEMO_VIEW_MODES.autoplay;
-  }
-};
+const WALKTHROUGH_TOTAL_MS = GUIDED_SCENES.reduce((sum, scene) => sum + scene.durationMs, 0);
 
-const getInitialDemoRoomCode = () => {
-  if (typeof window === "undefined") return "DEMO001";
-  try {
-    const stored = window.sessionStorage.getItem(DEMO_ROOM_STORAGE_KEY);
-    if (stored) {
-      const existing = normalizeRoomCode(stored);
-      if (existing.startsWith("DEMO")) return existing;
-    }
-  } catch {
-    // Ignore storage failures and generate a fresh code.
-  }
-  const generated = createDemoRoomCode();
-  try {
-    window.sessionStorage.setItem(DEMO_ROOM_STORAGE_KEY, generated);
-  } catch {
-    // Ignore storage failures in private mode.
-  }
-  return generated;
-};
-
-const TIMELINE = (() => {
+const WALKTHROUGH_TIMELINE = (() => {
   let cursor = 0;
-  return DEMO_SCENES.map((scene) => {
+  return GUIDED_SCENES.map((scene) => {
     const startMs = cursor;
     const endMs = startMs + scene.durationMs;
     cursor = endMs;
@@ -546,600 +407,168 @@ const TIMELINE = (() => {
 })();
 
 const getSceneAtMs = (timelineMs = 0) => {
-  const safeMs = clampNumber(timelineMs, 0, DEMO_TOTAL_MS, 0);
-  const scene = TIMELINE.find((entry) => safeMs >= entry.startMs && safeMs < entry.endMs) || TIMELINE[TIMELINE.length - 1];
+  const safeMs = clampNumber(timelineMs, 0, WALKTHROUGH_TOTAL_MS, 0);
+  const scene = WALKTHROUGH_TIMELINE.find((entry) => safeMs >= entry.startMs && safeMs < entry.endMs)
+    || WALKTHROUGH_TIMELINE[WALKTHROUGH_TIMELINE.length - 1];
   const sceneMs = Math.max(0, safeMs - scene.startMs);
-  const sceneProgress = scene.durationMs > 0 ? sceneMs / scene.durationMs : 0;
-  return {
-    scene,
-    sceneMs,
-    sceneProgress,
-  };
+  const progress = scene.durationMs > 0 ? sceneMs / scene.durationMs : 0;
+  return { scene, sceneMs, progress };
 };
 
-const buildReactionEvents = (scene, sceneProgress = 0) => {
-  if (!scene || !Array.isArray(scene.reactions)) return [];
-  return scene.reactions.map((entry, index) => ({
-    type: String(entry.type || "clap").toLowerCase(),
-    label: String(entry.label || entry.type || "Reaction"),
-    token: REACTION_TOKENS[String(entry.type || "clap").toLowerCase()] || "HYPE",
-    count: Math.max(1, Math.round(Number(entry.seed || 1) + (sceneProgress * 4) + ((index % 2) * 0.8))),
+const getTypedText = (value = "", progress = 0) => {
+  const source = String(value || "");
+  if (!source) return "";
+  const reveal = clampNumber((progress - 0.08) / 0.36, 0, 1, 0);
+  return source.slice(0, Math.max(1, Math.round(source.length * reveal)));
+};
+
+const getActiveIndex = (items = [], progress = 0) => {
+  if (!Array.isArray(items) || !items.length) return 0;
+  return clampNumber(Math.floor(progress * items.length), 0, items.length - 1, 0);
+};
+
+const TV_VARIANTS_BY_SCENE = {
+  guitar_vibe_sync: "guitar",
+  trivia_break: "trivia",
+  auto_dj_handoff: "finale",
+};
+
+const getTvSurfaceVariant = (sceneId = "") => TV_VARIANTS_BY_SCENE[sceneId] || "karaoke";
+
+const getHostResults = (scene, typedSearch = "") => {
+  switch (scene.id) {
+    case "join_identity":
+      return [
+        { title: "Fresh room for tonight", meta: "Broadcast join code to every phone", state: "Room setup" },
+        { title: "Identity prompt", meta: "Name + vibe picker enabled", state: "Live" },
+        { title: `${scene.singer.name} on deck`, meta: scene.singer.prompt, state: "Singer staged" },
+      ];
+    case "karaoke_launch":
+      return [
+        {
+          title: "Sweet Caroline",
+          meta: typedSearch.length >= scene.host.search.length ? "Classic singalong - match ready" : "Searching catalog...",
+          state: typedSearch.length >= scene.host.search.length ? "Cue now" : "Typing",
+        },
+        { title: "Sweet Child O' Mine", meta: "High-energy alt pick", state: "Preview" },
+        { title: "Sweet Home Alabama", meta: "Crowd-familiar fallback", state: "Hold" },
+      ];
+    case "crowd_hype":
+      return [
+        { title: "Reaction burst", meta: "Fire, cheer, heart, clap", state: "Armed" },
+        { title: "Spotlight cue", meta: `${scene.audience.metricValue} already landing`, state: "Queued" },
+        { title: "Room pulse", meta: "TV overlay mirrors the crowd", state: "Live" },
+      ];
+    case "guitar_vibe_sync":
+      return [
+        { title: "Guitar Vibe Sync", meta: "Phones become instruments", state: "Mode live" },
+        { title: "Confetti pop", meta: "Accent the solo break", state: "Optional" },
+        { title: "Laser pulse", meta: "TV mood shift on command", state: "Standby" },
+      ];
+    case "trivia_break":
+      return [
+        { title: "Quick trivia", meta: "Fast room-wide vote", state: "Go live" },
+        { title: "Would you rather", meta: "Longer split-room prompt", state: "Next" },
+        { title: "Queue cover", meta: `${scene.singer.name} gets staging time`, state: "Benefit" },
+      ];
+    case "auto_dj_handoff":
+      return [
+        { title: "Auto DJ bridge", meta: "Audio fills the handoff gap", state: "Running" },
+        { title: `${scene.singer.name} ready`, meta: scene.singer.prompt, state: "Next singer" },
+        { title: "Room pulse", meta: "Momentum stays visible", state: "Continuous" },
+      ];
+    default:
+      return [];
+  }
+};
+
+const getSceneQueue = (scene, nextScene) => [
+  {
+    title: scene.tv.title,
+    meta: `${scene.singer.name} live now`,
+  },
+  nextScene
+    ? {
+      title: nextScene.tv.title,
+      meta: `${nextScene.singer.name} on deck`,
+    }
+    : {
+      title: "Encore hold",
+      meta: "Room pulse ready",
+    },
+  {
+    title: scene.host.actionLabel,
+    meta: scene.host.status,
+  },
+];
+
+const getAudienceRoster = (activeIndex = 0, singerName = "") => {
+  const names = ["Alex", "Jordan", "Taylor", "Casey", "Morgan", "Riley", "Sky", "Jules"];
+  return names.map((name, index) => ({
+    label: name,
+    live: index <= activeIndex + 3 || name === singerName,
   }));
 };
 
-const getDemoAudienceStateLabel = (scene = null) => {
-  const mode = String(scene?.mode || "karaoke").toLowerCase();
-  if (mode === "guitar") return "Signed in and strumming";
-  if (mode === "trivia") return "Signed in and voting";
-  if (mode === "vocal") return "Signed in and chasing combo";
-  if (mode === "wyr") return "Signed in and picking a side";
-  if (mode === "finale") return "Signed in for the encore";
-  return "Signed in and ready";
+const getReactionItems = (scene, progress = 0) => {
+  const labels = scene.audience.actions.slice(0, 4).map((entry) => entry.split(" x")[0]);
+  const baselines = [12, 18, 24, 30];
+  return labels.map((label, index) => ({
+    label,
+    count: baselines[index] + Math.round(progress * (14 + index * 5)),
+  }));
 };
 
-const getDemoAudienceActionLabel = (scene = null) => {
-  const mode = String(scene?.mode || "karaoke").toLowerCase();
-  if (mode === "guitar") return "Phones act like instruments";
-  if (mode === "trivia") return "Phones become live vote pads";
-  if (mode === "vocal") return "Phones react around the mini-game";
-  if (mode === "wyr") return "Phones split the room instantly";
-  if (mode === "finale") return "Phones push reactions to the finish";
-  return "Phones join, react, and follow lyrics";
+const getTriviaRows = (scene, progress = 0) => {
+  const baselines = [14, 18, 16, 22];
+  const growth = [8, 12, 10, 24];
+  return scene.audience.actions.map((label, index) => ({
+    label,
+    value: baselines[index] + Math.round(progress * growth[index]),
+    highlight: index === scene.audience.actions.length - 1,
+  }));
 };
 
-const getDemoHostWorkspaceLabel = (hostParams = {}) => {
-  const section = String(hostParams?.section || "").trim().toLowerCase();
-  if (section === "queue.catalog") return "Host panel in catalog";
-  if (section === "games.live_controls") return "Host panel in games";
-  return "Host panel in live run";
-};
-
-const buildSceneSignalFlows = ({
-  scene = null,
-  activeHostAction = null,
-  surfacePlan = null,
-  crowdSize = 0,
-  interactionTotal = 0,
-}) => {
-  const mode = String(scene?.mode || "karaoke").toLowerCase();
-  const sceneLabel = String(scene?.label || "Demo scene").trim();
-  const defaultHostLabel = String(activeHostAction?.label || surfacePlan?.hostFocus || "Host steers the next beat").trim();
-  const defaultHostDetail = String(activeHostAction?.result || surfacePlan?.hostStatus || "Host pushes the room into the next visible state.").trim();
-  const audienceDetail = `${Math.max(1, interactionTotal)} scripted audience interactions from ${Math.max(1, crowdSize)} connected guests shape the room in this scene.`;
-  const tvFeedback = String(surfacePlan?.tvStatus || "The TV reflects the room mode, prompts, and reveals live.").trim();
-
-  if (mode === "guitar") {
-    return [
-      { lane: "Host -> TV", title: defaultHostLabel, detail: defaultHostDetail },
-      { lane: "Audience -> TV", title: "Strums drive the solo visuals", detail: audienceDetail },
-      { lane: "TV -> Audience", title: "The big screen cues the next input", detail: tvFeedback },
-    ];
-  }
-  if (mode === "trivia" || mode === "wyr") {
-    return [
-      { lane: "Host -> Audience", title: defaultHostLabel, detail: defaultHostDetail },
-      { lane: "Audience -> TV", title: `${sceneLabel} results build live`, detail: audienceDetail },
-      { lane: "TV -> Audience", title: "Reveal timing comes from the shared screen", detail: tvFeedback },
-    ];
-  }
-  if (mode === "vocal") {
-    return [
-      { lane: "Host -> TV", title: defaultHostLabel, detail: defaultHostDetail },
-      { lane: "Audience -> Audience", title: "Phones feed combo pressure back into the room", detail: audienceDetail },
-      { lane: "TV -> Audience", title: "The objective stays visible while scores move", detail: tvFeedback },
-    ];
-  }
-  return [
-    { lane: "Host -> TV", title: defaultHostLabel, detail: defaultHostDetail },
-    { lane: "Audience -> TV", title: "Reactions and singalong energy stay visible", detail: audienceDetail },
-    { lane: "TV -> Audience", title: "Lyrics and prompts tell phones what happens next", detail: tvFeedback },
-  ];
-};
-
-const DEMO_STORY_BEATS = Object.freeze([
-  {
-    id: "host",
-    kicker: "Step 01",
-    title: "Start with a host deck that already feels live.",
-    body: "The demo should open on music intent, not setup friction. Search, queue, and room sharing need to read instantly so the host looks ready from the first second.",
-    bullets: [
-      "Show search and queue movement immediately.",
-      "Bring the room code and audience join path in right away.",
-      "Keep the host focused on the first singer, not room creation."
-    ],
-    flows: [
-      { lane: "Host -> Queue", title: "The opener gets lined up fast", detail: "The host searches, picks a song, and makes the first singer visible before the TV takes over." },
-      { lane: "Host -> Audience", title: "Phones get the room code immediately", detail: "Guests do not wait for a later reveal. They see the room, now playing, and request path from the start." }
-    ],
-    host: {
-      workspace: "Browse + queue",
-      title: "Search feeds a real queue, not a setup screen",
-      search: "sweet caroline karaoke",
-      queue: [
-        { title: "Sweet Caroline", meta: "Amy | Ready now" },
-        { title: "Mr. Brightside", meta: "Chris | Next up" },
-        { title: "Dancing Queen", meta: "Maya | In line" }
-      ],
-      footer: "The first singer is ready before the big screen takes the room."
-    },
-    tv: {
-      badge: "Room warming up",
-      headline: "The TV stays calm until the queue is ready",
-      lyrics: [
-        "Room code on screen first",
-        "Lyrics step up only when the room is ready to sing"
-      ],
-      note: "No visual storm. Just one clear invitation and one obvious next step.",
-      progressLabel: "Room ready",
-      progressValue: 28
-    },
-    phone: {
-      title: "Audience app shows up immediately",
-      subtitle: "Guests join early enough to matter: room code, now playing, and request lane are already visible.",
-      chips: ["Join room", "See queue", "Request song"],
-      request: "Phones are connected before the first chorus begins.",
-      metricLabel: "Connected guests",
-      metricValue: "12"
-    }
-  },
-  {
-    id: "karaoke",
-    kicker: "Step 02",
-    title: "Then let karaoke own the page.",
-    body: "The public screen should become the star, but it needs to stay readable. Bigger lyrics, less clutter, and just enough movement to prove the room is alive.",
-    bullets: [
-      "Give the TV the most visual weight.",
-      "Keep the host visible but secondary.",
-      "Let phones react without hijacking the song."
-    ],
-    flows: [
-      { lane: "Host -> TV", title: "The host hands the room to karaoke", detail: "Once the opener is ready, the TV becomes the focal point and the host shifts into steering the next beat." },
-      { lane: "TV -> Audience", title: "The chorus teaches the room what to do", detail: "Readable lyrics and clear timing cues tell guests when to sing, clap, and lean in together." }
-    ],
-    host: {
-      workspace: "Live run",
-      title: "Host keeps the next singer ready without stealing focus",
-      search: "",
-      queue: [
-        { title: "Sweet Caroline", meta: "Now singing | Amy" },
-        { title: "Mr. Brightside", meta: "Queued next | Chris" },
-        { title: "Dancing Queen", meta: "Audience request | Maya" }
-      ],
-      footer: "The host is still active, but the room is watching the TV now."
-    },
-    tv: {
-      badge: "Karaoke live",
-      headline: "Big lyrics and timing carry the room",
-      lyrics: [
-        "Sweet Caroline",
-        "Good times never felt so good"
-      ],
-      note: "The TV feels energetic because the crowd is engaged, not because the screen is overloaded.",
-      progressLabel: "Room energy",
-      progressValue: 67
-    },
-    phone: {
-      title: "Phones stay light during the chorus",
-      subtitle: "Audience reactions stay available, but the song never loses its center of gravity on the big screen.",
-      chips: ["Clap", "Cheer", "Fire"],
-      request: "Phones support the moment without pulling eyes off the lyrics.",
-      metricLabel: "Room energy",
-      metricValue: "67%"
-    }
-  },
-  {
-    id: "audience",
-    kicker: "Step 03",
-    title: "Show the audience app actually feeding the host.",
-    body: "The value of the phone is not just reactions. It is the handoff: a guest submits a song, the host sees it fast, and the current karaoke moment keeps running cleanly.",
-    bullets: [
-      "Bring the phone into the sequence earlier.",
-      "Make the request-to-host handoff explicit.",
-      "Keep the TV on the current singer while the next song lines up."
-    ],
-    flows: [
-      { lane: "Audience -> Host", title: "A phone request lands in the queue fast", detail: "The guest submits a song, the host sees it, and the night keeps moving without a separate explanation." },
-      { lane: "Host -> TV", title: "The current song stays intact while the next one lines up", detail: "Audience input changes what happens next, not the lyric readability of the song already on stage." }
-    ],
-    host: {
-      workspace: "Queue intake",
-      title: "New audience requests show up right inside the host flow",
-      search: "",
-      queue: [
-        { title: "Sweet Caroline", meta: "Now singing | Amy" },
-        { title: "Shallow", meta: "Jamie | Requested from audience app" },
-        { title: "Mr. Brightside", meta: "Queued next | Chris" }
-      ],
-      incoming: {
-        label: "Fresh request received",
-        detail: "Jamie just sent “Shallow” from the audience app."
-      },
-      footer: "The host sees the request without leaving the live queue."
-    },
-    tv: {
-      badge: "Current singer live",
-      headline: "The TV keeps the chorus readable while the next request lands",
-      lyrics: [
-        "Hands touching hands",
-        "Reaching out, touching me, touching you"
-      ],
-      note: "The room stays in the song that is live now, even while the queue updates underneath it.",
-      progressLabel: "Queue response",
-      progressValue: 74
-    },
-    phone: {
-      title: "A guest submits the next song from the phone",
-      subtitle: "This is the audience moment to show first: request, confirm, and see it reach the host queue in seconds.",
-      chips: ["Request song", "Attach backing", "View queue"],
-      request: "Request sent: Shallow | Jamie",
-      metricLabel: "Host response",
-      metricValue: "Seen live"
-    }
-  },
-  {
-    id: "autodj",
-    kicker: "Step 04",
-    title: "Then show what Auto DJ actually fixes.",
-    body: "Skip the side-trip into extra modes here. The better comparison is practical: when Auto DJ is off the room sags, and when it is on the night keeps moving between singers.",
-    bullets: [
-      "Compare dead air against continuous momentum.",
-      "Keep the host in control of the room flow.",
-      "Let audience requests keep feeding the queue while Auto DJ bridges transitions."
-    ],
-    flows: [
-      { lane: "Host -> Room", title: "Auto DJ fills the gap between singers", detail: "Instead of a reset between songs, the host can keep the room warm while the next singer gets ready." },
-      { lane: "Audience -> Queue", title: "Phones keep feeding the next handoff", detail: "Audience requests stay useful because Auto DJ buys the room time without losing momentum." }
-    ],
-    host: {
-      workspace: "Stage + Auto DJ",
-      title: "Host toggles Auto DJ to keep the room moving",
-      search: "",
-      queue: [
-        { title: "Sweet Caroline", meta: "Ending now" },
-        { title: "Shallow", meta: "Jamie | Up next" },
-        { title: "Auto DJ bridge", meta: "Warm transition | 18 sec" }
-      ],
-      footer: "Auto DJ reduces dead air, but the host still owns the room."
-    },
-    tv: {
-      badge: "Auto DJ live",
-      headline: "The public screen never drops into silence between singers",
-      lyrics: [
-        "Bridge music keeps the room warm",
-        "Next singer steps in without a hard stop"
-      ],
-      note: "This is the useful demo contrast: manual gap versus smooth continuity.",
-      progressLabel: "Transition gap",
-      progressValue: 88
-    },
-    phone: {
-      title: "Audience keeps submitting while Auto DJ carries transitions",
-      subtitle: "Phones keep the next queue items coming while Auto DJ prevents the room from falling flat.",
-      chips: ["Request next song", "Track queue", "Stay engaged"],
-      request: "Auto DJ bridge active | next singer loading",
-      metricLabel: "Transition gap",
-      metricValue: "Near zero"
-    },
-    autoDj: {
-      off: "Auto DJ off: the song ends, the room waits, and the host has to rebuild momentum.",
-      on: "Auto DJ on: bridge audio and queue logic carry the room until the next singer is ready."
-    }
-  }
-]);
-
-const DemoExperiencePage = ({ session = {} }) => {
-  const isSessionReady = !!session?.ready;
-  const hasCallableAuth = !!session?.isAuthed;
-  const [demoViewMode, setDemoViewMode] = useState(() => getInitialDemoViewMode());
+const DemoExperiencePage = ({ navigate }) => {
   const [timelineMs, setTimelineMs] = useState(0);
   const [playing, setPlaying] = useState(true);
-  const [loopPlayback, setLoopPlayback] = useState(true);
-  const [roomCode, setRoomCode] = useState(() => getInitialDemoRoomCode());
-  const [liveSync, setLiveSync] = useState(() => getInitialDemoViewMode() === DEMO_VIEW_MODES.autoplay);
-  const [autoPauseCues, setAutoPauseCues] = useState(false);
-  const [surfaceReloadToken, setSurfaceReloadToken] = useState(0);
-  const [syncState, setSyncState] = useState({ tone: "muted", message: "Scripted sync warming up." });
-  const [activeStoryBeat, setActiveStoryBeat] = useState(0);
-
-  const latestStateRef = useRef(null);
-  const inFlightRef = useRef(false);
-  const lastTickBucketRef = useRef(-1);
-  const lastSceneIdRef = useRef("");
-  const lastSequenceRef = useRef(0);
-  const demoShellRef = useRef(null);
-  const autoRoomRetryRef = useRef(false);
-  const cuePauseHistoryRef = useRef(new Set());
-  const previousTimelineMsRef = useRef(0);
-  const storyStepRefs = useRef([]);
-  const [iframeMountReady, setIframeMountReady] = useState(false);
-  const [sceneShiftActive, setSceneShiftActive] = useState(true);
-  const isAutoplayShowcase = demoViewMode === DEMO_VIEW_MODES.autoplay;
-  const canRunLiveSync = isSessionReady && (hasCallableAuth || isAutoplayShowcase);
-
-  useEffect(() => {
-    if (iframeMountReady) return;
-    const node = demoShellRef.current;
-    if (!node || typeof window === "undefined") {
-      setIframeMountReady(true);
-      return;
-    }
-    if (typeof window.IntersectionObserver !== "function") {
-      setIframeMountReady(true);
-      return;
-    }
-    let cancelled = false;
-    const reveal = () => {
-      if (cancelled) return;
-      setIframeMountReady(true);
-    };
-    const timeoutId = window.setTimeout(reveal, isAutoplayShowcase ? 900 : 1500);
-    const observer = new window.IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        reveal();
-      }
-    }, { root: null, rootMargin: "700px 0px", threshold: 0.01 });
-    observer.observe(node);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-      observer.disconnect();
-    };
-  }, [iframeMountReady, isAutoplayShowcase]);
+  const [activeAbstractBeat, setActiveAbstractBeat] = useState(0);
+  const abstractStepRefs = useRef([]);
 
   useEffect(() => {
     if (!playing) return () => {};
     let lastMs = Date.now();
-    const timer = setInterval(() => {
+    const timer = window.setInterval(() => {
       const now = Date.now();
       const delta = Math.max(0, now - lastMs);
       lastMs = now;
       setTimelineMs((prev) => {
         const next = prev + delta;
-        if (next < DEMO_TOTAL_MS) return next;
-        if (loopPlayback) return next % DEMO_TOTAL_MS;
-        setPlaying(false);
-        return DEMO_TOTAL_MS;
+        if (next < WALKTHROUGH_TOTAL_MS) return next;
+        return next % WALKTHROUGH_TOTAL_MS;
       });
-    }, 180);
-    return () => clearInterval(timer);
-  }, [playing, loopPlayback]);
-
-  const sceneState = useMemo(() => getSceneAtMs(timelineMs), [timelineMs]);
-  const activeScene = sceneState.scene;
-  const sceneProgress = sceneState.sceneProgress;
-  const surfacePlan = useMemo(() => getDemoSceneSurfacePlan(activeScene), [activeScene]);
+    }, 140);
+    return () => window.clearInterval(timer);
+  }, [playing]);
 
   useEffect(() => {
-    setSceneShiftActive(true);
-    if (typeof window === "undefined") return undefined;
-    const timer = window.setTimeout(() => setSceneShiftActive(false), 950);
-    return () => window.clearTimeout(timer);
-  }, [activeScene.id]);
-
-  const crowdSize = useMemo(() => {
-    const base = activeScene.mode === "finale" ? 22 : activeScene.mode === "guitar" ? 18 : 16;
-    return Math.round(base + (sceneProgress * 6));
-  }, [activeScene.mode, sceneProgress]);
-
-  const reactionEvents = useMemo(
-    () => buildReactionEvents(activeScene, sceneProgress),
-    [activeScene, sceneProgress]
-  );
-
-  const hostActions = useMemo(
-    () => (Array.isArray(activeScene?.hostActions) ? activeScene.hostActions : []),
-    [activeScene]
-  );
-  const activeHostAction = useMemo(() => {
-    if (!hostActions.length) return null;
-    let selected = hostActions[0];
-    hostActions.forEach((action) => {
-      const at = clampNumber(action?.at, 0, 1, 0);
-      if (sceneProgress >= at) selected = action;
-    });
-    const index = hostActions.findIndex((entry) => entry?.id === selected?.id);
-    return {
-      ...selected,
-      at: clampNumber(selected?.at, 0, 1, 0),
-      index: Math.max(0, index),
-      total: hostActions.length
-    };
-  }, [hostActions, sceneProgress]);
-
-  const stageModeLabel = useMemo(() => {
-    const mode = String(activeScene?.mode || "karaoke").toLowerCase();
-    if (mode === "guitar") return "Guitar Vibe Sync";
-    if (mode === "vocal") return "Vocal Game";
-    if (mode === "trivia") return "Trivia";
-    if (mode === "wyr") return "Would You Rather";
-    if (mode === "finale") return "Finale";
-    return "Karaoke";
-  }, [activeScene]);
-  const scenePercent = useMemo(() => Math.round(sceneProgress * 100), [sceneProgress]);
-  const nextScene = useMemo(() => {
-    const currentIndex = TIMELINE.findIndex((entry) => entry.id === activeScene.id);
-    if (currentIndex < 0 || currentIndex >= TIMELINE.length - 1) return null;
-    return TIMELINE[currentIndex + 1];
-  }, [activeScene.id]);
-
-  const triviaModel = useMemo(() => {
-    if (activeScene.mode !== "trivia") return null;
-    const model = activeScene.trivia || {
-      question: "Which view helps hosts steer the room?",
-      options: ["Audience", "TV", "Host", "All"],
-      correctIndex: 2,
-      votes: [6, 4, 11, 7],
-    };
-    const reveal = sceneProgress >= 0.72;
-    const votes = model.options.map((_, index) => {
-      const baseVotes = Number(model.votes?.[index] || 0);
-      const scaled = Math.round(baseVotes * (0.35 + (sceneProgress * 0.65)));
-      if (index === model.correctIndex) return scaled + Math.round(sceneProgress * 8);
-      return scaled;
-    });
-    return {
-      ...model,
-      status: reveal ? "reveal" : "live",
-      votes,
-      questionId: `trivia_${Math.floor(activeScene.startMs / 1000)}`,
-    };
-  }, [activeScene, sceneProgress]);
-
-  const wyrModel = useMemo(() => {
-    if (activeScene.mode !== "wyr") return null;
-    const model = activeScene.wyr || {
-      question: "Would you rather warm up with a duet or a group chorus?",
-      optionA: "Duet",
-      optionB: "Group chorus",
-      votes: [14, 16],
-      revealAt: 0.62,
-      points: 50,
-      durationSec: 18
-    };
-    const revealAt = clampNumber(model.revealAt ?? 0.62, 0.5, 0.95, 0.62);
-    const reveal = sceneProgress >= revealAt;
-    const targetVotes = Array.isArray(model.votes) ? model.votes : [12, 10];
-    const votes = [0, 1].map((index) => {
-      const baseVotes = Number(targetVotes[index] || 0);
-      const scaled = Math.round(baseVotes * (0.35 + (sceneProgress * 0.65)));
-      return Math.max(0, scaled);
-    });
-    return {
-      question: String(model.question || "").trim(),
-      optionA: String(model.optionA || "Option A").trim(),
-      optionB: String(model.optionB || "Option B").trim(),
-      status: reveal ? "reveal" : "live",
-      votes,
-      questionId: `wyr_${Math.floor(activeScene.startMs / 1000)}`,
-      points: clampNumber(model.points ?? 50, 10, 250, 50),
-      durationSec: clampNumber(model.durationSec ?? 18, 8, 90, 18),
-    };
-  }, [activeScene, sceneProgress]);
-
-  const sanitizedRoomCode = useMemo(() => normalizeRoomCode(roomCode), [roomCode]);
-  const buildSceneSurfaceUrl = useCallback((surface = "app", params = {}) => {
-    if (typeof window === "undefined") return "/";
-    const url = new URL(buildCanonicalSurfaceUrl({
-      surface,
-      params: {
-        room: sanitizedRoomCode,
-        ...params
-      }
-    }, window.location));
-    if (surfaceReloadToken > 0) {
-      url.searchParams.set("mkDemoReload", String(surfaceReloadToken));
-    } else {
-      url.searchParams.delete("mkDemoReload");
-    }
-    return url.toString();
-  }, [sanitizedRoomCode, surfaceReloadToken]);
-
-  const hostLaunchParams = useMemo(() => (
-    isAutoplayShowcase
-      ? getAutoplayHostSurfaceParams(activeScene)
-      : buildDemoHostParams("stage")
-  ), [activeScene, isAutoplayShowcase]);
-
-  const launchLinks = useMemo(() => ({
-    audience: buildSceneSurfaceUrl("app", { mobile_layout: "native", mkDemoEmbed: "1" }),
-    tv: buildSceneSurfaceUrl("tv", { mode: "tv", mkDemoEmbed: "1" }),
-    host: buildSceneSurfaceUrl("host", hostLaunchParams),
-  }), [buildSceneSurfaceUrl, hostLaunchParams]);
-
-  const sceneInteractionTotal = useMemo(
-    () => reactionEvents.reduce((sum, entry) => sum + Math.max(0, Number(entry.count || 0)), 0),
-    [reactionEvents]
-  );
-  const demoSignalFlows = useMemo(() => buildSceneSignalFlows({
-    scene: activeScene,
-    activeHostAction,
-    surfacePlan,
-    crowdSize,
-    interactionTotal: sceneInteractionTotal,
-  }), [activeHostAction, activeScene, crowdSize, sceneInteractionTotal, surfacePlan]);
-  const hostWorkspaceLabel = useMemo(
-    () => getDemoHostWorkspaceLabel(hostLaunchParams),
-    [hostLaunchParams]
-  );
-  const audienceStateLabel = useMemo(
-    () => getDemoAudienceStateLabel(activeScene),
-    [activeScene]
-  );
-  const audienceActionLabel = useMemo(
-    () => getDemoAudienceActionLabel(activeScene),
-    [activeScene]
-  );
-  const storyBeat = useMemo(
-    () => DEMO_STORY_BEATS[activeStoryBeat] || DEMO_STORY_BEATS[0],
-    [activeStoryBeat]
-  );
-
-  useEffect(() => {
-    try {
-      window.sessionStorage.setItem(DEMO_ROOM_STORAGE_KEY, sanitizedRoomCode);
-    } catch {
-      // Ignore storage failures in private mode.
-    }
-  }, [sanitizedRoomCode]);
-
-  useEffect(() => {
-    try {
-      window.sessionStorage.setItem(DEMO_VIEW_STORAGE_KEY, demoViewMode);
-    } catch {
-      // Ignore storage failures in private mode.
-    }
-  }, [demoViewMode]);
-
-  useEffect(() => {
-    if (isAutoplayShowcase) return;
-    if (!canRunLiveSync && liveSync) {
-      setLiveSync(false);
-      setSyncState({ tone: "muted", message: "Live Lab uses the native surfaces. Sign in to enable scripted sync controls." });
-    }
-  }, [canRunLiveSync, isAutoplayShowcase, liveSync]);
-
-  useEffect(() => {
-    if (!isAutoplayShowcase) return;
-    setSyncState((prev) => {
-      if (prev.message === "Focused story mode active. Open Live Lab to inspect the real room surfaces.") {
-        return prev;
-      }
-      return {
-        tone: "muted",
-        message: "Focused story mode active. Open Live Lab to inspect the real room surfaces."
-      };
-    });
-  }, [isAutoplayShowcase]);
-
-  useEffect(() => {
-    autoRoomRetryRef.current = false;
-  }, [sanitizedRoomCode]);
-
-  useEffect(() => {
-    if (timelineMs + 250 < previousTimelineMsRef.current) {
-      cuePauseHistoryRef.current = new Set();
-    }
-    previousTimelineMsRef.current = timelineMs;
-  }, [timelineMs]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const nodes = storyStepRefs.current.filter(Boolean);
-    if (!nodes.length || typeof window.IntersectionObserver !== "function") return undefined;
+    if (typeof window === "undefined" || typeof window.IntersectionObserver !== "function") return undefined;
+    const nodes = abstractStepRefs.current.filter(Boolean);
+    if (!nodes.length) return undefined;
     let frameId = 0;
     const observer = new window.IntersectionObserver((entries) => {
       const visible = entries
         .filter((entry) => entry.isIntersecting)
         .sort((left, right) => right.intersectionRatio - left.intersectionRatio);
       if (!visible.length) return;
-      const nextIndex = clampNumber(visible[0].target.dataset.storyIndex, 0, DEMO_STORY_BEATS.length - 1, 0);
+      const nextIndex = clampNumber(visible[0].target.dataset.storyIndex, 0, ABSTRACT_BEATS.length - 1, 0);
       window.cancelAnimationFrame(frameId);
       frameId = window.requestAnimationFrame(() => {
-        setActiveStoryBeat((prev) => (prev === nextIndex ? prev : nextIndex));
+        setActiveAbstractBeat((prev) => (prev === nextIndex ? prev : nextIndex));
       });
     }, {
-      threshold: [0.32, 0.5, 0.7],
-      rootMargin: "-10% 0px -18% 0px",
+      threshold: [0.28, 0.5, 0.72],
+      rootMargin: "-12% 0px -18% 0px",
     });
     nodes.forEach((node) => observer.observe(node));
     return () => {
@@ -1148,201 +577,153 @@ const DemoExperiencePage = ({ session = {} }) => {
     };
   }, []);
 
-  latestStateRef.current = {
-    timelineMs,
-    activeScene,
-    sceneProgress,
-    crowdSize,
-    reactionEvents,
-    triviaModel,
-    wyrModel,
-    playing,
-    roomCode: sanitizedRoomCode,
-  };
-
-  const sendDirectorAction = useCallback(async (action = "tick", overrides = null) => {
-    const snapshot = latestStateRef.current;
-    if (!snapshot) return;
-    if (inFlightRef.current && action === "tick") return;
-    if (!isSessionReady || (!hasCallableAuth && !isAutoplayShowcase)) {
-      setSyncState({ tone: "muted", message: "Waiting for secure session..." });
-      return;
+  const sceneState = useMemo(() => getSceneAtMs(timelineMs), [timelineMs]);
+  const activeScene = sceneState.scene;
+  const sceneProgress = sceneState.progress;
+  const activeBeat = ABSTRACT_BEATS[activeAbstractBeat] || ABSTRACT_BEATS[0];
+  const activeActionIndex = useMemo(
+    () => getActiveIndex(activeScene.audience.actions, sceneProgress + 0.12),
+    [activeScene.audience.actions, sceneProgress]
+  );
+  const activeFeedIndex = useMemo(
+    () => getActiveIndex(activeScene.audience.feed, sceneProgress + 0.26),
+    [activeScene.audience.feed, sceneProgress]
+  );
+  const activeTvLineIndex = useMemo(
+    () => getActiveIndex(activeScene.tv.lines, sceneProgress + 0.18),
+    [activeScene.tv.lines, sceneProgress]
+  );
+  const hostTypedSearch = useMemo(
+    () => getTypedText(activeScene.host.search, sceneProgress),
+    [activeScene.host.search, sceneProgress]
+  );
+  const hostControlProgress = clampNumber((sceneProgress - 0.22) / 0.62, 0, 1, 0);
+  const singerMeter = 42 + Math.round(sceneProgress * 44);
+  const roomEnergy = 28 + Math.round(sceneProgress * 58);
+  const scenePercent = Math.round(sceneProgress * 100);
+  const nextScene = useMemo(() => {
+    const index = WALKTHROUGH_TIMELINE.findIndex((entry) => entry.id === activeScene.id);
+    if (index < 0 || index >= WALKTHROUGH_TIMELINE.length - 1) return null;
+    return WALKTHROUGH_TIMELINE[index + 1];
+  }, [activeScene.id]);
+  const sceneIndex = useMemo(
+    () => WALKTHROUGH_TIMELINE.findIndex((entry) => entry.id === activeScene.id),
+    [activeScene.id]
+  );
+  const sceneNumber = String(Math.max(0, sceneIndex) + 1).padStart(2, "0");
+  const tvSurfaceVariant = useMemo(() => getTvSurfaceVariant(activeScene.id), [activeScene.id]);
+  const hostResults = useMemo(
+    () => getHostResults(activeScene, hostTypedSearch),
+    [activeScene, hostTypedSearch]
+  );
+  const queueSnapshot = useMemo(
+    () => getSceneQueue(activeScene, nextScene),
+    [activeScene, nextScene]
+  );
+  const audienceRoster = useMemo(
+    () => getAudienceRoster(activeActionIndex, activeScene.singer.name),
+    [activeActionIndex, activeScene.singer.name]
+  );
+  const reactionItems = useMemo(
+    () => getReactionItems(activeScene, sceneProgress),
+    [activeScene, sceneProgress]
+  );
+  const triviaRows = useMemo(
+    () => getTriviaRows(activeScene, sceneProgress),
+    [activeScene, sceneProgress]
+  );
+  const hostCursorStyle = useMemo(() => {
+    switch (activeScene.id) {
+      case "karaoke_launch":
+        return { left: `${24 + sceneProgress * 18}%`, top: "18%" };
+      case "crowd_hype":
+        return { left: "42%", top: `${54 - sceneProgress * 12}%` };
+      case "guitar_vibe_sync":
+        return { left: "44%", top: "57%" };
+      case "trivia_break":
+        return { left: "33%", top: "57%" };
+      case "auto_dj_handoff":
+        return { left: "12%", top: "57%" };
+      case "join_identity":
+      default:
+        return { left: "72%", top: `${30 + sceneProgress * 14}%` };
     }
-    if (!snapshot.roomCode.startsWith("DEMO")) {
-      setSyncState({ tone: "error", message: "Use a room code that starts with DEMO." });
-      return;
-    }
-    inFlightRef.current = true;
-    setSyncState({ tone: "muted", message: `Syncing ${action}...` });
-    try {
-      let sequence = Date.now();
-      if (sequence <= lastSequenceRef.current) {
-        sequence = lastSequenceRef.current + 1;
-      }
-      lastSequenceRef.current = sequence;
-      const actionId = `${action}_${snapshot.activeScene.id}_${Math.round(snapshot.timelineMs)}_${sequence}`;
-      const shouldSendReactionBursts = action === "bootstrap" || action === "scene" || action === "seek";
-      const payload = {
-        roomCode: snapshot.roomCode,
-        action,
-        actionId,
-        sequence,
-        sceneId: snapshot.activeScene.id,
-        timelineMs: Math.round(snapshot.timelineMs),
-        progress: snapshot.sceneProgress,
-        playing: !!snapshot.playing,
-        crowdSize: snapshot.crowdSize,
-        reactionEvents: shouldSendReactionBursts
-          ? snapshot.reactionEvents.map((entry, index) => ({
-            type: entry.type,
-            count: entry.count,
-            userName: `Fan ${index + 1}`,
-            avatar: ":)",
-            uid: `demo_reactor_${index + 1}`,
-          }))
-          : [],
-        trivia: snapshot.triviaModel
-          ? {
-            question: snapshot.triviaModel.question,
-            options: snapshot.triviaModel.options,
-            correctIndex: snapshot.triviaModel.correctIndex,
-            status: snapshot.triviaModel.status,
-            votes: snapshot.triviaModel.votes,
-            questionId: snapshot.triviaModel.questionId,
-            points: 100,
-            durationSec: 22,
-          }
-          : null,
-        wyr: snapshot.wyrModel
-          ? {
-            question: snapshot.wyrModel.question,
-            optionA: snapshot.wyrModel.optionA,
-            optionB: snapshot.wyrModel.optionB,
-            status: snapshot.wyrModel.status,
-            votes: snapshot.wyrModel.votes,
-            questionId: snapshot.wyrModel.questionId,
-            points: snapshot.wyrModel.points,
-            durationSec: snapshot.wyrModel.durationSec,
-          }
-          : null,
-        ...(overrides && typeof overrides === "object" ? overrides : {}),
-      };
-      const result = await directoryActions.runDemoDirectorAction(payload);
-      if (result?.stale) {
-        setSyncState({ tone: "muted", message: `Skipped stale ${action} action.` });
-        return;
-      }
-      autoRoomRetryRef.current = false;
-      setSyncState({ tone: "ok", message: `Synced ${action} at ${formatClock(snapshot.timelineMs)}.` });
-    } catch (error) {
-      const message = String(error?.message || "Live sync failed.");
-      const lowerMessage = message.toLowerCase();
-      if (lowerMessage.includes("only demo room hosts can drive demo director sync")) {
-        if (!autoRoomRetryRef.current) {
-          autoRoomRetryRef.current = true;
-          const replacement = createDemoRoomCode();
-          setRoomCode(replacement);
-          setSyncState({ tone: "muted", message: `Switched to ${replacement} to avoid room lock. Retrying sync...` });
-          return;
-        }
-      }
-      setSyncState({ tone: "error", message });
-    } finally {
-      inFlightRef.current = false;
-    }
-  }, [hasCallableAuth, isAutoplayShowcase, isSessionReady]);
+  }, [activeScene.id, sceneProgress]);
+  const audienceTapStyle = useMemo(() => {
+    const positions = [
+      { left: "18%", top: "58%" },
+      { left: "50%", top: "58%" },
+      { left: "82%", top: "58%" },
+      { left: "18%", top: "71%" },
+    ];
+    const sceneOnePositions = [
+      { left: "22%", top: "24%" },
+      { left: "52%", top: "24%" },
+      { left: "78%", top: "24%" },
+      { left: "52%", top: "38%" },
+    ];
+    const source = activeScene.id === "join_identity" ? sceneOnePositions : positions;
+    return source[activeActionIndex] || source[0];
+  }, [activeActionIndex, activeScene.id]);
+  const activeLyric = activeScene.tv.lines[activeTvLineIndex] || activeScene.tv.lines[0] || "";
+  const nextLyric = activeScene.tv.lines[Math.min(activeScene.tv.lines.length - 1, activeTvLineIndex + 1)] || "";
+  const totalConnectedLabel = activeScene.id === "join_identity" ? "08 joined" : activeScene.audience.metricValue;
 
   useEffect(() => {
-    if (!liveSync) return;
-    if (!isSessionReady || (!hasCallableAuth && !isAutoplayShowcase)) {
-      setSyncState({ tone: "muted", message: "Waiting for secure session..." });
-      return;
-    }
-    const snapshot = latestStateRef.current;
-    const seedSceneId = snapshot?.activeScene?.id || TIMELINE[0].id;
-    const seedTimelineMs = Number(snapshot?.timelineMs || 0);
-    lastSceneIdRef.current = seedSceneId;
-    lastTickBucketRef.current = Math.floor(seedTimelineMs / 4000);
-    sendDirectorAction("bootstrap");
-  }, [hasCallableAuth, isAutoplayShowcase, isSessionReady, liveSync, sanitizedRoomCode, sendDirectorAction]);
-
-  useEffect(() => {
-    if (!liveSync) return;
-    if (lastSceneIdRef.current === activeScene.id) return;
-    lastSceneIdRef.current = activeScene.id;
-    sendDirectorAction("scene");
-  }, [activeScene.id, liveSync, sendDirectorAction]);
-
-  useEffect(() => {
-    if (!liveSync || !playing) return;
-    const bucket = Math.floor(timelineMs / 4000);
-    if (bucket === lastTickBucketRef.current) return;
-    lastTickBucketRef.current = bucket;
-    sendDirectorAction("tick");
-  }, [liveSync, playing, timelineMs, sendDirectorAction]);
-
-  useEffect(() => {
-    if (!autoPauseCues || !playing || !activeHostAction?.pauseCue) return;
-    if (sceneProgress < Number(activeHostAction.at || 0)) return;
-    const cueKey = `${activeScene.id}:${activeHostAction.id || activeHostAction.index || 0}`;
-    if (cuePauseHistoryRef.current.has(cueKey)) return;
-    cuePauseHistoryRef.current.add(cueKey);
-    setPlaying(false);
-    setSyncState({
-      tone: "muted",
-      message: `Paused at host cue: ${activeHostAction.label || "Next scripted step"}.`
+    trackEvent("mk_demo_scene_view", {
+      scene: activeScene.id,
+      label: activeScene.label,
     });
-    if (liveSync) {
-      sendDirectorAction("pause", {
-        sceneId: activeScene.id,
-        timelineMs: Math.round(timelineMs)
-      });
-    }
-  }, [
-    autoPauseCues,
-    playing,
-    activeHostAction,
-    sceneProgress,
-    activeScene.id,
-    timelineMs,
-    liveSync,
-    sendDirectorAction
-  ]);
+  }, [activeScene.id, activeScene.label]);
 
   const jumpToScene = (sceneId = "") => {
-    const target = TIMELINE.find((entry) => entry.id === sceneId);
-    if (!target) return;
-    setTimelineMs(target.startMs);
-    if (liveSync) sendDirectorAction("seek", { timelineMs: target.startMs, sceneId: target.id });
+    const nextSceneTarget = WALKTHROUGH_TIMELINE.find((scene) => scene.id === sceneId);
+    if (!nextSceneTarget) return;
+    setTimelineMs(nextSceneTarget.startMs);
+    setPlaying(true);
+    trackEvent("mk_demo_scene_jump", { scene: nextSceneTarget.id });
   };
 
-  const onTogglePlayback = () => {
-    const next = !playing;
-    setPlaying(next);
-    trackEvent("mk_demo_playback_toggle", { state: next ? "play" : "pause" });
-    if (liveSync && !next) sendDirectorAction("pause");
-  };
+  const totalSceneElapsedMs = Math.max(0, Math.round(timelineMs));
 
   return (
-    <section className="mk3-page mk3-demo-page">
+    <section className="mk3-page mk3-demo-page mk3-demo-sales-page">
+      <article className="mk3-demo-sales-hero">
+        <div>
+          <div className="mk3-chip">demo redesign</div>
+          <h1>Concept first. Product choreography second.</h1>
+          <p>
+            The top section stays conceptual so the system is easy to read. The section below uses local-only UI
+            simulations to auto-play six synchronized product moments without touching the live app or the database.
+          </p>
+        </div>
+        <div className="mk3-demo-sales-hero-pills">
+          <span>Abstract story</span>
+          <span>Auto demo</span>
+          <span>Actual-looking product UI</span>
+          <span>Zero live reads or writes</span>
+        </div>
+      </article>
+
       <article className="mk3-demo-story">
         <div className="mk3-demo-story-intro">
-          <div className="mk3-chip">scroll story</div>
-          <h2>Watch one karaoke night move from host to TV to phone.</h2>
+          <div className="mk3-chip">abstract demo</div>
+          <h2>Show the system logic before viewers start parsing product screens.</h2>
           <p>
-            This version stays focused on the core night: host setup, readable karaoke on the public screen, audience submission to the queue, and the difference Auto DJ makes between singers.
+            This layer should feel like motion design, not like someone paused a live room. The job is to show how
+            one host move ripples through TV, audience, and singer.
           </p>
         </div>
         <div className="mk3-demo-story-grid">
           <div className="mk3-demo-story-steps">
-            {DEMO_STORY_BEATS.map((beat, index) => (
+            {ABSTRACT_BEATS.map((beat, index) => (
               <article
                 key={beat.id}
                 ref={(node) => {
-                  storyStepRefs.current[index] = node;
+                  abstractStepRefs.current[index] = node;
                 }}
                 data-story-index={index}
-                className={`mk3-demo-story-step${activeStoryBeat === index ? " is-active" : ""}`}
+                className={`mk3-demo-story-step${activeAbstractBeat === index ? " is-active" : ""}`}
               >
                 <span>{beat.kicker}</span>
                 <h3>{beat.title}</h3>
@@ -1356,112 +737,105 @@ const DemoExperiencePage = ({ session = {} }) => {
             ))}
           </div>
           <div className="mk3-demo-story-stage">
-            <div className={`mk3-demo-story-stage-frame is-${storyBeat.id}`}>
+            <div className={`mk3-demo-story-stage-frame is-${activeBeat.stageVariant}`}>
               <div className="mk3-demo-story-glow mk3-demo-story-glow-one" />
               <div className="mk3-demo-story-glow mk3-demo-story-glow-two" />
               <div className="mk3-demo-story-stage-header">
                 <div>
-                  <span>Focused Demo</span>
-                  <strong>{storyBeat.title}</strong>
+                  <span>Conceptual system map</span>
+                  <strong>{activeBeat.title}</strong>
                 </div>
                 <div className="mk3-demo-story-stage-meta">
-                  <span>{sanitizedRoomCode}</span>
-                  <strong>{storyBeat.host.workspace}</strong>
+                  <span>Active emphasis</span>
+                  <strong>{ABSTRACT_SURFACES[activeBeat.activeSurface]?.label || "Host Deck"}</strong>
                 </div>
               </div>
 
               <article className="mk3-demo-story-screen mk3-demo-story-screen-host">
-                <span>Host Panel</span>
-                <strong>{storyBeat.host.title}</strong>
-                {!!storyBeat.host.search && (
-                  <div className="mk3-demo-story-host-search">
-                    <span>Search</span>
-                    <strong>{storyBeat.host.search}</strong>
-                  </div>
-                )}
+                <span>Host Deck</span>
+                <strong>{activeBeat.notes.host}</strong>
+                <div className="mk3-demo-story-host-search">
+                  <span>Origin move</span>
+                  <strong>{activeBeat.signals[0]?.label || "Room cue"}</strong>
+                </div>
                 <div className="mk3-demo-story-host-queue">
-                  <span>Live queue</span>
+                  <span>What the host changes</span>
                   <div className="mk3-demo-story-host-queue-list">
-                    {storyBeat.host.queue.map((entry) => (
-                      <article key={`${storyBeat.id}_${entry.title}`}>
-                        <strong>{entry.title}</strong>
-                        <span>{entry.meta}</span>
+                    {activeBeat.signals.map((signal) => (
+                      <article key={`${activeBeat.id}_${signal.label}`}>
+                        <strong>{signal.label}</strong>
+                        <span>{ABSTRACT_SURFACES[signal.to]?.label || signal.to}</span>
                       </article>
                     ))}
                   </div>
                 </div>
-                {storyBeat.host.incoming && (
-                  <div className="mk3-demo-story-host-incoming">
-                    <span>{storyBeat.host.incoming.label}</span>
-                    <strong>{storyBeat.host.incoming.detail}</strong>
-                  </div>
-                )}
-                <p className="mk3-demo-story-surface-note">{storyBeat.host.footer}</p>
+                <p className="mk3-demo-story-surface-note">One deliberate input changes the whole room state.</p>
               </article>
 
               <article className="mk3-demo-story-screen mk3-demo-story-screen-tv">
                 <div className="mk3-demo-story-tv-stage">
                   <div className="mk3-demo-story-tv-badge">
                     <span>Public TV</span>
-                    <strong>{storyBeat.tv.badge}</strong>
+                    <strong>{activeBeat.kicker}</strong>
                   </div>
                   <div className="mk3-demo-story-tv-headline">
-                    <strong>{storyBeat.tv.headline}</strong>
+                    <strong>{activeBeat.notes.tv}</strong>
                   </div>
                   <div className="mk3-demo-story-tv-lyrics">
-                    {storyBeat.tv.lyrics.map((line, index) => (
-                      <p key={`${storyBeat.id}_tv_${index}`}>{line}</p>
+                    {activeBeat.signals.slice(0, 3).map((signal) => (
+                      <p key={`${activeBeat.id}_tv_${signal.label}`}>{signal.label}</p>
                     ))}
                   </div>
                   <div className="mk3-demo-story-tv-meter">
-                    <span>{storyBeat.tv.progressLabel}</span>
-                    <i style={{ width: `${Math.min(100, Number(storyBeat.tv.progressValue || 0))}%` }} />
+                    <span>Shared room state</span>
+                    <i style={{ width: `${38 + activeAbstractBeat * 18}%` }} />
                   </div>
                 </div>
-                <p className="mk3-demo-story-surface-note">{storyBeat.tv.note}</p>
+                <p className="mk3-demo-story-surface-note">TV translates system changes into one visible room moment.</p>
               </article>
 
               <article className="mk3-demo-story-screen mk3-demo-story-screen-phone">
                 <span>Audience App</span>
-                <strong>{storyBeat.phone.title}</strong>
-                <p className="mk3-demo-story-phone-copy">{storyBeat.phone.subtitle}</p>
+                <strong>{activeBeat.notes.audience}</strong>
+                <p className="mk3-demo-story-phone-copy">
+                  Lightweight prompts, reactions, and mode-specific controls make the crowd part of the night.
+                </p>
                 <div className="mk3-demo-story-phone-votes" aria-hidden="true">
-                  {storyBeat.phone.chips.map((chip) => (
-                    <button key={`${storyBeat.id}_${chip}`} type="button" tabIndex={-1}>{chip}</button>
+                  {activeBeat.bullets.map((item) => (
+                    <button key={`${activeBeat.id}_${item}`} type="button" tabIndex={-1}>{item}</button>
                   ))}
                 </div>
                 <div className="mk3-demo-story-phone-request">
-                  <span>Phone state</span>
-                  <strong>{storyBeat.phone.request}</strong>
+                  <span>Audience effect</span>
+                  <strong>{activeBeat.signals[1]?.label || "Shared response"}</strong>
                 </div>
                 <div className="mk3-demo-story-phone-score">
-                  <span>{storyBeat.phone.metricLabel}</span>
-                  <strong>{storyBeat.phone.metricValue}</strong>
+                  <span>Collective role</span>
+                  <strong>{ABSTRACT_SURFACES.audience.label}</strong>
                 </div>
               </article>
 
-              {storyBeat.autoDj && (
-                <div className="mk3-demo-story-autodj-compare" aria-hidden="true">
-                  <article>
-                    <span>Auto DJ Off</span>
-                    <strong>Manual gap</strong>
-                    <p>{storyBeat.autoDj.off}</p>
-                  </article>
-                  <article className="is-on">
-                    <span>Auto DJ On</span>
-                    <strong>Continuous momentum</strong>
-                    <p>{storyBeat.autoDj.on}</p>
-                  </article>
+              <article className="mk3-demo-story-screen mk3-demo-story-screen-singer">
+                <span>Singer Cue</span>
+                <strong>{activeBeat.notes.singer}</strong>
+                <div className="mk3-demo-story-singer-meter">
+                  <span>Confidence</span>
+                  <i style={{ width: `${48 + activeAbstractBeat * 11}%` }} />
                 </div>
-              )}
+                <p className="mk3-demo-story-surface-note">
+                  The performer always knows whether to lead, wait, or hand off.
+                </p>
+              </article>
             </div>
 
             <div className="mk3-demo-story-flow-grid">
-              {storyBeat.flows.map((flow) => (
-                <article key={`${storyBeat.id}_${flow.lane}`} className="mk3-demo-story-flow-card">
-                  <span>{flow.lane}</span>
-                  <strong>{flow.title}</strong>
-                  <p>{flow.detail}</p>
+              {activeBeat.signals.map((signal) => (
+                <article key={`${activeBeat.id}_${signal.from}_${signal.to}_${signal.label}`} className="mk3-demo-story-flow-card">
+                  <span>{ABSTRACT_SURFACES[signal.from]?.short} to {ABSTRACT_SURFACES[signal.to]?.short}</span>
+                  <strong>{signal.label}</strong>
+                  <p>
+                    {ABSTRACT_SURFACES[signal.from]?.label} pushes a change that lands on {ABSTRACT_SURFACES[signal.to]?.label}.
+                  </p>
                 </article>
               ))}
             </div>
@@ -1469,166 +843,54 @@ const DemoExperiencePage = ({ session = {} }) => {
         </div>
       </article>
 
-      {!isAutoplayShowcase && (
-      <article className="mk3-demo-overview">
-        <div className="mk3-chip">demo brief</div>
-        <h2>See one room move across TV, phone, and host.</h2>
-        <p>
-          Same room code. Three real BeauRocks surfaces. One guided run from host setup to full-room participation.
-        </p>
-        <div className="mk3-demo-overview-grid">
-          <article>
-            <span>Surface 01</span>
-            <strong>Public TV</strong>
-            <p>Big-screen lyrics, backing media, and live room reveals.</p>
-          </article>
-          <article>
-            <span>Surface 02</span>
-            <strong>Audience Mobile</strong>
-            <p>Join, react, vote, strum, and play from any phone.</p>
-          </article>
-          <article>
-            <span>Surface 03</span>
-            <strong>Host Control Deck</strong>
-            <p>Search, queue, launch modes, and steer the room in real time.</p>
-          </article>
-        </div>
-        <div className="mk3-demo-overview-flow">
-          <span>Scene flow</span>
-          <strong>Search, queue, singalong, games, reveal, finale.</strong>
-          <p>The live timeline below shows which surface is driving the room and where the response lands next.</p>
-        </div>
-      </article>
-      )}
-
-      <article className="mk3-demo-controls">
-        <header>
-          <h3>Demo Controls</h3>
+      <article className="mk3-demo-guided">
+        <div className="mk3-demo-guided-intro">
+          <div className="mk3-chip">auto demo</div>
+          <h2>Auto-play six sellable moments with simulated typing, clicks, taps, and mode shifts.</h2>
           <p>
-            {isAutoplayShowcase
-              ? "Guided Demo is now a focused scroll story. Switch to Live Lab when you want the full embedded surfaces and timeline controls."
-              : "Live Lab keeps the same real surfaces but lets you poke around directly with the timeline and room controls."}
+            This is a deterministic sales tool, not a live lab. The screen shells below are local-only simulations
+            of the product UI, driven by the same six-scene script every time.
           </p>
-        </header>
-        <div className="mk3-demo-toolbar">
-          <button
-            type="button"
-            className={!isAutoplayShowcase ? "active" : ""}
-            onClick={() => {
-              setDemoViewMode(DEMO_VIEW_MODES.interactive);
-              if (canRunLiveSync) {
-                setLiveSync(true);
-              } else {
-                setLiveSync(false);
-                setSyncState({ tone: "muted", message: "Live Lab uses the native surfaces. Sign in to enable scripted sync controls." });
-              }
-              trackEvent("mk_demo_view_mode", { mode: DEMO_VIEW_MODES.interactive });
-            }}
-          >
-            Live Interactive Lab
+        </div>
+
+        <div className="mk3-demo-guided-toolbar">
+          <button type="button" className={playing ? "active" : ""} onClick={() => setPlaying((prev) => !prev)}>
+            {playing ? "Pause Walkthrough" : "Resume Walkthrough"}
           </button>
           <button
             type="button"
-            className={isAutoplayShowcase ? "active" : ""}
             onClick={() => {
-              setDemoViewMode(DEMO_VIEW_MODES.autoplay);
-              setLiveSync(true);
+              setTimelineMs(0);
               setPlaying(true);
-              setSyncState({ tone: "muted", message: "Focused story mode active. Open Live Lab to inspect the real room surfaces." });
-              trackEvent("mk_demo_view_mode", { mode: DEMO_VIEW_MODES.autoplay });
+              trackEvent("mk_demo_walkthrough_restart", { source: "toolbar" });
             }}
           >
-            Guided Demo (Recommended)
+            Restart From Scene 01
           </button>
-          {!isAutoplayShowcase && (
-            <button type="button" onClick={onTogglePlayback}>
-              {playing ? "Pause Demo" : "Play Demo"}
-            </button>
-          )}
-          {!isAutoplayShowcase && (
-            <button
-              type="button"
-              onClick={() => {
-                setTimelineMs(0);
-                setPlaying(true);
-                cuePauseHistoryRef.current = new Set();
-                if (liveSync) sendDirectorAction("seek", { timelineMs: 0, sceneId: TIMELINE[0].id });
-              }}
-            >
-              Restart
-            </button>
-          )}
-          {!isAutoplayShowcase && (
-            <button
-              type="button"
-              onClick={() => setLoopPlayback((prev) => !prev)}
-            >
-              Loop: {loopPlayback ? "On" : "Off"}
-            </button>
-          )}
-          {!isAutoplayShowcase && (
-            <button
-              type="button"
-              disabled={!canRunLiveSync}
-              onClick={() => {
-                const next = !liveSync;
-                setLiveSync(next);
-                trackEvent("mk_demo_live_sync_toggle", { enabled: next ? 1 : 0 });
-                if (!next) setSyncState({ tone: "muted", message: "Scripted sync is paused." });
-              }}
-            >
-              {canRunLiveSync
-                ? `Scripted Sync: ${liveSync ? "On" : "Off"}`
-                : "Scripted Sync: Sign-in required"}
-            </button>
-          )}
-          {!isAutoplayShowcase && (
-            <button
-              type="button"
-              onClick={() => {
-                const next = !autoPauseCues;
-                setAutoPauseCues(next);
-                trackEvent("mk_demo_autopause_toggle", { enabled: next ? 1 : 0 });
-              }}
-            >
-              Cue Pause: {autoPauseCues ? "On" : "Off"}
-            </button>
-          )}
-          {!isAutoplayShowcase && (
-            <button
-              type="button"
-              onClick={() => {
-                setSurfaceReloadToken((prev) => prev + 1);
-                trackEvent("mk_demo_surfaces_refresh", { room_code: sanitizedRoomCode });
-              }}
-            >
-              Refresh Surfaces
-            </button>
-          )}
+          <span>{formatClock(totalSceneElapsedMs)} / {formatClock(WALKTHROUGH_TOTAL_MS)}</span>
         </div>
-        {!isAutoplayShowcase && (
-        <div className="mk3-demo-progress">
-          <strong>{formatClock(timelineMs)}</strong>
-          <input
-            type="range"
-            min={0}
-            max={DEMO_TOTAL_MS}
-            step={200}
-            value={Math.round(timelineMs)}
-            onChange={(event) => setTimelineMs(clampNumber(event.target.value, 0, DEMO_TOTAL_MS, 0))}
-            onMouseUp={() => {
-              if (liveSync) sendDirectorAction("seek");
-            }}
-            onTouchEnd={() => {
-              if (liveSync) sendDirectorAction("seek");
-            }}
-          />
-          <span>{formatClock(DEMO_TOTAL_MS)}</span>
+
+        <div className="mk3-demo-guided-status">
+          <div>
+            <span>{activeScene.kicker}</span>
+            <strong>{activeScene.label}</strong>
+          </div>
+          <div>
+            <span>scene progress</span>
+            <strong>{scenePercent}%</strong>
+          </div>
+          <div>
+            <span>next scene</span>
+            <strong>{nextScene?.label || "Loop to Scene 01"}</strong>
+          </div>
         </div>
-        )}
-        {!isAutoplayShowcase && (
-        <div className="mk3-demo-scene-nav">
-          {TIMELINE.map((scene) => (
+
+        <div className="mk3-demo-guided-progress">
+          <i style={{ width: `${Math.min(100, (totalSceneElapsedMs / WALKTHROUGH_TOTAL_MS) * 100)}%` }} />
+        </div>
+
+        <div className="mk3-demo-guided-scene-nav">
+          {WALKTHROUGH_TIMELINE.map((scene) => (
             <button
               key={scene.id}
               type="button"
@@ -1639,217 +901,291 @@ const DemoExperiencePage = ({ session = {} }) => {
             </button>
           ))}
         </div>
-        )}
-      </article>
 
-      {!isAutoplayShowcase && (
-      <article className="mk3-demo-director">
-        <div className="mk3-demo-director-head">
-          <div>
-            <span>timeline view</span>
-            <strong>{activeScene.label}</strong>
-          </div>
-          <div>
-            <span>scene progress</span>
-            <strong>{scenePercent}%</strong>
-          </div>
-          <div>
-            <span>next up</span>
-            <strong>{nextScene?.label || "Finale close"}</strong>
-          </div>
+        <div className="mk3-demo-guided-summary">
+          <strong>{activeScene.headline}</strong>
+          <p>{activeScene.summary}</p>
         </div>
-        <div className="mk3-demo-timeline-track" aria-hidden="true">
-          {TIMELINE.map((scene) => {
-            const isActive = scene.id === activeScene.id;
-            const isPast = timelineMs > scene.endMs;
-            return (
-              <div
-                key={scene.id}
-                className={`mk3-demo-timeline-stop${isActive ? " active" : ""}${isPast ? " is-past" : ""}`}
-              >
-                <span>{scene.label}</span>
-                <i style={{ width: isActive ? `${scenePercent}%` : isPast ? "100%" : "0%" }} />
+
+        <div className="mk3-demo-shell mk3-demo-shell-testing">
+          <article className="mk3-demo-surface mk3-demo-host">
+            <header>
+              <span>Host Deck</span>
+              <strong>{activeScene.host.panel}</strong>
+            </header>
+            <div className="mk3-demo-surface-kicker">
+              <span>{activeScene.host.status}</span>
+              <strong>{activeScene.host.actionLabel}</strong>
+            </div>
+            <div className="mk3-demo-surface-pill-row">
+              <span>Simulated host UI</span>
+              <span>Scene {sceneNumber}</span>
+              <span>{activeScene.kicker}</span>
+            </div>
+            <div className="mk3-demo-frame-wrap mk3-demo-host-frame-wrap">
+              <div className="mk3-demo-host-sim mk3-demo-host-stage">
+                <div className="mk3-demo-host-top-row">
+                  <span>room live</span>
+                  <span>{activeScene.label}</span>
+                  <span>{activeScene.singer.name} on deck</span>
+                </div>
+                <div className="mk3-demo-host-search-panel">
+                  <span>Workspace</span>
+                  <strong>{activeScene.host.panel}</strong>
+                  <div className="mk3-demo-host-search-input">
+                    <span>{activeScene.host.search ? "Catalog search" : "Primary action"}</span>
+                    <strong>{activeScene.host.search ? (hostTypedSearch || " ") : activeScene.host.actionLabel}</strong>
+                    {activeScene.host.search && <i />}
+                  </div>
+                </div>
+                <div className="mk3-demo-host-result-list">
+                  {hostResults.map((result, index) => (
+                    <article key={`${activeScene.id}_${result.title}`} className={index === 0 ? "is-primary" : ""}>
+                      <div>
+                        <strong>{result.title}</strong>
+                        <span>{result.meta}</span>
+                      </div>
+                      <b>{result.state}</b>
+                    </article>
+                  ))}
+                </div>
+                <div className="mk3-demo-host-queue-stack">
+                  <span>Live queue</span>
+                  <div className="mk3-demo-story-host-queue-list">
+                    {queueSnapshot.map((entry) => (
+                      <article key={`${activeScene.id}_${entry.title}`}>
+                        <strong>{entry.title}</strong>
+                        <span>{entry.meta}</span>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+                <div className="mk3-demo-host-controls">
+                  {activeScene.host.controls.map((control, index) => (
+                    <button
+                      key={`${activeScene.id}_${control}`}
+                      type="button"
+                      className={index === activeScene.host.activeControl && hostControlProgress > 0.22 ? "active" : ""}
+                      tabIndex={-1}
+                    >
+                      {control}
+                    </button>
+                  ))}
+                </div>
+                <div className="mk3-demo-host-tooltip">
+                  <span className="mk3-demo-host-tooltip-kicker">Viewer takeaway</span>
+                  <strong>{activeScene.host.actionCopy}</strong>
+                  <p>{activeScene.summary}</p>
+                  <div className="mk3-demo-host-tooltip-result">{activeScene.callouts[0]?.detail}</div>
+                </div>
+                <div className="mk3-demo-host-actions-mini">
+                  <span className="active">Host</span>
+                  <span className={roomEnergy > 44 ? "active" : ""}>TV</span>
+                  <span className={activeActionIndex > 0 ? "active" : ""}>Audience</span>
+                  <span className={singerMeter > 58 ? "active" : ""}>Singer</span>
+                </div>
+                <div className="mk3-demo-host-stats">
+                  <div>
+                    <span>scene progress</span>
+                    <strong>{scenePercent}%</strong>
+                  </div>
+                  <div>
+                    <span>room energy</span>
+                    <strong>{roomEnergy}</strong>
+                  </div>
+                  <div>
+                    <span>singer ready</span>
+                    <strong>{singerMeter}%</strong>
+                  </div>
+                </div>
+                <div className="mk3-demo-sim-cursor is-host" style={hostCursorStyle}>
+                  <span>{activeScene.host.search ? "type" : "click"}</span>
+                </div>
               </div>
-            );
-          })}
+            </div>
+            <div className="mk3-demo-surface-status">
+              <span>Host action remains readable, so every downstream change feels caused instead of random.</span>
+              <strong>{activeScene.host.actionLabel}</strong>
+            </div>
+          </article>
+
+          <article className={`mk3-demo-surface mk3-demo-tv is-${tvSurfaceVariant}`}>
+            <header>
+              <span>Public TV</span>
+              <strong>{activeScene.tv.mode}</strong>
+            </header>
+            <div className="mk3-demo-surface-kicker">
+              <span>{activeScene.tv.footer}</span>
+              <strong>{activeScene.tv.title}</strong>
+            </div>
+            <div className="mk3-demo-surface-pill-row">
+              <span>Shared room state</span>
+              <span>{activeScene.singer.name} live context</span>
+              <span>{totalConnectedLabel}</span>
+            </div>
+            <div className="mk3-demo-frame-wrap mk3-demo-tv-frame-wrap">
+              <div className="mk3-demo-tv-overlay">
+                <div className="mk3-demo-tv-badges">
+                  <span>Public TV</span>
+                  <strong>{activeScene.label}</strong>
+                </div>
+                <div className={`mk3-demo-beat-light${sceneProgress > 0.22 ? " is-live" : ""}`} />
+                <div className="mk3-demo-tv-stage">
+                  <div className="mk3-demo-tv-singer-card">
+                    <span>{activeScene.singer.name}</span>
+                    <strong>{activeScene.singer.prompt}</strong>
+                  </div>
+                  {activeScene.id === "trivia_break" ? (
+                    <div className="mk3-demo-trivia">
+                      <span>{activeScene.tv.mode}</span>
+                      <strong>{activeScene.tv.title}</strong>
+                      <div className="mk3-demo-trivia-options">
+                        {triviaRows.map((row) => (
+                          <div key={`${activeScene.id}_${row.label}`} className={`mk3-demo-trivia-option${row.highlight ? " is-highlight" : ""}`}>
+                            <span>{row.label}</span>
+                            <div className="mk3-demo-trivia-bar">
+                              <div style={{ width: `${Math.min(100, row.value)}%` }} />
+                            </div>
+                            <b>{row.value}%</b>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={`mk3-demo-lyrics${activeScene.id === "guitar_vibe_sync" ? " is-instrumental" : ""}`}>
+                      <div className="mk3-demo-lyric-meta">
+                        <span>{activeScene.tv.mode}</span>
+                        <span>{formatClock(totalSceneElapsedMs)}</span>
+                      </div>
+                      <p className="mk3-demo-tv-lyric-active">{activeLyric}</p>
+                      <p className="mk3-demo-tv-lyric-next">{nextLyric}</p>
+                      <p className="mk3-demo-tv-mode-note">{activeScene.tv.footer}</p>
+                    </div>
+                  )}
+                  <div className="mk3-demo-vibe-meter">
+                    <span>Room energy</span>
+                    <div>
+                      <i style={{ width: `${roomEnergy}%` }} />
+                    </div>
+                  </div>
+                  <div className="mk3-demo-reaction-rail">
+                    {reactionItems.map((item) => (
+                      <div key={`${activeScene.id}_${item.label}`} className="mk3-demo-reaction-item">
+                        <span>{item.label.slice(0, 1)}</span>
+                        <small>{item.count}</small>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mk3-demo-surface-status">
+              <span>TV makes the shared moment obvious for the whole room.</span>
+              <strong>{activeScene.tv.mode}</strong>
+            </div>
+          </article>
+
+          <article className="mk3-demo-surface mk3-demo-audience">
+            <header>
+              <span>Audience App</span>
+              <strong>{activeScene.audience.title}</strong>
+            </header>
+            <div className="mk3-demo-surface-kicker">
+              <span>{activeScene.audience.subtitle}</span>
+              <strong>{activeScene.audience.metricValue}</strong>
+            </div>
+            <div className="mk3-demo-surface-pill-row">
+              <span>Room code ready</span>
+              <span>{activeScene.kicker}</span>
+              <span>{activeScene.audience.metricLabel}</span>
+            </div>
+            <div className="mk3-demo-frame-wrap mk3-demo-audience-frame-wrap">
+              <div className="mk3-demo-phone-shell">
+                <div className="mk3-demo-phone-notch" />
+                <div className="mk3-demo-phone-screen">
+                  <div className="mk3-demo-surface-body mk3-demo-audience-sim">
+                    <div className="mk3-demo-phone-appbar">
+                      <span>Audience App</span>
+                      <strong>{activeScene.label}</strong>
+                    </div>
+                    <div className="mk3-demo-audience-identity-card">
+                      <span>Signed in</span>
+                      <strong>{activeScene.singer.name}</strong>
+                      <p>{activeScene.singer.status}</p>
+                    </div>
+                    <div className="mk3-demo-audience-grid">
+                      {audienceRoster.map((entry) => (
+                        <div key={`${activeScene.id}_${entry.label}`} className={entry.live ? "online" : ""}>
+                          {entry.label}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mk3-demo-mini-actions">
+                      {activeScene.audience.actions.map((action, index) => (
+                        <button
+                          key={`${activeScene.id}_${action}`}
+                          type="button"
+                          className={index <= activeActionIndex ? "active" : ""}
+                          tabIndex={-1}
+                        >
+                          {action}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mk3-demo-audience-feed">
+                      {activeScene.audience.feed.map((item, index) => (
+                        <div key={`${activeScene.id}_${item}`} className={index === activeFeedIndex ? "is-active" : ""}>
+                          <strong>{index === activeFeedIndex ? "Live update" : "Queued"}</strong>
+                          <span>{item}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mk3-demo-audience-banner">
+                      <span>{activeScene.audience.metricLabel}</span>
+                      <strong>{activeScene.audience.metricValue}</strong>
+                      <p>{activeScene.callouts[1]?.detail}</p>
+                    </div>
+                  </div>
+                  <div className="mk3-demo-sim-tap" style={audienceTapStyle}>
+                    <i />
+                    <span>tap</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mk3-demo-surface-status">
+              <span>Audience input looks lightweight, but it changes the room state visibly.</span>
+              <strong>{activeScene.audience.metricValue}</strong>
+            </div>
+          </article>
         </div>
-        <div className="mk3-demo-director-grid">
-          <article className="mk3-demo-director-card">
-            <span>host move</span>
-            <strong>{activeHostAction?.label || surfacePlan.hostFocus}</strong>
-            <p>{activeHostAction?.explain || surfacePlan.hostStatus}</p>
-          </article>
-          <article className="mk3-demo-director-card">
-            <span>audience state</span>
-            <strong>{audienceStateLabel}</strong>
-            <p>{audienceActionLabel}</p>
-          </article>
-          <article className="mk3-demo-director-card">
-            <span>room state</span>
-            <strong>{sanitizedRoomCode}</strong>
-            <p>{syncState.message}</p>
-          </article>
-        </div>
-        <div className="mk3-demo-direction-grid">
-          {demoSignalFlows.map((flow) => (
-            <article key={`${activeScene.id}_${flow.lane}_${flow.title}`} className="mk3-demo-direction-card">
-              <span>{flow.lane}</span>
-              <strong>{flow.title}</strong>
-              <p>{flow.detail}</p>
+
+        <div className="mk3-demo-guided-callouts">
+          {activeScene.callouts.map((callout) => (
+            <article key={`${activeScene.id}_${callout.title}`}>
+              <span>{callout.title}</span>
+              <strong>{callout.detail}</strong>
             </article>
           ))}
         </div>
-      </article>
-      )}
 
-      {!isAutoplayShowcase && (
-        <div ref={demoShellRef} className="mk3-demo-shell">
-          <article className={`mk3-demo-surface mk3-demo-tv is-${activeScene.mode}${sceneShiftActive ? " is-shifting" : ""}`}>
-          <header>
-            <span>Public TV</span>
-            <strong>{activeScene.label}</strong>
-            <a href={launchLinks.tv} target="_blank" rel="noreferrer">
-              Open
-            </a>
-          </header>
-          <div className="mk3-demo-surface-kicker">
-            <span>{surfacePlan.tvFocus}</span>
-            <strong>{activeScene.songTitle || stageModeLabel}</strong>
+        <div className="mk3-demo-guided-outro">
+          <div>
+            <span>Positioning note</span>
+            <strong>This auto demo is simulated product choreography, not a live room embed.</strong>
           </div>
-          <div className="mk3-demo-surface-pill-row">
-            <span>TV receiving host cues</span>
-            <span>TV reflecting audience input</span>
+          <p>
+            That keeps the sales story stable, removes sizing and layering failures from real iframes, and avoids
+            the continuous reads and writes the current implementation creates.
+          </p>
+          <div className="mk3-demo-guided-outro-actions">
+            {typeof navigate === "function" && (
+              <>
+                <button type="button" onClick={() => navigate("for_hosts")}>See Host Story</button>
+                <button type="button" onClick={() => navigate("discover")}>Explore Discovery</button>
+              </>
+            )}
           </div>
-          <div className="mk3-demo-frame-wrap mk3-demo-tv-frame-wrap">
-            <iframe
-              title="Public TV surface"
-              src={iframeMountReady ? launchLinks.tv : "about:blank"}
-              className="mk3-demo-iframe"
-              loading={isAutoplayShowcase ? "eager" : "lazy"}
-              allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
-            />
-          </div>
-          <div className="mk3-demo-surface-status">
-            <span>{isAutoplayShowcase ? surfacePlan.tvStatus : activeScene.title}</span>
-            <strong>{activeScene.songTitle || stageModeLabel}</strong>
-          </div>
-          </article>
-
-          <article className={`mk3-demo-surface mk3-demo-audience${sceneShiftActive ? " is-shifting" : ""}`}>
-          <header>
-            <span>Audience View</span>
-            <strong>{crowdSize} connected</strong>
-            <a href={launchLinks.audience} target="_blank" rel="noreferrer">
-              Open
-            </a>
-          </header>
-          <div className="mk3-demo-surface-kicker">
-            <span>{surfacePlan.audienceFocus}</span>
-            <strong>{sceneInteractionTotal} scripted interactions</strong>
-          </div>
-          <div className="mk3-demo-surface-pill-row">
-            <span>{audienceStateLabel}</span>
-            <span>Joined to {sanitizedRoomCode}</span>
-            <span>{audienceActionLabel}</span>
-          </div>
-          <div className="mk3-demo-frame-wrap mk3-demo-audience-frame-wrap">
-            <div className="mk3-demo-phone-shell">
-              <div className="mk3-demo-phone-notch" />
-              <div className="mk3-demo-phone-screen">
-                <iframe
-                  title="Audience phone viewport"
-                  src={iframeMountReady ? launchLinks.audience : "about:blank"}
-                  className="mk3-demo-iframe mk3-demo-iframe-mobile"
-                  loading={isAutoplayShowcase ? "eager" : "lazy"}
-                  allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
-                />
-              </div>
-            </div>
-          </div>
-          <div className="mk3-demo-surface-status">
-            <span>
-              {isAutoplayShowcase
-                ? surfacePlan.audienceStatus
-                : `Mobile-framed audience client for room ${sanitizedRoomCode}`}
-            </span>
-            <strong>{sceneInteractionTotal} interactions this cycle</strong>
-          </div>
-          </article>
-
-          <article className={`mk3-demo-surface mk3-demo-host${sceneShiftActive ? " is-shifting" : ""}`}>
-          <header>
-            <span>Host Deck</span>
-            <strong>{isAutoplayShowcase ? surfacePlan.hostFocus : "Live host deck"}</strong>
-            <a href={launchLinks.host} target="_blank" rel="noreferrer">
-              Open
-            </a>
-          </header>
-          <div className="mk3-demo-surface-kicker">
-            <span>{surfacePlan.hostFocus}</span>
-            <strong>{activeHostAction?.label || "Room flow in progress"}</strong>
-          </div>
-          <div className="mk3-demo-surface-pill-row">
-            <span>{hostWorkspaceLabel}</span>
-            <span>Room attached: {sanitizedRoomCode}</span>
-            <span>{activeHostAction?.control || activeScene.mode}</span>
-          </div>
-          <div className="mk3-demo-frame-wrap mk3-demo-host-frame-wrap mk3-demo-host-frame-wrap-live">
-            <iframe
-              title="Host deck surface"
-              src={iframeMountReady ? launchLinks.host : "about:blank"}
-              className="mk3-demo-iframe"
-              loading={isAutoplayShowcase ? "eager" : "lazy"}
-              allow="autoplay; fullscreen; clipboard-read; clipboard-write; microphone"
-            />
-          </div>
-          <div className="mk3-demo-surface-status">
-            <span>
-              {isAutoplayShowcase
-                ? surfacePlan.hostStatus
-                : "Native host surface for room control and queue management"}
-            </span>
-            <strong>
-              {syncState.tone === "ok"
-                ? "Sync healthy"
-                : syncState.tone === "error"
-                  ? "Sync issue"
-                  : isAutoplayShowcase
-                    ? "Script running"
-                    : "Interactive live view"}
-            </strong>
-          </div>
-          </article>
-        </div>
-      )}
-
-      <article className="mk3-demo-launch">
-        <h3>{isAutoplayShowcase ? "Open The Real Surfaces Behind This Story" : "Launch Real Surfaces From This Room Code"}</h3>
-        <p>
-          {isAutoplayShowcase
-            ? "The scroll story is the focused pitch. These links still open the real BeauRocks host, TV, and audience surfaces if you want to inspect the live product underneath it."
-            : "Live Interactive Lab embeds the native room surfaces so you can inspect the actual product behavior and controls for this demo room."}
-        </p>
-        <div className={`mk3-inline-status ${syncState.tone === "error" ? "mk3-status-error" : syncState.tone === "ok" ? "mk3-inline-next" : ""}`}>
-          {syncState.message}
-        </div>
-        <div className="mk3-demo-launch-row">
-          <label>
-            Demo Room Code
-            <input
-              value={roomCode}
-              onChange={(event) => setRoomCode(normalizeRoomCode(event.target.value))}
-              placeholder="DEMO001"
-            />
-          </label>
-          <a href={launchLinks.audience} target="_blank" rel="noreferrer">
-            Open Audience
-          </a>
-          <a href={launchLinks.tv} target="_blank" rel="noreferrer">
-            Open Public TV
-          </a>
-          <a href={launchLinks.host} target="_blank" rel="noreferrer">
-            Open Host Deck
-          </a>
         </div>
       </article>
     </section>
@@ -1857,4 +1193,3 @@ const DemoExperiencePage = ({ session = {} }) => {
 };
 
 export default DemoExperiencePage;
-

@@ -6,54 +6,54 @@ import {
 } from "./shared";
 
 const FAN_BADGES = [
-  "Audience joins fast",
-  "Playback your way",
-  "Host control on demand",
+  "Start in minutes",
+  "Guests join from their phones",
+  "Keep the room engaged",
 ];
 
 const VISUAL_CARDS = [
   {
     title: "Playback that fits the room",
-    copy: "Run the night with YouTube, Apple Music, local media, web video, and Spotify soon.",
+    copy: "Use the music sources your night already depends on, from streaming picks to local media.",
     imageUrl: "/images/marketing/tv-surface-live.png",
   },
   {
     title: "Guests join fast",
-    copy: "The crowd can react, vote, and jump in without creating an account first.",
+    copy: "Guests can join, react, vote, and play along from their phones in seconds.",
     imageUrl: "/images/marketing/BeauRocks-Audienceapp.png",
   },
   {
-    title: "Host control when you need it",
-    copy: "When the room needs steering, the host panel is there for queue, TV, overlays, and flow.",
+    title: "Real host controls when you want them",
+    copy: "Keep the queue moving, switch the TV view, and steer the night without losing the room.",
     imageUrl: "/images/marketing/BeauRocks-HostPanel.png",
   },
 ];
 
 const QUICK_PROOF = [
   {
-    title: "Built for the night itself",
-    copy: "People show up, the room wakes up fast, and the night feels hosted instead of improvised.",
+    title: "Feels organized from the start",
+    copy: "Music starts quickly, guests know how to join, and the night feels hosted instead of improvised.",
   },
   {
-    title: "The room stays in it",
-    copy: "Reactions, games, lyrics, TV visuals, and host cues keep the whole room involved.",
+    title: "More people stay involved",
+    copy: "Lyrics, reactions, games, and TV moments keep the whole room engaged, not just the singer on stage.",
   },
   {
-    title: "Simple first, deeper when needed",
-    copy: "Keep it lightweight for casual nights or open the full host panel when you want more control.",
+    title: "Simple when you want it, deeper when you need it",
+    copy: "Run a relaxed karaoke night or open up the full host dashboard when the room needs more control.",
   },
 ];
 
 const HERO_SIGNAL_CARDS = [
   {
-    title: "Guests do not need accounts",
-    copy: "Joining should feel instant, not like signing up for another platform.",
+    title: "Easy for guests to join",
+    copy: "Guests can get into the room quickly instead of stopping to create another account.",
     imageUrl: "/images/marketing/BeauRocks-Audienceapp.png",
     imageAlt: "BeauRocks audience app",
   },
   {
-    title: "Hosts still get a real command center",
-    copy: "When the room needs direction, the host panel is ready.",
+    title: "Hosts still get a real control center",
+    copy: "When the night needs direction, the host dashboard is ready with the tools to keep it moving.",
     imageUrl: MARKETING_BRAND_BADGE_URL,
     imageAlt: "BeauRocks badge",
   },
@@ -75,12 +75,12 @@ const ForFansPage = ({ navigate, heroStats }) => {
           <div className="mk3-persona-kicker">beaurocks karaoke overview</div>
           <div className="mk3-fans-home-brand-pill">
             <img src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks badge" />
-            <span>Easy to host. Easy to join. Built for full-room energy.</span>
+            <span>Easy to host. Easy to join. Built for a room that stays engaged.</span>
           </div>
-          <h1>Host the kind of karaoke night people want to stay late for.</h1>
+          <h1>Run a karaoke night that feels smooth from the first song to the last encore.</h1>
           <p>
-            Music starts fast, guests jump in without friction, and the night feels hosted instead
-            of improvised.
+            BeauRocks helps you start quickly, keep guests involved, and give the room a better
+            experience than passing around a paper slip and hoping for the best.
           </p>
           <div className="mk3-persona-badge-row">
             {FAN_BADGES.map((badge) => (
@@ -95,12 +95,12 @@ const ForFansPage = ({ navigate, heroStats }) => {
               </div>
             )}
             <div className="mk3-fans-home-stat-card">
-              <strong>Playback flexibility</strong>
-              <span>YouTube, Apple Music, local files, web video</span>
+              <strong>Flexible playback</strong>
+              <span>Streaming, local files, and web video for the kind of night you want to run</span>
             </div>
             <div className="mk3-fans-home-stat-card">
-              <strong>Audience-first flow</strong>
-              <span>Guests react and play along without account friction</span>
+              <strong>Guest-friendly flow</strong>
+              <span>People can join and interact without turning the night into a signup process</span>
             </div>
           </div>
           <div className="mk3-actions-inline">
@@ -153,7 +153,7 @@ const ForFansPage = ({ navigate, heroStats }) => {
                 <span>DJ BeauRocks</span>
               </div>
               <strong>AAHF: Karaoke Kickoff</strong>
-              <span>Hosted, crowd-forward, and bigger than a shared playlist</span>
+              <span>A hosted karaoke night built to feel bigger, louder, and more connected</span>
             </div>
           </article>
 
@@ -183,7 +183,7 @@ const ForFansPage = ({ navigate, heroStats }) => {
       <section className="mk3-detail-card mk3-fans-home-action-band mk3-zone">
         <div>
           <div className="mk3-persona-kicker">what beaurocks is for</div>
-          <h2>Start simple. Go deeper only when you want to.</h2>
+          <h2>Start with the basics. Add more when your night is ready for it.</h2>
         </div>
         <div className="mk3-actions-inline">
           <button
@@ -193,7 +193,7 @@ const ForFansPage = ({ navigate, heroStats }) => {
               navigate("for_hosts");
             }}
           >
-            Open Host Overview
+            See Host Tools
           </button>
           <button
             type="button"
@@ -202,7 +202,7 @@ const ForFansPage = ({ navigate, heroStats }) => {
               navigate("discover");
             }}
           >
-            Open Discover
+            Browse Karaoke Nights
           </button>
         </div>
       </section>
