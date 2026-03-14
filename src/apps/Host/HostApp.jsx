@@ -5786,6 +5786,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         () => normalizeHostPermissionLevel(orgContext?.role || ''),
         [orgContext?.role]
     );
+    const canPermanentlyDeleteRooms = hostPermissionLevel === 'owner' || hostPermissionLevel === 'admin';
     const hostAuthSessionReady = !!(uid || auth.currentUser?.uid);
     const hasWorkspaceIdentityReady = Boolean(String(orgContext?.orgId || '').trim());
     const hasHostProfileIdentity = Boolean(String(hostName || '').trim());
@@ -7665,7 +7666,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         nightSetupPrimaryMode
     ]);
 
-    const clearRoomDataForCode = async (targetRoomCode = '') => {
+    const purgeRoomArtifactsForCode = async (targetRoomCode = '') => {
         const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
         if (!normalizedCode) return;
         const collections = [
@@ -7686,6 +7687,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             () => removeHostRoomDiscoveryListing(normalizedCode),
             { scope: 'removeHostRoomDiscoveryListing' }
         );
+    };
+    const clearRoomDataForCode = async (targetRoomCode = '') => {
+        const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
+        if (!normalizedCode) return;
+        await purgeRoomArtifactsForCode(normalizedCode);
         await updateRoomByCode(normalizedCode, {
             activeMode: 'karaoke',
             activeScreen: 'stage',
@@ -7793,6 +7799,48 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hostLogger.warn('Landing room cleanup failed', { roomCode: normalizedCode, error });
             setRoomManagerError('Could not clean room data.');
             toast('Cleanup failed.');
+        } finally {
+            setRoomManagerBusyCode('');
+            setRoomManagerBusyAction('');
+        }
+    };
+    const runLandingRoomPermanentDelete = async (targetRoomCode = '') => {
+        const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
+        if (!normalizedCode) {
+            toast('Enter a room code first');
+            setRoomManagerError('Enter a room code first.');
+            return;
+        }
+        if (!canPermanentlyDeleteRooms) {
+            toast('Only workspace owners/admins can permanently delete rooms.');
+            setRoomManagerError('Only workspace owners/admins can permanently delete rooms.');
+            return;
+        }
+        const ok = confirmRoomManagerAction({
+            actionName: 'permanently delete this room and all room data',
+            roomCode: normalizedCode,
+            requireTypedCode: true
+        });
+        if (!ok) return;
+        setRoomManagerBusyCode(normalizedCode);
+        setRoomManagerBusyAction('delete');
+        setRoomManagerError('');
+        try {
+            const activeUid = await ensureActiveUid();
+            if (!activeUid) {
+                throw new Error('Auth unavailable');
+            }
+            await runWithAppCheckWarmup(
+                () => assertRoomHostAccess(normalizedCode),
+                { scope: 'assertRoomHostAccess' }
+            );
+            await purgeRoomArtifactsForCode(normalizedCode);
+            await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', normalizedCode));
+            toast(`Room ${normalizedCode} permanently deleted.`);
+        } catch (error) {
+            hostLogger.warn('Permanent room delete failed', { roomCode: normalizedCode, error });
+            setRoomManagerError('Could not permanently delete room.');
+            toast('Permanent delete failed.');
         } finally {
             setRoomManagerBusyCode('');
             setRoomManagerBusyAction('');
@@ -11857,6 +11905,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         ? 'Archiving...'
                                         : roomManagerBusyAction === 'restore'
                                             ? 'Restoring...'
+                                            : roomManagerBusyAction === 'delete'
+                                                ? 'Deleting...'
                                             : 'Working...'
                             ) : '';
                             const modifiedMs = roomItem.updatedAtMs || roomItem.createdAtMs || nowMs();
@@ -11911,6 +11961,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                             ? busyLabel
                                                             : roomItem.archived ? 'Restore' : 'Archive'}
                                                     </button>
+                                                    {canPermanentlyDeleteRooms && (
+                                                        <button
+                                                            onClick={() => runLandingRoomPermanentDelete(roomItem.code)}
+                                                            disabled={roomBusy || joiningRoom}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnDanger} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            {roomBusy && roomManagerBusyAction === 'delete' ? 'Deleting...' : 'Delete Forever'}
+                                                        </button>
+                                                    )}
                                                 </>
                                             )}
                                         </div>
@@ -12296,7 +12355,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 >
                                     {joiningRoom ? 'Opening...' : 'Open Diagnostics'}
                                 </button>
+                                {canPermanentlyDeleteRooms && (
+                                    <button
+                                        onClick={() => runLandingRoomPermanentDelete(roomCodeInput)}
+                                        disabled={joiningRoom || !!roomManagerBusyCode}
+                                        className={`${STYLES.btnStd} ${STYLES.btnDanger} px-6 py-3 text-sm uppercase tracking-[0.2em] sm:min-w-[170px] ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    >
+                                        {roomManagerBusyAction === 'delete' && roomManagerBusyCode === String(roomCodeInput || '').trim().toUpperCase() ? 'Deleting...' : 'Delete Forever'}
+                                    </button>
+                                )}
                             </div>
+                            {canPermanentlyDeleteRooms && (
+                                <div className="mt-2 text-[11px] text-rose-200/85">
+                                    Permanent delete removes the room doc, queue/history/activity, uploads, and public listing. Type the room code to confirm.
+                                </div>
+                            )}
                         </div>
                         <details
                             className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left"

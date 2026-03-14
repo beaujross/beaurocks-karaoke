@@ -830,6 +830,46 @@ const getTapCoach = (scene, activeIndex = 0) => {
   }
 };
 
+const getSceneSequence = (scene, tapCoach) => {
+  switch (scene?.id) {
+    case "join_identity":
+      return [
+        { surface: "host", title: "Host opens the room", detail: "The live deck pushes the room code and entry path first." },
+        { surface: "audience", title: "Guests claim identity", detail: "Name and emoji picks happen before any deeper UI appears." },
+        { surface: "tv", title: "Public TV reflects arrivals", detail: "The room can see that people are landing in real time." },
+      ];
+    case "trivia_break":
+      return [
+        { surface: "host", title: "Host launches trivia", detail: "One clear host action starts the side round." },
+        { surface: "audience", title: `Audience answers ${tapCoach.prompt}`, detail: "The phone prompt only appears while voting is the active thing." },
+        { surface: "tv", title: "TV tallies the room", detail: "The public screen becomes the reveal and score surface." },
+      ];
+    default:
+      return [
+        { surface: "host", title: activeSceneSurfaceLabel(scene, "host"), detail: scene?.host?.actionCopy || "The host causes the shift first." },
+        { surface: "tv", title: activeSceneSurfaceLabel(scene, "tv"), detail: "The public screen makes the change legible to the room." },
+        { surface: "audience", title: `${tapCoach.title}: ${tapCoach.prompt}`, detail: tapCoach.detail },
+      ];
+  }
+};
+
+const activeSceneSurfaceLabel = (scene, surface) => {
+  if (surface === "host") return scene?.host?.actionLabel || "Host action";
+  if (surface === "tv") return scene?.tv?.mode || "TV reaction";
+  return scene?.audience?.title || "Audience action";
+};
+
+const getSequenceIndex = (sceneId = "", progress = 0) => {
+  if (sceneId === "trivia_break") {
+    if (progress < 0.26) return 0;
+    if (progress < 0.7) return 1;
+    return 2;
+  }
+  if (progress < 0.34) return 0;
+  if (progress < 0.66) return 1;
+  return 2;
+};
+
 const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
   const isAutoPage = String(demoMode || "").trim().toLowerCase() === "auto";
   const [timelineMs, setTimelineMs] = useState(0);
@@ -988,6 +1028,15 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     () => getTapCoach(activeScene, activeActionIndex),
     [activeActionIndex, activeScene]
   );
+  const sceneSequence = useMemo(
+    () => getSceneSequence(activeScene, tapCoach),
+    [activeScene, tapCoach]
+  );
+  const activeSequenceIndex = useMemo(
+    () => getSequenceIndex(activeScene.id, sceneProgress),
+    [activeScene.id, sceneProgress]
+  );
+  const activeSequenceStep = sceneSequence[activeSequenceIndex] || sceneSequence[0];
   const activeLyric = activeScene.tv.lines[activeTvLineIndex] || activeScene.tv.lines[0] || "";
   const nextLyric = activeScene.tv.lines[Math.min(activeScene.tv.lines.length - 1, activeTvLineIndex + 1)] || "";
   const totalConnectedLabel = activeScene.id === "join_identity" ? "08 joined" : activeScene.audience.metricValue;
@@ -1060,7 +1109,15 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                     <strong key={`${beat.id}_${item}`}>{item}</strong>
                   ))}
                 </div>
-                <div className="mk3-demo-story-events">
+                <div className="mk3-demo-story-step-progress">
+                  {(ABSTRACT_MOMENTS[beat.id] || []).map((moment) => (
+                    <b key={`${beat.id}_${moment.id}`} className={activeAbstractEvent?.id === moment.id ? "is-active" : ""} />
+                  ))}
+                </div>
+                <div className="mk3-demo-story-step-hint">
+                  Scroll to animate the room. The stage on the right carries the moment-by-moment changes.
+                </div>
+                <div className="mk3-demo-story-scroll-track">
                   {(ABSTRACT_MOMENTS[beat.id] || []).map((moment, momentIndex) => (
                     <article
                       key={moment.id}
@@ -1071,8 +1128,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                       className={`mk3-demo-story-event${activeAbstractEvent?.id === moment.id ? " is-active" : ""}`}
                     >
                       <span>{moment.kicker}</span>
-                      <strong>{moment.title}</strong>
-                      <p>{moment.detail}</p>
+                      <strong>{momentIndex + 1}</strong>
                       <div className="mk3-demo-story-event-meta">
                         <i />
                         <b>{momentIndex + 1}/4</b>
@@ -1085,7 +1141,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
             ))}
           </div>
           <div className="mk3-demo-story-stage">
-            <div className={`mk3-demo-story-stage-frame is-${activeBeat.stageVariant}`}>
+            <div className={`mk3-demo-story-stage-frame is-${activeBeat.stageVariant} is-moment-${activeAbstractMomentIndex + 1}`}>
               <div className="mk3-demo-story-glow mk3-demo-story-glow-one" />
               <div className="mk3-demo-story-glow mk3-demo-story-glow-two" />
               <div className={`mk3-demo-story-sweep is-${activeBeat.mood || "cyan"}`} />
@@ -1161,6 +1217,11 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                     <span>Shared room state</span>
                     <i style={{ width: `${36 + activeAbstractBeatIndex * 10 + activeAbstractMomentIndex * 11}%` }} />
                   </div>
+                  <div className="mk3-demo-story-tv-burst" aria-hidden="true">
+                    {activeBeat.signals.map((signal, index) => (
+                      <span key={`${activeBeat.id}_burst_${signal.label}`} className={activeAbstractSignal?.label === signal.label ? "is-active" : index <= activeAbstractMomentIndex ? "is-lit" : ""} />
+                    ))}
+                  </div>
                 </div>
                 <p className="mk3-demo-story-surface-note">TV translates system changes into one visible room moment.</p>
               </article>
@@ -1183,6 +1244,12 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                 <div className="mk3-demo-story-phone-score">
                   <span>Collective role</span>
                   <strong>{ABSTRACT_SURFACES.audience.label}</strong>
+                </div>
+                <div className="mk3-demo-story-phone-pulse-grid" aria-hidden="true">
+                  {activeBeat.signals.map((signal, index) => (
+                    <i key={`${activeBeat.id}_phone_${signal.label}`} className={activeAbstractSignal?.label === signal.label ? "is-active" : index <= activeAbstractMomentIndex ? "is-lit" : ""} />
+                  ))}
+                  <i className={activeAbstractTarget === "audience" ? "is-active" : ""} />
                 </div>
               </article>
 
@@ -1220,7 +1287,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
         <div className="mk3-demo-guided-intro">
           <div className="mk3-chip">auto demo</div>
           <h2>Auto-play six sellable moments across the actual host, TV, and audience UI.</h2>
-          <p>Use one obvious tap prompt at a time so viewers can follow the action without participating.</p>
+          <p>The stage should do the explaining. One surface drives, the next surface reacts, and the audience prompt only appears when it is the live action.</p>
         </div>
 
         <div className="mk3-demo-guided-toolbar">
@@ -1237,53 +1304,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
           >
             Restart From Scene 01
           </button>
-          <span>{formatClock(totalSceneElapsedMs)} / {formatClock(WALKTHROUGH_TOTAL_MS)}</span>
-        </div>
-
-        <div className="mk3-demo-guided-status">
-          <div>
-            <span>{activeScene.kicker}</span>
-            <strong>{activeScene.label}</strong>
-          </div>
-          <div>
-            <span>scene progress</span>
-            <strong>{scenePercent}%</strong>
-          </div>
-          <div>
-            <span>next scene</span>
-            <strong>{nextScene?.label || "Loop to Scene 01"}</strong>
-          </div>
-        </div>
-
-        <div className="mk3-demo-guided-progress">
-          <i style={{ width: `${Math.min(100, (totalSceneElapsedMs / WALKTHROUGH_TOTAL_MS) * 100)}%` }} />
-        </div>
-
-        <div className="mk3-demo-guided-scene-nav">
-          {WALKTHROUGH_TIMELINE.map((scene) => (
-            <button
-              key={scene.id}
-              type="button"
-              className={activeScene.id === scene.id ? "active" : ""}
-              onClick={() => jumpToScene(scene.id)}
-            >
-              {scene.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="mk3-demo-guided-summary">
-          <strong>{activeScene.headline}</strong>
-          <div className="mk3-demo-guided-summary-pills">
-            {activeScene.callouts.map((callout) => (
-              <span key={`${activeScene.id}_${callout.title}`}>{callout.title}</span>
-            ))}
-          </div>
-        </div>
-        <div className="mk3-demo-guided-tap-coach">
-          <span>{tapCoach.title}</span>
-          <strong>{tapCoach.prompt}</strong>
-          <p>{tapCoach.detail}</p>
+          <span>{activeScene.label}</span>
         </div>
 
         <div className="mk3-demo-shell mk3-demo-shell-testing">
@@ -1311,7 +1332,8 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                 hostControlProgress={hostControlProgress}
                 hostFocusFrame={hostFocusFrame}
                 hostCursorStyle={hostCursorStyle}
-                tapCoach={tapCoach}
+                sequenceStep={activeSequenceStep}
+                totalConnectedLabel={totalConnectedLabel}
               />
             </div>
             <div className="mk3-demo-surface-status">
@@ -1348,6 +1370,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                 formatClockLabel={formatClock(totalSceneElapsedMs)}
                 tvSurfaceVariant={tvSurfaceVariant}
                 tapCoach={tapCoach}
+                sequenceStep={activeSequenceStep}
               />
             </div>
             <div className="mk3-demo-surface-status">
@@ -1382,6 +1405,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                     audienceTapStyle={audienceTapStyle}
                     audienceFocusFrame={audienceFocusFrame}
                     tapCoach={tapCoach}
+                    sequenceStep={activeSequenceStep}
                   />
                 </div>
               </div>
@@ -1400,6 +1424,50 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
               <strong>{callout.detail}</strong>
             </article>
           ))}
+        </div>
+
+        <div className="mk3-demo-guided-stage-rail">
+          <div className="mk3-demo-guided-stage-rail-head">
+            <div>
+              <span>{activeScene.kicker}</span>
+              <strong>{activeScene.headline}</strong>
+            </div>
+            <div className="mk3-demo-guided-stage-rail-meta">
+              <span>{formatClock(totalSceneElapsedMs)} / {formatClock(WALKTHROUGH_TOTAL_MS)}</span>
+              <strong>{scenePercent}%</strong>
+            </div>
+          </div>
+          <div className="mk3-demo-guided-progress">
+            <i style={{ width: `${Math.min(100, (totalSceneElapsedMs / WALKTHROUGH_TOTAL_MS) * 100)}%` }} />
+          </div>
+          <div className="mk3-demo-guided-sequence">
+            {sceneSequence.map((step, index) => (
+              <article key={`${activeScene.id}_${step.surface}_${step.title}`} className={index === activeSequenceIndex ? "is-active" : ""}>
+                <span>{step.surface}</span>
+                <strong>{step.title}</strong>
+                <p>{step.detail}</p>
+              </article>
+            ))}
+          </div>
+          <div className="mk3-demo-guided-stage-rail-footer">
+            <div className="mk3-demo-guided-scene-nav">
+              {WALKTHROUGH_TIMELINE.map((scene) => (
+                <button
+                  key={scene.id}
+                  type="button"
+                  className={activeScene.id === scene.id ? "active" : ""}
+                  onClick={() => jumpToScene(scene.id)}
+                >
+                  {scene.label}
+                </button>
+              ))}
+            </div>
+            <div className="mk3-demo-guided-stage-prompt">
+              <span>{activeSequenceStep.surface} active now</span>
+              <strong>{activeSequenceStep.surface === "audience" ? tapCoach.prompt : activeSequenceStep.title}</strong>
+              <p>{activeSequenceStep.surface === "audience" ? tapCoach.detail : activeSequenceStep.detail}</p>
+            </div>
+          </div>
         </div>
 
         <div className="mk3-demo-guided-outro">
