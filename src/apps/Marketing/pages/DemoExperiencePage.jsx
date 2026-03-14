@@ -132,6 +132,202 @@ const ABSTRACT_BEATS = [
   },
 ];
 
+const ABSTRACT_MOMENTS = {
+  arrival: [
+    {
+      id: "arrival_host_prime",
+      kicker: "moment 01",
+      title: "Host primes the room.",
+      detail: "The first scroll beat should feel like ignition: the host creates the first meaningful state change.",
+      signalIndex: 0,
+      host: "Host sends the opener cue into the system.",
+      tv: "TV is still waiting for the room command.",
+      audience: "Phones have not been pulled into the moment yet.",
+      singer: "Singer is still waiting for a clear go signal.",
+    },
+    {
+      id: "arrival_tv_wake",
+      kicker: "moment 02",
+      title: "The TV wakes up and becomes legible.",
+      detail: "The room sees the cue land on the biggest surface first.",
+      signalIndex: 0,
+      host: "Host action is now visibly affecting the room.",
+      tv: "TV flips from idle into a readable join state.",
+      audience: "Phones are about to receive the same room instruction.",
+      singer: "Singer sees the room orient around one source of truth.",
+    },
+    {
+      id: "arrival_audience_join",
+      kicker: "moment 03",
+      title: "Audience identity ripples into the room.",
+      detail: "The audience should feel like a visible response loop, not a silent side channel.",
+      signalIndex: 1,
+      host: "Host now sees the room filling in behind the cue.",
+      tv: "TV starts reflecting the room joining in.",
+      audience: "Audience gets the low-friction join prompt instantly.",
+      singer: "Singer can feel that the room is arriving with them.",
+    },
+    {
+      id: "arrival_singer_ready",
+      kicker: "moment 04",
+      title: "Singer readiness lands before the first lyric.",
+      detail: "The scene resolves when the singer gets a clear place in the room flow.",
+      signalIndex: 2,
+      host: "Host has staged the room and the singer in one pass.",
+      tv: "TV has the room warm and pointed in the same direction.",
+      audience: "Audience is now ready to react, sing, and follow along.",
+      singer: "Singer gets an unmistakable 'you are up' cue.",
+    },
+  ],
+  singalong: [
+    {
+      id: "singalong_tv_lead",
+      kicker: "moment 01",
+      title: "The TV takes over as the room lead.",
+      detail: "The first karaoke beat should make the TV feel big, shared, and impossible to miss.",
+      signalIndex: 0,
+      host: "Host can step back once the lyric moment locks in.",
+      tv: "TV becomes the obvious room lead.",
+      audience: "Phones are primed to support the singalong.",
+      singer: "Singer gets a giant, readable room anchor.",
+    },
+    {
+      id: "singalong_audience_cue",
+      kicker: "moment 02",
+      title: "The crowd gets a clear singalong cue.",
+      detail: "The audience should understand exactly when to participate.",
+      signalIndex: 0,
+      host: "Host is steering momentum instead of micromanaging.",
+      tv: "TV pushes the crowd cue outward.",
+      audience: "Audience phones move into active support mode.",
+      singer: "Singer feels backup energy gathering behind them.",
+    },
+    {
+      id: "singalong_reaction_return",
+      kicker: "moment 03",
+      title: "Reactions bounce back to the TV.",
+      detail: "This is where the loop closes and the room starts feeling alive.",
+      signalIndex: 1,
+      host: "Host can see crowd energy arrive without extra work.",
+      tv: "TV reflects the reaction burst in real time.",
+      audience: "Audience taps matter immediately.",
+      singer: "Singer gets visual proof the room is with them.",
+    },
+    {
+      id: "singalong_confidence_lift",
+      kicker: "moment 04",
+      title: "Singer confidence becomes visible.",
+      detail: "The room should end this scene feeling fuller and louder than it started.",
+      signalIndex: 2,
+      host: "Host stays ahead because the room is self-reinforcing.",
+      tv: "TV now shows a fully connected room state.",
+      audience: "Audience attention stays on the same beat.",
+      singer: "Singer confidence rises with the crowd support.",
+    },
+  ],
+  mode_shift: [
+    {
+      id: "mode_shift_trigger",
+      kicker: "moment 01",
+      title: "The host throws the switch.",
+      detail: "The dramatic part is the clarity: one host move starts the transformation.",
+      signalIndex: 0,
+      host: "Host launches the new mode from one obvious control.",
+      tv: "TV is about to give up lyric-first behavior.",
+      audience: "Phones are waiting for a role change.",
+      singer: "Singer is about to hand off to the room mechanic.",
+    },
+    {
+      id: "mode_shift_tv_flip",
+      kicker: "moment 02",
+      title: "The TV visibly changes role.",
+      detail: "This should feel sweeping and theatrical, not like a tab change.",
+      signalIndex: 0,
+      host: "Host sees the full room respond to one input.",
+      tv: "TV swaps from lyrics into a mode scene.",
+      audience: "Audience can now read that the room logic changed.",
+      singer: "Singer understands the room is moving into a new phase.",
+    },
+    {
+      id: "mode_shift_phone_instruments",
+      kicker: "moment 03",
+      title: "Audience phones become instruments.",
+      detail: "This is the sellable surprise beat: phones stop being passive.",
+      signalIndex: 1,
+      host: "Host has repurposed the crowd without added setup.",
+      tv: "TV is now waiting for crowd input instead of lyrics.",
+      audience: "Audience gets a new interaction model instantly.",
+      singer: "Singer can lean out while the crowd carries the beat.",
+    },
+    {
+      id: "mode_shift_handoff",
+      kicker: "moment 04",
+      title: "The singer gets a clean instrumental handoff.",
+      detail: "The scene resolves when everyone understands the new room contract.",
+      signalIndex: 2,
+      host: "Host has turned one room into a multi-surface instrument.",
+      tv: "TV is now broadcasting the new room role clearly.",
+      audience: "Audience is actively driving the scene.",
+      singer: "Singer knows exactly when to hand off and re-enter.",
+    },
+  ],
+  handoff: [
+    {
+      id: "handoff_bridge",
+      kicker: "moment 01",
+      title: "The bridge starts before the drop.",
+      detail: "The room should feel carried into the handoff, not paused between performers.",
+      signalIndex: 2,
+      host: "Host starts the bridge before energy can collapse.",
+      tv: "TV still feels alive during the transition.",
+      audience: "Audience keeps feeding the room through the gap.",
+      singer: "Next singer is still offstage but already in the flow.",
+    },
+    {
+      id: "handoff_next_ready",
+      kicker: "moment 02",
+      title: "The next singer gets staged early.",
+      detail: "A good handoff feels prepared before the reveal happens.",
+      signalIndex: 0,
+      host: "Host stages the next singer with breathing room.",
+      tv: "TV is about to announce the new lead.",
+      audience: "Audience never loses the thread of who is next.",
+      singer: "Singer enters with context, not confusion.",
+    },
+    {
+      id: "handoff_tv_resolve",
+      kicker: "moment 03",
+      title: "The TV resolves one moment and tees up the next.",
+      detail: "This is where continuity becomes visible to the whole room.",
+      signalIndex: 1,
+      host: "Host can trust the room to stay coherent through the handoff.",
+      tv: "TV bridges one scene into the next performer cleanly.",
+      audience: "Audience gets a visible next-moment reveal.",
+      singer: "Singer arrives into a room that is already with them.",
+    },
+    {
+      id: "handoff_loop_close",
+      kicker: "moment 04",
+      title: "Audience energy closes the loop back to the host.",
+      detail: "The final scroll beat should feel like the room can sustain itself through the whole night.",
+      signalIndex: 2,
+      host: "Host gets confirmation that the room stayed hot.",
+      tv: "TV now carries a fully reset, continuous room state.",
+      audience: "Audience attention never dropped during the handoff.",
+      singer: "Singer steps into momentum instead of rebuilding it.",
+    },
+  ],
+};
+
+const ABSTRACT_SCROLL_EVENTS = ABSTRACT_BEATS.flatMap((beat, beatIndex) =>
+  (ABSTRACT_MOMENTS[beat.id] || []).map((moment, momentIndex) => ({
+    ...moment,
+    beatId: beat.id,
+    beatIndex,
+    momentIndex,
+  }))
+);
+
 const GUIDED_SCENES = [
   {
     id: "join_identity",
@@ -638,8 +834,8 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
   const isAutoPage = String(demoMode || "").trim().toLowerCase() === "auto";
   const [timelineMs, setTimelineMs] = useState(0);
   const [playing, setPlaying] = useState(true);
-  const [activeAbstractBeat, setActiveAbstractBeat] = useState(0);
-  const abstractStepRefs = useRef([]);
+  const [activeAbstractEventId, setActiveAbstractEventId] = useState(ABSTRACT_SCROLL_EVENTS[0]?.id || "");
+  const abstractMomentRefs = useRef([]);
 
   useEffect(() => {
     if (!isAutoPage) return () => {};
@@ -661,7 +857,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
   useEffect(() => {
     if (isAutoPage) return undefined;
     if (typeof window === "undefined" || typeof window.IntersectionObserver !== "function") return undefined;
-    const nodes = abstractStepRefs.current.filter(Boolean);
+    const nodes = abstractMomentRefs.current.filter(Boolean);
     if (!nodes.length) return undefined;
     let frameId = 0;
     const observer = new window.IntersectionObserver((entries) => {
@@ -669,13 +865,14 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
         .filter((entry) => entry.isIntersecting)
         .sort((left, right) => right.intersectionRatio - left.intersectionRatio);
       if (!visible.length) return;
-      const nextIndex = clampNumber(visible[0].target.dataset.storyIndex, 0, ABSTRACT_BEATS.length - 1, 0);
+      const nextEventId = String(visible[0].target.dataset.storyEvent || "").trim();
+      if (!nextEventId) return;
       window.cancelAnimationFrame(frameId);
       frameId = window.requestAnimationFrame(() => {
-        setActiveAbstractBeat((prev) => (prev === nextIndex ? prev : nextIndex));
+        setActiveAbstractEventId((prev) => (prev === nextEventId ? prev : nextEventId));
       });
     }, {
-      threshold: [0.28, 0.5, 0.72],
+      threshold: [0.22, 0.48, 0.72],
       rootMargin: "-12% 0px -18% 0px",
     });
     nodes.forEach((node) => observer.observe(node));
@@ -688,7 +885,20 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
   const sceneState = useMemo(() => getSceneAtMs(timelineMs), [timelineMs]);
   const activeScene = sceneState.scene;
   const sceneProgress = sceneState.progress;
-  const activeBeat = ABSTRACT_BEATS[activeAbstractBeat] || ABSTRACT_BEATS[0];
+  const activeAbstractEvent = useMemo(
+    () => ABSTRACT_SCROLL_EVENTS.find((entry) => entry.id === activeAbstractEventId) || ABSTRACT_SCROLL_EVENTS[0],
+    [activeAbstractEventId]
+  );
+  const activeBeat = useMemo(
+    () => ABSTRACT_BEATS.find((beat) => beat.id === activeAbstractEvent?.beatId) || ABSTRACT_BEATS[0],
+    [activeAbstractEvent]
+  );
+  const activeAbstractMomentIndex = activeAbstractEvent?.momentIndex || 0;
+  const activeAbstractBeatIndex = activeAbstractEvent?.beatIndex || 0;
+  const activeAbstractMoments = ABSTRACT_MOMENTS[activeBeat.id] || [];
+  const activeAbstractSignal = activeBeat.signals[activeAbstractEvent?.signalIndex ?? 0] || activeBeat.signals[0];
+  const activeAbstractSource = activeAbstractSignal?.from || activeBeat.activeSurface;
+  const activeAbstractTarget = activeAbstractSignal?.to || activeBeat.activeSurface;
   const activeActionIndex = useMemo(
     () => getActiveIndex(activeScene.audience.actions, sceneProgress + 0.12),
     [activeScene.audience.actions, sceneProgress]
@@ -831,20 +1041,16 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
           <div className="mk3-chip">abstract demo</div>
           <h2>Show the system logic before viewers start parsing product screens.</h2>
           <p>
-            This layer should feel like motion design, not like someone paused a live room. The job is to show how
-            one host move ripples through TV, audience, and singer.
+            This layer should feel like motion design, not like someone paused a live room. Scroll through each scene
+            in multiple beats so the interaction direction is obvious before anyone sees a literal product screen.
           </p>
         </div>
         <div className="mk3-demo-story-grid">
           <div className="mk3-demo-story-steps">
-            {ABSTRACT_BEATS.map((beat, index) => (
-              <article
+            {ABSTRACT_BEATS.map((beat) => (
+              <section
                 key={beat.id}
-                ref={(node) => {
-                  abstractStepRefs.current[index] = node;
-                }}
-                data-story-index={index}
-                className={`mk3-demo-story-step${activeAbstractBeat === index ? " is-active" : ""}`}
+                className={`mk3-demo-story-step${activeBeat.id === beat.id ? " is-active" : ""}`}
               >
                 <span>{beat.kicker}</span>
                 <h3>{beat.title}</h3>
@@ -854,36 +1060,80 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                     <strong key={`${beat.id}_${item}`}>{item}</strong>
                   ))}
                 </div>
-              </article>
+                <div className="mk3-demo-story-events">
+                  {(ABSTRACT_MOMENTS[beat.id] || []).map((moment, momentIndex) => (
+                    <article
+                      key={moment.id}
+                      ref={(node) => {
+                        abstractMomentRefs.current[ABSTRACT_SCROLL_EVENTS.findIndex((entry) => entry.id === moment.id)] = node;
+                      }}
+                      data-story-event={moment.id}
+                      className={`mk3-demo-story-event${activeAbstractEvent?.id === moment.id ? " is-active" : ""}`}
+                    >
+                      <span>{moment.kicker}</span>
+                      <strong>{moment.title}</strong>
+                      <p>{moment.detail}</p>
+                      <div className="mk3-demo-story-event-meta">
+                        <i />
+                        <b>{momentIndex + 1}/4</b>
+                        <small>{beat.signals[moment.signalIndex]?.label || "Room flow"}</small>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
           <div className="mk3-demo-story-stage">
             <div className={`mk3-demo-story-stage-frame is-${activeBeat.stageVariant}`}>
               <div className="mk3-demo-story-glow mk3-demo-story-glow-one" />
               <div className="mk3-demo-story-glow mk3-demo-story-glow-two" />
+              <div className={`mk3-demo-story-sweep is-${activeBeat.mood || "cyan"}`} />
+              <div className="mk3-demo-story-orbit mk3-demo-story-orbit-one" />
+              <div className="mk3-demo-story-orbit mk3-demo-story-orbit-two" />
               <div className="mk3-demo-story-stage-header">
                 <div>
                   <span>Conceptual system map</span>
-                  <strong>{activeBeat.title}</strong>
+                  <strong>{activeAbstractEvent?.title || activeBeat.title}</strong>
                 </div>
                 <div className="mk3-demo-story-stage-meta">
-                  <span>Active emphasis</span>
-                  <strong>{ABSTRACT_SURFACES[activeBeat.activeSurface]?.label || "Host Deck"}</strong>
+                  <span>Scene step</span>
+                  <strong>{activeAbstractMomentIndex + 1} of {activeAbstractMoments.length || 4}</strong>
                 </div>
               </div>
+              <div className="mk3-demo-story-stage-callout">
+                <span>{activeAbstractEvent?.kicker || "moment 01"}</span>
+                <strong>{activeAbstractEvent?.detail || activeBeat.body}</strong>
+              </div>
+              <div className="mk3-demo-story-signal-layer" aria-hidden="true">
+                {activeBeat.signals.map((signal) => (
+                  <div
+                    key={`${activeBeat.id}_${signal.from}_${signal.to}_${signal.label}`}
+                    className={`mk3-demo-story-signal mk3-demo-story-signal-${signal.from}-${signal.to}${activeAbstractSignal?.label === signal.label ? " is-active" : ""}`}
+                  >
+                    <i />
+                    <span>{signal.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mk3-demo-story-scene-progress">
+                {activeAbstractMoments.map((moment) => (
+                  <b key={moment.id} className={activeAbstractEvent?.id === moment.id ? "is-active" : ""} />
+                ))}
+              </div>
 
-              <article className="mk3-demo-story-screen mk3-demo-story-screen-host">
+              <article className={`mk3-demo-story-screen mk3-demo-story-screen-host${activeAbstractSource === "host" ? " is-source" : ""}${activeAbstractTarget === "host" ? " is-target" : ""}`}>
                 <span>Host Deck</span>
-                <strong>{activeBeat.notes.host}</strong>
+                <strong>{activeAbstractEvent?.host || activeBeat.notes.host}</strong>
                 <div className="mk3-demo-story-host-search">
                   <span>Origin move</span>
-                  <strong>{activeBeat.signals[0]?.label || "Room cue"}</strong>
+                  <strong>{activeAbstractSignal?.label || "Room cue"}</strong>
                 </div>
                 <div className="mk3-demo-story-host-queue">
                   <span>What the host changes</span>
                   <div className="mk3-demo-story-host-queue-list">
                     {activeBeat.signals.map((signal) => (
-                      <article key={`${activeBeat.id}_${signal.label}`}>
+                      <article key={`${activeBeat.id}_${signal.label}`} className={activeAbstractSignal?.label === signal.label ? "is-active" : ""}>
                         <strong>{signal.label}</strong>
                         <span>{ABSTRACT_SURFACES[signal.to]?.label || signal.to}</span>
                       </article>
@@ -893,42 +1143,42 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                 <p className="mk3-demo-story-surface-note">One deliberate input changes the whole room state.</p>
               </article>
 
-              <article className="mk3-demo-story-screen mk3-demo-story-screen-tv">
+              <article className={`mk3-demo-story-screen mk3-demo-story-screen-tv${activeAbstractSource === "tv" ? " is-source" : ""}${activeAbstractTarget === "tv" ? " is-target" : ""}`}>
                 <div className="mk3-demo-story-tv-stage">
                   <div className="mk3-demo-story-tv-badge">
                     <span>Public TV</span>
-                    <strong>{activeBeat.kicker}</strong>
+                    <strong>{activeAbstractEvent?.kicker || activeBeat.kicker}</strong>
                   </div>
                   <div className="mk3-demo-story-tv-headline">
-                    <strong>{activeBeat.notes.tv}</strong>
+                    <strong>{activeAbstractEvent?.tv || activeBeat.notes.tv}</strong>
                   </div>
                   <div className="mk3-demo-story-tv-lyrics">
                     {activeBeat.signals.slice(0, 3).map((signal) => (
-                      <p key={`${activeBeat.id}_tv_${signal.label}`}>{signal.label}</p>
+                      <p key={`${activeBeat.id}_tv_${signal.label}`} className={activeAbstractSignal?.label === signal.label ? "is-active" : ""}>{signal.label}</p>
                     ))}
                   </div>
                   <div className="mk3-demo-story-tv-meter">
                     <span>Shared room state</span>
-                    <i style={{ width: `${38 + activeAbstractBeat * 18}%` }} />
+                    <i style={{ width: `${36 + activeAbstractBeatIndex * 10 + activeAbstractMomentIndex * 11}%` }} />
                   </div>
                 </div>
                 <p className="mk3-demo-story-surface-note">TV translates system changes into one visible room moment.</p>
               </article>
 
-              <article className="mk3-demo-story-screen mk3-demo-story-screen-phone">
+              <article className={`mk3-demo-story-screen mk3-demo-story-screen-phone${activeAbstractSource === "audience" ? " is-source" : ""}${activeAbstractTarget === "audience" ? " is-target" : ""}`}>
                 <span>Audience App</span>
-                <strong>{activeBeat.notes.audience}</strong>
+                <strong>{activeAbstractEvent?.audience || activeBeat.notes.audience}</strong>
                 <p className="mk3-demo-story-phone-copy">
                   Lightweight prompts, reactions, and mode-specific controls make the crowd part of the night.
                 </p>
                 <div className="mk3-demo-story-phone-votes" aria-hidden="true">
-                  {activeBeat.bullets.map((item) => (
-                    <button key={`${activeBeat.id}_${item}`} type="button" tabIndex={-1}>{item}</button>
+                  {activeBeat.bullets.map((item, index) => (
+                    <button key={`${activeBeat.id}_${item}`} type="button" tabIndex={-1} className={index === activeAbstractMomentIndex % activeBeat.bullets.length ? "is-active" : ""}>{item}</button>
                   ))}
                 </div>
                 <div className="mk3-demo-story-phone-request">
                   <span>Audience effect</span>
-                  <strong>{activeBeat.signals[1]?.label || "Shared response"}</strong>
+                  <strong>{activeAbstractSignal?.to === "audience" || activeAbstractSignal?.from === "audience" ? activeAbstractSignal?.label : activeBeat.signals[1]?.label || "Shared response"}</strong>
                 </div>
                 <div className="mk3-demo-story-phone-score">
                   <span>Collective role</span>
@@ -936,12 +1186,12 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                 </div>
               </article>
 
-              <article className="mk3-demo-story-screen mk3-demo-story-screen-singer">
+              <article className={`mk3-demo-story-screen mk3-demo-story-screen-singer${activeAbstractSource === "singer" ? " is-source" : ""}${activeAbstractTarget === "singer" ? " is-target" : ""}`}>
                 <span>Singer Cue</span>
-                <strong>{activeBeat.notes.singer}</strong>
+                <strong>{activeAbstractEvent?.singer || activeBeat.notes.singer}</strong>
                 <div className="mk3-demo-story-singer-meter">
                   <span>Confidence</span>
-                  <i style={{ width: `${48 + activeAbstractBeat * 11}%` }} />
+                  <i style={{ width: `${42 + activeAbstractBeatIndex * 8 + activeAbstractMomentIndex * 9}%` }} />
                 </div>
                 <p className="mk3-demo-story-surface-note">
                   The performer always knows whether to lead, wait, or hand off.
@@ -951,7 +1201,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
 
             <div className="mk3-demo-story-flow-grid">
               {activeBeat.signals.map((signal) => (
-                <article key={`${activeBeat.id}_${signal.from}_${signal.to}_${signal.label}`} className="mk3-demo-story-flow-card">
+                <article key={`${activeBeat.id}_${signal.from}_${signal.to}_${signal.label}`} className={`mk3-demo-story-flow-card${activeAbstractSignal?.label === signal.label ? " is-active" : ""}`}>
                   <span>{ABSTRACT_SURFACES[signal.from]?.short} to {ABSTRACT_SURFACES[signal.to]?.short}</span>
                   <strong>{signal.label}</strong>
                   <p>

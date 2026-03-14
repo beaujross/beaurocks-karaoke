@@ -528,6 +528,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
 
   const mapContainerRef = useRef(null);
   const mapStageRef = useRef(null);
+  const liveRoomsRef = useRef(null);
   const mapRef = useRef(null);
   const selectedInfoWindowRef = useRef(null);
   const markerMapRef = useRef(new Map());
@@ -760,6 +761,15 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
   const listingTypeToggleCounts = useMemo(() => countListingTypes({
     listings: filteredByHost,
   }), [filteredByHost]);
+  const joinableListings = useMemo(
+    () => rankedListings.filter((entry) => isJoinableRoomListing(entry)),
+    [rankedListings]
+  );
+  const featuredJoinableListings = useMemo(
+    () => joinableListings.slice(0, isMobileViewport ? 3 : 4),
+    [isMobileViewport, joinableListings]
+  );
+  const nextJoinableListing = featuredJoinableListings[0] || null;
 
   const selectedListing = useMemo(
     () => visibleListings.find((entry) => entry.key === effectiveSelectedKey) || null,
@@ -1461,9 +1471,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     trackEvent("mk_discover_premium_hero_join_click", { source: "discover_premium_hero" });
     navigate("join");
   };
-  const openListingSubmission = () => {
-    trackEvent("mk_discover_premium_hero_list_click", { source: "discover_premium_hero" });
-    navigate("submit", "", { intent: "listing_submit", targetType: "venue" });
+  const openBrowseMap = () => {
+    trackEvent("mk_discover_premium_hero_browse_map_click", { source: "discover_premium_hero" });
+    if (isMobileViewport) dispatchView({ type: "show_map" });
+    mapStageRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   };
   const toggleListingTypeFilter = useCallback((typeId = "") => {
     setSelectedListingTypes((prev) => {
@@ -1477,6 +1488,27 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
   const setOnlyListingTypeFilter = useCallback((typeId = "") => {
     setSelectedListingTypes(setOnlySelectedListingType(typeId, DEFAULT_SELECTED_LISTING_TYPES));
   }, []);
+  const handleJoinRoom = useCallback((item, source = "discover") => {
+    if (!item?.roomCode) return;
+    trackEvent("mk_discover_join_room", {
+      source,
+      roomCode: item.roomCode,
+    });
+    navigate("join", item.roomCode, {
+      roomCode: item.roomCode,
+      src: source,
+      src_listing_type: item.listingType,
+    });
+  }, [navigate]);
+  const focusLiveRooms = useCallback(() => {
+    setOnlyListingTypeFilter("room_session");
+    setRoomAccessFilter("joinable");
+    setOfficialRoomFilter("all");
+    setSelectedKey("");
+    if (isMobileViewport) dispatchView({ type: "show_list" });
+    trackEvent("mk_discover_live_rooms_focus", { source: "discover_premium_hero" });
+    liveRoomsRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }, [isMobileViewport, setOnlyListingTypeFilter]);
   const renderDiscoverFilters = () => (
     <>
       <div className={filterStackClasses}>
@@ -1819,17 +1851,40 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     <section className="mk3-page">
       <div className="mk3-status mk3-zone mk3-zone-finder mk3-discover-hero mk3-discover-intro">
         <div className="mk3-discover-hero-main">
-          <strong>Find a karaoke night worth leaving the house for.</strong>
+          <strong>Find tonight&apos;s room and join fast.</strong>
           <span>
             {isInitialCountLoading
               ? `Loading the live directory in ${activeRegionLabel}...`
-              : "See upcoming events, live rooms, and local karaoke spots in one place."}
+              : "Live joinable rooms surface first so guests can spot a room, tap once, and get in without digging through the full directory."}
           </span>
           <div className="mk3-discover-hero-stats">
             <span>{isInitialCountLoading ? "Syncing live directory..." : `${resultCountLabel} results`}</span>
+            {joinableRoomCount > 0 && <span>{joinableRoomCount} rooms ready to join</span>}
             {officialBeauRocksListingCount > 0 && <span>{officialBeauRocksListingCount} official BeauRocks listings</span>}
-            {joinableRoomCount > 0 && <span>{joinableRoomCount} joinable by code</span>}
             <span>{heroPulseLabel}</span>
+          </div>
+          <div className="mk3-finder-cta-row mk3-discover-intro-actions is-primary">
+            <button
+              type="button"
+              className="mk3-discover-hero-cta-primary"
+              onClick={joinableRoomCount > 0 ? focusLiveRooms : openJoinPage}
+            >
+              {joinableRoomCount > 0 ? "See live rooms" : "Join with code"}
+            </button>
+            <button
+              type="button"
+              className="mk3-discover-hero-cta-secondary"
+              onClick={openJoinPage}
+            >
+              Enter room code
+            </button>
+            <button
+              type="button"
+              className="mk3-discover-hero-cta-tertiary"
+              onClick={openBrowseMap}
+            >
+              Browse the map
+            </button>
           </div>
         </div>
         <aside className="mk3-discover-hero-side">
@@ -1838,51 +1893,126 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
               <img src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks badge" loading="lazy" />
               <span>{activeRegionLabel}</span>
             </div>
-            <strong>Live pulse</strong>
-            <p>Browse official events, public rooms, and local spots from one map.</p>
+            <strong>Live tonight</strong>
+            <p>
+              {nextJoinableListing
+                ? `${nextJoinableListing.title} is ready with room code ${nextJoinableListing.roomCode}.`
+                : "Watch for live rooms, official events, and local karaoke spots from one map."}
+            </p>
           </div>
           <div className="mk3-discover-hero-side-grid">
             <article className="mk3-discover-hero-side-card">
-              <span>Official BeauRocks</span>
-              <strong>{officialBeauRocksListingCount}</strong>
-              <p>Featured BeauRocks events and official nights.</p>
-            </article>
-            <article className="mk3-discover-hero-side-card">
-              <span>Joinable now</span>
+              <span>Ready to join</span>
               <strong>{joinableRoomCount}</strong>
-              <p>Rooms guests can join right now by code.</p>
+              <p>Rooms with a live code guests can jump into right now.</p>
             </article>
             <article className="mk3-discover-hero-side-card">
-              <span>Map mix</span>
+              <span>Next live room</span>
+              <strong>{nextJoinableListing?.roomCode || "----"}</strong>
+              <p>{nextJoinableListing?.hostName ? `Hosted by ${nextJoinableListing.hostName}.` : "Live room codes show up here first."}</p>
+            </article>
+            <article className="mk3-discover-hero-side-card">
+              <span>Directory mix</span>
               <strong>{listingTypeCounts.event + listingTypeCounts.room_session + listingTypeCounts.venue}</strong>
-              <p>{listingTypeCounts.event} events, {listingTypeCounts.room_session} live rooms, and {listingTypeCounts.venue} venues.</p>
+              <p>{listingTypeCounts.room_session} live rooms, {listingTypeCounts.event} events, and {listingTypeCounts.venue} venues.</p>
             </article>
           </div>
-          <div className="mk3-finder-cta-row mk3-discover-intro-actions">
-            <button
-              type="button"
-              className="mk3-discover-hero-cta-primary"
-              onClick={openHostAccess}
-            >
-              {hasFullAccount ? "Open Host Access" : "Apply To Host"}
-            </button>
+          <div className="mk3-finder-cta-row mk3-discover-intro-actions is-secondary">
             <button
               type="button"
               className="mk3-discover-hero-cta-secondary"
-              onClick={openJoinPage}
+              onClick={nextJoinableListing ? () => handleJoinRoom(nextJoinableListing, "discover_premium_hero_next_room") : openJoinPage}
             >
-              Join with code
+              {nextJoinableListing ? `Join ${nextJoinableListing.roomCode}` : "Join with code"}
             </button>
             <button
               type="button"
               className="mk3-discover-hero-cta-tertiary"
-              onClick={openListingSubmission}
+              onClick={openHostAccess}
             >
-              List A Venue Or Event
+              {hasFullAccount ? "Open Host Access" : "Apply To Host"}
             </button>
           </div>
         </aside>
       </div>
+      {featuredJoinableListings.length > 0 && (
+        <div ref={liveRoomsRef} className="mk3-zone mk3-zone-host mk3-discover-live-strip">
+          <div className="mk3-discover-live-strip-head">
+            <div>
+              <span>Live rooms first</span>
+              <strong>Tap a room and join now</strong>
+            </div>
+            <p>These rooms already have live codes, so the fastest path is room, join, start reacting.</p>
+          </div>
+          <div className="mk3-discover-live-grid">
+            {featuredJoinableListings.map((entry) => (
+              <article key={`discover_live_room_${entry.key}`} className="mk3-discover-live-card">
+                <div className="mk3-discover-live-card-media">
+                  <img
+                    src={entry.imageUrl}
+                    alt={`${entry.title} live room visual`}
+                    loading="lazy"
+                    onError={(event) => applyFallbackImage(event, entry.imageFallbackUrls)}
+                  />
+                  <div className="mk3-discover-live-card-badges">
+                    <span className="mk3-chip">Live room</span>
+                    {entry.isBeauRocksElevated && (
+                      <span className="mk3-chip mk3-chip-elevated">
+                        <img
+                          className="mk3-chip-icon"
+                          src={entry.officialBadgeImageUrl || MARKETING_BRAND_BADGE_URL}
+                          alt="BeauRocks badge"
+                          loading="lazy"
+                        />
+                        <span>Official BeauRocks</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="mk3-discover-live-card-body">
+                  <div className="mk3-discover-live-card-topline">
+                    <strong>{entry.title}</strong>
+                    <span>{entry.roomCode}</span>
+                  </div>
+                  <div className="mk3-card-subtitle">{entry.subtitle}</div>
+                  {entry.timeLabel && <div className="mk3-card-time">{entry.timeLabel}</div>}
+                  {entry.hostName && <div className="mk3-card-subtitle">Hosted by {entry.hostName}</div>}
+                  {entry.experience?.storyLine && <div className="mk3-card-story">{entry.experience.storyLine}</div>}
+                  <div className="mk3-discover-live-card-actions">
+                    <button
+                      type="button"
+                      onClick={() => handleJoinRoom(entry, "discover_live_rooms")}
+                    >
+                      Join now
+                    </button>
+                    <button
+                      type="button"
+                      className="mk3-ghost-button"
+                      onClick={() => {
+                        if (isMobileViewport) dispatchView({ type: "show_list" });
+                        revealListingInRail(entry);
+                      }}
+                    >
+                      Show in results
+                    </button>
+                    <button
+                      type="button"
+                      className="mk3-ghost-button"
+                      onClick={() => {
+                        if (isMobileViewport) dispatchView({ type: "show_map" });
+                        focusListing(entry, { pan: true, zoom: true });
+                      }}
+                      disabled={!entry.location}
+                    >
+                      Focus map
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
       {officialUpcomingListings.length > 0 && (
         <div className="mk3-zone mk3-zone-host mk3-discover-official-strip">
           <div className="mk3-discover-official-strip-head">
@@ -2194,15 +2324,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
                   });
                 }}
                 onJoinRoom={(item) => {
-                  trackEvent("mk_discover_join_room", {
-                    source: "discover_rail",
-                    roomCode: item.roomCode,
-                  });
-                  navigate("join", item.roomCode, {
-                    roomCode: item.roomCode,
-                    src: "discover_join_room",
-                    src_listing_type: item.listingType,
-                  });
+                  handleJoinRoom(item, "discover_rail");
                 }}
               />
               );

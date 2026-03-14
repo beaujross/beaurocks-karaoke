@@ -229,6 +229,7 @@ const getQueueSubmitErrorMessage = (error, fallback = 'Could not send request.')
     if (isQueueNetworkError(error)) return 'Network issue while sending request. Try again.';
     return fallback;
 };
+const ROOM_REQUEST_INTENT_HOST_PICK = 'host_pick_tight15';
 
 const getJoinErrorMessage = (error) => {
     if (isQueueAppCheckError(error)) return 'Security check is still warming up. Refresh and try again.';
@@ -239,6 +240,15 @@ const getJoinErrorMessage = (error) => {
 };
 
 const normalizeTight15Text = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+const songBelongsToAudienceUser = (song = {}, uidValue = '', nameValue = '') => {
+    const normalizedUid = String(uidValue || '').trim();
+    const normalizedName = String(nameValue || '').trim();
+    return (
+        (!!normalizedUid && String(song?.singerUid || '').trim() === normalizedUid)
+        || (!!normalizedName && String(song?.singerName || '').trim() === normalizedName)
+    );
+};
 
 const normalizeTight15Entry = (entry = {}) => {
     const songTitle = String(entry.songTitle || entry.song || '').trim();
@@ -775,6 +785,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const [searchQ, setSearchQ] = useState('');
     const [results, setResults] = useState([]);
     const [catalogSearchOpen, setCatalogSearchOpen] = useState(false);
+    const [manualRequestComposerOpen, setManualRequestComposerOpen] = useState(false);
+    const [lastSongRequestFeedback, setLastSongRequestFeedback] = useState(null);
     const [tight15SearchQ, setTight15SearchQ] = useState('');
     const [tight15Results, setTight15Results] = useState([]);
     const [dragIndex, setDragIndex] = useState(null);
@@ -1845,6 +1857,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [hallOfFameEntries, setHallOfFameEntries] = useState([]);
     const [hallOfFameFilter, setHallOfFameFilter] = useState('');
     const audienceCatalogSearchInputRef = useRef(null);
+    const manualRequestSongInputRef = useRef(null);
     const filteredHallOfFame = useMemo(() => {
         const q = hallOfFameFilter.trim().toLowerCase();
         if (!q) return hallOfFameEntries;
@@ -3256,12 +3269,26 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [songsTab, tab]);
 
     useEffect(() => {
+        if (tab !== 'request' || songsTab !== 'requests') {
+            setManualRequestComposerOpen(false);
+        }
+    }, [songsTab, tab]);
+
+    useEffect(() => {
         if (!catalogSearchOpen) return;
         const raf = requestAnimationFrame(() => {
             audienceCatalogSearchInputRef.current?.focus?.();
         });
         return () => cancelAnimationFrame(raf);
     }, [catalogSearchOpen]);
+
+    useEffect(() => {
+        if (!manualRequestComposerOpen) return;
+        const raf = requestAnimationFrame(() => {
+            manualRequestSongInputRef.current?.focus?.();
+        });
+        return () => cancelAnimationFrame(raf);
+    }, [manualRequestComposerOpen]);
 
     useEffect(() => {
         if (songsTab === 'browse') return;
@@ -4146,7 +4173,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const limitMode = queueSettings.limitMode || 'none';
         const limitCount = Math.max(0, Number(queueSettings.limitCount || 0));
         const nowMs = Date.now();
-        const mySongs = songs.filter(song => song.singerUid === singerUid || song.singerName === user.name);
+        const mySongs = songs.filter(song => songBelongsToAudienceUser(song, singerUid, user.name));
         const myRecentSongs = mySongs.filter(song => {
             const ts = song.timestamp?.seconds ? song.timestamp.seconds * 1000 : song.timestamp?.toMillis?.() || 0;
             return ts && nowMs - ts < 60 * 60 * 1000;
@@ -4168,8 +4195,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             await ensureAppCheckToken(false).catch(() => false);
             const rotation = queueSettings.rotation || 'first_come';
             const firstTimeBoost = !!queueSettings.firstTimeBoost;
-            const queuedCount = songs.filter(songItem => (songItem.singerUid === singerUid || songItem.singerName === user.name) && (songItem.status === 'requested' || songItem.status === 'pending' || songItem.status === 'performing')).length;
-            const performedCount = songs.filter(songItem => (songItem.singerUid === singerUid || songItem.singerName === user.name) && songItem.status === 'performed').length;
+            const queuedCount = songs.filter(songItem => songBelongsToAudienceUser(songItem, singerUid, user.name) && (songItem.status === 'requested' || songItem.status === 'pending' || songItem.status === 'performing')).length;
+            const performedCount = songs.filter(songItem => songBelongsToAudienceUser(songItem, singerUid, user.name) && songItem.status === 'performed').length;
             let priorityScore = Date.now();
             if (rotation === 'round_robin') {
                 priorityScore += queuedCount * 60000;
@@ -4191,11 +4218,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             let trackId = null;
             let resolvedTrackSource = backingUrl ? trackSource : null;
             let resolvedMediaUrl = backingUrl || '';
-            let resolvedAppleMusicId = '';
+            let resolvedAppleMusicId = String(options.itunesId || '').trim();
             let playbackReady = !!backingUrl;
             let mediaResolutionStatus = backingUrl ? 'audience_selected' : 'needs_backing';
 
-            if (!backingUrl) {
+            if (!backingUrl && !resolvedAppleMusicId) {
                 try {
                     const resolved = await resolveSongCatalog({
                         songId: fallbackSongId,
@@ -4216,7 +4243,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 }
             }
 
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
+            if (resolvedAppleMusicId && !resolvedTrackSource) {
+                resolvedTrackSource = 'apple_music';
+                playbackReady = true;
+                mediaResolutionStatus = 'catalog_ready';
+            }
+
+            const requestStatus = (room?.bouncerMode || enforcePending) ? 'pending' : 'requested';
+            const createdSongDoc = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
                 roomCode,
                 songTitle: song,
                 artist: artist,
@@ -4224,7 +4258,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 singerName: user.name,
                 singerUid,
                 emoji: user.avatar,
-                status: (room?.bouncerMode || enforcePending) ? 'pending' : 'requested',
+                status: requestStatus,
                 timestamp: serverTimestamp(),
                 priorityScore,
                 songId: songId || null,
@@ -4236,9 +4270,21 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 mediaResolutionStatus,
                 requestedBackingMode: allowTrack ? 'audience_optional' : 'host_or_catalog_only'
             }); 
+            await clearHostPickRequest({ silent: true });
             trackEvent('song_request', { room_code: roomCode, source: room?.bouncerMode ? 'bouncer' : 'standard' });
             setForm(prev => ({...prev, song:'', artist:'', art:'', backingUrl: ''})); 
             setSearchQ(''); setResults([]);
+            setManualRequestComposerOpen(false);
+            setCatalogSearchOpen(false);
+            setSongsTab('queue');
+            setLastSongRequestFeedback({
+                requestId: createdSongDoc.id,
+                songTitle: song,
+                artist: artist || 'Unknown',
+                status: requestStatus,
+                playbackReady,
+                requestedAt: Date.now()
+            });
             toast(playbackReady ? "Request Sent!" : "Request Sent! Host may need to add backing."); 
             logActivity(`requested ${song}`, EMOJI.musicNotes);
             syncPoints(true);
@@ -4248,7 +4294,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
     };
     
-    const deleteMyRequest = async (id) => { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id)); toast("Request Deleted"); };
+    const deleteMyRequest = async (id) => {
+        await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id));
+        setLastSongRequestFeedback((current) => (current?.requestId === id ? null : current));
+        toast("Request Deleted");
+    };
 
     const handleAudienceCatalogResultSelect = (result) => {
         if (!result) return;
@@ -4389,9 +4439,48 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         await setDoc(doc(db, 'users', uid), { tight15: sanitized }, { merge: true });
         await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { tight15Temp: sanitized }, { merge: true });
     };
+    const setRoomUserRequestIntent = async (nextIntent = '') => {
+        if (!activeUid) {
+            toast('Session is still connecting. Try again.');
+            return false;
+        }
+        try {
+            await setDoc(
+                doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`),
+                {
+                    ...getRoomUserProjection(),
+                    requestIntent: String(nextIntent || '').trim(),
+                    requestIntentUpdatedAt: serverTimestamp()
+                },
+                { merge: true }
+            );
+            return true;
+        } catch (error) {
+            console.error(error);
+            toast('Could not update your host request.');
+            return false;
+        }
+    };
+    const requestHostPickFromTight15 = async () => {
+        const tight15 = getTight15List();
+        if (!tight15.length) {
+            setSongsTab('tight15');
+            toast('Add a few Tight 15 songs first so the host can pick from them.');
+            return;
+        }
+        const ok = await setRoomUserRequestIntent(ROOM_REQUEST_INTENT_HOST_PICK);
+        if (!ok) return;
+        setSongsTab('tight15');
+        toast('Host can now pick from your Tight 15.');
+    };
+    const clearHostPickRequest = async ({ silent = false } = {}) => {
+        const ok = await setRoomUserRequestIntent('');
+        if (ok && !silent) toast('Host-pick request cleared.');
+        return ok;
+    };
 
     const addToTight15 = async (item) => {
-        if (!uid) return toast('Not signed in');
+        if (!activeUid) return toast('Session is still connecting. Try again.');
         try {
             const existing = getTight15List();
             const entry = normalizeTight15Entry(item);
@@ -4411,7 +4500,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     const removeFromTight15 = async (id) => {
-        if (!uid) return;
+        if (!activeUid) return;
         try {
             const cur = getTight15List();
             const next = cur.filter(i => i.id !== id);
@@ -7058,6 +7147,21 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             const bTime = b.timestamp?.seconds ? b.timestamp.seconds : 0;
             return aTime - bTime;
         });
+    const myRequestSongs = [...songs]
+        .filter((song) => songBelongsToAudienceUser(song, activeUid || uid, user?.name))
+        .sort((a, b) => {
+            const statusOrder = { performing: 0, requested: 1, pending: 2, performed: 3 };
+            const aOrder = statusOrder[String(a?.status || '').trim().toLowerCase()] ?? 9;
+            const bOrder = statusOrder[String(b?.status || '').trim().toLowerCase()] ?? 9;
+            if (aOrder !== bOrder) return aOrder - bOrder;
+            const aTime = a.timestamp?.seconds ? a.timestamp.seconds : 0;
+            const bTime = b.timestamp?.seconds ? b.timestamp.seconds : 0;
+            return bTime - aTime;
+        });
+    const activeRequestCount = myRequestSongs.filter((song) =>
+        ['requested', 'pending', 'performing'].includes(String(song?.status || '').trim().toLowerCase())
+    ).length;
+    const latestMyRequest = myRequestSongs[0] || null;
     const queueWaitTimeSec = songs
         .filter(s => s.status === 'requested')
         .reduce((sum, s) => {
@@ -8351,6 +8455,101 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
                 {tab === 'request' && (
                     <div className="flex flex-col h-full">
+                        {(() => {
+                            const tight15Count = getTight15List().length;
+                            const hasPendingHostPick = String(user?.requestIntent || '').trim() === ROOM_REQUEST_INTENT_HOST_PICK;
+                            const hostPickSummary = tight15Count > 0
+                                ? `${tight15Count} Tight 15 song${tight15Count === 1 ? '' : 's'} ready for the host`
+                                : favoriteSongs.length > 0
+                                    ? 'Build your Tight 15 first so the host can pull from it'
+                                    : 'Add a few signature songs to Tight 15 first';
+                            return (
+                                <div className="mb-3 rounded-2xl border border-cyan-400/25 bg-gradient-to-br from-cyan-500/12 via-sky-500/10 to-pink-500/10 p-4">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div className="text-left">
+                                            <div className="text-[11px] uppercase tracking-[0.35em] text-cyan-200/80">First Song</div>
+                                            <div className="text-xl font-bebas text-white">Choose how you want to get on deck.</div>
+                                            <div className="text-sm text-zinc-300">
+                                                {activeRequestCount > 0
+                                                    ? `${activeRequestCount} active request${activeRequestCount === 1 ? '' : 's'} in this room.`
+                                                    : 'Pick the fastest path for your first song.'}
+                                            </div>
+                                        </div>
+                                        {hasPendingHostPick && (
+                                            <button
+                                                onClick={() => clearHostPickRequest({ silent: false })}
+                                                className="rounded-full border border-amber-300/35 bg-amber-500/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-amber-100"
+                                            >
+                                                Cancel Host Pick
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="mt-4 grid grid-cols-1 gap-3">
+                                        <button
+                                            onClick={() => {
+                                                setSongsTab('requests');
+                                                setCatalogSearchOpen(true);
+                                            }}
+                                            className={`rounded-2xl border px-4 py-3 text-left transition-all ${
+                                                songsTab === 'requests'
+                                                    ? 'border-cyan-300/70 bg-cyan-500/20 text-white shadow-[0_0_18px_rgba(34,211,238,0.2)]'
+                                                    : 'border-white/10 bg-black/25 text-zinc-100 hover:border-cyan-300/45'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="text-base font-black">Request a song now</div>
+                                                    <div className="text-sm text-zinc-300">Search the catalog or type it in manually.</div>
+                                                </div>
+                                                <div className="text-cyan-200 text-xs font-black uppercase tracking-[0.2em]">Fastest</div>
+                                            </div>
+                                        </button>
+                                        <button
+                                            onClick={() => setSongsTab('tight15')}
+                                            className={`rounded-2xl border px-4 py-3 text-left transition-all ${
+                                                songsTab === 'tight15'
+                                                    ? 'border-cyan-300/70 bg-cyan-500/20 text-white shadow-[0_0_18px_rgba(34,211,238,0.2)]'
+                                                    : 'border-white/10 bg-black/25 text-zinc-100 hover:border-cyan-300/45'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="text-base font-black">Pick from Tight 15</div>
+                                                    <div className="text-sm text-zinc-300">
+                                                        {tight15Count > 0
+                                                            ? `${tight15Count} saved song${tight15Count === 1 ? '' : 's'} ready to queue`
+                                                            : 'Build your go-to setlist once, then queue from it fast'}
+                                                    </div>
+                                                </div>
+                                                <div className="text-cyan-200 text-xs font-black uppercase tracking-[0.2em]">
+                                                    {tight15Count}/{TIGHT15_MAX}
+                                                </div>
+                                            </div>
+                                        </button>
+                                        <button
+                                            onClick={requestHostPickFromTight15}
+                                            className={`rounded-2xl border px-4 py-3 text-left transition-all ${
+                                                hasPendingHostPick
+                                                    ? 'border-amber-300/70 bg-amber-500/18 text-white shadow-[0_0_18px_rgba(251,191,36,0.16)]'
+                                                    : 'border-white/10 bg-black/25 text-zinc-100 hover:border-amber-300/45'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="text-base font-black">Let host pick from my favorites</div>
+                                                    <div className="text-sm text-zinc-300">
+                                                        {hasPendingHostPick ? 'Host pick requested. Your Tight 15 is ready for them.' : hostPickSummary}
+                                                    </div>
+                                                </div>
+                                                <div className="text-amber-100 text-xs font-black uppercase tracking-[0.2em]">
+                                                    {hasPendingHostPick ? 'Pending' : 'Host Assist'}
+                                                </div>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                         <div className="sticky top-0 z-20 -mx-4 px-4 pb-3 pt-1 bg-zinc-900/95 backdrop-blur">
                             <div className="grid grid-cols-4 gap-2 bg-zinc-800 p-2 rounded-xl">
                                 <button data-feature-id="singer-requests-tab" onClick={()=>setSongsTab('requests')} className={`py-2 rounded-lg text-base font-bold transition-all ${songsTab==='requests' ? 'bg-cyan-600 text-white shadow' : 'text-zinc-500'}`}>REQUESTS</button>
@@ -8359,6 +8558,57 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <button onClick={()=>setSongsTab('tight15')} className={`py-2 rounded-lg text-base font-bold transition-all ${songsTab==='tight15' ? 'bg-[#00C4D9] text-white shadow' : 'text-zinc-500'}`}>TIGHT 15</button>
                             </div>
                         </div>
+                        {lastSongRequestFeedback && (
+                            <div className="mb-4 rounded-2xl border border-emerald-300/30 bg-gradient-to-br from-emerald-500/18 via-cyan-500/14 to-sky-500/16 p-4 shadow-[0_16px_40px_rgba(16,185,129,0.12)]">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0 text-left">
+                                        <div className="text-[11px] uppercase tracking-[0.35em] text-emerald-100/80">Request sent</div>
+                                        <div className="mt-1 text-xl font-black text-white leading-tight">
+                                            {lastSongRequestFeedback.songTitle}
+                                        </div>
+                                        <div className="text-sm text-zinc-200 truncate">
+                                            {lastSongRequestFeedback.artist}
+                                        </div>
+                                        <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-50">
+                                            <i className={`fa-solid ${lastSongRequestFeedback.status === 'pending' ? 'fa-hourglass-half' : 'fa-check-circle'}`}></i>
+                                            {lastSongRequestFeedback.status === 'pending' ? 'Waiting for host review' : 'Added to the room queue'}
+                                        </div>
+                                        {!lastSongRequestFeedback.playbackReady && (
+                                            <div className="mt-2 text-sm text-zinc-300">
+                                                Host may still need to attach a backing track.
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLastSongRequestFeedback(null)}
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/25 text-zinc-200"
+                                        aria-label="Dismiss request confirmation"
+                                    >
+                                        <i className="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSongsTab('queue')}
+                                        className="rounded-full bg-white text-black px-4 py-2 text-sm font-black uppercase tracking-[0.18em]"
+                                    >
+                                        View Queue
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSongsTab('requests');
+                                            setLastSongRequestFeedback(null);
+                                        }}
+                                        className="rounded-full border border-white/15 bg-black/20 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-white"
+                                    >
+                                        Add Another
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                         {catalogSearchOpen && ['requests', 'browse'].includes(songsTab) && (
                             <React.Fragment>
                                 <button
@@ -8444,6 +8694,90 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
                             </React.Fragment>
                         )}
+                        {manualRequestComposerOpen && songsTab === 'requests' && (
+                            <React.Fragment>
+                                <button
+                                    type="button"
+                                    aria-label="Close manual song request"
+                                    onClick={() => setManualRequestComposerOpen(false)}
+                                    className="fixed inset-0 z-[84] bg-black/65 backdrop-blur-sm"
+                                ></button>
+                                <div
+                                    className="fixed z-[85] rounded-[1.75rem] border border-pink-300/25 bg-[#090d18]/97 shadow-[0_22px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl flex flex-col min-h-0"
+                                    style={{
+                                        top: `calc(${mobileHeaderTopInset} + 5rem)`,
+                                        left: mobileSideInsetLeft,
+                                        right: mobileSideInsetRight,
+                                        bottom: `calc(${mobileBottomInset} + 1rem)`
+                                    }}
+                                >
+                                    <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 border-b border-white/10">
+                                        <div className="text-left">
+                                            <div className="text-xs uppercase tracking-[0.3em] text-pink-200/80">Manual Request</div>
+                                            <div className="text-lg font-black text-white">Type the song once and send it cleanly.</div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setManualRequestComposerOpen(false)}
+                                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/35 text-zinc-200"
+                                        >
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <form
+                                        onSubmit={(event) => {
+                                            event.preventDefault();
+                                            submitSong();
+                                        }}
+                                        className="flex-1 min-h-0 overflow-y-auto custom-scrollbar touch-scroll-y px-4 py-4 space-y-4"
+                                    >
+                                        <div className="space-y-2">
+                                            <label className="text-sm uppercase tracking-[0.35em] text-zinc-400">Song Title</label>
+                                            <input
+                                                ref={manualRequestSongInputRef}
+                                                data-feature-id="singer-request-song-title"
+                                                value={form.song}
+                                                onChange={e=>setForm({...form, song:e.target.value})}
+                                                className="w-full bg-zinc-900/70 p-4 rounded-2xl border border-zinc-700 text-base text-white outline-none"
+                                                placeholder="Song Title"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm uppercase tracking-[0.35em] text-zinc-400">Artist</label>
+                                            <input
+                                                data-feature-id="singer-request-artist"
+                                                value={form.artist}
+                                                onChange={e=>setForm({...form, artist:e.target.value})}
+                                                className="w-full bg-zinc-900/70 p-4 rounded-2xl border border-zinc-700 text-base text-white outline-none"
+                                                placeholder="Artist"
+                                            />
+                                        </div>
+                                        {room?.allowSingerTrackSelect && (
+                                            <div className="space-y-2">
+                                                <label className="text-sm uppercase tracking-[0.35em] text-zinc-400">Optional Backing Track</label>
+                                                <input
+                                                    value={form.backingUrl}
+                                                    onChange={e => setForm(prev => ({ ...prev, backingUrl: e.target.value }))}
+                                                    className="w-full bg-zinc-900/70 p-4 rounded-2xl border border-zinc-700 text-base text-white outline-none"
+                                                    placeholder="YouTube URL for the backing track"
+                                                />
+                                                <div className="text-sm text-zinc-400">YouTube links only. Host still controls playback.</div>
+                                            </div>
+                                        )}
+                                        <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-300">
+                                            This request will show up in the queue right after you send it.
+                                        </div>
+                                        <button
+                                            data-feature-id="singer-request-submit"
+                                            type="submit"
+                                            className="w-full bg-[#00C4D9] text-black py-4 rounded-2xl font-bold text-xl"
+                                        >
+                                            Send Request
+                                        </button>
+                                    </form>
+                                </div>
+                            </React.Fragment>
+                        )}
                         {songsTab === 'requests' && (
                             <div className="flex flex-col h-full">
                                 <div className="space-y-4">
@@ -8464,29 +8798,76 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             Search opens a full-screen Apple Music picker so results stay visible above the keyboard.
                                         </div>
                                     </div>
-                                    {room?.allowSingerTrackSelect && (
-                                        <div className="space-y-2">
-                                            <div className="text-sm uppercase tracking-[0.35em] text-zinc-500">Optional Backing Track</div>
-                                            <input
-                                                value={form.backingUrl}
-                                                onChange={e => setForm(prev => ({ ...prev, backingUrl: e.target.value }))}
-                                                className="w-full bg-zinc-800 p-3 rounded-xl border border-zinc-600 text-base"
-                                                placeholder="YouTube URL for the backing track"
-                                            />
-                                            <div className="text-sm text-zinc-500">YouTube links only. Host still controls playback.</div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setManualRequestComposerOpen(true)}
+                                        className="w-full rounded-2xl border border-pink-400/30 bg-gradient-to-r from-pink-500/18 via-fuchsia-500/12 to-cyan-500/12 px-4 py-4 text-left"
+                                    >
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div>
+                                                <div className="text-sm uppercase tracking-[0.35em] text-pink-100/75">Manual Entry</div>
+                                                <div className="text-lg font-black text-white">Type it yourself in a full-screen form</div>
+                                                <div className="text-sm text-zinc-300">Better when you already know the exact song and artist.</div>
+                                            </div>
+                                            <div className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/25 text-pink-100">
+                                                <i className="fa-solid fa-keyboard"></i>
+                                            </div>
+                                        </div>
+                                    </button>
+                                    {room?.allowSingerTrackSelect && form.backingUrl && (
+                                        <div className="rounded-2xl border border-cyan-300/20 bg-black/20 px-4 py-3 text-left">
+                                            <div className="text-xs uppercase tracking-[0.3em] text-cyan-200/75">Backing Track Ready</div>
+                                            <div className="mt-1 text-sm text-zinc-200 break-all">{form.backingUrl}</div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setForm((prev) => ({ ...prev, backingUrl: '' }))}
+                                                className="mt-3 rounded-full border border-white/15 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-200"
+                                            >
+                                                Clear Backing Track
+                                            </button>
                                         </div>
                                     )}
-                                    <div className="text-base text-zinc-400 text-center my-2">- OR MANUAL -</div>
-                                    <input data-feature-id="singer-request-song-title" value={form.song} onChange={e=>setForm({...form, song:e.target.value})} className="w-full bg-zinc-800 p-4 rounded-xl border border-zinc-600" placeholder="Song Title"/><input data-feature-id="singer-request-artist" value={form.artist} onChange={e=>setForm({...form, artist:e.target.value})} className="w-full bg-zinc-800 p-4 rounded-xl border border-zinc-600" placeholder="Artist"/><button data-feature-id="singer-request-submit" onClick={()=>submitSong()} className="w-full bg-[#00C4D9] text-black py-4 rounded-xl font-bold text-xl mt-4">SEND REQUEST</button>
                                 </div>
                                 <div data-feature-id="singer-my-requests-panel" className="mt-6 border-t border-zinc-800 pt-4 flex-1">
-                                    <h3 className="text-sm uppercase tracking-[0.35em] text-zinc-400 mb-2">My Requests</h3>
-                                    {songs.filter(s=>s.singerName===user.name).length===0 ? <div className="text-zinc-600 text-base italic">No active requests</div> : songs.filter(s=>s.singerName===user.name).map(s=><div key={s.id} data-feature-id={`singer-my-request-${s.id}`} className="flex justify-between items-center bg-zinc-800 p-2 rounded mb-1"><span className="text-base">{s.songTitle}</span>
-                                    <div className="flex items-center gap-2">
-                                        <span className={`text-base px-2 py-0.5 rounded ${s.status==='performed'?'bg-zinc-600':s.status==='performing'?'bg-[#00C4D9] animate-pulse':s.status==='requested'?'bg-blue-600':'bg-orange-600'}`}>{s.status.toUpperCase()}</span>
-                                        {(s.status === 'requested' || s.status === 'pending') && <button onClick={()=>deleteMyRequest(s.id)} className="text-[#EC4899] hover:text-[#F472B6] px-2"><i className="fa-solid fa-trash"></i></button>}
+                                    <div className="rounded-2xl border border-white/10 bg-zinc-900/40 p-4 text-left">
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <h3 className="text-sm uppercase tracking-[0.35em] text-zinc-400">My Requests</h3>
+                                                {latestMyRequest ? (
+                                                    <>
+                                                        <div className="mt-2 text-lg font-black text-white">{latestMyRequest.songTitle}</div>
+                                                        <div className="text-sm text-zinc-400">{latestMyRequest.artist}</div>
+                                                    </>
+                                                ) : (
+                                                    <div className="mt-2 text-base text-zinc-500 italic">No requests yet.</div>
+                                                )}
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-2xl font-bebas text-cyan-300">{activeRequestCount}</div>
+                                                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Active now</div>
+                                            </div>
+                                        </div>
+                                        {latestMyRequest && (
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSongsTab('queue')}
+                                                    className="rounded-full bg-[#00C4D9] text-black px-4 py-2 text-sm font-black uppercase tracking-[0.18em]"
+                                                >
+                                                    View Queue
+                                                </button>
+                                                {['requested', 'pending'].includes(String(latestMyRequest?.status || '').trim().toLowerCase()) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => deleteMyRequest(latestMyRequest.id)}
+                                                        className="rounded-full border border-pink-400/30 bg-pink-500/12 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-pink-100"
+                                                    >
+                                                        Remove Latest
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
-                                    </div>)}
                                 </div>
                             </div>
                         )}
@@ -8811,7 +9192,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </div>
                                     )}
                                     {queueSongsView.map((s, idx) => (
-                                        <div key={s.id} className={`flex items-center gap-3 bg-zinc-900/60 rounded-xl p-3 border ${idx === 0 ? 'border-cyan-400/40 shadow-[0_0_12px_rgba(34,211,238,0.25)]' : 'border-zinc-800'}`}>
+                                        <div
+                                            key={s.id}
+                                            className={`flex items-center gap-3 bg-zinc-900/60 rounded-xl p-3 border ${
+                                                s.id === lastSongRequestFeedback?.requestId
+                                                    ? 'border-emerald-300/55 shadow-[0_0_18px_rgba(16,185,129,0.25)]'
+                                                    : idx === 0
+                                                        ? 'border-cyan-400/40 shadow-[0_0_12px_rgba(34,211,238,0.25)]'
+                                                        : 'border-zinc-800'
+                                            }`}
+                                        >
                                             <div className="w-6 h-6 rounded-full bg-black/40 border border-white/10 text-sm font-bold text-white flex items-center justify-center">
                                                 {idx + 1}
                                             </div>
@@ -8820,6 +9210,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 <div className="text-base text-white font-bold truncate">{s.songTitle}</div>
                                                 <div className="text-base text-zinc-300 truncate">{s.singerName}</div>
                                             </div>
+                                            {s.id === lastSongRequestFeedback?.requestId && (
+                                                <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-100 bg-emerald-500/15 border border-emerald-300/30 px-2 py-0.5 rounded-full">
+                                                    Just added
+                                                </div>
+                                            )}
                                             {idx === 0 && (
                                                 <div className="text-sm uppercase tracking-widest text-cyan-200 bg-cyan-500/15 border border-cyan-400/30 px-2 py-0.5 rounded-full">
                                                     Up next

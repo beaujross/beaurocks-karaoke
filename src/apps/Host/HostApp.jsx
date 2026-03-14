@@ -5207,7 +5207,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [recentHostRoomsLoading, setRecentHostRoomsLoading] = useState(false);
     const [recentHostRooms, setRecentHostRooms] = useState([]);
     const [entryError, setEntryError] = useState('');
-    const [landingLaunchMode, setLandingLaunchMode] = useState('create');
+    const [landingLaunchMode, setLandingLaunchMode] = useState('start');
     const [showLandingListingOptions, setShowLandingListingOptions] = useState(false);
     const [hostUpdateDeploymentWarning, setHostUpdateDeploymentWarning] = useState('');
     const hostUpdateWarningToastedRef = useRef(false);
@@ -6887,6 +6887,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (launchRoomCode) {
                 setRoomCodeInput(launchRoomCode);
             }
+            setLandingLaunchMode(
+                launchRoomCode && !launchPublicRoom && !launchVirtualOnly && !launchTitle && !launchDescription && !launchStartsAt && !launchCity && !launchState
+                    ? 'resume'
+                    : 'advanced'
+            );
             setQuickLaunchDiscovery((prev) => ({
                 ...prev,
                 ...(launchTitle ? { title: launchTitle } : {}),
@@ -7246,7 +7251,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             joinLinkCopied: false,
             roomSetupOpened: false,
         });
-        setLandingLaunchMode('create');
+        setLandingLaunchMode('start');
         setEntryError('');
         if (roomCode) {
             setRoomCodeInput(roomCode);
@@ -7725,7 +7730,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const approved = confirmRoomManagerAction({
             actionName: nextArchived ? 'archive this room' : 'restore this room',
             roomCode: normalizedCode,
-            requireTypedCode: !!nextArchived
+            requireTypedCode: false
         });
         if (!approved) return;
         setRoomManagerBusyCode(normalizedCode);
@@ -7767,7 +7772,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const ok = confirmRoomManagerAction({
             actionName: 'clear queue, users, activity, and uploads',
             roomCode: normalizedCode,
-            requireTypedCode: true
+            requireTypedCode: false
         });
         if (!ok) return;
         setRoomManagerBusyCode(normalizedCode);
@@ -9826,8 +9831,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     );
     const selectedLobbyUserUid = selectedLobbyUser ? resolveRoomUserUid(selectedLobbyUser) : '';
     const selectedLobbyUserIsSpotlight = !!(selectedLobbyUserUid && room?.spotlightUser?.id === selectedLobbyUserUid);
+    const selectedLobbyUserNeedsFirstSongAssist = String(selectedLobbyUser?.requestIntent || '').trim() === 'host_pick_tight15';
     const selectedLobbyUserQueueBusy = !!(selectedLobbyUserUid && tight15QueueBusyUid === selectedLobbyUserUid);
     const selectedLobbyUserProfileBusy = !!(selectedLobbyUserUid && tight15ProfileBusyUid === selectedLobbyUserUid);
+    const pendingFirstSongAssistCount = users.filter((entry) => String(entry?.requestIntent || '').trim() === 'host_pick_tight15').length;
     useEffect(() => {
         const validTokens = new Set(users.map((entry) => resolveLobbyUserToken(entry)).filter(Boolean));
         if (selectedLobbyUserToken && !validTokens.has(selectedLobbyUserToken)) {
@@ -9949,6 +9956,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const fallback = sanitizeTight15List(roomUser?.tight15 || roomUser?.tight15Temp || []);
         return fallback;
     };
+    const clearRoomUserSongRequestIntent = async (roomUser = {}) => {
+        const singerUid = resolveRoomUserUid(roomUser);
+        if (!singerUid) return;
+        try {
+            await setDoc(
+                doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${singerUid}`),
+                {
+                    requestIntent: '',
+                    requestIntentUpdatedAt: serverTimestamp(),
+                    lastActiveAt: serverTimestamp()
+                },
+                { merge: true }
+            );
+        } catch (error) {
+            hostLogger.debug('Could not clear room user request intent', error);
+        }
+    };
 
     const queueTight15EntryForSinger = async ({ roomUser, entry, sourceLabel = 'Tight 15' }) => {
         const normalized = normalizeTight15Entry(entry);
@@ -9979,10 +10003,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             priorityScore: nowMs(),
             source: sourceLabel
         });
+        await clearRoomUserSongRequestIntent(roomUser);
         return normalized;
     };
 
-    const queueRandomTight15ForUser = async (roomUser = {}) => {
+    const queueRandomTight15ForUser = async (roomUser = {}, options = {}) => {
         const singerUid = resolveRoomUserUid(roomUser) || roomUser?.id || '';
         if (!singerUid) return;
         if (tight15QueueBusyUid === singerUid) return;
@@ -9994,8 +10019,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 return;
             }
             const pick = tight15[Math.floor(Math.random() * tight15.length)];
-            await queueTight15EntryForSinger({ roomUser, entry: pick, sourceLabel: 'tight15_random' });
-            toast(`Queued random Tight 15 song for ${roomUser?.name || 'Singer'}.`);
+            const sourceLabel = String(options?.sourceLabel || 'tight15_random').trim() || 'tight15_random';
+            await queueTight15EntryForSinger({ roomUser, entry: pick, sourceLabel });
+            toast(String(options?.successMessage || `Queued random Tight 15 song for ${roomUser?.name || 'Singer'}.`));
         } catch (error) {
             hostLogger.error('Queue random Tight 15 failed', error);
             toast('Could not queue Tight 15 song.');
@@ -11785,6 +11811,148 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             || String(quickLaunchDiscovery.lng || '').trim()
         );
         const landingListingDetailsOpen = showLandingListingOptions || hasDiscoveryDraft;
+        const recentLiveRooms = recentHostRooms.filter((roomItem) => !roomItem.archived);
+        const featuredRecentRoom = recentLiveRooms[0] || recentHostRooms[0] || null;
+        const launchModeMeta = {
+            start: {
+                label: 'Start Tonight',
+                title: shouldShowSetupCard ? 'Set up once, then start tonight' : 'Create a fresh room for tonight',
+                detail: shouldShowSetupCard
+                    ? 'Guided setup stays attached to the start flow for first-time hosts.'
+                    : 'The fastest path from host launch to a live room.'
+            },
+            resume: {
+                label: 'Reopen Previous Room',
+                title: featuredRecentRoom ? `Latest room ${featuredRecentRoom.code}` : 'Open a room code or recent room',
+                detail: featuredRecentRoom
+                    ? 'Jump back into a recent room without browsing the full workspace first.'
+                    : 'Use a room code when you need to get back in quickly.'
+            },
+            advanced: {
+                label: 'Advanced Setup',
+                title: 'Discovery, diagnostics, and room management',
+                detail: 'Use this lane for optional listing details, recovery steps, cleanup, and archive tools.'
+            }
+        };
+        const renderRecentRoomList = ({ managementMode = false } = {}) => (
+            <div className="mt-4 rounded-xl border border-cyan-400/25 bg-gradient-to-br from-[#120f22]/90 via-[#11152a]/90 to-[#13151f]/90 px-3 py-3 text-left">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">
+                    {managementMode ? 'Room Management' : 'Recent Rooms'}
+                </div>
+                <div className="text-xs text-cyan-100/75 mt-1">
+                    {managementMode
+                        ? 'Cleanup, archive, or restore rooms after the show.'
+                        : 'Jump back into a recent room without searching for the code first.'}
+                </div>
+                {recentHostRoomsLoading ? (
+                    <div className="text-xs text-cyan-100/70 mt-3">Loading recent rooms...</div>
+                ) : recentHostRooms.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                        {recentHostRooms.map((roomItem) => {
+                            const roomBusy = roomManagerBusyCode === roomItem.code;
+                            const busyLabel = roomBusy ? (
+                                roomManagerBusyAction === 'cleanup'
+                                    ? 'Cleaning...'
+                                    : roomManagerBusyAction === 'archive'
+                                        ? 'Archiving...'
+                                        : roomManagerBusyAction === 'restore'
+                                            ? 'Restoring...'
+                                            : 'Working...'
+                            ) : '';
+                            const modifiedMs = roomItem.updatedAtMs || roomItem.createdAtMs || nowMs();
+                            return (
+                                <div key={roomItem.code} className="rounded-lg border border-cyan-400/22 bg-gradient-to-r from-[#0a101f]/80 via-[#0d1424]/80 to-[#1a1024]/70 px-2.5 py-2">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <div className="text-sm font-semibold text-white">
+                                                {roomItem.code}
+                                                {roomItem.archived && (
+                                                    <span className="ml-2 text-[10px] uppercase tracking-[0.16em] rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-amber-200">Archived</span>
+                                                )}
+                                            </div>
+                                            <div className="text-[11px] text-cyan-100/70">
+                                                {roomItem.orgName || 'Workspace'}
+                                                {' | '}
+                                                {roomItem.activeMode || 'karaoke'}
+                                                {' | '}
+                                                {new Date(modifiedMs).toLocaleString()}
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1 justify-end">
+                                            <button
+                                                onClick={() => openExistingRoomWorkspace(roomItem.code, 'queue.live_run')}
+                                                disabled={roomBusy || joiningRoom}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                Open
+                                            </button>
+                                            <button
+                                                onClick={() => openExistingRoomWorkspace(roomItem.code, managementMode ? 'advanced.diagnostics' : 'ops.room_setup')}
+                                                disabled={roomBusy || joiningRoom}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                {managementMode ? 'Diagnostics' : 'Setup'}
+                                            </button>
+                                            {managementMode && (
+                                                <>
+                                                    <button
+                                                        onClick={() => runLandingRoomCleanup(roomItem.code)}
+                                                        disabled={roomBusy || joiningRoom}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnDanger} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {roomBusy && roomManagerBusyAction === 'cleanup' ? 'Cleaning...' : 'Cleanup'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setRoomArchivedState(roomItem.code, !roomItem.archived)}
+                                                        disabled={roomBusy || joiningRoom}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {roomBusy && (roomManagerBusyAction === 'archive' || roomManagerBusyAction === 'restore')
+                                                            ? busyLabel
+                                                            : roomItem.archived ? 'Restore' : 'Archive'}
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-500/8 px-2.5 py-2">
+                        <div className="text-xs text-cyan-100/75">
+                            {managementMode
+                                ? 'No rooms to manage yet. Launch your first room and it will appear here.'
+                                : 'No recent hosted rooms yet. Launch your first room and it will appear here.'}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setLandingLaunchMode('start')}
+                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[11px] px-2 py-1`}
+                            >
+                                Start Tonight
+                            </button>
+                            {canUseWorkspaceOnboarding && (
+                                <button
+                                    type="button"
+                                    onClick={openOnboardingWizard}
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-[11px] px-2 py-1`}
+                                >
+                                    Finish Setup
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+                {roomManagerError && managementMode && (
+                    <div className="mt-2 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-2 py-1.5">
+                        {roomManagerError}
+                    </div>
+                )}
+            </div>
+        );
         const retryLastHostAction = async () => {
             if (creatingRoom || joiningRoom || roomManagerBusyCode) return;
             if (hasLaunchRoomCode) {
@@ -11867,139 +12035,66 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </div>
                     )}
                 </div>
-                {shouldShowSetupCard && (
-                    <div className="mb-3 rounded-xl border border-pink-300/30 bg-gradient-to-r from-cyan-500/10 via-sky-500/10 to-pink-500/10 px-3 py-3 text-left">
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-pink-100/75">First-Time Setup</div>
-                        <div className="mt-1 text-sm font-semibold text-white">Set up your host profile once.</div>
-                        <div className="mt-1 text-xs text-cyan-100/75">
-                            Add your host name, workspace details, and branding. After that, you can start rooms without seeing setup every time.
-                        </div>
-                        <button
-                            onClick={() => {
-                                if (!canUseWorkspaceOnboarding) {
-                                    toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
-                                    return;
-                                }
-                                openOnboardingWizard();
-                            }}
-                            disabled={!canUseWorkspaceOnboarding}
-                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} mt-3 w-full py-3 text-sm uppercase tracking-[0.2em] bg-gradient-to-r from-[#00C4D9] via-[#48d5eb] to-[#EC4899] text-black border-transparent shadow-[0_0_24px_rgba(0,196,217,0.24)] ${!canUseWorkspaceOnboarding ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                            Finish Host Setup
-                        </button>
-                    </div>
-                )}
                 <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Choose What You Want To Do</div>
-                            <div className="mt-2 text-sm font-semibold text-white">
-                                {landingLaunchMode === 'create' ? 'Starting a new room tonight' : 'Reopening an existing room'}
-                            </div>
-                            <div className="mt-1 text-xs text-cyan-100/72">
-                                {landingLaunchMode === 'create'
-                                    ? (shouldShowSetupCard
-                                        ? 'New hosts should finish setup first. Returning hosts can start a room right away.'
-                                        : 'Start a fresh room for tonight.')
-                                    : 'Open an existing room code and keep the show moving.'}
-                            </div>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setLandingLaunchMode(landingLaunchMode === 'create' ? 'resume' : 'create')}
-                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} shrink-0 border-cyan-400/25 bg-cyan-500/8 px-4 py-2 text-xs uppercase tracking-[0.16em] text-cyan-100`}
-                        >
-                            {landingLaunchMode === 'create' ? 'Switch To Resume' : 'Switch To New Room'}
-                        </button>
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Choose What You Want To Do</div>
+                    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+                        {['start', 'resume', 'advanced'].map((modeId) => {
+                            const active = landingLaunchMode === modeId;
+                            const modeMeta = launchModeMeta[modeId];
+                            return (
+                                <button
+                                    key={modeId}
+                                    type="button"
+                                    onClick={() => setLandingLaunchMode(modeId)}
+                                    className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                                        active
+                                            ? 'border-pink-300/45 bg-gradient-to-r from-cyan-500/16 via-sky-500/14 to-pink-500/14 text-white'
+                                            : 'border-cyan-400/20 bg-[#0d1526]/70 text-cyan-100/88 hover:border-cyan-300/35 hover:bg-cyan-500/10'
+                                    }`}
+                                >
+                                    <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/70">{modeMeta.label}</div>
+                                    <div className="mt-2 text-sm font-semibold">{modeMeta.title}</div>
+                                    <div className="mt-1 text-xs text-cyan-100/70">{modeMeta.detail}</div>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
-                {landingLaunchMode === 'create' && (
+                {landingLaunchMode === 'start' && (
                     <>
-                        <details
-                            className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left"
-                            data-host-discovery-launch
-                            open={landingListingDetailsOpen}
-                            onToggle={(event) => setShowLandingListingOptions(event.currentTarget.open)}
-                        >
-                            <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">
-                                <span>Optional: Help Guests Find This Room</span>
-                                <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
-                            </summary>
-                            <div className="mt-2 text-[11px] text-cyan-100/75">
-                                Add a public listing only if you want this room to appear on the discover map.
+                        <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Start Tonight</div>
+                            <div className="mt-1 text-sm font-semibold text-white">
+                                {shouldShowSetupCard ? 'Finish host setup, then open your first room' : 'Create a fresh room and go live fast'}
                             </div>
-                            <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
-                                <input
-                                    type="checkbox"
-                                    checked={!!quickLaunchDiscovery.publicRoom}
-                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, publicRoom: e.target.checked }))}
-                                />
-                                Show this room on the map
-                            </label>
-                            <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
-                                <input
-                                    type="checkbox"
-                                    checked={!!quickLaunchDiscovery.virtualOnly}
-                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, virtualOnly: e.target.checked }))}
-                                />
-                                Online-only room
-                            </label>
-                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <input
-                                    value={quickLaunchDiscovery.title}
-                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, title: e.target.value }))}
-                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                                    placeholder="Room title (optional)"
-                                />
-                                <input
-                                    type="datetime-local"
-                                    value={quickLaunchDiscovery.startsAtLocal}
-                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
-                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                                />
-                                {!quickLaunchDiscovery.virtualOnly && (
-                                    <>
-                                        <input
-                                            value={quickLaunchDiscovery.address1}
-                                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, address1: e.target.value }))}
-                                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2"
-                                            placeholder="Address (optional)"
-                                        />
-                                        <input
-                                            value={quickLaunchDiscovery.city}
-                                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, city: e.target.value }))}
-                                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                                            placeholder="City"
-                                        />
-                                        <input
-                                            value={quickLaunchDiscovery.state}
-                                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, state: e.target.value }))}
-                                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                                            placeholder="State"
-                                        />
-                                        <input
-                                            value={quickLaunchDiscovery.lat}
-                                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lat: e.target.value }))}
-                                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                                            placeholder="Latitude (optional)"
-                                        />
-                                        <input
-                                            value={quickLaunchDiscovery.lng}
-                                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lng: e.target.value }))}
-                                            className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50"
-                                            placeholder="Longitude (optional)"
-                                        />
-                                    </>
-                                )}
-                                <textarea
-                                    value={quickLaunchDiscovery.description}
-                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, description: e.target.value }))}
-                                    className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2"
-                                    rows={2}
-                                    placeholder="Short description (optional)"
-                                />
+                            <div className="mt-1 text-xs text-cyan-100/72">
+                                {shouldShowSetupCard
+                                    ? 'The first-time setup path stays here so new hosts can complete identity and launch from the same place.'
+                                    : 'The main launch path is intentionally narrow. Discovery listing details and diagnostics live under Advanced Setup.'}
                             </div>
-                        </details>
+                            {shouldShowSetupCard && (
+                                <div className="mt-3 rounded-xl border border-pink-300/30 bg-gradient-to-r from-cyan-500/10 via-sky-500/10 to-pink-500/10 px-3 py-3">
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-pink-100/75">First-Time Setup</div>
+                                    <div className="mt-1 text-sm font-semibold text-white">Set up your host profile once.</div>
+                                    <div className="mt-1 text-xs text-cyan-100/75">
+                                        Add your host name, workspace details, and branding. After that, you can start rooms without seeing setup every time.
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            if (!canUseWorkspaceOnboarding) {
+                                                toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
+                                                return;
+                                            }
+                                            openOnboardingWizard();
+                                        }}
+                                        disabled={!canUseWorkspaceOnboarding}
+                                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} mt-3 w-full py-3 text-sm uppercase tracking-[0.2em] bg-gradient-to-r from-[#00C4D9] via-[#48d5eb] to-[#EC4899] text-black border-transparent shadow-[0_0_24px_rgba(0,196,217,0.24)] ${!canUseWorkspaceOnboarding ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    >
+                                        Finish Host Setup
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                         <button
                             data-host-create-room-primary
                             onClick={() => {
@@ -12020,6 +12115,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         >
                             {creatingRoom ? 'Starting Room...' : (shouldShowSetupCard && !canQuickStartRoom ? 'Finish Setup First' : 'Start New Room')}
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setLandingLaunchMode('advanced')}
+                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} w-full py-2.5 text-xs uppercase tracking-[0.18em] mb-3 border-cyan-400/25 bg-cyan-500/8 text-cyan-100`}
+                        >
+                            Open Advanced Setup
+                        </button>
                         {!shouldShowSetupCard && (
                         <details className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
                             <summary className="cursor-pointer list-none flex items-center justify-between text-xs uppercase tracking-[0.18em] text-cyan-100">
@@ -12027,7 +12129,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
                             </summary>
                             <div className="mt-3 text-xs text-cyan-100/70">
-                                Quick start skips the setup checklist and opens a room immediately.
+                                Quick start skips the setup checklist and opens a room immediately. Reopen and room management stay in their own lanes.
                             </div>
                             <button
                                 data-host-quick-start
@@ -12056,8 +12158,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 )}
                 {landingLaunchMode === 'resume' && (
                     <>
-                        <div className="text-xs text-cyan-100/70 uppercase tracking-[0.28em] mb-2 text-left">Open An Existing Room</div>
-                        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                        <div className="rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
+                        <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Reopen Previous Room</div>
+                        <div className="mt-1 text-sm font-semibold text-white">Enter a room code or pick a recent room</div>
+                        <div className="mt-1 text-xs text-cyan-100/72">
+                            This lane is for getting back into a live room quickly. Cleanup, archive, and recovery tools stay under Advanced Setup.
+                        </div>
+                        <div className="mt-3 flex flex-col sm:flex-row gap-2 justify-center">
                             <input
                                 value={roomCodeInput}
                                 onChange={e => setRoomCodeInput(e.target.value.toUpperCase())}
@@ -12091,11 +12198,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 Open Room Settings
                             </button>
                             <button
-                                onClick={() => openExistingRoomWorkspace(roomCodeInput, 'advanced.diagnostics')}
-                                disabled={joiningRoom || !!roomManagerBusyCode}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                type="button"
+                                onClick={() => setLandingLaunchMode('advanced')}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20`}
                             >
-                                Cleanup + Archive
+                                Advanced Tools
                             </button>
                         </div>
                         <div className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left" data-host-share-launch>
@@ -12154,180 +12261,92 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </button>
                             </div>
                         </div>
+                        </div>
+                        {renderRecentRoomList({ managementMode: false })}
+                    </>
+                )}
+                {landingLaunchMode === 'advanced' && (
+                    <>
+                        <div className="mt-4 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Advanced Setup</div>
+                            <div className="mt-1 text-sm font-semibold text-white">Optional room listing details, diagnostics, and recovery</div>
+                            <div className="mt-1 text-xs text-cyan-100/72">
+                                Keep this lane for anything beyond the core launch path: public discover listing details, recovery shortcuts, cleanup, and archive tools.
+                            </div>
+                        </div>
+                        <div className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Room Tools By Code</div>
+                            <div className="mt-1 text-xs text-cyan-100/70">
+                                Enter a room code here when you need diagnostics, cleanup, or launch recovery without browsing recent rooms first.
+                            </div>
+                            <div className="mt-3 flex flex-col sm:flex-row gap-2 justify-center">
+                                <input
+                                    value={roomCodeInput}
+                                    onChange={e => setRoomCodeInput(e.target.value.toUpperCase())}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') openExistingRoomWorkspace(roomCodeInput, 'advanced.diagnostics');
+                                    }}
+                                    placeholder="ROOM CODE"
+                                    className={`${STYLES.input} text-center text-xl font-mono w-full tracking-[0.3em] bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
+                                />
+                                <button
+                                    onClick={() => openExistingRoomWorkspace(roomCodeInput, 'advanced.diagnostics')}
+                                    disabled={joiningRoom || !!roomManagerBusyCode}
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 py-3 text-sm uppercase tracking-[0.2em] sm:min-w-[170px] border-cyan-300/35 bg-gradient-to-r from-[#0d2333] via-[#111a31] to-[#2b1330] text-cyan-100 hover:border-pink-300/55 ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    {joiningRoom ? 'Opening...' : 'Open Diagnostics'}
+                                </button>
+                            </div>
+                        </div>
+                        <details
+                            className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left"
+                            data-host-discovery-launch
+                            open={landingListingDetailsOpen}
+                            onToggle={(event) => setShowLandingListingOptions(event.currentTarget.open)}
+                        >
+                            <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">
+                                <span>Optional: Help Guests Find This Room</span>
+                                <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
+                            </summary>
+                            <div className="mt-2 text-[11px] text-cyan-100/75">Add a public listing only if you want this room to appear on the discover map.</div>
+                            <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
+                                <input type="checkbox" checked={!!quickLaunchDiscovery.publicRoom} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, publicRoom: e.target.checked }))} />
+                                Show this room on the map
+                            </label>
+                            <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
+                                <input type="checkbox" checked={!!quickLaunchDiscovery.virtualOnly} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, virtualOnly: e.target.checked }))} />
+                                Online-only room
+                            </label>
+                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <input value={quickLaunchDiscovery.title} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, title: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Room title (optional)" />
+                                <input type="datetime-local" value={quickLaunchDiscovery.startsAtLocal} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, startsAtLocal: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" />
+                                {!quickLaunchDiscovery.virtualOnly && (
+                                    <>
+                                        <input value={quickLaunchDiscovery.address1} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, address1: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2" placeholder="Address (optional)" />
+                                        <input value={quickLaunchDiscovery.city} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, city: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="City" />
+                                        <input value={quickLaunchDiscovery.state} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, state: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="State" />
+                                        <input value={quickLaunchDiscovery.lat} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lat: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Latitude (optional)" />
+                                        <input value={quickLaunchDiscovery.lng} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lng: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Longitude (optional)" />
+                                    </>
+                                )}
+                                <textarea value={quickLaunchDiscovery.description} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, description: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2" rows={2} placeholder="Short description (optional)" />
+                            </div>
+                        </details>
                         <details className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/8 px-3 py-3 text-left" data-host-troubleshooting>
                             <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-amber-100/85">
                                 <span>Need Help?</span>
                                 <i className="fa-solid fa-chevron-down text-amber-200/70"></i>
                             </summary>
-                            <div className="mt-2 text-xs text-amber-100/80">
-                                Quick recovery shortcuts when a launch step fails.
-                            </div>
+                            <div className="mt-2 text-xs text-amber-100/80">Quick recovery shortcuts when a launch step fails.</div>
                             <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                <button
-                                    type="button"
-                                    onClick={async () => {
-                                        const code = resolveLaunchRoomCode();
-                                        if (!code) return;
-                                        await openExistingRoomWorkspace(code, 'advanced.diagnostics');
-                                    }}
-                                    disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    Can't Open Room
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={async () => {
-                                        const code = resolveLaunchRoomCode();
-                                        if (!code) return;
-                                        try {
-                                            await navigator.clipboard.writeText(launchUrls.audienceUrl);
-                                            toast('Audience join link copied.');
-                                        } catch {
-                                            toast(launchUrls.audienceUrl);
-                                        }
-                                        window.open(launchUrls.audienceUrl, '_blank', 'noopener,noreferrer');
-                                    }}
-                                    disabled={!hasLaunchRoomCode}
-                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    Audience Can't Join
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={async () => {
-                                        const code = resolveLaunchRoomCode();
-                                        if (!code) return;
-                                        window.open(launchUrls.tvUrl, '_blank', 'noopener,noreferrer');
-                                        await openExistingRoomWorkspace(code, 'advanced.diagnostics');
-                                    }}
-                                    disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode}
-                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    TV Not Loading
-                                </button>
+                                <button type="button" onClick={async () => { const code = resolveLaunchRoomCode(); if (!code) return; await openExistingRoomWorkspace(code, 'advanced.diagnostics'); }} disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode} className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}>Can&apos;t Open Room</button>
+                                <button type="button" onClick={async () => { const code = resolveLaunchRoomCode(); if (!code) return; try { await navigator.clipboard.writeText(launchUrls.audienceUrl); toast('Audience join link copied.'); } catch { toast(launchUrls.audienceUrl); } window.open(launchUrls.audienceUrl, '_blank', 'noopener,noreferrer'); }} disabled={!hasLaunchRoomCode} className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}>Audience Can&apos;t Join</button>
+                                <button type="button" onClick={async () => { const code = resolveLaunchRoomCode(); if (!code) return; window.open(launchUrls.tvUrl, '_blank', 'noopener,noreferrer'); await openExistingRoomWorkspace(code, 'advanced.diagnostics'); }} disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode} className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}>TV Not Loading</button>
                             </div>
                         </details>
+                        {renderRecentRoomList({ managementMode: true })}
                     </>
                 )}
-                <div className="mt-4 rounded-xl border border-cyan-400/25 bg-gradient-to-br from-[#120f22]/90 via-[#11152a]/90 to-[#13151f]/90 px-3 py-3 text-left">
-                    <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">Recent Rooms</div>
-                    <div className="text-xs text-cyan-100/75 mt-1">Jump back into a recent room or clean up an older one.</div>
-                    {recentHostRoomsLoading ? (
-                        <div className="text-xs text-cyan-100/70 mt-3">Loading recent rooms...</div>
-                    ) : recentHostRooms.length > 0 ? (
-                        <div className="mt-3 space-y-2">
-                            {recentHostRooms.map((roomItem) => {
-                                const roomBusy = roomManagerBusyCode === roomItem.code;
-                                const busyLabel = roomBusy ? (
-                                    roomManagerBusyAction === 'cleanup'
-                                        ? 'Cleaning...'
-                                        : roomManagerBusyAction === 'archive'
-                                            ? 'Archiving...'
-                                            : roomManagerBusyAction === 'restore'
-                                                ? 'Restoring...'
-                                                : 'Working...'
-                                ) : '';
-                                const modifiedMs = roomItem.updatedAtMs || roomItem.createdAtMs || nowMs();
-                                return (
-                                    <div key={roomItem.code} className="rounded-lg border border-cyan-400/22 bg-gradient-to-r from-[#0a101f]/80 via-[#0d1424]/80 to-[#1a1024]/70 px-2.5 py-2">
-                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                            <div>
-                                                <div className="text-sm font-semibold text-white">
-                                                    {roomItem.code}
-                                                    {roomItem.archived && (
-                                                        <span className="ml-2 text-[10px] uppercase tracking-[0.16em] rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-amber-200">Archived</span>
-                                                    )}
-                                                </div>
-                                                <div className="text-[11px] text-cyan-100/70">
-                                                    {roomItem.orgName || 'Workspace'}
-                                                    {' | '}
-                                                    {roomItem.activeMode || 'karaoke'}
-                                                    {' | '}
-                                                    {new Date(modifiedMs).toLocaleString()}
-                                                </div>
-                                            </div>
-                                            <div className="flex flex-wrap gap-1 justify-end">
-                                                <button
-                                                    onClick={() => openExistingRoomWorkspace(roomItem.code, 'queue.live_run')}
-                                                    disabled={roomBusy || joiningRoom}
-                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                >
-                                                    Open
-                                                </button>
-                                                <button
-                                                    onClick={() => openExistingRoomWorkspace(roomItem.code, 'advanced.diagnostics')}
-                                                    disabled={roomBusy || joiningRoom}
-                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                >
-                                                    Settings
-                                                </button>
-                                                <button
-                                                    onClick={() => runLandingRoomCleanup(roomItem.code)}
-                                                    disabled={roomBusy || joiningRoom}
-                                                    className={`${STYLES.btnStd} ${STYLES.btnDanger} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                >
-                                                    {roomBusy && roomManagerBusyAction === 'cleanup' ? 'Cleaning...' : 'Cleanup'}
-                                                </button>
-                                                <button
-                                                    onClick={() => setRoomArchivedState(roomItem.code, !roomItem.archived)}
-                                                    disabled={roomBusy || joiningRoom}
-                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                >
-                                                    {roomBusy && (roomManagerBusyAction === 'archive' || roomManagerBusyAction === 'restore')
-                                                        ? busyLabel
-                                                        : roomItem.archived ? 'Restore' : 'Archive'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ) : (
-                        <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-500/8 px-2.5 py-2">
-                            <div className="text-xs text-cyan-100/75">No recent hosted rooms yet. Launch your first room and it will appear here.</div>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (canQuickStartRoom) {
-                                            createRoom({ openNightSetup: false });
-                                            return;
-                                        }
-                                        if (canUseWorkspaceOnboarding) {
-                                            openOnboardingWizard();
-                                            return;
-                                        }
-                                        toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
-                                    }}
-                                    disabled={creatingRoom || joiningRoom || !!roomManagerBusyCode}
-                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[11px] px-2 py-1 ${creatingRoom || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    {creatingRoom ? 'Creating...' : 'Create First Room'}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (!canUseWorkspaceOnboarding) {
-                                            toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
-                                            return;
-                                        }
-                                        openOnboardingWizard();
-                                    }}
-                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-[11px] px-2 py-1`}
-                                >
-                                    Finish Setup
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                    {roomManagerError && (
-                        <div className="mt-2 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-2 py-1.5">
-                            {roomManagerError}
-                        </div>
-                    )}
-                </div>
                 {entryError && (
                     <div className="mt-3 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2 text-left">
                         <div>{entryError}</div>
@@ -13439,12 +13458,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             );
                                         })}
                                     </div>
+                                    {pendingFirstSongAssistCount > 0 && (
+                                        <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                                            {pendingFirstSongAssistCount} guest{pendingFirstSongAssistCount === 1 ? '' : 's'} asked the host to pick a first song from their Tight 15.
+                                        </div>
+                                    )}
                                     {selectedLobbyUser && (
                                         <div className="mt-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
                                             <div className="text-sm text-zinc-200">
                                                 Selected: <span className="font-bold text-white">{selectedLobbyUser.name || 'Guest'}</span>
                                             </div>
                                             <div className="flex flex-wrap gap-2">
+                                                {selectedLobbyUserNeedsFirstSongAssist && (
+                                                    <button
+                                                        onClick={() => queueRandomTight15ForUser(selectedLobbyUser, {
+                                                            sourceLabel: 'host_pick_tight15',
+                                                            successMessage: `Queued a first-song pick for ${selectedLobbyUser?.name || 'Singer'}.`
+                                                        })}
+                                                        disabled={!selectedLobbyUserUid || selectedLobbyUserQueueBusy}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${(!selectedLobbyUserUid || selectedLobbyUserQueueBusy) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {selectedLobbyUserQueueBusy ? 'Queueing...' : 'Pick First Song'}
+                                                    </button>
+                                                )}
                                                 <button
                                                     onClick={() => sendUserMessage(selectedLobbyUserUid, selectedLobbyUserIsSpotlight ? null : 'SPOTLIGHT')}
                                                     disabled={!selectedLobbyUserUid}
@@ -13453,11 +13489,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     {selectedLobbyUserIsSpotlight ? 'Unspotlight' : 'Spotlight'}
                                                 </button>
                                                 <button
-                                                    onClick={() => queueRandomTight15ForUser(selectedLobbyUser)}
+                                                    onClick={() => queueRandomTight15ForUser(selectedLobbyUser, {
+                                                        sourceLabel: selectedLobbyUserNeedsFirstSongAssist ? 'host_pick_tight15' : 'tight15_random',
+                                                        successMessage: selectedLobbyUserNeedsFirstSongAssist
+                                                            ? `Queued a first-song pick for ${selectedLobbyUser?.name || 'Singer'}.`
+                                                            : `Queued random Tight 15 song for ${selectedLobbyUser?.name || 'Singer'}.`
+                                                    })}
                                                     disabled={!selectedLobbyUserUid || selectedLobbyUserQueueBusy}
                                                     className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs ${(!selectedLobbyUserUid || selectedLobbyUserQueueBusy) ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                 >
-                                                    {selectedLobbyUserQueueBusy ? 'Queueing...' : 'Random Tight15'}
+                                                    {selectedLobbyUserQueueBusy ? 'Queueing...' : (selectedLobbyUserNeedsFirstSongAssist ? 'Host Pick' : 'Random Tight15')}
                                                 </button>
                                                 <button
                                                     onClick={() => openTight15ProfileCard(selectedLobbyUser)}
@@ -13479,6 +13520,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         const isSelected = selectedLobbyUserToken === userToken;
                                         const stats = userStats.get(userUid || userToken || u.name) || {};
                                         const isVip = u.isVip || (u.vipLevel || 0) > 0;
+                                        const needsFirstSongAssist = String(u?.requestIntent || '').trim() === 'host_pick_tight15';
                                         const lastActiveMs = u.lastActiveAt?.seconds ? u.lastActiveAt.seconds * 1000 : u.lastActiveAt;
                                         const userTight15Preview = sanitizeTight15List(u.tight15 || u.tight15Temp || []).slice(0, 3);
                                         const queueBusy = tight15QueueBusyUid === userUid;
@@ -13509,6 +13551,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 <div className="text-sm text-zinc-500">
                                                     {stats.performances || 0} perf | {stats.totalEmojis || 0} emojis | {stats.loudest || 0} dB
                                                 </div>
+                                                {needsFirstSongAssist && (
+                                                    <div className="inline-flex items-center gap-2 self-start rounded-full border border-amber-300/35 bg-amber-500/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-100">
+                                                        <i className="fa-solid fa-hand text-[9px]"></i>
+                                                        Needs first-song assist
+                                                    </div>
+                                                )}
                                                 <div className="rounded-xl border border-white/10 bg-black/30 p-2 min-h-[72px]">
                                                     <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mb-1">Top Tight 15</div>
                                                     {userTight15Preview.length ? (
@@ -13533,11 +13581,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         {isSpotlight ? 'UNSPOTLIGHT' : 'SPOTLIGHT'}
                                                     </button>
                                                     <button
-                                                        onClick={() => queueRandomTight15ForUser(u)}
+                                                        onClick={() => queueRandomTight15ForUser(u, {
+                                                            sourceLabel: needsFirstSongAssist ? 'host_pick_tight15' : 'tight15_random',
+                                                            successMessage: needsFirstSongAssist
+                                                                ? `Queued a first-song pick for ${u?.name || 'Singer'}.`
+                                                                : `Queued random Tight 15 song for ${u?.name || 'Singer'}.`
+                                                        })}
                                                         disabled={queueBusy}
                                                         className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-xs ${queueBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                     >
-                                                        {queueBusy ? 'QUEUE...' : 'RANDOM TIGHT15'}
+                                                        {queueBusy ? 'QUEUE...' : (needsFirstSongAssist ? 'HOST PICK' : 'RANDOM TIGHT15')}
                                                     </button>
                                                     <button
                                                         onClick={() => launchSpotlightTight15Challenge(u)}

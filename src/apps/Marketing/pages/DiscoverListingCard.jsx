@@ -23,16 +23,19 @@ const DiscoverListingCard = ({
   const isOfficialBeauRocks = !!entry?.isOfficialBeauRocksListing || !!entry?.isOfficialBeauRocksRoom || !!entry?.isBeauRocksElevated;
   const beauRocksBadgeLabel = getBeauRocksBadgeLabel(entry, { defaultLabel: "BeauRocks-powered" });
   const badgeImageUrl = entry?.officialBadgeImageUrl || MARKETING_BRAND_BADGE_URL;
+  const isRoomSession = entry?.listingType === "room_session";
+  const isJoinableRoomSession = isRoomSession && !!String(entry?.roomCode || "").trim();
   const cardClasses = [
     "mk3-discover-card",
+    isRoomSession ? "is-room-session" : "",
     isSelected ? "is-selected" : "",
     isOfficialBeauRocks ? "is-elevated" : "",
     !isOfficialBeauRocks && isBeauRocksPowered ? "is-powered" : "",
   ].filter(Boolean).join(" ");
   const primaryAction = (() => {
-    if (entry.listingType === "room_session" && entry.roomCode) {
+    if (isJoinableRoomSession) {
       return {
-        label: "Join room",
+        label: "Join now",
         onClick: () => onJoinRoom?.(entry),
         disabled: false,
       };
@@ -95,66 +98,89 @@ const DiscoverListingCard = ({
       </div>
     </div>
     <div className="mk3-discover-body">
+      {isRoomSession && (
+        <div className="mk3-discover-room-kicker">
+          <span>{isJoinableRoomSession ? "Live room" : "Room session"}</span>
+          {entry.roomCode && <strong>{entry.roomCode}</strong>}
+        </div>
+      )}
       <h3>{entry.title}</h3>
       <div className="mk3-card-subtitle">{entry.subtitle}</div>
       {!!entry.distanceLabel && <div className="mk3-card-subtitle">{entry.distanceLabel}</div>}
       {entry.timeLabel && <div className="mk3-card-time">{entry.timeLabel}</div>}
-      {entry.officialBeauRocksStatusLabel && (
-        <div className="mk3-card-subtitle">Status: {entry.officialBeauRocksStatusLabel}</div>
-      )}
-      {experience.storyLine && <div className="mk3-card-story">{experience.storyLine}</div>}
-      {!!experience.capabilityBadges?.length && (
-        <div className="mk3-experience-pill-row is-modern">
-          {experience.capabilityBadges.slice(0, 3).map((badge) => (
-            <span key={`${entry.key}_${badge}`} className="mk3-experience-pill is-modern">{badge}</span>
-          ))}
-        </div>
-      )}
-      {!!experience.funBadges?.length && (
-        <div className="mk3-experience-pill-row is-fun">
-          {experience.funBadges.slice(0, 3).map((badge) => (
-            <span key={`${entry.key}_fun_${badge}`} className="mk3-experience-pill is-fun">{badge}</span>
-          ))}
-        </div>
-      )}
-      {!!entry.cadenceBadges?.length && (
-        <div className="mk3-day-badge-row">
-          {entry.cadenceBadges.map((badge) => (
-            <span key={`${entry.key}_${badge}`} className="mk3-day-badge">{badge}</span>
-          ))}
-        </div>
-      )}
-      {entry.detailLine && <div className="mk3-card-subtitle">{entry.detailLine}</div>}
-      {!!entry.hostName && <div className="mk3-card-subtitle">Host: {entry.hostName}</div>}
-      {entry.hasBeauRocksHostAccount && (
-        <div className="mk3-card-subtitle">
-          BeauRocks host account{entry.beauRocksHostTier ? ` (${entry.beauRocksHostTier})` : ""}
-        </div>
-      )}
-      {(entry.hostLeaderboardRank > 0
-        || entry.venueLeaderboardRank > 0
-        || (entry.venueAverageRating > 0 && entry.venueReviewCount > 0)
-        || entry.venueCheckinCount > 0) && (
-        <div className="mk3-leaderboard-row">
-          {entry.hostLeaderboardRank > 0 && (
-            <span className="mk3-leaderboard-pill">Host #{entry.hostLeaderboardRank}</span>
+      {isRoomSession ? (
+        <>
+          {!!entry.hostName && <div className="mk3-card-subtitle">Hosted by {entry.hostName}</div>}
+          {experience.storyLine && <div className="mk3-card-story">{experience.storyLine}</div>}
+          {!!experience.capabilityBadges?.length && (
+            <div className="mk3-experience-pill-row is-modern">
+              {experience.capabilityBadges.slice(0, 2).map((badge) => (
+                <span key={`${entry.key}_${badge}`} className="mk3-experience-pill is-modern">{badge}</span>
+              ))}
+            </div>
           )}
-          {entry.venueLeaderboardRank > 0 && (
-            <span className="mk3-leaderboard-pill">Venue #{entry.venueLeaderboardRank}</span>
+          {entry.detailLine && <div className="mk3-card-subtitle">{entry.detailLine}</div>}
+        </>
+      ) : (
+        <>
+          {entry.officialBeauRocksStatusLabel && (
+            <div className="mk3-card-subtitle">Status: {entry.officialBeauRocksStatusLabel}</div>
           )}
-          {entry.venueAverageRating > 0 && entry.venueReviewCount > 0 && (
-            <span className="mk3-leaderboard-pill">
-              {entry.venueAverageRating.toFixed(1)} stars ({entry.venueReviewCount})
-            </span>
+          {experience.storyLine && <div className="mk3-card-story">{experience.storyLine}</div>}
+          {!!experience.capabilityBadges?.length && (
+            <div className="mk3-experience-pill-row is-modern">
+              {experience.capabilityBadges.slice(0, 3).map((badge) => (
+                <span key={`${entry.key}_${badge}`} className="mk3-experience-pill is-modern">{badge}</span>
+              ))}
+            </div>
           )}
-          {entry.venueCheckinCount > 0 && (
-            <span className="mk3-leaderboard-pill">{entry.venueCheckinCount} check-ins</span>
+          {!!experience.funBadges?.length && (
+            <div className="mk3-experience-pill-row is-fun">
+              {experience.funBadges.slice(0, 3).map((badge) => (
+                <span key={`${entry.key}_fun_${badge}`} className="mk3-experience-pill is-fun">{badge}</span>
+              ))}
+            </div>
           )}
-        </div>
-      )}
-      {entry.virtualOnly && <div className="mk3-chip">Virtual</div>}
-      {!isBeauRocksPowered && (
-        <div className="mk3-card-upgrade-note">Static listing. Claim it to add live join, audience play, and recap proof.</div>
+          {!!entry.cadenceBadges?.length && (
+            <div className="mk3-day-badge-row">
+              {entry.cadenceBadges.map((badge) => (
+                <span key={`${entry.key}_${badge}`} className="mk3-day-badge">{badge}</span>
+              ))}
+            </div>
+          )}
+          {entry.detailLine && <div className="mk3-card-subtitle">{entry.detailLine}</div>}
+          {!!entry.hostName && <div className="mk3-card-subtitle">Host: {entry.hostName}</div>}
+          {entry.hasBeauRocksHostAccount && (
+            <div className="mk3-card-subtitle">
+              BeauRocks host account{entry.beauRocksHostTier ? ` (${entry.beauRocksHostTier})` : ""}
+            </div>
+          )}
+          {(entry.hostLeaderboardRank > 0
+            || entry.venueLeaderboardRank > 0
+            || (entry.venueAverageRating > 0 && entry.venueReviewCount > 0)
+            || entry.venueCheckinCount > 0) && (
+            <div className="mk3-leaderboard-row">
+              {entry.hostLeaderboardRank > 0 && (
+                <span className="mk3-leaderboard-pill">Host #{entry.hostLeaderboardRank}</span>
+              )}
+              {entry.venueLeaderboardRank > 0 && (
+                <span className="mk3-leaderboard-pill">Venue #{entry.venueLeaderboardRank}</span>
+              )}
+              {entry.venueAverageRating > 0 && entry.venueReviewCount > 0 && (
+                <span className="mk3-leaderboard-pill">
+                  {entry.venueAverageRating.toFixed(1)} stars ({entry.venueReviewCount})
+                </span>
+              )}
+              {entry.venueCheckinCount > 0 && (
+                <span className="mk3-leaderboard-pill">{entry.venueCheckinCount} check-ins</span>
+              )}
+            </div>
+          )}
+          {entry.virtualOnly && <div className="mk3-chip">Virtual</div>}
+          {!isBeauRocksPowered && (
+            <div className="mk3-card-upgrade-note">Static listing. Claim it to add live join, audience play, and recap proof.</div>
+          )}
+        </>
       )}
       <div className="mk3-actions-inline">
         <button type="button" onClick={primaryAction.onClick} disabled={primaryAction.disabled}>
