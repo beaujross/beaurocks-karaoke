@@ -1068,14 +1068,6 @@ html, body, #root { height: 100%; width: 100%; }
     0 16px 34px rgba(6, 11, 28, 0.62),
     0 0 22px rgba(34, 211, 238, 0.25);
 }
-.mobile-shell-native .mobile-native-layout-toggle {
-  border-color: rgba(110, 231, 248, 0.62);
-  background:
-    linear-gradient(135deg, rgba(12, 24, 42, 0.94), rgba(24, 32, 58, 0.82));
-  box-shadow:
-    0 12px 24px rgba(5, 9, 20, 0.6),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15);
-}
 .mobile-shell-native .mobile-native-tabbar {
   border-top-color: rgba(110, 231, 248, 0.28);
   background: linear-gradient(180deg, rgba(9, 15, 28, 0.72), rgba(12, 21, 40, 0.88));

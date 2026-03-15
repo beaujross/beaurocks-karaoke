@@ -38,6 +38,66 @@ const VENUE_SIGNAL_CARDS = [
   },
 ];
 
+const VENUE_TRUST_SIGNALS = [
+  {
+    label: "Attendance",
+    title: "Regular nights win over random nights",
+    copy: "A clear recurring schedule gives guests a reason to come back on purpose.",
+  },
+  {
+    label: "Trust",
+    title: "A venue page should answer the basics fast",
+    copy: "Date, host, room style, and venue details should line up without guesswork.",
+  },
+  {
+    label: "Room feel",
+    title: "A better screen flow makes the venue feel more organized",
+    copy: "The TV, host deck, and audience join flow help the room feel intentional from the start.",
+  },
+];
+
+const VENUE_SURFACE_STEPS = [
+  {
+    step: "01",
+    title: "The TV tells the room where to look",
+    copy: "A public join prompt and live room state make karaoke feel easier to understand in a busy venue.",
+    imageUrl: "/images/marketing/tv-live-aahf-current.png",
+  },
+  {
+    step: "02",
+    title: "Guest phones lower the friction",
+    copy: "People join, react, and request without crowding the host stand or asking what to do next.",
+    imageUrl: "/images/marketing/audience-surface-live.png",
+  },
+  {
+    step: "03",
+    title: "The host keeps the venue night moving",
+    copy: "Search, queue, and TV controls stay in one place so the room keeps its pace.",
+    imageUrl: "/images/marketing/BeauRocks-HostPanel.png",
+  },
+];
+
+const VENUE_FINAL_PATHS = [
+  {
+    title: "Claim your venue",
+    copy: "Start the venue ownership flow if you want to manage listing details and schedule visibility.",
+    cta: "Claim Your Venue",
+    action: "claim",
+  },
+  {
+    title: "Browse live nights",
+    copy: "See how current venue and room listings appear publicly in discovery.",
+    cta: "Open Discover",
+    action: "discover",
+  },
+  {
+    title: "Watch the product story",
+    copy: "Open the demo to see how host, TV, and audience work together across the room.",
+    cta: "Open Demo",
+    action: "demo_auto",
+  },
+];
+
 const VENUE_FLOW_STEPS = [
   {
     step: "01",
@@ -130,11 +190,11 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
           </div>
           <aside className="mk3-persona-hero-visual">
             <article className="mk3-persona-visual-stage is-venue">
-              <img src="/images/marketing/tv-surface-live.png" alt="BeauRocks venue night presentation" loading="lazy" />
+              <img src="/images/marketing/tv-live-aahf-current.png" alt="BeauRocks Public TV room state with QR join prompt" loading="lazy" />
               <div className="mk3-persona-visual-overlay">
                 <div className="mk3-persona-kicker">for venues</div>
-                <strong>Make the night feel real before guests even arrive.</strong>
-                <span>A strong listing and a clear schedule build trust fast.</span>
+                <strong>Show the room code, stage prompt, and queue on one clean screen.</strong>
+                <span>When the TV clearly says Stage Open and Scan to Sing, the room feels organized fast.</span>
               </div>
             </article>
             <div className="mk3-persona-signal-grid">
@@ -150,14 +210,55 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
         </div>
       </article>
 
-      <section className="mk3-persona-proof-grid">
-        {VENUE_OUTCOME_POINTS.map((point, index) => (
-          <article key={point} className="mk3-detail-card mk3-zone">
-            <span>{`Outcome 0${index + 1}`}</span>
-            <strong>{point}</strong>
-            <p>One less question before a guest decides to show up.</p>
-          </article>
-        ))}
+      <section className="mk3-detail-card mk3-zone mk3-marketing-rich-band">
+        <div>
+          <div className="mk3-persona-kicker">why venues care</div>
+          <h2>Better karaoke nights become part of a guest's routine.</h2>
+        </div>
+        <div className="mk3-marketing-signal-grid">
+          {VENUE_TRUST_SIGNALS.map((item) => (
+            <article key={item.title} className="mk3-marketing-signal-card">
+              <span>{item.label}</span>
+              <strong>{item.title}</strong>
+              <p>{item.copy}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="mk3-detail-card mk3-zone mk3-marketing-how-band">
+        <div>
+          <div className="mk3-persona-kicker">how the venue experience improves</div>
+          <h2>The room gets easier to understand on every screen.</h2>
+        </div>
+        <div className="mk3-marketing-step-grid">
+          {VENUE_SURFACE_STEPS.map((item) => (
+            <article key={item.step} className="mk3-marketing-step-card">
+              <img src={item.imageUrl} alt={item.title} loading="lazy" />
+              <div>
+                <span>{item.step}</span>
+                <strong>{item.title}</strong>
+                <p>{item.copy}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="mk3-detail-card mk3-zone mk3-marketing-outcome-band">
+        <div>
+          <div className="mk3-persona-kicker">venue outcomes</div>
+          <h2>Each improvement removes one more source of guest confusion.</h2>
+        </div>
+        <div className="mk3-marketing-outcome-grid">
+          {VENUE_OUTCOME_POINTS.map((point, index) => (
+            <article key={point}>
+              <span>{`Outcome 0${index + 1}`}</span>
+              <strong>{point}</strong>
+              <p>{VENUE_STORY_POINTS[index] || "One less question before a guest decides to show up."}</p>
+            </article>
+          ))}
+        </div>
       </section>
 
       <section className="mk3-detail-card mk3-zone mk3-persona-flow">
@@ -173,33 +274,42 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
         </div>
       </section>
 
-      <div className="mk3-two-col mk3-persona-late-grid">
-        <section className="mk3-detail-card mk3-zone mk3-persona-playbook">
-          <div className="mk3-persona-kicker">why venue pages matter</div>
-          <h2>People come back to the nights they can count on.</h2>
-          <p className="mk3-card-story">BeauRocks helps venues make karaoke feel dependable, current, and worth planning around.</p>
-          <div className="mk3-sub-list compact">
-            {VENUE_STORY_POINTS.map((point) => (
-              <article key={point} className="mk3-review-card">
-                <p>{point}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <aside className="mk3-actions-card mk3-persona-checklist">
-          <h4>What Good Setup Looks Like</h4>
-          <div className="mk3-status">
-            <strong>Keep the listing accurate</strong>
-            <span>Ownership, schedule, and host details should agree.</span>
-          </div>
-          <div className="mk3-persona-checklist-list">
-            {VENUE_OUTCOME_POINTS.map((point) => (
-              <span key={point}>{point}</span>
-            ))}
-          </div>
-        </aside>
-      </div>
+      <section className="mk3-detail-card mk3-zone mk3-marketing-closing-band">
+        <div>
+          <div className="mk3-persona-kicker">pick the next step</div>
+          <h2>Start with venue ownership, discovery, or the product demo.</h2>
+        </div>
+        <div className="mk3-marketing-closing-grid">
+          {VENUE_FINAL_PATHS.map((item) => (
+            <article key={item.title} className="mk3-marketing-closing-card">
+              <strong>{item.title}</strong>
+              <p>{item.copy}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  trackPersonaCta(`closing_${item.action}`);
+                  if (item.action === "claim") {
+                    if (canSubmit) {
+                      navigate("submit");
+                      return;
+                    }
+                    authFlow?.requireFullAuth?.({
+                      intent: "listing_submit",
+                      targetType: "venue",
+                      targetId: "",
+                      returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "venue" } },
+                    });
+                    return;
+                  }
+                  navigate(item.action);
+                }}
+              >
+                {item.cta}
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
     </section>
   );
 };

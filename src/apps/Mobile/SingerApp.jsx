@@ -41,6 +41,9 @@ import {
     createLobbyVolleyState,
     applyLobbyInteraction,
     deriveRelayObjective,
+    getLobbyVolleyAudienceRatePlan,
+    getLobbyVolleyDynamicTimeoutMs,
+    getLobbyVolleyLevelMeta,
     LOBBY_PLAYGROUND_ENGINE_CONSTANTS
 } from '../TV/lobbyPlaygroundEngine';
 import { watchQuerySnapshot } from '../../lib/firestoreWatch';
@@ -52,8 +55,13 @@ import {
 import { buildSurfaceUrl } from '../../lib/surfaceDomains';
 import {
     getVolleyOrbMobileMainLine,
+    getVolleyOrbBaseAction,
+    getVolleyOrbUltimate,
     isVolleyOrbSceneActive,
-    isVolleyOrbTargetInteraction
+    isVolleyOrbTargetInteraction,
+    VOLLEY_ORB_BASE_ACTIONS,
+    VOLLEY_ORB_ULTIMATE_COOLDOWN_MS,
+    VOLLEY_ORB_ULTIMATES
 } from '../../lib/volleyOrbUiState';
 import {
     BRACKET_SIGNUP_MIN_READY_COUNT,
@@ -110,66 +118,51 @@ const STORM_LAYER_VIBRATE = {
     stomp: [45, 24, 45],
     clap: [20, 16, 20]
 };
-const LOBBY_PLAYGROUND_INTERACTIONS = [
-    {
-        id: 'wave',
-        label: 'Wave',
-        emoji: emoji(0x1F44B),
-        hint: 'Keep the orb alive.',
-        actionLabel: 'Wave',
-        effectLabel: 'Slows orb decay and buys recovery time.',
-        timingLabel: 'Use when the orb is falling fast.',
-        accentCard: 'from-cyan-500/22 via-sky-500/12 to-black/55',
-        accentBorder: 'border-cyan-300/80',
-        accentText: 'text-cyan-100',
-        accentPill: 'bg-cyan-400/25 text-cyan-100 border-cyan-300/45',
-        boost: 'Role: Stability'
-    },
-    {
-        id: 'laser',
-        label: 'Laser',
-        emoji: emoji(0x2728),
-        hint: 'Pop the orb forward.',
-        actionLabel: 'Laser',
-        effectLabel: 'Adds a fast energy jump to lift tier progress.',
-        timingLabel: 'Use when the orb is stable and climbing.',
-        accentCard: 'from-fuchsia-500/24 via-cyan-500/10 to-black/55',
-        accentBorder: 'border-fuchsia-300/80',
-        accentText: 'text-fuchsia-100',
-        accentPill: 'bg-fuchsia-400/25 text-fuchsia-100 border-fuchsia-300/45',
-        boost: 'Role: Power'
-    },
-    {
-        id: 'echo',
-        label: 'Echo',
-        emoji: emoji(0x1F30A),
-        hint: 'Catch the next pass.',
-        actionLabel: 'Echo',
-        effectLabel: 'Adds relay window time for teammate catch-ups.',
-        timingLabel: 'Use when relay timer is almost out.',
-        accentCard: 'from-indigo-500/22 via-blue-500/14 to-black/55',
-        accentBorder: 'border-indigo-300/80',
-        accentText: 'text-indigo-100',
-        accentPill: 'bg-indigo-400/25 text-indigo-100 border-indigo-300/45',
-        boost: 'Role: Relay'
-    },
-    {
-        id: 'confetti',
-        label: 'Confetti',
-        emoji: emoji(0x1F389),
-        hint: 'Spike the room energy.',
-        actionLabel: 'Confetti',
-        effectLabel: 'Increases streak momentum and pushes tier gains.',
-        timingLabel: 'Use during active streak chains.',
-        accentCard: 'from-pink-500/24 via-yellow-400/15 to-black/55',
-        accentBorder: 'border-pink-300/80',
-        accentText: 'text-pink-100',
-        accentPill: 'bg-pink-400/25 text-pink-100 border-pink-300/45',
-        boost: 'Role: Momentum'
-    }
-];
+const LOBBY_PLAYGROUND_INTERACTIONS = VOLLEY_ORB_BASE_ACTIONS.map((item) => ({
+    ...item,
+    actionLabel: item.label,
+    accentCard: ({
+        wave: 'from-cyan-500/22 via-sky-500/12 to-black/55',
+        laser: 'from-fuchsia-500/24 via-cyan-500/10 to-black/55',
+        echo: 'from-indigo-500/22 via-blue-500/14 to-black/55',
+        confetti: 'from-pink-500/24 via-yellow-400/15 to-black/55'
+    })[item.id] || 'from-cyan-500/22 via-sky-500/12 to-black/55',
+    accentBorder: ({
+        wave: 'border-cyan-300/80',
+        laser: 'border-fuchsia-300/80',
+        echo: 'border-indigo-300/80',
+        confetti: 'border-pink-300/80'
+    })[item.id] || 'border-cyan-300/80',
+    accentText: ({
+        wave: 'text-cyan-100',
+        laser: 'text-fuchsia-100',
+        echo: 'text-indigo-100',
+        confetti: 'text-pink-100'
+    })[item.id] || 'text-cyan-100'
+}));
+
+const LOBBY_PLAYGROUND_ULTIMATES = VOLLEY_ORB_ULTIMATES.map((item) => ({
+    ...item,
+    accentCard: ({
+        ultimate_feather: 'from-cyan-400/18 via-emerald-400/10 to-black/55',
+        ultimate_lens: 'from-amber-400/18 via-yellow-300/12 to-black/55',
+        ultimate_magnet: 'from-violet-400/18 via-fuchsia-400/12 to-black/55',
+        ultimate_rocket: 'from-rose-400/20 via-orange-400/12 to-black/55'
+    })[item.id] || 'from-cyan-500/20 via-sky-500/10 to-black/55',
+    accentBorder: ({
+        ultimate_feather: 'border-emerald-300/70',
+        ultimate_lens: 'border-amber-300/70',
+        ultimate_magnet: 'border-fuchsia-300/70',
+        ultimate_rocket: 'border-rose-300/70'
+    })[item.id] || 'border-cyan-300/70',
+    accentText: ({
+        ultimate_feather: 'text-emerald-100',
+        ultimate_lens: 'text-amber-100',
+        ultimate_magnet: 'text-fuchsia-100',
+        ultimate_rocket: 'text-rose-100'
+    })[item.id] || 'text-cyan-100'
+}));
 const LOBBY_PLAYGROUND_WINDOW_MS = 60 * 1000;
-const LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE = 12;
 const timestampToMs = (value) => {
     if (!value) return 0;
     if (typeof value === 'number') return value;
@@ -681,6 +674,8 @@ const SingerApp = ({ roomCode, uid }) => {
         if (typeof window === 'undefined') return false;
         return new URLSearchParams(window.location.search || '').get('mkDemoEmbed') === '1';
     }, []);
+    const [demoFixture, setDemoFixture] = useState(null);
+    const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
     const demoGuestProfile = useMemo(() => {
         const audienceNames = ['Alex', 'Jordan', 'Taylor', 'Casey', 'Riley', 'Morgan', 'Harper', 'Kai'];
         const seed = String(activeUid || roomCode || 'demo')
@@ -865,6 +860,45 @@ const SingerApp = ({ roomCode, uid }) => {
         if (!isMarketingDemoEmbed) return;
         setTermsAccepted(true);
     }, [isMarketingDemoEmbed]);
+    useEffect(() => {
+        if (!isMarketingDemoEmbed || typeof window === 'undefined') return undefined;
+        const handleMessage = (event) => {
+            const payload = event?.data;
+            if (!payload || payload.type !== 'beaurocks-demo-fixture' || payload.surface !== 'audience') return;
+            setDemoFixture(payload.fixture || null);
+        };
+        window.addEventListener('message', handleMessage);
+        try {
+            window.parent?.postMessage({ type: 'beaurocks-demo-ready', surface: 'audience' }, '*');
+        } catch (_) {
+            // Ignore parent postMessage issues in standalone app mode.
+        }
+        return () => window.removeEventListener('message', handleMessage);
+    }, [isMarketingDemoEmbed]);
+    useEffect(() => {
+        if (!isMarketingDemoFixture) return;
+        const fixture = demoFixture || {};
+        if (fixture.room !== undefined) setRoom(fixture.room || null);
+        if (Array.isArray(fixture.songs)) setSongs(fixture.songs);
+        if (Array.isArray(fixture.allUsers)) setAllUsers(fixture.allUsers);
+        if (fixture.user !== undefined) setUser(fixture.user || null);
+        if (fixture.profile !== undefined) setProfile(fixture.profile || null);
+        if (fixture.tab) setTab(fixture.tab);
+        if (fixture.songsTab) setSongsTab(fixture.songsTab);
+        if (fixture.socialTab) setSocialTab(fixture.socialTab);
+        if (fixture.profileSubTab) setProfileSubTab(fixture.profileSubTab);
+        if (typeof fixture.catalogSearchOpen === 'boolean') setCatalogSearchOpen(fixture.catalogSearchOpen);
+        if (typeof fixture.manualRequestComposerOpen === 'boolean') setManualRequestComposerOpen(fixture.manualRequestComposerOpen);
+        if (typeof fixture.showReturningPrompt === 'boolean') setShowReturningPrompt(fixture.showReturningPrompt);
+        if (fixture.returningProfile !== undefined) setReturningProfile(fixture.returningProfile || null);
+        if (typeof fixture.termsAccepted === 'boolean') setTermsAccepted(fixture.termsAccepted);
+        if (fixture.form && typeof fixture.form === 'object') {
+            setForm((prev) => ({ ...prev, ...fixture.form }));
+            setIsFormInitialized(true);
+        }
+        if (typeof fixture.searchQ === 'string') setSearchQ(fixture.searchQ);
+        if (Array.isArray(fixture.results)) setResults(fixture.results);
+    }, [demoFixture, isMarketingDemoFixture]);
 
     const [localReactions, setLocalReactions] = useState([]);
     const [composedPhoto, setComposedPhoto] = useState(null);
@@ -1075,20 +1109,6 @@ const SingerApp = ({ roomCode, uid }) => {
             // Ignore haptic/vibrate failures.
         }
     }, [isNativeMobileLayout]);
-    const toggleMobileLayoutMode = useCallback(() => {
-        setMobileLayoutMode((prev) => {
-            const next = prev === 'native' ? 'legacy' : 'native';
-            if (typeof window !== 'undefined') {
-                try {
-                    localStorage.setItem('beaurocks_mobile_layout_mode', next);
-                } catch {
-                    // Ignore storage failures.
-                }
-            }
-            return next;
-        });
-    }, []);
-
     useEffect(() => {
         if (typeof document === 'undefined') return undefined;
         const rootEl = document.documentElement;
@@ -1644,8 +1664,7 @@ const SingerApp = ({ roomCode, uid }) => {
         }
         const tabletTouch = detectTabletTouchViewport();
         setTabletTouchViewport(tabletTouch);
-        const defaultMode = tabletTouch ? 'legacy' : 'native';
-        const nextMode = forcedMode || storedMode || defaultMode;
+        const nextMode = forcedMode || storedMode || 'native';
         setMobileLayoutMode(nextMode);
     }, []);
 
@@ -2570,6 +2589,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     // Listeners
     useEffect(() => {
+        if (isMarketingDemoFixture) return () => {};
         setUser(null);
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => setRoom(s.data()));
 
@@ -2604,7 +2624,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         });
         
         return () => { unsubRoom(); unsubUser(); unsubAllUsers(); unsubSongs(); };
-    }, [roomCode, activeUid, isFormInitialized]);
+    }, [roomCode, activeUid, isFormInitialized, isMarketingDemoFixture]);
     useEffect(() => {
         if (uid && uid !== authReadyUid) {
             setAuthReadyUid(uid);
@@ -2618,13 +2638,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [uid]);
 
     useEffect(() => {
-        if (!roomCode) return;
+        if (!roomCode || isMarketingDemoFixture) return;
         const unsub = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), s => {
             const data = s.data() || {};
             if (Array.isArray(data.ytIndex)) setYtIndex(data.ytIndex);
         });
         return () => unsub();
-    }, [roomCode]);
+    }, [roomCode, isMarketingDemoFixture]);
     useEffect(() => {
         if (!roomCode) return () => {};
         const lobbyVolleySceneActive = isVolleyOrbSceneActive({
@@ -3501,7 +3521,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     demoJoinRef.current = join;
 
     useEffect(() => {
-        if (!isMarketingDemoEmbed || user || !roomCode || !activeUid) return;
+        if (!isMarketingDemoEmbed || isMarketingDemoFixture || user || !roomCode || !activeUid) return;
         const attemptKey = `${roomCode}_${activeUid}`;
         if (demoAutoJoinAttemptRef.current === attemptKey) return;
         demoAutoJoinAttemptRef.current = attemptKey;
@@ -3509,7 +3529,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             console.error('Demo auto-join failed', error);
             demoAutoJoinAttemptRef.current = '';
         });
-    }, [activeUid, demoGuestProfile, isMarketingDemoEmbed, roomCode, user]);
+    }, [activeUid, demoGuestProfile, isMarketingDemoEmbed, isMarketingDemoFixture, roomCode, user]);
     
     const sendChatMessage = async (overrideText = null) => {
         const isEventLike = !!overrideText
@@ -3966,6 +3986,23 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
         const key = String(interactionId || '').trim().toLowerCase();
         if (!key) return;
+        const ultimateMeta = getVolleyOrbUltimate(key);
+        const currentLobbyUid = getActiveUid();
+        const previewParticipant = currentLobbyUid ? lobbyVolleyPreview?.participants?.[currentLobbyUid] : null;
+        const ultimateCooldownRemainingMs = ultimateMeta
+            ? Math.max(
+                0,
+                (Number(previewParticipant?.lastUltimateAtMs || 0) + VOLLEY_ORB_ULTIMATE_COOLDOWN_MS) - Date.now()
+            )
+            : 0;
+        if (ultimateMeta && ultimateCooldownRemainingMs > 0) {
+            const retryInSec = Math.max(1, Math.ceil(ultimateCooldownRemainingMs / 1000));
+            if (Date.now() - lastLobbyPlayLimitToastAtRef.current > 1200) {
+                toast(`${ultimateMeta.label} recharges in ${retryInSec}s.`);
+                lastLobbyPlayLimitToastAtRef.current = Date.now();
+            }
+            return;
+        }
         if (room?.lobbyPlaygroundPaused) {
             if (Date.now() - lastLobbyPlayLimitToastAtRef.current > 1800) {
                 toast('Lobby Playground is temporarily paused by host.');
@@ -3975,14 +4012,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
         const now = Date.now();
         const strictMode = !!room?.lobbyPlaygroundStrictMode;
-        const maxPerMinute = Math.max(
-            1,
-            Math.min(120, Number(room?.lobbyPlaygroundMaxPerMinute || (strictMode ? 8 : LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE)))
-        );
-        const perUserCooldownMs = Math.max(
-            120,
-            Math.min(1200, Number(room?.lobbyPlaygroundPerUserCooldownMs || (strictMode ? 450 : 220)))
-        );
+        const ratePlan = getLobbyVolleyAudienceRatePlan(lobbyVolleyPreview || createLobbyVolleyState(), {
+            strictMode,
+            roomMaxPerMinute: room?.lobbyPlaygroundMaxPerMinute,
+            roomPerUserCooldownMs: room?.lobbyPlaygroundPerUserCooldownMs,
+            nowMs: now
+        });
+        const maxPerMinute = ratePlan.maxPerMinute;
+        const perUserCooldownMs = ratePlan.perUserCooldownMs;
         const usageCount = pruneLobbyPlayWindow(now);
         if (usageCount >= maxPerMinute) {
             triggerCooldownFlash();
@@ -3999,23 +4036,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         lobbyPlayWindowRef.current = [...lobbyPlayWindowRef.current, now];
         setLobbyPlayUsageCount(lobbyPlayWindowRef.current.length);
         markActive();
-        const localId = `${now}_${key}`;
-        setLocalReactions(prev => [...prev, { id: localId, type: `spotlight_${key}`, left: Math.random() * 80 + 10 }]);
-        setTimeout(() => setLocalReactions(prev => prev.filter(r => r.id !== localId)), 2500);
         if (navigator.vibrate) {
-            try { navigator.vibrate(18); } catch {
+            try { navigator.vibrate(ultimateMeta ? [18, 30, 18] : 14); } catch {
                 // Ignore vibration failures.
             }
         }
         try {
-            const activeUid = getActiveUid();
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
                 roomCode,
                 type: `lobby_play_${key}`,
                 count: 1,
                 userName: user.name,
                 avatar: user.avatar,
-                uid: activeUid || null,
+                uid: currentLobbyUid || null,
                 isVip: !!user.isVip || (profile?.vipLevel || 0) > 0,
                 isFree: true,
                 timestamp: serverTimestamp()
@@ -7226,9 +7259,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const activeMessages = chatTab === 'host' ? dmMessages : loungeMessages;
     const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
     const noSingerOnStage = !currentSinger;
-    const lobbyForcedObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
-    const lobbyObjectiveMode = lobbyForcedObjectiveMode || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
-    const lobbyObjectiveStreakLabel = lobbyObjectiveMode?.id === 'team_pong' ? 'Rally' : 'Streak';
     const lobbyVolleySceneActive = isVolleyOrbSceneActive({
         hasCurrentSinger: !noSingerOnStage,
         activeMode: room?.activeMode,
@@ -7236,20 +7266,29 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     });
     const lobbyPlayStrictMode = !!room?.lobbyPlaygroundStrictMode;
     const lobbyPlaygroundPaused = !!room?.lobbyPlaygroundPaused;
-    const lobbyPlayMaxPerMinute = Math.max(
-        1,
-        Math.min(120, Number(room?.lobbyPlaygroundMaxPerMinute || (lobbyPlayStrictMode ? 8 : LOBBY_PLAYGROUND_DEFAULT_MAX_PER_MINUTE)))
-    );
+    const lobbyRatePlan = getLobbyVolleyAudienceRatePlan(lobbyVolleyPreview || createLobbyVolleyState(), {
+        strictMode: lobbyPlayStrictMode,
+        roomMaxPerMinute: room?.lobbyPlaygroundMaxPerMinute,
+        roomPerUserCooldownMs: room?.lobbyPlaygroundPerUserCooldownMs,
+        nowMs: lobbyVolleyNowMs
+    });
+    const lobbyPlayMaxPerMinute = lobbyRatePlan.maxPerMinute;
     const lobbyPlayRemaining = Math.max(0, lobbyPlayMaxPerMinute - lobbyPlayUsageCount);
     const lobbyPlayRateLimited = lobbyPlayRemaining <= 0;
     const lobbyPlayInteractionDisabled = lobbyPlayRateLimited || lobbyPlaygroundPaused;
-    const lobbyVolleyTimeoutMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.STREAK_TIMEOUT_MS || 6200);
+    const lobbyVolleyTimeoutMs = getLobbyVolleyDynamicTimeoutMs(lobbyVolleyPreview || createLobbyVolleyState(), lobbyVolleyNowMs);
     const lobbyVolleyAgeMs = Math.max(0, lobbyVolleyNowMs - Number(lobbyVolleyPreview?.lastInteractionAtMs || 0));
     const lobbyVolleyTimedOut = Number(lobbyVolleyPreview?.lastInteractionAtMs || 0) > 0
         && lobbyVolleyAgeMs >= lobbyVolleyTimeoutMs;
     const lobbyRelayObjective = deriveRelayObjective(lobbyVolleyPreview, lobbyVolleyNowMs);
-    const lobbyRelayRemainingSec = Math.max(0, Math.ceil(Number(lobbyRelayObjective?.remainingMs || 0) / 100) / 10);
-    const lobbyMobileTeamworkLabel = `x${Number(lobbyVolleyPreview?.teamworkMultiplier || 1).toFixed(1)}`;
+    const lobbyLevelMeta = getLobbyVolleyLevelMeta(lobbyVolleyPreview || createLobbyVolleyState(), lobbyVolleyNowMs);
+    const lobbyCurrentUserUid = String(user?.uid || uid || activeUid || '').trim();
+    const lobbyCurrentParticipant = lobbyCurrentUserUid ? lobbyVolleyPreview?.participants?.[lobbyCurrentUserUid] : null;
+    const lobbyActiveUltimates = Array.isArray(lobbyVolleyPreview?.activeUltimates)
+        ? lobbyVolleyPreview.activeUltimates.filter((entry) => Number(entry?.expiresAtMs || 0) > lobbyVolleyNowMs)
+        : [];
+    const lobbyActiveUltimateIds = new Set(lobbyActiveUltimates.map((entry) => String(entry?.type || '').trim().toLowerCase()));
+    const lobbyRelayTargetMeta = getVolleyOrbBaseAction(lobbyRelayObjective?.targetType || '');
     const lobbyMobileMainLine = getVolleyOrbMobileMainLine({
         paused: lobbyPlaygroundPaused,
         timedOut: lobbyVolleyTimedOut,
@@ -7892,16 +7931,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                      </span>
                                  </div>
                              </div>
-                         )}
-                         {lobbyVolleySceneActive ? (
-                             <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-3 space-y-3 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
-                                 <div className="flex items-center justify-between gap-2">
-                                     <div className="min-w-0">
-                                         <div className="text-xs uppercase tracking-[0.18em] text-cyan-200">Volley Orb</div>
-                                         <div className="text-base font-black text-white leading-tight">{lobbyMobileMainLine}</div>
-                                     </div>
-                                     <div className="flex items-center gap-1">
-                                         {autoCrowdMomentActive && autoCrowdMomentType === 'volley' && (
+                        )}
+                        {lobbyVolleySceneActive ? (
+                            <div className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-cyan-500/16 via-[#0a1020] to-fuchsia-500/16 p-3 space-y-3 shadow-[0_0_26px_rgba(34,211,238,0.24)]">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className="text-xs uppercase tracking-[0.18em] text-cyan-200">Volley Orb</div>
+                                        <div className="text-lg font-black text-white leading-tight">{lobbyMobileMainLine}</div>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        {autoCrowdMomentActive && autoCrowdMomentType === 'volley' && (
                                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] border bg-cyan-500/20 border-cyan-300/45 text-cyan-100">
                                                  AUTO
                                              </span>
@@ -7915,22 +7954,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-[0.12em] border bg-amber-500/20 border-amber-300/40 text-amber-100">
                                                  PAUSED
                                              </span>
-                                         )}
-                                     </div>
-                                 </div>
-                                 <div className="flex flex-wrap items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-zinc-100">
-                                     <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                         {lobbyObjectiveStreakLabel} {lobbyVolleyPreview?.streakCount || 0}
-                                     </span>
-                                     <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                         Teamwork {lobbyMobileTeamworkLabel}
-                                     </span>
-                                     <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
-                                         Relay {lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s` : 'idle'}
-                                     </span>
-                                 </div>
-                                 <div className="grid grid-cols-2 gap-3">
-                                       {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction) => {
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 text-[10px] uppercase tracking-[0.14em] text-zinc-100">
+                                    <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
+                                        Lvl {lobbyLevelMeta.level} {lobbyLevelMeta.label}
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
+                                        Need {lobbyLevelMeta.targetActivePlayers}+ crowd
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded-full border border-white/20 bg-black/45">
+                                        {lobbyRelayObjective.active
+                                            ? `${lobbyRelayTargetMeta?.emoji || '🎯'} ${lobbyRelayTargetMeta?.label || 'Target'}`
+                                            : 'Launch'}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                      {LOBBY_PLAYGROUND_INTERACTIONS.map((interaction) => {
                                             const isRelayTarget = isVolleyOrbTargetInteraction({
                                                 relayActive: lobbyRelayObjective.active,
                                                 targetType: lobbyRelayObjective.targetType,
@@ -7948,7 +7989,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     } ${lobbyPlayInteractionDisabled ? 'opacity-45 cursor-not-allowed border-zinc-700' : 'active:scale-95'}`}
                                                 >
                                                     <div className="w-full flex items-center justify-between gap-2">
-                                                        <span />
+                                                        <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full border border-white/15 bg-black/30 text-white/85">
+                                                            {interaction.cue}
+                                                        </span>
                                                         {isRelayTarget ? (
                                                             <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full border border-emerald-200/60 bg-emerald-500/25 text-emerald-50">
                                                                 TARGET
@@ -7959,13 +8002,52 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     </div>
                                                     <span className="mt-2 text-5xl leading-none">{interaction.emoji}</span>
                                                     <span className={`mt-2 text-lg font-black uppercase leading-none ${interaction.accentText}`}>{interaction.label}</span>
+                                                    <span className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
+                                                        {interaction.id === 'wave' ? 'hold up' : interaction.id === 'laser' ? 'push up' : interaction.id === 'echo' ? 'next player' : 'grow streak'}
+                                                    </span>
                                                 </button>
                                            );
                                        })}
                                   </div>
-                                 <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#27d3f7] to-[#26D7E8] text-black py-2.5 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
-                                     Add first song to start karaoke
-                                 </button>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {LOBBY_PLAYGROUND_ULTIMATES.map((ultimate) => {
+                                        const cooldownRemainingMs = Math.max(
+                                            0,
+                                            (Number(lobbyCurrentParticipant?.lastUltimateAtMs || 0) + VOLLEY_ORB_ULTIMATE_COOLDOWN_MS) - lobbyVolleyNowMs
+                                        );
+                                        const cooldownReady = cooldownRemainingMs <= 0;
+                                        const cooldownPct = cooldownReady
+                                            ? 100
+                                            : Math.max(0, Math.min(100, 100 - ((cooldownRemainingMs / VOLLEY_ORB_ULTIMATE_COOLDOWN_MS) * 100)));
+                                        const activeUltimate = lobbyActiveUltimateIds.has(ultimate.id);
+                                        return (
+                                            <button
+                                                key={ultimate.id}
+                                                onClick={() => triggerLobbyPlayInteraction(ultimate.id)}
+                                                disabled={lobbyPlayInteractionDisabled || !cooldownReady}
+                                                className={`relative overflow-hidden rounded-2xl border px-3 py-3 flex items-center gap-3 text-left transition-all shadow-[0_10px_24px_rgba(0,0,0,0.38)] bg-gradient-to-b ${ultimate.accentCard} ${ultimate.accentBorder} ${(!cooldownReady || lobbyPlayInteractionDisabled) ? 'opacity-55 cursor-not-allowed' : 'active:scale-[0.98]'}`}
+                                            >
+                                                <span className="text-3xl leading-none">{ultimate.emoji}</span>
+                                                <span className="min-w-0 flex-1">
+                                                    <span className={`block text-sm font-black uppercase leading-none ${ultimate.accentText}`}>{ultimate.label}</span>
+                                                    <span className="mt-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-white/70">{ultimate.cue}</span>
+                                                </span>
+                                                <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${activeUltimate ? 'border-emerald-300/60 bg-emerald-500/20 text-emerald-50' : 'border-white/15 bg-black/30 text-white/80'}`}>
+                                                    {activeUltimate ? 'LIVE' : cooldownReady ? 'ULT' : `${Math.ceil(cooldownRemainingMs / 1000)}s`}
+                                                </span>
+                                                <span
+                                                    aria-hidden="true"
+                                                    className="absolute inset-x-0 bottom-0 h-1 bg-white/10"
+                                                >
+                                                    <span className="block h-full bg-cyan-300/85 transition-all duration-200" style={{ width: `${cooldownPct}%` }} />
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#27d3f7] to-[#26D7E8] text-black py-2.5 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
+                                    Add first song to start karaoke
+                                </button>
                              </div>
                          ) : (
                              <>
@@ -8488,7 +8570,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <button
                                             onClick={() => {
                                                 setSongsTab('requests');
-                                                setCatalogSearchOpen(true);
+                                                setCatalogSearchOpen(false);
+                                                setManualRequestComposerOpen(false);
                                             }}
                                             className={`rounded-2xl border px-4 py-3 text-left transition-all ${
                                                 songsTab === 'requests'
@@ -9368,25 +9451,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     {floatingEngagementPrompt.label}
                 </button>
             )}
-            <button
-                onClick={() => { pulseNativeUiFeedback(10); toggleMobileLayoutMode(); }}
-                className={`fixed left-3 z-[96] px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-[0.18em] transition-colors ${isNativeMobileLayout ? 'border-cyan-300/50 bg-cyan-400/20 text-cyan-100 mobile-native-layout-toggle' : 'border-white/30 bg-black/45 text-zinc-200'}`}
-                style={{ bottom: mobileFloatingBottomInset }}
-                title="Toggle between native and classic mobile layout"
-            >
-                {isNativeMobileLayout ? 'UI Native' : 'UI Classic'}
-            </button>
-
             <div
                 className={`relative border-t border-pink-400/30 flex-none z-20 ${isNativeMobileLayout ? 'backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)] mobile-native-tabbar' : ''}`}
                 style={{ paddingBottom: isNativeMobileLayout ? mobileBottomInset : (isStandaloneDisplay ? 'env(safe-area-inset-bottom)' : '0px') }}
             >
                 <div className="absolute inset-0" style={{ background: MOBILE_NAV_GRADIENT }}></div>
-                {isNativeMobileLayout && (
-                    <div className="relative px-4 pt-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100/85 text-center">
-                        Edge-to-edge controls
-                    </div>
-                )}
                 <div
                     className={`relative py-1.5 flex ${isNativeMobileLayout ? 'mobile-native-tabbar-row' : ''}`}
                     style={{

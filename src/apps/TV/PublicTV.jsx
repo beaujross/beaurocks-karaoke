@@ -23,10 +23,12 @@ import {
 import {
     createLobbyVolleyState,
     applyLobbyInteraction,
-    deriveComboMoment,
     deriveAirborneMs,
     deriveTeamworkMultiplier,
     deriveRelayObjective,
+    getLobbyVolleyDecayPerSec,
+    getLobbyVolleyDynamicTimeoutMs,
+    getLobbyVolleyLevelMeta,
     getActiveParticipants,
     getTierTransitions,
     buildAwardPayload,
@@ -47,9 +49,13 @@ import {
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
 import {
     getVolleyOrbTvInstructionCopy,
+    getVolleyOrbUltimate,
     getVolleyOrbResponsiveMetrics,
     isVolleyOrbSceneActive,
-    isVolleyOrbTargetInteraction
+    isVolleyOrbTargetInteraction,
+    normalizeVolleyOrbInteractionType,
+    VOLLEY_ORB_BASE_ACTIONS,
+    VOLLEY_ORB_ULTIMATES
 } from '../../lib/volleyOrbUiState';
 
 const isTvVisibleChatMessage = (message) => {
@@ -204,77 +210,84 @@ const normalizeStormLayer = (layer = '') => {
 
 const LOBBY_PLAY_EFFECTS = {
     lobby_play_wave: {
-        label: 'Wave Tunnel',
-        icon: emoji(0x1F44B),
+        label: 'Save',
+        icon: '🛟',
         accent: 'from-cyan-300/80 to-blue-400/80',
         motion: 'wave',
         aura: 'rgba(34,211,238,0.45)',
-        particles: [emoji(0x1F44B), emoji(0x1F30A), emoji(0x1F4AB)]
+        particles: ['🛟', '🌊', '💫']
     },
     lobby_play_laser: {
-        label: 'Laser Pop',
-        icon: emoji(0x2728),
+        label: 'Lift',
+        icon: '🚀',
         accent: 'from-fuchsia-300/80 to-cyan-300/80',
         motion: 'laser',
         aura: 'rgba(232,121,249,0.42)',
-        particles: [emoji(0x2728), emoji(0x1F31F), emoji(0x1F4A5)]
+        particles: ['🚀', '✨', '💥']
     },
     lobby_play_echo: {
-        label: 'Echo Ring',
-        icon: emoji(0x1F30A),
+        label: 'Pass',
+        icon: '🔁',
         accent: 'from-blue-300/80 to-indigo-400/80',
         motion: 'echo',
         aura: 'rgba(96,165,250,0.4)',
-        particles: [emoji(0x1F30A), emoji(0x1F4A7), emoji(0x1F4AB)]
+        particles: ['🔁', '🌊', '💫']
     },
     lobby_play_confetti: {
-        label: 'Confetti',
-        icon: emoji(0x1F389),
+        label: 'Burst',
+        icon: '💥',
         accent: 'from-pink-300/80 to-yellow-300/80',
         motion: 'confetti',
         aura: 'rgba(244,114,182,0.38)',
-        particles: [emoji(0x1F389), emoji(0x1F38A), emoji(0x1F31F)]
+        particles: ['💥', '🎉', '🌟']
+    },
+    lobby_play_ultimate_feather: {
+        label: 'Float',
+        icon: '🪶',
+        accent: 'from-emerald-300/80 to-cyan-300/80',
+        motion: 'wave',
+        aura: 'rgba(74,222,128,0.42)',
+        particles: ['🪶', '💨']
+    },
+    lobby_play_ultimate_lens: {
+        label: 'Shrink',
+        icon: '🔍',
+        accent: 'from-amber-300/80 to-yellow-200/80',
+        motion: 'echo',
+        aura: 'rgba(251,191,36,0.36)',
+        particles: ['🔍', '✨']
+    },
+    lobby_play_ultimate_magnet: {
+        label: 'Catch-All',
+        icon: '🧲',
+        accent: 'from-fuchsia-300/80 to-violet-300/80',
+        motion: 'pulse_bloom',
+        aura: 'rgba(217,70,239,0.38)',
+        particles: ['🧲', '⚡']
+    },
+    lobby_play_ultimate_rocket: {
+        label: 'Bounce',
+        icon: '🚀',
+        accent: 'from-rose-300/80 to-orange-300/80',
+        motion: 'spark_shower_bridge',
+        aura: 'rgba(251,113,133,0.4)',
+        particles: ['🚀', '💥']
     }
 };
 
-const LOBBY_PLAY_GUIDE = [
-    {
-        id: 'wave',
-        action: 'Wave',
-        detail: 'Slows decay so the orb can recover.',
-        timing: 'Use when the orb is dropping.'
-    },
-    {
-        id: 'laser',
-        action: 'Laser',
-        detail: 'Adds a quick energy jump.',
-        timing: 'Use during steady momentum.'
-    },
-    {
-        id: 'echo',
-        action: 'Echo',
-        detail: 'Adds time to relay windows.',
-        timing: 'Use when relay timer is low.'
-    },
-    {
-        id: 'confetti',
-        action: 'Confetti',
-        detail: 'Builds streak momentum and tiers.',
-        timing: 'Use during active chains.'
-    }
-];
+const LOBBY_PLAY_GUIDE = VOLLEY_ORB_BASE_ACTIONS.map((item) => ({
+    id: item.id,
+    action: item.label,
+    detail: item.cue,
+    timing: item.shortCue
+}));
 
 const getLobbyPlayEffect = (type = '') => {
     const key = String(type || '').trim().toLowerCase();
     return LOBBY_PLAY_EFFECTS[key] || null;
 };
 
-const normalizeLobbyPlayInteractionType = (type = '') => {
-    const key = String(type || '').trim().toLowerCase();
-    if (!key) return '';
-    if (key.startsWith('lobby_play_')) return key.slice('lobby_play_'.length);
-    return key;
-};
+const normalizeLobbyPlayInteractionType = normalizeVolleyOrbInteractionType;
 
 const getLobbyPlayEffectByInteractionType = (interactionType = '') => {
     const key = normalizeLobbyPlayInteractionType(interactionType);
@@ -326,18 +339,6 @@ const getLobbyInteractionAnchor = (interactionType = '', seed = 1, index = 0) =>
     };
 };
 
-const LOBBY_COMBO_STYLES = {
-    wave_laser: { accent: 'from-cyan-300/70 via-fuchsia-300/65 to-cyan-200/70', beam: 'rgba(125,211,252,0.75)' },
-    wave_echo: { accent: 'from-cyan-300/70 via-blue-300/65 to-indigo-300/75', beam: 'rgba(103,232,249,0.72)' },
-    laser_confetti: { accent: 'from-fuchsia-300/75 via-pink-300/68 to-yellow-200/70', beam: 'rgba(244,114,182,0.76)' },
-    echo_confetti: { accent: 'from-indigo-300/75 via-blue-300/70 to-pink-300/68', beam: 'rgba(165,180,252,0.74)' }
-};
-
-const getLobbyComboStyle = (comboKey = '') => LOBBY_COMBO_STYLES[comboKey] || {
-    accent: 'from-cyan-300/65 via-blue-300/60 to-fuchsia-300/65',
-    beam: 'rgba(147,197,253,0.72)'
-};
-
 const quantizeLobbyStartTime = ({ now, micVolume, visualizerEnabled }) => {
     const hasRhythmSignal = !!visualizerEnabled && Number(micVolume || 0) >= 10;
     if (!hasRhythmSignal) return Math.round(now);
@@ -361,14 +362,14 @@ const LOBBY_ASSIST_WINDOW_MS = 4200;
 const LOBBY_LINK_WINDOW_MS = 2500;
 const LOBBY_BURST_WINDOW_MS = 3000;
 const LOBBY_SCREEN_FX_WINDOW_MS = 3200;
-const LOBBY_SCREEN_FX_CAP = 12;
-const LOBBY_BURST_CAP = 16;
-const LOBBY_LINK_CAP = 16;
-const LOBBY_COMBO_CAP = 12;
-const LOBBY_ASSIST_CAP = 10;
+const LOBBY_SCREEN_FX_CAP = 5;
+const LOBBY_BURST_CAP = 8;
+const LOBBY_LINK_CAP = 6;
+const LOBBY_COMBO_CAP = 6;
+const LOBBY_ASSIST_CAP = 4;
 const LOBBY_TIER_CHIP_CAP = 8;
 const LOBBY_ORB_EVENT_CAP = 14;
-const LOBBY_PARTICLE_MAX = 24;
+const LOBBY_PARTICLE_MAX = 10;
 const LOBBY_ORB_MIN_TOP_PCT = 24;
 const LOBBY_GROUND_LINE_TOP_PCT = 92;
 const GUITAR_SYNC_DECAY_PER_SECOND = 14;
@@ -432,7 +433,7 @@ const getLobbyContributionAlpha = (weight = 1) => clampLobby(0.25 + (Number(weig
 const getLobbyOrbMeterValue = (state = null, now = nowMs()) => {
     if (!state) return 0;
     const elapsed = Math.max(0, now - Number(state.lastInteractionAtMs || now));
-    const liveEnergy = Math.max(0, Number(state.energy || 0) - ((elapsed / 1000) * 0.28));
+    const liveEnergy = Math.max(0, Number(state.energy || 0) - ((elapsed / 1000) * getLobbyVolleyDecayPerSec(state, now)));
     return clampLobby(liveEnergy, 0, 100);
 };
 
@@ -810,6 +811,8 @@ const PublicTV = ({ roomCode }) => {
         if (typeof window === 'undefined') return false;
         return new URLSearchParams(window.location.search || '').get('mkDemoEmbed') === '1';
     }, []);
+    const [demoFixture, setDemoFixture] = useState(null);
+    const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
     const [room, setRoom] = useState(null);
     const [songs, setSongs] = useState([]);
     const [reactions, setReactions] = useState([]);
@@ -879,6 +882,35 @@ const PublicTV = ({ roomCode }) => {
         if (!isMarketingDemoEmbed) return;
         setStarted(true);
     }, [isMarketingDemoEmbed]);
+    useEffect(() => {
+        if (!isMarketingDemoEmbed || typeof window === 'undefined') return undefined;
+        const handleMessage = (event) => {
+            const payload = event?.data;
+            if (!payload || payload.type !== 'beaurocks-demo-fixture' || payload.surface !== 'tv') return;
+            setDemoFixture(payload.fixture || null);
+        };
+        window.addEventListener('message', handleMessage);
+        try {
+            window.parent?.postMessage({ type: 'beaurocks-demo-ready', surface: 'tv' }, '*');
+        } catch (_) {
+            // Ignore parent postMessage issues in standalone TV mode.
+        }
+        return () => window.removeEventListener('message', handleMessage);
+    }, [isMarketingDemoEmbed]);
+    useEffect(() => {
+        if (!isMarketingDemoFixture) return;
+        const fixture = demoFixture || {};
+        if (fixture.room !== undefined) setRoom(fixture.room || null);
+        if (Array.isArray(fixture.songs)) setSongs(fixture.songs);
+        if (Array.isArray(fixture.activities)) setActivities(fixture.activities);
+        if (Array.isArray(fixture.reactions)) setReactions(fixture.reactions);
+        if (Array.isArray(fixture.messages)) setMessages(fixture.messages);
+        if (Array.isArray(fixture.roomUsers)) setRoomUsers(fixture.roomUsers);
+        if (Array.isArray(fixture.popTriviaVotes)) setPopTriviaVotes(fixture.popTriviaVotes);
+        if (fixture.recap !== undefined) setRecap(fixture.recap || null);
+        if (fixture.previewSession) setPreviewSession(fixture.previewSession);
+        if (typeof fixture.started === 'boolean') setStarted(fixture.started);
+    }, [demoFixture, isMarketingDemoFixture]);
     const [viewportSize, setViewportSize] = useState(() => ({
         width: typeof window !== 'undefined' ? window.innerWidth : 1920,
         height: typeof window !== 'undefined' ? window.innerHeight : 1080
@@ -1583,7 +1615,7 @@ const PublicTV = ({ roomCode }) => {
 
     // --- EFFECT: Data Sync ---
     useEffect(() => {
-        if(!roomCode) return;
+        if(!roomCode || isMarketingDemoFixture) return;
         trackEvent('tv_view', { room_code: roomCode });
         reactionScoreByDocRef.current = new Map();
         reactionScoreTotalsByPerformanceRef.current = new Map();
@@ -1633,6 +1665,8 @@ const PublicTV = ({ roomCode }) => {
                             const interactionType = normalizeLobbyPlayInteractionType(d.type);
                             const effect = getLobbyPlayEffectByInteractionType(interactionType);
                             if (!effect) return;
+                            const ultimateMeta = getVolleyOrbUltimate(interactionType);
+                            const isUltimate = !!ultimateMeta;
                             const eventTimestamp = getLobbyEventTimestampMs(d);
                             const burstTime = quantizeLobbyStartTime({
                                 now: eventTimestamp,
@@ -1654,14 +1688,6 @@ const PublicTV = ({ roomCode }) => {
                                 burstTime
                             );
                             const tierTransitions = getTierTransitions(previousVolleyState, nextVolleyStateRaw);
-                            const comboMoment = deriveComboMoment(previousVolleyState, {
-                                type: interactionType,
-                                uid: d.uid || '',
-                                userName: d.userName || d.user || 'Guest',
-                                avatar: d.avatar || effect.icon,
-                                count: totalCount,
-                                timestampMs: burstTime
-                            });
                             const relayObjectiveBefore = deriveRelayObjective(previousVolleyState, burstTime);
                             const relayObjectiveAfter = deriveRelayObjective(nextVolleyStateRaw, burstTime);
                             const relayHit = Number(nextVolleyStateRaw?.relayChainCount || 0) > Number(previousVolleyState?.relayChainCount || 0);
@@ -1706,6 +1732,8 @@ const PublicTV = ({ roomCode }) => {
                                 1.4
                             );
                             const reduceMotion = shouldDisableLobbyMotion(lobbyReduceMotionRef.current);
+                            const keepScreenFx = isUltimate || relayHit || tierTransitions.length > 0 || !previousVolleyActive;
+                            const keepTrailFx = relayHit || isUltimate;
                             const retentionMs = getLobbyRetentionMs({
                                 reduceMotion,
                                 loadFactor,
@@ -1715,7 +1743,9 @@ const PublicTV = ({ roomCode }) => {
                             const anchor = getLobbyInteractionAnchor(interactionType, anchorSeed, nextVolleyStateRaw.streakCount);
                             const previousAnchor = lobbyLastAnchorRef.current;
                             lobbyLastAnchorRef.current = anchor;
-                            const particleCount = getLobbyBurstParticleCount({ reduceMotion, loadFactor });
+                            const particleCount = isUltimate
+                                ? Math.max(4, Math.min(LOBBY_PARTICLE_MAX, getLobbyBurstParticleCount({ reduceMotion, loadFactor })))
+                                : Math.min(4, getLobbyBurstParticleCount({ reduceMotion, loadFactor }));
                             const symbols = Array.isArray(effect.particles) && effect.particles.length
                                 ? effect.particles
                                 : [effect.icon];
@@ -1760,27 +1790,29 @@ const PublicTV = ({ roomCode }) => {
                                 );
                                 return [burstEntry, ...active].slice(0, LOBBY_BURST_CAP);
                             });
-                            const baseScreenFx = {
-                                id: `lobby-play-screen-${c.doc.id}`,
-                                motion: effect.motion || interactionType || 'wave',
-                                createdAt: burstTime,
-                                durationMs: getLobbyScreenFxDurationMs(effect.motion || interactionType || 'wave'),
-                                intensity: Math.min(4, totalCount + Math.floor(nextVolleyStateRaw.energy / 30)),
-                                seed: anchorSeed,
-                                symbols,
-                                anchorX: anchor.x,
-                                anchorY: anchor.y
-                            };
-                            setLobbyPlayScreenFx((prev) => {
-                                const active = (prev || []).filter(
-                                    (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_SCREEN_FX_WINDOW_MS
-                                );
-                                return [baseScreenFx, ...active].slice(0, LOBBY_SCREEN_FX_CAP);
-                            });
-                            if (previousAnchor) {
+                            if (keepScreenFx) {
+                                const baseScreenFx = {
+                                    id: `lobby-play-screen-${c.doc.id}`,
+                                    motion: effect.motion || interactionType || 'wave',
+                                    createdAt: burstTime,
+                                    durationMs: getLobbyScreenFxDurationMs(effect.motion || interactionType || 'wave'),
+                                    intensity: Math.min(isUltimate ? 5 : 3, (isUltimate ? 2 : 1) + totalCount),
+                                    seed: anchorSeed,
+                                    symbols,
+                                    anchorX: anchor.x,
+                                    anchorY: anchor.y
+                                };
+                                setLobbyPlayScreenFx((prev) => {
+                                    const active = (prev || []).filter(
+                                        (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_SCREEN_FX_WINDOW_MS
+                                    );
+                                    return [baseScreenFx, ...active].slice(0, LOBBY_SCREEN_FX_CAP);
+                                });
+                            }
+                            if (previousAnchor && keepTrailFx) {
                                 const trailLength = getLobbyTrailLength({ reduceMotion, loadFactor });
                                 if (trailLength > 0) {
-                                    const beamColor = getLobbyComboStyle('').beam;
+                                    const beamColor = relayHit ? 'rgba(52,211,153,0.86)' : 'rgba(125,211,252,0.7)';
                                     setLobbyVolleyLinks((prev) => {
                                         const active = (prev || []).filter(
                                             (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_LINK_WINDOW_MS
@@ -1796,48 +1828,14 @@ const PublicTV = ({ roomCode }) => {
                                                 defaultMs: LOBBY_LINK_WINDOW_MS
                                             }),
                                             color: beamColor,
-                                            width: 4 + Math.min(4, totalCount),
-                                            mode: 'relay'
+                                            width: relayHit ? 9 : (isUltimate ? 6 : 4),
+                                            mode: relayHit ? 'relay_chain' : 'relay'
                                         }, ...active];
                                         return next.slice(0, LOBBY_LINK_CAP);
                                     });
                                 }
                             }
-                            if (relayHit && previousAnchor) {
-                                setLobbyVolleyLinks((prev) => {
-                                    const active = (prev || []).filter(
-                                        (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_LINK_WINDOW_MS
-                                    );
-                                    const next = [{
-                                        id: `lobby-relay-link-${c.doc.id}`,
-                                        from: previousAnchor,
-                                        to: anchor,
-                                        createdAt: burstTime,
-                                        durationMs: LOBBY_LINK_WINDOW_MS,
-                                        color: 'rgba(52,211,153,0.86)',
-                                        width: 10,
-                                        mode: 'relay_chain'
-                                    }, ...active];
-                                    return next.slice(0, LOBBY_LINK_CAP);
-                                });
-                            }
                             if (relayHit) {
-                                setLobbyAssistMoments((prev) => {
-                                    const active = (prev || []).filter(
-                                        (entry) => (burstTime - Number(entry?.createdAtMs || 0)) < LOBBY_ASSIST_WINDOW_MS
-                                    );
-                                    const assistEntry = {
-                                        id: `lobby-assist-${c.doc.id}`,
-                                        createdAtMs: burstTime,
-                                        expiresAtMs: burstTime + LOBBY_ASSIST_WINDOW_MS,
-                                        chainCount: relayChainCount,
-                                        passerName: relayPasserName,
-                                        receiverName: relayReceiverName,
-                                        interactionType,
-                                        nextTargetType: relayObjectiveAfter?.targetType || relayObjectiveBefore?.targetType || 'wave'
-                                    };
-                                    return [assistEntry, ...active].slice(0, LOBBY_ASSIST_CAP);
-                                });
                                 setLobbyPlayScreenFx((prev) => {
                                     const active = (prev || []).filter(
                                         (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_SCREEN_FX_WINDOW_MS
@@ -1855,50 +1853,6 @@ const PublicTV = ({ roomCode }) => {
                                     };
                                     return [relayFx, ...active].slice(0, LOBBY_SCREEN_FX_CAP);
                                 });
-                            }
-                            if (comboMoment) {
-                                const comboStyle = getLobbyComboStyle(comboMoment.key);
-                                setLobbyComboMoments((prev) => {
-                                    const active = (prev || []).filter(
-                                        (entry) => (burstTime - Number(entry?.createdAtMs || 0)) < LOBBY_COMBO_WINDOW_MS
-                                    );
-                                    return [{ ...comboMoment, style: comboStyle, createdAtMs: burstTime }, ...active].slice(0, LOBBY_COMBO_CAP);
-                                });
-                                setLobbyPlayScreenFx((prev) => {
-                                    const active = (prev || []).filter(
-                                        (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_SCREEN_FX_WINDOW_MS
-                                    );
-                                    const comboFx = {
-                                        id: `lobby-combo-screen-${c.doc.id}`,
-                                        motion: comboMoment.effect || 'pulse_bloom',
-                                        createdAt: burstTime,
-                                        durationMs: getLobbyScreenFxDurationMs(comboMoment.effect || 'pulse_bloom'),
-                                        intensity: Math.min(5, totalCount + 1),
-                                        seed: anchorSeed + 97,
-                                        symbols,
-                                        anchorX: anchor.x,
-                                        anchorY: anchor.y
-                                    };
-                                    return [comboFx, ...active].slice(0, LOBBY_SCREEN_FX_CAP);
-                                });
-                                if (previousAnchor) {
-                                    setLobbyVolleyLinks((prev) => {
-                                        const active = (prev || []).filter(
-                                            (entry) => (burstTime - Number(entry?.createdAt || 0)) < LOBBY_LINK_WINDOW_MS
-                                        );
-                                        const next = [{
-                                            id: `lobby-combo-link-${c.doc.id}`,
-                                            from: previousAnchor,
-                                            to: anchor,
-                                            createdAt: burstTime,
-                                            durationMs: LOBBY_LINK_WINDOW_MS,
-                                            color: comboStyle.beam,
-                                            width: 8,
-                                            mode: comboMoment.key
-                                        }, ...active];
-                                        return next.slice(0, LOBBY_LINK_CAP);
-                                    });
-                                }
                             }
                             if (tierTransitions.length) {
                                 setLobbyTierChips((prev) => {
@@ -2163,9 +2117,13 @@ const PublicTV = ({ roomCode }) => {
             messageTimeoutsRef.current.forEach(t => clearTimeout(t));
             messageTimeoutsRef.current = [];
         };
-    }, [roomCode, pushLobbyLiveEvent, awardRoomPointsOnce, upsertReactionScoreContribution]);
+    }, [roomCode, isMarketingDemoFixture, pushLobbyLiveEvent, awardRoomPointsOnce, upsertReactionScoreContribution]);
 
     useEffect(() => {
+        if (isMarketingDemoFixture) {
+            setChatMessages([]);
+            return () => {};
+        }
         if (!roomCode || !room?.chatShowOnTv) {
             setChatMessages([]);
             return () => {};
@@ -2191,7 +2149,7 @@ const PublicTV = ({ roomCode }) => {
             }
         );
         return () => unsubChat();
-    }, [roomCode, room?.chatShowOnTv]);
+    }, [roomCode, room?.chatShowOnTv, isMarketingDemoFixture]);
 
     useEffect(() => {
         const tvMode = room?.chatTvMode || 'auto';
@@ -2513,8 +2471,8 @@ const PublicTV = ({ roomCode }) => {
                 const lastAt = Number(prev.lastInteractionAtMs || 0);
                 if (!lastAt) return prev;
                 const elapsedMs = Math.max(0, tickNow - lastAt);
-                const liveEnergy = Math.max(0, Number(prev.energy || 0) - ((elapsedMs / 1000) * 0.28));
-                const timeoutMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.STREAK_TIMEOUT_MS || 6200);
+                const liveEnergy = Math.max(0, Number(prev.energy || 0) - ((elapsedMs / 1000) * getLobbyVolleyDecayPerSec(prev, tickNow)));
+                const timeoutMs = getLobbyVolleyDynamicTimeoutMs(prev, tickNow);
                 const groundedAtMs = timeoutMs + Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.GROUND_HIT_GRACE_MS || 360);
                 if (elapsedMs > groundedAtMs && Number(prev.streakCount || 0) > 0) {
                     const resetState = {
@@ -2797,6 +2755,10 @@ const PublicTV = ({ roomCode }) => {
         return () => clearInterval(timer);
     }, [current?.id, current?.popTrivia, room?.activeMode, room?.popTriviaEnabled]);
     useEffect(() => {
+        if (isMarketingDemoFixture) {
+            setPopTriviaVotes(Array.isArray(demoFixture?.popTriviaVotes) ? demoFixture.popTriviaVotes : []);
+            return () => {};
+        }
         if (!roomCode || !popTriviaQuestionId) {
             setPopTriviaVotes([]);
             return () => {};
@@ -2814,7 +2776,7 @@ const PublicTV = ({ roomCode }) => {
             setPopTriviaVotes(entries);
         });
         return () => unsub();
-    }, [roomCode, popTriviaQuestionId]);
+    }, [demoFixture?.popTriviaVotes, isMarketingDemoFixture, roomCode, popTriviaQuestionId]);
 
     const handleVolume = (vol) => {
         const level = Math.min(100, Math.round(vol / 1.5));
@@ -2908,14 +2870,19 @@ const PublicTV = ({ roomCode }) => {
     const lobbyOrbEnergy = getLobbyOrbMeterValue(lobbyVolleyState, lobbyNow);
     const lobbyActiveParticipants = getActiveParticipants(lobbyVolleyState, lobbyNow).slice(0, LOBBY_ORB_EVENT_CAP);
     const lobbyRelayObjective = deriveRelayObjective(lobbyVolleyState, lobbyNow);
+    const lobbyActiveUltimates = Array.isArray(lobbyVolleyState?.activeUltimates)
+        ? lobbyVolleyState.activeUltimates.filter((entry) => Number(entry?.expiresAtMs || 0) > lobbyNow)
+        : [];
+    const lobbyCatchAllActive = lobbyActiveUltimates.some((entry) => entry?.type === 'ultimate_magnet');
     const lobbyRelayRemainingSec = Math.max(0, Math.ceil(Number(lobbyRelayObjective?.remainingMs || 0) / 100) / 10);
     const lobbyCurrentTierMeta = getLobbyTierDefinition(lobbyVolleyState?.currentTier || 0);
+    const lobbyLevelMeta = getLobbyVolleyLevelMeta(lobbyVolleyState, lobbyNow);
     const motionSafeFx = !!room?.reduceMotionFx;
     const lobbyOrbSkinUrl = useMemo(
         () => normalizeLobbyOrbSkinUrl(room?.lobbyOrbSkinUrl || ''),
         [room?.lobbyOrbSkinUrl]
     );
-    const lobbyStreakTimeoutMs = Number(LOBBY_PLAYGROUND_ENGINE_CONSTANTS?.STREAK_TIMEOUT_MS || 6200);
+    const lobbyStreakTimeoutMs = getLobbyVolleyDynamicTimeoutMs(lobbyVolleyState, lobbyNow);
     const lobbyStreakAgeMs = Math.max(0, lobbyNow - Number(lobbyVolleyState?.lastInteractionAtMs || 0));
     const lobbyStreakDecayPct = clampLobby(
         100 - ((lobbyStreakAgeMs / Math.max(1, lobbyStreakTimeoutMs)) * 100),
@@ -2928,7 +2895,8 @@ const PublicTV = ({ roomCode }) => {
         && Number(lobbyVolleyState?.lastInteractionAtMs || 0) > 0
         && !lobbyVolleyExpired;
     const lobbyOrbDiameterPx = clampLobby((Number(viewportSize?.width || 1920) * 0.2), 198, 292);
-    const lobbyOrbRadiusPct = (lobbyOrbDiameterPx * 0.5 / Math.max(1, Number(viewportSize?.height || 1080))) * 100;
+    const lobbyOrbShrinkScale = lobbyActiveUltimates.some((entry) => entry?.type === 'ultimate_lens') ? 0.76 : 1;
+    const lobbyOrbRadiusPct = ((lobbyOrbDiameterPx * lobbyOrbShrinkScale) * 0.5 / Math.max(1, Number(viewportSize?.height || 1080))) * 100;
     const lobbyOrbRestCenterTopPct = clampLobby(
         lobbyGroundLineTopPct - lobbyOrbRadiusPct,
         LOBBY_ORB_MIN_TOP_PCT,
@@ -2953,7 +2921,8 @@ const PublicTV = ({ roomCode }) => {
         const tSec = lobbyNow / 1000;
         const motionDamp = motionSafeFx ? 0.56 : 1;
         const streakScale = 1;
-        const energyScale = 0.72 + (Math.max(0, Math.min(100, Number(lobbyOrbEnergy || 0))) / 185);
+        const levelSpeed = Number(lobbyLevelMeta.speedMultiplier || 1);
+        const energyScale = (0.72 + (Math.max(0, Math.min(100, Number(lobbyOrbEnergy || 0))) / 185)) * (0.96 + ((levelSpeed - 1) * 0.28));
         const ampX = (3.8 + (seededUnit(seed + 23) * 2.5)) * motionDamp * streakScale * energyScale;
         const ampY = (1.6 + (seededUnit(seed + 37) * 1.4)) * motionDamp * streakScale * (0.82 + (Math.max(0, Math.min(100, Number(lobbyOrbEnergy || 0))) / 230));
         const phaseA = seededUnit(seed + 41) * Math.PI * 2;
@@ -2961,18 +2930,18 @@ const PublicTV = ({ roomCode }) => {
         const phaseC = seededUnit(seed + 67) * Math.PI * 2;
         const phaseD = seededUnit(seed + 79) * Math.PI * 2;
         const driftX = (
-            Math.sin((tSec * (0.55 + (seededUnit(seed + 89) * 0.22))) + phaseA) * ampX
-            + Math.sin((tSec * (0.97 + (seededUnit(seed + 97) * 0.18))) + phaseB) * (ampX * 0.42)
+            Math.sin((tSec * (0.55 + (seededUnit(seed + 89) * 0.22)) * levelSpeed) + phaseA) * ampX
+            + Math.sin((tSec * (0.97 + (seededUnit(seed + 97) * 0.18)) * levelSpeed) + phaseB) * (ampX * 0.42)
         );
         const driftY = (
-            Math.cos((tSec * (0.68 + (seededUnit(seed + 107) * 0.2))) + phaseC) * ampY
-            + Math.sin((tSec * (1.18 + (seededUnit(seed + 113) * 0.17))) + phaseD) * (ampY * 0.36)
+            Math.cos((tSec * (0.68 + (seededUnit(seed + 107) * 0.2)) * levelSpeed) + phaseC) * ampY
+            + Math.sin((tSec * (1.18 + (seededUnit(seed + 113) * 0.17)) * levelSpeed) + phaseD) * (ampY * 0.36)
         );
         return { driftX, driftY };
-    }, [roomCode, lobbyNow, motionSafeFx, lobbyHasActiveVolley, lobbyOrbEnergy]);
+    }, [roomCode, lobbyNow, motionSafeFx, lobbyHasActiveVolley, lobbyLevelMeta.speedMultiplier, lobbyOrbEnergy]);
     const lobbyOrbRenderLeftPct = clampLobby(50 + lobbyOrbFloatDrift.driftX, 16, 84);
     const lobbyOrbRenderTopPct = clampLobby(
-        lobbyOrbTopPct + lobbyOrbFloatDrift.driftY,
+        lobbyOrbTopPct + lobbyOrbFloatDrift.driftY - (lobbyActiveUltimates.some((entry) => entry?.type === 'ultimate_lens') ? 4.5 : 0),
         LOBBY_ORB_MIN_TOP_PCT - 2,
         lobbyOrbRestCenterTopPct
     );
@@ -2983,7 +2952,8 @@ const PublicTV = ({ roomCode }) => {
         const tSec = lobbyNow / 1000;
         const energyNorm = clampLobby(lobbyOrbEnergy, 0, 100) / 100;
         const motionDamp = motionSafeFx ? 0.62 : 1;
-        const rallyScale = (lobbyHasActiveVolley ? 1 : 0.64) * (0.78 + (energyNorm * 0.56));
+        const levelSpeed = Number(lobbyLevelMeta.speedMultiplier || 1);
+        const rallyScale = (lobbyHasActiveVolley ? 1 : 0.64) * (0.78 + (energyNorm * 0.56)) * (0.96 + ((levelSpeed - 1) * 0.3));
         const ampX = (20 + (seededUnit(seed + 7) * 18)) * motionDamp * rallyScale;
         const ampY = (10 + (seededUnit(seed + 13) * 12)) * motionDamp * (0.7 + (energyNorm * 0.42));
         const phaseA = seededUnit(seed + 19) * Math.PI * 2;
@@ -2991,12 +2961,12 @@ const PublicTV = ({ roomCode }) => {
         const phaseC = seededUnit(seed + 29) * Math.PI * 2;
         const phaseD = seededUnit(seed + 31) * Math.PI * 2;
         const xWave = (
-            Math.sin((tSec * (0.84 + (seededUnit(seed + 37) * 0.22))) + phaseA) * ampX
-            + Math.sin((tSec * (1.52 + (seededUnit(seed + 41) * 0.27))) + phaseB) * (ampX * 0.42)
+            Math.sin((tSec * (0.84 + (seededUnit(seed + 37) * 0.22)) * levelSpeed) + phaseA) * ampX
+            + Math.sin((tSec * (1.52 + (seededUnit(seed + 41) * 0.27)) * levelSpeed) + phaseB) * (ampX * 0.42)
         );
         const yWave = (
-            Math.cos((tSec * (1.03 + (seededUnit(seed + 43) * 0.24))) + phaseC) * ampY
-            + Math.sin((tSec * (1.71 + (seededUnit(seed + 47) * 0.2))) + phaseD) * (ampY * 0.4)
+            Math.cos((tSec * (1.03 + (seededUnit(seed + 43) * 0.24)) * levelSpeed) + phaseC) * ampY
+            + Math.sin((tSec * (1.71 + (seededUnit(seed + 47) * 0.2)) * levelSpeed) + phaseD) * (ampY * 0.4)
         );
         const ballLeftPct = clampLobby(50 + xWave, 13, 87);
         const ballTopPct = clampLobby(50 + yWave, 20, 80);
@@ -3006,7 +2976,7 @@ const PublicTV = ({ roomCode }) => {
         const leftPaddleTopPct = clampLobby(50 + ((ballTopPct - 50) * paddleLead) + paddleOffsetA, 18, 82);
         const rightPaddleTopPct = clampLobby(50 + ((ballTopPct - 50) * paddleLead) + paddleOffsetB, 18, 82);
         const speedPct = clampLobby(
-            (Math.abs(Math.sin((tSec * 1.6) + phaseA)) * 36)
+            (Math.abs(Math.sin((tSec * 1.6 * levelSpeed) + phaseA)) * 36)
             + 30
             + (energyNorm * 34)
             + (lobbyHasActiveVolley ? 8 : 0),
@@ -3020,7 +2990,7 @@ const PublicTV = ({ roomCode }) => {
             rightPaddleTopPct,
             speedPct
         };
-    }, [roomCode, lobbyNow, lobbyOrbEnergy, motionSafeFx, lobbyHasActiveVolley]);
+    }, [roomCode, lobbyNow, lobbyLevelMeta.speedMultiplier, lobbyOrbEnergy, motionSafeFx, lobbyHasActiveVolley]);
     const lobbyPongTeams = useMemo(() => {
         const left = [];
         const right = [];
@@ -3182,7 +3152,7 @@ const PublicTV = ({ roomCode }) => {
         lobbyCueLastPlayedRef.current = {};
         lobbyWarningCueActiveRef.current = false;
         lobbyResetCueActiveRef.current = false;
-    }, [roomCode]);
+    }, [roomCode, isMarketingDemoFixture]);
     useEffect(() => () => {
         if (lobbyTransitionTimerRef.current) {
             clearTimeout(lobbyTransitionTimerRef.current);
@@ -4736,7 +4706,7 @@ const PublicTV = ({ roomCode }) => {
                                             <div className="flex items-center justify-between gap-2">
                                                 <div className="text-[12px] md:text-[14px] uppercase tracking-[0.22em] text-cyan-100">Teamwork</div>
                                                 <div className="px-3 py-1.5 rounded-full border border-white/25 bg-black/35 text-[11px] md:text-xs uppercase tracking-[0.17em] text-white">
-                                                    Tier {lobbyVolleyState?.currentTier || 0}{lobbyCurrentTierMeta?.name ? `: ${lobbyCurrentTierMeta.name}` : ''}
+                                                    Lvl {lobbyLevelMeta.level}{lobbyCurrentTierMeta?.name ? `: ${lobbyCurrentTierMeta.name}` : ''}
                                                 </div>
                                             </div>
                                             <div className="mt-2 flex items-end justify-between gap-3">
@@ -4753,7 +4723,7 @@ const PublicTV = ({ roomCode }) => {
                                             </div>
                                             <div className="mt-1.5 flex items-center justify-between text-[11px] md:text-[13px] uppercase tracking-[0.16em] text-cyan-100/90">
                                                 <span>{lobbyObjectiveStreakLabel}</span>
-                                                <span>{lobbyActiveParticipants.length} active</span>
+                                                <span>{lobbyActiveParticipants.length}/{lobbyLevelMeta.targetActivePlayers}+ active</span>
                                             </div>
                                         </div>
                                         <div className="rounded-2xl border border-white/20 bg-black/35 px-3 py-3">
@@ -5355,51 +5325,52 @@ const PublicTV = ({ roomCode }) => {
                     <div className="mt-2 text-[18px] md:text-[24px] text-cyan-100/90 leading-tight max-w-[34vw] ml-auto">
                         {lobbyInstructionSecondary}
                     </div>
-                    <div className="mt-2 space-y-1.5">
-                        <div className="flex items-end justify-between gap-4">
-                            <div className="text-[14px] md:text-[18px] uppercase tracking-[0.2em] text-cyan-100/85">Teamwork</div>
-                            <div className="text-[48px] md:text-[66px] leading-none font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
+                    <div className="mt-3 grid grid-cols-3 gap-2.5">
+                        <div className="rounded-2xl border border-white/18 bg-black/35 px-3 py-2.5 text-left">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">Team</div>
+                            <div className="mt-1 text-[26px] md:text-[34px] leading-none font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
                         </div>
-                        <div className="flex items-end justify-between gap-4">
-                            <div className="text-[14px] md:text-[18px] uppercase tracking-[0.2em] text-cyan-100/85">Status</div>
-                            <div className="text-[30px] md:text-[42px] leading-none font-bebas text-white">{lobbyObjectiveProgressLabel}</div>
+                        <div className="rounded-2xl border border-white/18 bg-black/35 px-3 py-2.5 text-left">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">Energy</div>
+                            <div className="mt-1 text-[26px] md:text-[34px] leading-none font-bebas text-white">{Math.round(lobbyOrbEnergy)}%</div>
                         </div>
-                        <div className="flex items-end justify-between gap-4">
-                            <div className="text-[14px] md:text-[18px] uppercase tracking-[0.2em] text-cyan-100/85">Relay</div>
-                            <div className="text-[22px] md:text-[30px] leading-none font-bebas text-white">
-                                {lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s | chain x${lobbyRelayObjective.chainCount || 0}` : 'idle'}
+                        <div className="rounded-2xl border border-white/18 bg-black/35 px-3 py-2.5 text-left">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">Relay</div>
+                            <div className="mt-1 text-[26px] md:text-[34px] leading-none font-bebas text-white">
+                                {lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s` : 'READY'}
                             </div>
                         </div>
                     </div>
-                    <div className="mt-2.5 space-y-2">
-                        <div>
-                            <div className="flex items-center justify-between text-[14px] md:text-[18px] uppercase tracking-[0.18em] text-cyan-100/90 mb-1.5">
-                                <span>Momentum</span>
-                                <span>{lobbyObjectiveStreakLabel}</span>
-                            </div>
-                            <div className="h-[14px] md:h-[16px] rounded-full overflow-hidden bg-white/18">
-                                <div className="h-full bg-gradient-to-r from-red-300 via-amber-300 to-emerald-300 transition-all duration-200" style={{ width: `${lobbyStreakDecayPct}%` }} />
-                            </div>
+                    {lobbyActiveUltimates.length > 0 && (
+                        <div className="mt-3 flex flex-wrap justify-end gap-2">
+                            {lobbyActiveUltimates.slice(0, 3).map((entry) => {
+                                const ultimate = getVolleyOrbUltimate(entry?.type || '');
+                                if (!ultimate) return null;
+                                return (
+                                    <div key={entry.id || `${entry.type}-${entry.uid || 'room'}`} className="rounded-full border border-emerald-300/45 bg-emerald-500/18 px-3 py-1 text-[12px] uppercase tracking-[0.16em] text-emerald-50 font-black">
+                                        {ultimate.emoji} {ultimate.label}
+                                    </div>
+                                );
+                            })}
                         </div>
-                        <div>
-                            <div className="flex items-center justify-between text-[14px] md:text-[18px] uppercase tracking-[0.18em] text-cyan-100/90 mb-1.5">
-                                <span>Orb Energy</span>
-                                <span>{Math.round(lobbyOrbEnergy)}%</span>
-                            </div>
-                            <div className="h-[14px] md:h-[16px] rounded-full overflow-hidden bg-white/18">
-                                <div className="h-full bg-cyan-300/90 transition-all duration-150" style={{ width: `${lobbyOrbEnergy}%` }} />
-                            </div>
+                    )}
+                    <div className="mt-3 space-y-2">
+                        <div className="h-[12px] rounded-full overflow-hidden bg-white/14">
+                            <div className="h-full bg-gradient-to-r from-red-300 via-amber-300 to-emerald-300 transition-all duration-200" style={{ width: `${lobbyStreakDecayPct}%` }} />
+                        </div>
+                        <div className="text-[12px] uppercase tracking-[0.16em] text-cyan-100/75">
+                            {lobbyObjectiveProgressLabel}
                         </div>
                     </div>
                 </div>
                 {!lobbyObjectiveIsTeamPong && (
                     <div className="absolute top-[4.5%] left-[4%] w-[min(40vw,560px)] rounded-[26px] border border-cyan-200/30 bg-black/50 backdrop-blur px-4 py-3.5 shadow-[0_0_28px_rgba(34,211,238,0.22)]">
                         <div className="flex items-center justify-between gap-2 mb-2">
-                            <div className="text-[14px] md:text-[16px] uppercase tracking-[0.22em] text-cyan-100/90 font-black">Relay Targets</div>
+                            <div className="text-[14px] md:text-[16px] uppercase tracking-[0.22em] text-cyan-100/90 font-black">
+                                {lobbyRelayObjective.active ? 'Hit This' : 'Tap Any'}
+                            </div>
                             <div className="text-[11px] md:text-[13px] uppercase tracking-[0.16em] text-zinc-200">
-                                {lobbyLastInteraction && lobbyLastInteractionAgeMs < 4500
-                                    ? `Last: ${lobbyLastInteraction.user} ${lobbyLastInteraction.icon || ''}`
-                                    : 'Watch the glow'}
+                                {lobbyCatchAllActive ? 'Catch-all live' : (lobbyRelayObjective.active ? 'Pass to the glow' : 'Launch the orb')}
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2.5">
@@ -5414,7 +5385,7 @@ const PublicTV = ({ roomCode }) => {
                                 return (
                                     <div
                                         key={`lobby-guide-card-${guide.id}`}
-                                        className={`rounded-2xl border px-3 py-2.5 ${
+                                        className={`rounded-2xl border px-3 py-3 ${
                                             isRelayTarget
                                                 ? 'border-emerald-300/75 bg-emerald-500/18'
                                             : isRecent
@@ -5422,14 +5393,15 @@ const PublicTV = ({ roomCode }) => {
                                                     : 'border-white/20 bg-black/30'
                                         }`}
                                     >
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="text-[15px] md:text-[18px] uppercase tracking-[0.14em] text-white/90 font-black">
-                                                {effect?.icon || EMOJI.sparkle} {guide.action}
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="text-[18px] md:text-[24px] uppercase tracking-[0.12em] text-white/90 font-black flex items-center gap-2">
+                                                <span className="text-[22px] md:text-[28px]">{effect?.icon || EMOJI.sparkle}</span>
+                                                <span>{guide.action}</span>
                                             </div>
-                                            {isRelayTarget && <span className="text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-emerald-100 font-black">Target</span>}
+                                            {isRelayTarget && <span className="text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-emerald-100 font-black">Now</span>}
                                         </div>
                                         <div className="mt-1.5 text-[12px] md:text-[14px] uppercase tracking-[0.11em] text-zinc-300">
-                                            {isRelayTarget ? 'Tap now' : 'Ready'}
+                                            {guide.detail}
                                         </div>
                                     </div>
                                 );
@@ -5437,44 +5409,6 @@ const PublicTV = ({ roomCode }) => {
                         </div>
                     </div>
                 )}
-                <div className="absolute top-24 left-[68%] -translate-x-1/2 flex flex-col items-end gap-2">
-                    {lobbyComboMoments.slice(0, 3).map((combo) => {
-                        const ageMs = nowMs() - Number(combo.createdAtMs || 0);
-                        if (ageMs < 0) return null;
-                        const durationMs = Math.max(1200, Number(combo.expiresAtMs || 0) - Number(combo.createdAtMs || 0) || LOBBY_COMBO_WINDOW_MS);
-                        const progress = Math.min(1, ageMs / durationMs);
-                        if (progress >= 1) return null;
-                        return (
-                            <div
-                                key={combo.id}
-                                className={`rounded-full border border-white/40 bg-gradient-to-r ${combo?.style?.accent || 'from-cyan-300/65 to-indigo-300/65'} px-4 py-1.5 text-black font-black uppercase tracking-[0.14em] text-xs shadow-[0_0_24px_rgba(255,255,255,0.35)] lobby-combo-chip`}
-                                style={{ opacity: Math.max(0, 1 - (progress * 0.75)) }}
-                            >
-                                {combo.label}
-                            </div>
-                        );
-                    })}
-                </div>
-                <div className="absolute top-44 left-[68%] -translate-x-1/2 flex flex-col items-end gap-2">
-                    {lobbyAssistMoments.slice(0, 2).map((assist) => {
-                        const ageMs = nowMs() - Number(assist.createdAtMs || 0);
-                        if (ageMs < 0) return null;
-                        const durationMs = Math.max(1200, Number(assist.expiresAtMs || 0) - Number(assist.createdAtMs || 0) || LOBBY_ASSIST_WINDOW_MS);
-                        const progress = Math.min(1, ageMs / durationMs);
-                        if (progress >= 1) return null;
-                        const nextEffect = getLobbyPlayEffectByInteractionType(assist.nextTargetType);
-                        return (
-                            <div
-                                key={assist.id}
-                                className="rounded-full border border-emerald-100/55 bg-gradient-to-r from-emerald-300/70 via-cyan-300/65 to-sky-300/70 px-5 py-2 text-black font-black uppercase tracking-[0.14em] text-[13px] md:text-[15px] shadow-[0_0_30px_rgba(52,211,153,0.45)]"
-                                style={{ opacity: Math.max(0, 1 - (progress * 0.75)) }}
-                            >
-                                {assist.passerName} passes to {assist.receiverName} chain x{assist.chainCount}
-                                {nextEffect ? ` | Next ${nextEffect.icon} ${nextEffect.label}` : ''}
-                            </div>
-                        );
-                    })}
-                </div>
                 <div className="absolute top-5 right-5 flex flex-col items-end gap-2">
                     {lobbyTierChips.slice(0, 3).map((chip) => {
                         const ageMs = nowMs() - Number(chip?.createdAt || 0);

@@ -1,3 +1,9 @@
+import {
+    VOLLEY_ORB_ULTIMATE_COOLDOWN_MS,
+    getVolleyOrbUltimate,
+    isVolleyOrbUltimateType
+} from '../../lib/volleyOrbUiState';
+
 const DEFAULT_INTERACTION_TYPES = ['wave', 'laser', 'echo', 'confetti'];
 const INTERACTION_PREFIX = 'lobby_play_';
 const STREAK_TIMEOUT_MS = 6200;
@@ -23,6 +29,7 @@ const AIR_MULTIPLIER_CAP = 5;
 const MAX_POINTS_BUDGET_SCALE = 5;
 const MAX_POINTS_PER_USER_SCALE = 3;
 const RELAY_SEQUENCE = ['wave', 'laser', 'echo', 'confetti'];
+const ACTIVE_ULTIMATE_LIMIT = 4;
 const INTERACTION_PROFILES = Object.freeze({
     wave: Object.freeze({
         id: 'wave',
@@ -68,6 +75,13 @@ const TIER_DEFINITIONS = [
     { tier: 3, name: 'Skyline Pulse', threshold: 16, visualOnly: false, pointsBudget: 36, maxPointsPerUser: 16 },
     { tier: 4, name: 'Neon Nova', threshold: 26, visualOnly: false, pointsBudget: 60, maxPointsPerUser: 24 }
 ];
+const LEVEL_DEFINITIONS = Object.freeze([
+    Object.freeze({ level: 0, tier: 0, label: 'Launch', gravityMultiplier: 0.92, relayBaseMs: 2600, speedMultiplier: 0.94, targetActivePlayers: 1 }),
+    Object.freeze({ level: 1, tier: 1, label: 'Warm Up', gravityMultiplier: 1, relayBaseMs: 2400, speedMultiplier: 1, targetActivePlayers: 2 }),
+    Object.freeze({ level: 2, tier: 2, label: 'Lift Off', gravityMultiplier: 1.14, relayBaseMs: 2200, speedMultiplier: 1.08, targetActivePlayers: 3 }),
+    Object.freeze({ level: 3, tier: 3, label: 'Skyline Pulse', gravityMultiplier: 1.28, relayBaseMs: 1980, speedMultiplier: 1.18, targetActivePlayers: 4 }),
+    Object.freeze({ level: 4, tier: 4, label: 'Neon Nova', gravityMultiplier: 1.42, relayBaseMs: 1760, speedMultiplier: 1.3, targetActivePlayers: 5 })
+]);
 
 const COMBO_DEFINITIONS = {
     wave_laser: { key: 'wave_laser', label: 'Prism Sweep Link', effect: 'prism_sweep_link' },
@@ -85,11 +99,22 @@ const normalizeInteractionType = (rawType = '') => {
     return value;
 };
 
-const isSupportedInteractionType = (type = '') => DEFAULT_INTERACTION_TYPES.includes(type);
+const isSupportedInteractionType = (type = '') => (
+    DEFAULT_INTERACTION_TYPES.includes(type)
+    || isVolleyOrbUltimateType(type)
+);
 
 const normalizeCount = (rawCount) => clamp(Math.round(Number(rawCount) || 1), 1, 4);
 const getInteractionProfile = (type = '') => INTERACTION_PROFILES[normalizeInteractionType(type)] || INTERACTION_PROFILES.wave;
 export const getLobbyInteractionProfile = (interactionType = '') => getInteractionProfile(interactionType);
+
+const pruneActiveUltimates = (state = null, nowMs = 0) => (
+    Array.isArray(state?.activeUltimates)
+        ? state.activeUltimates.filter((entry) => Number(entry?.expiresAtMs || 0) > nowMs)
+        : []
+);
+
+const hasActiveUltimate = (entries = [], type = '') => entries.some((entry) => entry?.type === type);
 
 const getNextRelayTargetType = (type = '') => {
     const normalized = normalizeInteractionType(type);
@@ -142,9 +167,89 @@ const buildContributionScore = ({ count, spamWeight }) => {
 
 const roundToTenths = (value = 1) => Math.round((Number(value) || 0) * 10) / 10;
 
-const decayEnergy = (energy = 0, elapsedMs = 0) => {
+const getActiveContributionCount = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
+    const safeNow = Number(nowMs || Date.now());
+    return Object.values(state?.participants || {})
+        .filter((entry) => (safeNow - Number(entry?.lastAtMs || 0)) <= CONTRIBUTION_WINDOW_MS)
+        .length;
+};
+
+export const getLobbyLevelDefinition = (level = 0) => (
+    LEVEL_DEFINITIONS.find((entry) => Number(entry.level || 0) === Number(level || 0)) || LEVEL_DEFINITIONS[0]
+);
+
+export const getLobbyVolleyLevelMeta = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
+    const currentTier = clamp(Math.round(Number(state?.currentTier || 0)), 0, LEVEL_DEFINITIONS.length - 1);
+    const base = getLobbyLevelDefinition(currentTier);
+    const activeParticipants = getActiveContributionCount(state, nowMs);
+    const supportShortfall = Math.max(0, Number(base.targetActivePlayers || 1) - activeParticipants);
+    return {
+        ...base,
+        currentTier,
+        activeParticipants,
+        supportShortfall
+    };
+};
+
+export const getLobbyVolleyDynamicTimeoutMs = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
+    const levelMeta = getLobbyVolleyLevelMeta(state, nowMs);
+    const pressureMultiplier = Number(levelMeta.gravityMultiplier || 1) * (1 + (levelMeta.supportShortfall * 0.08));
+    return clamp(Math.round(STREAK_TIMEOUT_MS / pressureMultiplier), 3200, 7600);
+};
+
+export const getLobbyVolleyDynamicRelayWindowMs = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
+    const levelMeta = getLobbyVolleyLevelMeta(state, nowMs);
+    return clamp(
+        Math.round(Number(levelMeta.relayBaseMs || RELAY_WINDOW_MS) - (levelMeta.supportShortfall * 120)),
+        1200,
+        5000
+    );
+};
+
+export const getLobbyVolleyDecayPerSec = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
+    const levelMeta = getLobbyVolleyLevelMeta(state, nowMs);
+    return clamp(
+        ENERGY_DECAY_PER_SEC * Number(levelMeta.gravityMultiplier || 1) * (1 + (levelMeta.supportShortfall * 0.06)),
+        0.16,
+        0.72
+    );
+};
+
+export const getLobbyVolleyAudienceRatePlan = (
+    state = createLobbyVolleyState(),
+    {
+        strictMode = false,
+        roomMaxPerMinute = null,
+        roomPerUserCooldownMs = null,
+        nowMs = Date.now()
+    } = {}
+) => {
+    const levelMeta = getLobbyVolleyLevelMeta(state, nowMs);
+    const activePlayers = Number(levelMeta.activeParticipants || 0);
+    const dynamicMaxPerMinute = strictMode
+        ? (6 + (levelMeta.level * 2) + Math.max(0, activePlayers - 1))
+        : (10 + (levelMeta.level * 3) + (Math.max(0, activePlayers - 1) * 2));
+    const maxPerMinute = Number.isFinite(Number(roomMaxPerMinute))
+        && Number(roomMaxPerMinute) > 0
+        ? clamp(Math.round(Number(roomMaxPerMinute)), 1, 120)
+        : clamp(Math.round(dynamicMaxPerMinute), strictMode ? 6 : 10, strictMode ? 24 : 40);
+    const dynamicCooldownMs = strictMode
+        ? (500 - (levelMeta.level * 35) - (Math.min(5, activePlayers) * 10))
+        : (260 - (levelMeta.level * 20) - (Math.min(6, activePlayers) * 8));
+    const perUserCooldownMs = Number.isFinite(Number(roomPerUserCooldownMs))
+        && Number(roomPerUserCooldownMs) > 0
+        ? clamp(Math.round(Number(roomPerUserCooldownMs)), 120, 1200)
+        : clamp(Math.round(dynamicCooldownMs), strictMode ? 160 : 120, 1200);
+    return {
+        ...levelMeta,
+        maxPerMinute,
+        perUserCooldownMs
+    };
+};
+
+const decayEnergy = (energy = 0, elapsedMs = 0, decayPerSec = ENERGY_DECAY_PER_SEC) => {
     if (!elapsedMs) return Math.max(0, Number(energy) || 0);
-    const decayed = (Number(energy) || 0) - ((elapsedMs / 1000) * ENERGY_DECAY_PER_SEC);
+    const decayed = (Number(energy) || 0) - ((elapsedMs / 1000) * Math.max(0, Number(decayPerSec) || ENERGY_DECAY_PER_SEC));
     return Math.max(0, decayed);
 };
 
@@ -158,6 +263,8 @@ const createParticipant = (meta, nowMs) => ({
     lastAtMs: Number(nowMs || 0),
     lastEventAtMs: 0,
     lastEventType: '',
+    lastUltimateAtMs: 0,
+    ultimateUses: 0,
     byType: {
         wave: 0,
         laser: 0,
@@ -210,7 +317,8 @@ export const createLobbyVolleyState = () => ({
     pendingTierTransitions: [],
     lastPayoutAtMs: 0,
     lastPayoutTier: 0,
-    authFailureLocked: false
+    authFailureLocked: false,
+    activeUltimates: []
 });
 
 export const deriveAirborneMs = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
@@ -240,9 +348,11 @@ export const deriveTeamworkMultiplier = (state = createLobbyVolleyState(), nowMs
 
 export const deriveRelayObjective = (state = createLobbyVolleyState(), nowMs = Date.now()) => {
     const safeNow = Number(nowMs || Date.now());
+    const activeUltimates = pruneActiveUltimates(state, safeNow);
+    const catchAllActive = hasActiveUltimate(activeUltimates, 'ultimate_magnet');
     const streakCount = Number(state?.streakCount || 0);
     const lastInteractionAtMs = Number(state?.lastInteractionAtMs || 0);
-    const relayWindowMs = clamp(Number(state?.relayWindowMs || RELAY_WINDOW_MS), 1200, 5000);
+    const relayWindowMs = clamp(Number(state?.relayWindowMs || getLobbyVolleyDynamicRelayWindowMs(state, safeNow)), 1200, 5000);
     const fallbackExpiry = lastInteractionAtMs > 0 ? (lastInteractionAtMs + relayWindowMs) : 0;
     const expiresAtMs = Number(state?.relayExpiryAtMs || fallbackExpiry || 0);
     const remainingMs = Math.max(0, expiresAtMs - safeNow);
@@ -251,7 +361,9 @@ export const deriveRelayObjective = (state = createLobbyVolleyState(), nowMs = D
     const urgency = progressPct > 66 ? 'stable' : (progressPct > 33 ? 'warning' : 'danger');
     return {
         active,
-        targetType: String(state?.relayTargetType || getNextRelayTargetType(state?.lastInteractionType || 'wave')),
+        targetType: catchAllActive
+            ? 'any'
+            : String(state?.relayTargetType || getNextRelayTargetType(state?.lastInteractionType || 'wave')),
         relayWindowMs,
         expiresAtMs,
         remainingMs,
@@ -311,16 +423,22 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
     const baseState = state && typeof state === 'object' ? state : createLobbyVolleyState();
     const safeNow = Number(nowMs || Date.now());
     const eventMeta = makeDefaultEventMeta(event);
+    const activeUltimates = pruneActiveUltimates(baseState, safeNow);
+    const isUltimate = isVolleyOrbUltimateType(eventMeta.type);
+    const ultimateMeta = isUltimate ? getVolleyOrbUltimate(eventMeta.type) : null;
+    const currentDecayPerSec = getLobbyVolleyDecayPerSec(baseState, safeNow);
 
     if (!isSupportedInteractionType(eventMeta.type)) {
         return {
             ...baseState,
-            energy: decayEnergy(baseState.energy, safeNow - Number(baseState.lastInteractionAtMs || safeNow))
+            energy: decayEnergy(baseState.energy, safeNow - Number(baseState.lastInteractionAtMs || safeNow), currentDecayPerSec),
+            activeUltimates
         };
     }
 
+    const activeTimeoutMs = getLobbyVolleyDynamicTimeoutMs(baseState, safeNow);
     const shouldReset = Number(baseState.lastInteractionAtMs || 0) > 0
-        && (safeNow - Number(baseState.lastInteractionAtMs || 0)) > STREAK_TIMEOUT_MS;
+        && (safeNow - Number(baseState.lastInteractionAtMs || 0)) > activeTimeoutMs;
     const streakSeed = shouldReset ? (Number(baseState.streakId || 0) + 1) : Number(baseState.streakId || 0);
     const activeState = shouldReset
         ? {
@@ -329,19 +447,25 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
             startedAtMs: safeNow,
             airborneStartedAtMs: safeNow,
             lastPayoutAtMs: Number(baseState.lastPayoutAtMs || 0),
-            authFailureLocked: !!baseState.authFailureLocked
+            authFailureLocked: !!baseState.authFailureLocked,
+            activeUltimates
         }
-        : { ...baseState };
+        : { ...baseState, activeUltimates };
 
     const elapsedMs = Math.max(0, safeNow - Number(activeState.lastInteractionAtMs || safeNow));
     const interactionProfile = getInteractionProfile(eventMeta.type);
-    const decayMultiplier = clamp(Number(interactionProfile?.decayMultiplier || 1), 0.35, 1.2);
+    const levelMeta = getLobbyVolleyLevelMeta(activeState, safeNow);
+    const featherSlowActive = hasActiveUltimate(activeUltimates, 'ultimate_feather');
+    const magnetCatchAllActive = hasActiveUltimate(activeUltimates, 'ultimate_magnet');
+    const decayMultiplier = clamp(Number(interactionProfile?.decayMultiplier || 1) * (featherSlowActive ? 0.34 : 1), 0.18, 1.2);
     const energyGainMultiplier = clamp(Number(interactionProfile?.energyGainMultiplier || 1), 0.5, 2);
     const streakStep = clamp(Math.round(Number(interactionProfile?.streakStep || 1)), 1, 2);
     const relayWindowMs = clamp(
-        RELAY_WINDOW_MS + Number(interactionProfile?.relayWindowBonusMs || 0),
+        Number(levelMeta.relayBaseMs || getLobbyVolleyDynamicRelayWindowMs(activeState, safeNow))
+            + Number(interactionProfile?.relayWindowBonusMs || 0)
+            + (magnetCatchAllActive ? 800 : 0),
         1200,
-        5000
+        6200
     );
     const isHandoff = !!eventMeta.uid
         && !!activeState.lastInteractionUid
@@ -349,19 +473,36 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
     const nextHandoffCount = isHandoff ? Number(activeState.handoffCount || 0) + 1 : Number(activeState.handoffCount || 0);
     const previousInteractionType = String(activeState.lastInteractionType || '');
     const expectedRelayType = getNextRelayTargetType(previousInteractionType || eventMeta.type);
+    const activeRelayWindowMs = clamp(Number(activeState.relayWindowMs || getLobbyVolleyDynamicRelayWindowMs(activeState, safeNow)), 1200, 6200);
     const relayWindowOpen = Number(activeState.lastInteractionAtMs || 0) > 0
-        && (safeNow - Number(activeState.lastInteractionAtMs || 0)) <= RELAY_WINDOW_MS;
-    const relayHit = relayWindowOpen
+        && (safeNow - Number(activeState.lastInteractionAtMs || 0)) <= activeRelayWindowMs;
+    const relayHit = !isUltimate
+        && relayWindowOpen
         && isHandoff
-        && eventMeta.type === expectedRelayType;
+        && (eventMeta.type === expectedRelayType || magnetCatchAllActive);
     const nextRelayChainCount = relayHit ? (Number(activeState.relayChainCount || 0) + 1) : 0;
     const nextRelaySuccessCount = relayHit ? (Number(activeState.relaySuccessCount || 0) + 1) : Number(activeState.relaySuccessCount || 0);
     const participants = { ...(activeState.participants || {}) };
     const participant = eventMeta.uid
         ? (participants[eventMeta.uid] || createParticipant(eventMeta, safeNow))
         : null;
+    if (participant && isUltimate && (safeNow - Number(participant.lastUltimateAtMs || 0)) < VOLLEY_ORB_ULTIMATE_COOLDOWN_MS) {
+        return {
+            ...activeState,
+            energy: decayEnergy(activeState.energy, elapsedMs, currentDecayPerSec),
+            activeUltimates
+        };
+    }
     const spamWeight = getSpamWeight(participant, eventMeta.type, safeNow);
-    const contribution = buildContributionScore({ count: eventMeta.count, spamWeight }) * energyGainMultiplier;
+    const contribution = isUltimate
+        ? Math.max(8, Number(
+            ultimateMeta?.id === 'ultimate_rocket'
+                ? 18
+                : ultimateMeta?.id === 'ultimate_lens'
+                    ? 12
+                    : 9
+        ))
+        : (buildContributionScore({ count: eventMeta.count, spamWeight }) * energyGainMultiplier);
 
     if (participant) {
         participant.userName = eventMeta.userName;
@@ -369,6 +510,10 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         participant.lastAtMs = safeNow;
         participant.lastEventAtMs = safeNow;
         participant.lastEventType = eventMeta.type;
+        if (isUltimate) {
+            participant.lastUltimateAtMs = safeNow;
+            participant.ultimateUses = Number(participant.ultimateUses || 0) + 1;
+        }
         participant.events += 1;
         participant.weightedEvents += spamWeight;
         participant.score = Number(participant.score || 0) + contribution;
@@ -382,9 +527,9 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         participants[eventMeta.uid] = participant;
     }
 
-    const nextStreakCount = Number(activeState.streakCount || 0) + streakStep;
+    const nextStreakCount = Number(activeState.streakCount || 0) + (isUltimate ? 1 : streakStep);
     const nextEnergy = clamp(
-        decayEnergy(activeState.energy, elapsedMs * decayMultiplier) + contribution,
+        decayEnergy(activeState.energy, elapsedMs * decayMultiplier, currentDecayPerSec) + contribution,
         0,
         100
     );
@@ -409,7 +554,20 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         { ...activeState, currentTier: nextTier.tier }
     );
     const airborneStartedAtMs = Number(activeState.airborneStartedAtMs || activeState.startedAtMs || safeNow);
-    const relayTargetType = getNextRelayTargetType(eventMeta.type);
+    const relayTargetType = isUltimate
+        ? String(activeState.relayTargetType || getNextRelayTargetType(previousInteractionType || 'wave'))
+        : getNextRelayTargetType(eventMeta.type);
+    const nextUltimateEntries = isUltimate && ultimateMeta && Number(ultimateMeta.durationMs || 0) > 0
+        ? [{
+            id: `${ultimateMeta.id}_${eventMeta.uid || 'guest'}_${safeNow}`,
+            type: ultimateMeta.id,
+            uid: eventMeta.uid || '',
+            userName: eventMeta.userName,
+            avatar: eventMeta.avatar,
+            createdAtMs: safeNow,
+            expiresAtMs: safeNow + Number(ultimateMeta.durationMs || 0)
+        }, ...activeUltimates].slice(0, ACTIVE_ULTIMATE_LIMIT)
+        : activeUltimates;
     const relayPasser = relayHit ? (participants[activeState.lastInteractionUid] || null) : null;
     const nextStateWithoutMultiplier = {
         ...activeState,
@@ -433,11 +591,12 @@ export const applyLobbyInteraction = (state = createLobbyVolleyState(), event = 
         lastRelayReceiverUid: relayHit ? String(eventMeta.uid || '') : '',
         lastRelayReceiverName: relayHit ? String(eventMeta.userName || 'Guest') : '',
         lastInteractionAtMs: safeNow,
-        lastInteractionType: eventMeta.type,
+        lastInteractionType: isUltimate ? String(activeState.lastInteractionType || 'wave') : eventMeta.type,
         lastInteractionUid: eventMeta.uid,
         interactions: interactionHistory,
         participants,
-        pendingTierTransitions
+        pendingTierTransitions,
+        activeUltimates: nextUltimateEntries
     };
     const teamworkMultiplier = deriveTeamworkMultiplier(nextStateWithoutMultiplier, safeNow);
 
@@ -571,5 +730,6 @@ export const LOBBY_PLAYGROUND_ENGINE_CONSTANTS = {
     RELAY_SEQUENCE,
     INTERACTION_PROFILES,
     TIER_DEFINITIONS,
+    LEVEL_DEFINITIONS,
     COMBO_DEFINITIONS
 };

@@ -1,0 +1,24 @@
+{
+  "name": "BeauRocks Karaoke",
+  "short_name": "BeauRocks",
+  "description": "Modern karaoke for loud rooms and good nights.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#090612",
+  "theme_color": "#4b1436",
+  "icons": [
+    {
+      "src": "/images/logo-library/bross-ent-favicon-1.png",
+      "sizes": "4096x4096",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/logo-library/beaurocks-karaoke-logo-2.png",
+      "sizes": "775x775",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

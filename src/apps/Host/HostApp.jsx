@@ -4698,6 +4698,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         && new URLSearchParams(window.location.search).get('chat') === '1';
     const isMarketingDemoEmbed = typeof window !== 'undefined'
         && new URLSearchParams(window.location.search).get('mkDemoEmbed') === '1';
+    const [demoFixture, setDemoFixture] = useState(null);
+    const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
 
     useEffect(() => {
         const prevOverflow = document.body.style.overflow;
@@ -4706,6 +4708,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             document.body.style.overflow = prevOverflow;
         };
     }, []);
+    useEffect(() => {
+        if (!isMarketingDemoEmbed || typeof window === 'undefined') return undefined;
+        const handleMessage = (event) => {
+            const payload = event?.data;
+            if (!payload || payload.type !== 'beaurocks-demo-fixture' || payload.surface !== 'host') return;
+            setDemoFixture(payload.fixture || null);
+        };
+        window.addEventListener('message', handleMessage);
+        try {
+            window.parent?.postMessage({ type: 'beaurocks-demo-ready', surface: 'host' }, '*');
+        } catch (_) {
+            // Ignore parent postMessage issues in standalone host mode.
+        }
+        return () => window.removeEventListener('message', handleMessage);
+    }, [isMarketingDemoEmbed]);
 
     useEffect(() => {
         const tick = () => {
@@ -5279,6 +5296,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [missionAdvancedPartyOpen, setMissionAdvancedPartyOpen] = useState(false);
     const [missionAdvancedTogglesOpen, setMissionAdvancedTogglesOpen] = useState(false);
     const [missionShowAllSpotlightModes, setMissionShowAllSpotlightModes] = useState(false);
+    useEffect(() => {
+        if (!isMarketingDemoFixture) return;
+        const fixture = demoFixture || {};
+        const fixtureRoomCode = String(fixture.roomCode || normalizedInitialCode || '').trim().toUpperCase();
+        if (fixtureRoomCode) {
+            setRoomCode(fixtureRoomCode);
+            setRoomCodeInput(fixtureRoomCode);
+        }
+        if (fixture.room !== undefined) setRoom(fixture.room || null);
+        if (Array.isArray(fixture.songs)) setSongs(fixture.songs);
+        if (Array.isArray(fixture.users)) setUsers(fixture.users);
+        if (Array.isArray(fixture.activities)) setActivities(fixture.activities);
+        if (Array.isArray(fixture.contacts)) setContacts(fixture.contacts);
+        if (fixture.view) setView(fixture.view);
+        else setView('workspace');
+        if (fixture.tab) setTab(fixture.tab);
+        if (fixture.lobbyTab) setLobbyTab(fixture.lobbyTab);
+        setEntryError('');
+    }, [demoFixture, isMarketingDemoFixture, normalizedInitialCode]);
     const hostUpdateDeploymentBanner = hostUpdateDeploymentWarning ? (
         <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100 flex items-start justify-between gap-3">
             <div>
@@ -6454,7 +6490,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     // Data Sync
     useEffect(() => {
-        if(!roomCode) return;
+        if(!roomCode || isMarketingDemoFixture) return;
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => {
             if(s.exists()) setRoom(s.data());
         });
@@ -6483,7 +6519,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
 
         return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubActivity(); unsubUploads(); };
-    }, [roomCode, tab, lobbyTab]);
+    }, [roomCode, tab, lobbyTab, isMarketingDemoFixture]);
     useEffect(() => () => {
         localUploadsRef.current.forEach(url => URL.revokeObjectURL(url));
         localUploadsRef.current = [];
@@ -7605,6 +7641,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             updateStageQuickStartProgress({ joinLinkCopied: true });
         }
     }, [copyActiveRoomAudienceLink, updateStageQuickStartProgress]);
+    const handleStageQuickStartConnectAppleMusic = useCallback(async () => {
+        setSettingsTab('media');
+        if (appleMusicAuthorized) {
+            toast('Apple Music already connected.');
+            return;
+        }
+        await connectAppleMusic();
+    }, [appleMusicAuthorized, connectAppleMusic, toast]);
     const showStageQuickStartChecklist = (
         tab === 'stage'
         && !!roomCode
@@ -7616,8 +7660,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const stageQuickStartAudienceReady = !!String(activeRoomLaunchUrls?.audienceUrl || '').trim();
     const stageQuickStartTvReady = !!String(activeRoomLaunchUrls?.tvUrl || '').trim();
     const stageQuickStartSetupReady = hasWorkspaceIdentityReady && hasHostProfileIdentity;
+    const stageQuickStartAppleReady = true;
     const stageQuickStartCompletedCount = Number(!!activeQuickStartProgress.tvOpened)
         + Number(!!activeQuickStartProgress.joinLinkCopied)
+        + Number(!!appleMusicAuthorized)
         + Number(!!activeQuickStartProgress.roomSetupOpened);
     const dismissStageQuickStartChecklist = useCallback(() => {
         setQuickStartChecklistRoomCode('');
@@ -7848,7 +7894,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     useEffect(() => {
-        if (!normalizedInitialCode) return;
+        if (!normalizedInitialCode || isMarketingDemoFixture) return;
         const authMarker = uid || authError?.code || authError?.message || 'boot';
         const attemptKey = `${normalizedInitialCode}:${authMarker}`;
         if (autoJoinAttemptKeyRef.current === attemptKey) return;
@@ -7856,7 +7902,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setRoomCodeInput(normalizedInitialCode);
         joinRoom(normalizedInitialCode, { silent: (!uid && !authError) || isMarketingDemoEmbed });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [normalizedInitialCode, uid, authError, isMarketingDemoEmbed]);
+    }, [normalizedInitialCode, uid, authError, isMarketingDemoEmbed, isMarketingDemoFixture]);
 
     const toggleHowToPlay = async () => {
         const active = !room?.howToPlay?.active;
@@ -13294,7 +13340,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 Quick Start
                                             </div>
                                             <div className="inline-flex items-center rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-200">
-                                                {stageQuickStartCompletedCount}/3 Complete
+                                                {stageQuickStartCompletedCount}/4 Complete
                                             </div>
                                         </div>
                                         <div className="mt-3 text-xl font-black text-white">
@@ -13305,7 +13351,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 ? 'Stay here on the live deck. Open the TV, share the join link, and only jump into Room Setup if you want to tune host identity or defaults.'
                                                 : 'Use this live deck to launch the room fast, then dip into Room Setup only if you need to change configuration.'}
                                         </div>
-                                        <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-3">
+                                        <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-4">
                                             <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-left">
                                                 <div className="flex items-center justify-between gap-2">
                                                     <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">1. Public TV</div>
@@ -13356,9 +13402,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     {activeQuickStartProgress.roomSetupOpened ? 'Reopen Room Setup' : 'Open Room Setup'}
                                                 </button>
                                             </div>
+                                            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-left">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">4. Apple Music</div>
+                                                    <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${appleMusicAuthorized ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : stageQuickStartAppleReady ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200'}`}>
+                                                        {appleMusicAuthorized ? 'Complete' : stageQuickStartAppleReady ? 'Ready' : 'Pending'}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-2 text-xs text-zinc-300">Connect Apple Music here first. Playlist links live under media settings only after the account is connected.</div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleStageQuickStartConnectAppleMusic}
+                                                    disabled={!stageQuickStartAppleReady}
+                                                    className={`${STYLES.btnStd} ${appleMusicAuthorized ? STYLES.btnSuccess : STYLES.btnInfo} mt-3 w-full justify-center ${!stageQuickStartAppleReady ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    {appleMusicAuthorized ? 'Apple Music Connected' : 'Connect Apple Music'}
+                                                </button>
+                                            </div>
                                         </div>
                                         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-cyan-100/75">
-                                            <span>{stageQuickStartCompletedCount === 3 ? 'Quick start complete. Keep running the room from this live deck.' : 'Best order: TV first, then guest entry, then any setup tuning.'}</span>
+                                            <span>{stageQuickStartCompletedCount === 4 ? 'Quick start complete. Keep running the room from this live deck.' : 'Best order: TV first, then guest entry, then Apple Music if you want it, then any setup tuning.'}</span>
                                             <span>Need another room later? Use <span className="font-semibold text-white">Room Manager</span> in the top bar.</span>
                                         </div>
                                     </div>
@@ -14628,32 +14691,36 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             Fade in (ms)
                                             <input value={autoBgFadeInMs} onChange={e => setAutoBgFadeInMs(e.target.value)} className={`${STYLES.input} mt-1`} />
                                         </label>
-                                        <label className="text-sm text-zinc-300">
-                                            Auto-DJ delay (sec)
-                                            <input
-                                                value={autoDjDelaySec}
-                                                onChange={e => setAutoDjDelaySec(e.target.value)}
-                                                onBlur={async () => {
-                                                    const next = Math.max(2, Math.min(45, Number(autoDjDelaySec || 10) || 10));
-                                                    setAutoDjDelaySec(next);
-                                                    await updateRoom({ autoDjDelaySec: next });
-                                                }}
-                                                className={`${STYLES.input} mt-1`}
-                                            />
-                                        </label>
-                                        <label className="text-sm text-zinc-300">
-                                            Auto bonus points
-                                            <input
-                                                value={autoBonusPoints}
-                                                onChange={e => setAutoBonusPoints(e.target.value)}
-                                                onBlur={async () => {
-                                                    const next = Math.max(0, Math.min(1000, Number(autoBonusPoints || 0) || 0));
-                                                    setAutoBonusPoints(next);
-                                                    await updateRoom({ autoBonusPoints: next });
-                                                }}
-                                                className={`${STYLES.input} mt-1`}
-                                            />
-                                        </label>
+                                        {autoDj ? (
+                                            <label className="text-sm text-zinc-300">
+                                                Auto-DJ delay (sec)
+                                                <input
+                                                    value={autoDjDelaySec}
+                                                    onChange={e => setAutoDjDelaySec(e.target.value)}
+                                                    onBlur={async () => {
+                                                        const next = Math.max(2, Math.min(45, Number(autoDjDelaySec || 10) || 10));
+                                                        setAutoDjDelaySec(next);
+                                                        await updateRoom({ autoDjDelaySec: next });
+                                                    }}
+                                                    className={`${STYLES.input} mt-1`}
+                                                />
+                                            </label>
+                                        ) : null}
+                                        {autoBonusEnabled ? (
+                                            <label className="text-sm text-zinc-300">
+                                                Auto bonus points
+                                                <input
+                                                    value={autoBonusPoints}
+                                                    onChange={e => setAutoBonusPoints(e.target.value)}
+                                                    onBlur={async () => {
+                                                        const next = Math.max(0, Math.min(1000, Number(autoBonusPoints || 0) || 0));
+                                                        setAutoBonusPoints(next);
+                                                        await updateRoom({ autoBonusPoints: next });
+                                                    }}
+                                                    className={`${STYLES.input} mt-1`}
+                                                />
+                                            </label>
+                                        ) : null}
                                     </div>
                                 </div>
                                 <div className="bg-zinc-900/50 border border-fuchsia-500/20 rounded-xl p-4">
@@ -15369,7 +15436,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             {appleMusicPlaylistStatus ? (
                                 <div className="host-form-helper host-form-helper-status">{appleMusicPlaylistStatus}</div>
                             ) : null}
-                            <div className="host-form-helper">Connection preference and playlist defaults are saved to your account for future sessions.</div>
+                            <div className="host-form-helper">Connect Apple Music first. Playlist defaults live here after that and are saved to your account for future sessions.</div>
                             <div className="host-form-helper">Playlist playback is host-only and drives the room vibe.</div>
                         </div>
 

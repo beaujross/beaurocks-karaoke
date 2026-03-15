@@ -60,6 +60,60 @@ const HOST_SIGNAL_CARDS = [
   },
 ];
 
+const HOST_TRUST_SIGNALS = [
+  {
+    label: "Access model",
+    title: "Approved before launch",
+    copy: "Host access is reviewed before someone starts creating live rooms under the BeauRocks flow.",
+  },
+  {
+    label: "Product",
+    title: "Real room controls",
+    copy: "Approved hosts get the actual host dashboard for queue, TV, and room operations.",
+  },
+  {
+    label: "Support",
+    title: "Deliberate onboarding",
+    copy: "New hosts are onboarded in stages so the first live nights are cleaner and better supported.",
+  },
+];
+
+const HOST_SURFACE_STEPS = [
+  {
+    step: "01",
+    title: "Run the night from one host deck",
+    copy: "Queue, TV controls, audio, and room actions stay together instead of getting spread across tools.",
+    imageUrl: "/images/marketing/BeauRocks-HostPanel.png",
+  },
+  {
+    step: "02",
+    title: "Launch a TV that actually leads the room",
+    copy: "The public screen carries join prompts, stage state, and room energy instead of acting like a passive display.",
+    imageUrl: "/images/marketing/tv-live-aahf-current.png",
+  },
+  {
+    step: "03",
+    title: "Give guests a cleaner join and request flow",
+    copy: "Audience phones become part of the room flow without making the night feel complicated.",
+    imageUrl: "/images/marketing/audience-surface-live.png",
+  },
+];
+
+const HOST_FINAL_PATHS = [
+  {
+    title: "See the live room story",
+    copy: "Watch the deterministic demo if you want to see how host, TV, and audience stay synchronized.",
+    cta: "Open Auto Demo",
+    route: "demo_auto",
+  },
+  {
+    title: "See public discovery",
+    copy: "Browse how BeauRocks nights appear publicly before you apply to run one yourself.",
+    cta: "Browse Discover",
+    route: "discover",
+  },
+];
+
 const deriveWaitlistName = (email = "") => {
   const local = String(email || "").split("@")[0] || "";
   const normalized = local
@@ -70,7 +124,7 @@ const deriveWaitlistName = (email = "") => {
   return normalized || "Early Host Applicant";
 };
 
-const ForHostsPage = ({ route, session, authFlow }) => {
+const ForHostsPage = ({ route, session, authFlow, navigate }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
   const autoLaunchIntentRef = useRef("");
   const intakeFormRef = useRef(null);
@@ -399,32 +453,112 @@ const ForHostsPage = ({ route, session, authFlow }) => {
         </div>
       </article>
 
-      <div className="mk3-two-col mk3-persona-late-grid">
-        <section className="mk3-detail-card mk3-host-manager-card mk3-host-canon-surface is-muted">
-          <h2 className="mk3-host-canon-title is-md">What host access is for</h2>
-          <p className="mk3-host-setup-subcopy">For hosts who want better room control, smoother guest flow, and a stronger night.</p>
-          <div className="mk3-sub-list compact">
-            {HOST_STORY_POINTS.map((note) => (
-              <article key={note} className="mk3-review-card">
-                <p>{note}</p>
-              </article>
-            ))}
-          </div>
-        </section>
+      <section className="mk3-detail-card mk3-zone mk3-marketing-rich-band">
+        <div>
+          <div className="mk3-persona-kicker">why host access feels premium</div>
+          <h2>We do not hand out host tools casually.</h2>
+        </div>
+        <div className="mk3-marketing-signal-grid">
+          {HOST_TRUST_SIGNALS.map((item) => (
+            <article key={item.title} className="mk3-marketing-signal-card">
+              <span>{item.label}</span>
+              <strong>{item.title}</strong>
+              <p>{item.copy}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
-        <aside className="mk3-actions-card mk3-persona-checklist">
-          <h4>How Host Access Works</h4>
-          <div className="mk3-status">
-            <strong>Reviewed before approval</strong>
-            <span>We onboard in stages so setup and support stay strong.</span>
-          </div>
-          <div className="mk3-persona-checklist-list">
-            {HOST_CORE_OUTCOMES.map((item) => (
-              <span key={item}>{item}</span>
-            ))}
-          </div>
-        </aside>
-      </div>
+      <section className="mk3-detail-card mk3-zone mk3-marketing-how-band">
+        <div>
+          <div className="mk3-persona-kicker">what approved hosts actually unlock</div>
+          <h2>One system across host, TV, and guest phones.</h2>
+        </div>
+        <div className="mk3-marketing-step-grid">
+          {HOST_SURFACE_STEPS.map((item) => (
+            <article key={item.step} className="mk3-marketing-step-card">
+              <img src={item.imageUrl} alt={item.title} loading="lazy" />
+              <div>
+                <span>{item.step}</span>
+                <strong>{item.title}</strong>
+                <p>{item.copy}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="mk3-detail-card mk3-zone mk3-marketing-outcome-band">
+        <div>
+          <div className="mk3-persona-kicker">what host access is for</div>
+          <h2>Better room control, cleaner guest flow, and stronger live nights.</h2>
+        </div>
+        <div className="mk3-marketing-outcome-grid">
+          {HOST_STORY_POINTS.map((note, index) => (
+            <article key={note}>
+              <span>{`Host 0${index + 1}`}</span>
+              <strong>{HOST_CORE_OUTCOMES[index] || "Real host operations"}</strong>
+              <p>{note}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="mk3-detail-card mk3-zone mk3-marketing-closing-band">
+        <div>
+          <div className="mk3-persona-kicker">pick the next step</div>
+          <h2>Start with access, the demo, or the public-facing product story.</h2>
+        </div>
+        <div className="mk3-marketing-closing-grid">
+          {!session?.hasHostWorkspaceAccess && (
+            <article className="mk3-marketing-closing-card">
+              <strong>Apply for host access</strong>
+              <p>Tell us about your room, venue, or event and we will review it before launch.</p>
+              <button
+                type="button"
+                className="mk3-host-canon-button is-primary"
+                onClick={() => {
+                  trackPersonaCta("closing_apply_for_host_access");
+                  scrollToIntake();
+                }}
+              >
+                Apply For Host Access
+              </button>
+            </article>
+          )}
+          {session?.hasHostWorkspaceAccess && (
+            <article className="mk3-marketing-closing-card">
+              <strong>Open Host Dashboard</strong>
+              <p>Go straight into the real host deck if your account is already approved.</p>
+              <button
+                type="button"
+                className="mk3-host-canon-button is-primary"
+                onClick={() => {
+                  trackPersonaCta("closing_open_host_dashboard");
+                  openHostSetup();
+                }}
+              >
+                {canSubmit ? "Open Host Dashboard" : "Host Log In"}
+              </button>
+            </article>
+          )}
+          {HOST_FINAL_PATHS.map((item) => (
+            <article key={item.title} className="mk3-marketing-closing-card">
+              <strong>{item.title}</strong>
+              <p>{item.copy}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  trackPersonaCta(`closing_${item.route}`);
+                  navigate(item.route);
+                }}
+              >
+                {item.cta}
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
     </section>
   );
 };

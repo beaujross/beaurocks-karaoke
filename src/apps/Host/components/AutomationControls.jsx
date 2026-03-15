@@ -107,44 +107,48 @@ const AutomationControls = ({
         >
             <i className="fa-solid fa-gift mr-2"></i>{autoBonusEnabled ? 'Auto bonus ON' : 'Auto bonus OFF'}
         </button>
-        <label className="col-span-2 text-xs text-zinc-300 uppercase tracking-[0.2em]">
-            Auto-DJ delay (seconds)
-            <input
-                value={autoDjDelaySec}
-                onChange={(event) => setAutoDjDelaySec(event.target.value)}
-                onBlur={async () => {
-                    const next = normalizeDelaySec(autoDjDelaySec);
-                    setAutoDjDelaySec(next);
-                    try {
-                        await updateRoom({ autoDjDelaySec: next });
-                    } catch (error) {
-                        console.error('Failed to update auto-DJ delay', error);
-                    }
-                }}
-                className={`${styles.input} mt-1`}
-                inputMode="numeric"
-                placeholder="10"
-            />
-        </label>
-        <label className="col-span-2 text-xs text-zinc-300 uppercase tracking-[0.2em]">
-            Auto bonus points
-            <input
-                value={autoBonusPoints}
-                onChange={(event) => setAutoBonusPoints(event.target.value)}
-                onBlur={async () => {
-                    const next = normalizeBonusPoints(autoBonusPoints);
-                    setAutoBonusPoints(next);
-                    try {
-                        await updateRoom({ autoBonusPoints: next });
-                    } catch (error) {
-                        console.error('Failed to update auto bonus points', error);
-                    }
-                }}
-                className={`${styles.input} mt-1`}
-                inputMode="numeric"
-                placeholder="25"
-            />
-        </label>
+        {autoDj ? (
+            <label className="col-span-2 text-xs text-zinc-300 uppercase tracking-[0.2em]">
+                Auto-DJ delay (seconds)
+                <input
+                    value={autoDjDelaySec}
+                    onChange={(event) => setAutoDjDelaySec(event.target.value)}
+                    onBlur={async () => {
+                        const next = normalizeDelaySec(autoDjDelaySec);
+                        setAutoDjDelaySec(next);
+                        try {
+                            await updateRoom({ autoDjDelaySec: next });
+                        } catch (error) {
+                            console.error('Failed to update auto-DJ delay', error);
+                        }
+                    }}
+                    className={`${styles.input} mt-1`}
+                    inputMode="numeric"
+                    placeholder="10"
+                />
+            </label>
+        ) : null}
+        {autoBonusEnabled ? (
+            <label className="col-span-2 text-xs text-zinc-300 uppercase tracking-[0.2em]">
+                Auto bonus points
+                <input
+                    value={autoBonusPoints}
+                    onChange={(event) => setAutoBonusPoints(event.target.value)}
+                    onBlur={async () => {
+                        const next = normalizeBonusPoints(autoBonusPoints);
+                        setAutoBonusPoints(next);
+                        try {
+                            await updateRoom({ autoBonusPoints: next });
+                        } catch (error) {
+                            console.error('Failed to update auto bonus points', error);
+                        }
+                    }}
+                    className={`${styles.input} mt-1`}
+                    inputMode="numeric"
+                    placeholder="25"
+                />
+            </label>
+        ) : null}
     </div>
     );
 };

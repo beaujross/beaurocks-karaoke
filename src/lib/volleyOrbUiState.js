@@ -6,6 +6,93 @@ const clampNumber = (value = 0, min = 0, max = 0) => {
     return Math.max(min, Math.min(max, numeric));
 };
 
+export const VOLLEY_ORB_BASE_ACTIONS = Object.freeze([
+    Object.freeze({
+        id: 'wave',
+        label: 'Save',
+        emoji: '🛟',
+        cue: 'slow fall',
+        shortCue: 'save'
+    }),
+    Object.freeze({
+        id: 'laser',
+        label: 'Lift',
+        emoji: '🚀',
+        cue: 'boost up',
+        shortCue: 'lift'
+    }),
+    Object.freeze({
+        id: 'echo',
+        label: 'Pass',
+        emoji: '🔁',
+        cue: 'longer pass',
+        shortCue: 'pass'
+    }),
+    Object.freeze({
+        id: 'confetti',
+        label: 'Burst',
+        emoji: '💥',
+        cue: 'build streak',
+        shortCue: 'burst'
+    })
+]);
+
+export const VOLLEY_ORB_ULTIMATE_COOLDOWN_MS = 45000;
+export const VOLLEY_ORB_ULTIMATES = Object.freeze([
+    Object.freeze({
+        id: 'ultimate_feather',
+        label: 'Float',
+        emoji: '🪶',
+        cue: 'slow fall',
+        durationMs: 5000
+    }),
+    Object.freeze({
+        id: 'ultimate_lens',
+        label: 'Shrink',
+        emoji: '🔍',
+        cue: 'more clearance',
+        durationMs: 5500
+    }),
+    Object.freeze({
+        id: 'ultimate_magnet',
+        label: 'Catch-All',
+        emoji: '🧲',
+        cue: 'any tap catches',
+        durationMs: 4500
+    }),
+    Object.freeze({
+        id: 'ultimate_rocket',
+        label: 'Bounce',
+        emoji: '🚀',
+        cue: 'instant lift',
+        durationMs: 0
+    })
+]);
+
+const VOLLEY_ORB_BASE_ACTION_MAP = Object.freeze(
+    VOLLEY_ORB_BASE_ACTIONS.reduce((acc, item) => ({ ...acc, [item.id]: item }), {})
+);
+const VOLLEY_ORB_ULTIMATE_MAP = Object.freeze(
+    VOLLEY_ORB_ULTIMATES.reduce((acc, item) => ({ ...acc, [item.id]: item }), {})
+);
+
+export const normalizeVolleyOrbInteractionType = (rawType = '') => {
+    const value = String(rawType || '').trim().toLowerCase();
+    if (!value) return '';
+    if (value.startsWith('lobby_play_')) return value.slice('lobby_play_'.length);
+    return value;
+};
+
+export const getVolleyOrbBaseAction = (interactionType = '') => (
+    VOLLEY_ORB_BASE_ACTION_MAP[normalizeVolleyOrbInteractionType(interactionType)] || null
+);
+
+export const getVolleyOrbUltimate = (interactionType = '') => (
+    VOLLEY_ORB_ULTIMATE_MAP[normalizeVolleyOrbInteractionType(interactionType)] || null
+);
+
+export const isVolleyOrbUltimateType = (interactionType = '') => !!getVolleyOrbUltimate(interactionType);
+
 export const isVolleyOrbSceneActive = ({
     hasCurrentSinger = false,
     activeMode = '',
@@ -21,10 +108,10 @@ export const getVolleyOrbMobileMainLine = ({
     timedOut = false,
     relayActive = false
 } = {}) => {
-    if (paused) return 'Paused by host';
-    if (timedOut) return 'Orb dropping. Tap now';
-    if (relayActive) return 'Different player tap TARGET';
-    return 'Tap any button to start the orb';
+    if (paused) return 'Paused';
+    if (timedOut) return 'Save it';
+    if (relayActive) return 'Hit target';
+    return 'Tap to launch';
 };
 
 export const getVolleyOrbTvInstructionCopy = ({
@@ -34,25 +121,25 @@ export const getVolleyOrbTvInstructionCopy = ({
 } = {}) => {
     if (warningState) {
         return {
-            headline: 'Orb dropping',
-            secondary: 'Tap now to save it'
+            headline: 'Save It',
+            secondary: 'Any tap now'
         };
     }
     if (hasActiveVolley) {
         return {
-            headline: 'Pass the orb',
-            secondary: 'Different player taps the glowing target'
+            headline: 'Pass It',
+            secondary: 'New player hits target'
         };
     }
     if (volleyExpired) {
         return {
-            headline: 'Chain reset',
-            secondary: 'Any player taps to restart'
+            headline: 'Restart',
+            secondary: 'Any tap relaunches'
         };
     }
     return {
-        headline: 'Scan to join',
-        secondary: 'Any player taps any button to launch'
+        headline: 'Join In',
+        secondary: 'Any tap launches'
     };
 };
 
@@ -60,7 +147,13 @@ export const isVolleyOrbTargetInteraction = ({
     relayActive = false,
     targetType = '',
     interactionId = ''
-} = {}) => relayActive && String(targetType || '') === String(interactionId || '');
+} = {}) => (
+    relayActive
+    && (
+        String(targetType || '') === 'any'
+        || String(targetType || '') === String(interactionId || '')
+    )
+);
 
 export const getVolleyOrbResponsiveMetrics = ({
     sceneWidth = 0,

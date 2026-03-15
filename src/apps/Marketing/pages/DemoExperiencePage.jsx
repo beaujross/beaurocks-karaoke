@@ -1,10 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
-import {
-  DemoAudienceRoomShell,
-  DemoHostRoomShell,
-  DemoTvRoomShell,
-} from "../components/DemoProductShells";
+import { buildSurfaceUrl } from "../../../lib/surfaceDomains";
 
 const clampNumber = (value, min, max, fallback = min) => {
   const parsed = Number(value);
@@ -27,6 +23,21 @@ const ABSTRACT_SURFACES = {
   tv: { label: "Public TV", short: "TV", accent: "cyan" },
   audience: { label: "Audience Phones", short: "Audience", accent: "pink" },
   singer: { label: "Singer View", short: "Singer", accent: "lime" },
+};
+
+const ABSTRACT_INTRO_SURFACE_FEATURES = {
+  host: [
+    { title: "Cue opener", subtitle: "Set the first room beat" },
+    { title: "Pick room mode", subtitle: "Karaoke, game, or crowd mode" },
+    { title: "Stage the next move", subtitle: "Keep the room ahead of the drop" },
+  ],
+  tv: [
+    "Join prompt lands big",
+    "Stage state stays public",
+    "Lyrics or games can take over cleanly",
+  ],
+  audience: ["Join fast", "Tap prompts", "Vote or react"],
+  singer: ["Mic identity", "Up next cue", "Lead / wait / handoff"],
 };
 
 const ABSTRACT_BEATS = [
@@ -137,46 +148,46 @@ const ABSTRACT_MOMENTS = {
     {
       id: "arrival_host_prime",
       kicker: "moment 01",
-      title: "Host primes the room.",
-      detail: "The first scroll beat should feel like ignition: the host creates the first meaningful state change.",
+      title: "Start with the host deck.",
+      detail: "Introduce the control surface first. It decides the room mode, cues the opener, and tells every other screen what kind of moment is about to happen.",
       signalIndex: 0,
-      host: "Host sends the opener cue into the system.",
-      tv: "TV is still waiting for the room command.",
-      audience: "Phones have not been pulled into the moment yet.",
-      singer: "Singer is still waiting for a clear go signal.",
+      host: "The host deck is the deliberate control surface for the whole room.",
+      tv: "The TV stays quiet until the host gives it a job.",
+      audience: "Phones should stay out of the way until the room asks something of them.",
+      singer: "The singer role has not been introduced yet.",
     },
     {
       id: "arrival_tv_wake",
       kicker: "moment 02",
-      title: "The TV wakes up and becomes legible.",
-      detail: "The room sees the cue land on the biggest surface first.",
+      title: "Then reveal the Public TV.",
+      detail: "Show the TV as the shared wall-sized room state. It is where the whole room looks to understand what is happening before lyrics, prompts, or games begin.",
       signalIndex: 0,
-      host: "Host action is now visibly affecting the room.",
-      tv: "TV flips from idle into a readable join state.",
-      audience: "Phones are about to receive the same room instruction.",
-      singer: "Singer sees the room orient around one source of truth.",
+      host: "The host action now has one big public place to land.",
+      tv: "The TV is the visible shared state for the whole room.",
+      audience: "Phones still have not become the main event.",
+      singer: "The singer can now read where the room focus lives.",
     },
     {
       id: "arrival_audience_join",
       kicker: "moment 03",
-      title: "Audience identity ripples into the room.",
-      detail: "The audience should feel like a visible response loop, not a silent side channel.",
+      title: "Then bring in the audience app.",
+      detail: "Introduce phones as a low-friction sidekick: quick join, obvious taps, and lightweight prompts. Show the product role before showing any multi-surface choreography.",
       signalIndex: 1,
-      host: "Host now sees the room filling in behind the cue.",
-      tv: "TV starts reflecting the room joining in.",
-      audience: "Audience gets the low-friction join prompt instantly.",
-      singer: "Singer can feel that the room is arriving with them.",
+      host: "The host can now pull the audience into the room without extra explanation.",
+      tv: "The TV remains the public state while phones become the personal controller.",
+      audience: "Audience phones should feel casual, tappable, and immediate.",
+      singer: "The singer can feel the room forming around them.",
     },
     {
       id: "arrival_singer_ready",
       kicker: "moment 04",
-      title: "Singer readiness lands before the first lyric.",
-      detail: "The scene resolves when the singer gets a clear place in the room flow.",
+      title: "Finally stage the singer view.",
+      detail: "Only after the four surfaces are clear should the audience understand the performer role. The singer screen explains whether to lead, wait, or hand off before the system starts showing interplay.",
       signalIndex: 2,
-      host: "Host has staged the room and the singer in one pass.",
-      tv: "TV has the room warm and pointed in the same direction.",
-      audience: "Audience is now ready to react, sing, and follow along.",
-      singer: "Singer gets an unmistakable 'you are up' cue.",
+      host: "The host now has all four surfaces staged around the same room moment.",
+      tv: "The TV has a room-sized context for what happens next.",
+      audience: "The audience is ready, but the cross-surface interplay can wait until the next scene.",
+      singer: "The singer always knows when to lead, wait, or hand off.",
     },
   ],
   singalong: [
@@ -636,73 +647,358 @@ const TV_VARIANTS_BY_SCENE = {
 
 const DEMO_ROOM_CODE = "DEMOPEEYV3GWZW";
 const getTvSurfaceVariant = (sceneId = "") => TV_VARIANTS_BY_SCENE[sceneId] || "karaoke";
+const DEMO_HOST_NAME = "DJ BeauRocks";
 
-const getHostResults = (scene, typedSearch = "") => {
-  switch (scene.id) {
-    case "join_identity":
-      return [
-        { title: "Fresh room for tonight", meta: "Broadcast join code to every phone", state: "Room setup" },
-        { title: "Identity prompt", meta: "Name + vibe picker enabled", state: "Live" },
-        { title: `${scene.singer.name} on deck`, meta: scene.singer.prompt, state: "Singer staged" },
-      ];
-    case "karaoke_launch":
-      return [
-        {
-          title: "Sweet Caroline",
-          meta: typedSearch.length >= scene.host.search.length ? "Classic singalong - match ready" : "Searching catalog...",
-          state: typedSearch.length >= scene.host.search.length ? "Cue now" : "Typing",
-        },
-        { title: "Sweet Child O' Mine", meta: "High-energy alt pick", state: "Preview" },
-        { title: "Sweet Home Alabama", meta: "Crowd-familiar fallback", state: "Hold" },
-      ];
-    case "crowd_hype":
-      return [
-        { title: "Reaction burst", meta: "Fire, cheer, heart, clap", state: "Armed" },
-        { title: "Spotlight cue", meta: `${scene.audience.metricValue} already landing`, state: "Queued" },
-        { title: "Room pulse", meta: "TV overlay mirrors the crowd", state: "Live" },
-      ];
+const toFakeTimestamp = (value = Date.now()) => {
+  const ms = Math.max(0, Number(value || 0));
+  return {
+    seconds: Math.floor(ms / 1000),
+    nanoseconds: (ms % 1000) * 1000000,
+  };
+};
+
+const getLightModeForScene = (sceneId = "") => {
+  switch (sceneId) {
     case "guitar_vibe_sync":
-      return [
-        { title: "Guitar Vibe Sync", meta: "Phones become instruments", state: "Mode live" },
-        { title: "Confetti pop", meta: "Accent the solo break", state: "Optional" },
-        { title: "Laser pulse", meta: "TV mood shift on command", state: "Standby" },
-      ];
-    case "trivia_break":
-      return [
-        { title: "Quick trivia", meta: "Fast room-wide vote", state: "Go live" },
-        { title: "Would you rather", meta: "Longer split-room prompt", state: "Next" },
-        { title: "Queue cover", meta: `${scene.singer.name} gets staging time`, state: "Benefit" },
-      ];
+      return "guitar";
+    case "crowd_hype":
+      return "banger";
     case "auto_dj_handoff":
-      return [
-        { title: "Auto DJ bridge", meta: "Audio fills the handoff gap", state: "Running" },
-        { title: `${scene.singer.name} ready`, meta: scene.singer.prompt, state: "Next singer" },
-        { title: "Room pulse", meta: "Momentum stays visible", state: "Continuous" },
-      ];
+      return "ballad";
     default:
-      return [];
+      return "off";
   }
 };
 
-const getSceneQueue = (scene, nextScene) => [
+const getHostTabForScene = (sceneId = "") => {
+  switch (sceneId) {
+    case "join_identity":
+      return "lobby";
+    case "karaoke_launch":
+      return "browse";
+    case "trivia_break":
+      return "games";
+    default:
+      return "stage";
+  }
+};
+
+const getAudienceTabForScene = (sceneId = "") => {
+  switch (sceneId) {
+    case "karaoke_launch":
+      return "request";
+    case "trivia_break":
+      return "home";
+    default:
+      return "home";
+  }
+};
+
+const getAudienceSongsTabForScene = (sceneId = "") => {
+  switch (sceneId) {
+    case "karaoke_launch":
+      return "requests";
+    case "auto_dj_handoff":
+      return "queue";
+    default:
+      return "requests";
+  }
+};
+
+const buildDemoUsers = (scene, nextScene, nowMs) => ([
   {
-    title: scene.tv.title,
-    meta: `${scene.singer.name} live now`,
+    uid: "demo_user_jordan",
+    roomCode: DEMO_ROOM_CODE,
+    name: "Jordan",
+    avatar: "🔥",
+    points: 184,
+    totalEmojis: 61,
+    isVip: true,
+    vipLevel: 1,
+    lastSeen: toFakeTimestamp(nowMs - 4000),
+    lastActiveAt: toFakeTimestamp(nowMs - 2000),
   },
-  nextScene
-    ? {
-      title: nextScene.tv.title,
-      meta: `${nextScene.singer.name} on deck`,
-    }
-    : {
-      title: "Encore hold",
-      meta: "Room pulse ready",
+  {
+    uid: "demo_user_casey",
+    roomCode: DEMO_ROOM_CODE,
+    name: "Casey",
+    avatar: "👑",
+    points: 132,
+    totalEmojis: 42,
+    isVip: false,
+    vipLevel: 0,
+    lastSeen: toFakeTimestamp(nowMs - 7000),
+    lastActiveAt: toFakeTimestamp(nowMs - 5000),
+  },
+  {
+    uid: "demo_user_alex",
+    roomCode: DEMO_ROOM_CODE,
+    name: "Alex",
+    avatar: "💖",
+    points: 98,
+    totalEmojis: 28,
+    isVip: false,
+    vipLevel: 0,
+    lastSeen: toFakeTimestamp(nowMs - 10000),
+    lastActiveAt: toFakeTimestamp(nowMs - 9000),
+  },
+  {
+    uid: "demo_user_taylor",
+    roomCode: DEMO_ROOM_CODE,
+    name: nextScene?.singer?.name || "Taylor",
+    avatar: nextScene?.singer?.emoji === "crown" ? "👑" : "🎤",
+    points: 74,
+    totalEmojis: 22,
+    isVip: false,
+    vipLevel: 0,
+    lastSeen: toFakeTimestamp(nowMs - 14000),
+    lastActiveAt: toFakeTimestamp(nowMs - 12000),
+  },
+]);
+
+const buildPopTriviaQuestions = () => ([
+  {
+    id: "demo_trivia_01",
+    q: "Which surface keeps the room in sync during a live night?",
+    options: ["All three", "Audience App", "Host Deck", "Public TV"],
+    correct: 0,
+    source: "demo",
+  },
+  {
+    id: "demo_trivia_02",
+    q: "What keeps dead air out between singers?",
+    options: ["Auto DJ", "Silence", "Paper slips", "Guesswork"],
+    correct: 0,
+    source: "demo",
+  },
+]);
+
+const buildDemoSongs = (scene, nextScene, sceneProgress = 0, nowMs = Date.now()) => {
+  const currentDuration = scene.id === "trivia_break" ? 155 : 192;
+  const elapsedMs = Math.round(currentDuration * 1000 * clampNumber(sceneProgress, 0, 0.96, 0.4));
+  const currentSong = {
+    id: `demo_song_${scene.id}`,
+    roomCode: DEMO_ROOM_CODE,
+    singerUid: `demo_user_${scene.singer.name.toLowerCase()}`,
+    singerName: scene.singer.name,
+    emoji: scene.singer.emoji === "crown" ? "👑" : "🔥",
+    songTitle: scene.id === "join_identity" ? "Room Intro" : scene.label,
+    artist: "BeauRocks Demo",
+    albumArtUrl: "/images/marketing/tv-live-aahf-current.png",
+    mediaUrl: "https://beaurocks.app/demo",
+    lyrics: scene.tv.lines.join("\n"),
+    duration: currentDuration,
+    durationSec: currentDuration,
+    currentDurationSec: currentDuration,
+    appleDurationSec: currentDuration,
+    performanceId: `demo_perf_${scene.id}`,
+    timestamp: toFakeTimestamp(nowMs - elapsedMs),
+    performingStartedAt: toFakeTimestamp(nowMs - elapsedMs),
+    stageStartedAt: toFakeTimestamp(nowMs - elapsedMs),
+    status: scene.id === "join_identity" ? "requested" : "performing",
+    applauseScore: 83,
+    hypeScore: 164,
+    hostBonus: scene.id === "auto_dj_handoff" ? 20 : 10,
+    popTrivia: scene.id === "trivia_break" ? buildPopTriviaQuestions() : [],
+  };
+  const nextSong = {
+    id: `demo_song_next_${scene.id}`,
+    roomCode: DEMO_ROOM_CODE,
+    singerUid: `demo_user_${(nextScene?.singer?.name || "casey").toLowerCase()}`,
+    singerName: nextScene?.singer?.name || "Casey",
+    emoji: nextScene?.singer?.emoji === "crown" ? "👑" : "🎤",
+    songTitle: nextScene?.label || "Encore queue",
+    artist: "BeauRocks Demo",
+    albumArtUrl: "/images/marketing/tv-start-aahf-current.png",
+    mediaUrl: "https://beaurocks.app/demo-next",
+    duration: 188,
+    durationSec: 188,
+    status: "requested",
+    priorityScore: 1,
+    timestamp: toFakeTimestamp(nowMs - 18000),
+  };
+  const thirdSong = {
+    id: `demo_song_hold_${scene.id}`,
+    roomCode: DEMO_ROOM_CODE,
+    singerUid: "demo_user_alex",
+    singerName: "Alex",
+    emoji: "💖",
+    songTitle: "Crowd Favorite",
+    artist: "BeauRocks Demo",
+    duration: 176,
+    durationSec: 176,
+    status: "requested",
+    priorityScore: 2,
+    timestamp: toFakeTimestamp(nowMs - 26000),
+  };
+  return [currentSong, nextSong, thirdSong];
+};
+
+const buildDemoRoom = (scene, sceneProgress = 0, nowMs = Date.now()) => ({
+  roomCode: DEMO_ROOM_CODE,
+  hostName: DEMO_HOST_NAME,
+  logoUrl: "/images/logo-library/beaurocks-karaoke-logo-2.png",
+  activeMode: scene.id === "trivia_break" ? "karaoke" : "karaoke",
+  lightMode: getLightModeForScene(scene.id),
+  showLyricsTv: scene.id !== "guitar_vibe_sync",
+  showVisualizerTv: scene.id === "crowd_hype" || scene.id === "guitar_vibe_sync" || scene.id === "auto_dj_handoff",
+  popTriviaEnabled: scene.id === "trivia_break",
+  popTriviaRoundSec: 16,
+  layoutMode: "standard",
+  showScoring: true,
+  showFameLevel: true,
+  marqueeEnabled: scene.id === "auto_dj_handoff",
+  marqueeItems: scene.id === "auto_dj_handoff"
+    ? [{ text: "Next singer ready • Room stays hot" }]
+    : [],
+  chatShowOnTv: scene.id === "crowd_hype",
+  chatAudienceMode: "all",
+  tvPresentationProfile: "room",
+  autoDj: scene.id === "auto_dj_handoff",
+  autoPlayMedia: true,
+  autoBonusEnabled: true,
+  autoLyricsOnQueue: true,
+  audienceVideoMode: "off",
+  visualizerMode: scene.id === "guitar_vibe_sync" ? "comet" : "ribbon",
+  visualizerPreset: scene.id === "guitar_vibe_sync" ? "neon" : "glow",
+  visualizerSource: "auto",
+  crowdPrompt: {
+    title: scene.audience.title,
+    detail: scene.audience.subtitle,
+    prompt: getActionDisplayLabel(scene.audience.actions[0] || ""),
+  },
+  multiplier: scene.id === "crowd_hype" ? 4 : scene.id === "guitar_vibe_sync" ? 2 : 1,
+  queueSettings: {
+    limitMode: "none",
+    limitCount: 0,
+    rotation: "round_robin",
+    firstTimeBoost: true,
+  },
+  readyCheckDurationSec: 12,
+  timestamp: toFakeTimestamp(nowMs - Math.round(sceneProgress * 10000)),
+});
+
+const buildAudienceFixture = ({ scene, nextScene, sceneProgress, activeActionIndex, hostTypedSearch }) => {
+  const nowMs = Date.now();
+  const room = buildDemoRoom(scene, sceneProgress, nowMs);
+  const songs = buildDemoSongs(scene, nextScene, sceneProgress, nowMs);
+  const allUsers = buildDemoUsers(scene, nextScene, nowMs);
+  if (scene.id === "join_identity") {
+    return {
+      room,
+      songs,
+      allUsers,
+      user: null,
+      form: {
+        name: `Jordan`,
+        emoji: ["🔥", "👑", "💖", "👏"][activeActionIndex] || "🔥",
+        song: "",
+        artist: "",
+      },
+      termsAccepted: true,
+      showReturningPrompt: false,
+      searchQ: "",
+      results: [],
+      tab: "home",
+      songsTab: "requests",
+    };
+  }
+  return {
+    room,
+    songs,
+    allUsers,
+    user: {
+      uid: "demo_user_jordan",
+      roomCode: DEMO_ROOM_CODE,
+      name: "Jordan",
+      avatar: "🔥",
+      points: 184,
+      totalEmojis: 61,
+      isVip: false,
+      vipLevel: 0,
+      lastSeen: toFakeTimestamp(nowMs - 2000),
+      lastActiveAt: toFakeTimestamp(nowMs - 1000),
     },
-  {
-    title: scene.host.actionLabel,
-    meta: scene.host.status,
-  },
-];
+    profile: null,
+    form: {
+      name: "Jordan",
+      emoji: "🔥",
+      song: scene.id === "karaoke_launch" ? hostTypedSearch : "",
+      artist: scene.id === "karaoke_launch" ? "BeauRocks Demo" : "",
+    },
+    tab: getAudienceTabForScene(scene.id),
+    songsTab: getAudienceSongsTabForScene(scene.id),
+    showReturningPrompt: false,
+    termsAccepted: true,
+    searchQ: scene.id === "karaoke_launch" ? hostTypedSearch : "",
+    results: [],
+  };
+};
+
+const buildTvFixture = ({ scene, nextScene, sceneProgress, reactionItems, triviaRows }) => {
+  const nowMs = Date.now();
+  const room = buildDemoRoom(scene, sceneProgress, nowMs);
+  const songs = buildDemoSongs(scene, nextScene, sceneProgress, nowMs);
+  const roomUsers = buildDemoUsers(scene, nextScene, nowMs);
+  return {
+    room,
+    songs,
+    roomUsers,
+    started: true,
+    activities: reactionItems.map((item, index) => ({
+      id: `activity_${scene.id}_${index}`,
+      roomCode: DEMO_ROOM_CODE,
+      type: "reaction_burst",
+      text: `${item.label} x${item.count}`,
+      timestamp: toFakeTimestamp(nowMs - (index * 900)),
+    })),
+    messages: scene.id === "crowd_hype"
+      ? [
+          { id: "msg_1", user: "Alex", userName: "Alex", avatar: "💖", text: "That chorus hit", timestamp: toFakeTimestamp(nowMs - 2000) },
+          { id: "msg_2", user: DEMO_HOST_NAME, userName: DEMO_HOST_NAME, avatar: "🎤", text: "Keep the room loud", timestamp: toFakeTimestamp(nowMs - 1500), isHost: true },
+        ]
+      : [],
+    reactions: reactionItems.map((item, index) => ({
+      id: `reaction_${scene.id}_${index}`,
+      roomCode: DEMO_ROOM_CODE,
+      type: item.label.toLowerCase(),
+      userName: roomUsers[index % roomUsers.length]?.name || "Guest",
+      avatar: roomUsers[index % roomUsers.length]?.avatar || "🔥",
+      count: item.count,
+      timestamp: toFakeTimestamp(nowMs - (index * 500)),
+    })),
+    popTriviaVotes: scene.id === "trivia_break"
+      ? triviaRows.map((row, index) => ({
+          id: `vote_${index}`,
+          questionId: "demo_trivia_01",
+          uid: roomUsers[index % roomUsers.length]?.uid,
+          val: index,
+          timestamp: toFakeTimestamp(nowMs - (index * 700)),
+        }))
+      : [],
+  };
+};
+
+const buildHostFixture = ({ scene, nextScene, sceneProgress, reactionItems }) => {
+  const nowMs = Date.now();
+  const room = buildDemoRoom(scene, sceneProgress, nowMs);
+  return {
+    roomCode: DEMO_ROOM_CODE,
+    view: "workspace",
+    tab: getHostTabForScene(scene.id),
+    lobbyTab: "users",
+    room,
+    songs: buildDemoSongs(scene, nextScene, sceneProgress, nowMs),
+    users: buildDemoUsers(scene, nextScene, nowMs),
+    activities: reactionItems.map((item, index) => ({
+      id: `host_activity_${scene.id}_${index}`,
+      roomCode: DEMO_ROOM_CODE,
+      text: `${item.label} burst landed`,
+      timestamp: toFakeTimestamp(nowMs - (index * 1000)),
+    })),
+    contacts: [],
+  };
+};
 
 const getReactionItems = (scene, progress = 0) => {
   const labels = scene.audience.actions.slice(0, 4).map((entry) => entry.split(" x")[0]);
@@ -745,43 +1041,64 @@ const getHostFocusFrame = (sceneId = "") => {
 const getTvFocusFrame = (sceneId = "") => {
   switch (sceneId) {
     case "join_identity":
-      return { left: "63%", top: "60%", width: "25%", height: "22%", label: "Join cue lands on TV" };
+      return { left: "69%", top: "45%", width: "27%", height: "38%", label: "Join card lands on TV" };
     case "guitar_vibe_sync":
-      return { left: "32%", top: "27%", width: "36%", height: "28%", label: "TV flips into Vibe Sync" };
+      return { left: "18%", top: "16%", width: "62%", height: "50%", label: "TV flips into Vibe Sync" };
     case "trivia_break":
-      return { left: "18%", top: "23%", width: "64%", height: "42%", label: "Live vote reveal" };
+      return { left: "69%", top: "12%", width: "27%", height: "42%", label: "Live vote reveal" };
     case "auto_dj_handoff":
-      return { left: "15%", top: "25%", width: "50%", height: "24%", label: "Next singer handoff" };
+      return { left: "69%", top: "63%", width: "27%", height: "18%", label: "Next singer handoff" };
     case "crowd_hype":
-      return { left: "18%", top: "62%", width: "64%", height: "16%", label: "Reactions hit the room" };
+      return { left: "66%", top: "68%", width: "30%", height: "18%", label: "Reactions hit the room" };
     case "karaoke_launch":
     default:
-      return { left: "18%", top: "50%", width: "64%", height: "20%", label: "Lyrics take over" };
+      return { left: "10%", top: "57%", width: "58%", height: "16%", label: "Lyrics take over" };
   }
 };
 
 const getAudienceFocusFrame = (sceneId = "", activeIndex = 0) => {
   if (sceneId === "join_identity") {
     const joinFrames = [
-      { left: "10%", top: "16%", width: "23%", height: "15%" },
-      { left: "39%", top: "16%", width: "23%", height: "15%" },
-      { left: "67%", top: "16%", width: "23%", height: "15%" },
-      { left: "39%", top: "33%", width: "23%", height: "15%" },
+      { left: "15%", top: "16%", width: "20%", height: "10%" },
+      { left: "40%", top: "16%", width: "20%", height: "10%" },
+      { left: "65%", top: "16%", width: "20%", height: "10%" },
+      { left: "34%", top: "33%", width: "32%", height: "12%" },
     ];
     return {
       ...joinFrames[activeIndex] || joinFrames[0],
       label: "Pick name + emoji",
     };
   }
+  if (sceneId === "trivia_break") {
+    const triviaFrames = [
+      { left: "10%", top: "43%", width: "80%", height: "10%" },
+      { left: "10%", top: "55%", width: "80%", height: "10%" },
+      { left: "10%", top: "67%", width: "80%", height: "10%" },
+      { left: "10%", top: "79%", width: "80%", height: "10%" },
+    ];
+    return {
+      ...triviaFrames[activeIndex] || triviaFrames[0],
+      label: "Vote on the phone",
+    };
+  }
+  if (sceneId === "guitar_vibe_sync" || sceneId === "auto_dj_handoff") {
+    return {
+      left: "18%",
+      top: sceneId === "auto_dj_handoff" ? "74%" : "58%",
+      width: "64%",
+      height: "14%",
+      label: sceneId === "guitar_vibe_sync" ? "Phone becomes an instrument" : "Keep the handoff alive",
+    };
+  }
   const actionFrames = [
-    { left: "10%", top: "58%", width: "22%", height: "14%" },
-    { left: "39%", top: "58%", width: "22%", height: "14%" },
-    { left: "68%", top: "58%", width: "22%", height: "14%" },
-    { left: "10%", top: "74%", width: "22%", height: "14%" },
+    { left: "13%", top: "56%", width: "32%", height: "16%" },
+    { left: "55%", top: "56%", width: "32%", height: "16%" },
+    { left: "13%", top: "74%", width: "32%", height: "16%" },
+    { left: "55%", top: "74%", width: "32%", height: "16%" },
   ];
   return {
     ...actionFrames[activeIndex] || actionFrames[0],
-    label: sceneId === "guitar_vibe_sync" ? "Phone becomes an instrument" : "Audience taps in",
+    label: "Audience taps in",
   };
 };
 
@@ -875,7 +1192,43 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
   const [timelineMs, setTimelineMs] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [activeAbstractEventId, setActiveAbstractEventId] = useState(ABSTRACT_SCROLL_EVENTS[0]?.id || "");
-  const abstractMomentRefs = useRef([]);
+  const abstractBeatRefs = useRef([]);
+  const hostFrameRef = useRef(null);
+  const tvFrameRef = useRef(null);
+  const audienceFrameRef = useRef(null);
+
+  const hostDemoUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return buildSurfaceUrl({
+      surface: "host",
+      params: {
+        mode: "host",
+        room: DEMO_ROOM_CODE,
+        mkDemoEmbed: "1",
+      },
+    }, window.location);
+  }, []);
+  const tvDemoUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return buildSurfaceUrl({
+      surface: "tv",
+      params: {
+        mode: "tv",
+        room: DEMO_ROOM_CODE,
+        mkDemoEmbed: "1",
+      },
+    }, window.location);
+  }, []);
+  const audienceDemoUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return buildSurfaceUrl({
+      surface: "app",
+      params: {
+        room: DEMO_ROOM_CODE,
+        mkDemoEmbed: "1",
+      },
+    }, window.location);
+  }, []);
 
   useEffect(() => {
     if (!isAutoPage) return () => {};
@@ -897,7 +1250,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
   useEffect(() => {
     if (isAutoPage) return undefined;
     if (typeof window === "undefined" || typeof window.IntersectionObserver !== "function") return undefined;
-    const nodes = abstractMomentRefs.current.filter(Boolean);
+    const nodes = abstractBeatRefs.current.filter(Boolean);
     if (!nodes.length) return undefined;
     let frameId = 0;
     const observer = new window.IntersectionObserver((entries) => {
@@ -912,8 +1265,8 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
         setActiveAbstractEventId((prev) => (prev === nextEventId ? prev : nextEventId));
       });
     }, {
-      threshold: [0.22, 0.48, 0.72],
-      rootMargin: "-12% 0px -18% 0px",
+      threshold: [0.32, 0.6],
+      rootMargin: "-18% 0px -18% 0px",
     });
     nodes.forEach((node) => observer.observe(node));
     return () => {
@@ -935,48 +1288,61 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
   );
   const activeAbstractMomentIndex = activeAbstractEvent?.momentIndex || 0;
   const activeAbstractBeatIndex = activeAbstractEvent?.beatIndex || 0;
-  const activeAbstractMoments = ABSTRACT_MOMENTS[activeBeat.id] || [];
-  const activeAbstractSignal = activeBeat.signals[activeAbstractEvent?.signalIndex ?? 0] || activeBeat.signals[0];
-  const activeAbstractSource = activeAbstractSignal?.from || activeBeat.activeSurface;
-  const activeAbstractTarget = activeAbstractSignal?.to || activeBeat.activeSurface;
+  const isArrivalIntroBeat = activeBeat.id === "arrival";
+  const activeArrivalSurface = ["host", "tv", "audience", "singer"][activeAbstractMomentIndex] || "host";
+  const visibleArrivalSurfaceCount = clampNumber(activeAbstractMomentIndex + 1, 1, 4, 1);
+  const stageCalloutKicker = isArrivalIntroBeat
+    ? activeAbstractEvent?.kicker || activeBeat.kicker
+    : activeBeat.kicker;
+  const stageCalloutBody = isArrivalIntroBeat
+    ? activeAbstractEvent?.detail || activeBeat.body
+    : activeBeat.body;
+  const visibleSignals = isArrivalIntroBeat ? [] : activeBeat.signals;
+  const hostFeatureList = isArrivalIntroBeat
+    ? ABSTRACT_INTRO_SURFACE_FEATURES.host.map((item) => item.title)
+    : [activeBeat.signals[0]?.label, activeBeat.bullets[0], activeBeat.bullets[1]].filter(Boolean);
+  const tvFeatureList = isArrivalIntroBeat
+    ? ABSTRACT_INTRO_SURFACE_FEATURES.tv
+    : activeBeat.signals.map((signal) => signal.label).slice(0, 3);
+  const audienceFeatureList = isArrivalIntroBeat
+    ? ABSTRACT_INTRO_SURFACE_FEATURES.audience
+    : activeBeat.bullets.slice(0, 3);
+  const singerFeatureList = isArrivalIntroBeat
+    ? ABSTRACT_INTRO_SURFACE_FEATURES.singer
+    : ["Lead clearly", "Wait for cue", "Hand off cleanly"];
+  const activeSignalFocusIndex = clampNumber(activeAbstractMomentIndex, 0, Math.max(0, visibleSignals.length - 1), 0);
+  const interactionCards = visibleSignals.map((signal, index) => ({
+    ...signal,
+    isActive: index === activeSignalFocusIndex,
+  }));
+  const getStorySurfaceClasses = (surface = "") => {
+    const classes = [];
+    if (isArrivalIntroBeat) {
+      const orderIndex = ["host", "tv", "audience", "singer"].indexOf(surface);
+      if (orderIndex >= 0 && orderIndex < visibleArrivalSurfaceCount) classes.push("is-revealed");
+      else classes.push("is-hidden");
+      if (surface === activeArrivalSurface) classes.push("is-spotlight");
+      else if (orderIndex >= 0 && orderIndex < visibleArrivalSurfaceCount) classes.push("is-resting");
+    } else if (surface === activeBeat.activeSurface) {
+      classes.push("is-spotlight");
+    }
+    return classes.length ? ` ${classes.join(" ")}` : "";
+  };
   const activeActionIndex = useMemo(
     () => getActiveIndex(activeScene.audience.actions, sceneProgress + 0.12),
     [activeScene.audience.actions, sceneProgress]
-  );
-  const activeFeedIndex = useMemo(
-    () => getActiveIndex(activeScene.audience.feed, sceneProgress + 0.26),
-    [activeScene.audience.feed, sceneProgress]
-  );
-  const activeTvLineIndex = useMemo(
-    () => getActiveIndex(activeScene.tv.lines, sceneProgress + 0.18),
-    [activeScene.tv.lines, sceneProgress]
   );
   const hostTypedSearch = useMemo(
     () => getTypedText(activeScene.host.search, sceneProgress),
     [activeScene.host.search, sceneProgress]
   );
-  const hostControlProgress = clampNumber((sceneProgress - 0.22) / 0.62, 0, 1, 0);
-  const roomEnergy = 28 + Math.round(sceneProgress * 58);
   const scenePercent = Math.round(sceneProgress * 100);
   const nextScene = useMemo(() => {
     const index = WALKTHROUGH_TIMELINE.findIndex((entry) => entry.id === activeScene.id);
     if (index < 0 || index >= WALKTHROUGH_TIMELINE.length - 1) return null;
     return WALKTHROUGH_TIMELINE[index + 1];
   }, [activeScene.id]);
-  const sceneIndex = useMemo(
-    () => WALKTHROUGH_TIMELINE.findIndex((entry) => entry.id === activeScene.id),
-    [activeScene.id]
-  );
-  const sceneNumber = String(Math.max(0, sceneIndex) + 1).padStart(2, "0");
   const tvSurfaceVariant = useMemo(() => getTvSurfaceVariant(activeScene.id), [activeScene.id]);
-  const hostResults = useMemo(
-    () => getHostResults(activeScene, hostTypedSearch),
-    [activeScene, hostTypedSearch]
-  );
-  const queueSnapshot = useMemo(
-    () => getSceneQueue(activeScene, nextScene),
-    [activeScene, nextScene]
-  );
   const reactionItems = useMemo(
     () => getReactionItems(activeScene, sceneProgress),
     [activeScene, sceneProgress]
@@ -1037,9 +1403,54 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     [activeScene.id, sceneProgress]
   );
   const activeSequenceStep = sceneSequence[activeSequenceIndex] || sceneSequence[0];
-  const activeLyric = activeScene.tv.lines[activeTvLineIndex] || activeScene.tv.lines[0] || "";
-  const nextLyric = activeScene.tv.lines[Math.min(activeScene.tv.lines.length - 1, activeTvLineIndex + 1)] || "";
-  const totalConnectedLabel = activeScene.id === "join_identity" ? "08 joined" : activeScene.audience.metricValue;
+  const audienceFixture = useMemo(
+    () => buildAudienceFixture({
+      scene: activeScene,
+      nextScene,
+      sceneProgress,
+      activeActionIndex,
+      hostTypedSearch,
+    }),
+    [activeActionIndex, activeScene, hostTypedSearch, nextScene, sceneProgress]
+  );
+  const tvFixture = useMemo(
+    () => buildTvFixture({
+      scene: activeScene,
+      nextScene,
+      sceneProgress,
+      reactionItems,
+      triviaRows,
+    }),
+    [activeScene, nextScene, reactionItems, sceneProgress, triviaRows]
+  );
+  const hostFixture = useMemo(
+    () => buildHostFixture({
+      scene: activeScene,
+      nextScene,
+      sceneProgress,
+      reactionItems,
+    }),
+    [activeScene, nextScene, reactionItems, sceneProgress]
+  );
+
+  useEffect(() => {
+    if (!isAutoPage) return undefined;
+    const postFixture = (frameRef, surface, fixture) => {
+      try {
+        frameRef?.current?.contentWindow?.postMessage({
+          type: "beaurocks-demo-fixture",
+          surface,
+          fixture,
+        }, "*");
+      } catch (_) {
+        // Ignore cross-window race conditions while iframes initialize.
+      }
+    };
+    postFixture(hostFrameRef, "host", hostFixture);
+    postFixture(tvFrameRef, "tv", tvFixture);
+    postFixture(audienceFrameRef, "audience", audienceFixture);
+    return undefined;
+  }, [audienceFixture, hostFixture, isAutoPage, tvFixture]);
 
   useEffect(() => {
     if (!isAutoPage) return undefined;
@@ -1057,6 +1468,19 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     setPlaying(true);
     trackEvent("mk_demo_scene_jump", { scene: nextSceneTarget.id });
   };
+  const handleDemoFrameLoad = (surface = "") => {
+    try {
+      if (surface === "host") {
+        hostFrameRef.current?.contentWindow?.postMessage({ type: "beaurocks-demo-fixture", surface: "host", fixture: hostFixture }, "*");
+      } else if (surface === "tv") {
+        tvFrameRef.current?.contentWindow?.postMessage({ type: "beaurocks-demo-fixture", surface: "tv", fixture: tvFixture }, "*");
+      } else if (surface === "audience") {
+        audienceFrameRef.current?.contentWindow?.postMessage({ type: "beaurocks-demo-fixture", surface: "audience", fixture: audienceFixture }, "*");
+      }
+    } catch (_) {
+      // Ignore iframe initialization races.
+    }
+  };
 
   const totalSceneElapsedMs = Math.max(0, Math.round(timelineMs));
 
@@ -1065,17 +1489,17 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
       <article className="mk3-demo-sales-hero">
         <div>
           <div className="mk3-chip">{isAutoPage ? "auto demo" : "abstract demo"}</div>
-          <h1>{isAutoPage ? "Auto-play the product story across the room." : "Show the system logic before the product UI."}</h1>
+          <h1>{isAutoPage ? "Auto-play the actual room UI across the surfaces." : "Scroll to change the primary abstract scene."}</h1>
           <p>
             {isAutoPage
-              ? "This page is the deterministic sales walkthrough: local-only host, TV, and audience shells with simulated taps, typing, and mode shifts."
-              : "This page stays conceptual on purpose. It sells how host, TV, audience, and singer influence one another without pretending to be the live product."}
+              ? "This page is the deterministic sales walkthrough: the host, TV, and audience surfaces mount the native app UI, then the timeline simulates taps, typing, and handoffs."
+              : "This page stays conceptual on purpose. Scroll advances one scene at a time while the main stage shows host, TV, audience, and singer reacting together."}
           </p>
         </div>
         <div className="mk3-demo-sales-hero-pills">
           <span>{isAutoPage ? "Dedicated auto demo page" : "Dedicated abstract page"}</span>
-          <span>{isAutoPage ? "Real room shells" : "Concept-first motion"}</span>
-          <span>Zero live reads or writes</span>
+          <span>{isAutoPage ? "Native app surfaces" : "Concept-first motion"}</span>
+          <span>{isAutoPage ? "Timeline-driven overlays" : "Scene-by-scene scroll"}</span>
           {typeof navigate === "function" && (
             <button type="button" onClick={() => navigate(isAutoPage ? "demo" : "demo_auto")}>
               {isAutoPage ? "Open Abstract Demo" : "Open Auto Demo"}
@@ -1085,63 +1509,9 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
       </article>
 
       {!isAutoPage && (
-      <article className="mk3-demo-story">
-        <div className="mk3-demo-story-intro">
-          <div className="mk3-chip">abstract demo</div>
-          <h2>Show the system logic before viewers start parsing product screens.</h2>
-          <p>
-            This layer should feel like motion design, not like someone paused a live room. Scroll through each scene
-            in multiple beats so the interaction direction is obvious before anyone sees a literal product screen.
-          </p>
-        </div>
-        <div className="mk3-demo-story-grid">
-          <div className="mk3-demo-story-steps">
-            {ABSTRACT_BEATS.map((beat) => (
-              <section
-                key={beat.id}
-                className={`mk3-demo-story-step${activeBeat.id === beat.id ? " is-active" : ""}`}
-              >
-                <span>{beat.kicker}</span>
-                <h3>{beat.title}</h3>
-                <p>{beat.body}</p>
-                <div className="mk3-demo-story-bullets">
-                  {beat.bullets.map((item) => (
-                    <strong key={`${beat.id}_${item}`}>{item}</strong>
-                  ))}
-                </div>
-                <div className="mk3-demo-story-step-progress">
-                  {(ABSTRACT_MOMENTS[beat.id] || []).map((moment) => (
-                    <b key={`${beat.id}_${moment.id}`} className={activeAbstractEvent?.id === moment.id ? "is-active" : ""} />
-                  ))}
-                </div>
-                <div className="mk3-demo-story-step-hint">
-                  Scroll to animate the room. The stage on the right carries the moment-by-moment changes.
-                </div>
-                <div className="mk3-demo-story-scroll-track">
-                  {(ABSTRACT_MOMENTS[beat.id] || []).map((moment, momentIndex) => (
-                    <article
-                      key={moment.id}
-                      ref={(node) => {
-                        abstractMomentRefs.current[ABSTRACT_SCROLL_EVENTS.findIndex((entry) => entry.id === moment.id)] = node;
-                      }}
-                      data-story-event={moment.id}
-                      className={`mk3-demo-story-event${activeAbstractEvent?.id === moment.id ? " is-active" : ""}`}
-                    >
-                      <span>{moment.kicker}</span>
-                      <strong>{momentIndex + 1}</strong>
-                      <div className="mk3-demo-story-event-meta">
-                        <i />
-                        <b>{momentIndex + 1}/4</b>
-                        <small>{beat.signals[moment.signalIndex]?.label || "Room flow"}</small>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-          <div className="mk3-demo-story-stage">
-            <div className={`mk3-demo-story-stage-frame is-${activeBeat.stageVariant} is-moment-${activeAbstractMomentIndex + 1}`}>
+      <article className="mk3-demo-story mk3-demo-story-immersive">
+          <div className="mk3-demo-story-stage mk3-demo-story-stage-full">
+            <div className={`mk3-demo-story-stage-frame is-${activeBeat.stageVariant} is-moment-${activeAbstractMomentIndex + 1}${isArrivalIntroBeat ? " is-arrival-intro" : ""}`}>
               <div className="mk3-demo-story-glow mk3-demo-story-glow-one" />
               <div className="mk3-demo-story-glow mk3-demo-story-glow-two" />
               <div className={`mk3-demo-story-sweep is-${activeBeat.mood || "cyan"}`} />
@@ -1150,22 +1520,22 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
               <div className="mk3-demo-story-stage-header">
                 <div>
                   <span>Conceptual system map</span>
-                  <strong>{activeAbstractEvent?.title || activeBeat.title}</strong>
+                  <strong>{activeBeat.title}</strong>
                 </div>
                 <div className="mk3-demo-story-stage-meta">
-                  <span>Scene step</span>
-                  <strong>{activeAbstractMomentIndex + 1} of {activeAbstractMoments.length || 4}</strong>
+                  <span>Scene</span>
+                  <strong>{activeAbstractBeatIndex + 1} of {ABSTRACT_BEATS.length}</strong>
                 </div>
               </div>
               <div className="mk3-demo-story-stage-callout">
-                <span>{activeAbstractEvent?.kicker || "moment 01"}</span>
-                <strong>{activeAbstractEvent?.detail || activeBeat.body}</strong>
+                <span>{stageCalloutKicker}</span>
+                <strong>{stageCalloutBody}</strong>
               </div>
-              <div className="mk3-demo-story-signal-layer" aria-hidden="true">
-                {activeBeat.signals.map((signal) => (
+              <div className={`mk3-demo-story-signal-layer${visibleSignals.length ? "" : " is-suppressed"}`} aria-hidden="true">
+                {visibleSignals.map((signal) => (
                   <div
                     key={`${activeBeat.id}_${signal.from}_${signal.to}_${signal.label}`}
-                    className={`mk3-demo-story-signal mk3-demo-story-signal-${signal.from}-${signal.to}${activeAbstractSignal?.label === signal.label ? " is-active" : ""}`}
+                    className={`mk3-demo-story-signal mk3-demo-story-signal-${signal.from}-${signal.to} is-active`}
                   >
                     <i />
                     <span>{signal.label}</span>
@@ -1173,123 +1543,149 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                 ))}
               </div>
               <div className="mk3-demo-story-scene-progress">
-                {activeAbstractMoments.map((moment) => (
-                  <b key={moment.id} className={activeAbstractEvent?.id === moment.id ? "is-active" : ""} />
+                {ABSTRACT_BEATS.map((beat) => (
+                  <b key={beat.id} className={activeBeat.id === beat.id ? "is-active" : ""} />
                 ))}
               </div>
 
-              <article className={`mk3-demo-story-screen mk3-demo-story-screen-host${activeAbstractSource === "host" ? " is-source" : ""}${activeAbstractTarget === "host" ? " is-target" : ""}`}>
+              <article className={`mk3-demo-story-screen mk3-demo-story-screen-host${activeBeat.signals.some((signal) => signal.from === "host" || signal.to === "host") ? " is-source is-target" : ""}${getStorySurfaceClasses("host")}`}>
                 <span>Host Deck</span>
-                <strong>{activeAbstractEvent?.host || activeBeat.notes.host}</strong>
-                <div className="mk3-demo-story-host-search">
-                  <span>Origin move</span>
-                  <strong>{activeAbstractSignal?.label || "Room cue"}</strong>
+                <strong>{activeBeat.notes.host}</strong>
+                <div className="mk3-demo-story-role-panel">
+                  <span>{isArrivalIntroBeat ? "Primary job" : "Origin move"}</span>
+                  <strong>{isArrivalIntroBeat ? "Drive the first room change" : activeBeat.signals[0]?.label || "Room cue"}</strong>
+                  <p>{isArrivalIntroBeat ? "The host decides what kind of room moment starts first." : "One deliberate host action changes the rest of the room."}</p>
                 </div>
-                <div className="mk3-demo-story-host-queue">
-                  <span>What the host changes</span>
-                  <div className="mk3-demo-story-host-queue-list">
-                    {activeBeat.signals.map((signal) => (
-                      <article key={`${activeBeat.id}_${signal.label}`} className={activeAbstractSignal?.label === signal.label ? "is-active" : ""}>
-                        <strong>{signal.label}</strong>
-                        <span>{ABSTRACT_SURFACES[signal.to]?.label || signal.to}</span>
-                      </article>
-                    ))}
-                  </div>
+                <div className="mk3-demo-story-chip-row">
+                  {hostFeatureList.map((item) => (
+                    <b key={`${activeBeat.id}_host_${item}`}>{item}</b>
+                  ))}
                 </div>
-                <p className="mk3-demo-story-surface-note">One deliberate input changes the whole room state.</p>
+                <p className="mk3-demo-story-surface-note">
+                  {isArrivalIntroBeat
+                    ? "Start with the one deliberate control surface before you show the whole network."
+                    : "One deliberate input changes the whole room state."}
+                </p>
               </article>
 
-              <article className={`mk3-demo-story-screen mk3-demo-story-screen-tv${activeAbstractSource === "tv" ? " is-source" : ""}${activeAbstractTarget === "tv" ? " is-target" : ""}`}>
+              <article className={`mk3-demo-story-screen mk3-demo-story-screen-tv${activeBeat.signals.some((signal) => signal.from === "tv" || signal.to === "tv") ? " is-source is-target" : ""}${getStorySurfaceClasses("tv")}`}>
                 <div className="mk3-demo-story-tv-stage">
                   <div className="mk3-demo-story-tv-badge">
                     <span>Public TV</span>
-                    <strong>{activeAbstractEvent?.kicker || activeBeat.kicker}</strong>
+                    <strong>{isArrivalIntroBeat ? "Shared room state" : activeBeat.kicker}</strong>
                   </div>
                   <div className="mk3-demo-story-tv-headline">
-                    <strong>{activeAbstractEvent?.tv || activeBeat.notes.tv}</strong>
+                    <strong>{activeBeat.notes.tv}</strong>
                   </div>
                   <div className="mk3-demo-story-tv-lyrics">
-                    {activeBeat.signals.slice(0, 3).map((signal) => (
-                      <p key={`${activeBeat.id}_tv_${signal.label}`} className={activeAbstractSignal?.label === signal.label ? "is-active" : ""}>{signal.label}</p>
+                    {tvFeatureList.map((item) => (
+                      <p key={`${activeBeat.id}_tv_${item}`} className="is-active">
+                        {item}
+                      </p>
                     ))}
                   </div>
                   <div className="mk3-demo-story-tv-meter">
-                    <span>Shared room state</span>
-                    <i style={{ width: `${36 + activeAbstractBeatIndex * 10 + activeAbstractMomentIndex * 11}%` }} />
+                    <span>{isArrivalIntroBeat ? "Wall-sized context" : "Shared room state"}</span>
+                    <i style={{ width: `${46 + activeAbstractBeatIndex * 11}%` }} />
                   </div>
                   <div className="mk3-demo-story-tv-burst" aria-hidden="true">
-                    {activeBeat.signals.map((signal, index) => (
-                      <span key={`${activeBeat.id}_burst_${signal.label}`} className={activeAbstractSignal?.label === signal.label ? "is-active" : index <= activeAbstractMomentIndex ? "is-lit" : ""} />
+                    {(isArrivalIntroBeat ? ABSTRACT_INTRO_SURFACE_FEATURES.tv : activeBeat.signals).map((item) => (
+                      <span key={`${activeBeat.id}_burst_${typeof item === "string" ? item : item.label}`} className="is-active" />
                     ))}
                   </div>
                 </div>
-                <p className="mk3-demo-story-surface-note">TV translates system changes into one visible room moment.</p>
+                <p className="mk3-demo-story-surface-note">
+                  {isArrivalIntroBeat
+                    ? "Introduce the TV as the public room state before you ask the user to parse arrows or game modes."
+                    : "TV should make each room change feel sweeping and public."}
+                </p>
               </article>
 
-              <article className={`mk3-demo-story-screen mk3-demo-story-screen-phone${activeAbstractSource === "audience" ? " is-source" : ""}${activeAbstractTarget === "audience" ? " is-target" : ""}`}>
+              <article className={`mk3-demo-story-screen mk3-demo-story-screen-phone${activeBeat.signals.some((signal) => signal.from === "audience" || signal.to === "audience") ? " is-source is-target" : ""}${getStorySurfaceClasses("audience")}`}>
                 <span>Audience App</span>
-                <strong>{activeAbstractEvent?.audience || activeBeat.notes.audience}</strong>
+                <strong>{activeBeat.notes.audience}</strong>
                 <p className="mk3-demo-story-phone-copy">
-                  Lightweight prompts, reactions, and mode-specific controls make the crowd part of the night.
+                  Audience interaction should read instantly, even when the phone UI is shown abstractly.
                 </p>
-                <div className="mk3-demo-story-phone-votes" aria-hidden="true">
-                  {activeBeat.bullets.map((item, index) => (
-                    <button key={`${activeBeat.id}_${item}`} type="button" tabIndex={-1} className={index === activeAbstractMomentIndex % activeBeat.bullets.length ? "is-active" : ""}>{item}</button>
+                <div className="mk3-demo-story-phone-votes mk3-demo-story-phone-votes-simple" aria-hidden="true">
+                  {audienceFeatureList.map((item, index) => (
+                    <button key={`${activeBeat.id}_${item}`} type="button" tabIndex={-1} className={index === activeSignalFocusIndex % Math.max(1, audienceFeatureList.length) ? "is-active" : ""}>{item}</button>
                   ))}
                 </div>
                 <div className="mk3-demo-story-phone-request">
-                  <span>Audience effect</span>
-                  <strong>{activeAbstractSignal?.to === "audience" || activeAbstractSignal?.from === "audience" ? activeAbstractSignal?.label : activeBeat.signals[1]?.label || "Shared response"}</strong>
+                  <span>{isArrivalIntroBeat ? "Primary job" : "Audience effect"}</span>
+                  <strong>{isArrivalIntroBeat ? "Join + react" : activeBeat.signals.find((signal) => signal.from === "audience" || signal.to === "audience")?.label || "Shared response"}</strong>
+                  <p>{isArrivalIntroBeat ? "Keep the first audience action obvious and low-friction." : "Show one room-sized response instead of tiny tap choreography."}</p>
                 </div>
-                <div className="mk3-demo-story-phone-score">
-                  <span>Collective role</span>
-                  <strong>{ABSTRACT_SURFACES.audience.label}</strong>
-                </div>
-                <div className="mk3-demo-story-phone-pulse-grid" aria-hidden="true">
-                  {activeBeat.signals.map((signal, index) => (
-                    <i key={`${activeBeat.id}_phone_${signal.label}`} className={activeAbstractSignal?.label === signal.label ? "is-active" : index <= activeAbstractMomentIndex ? "is-lit" : ""} />
+                <div className="mk3-demo-story-chip-row is-phone">
+                  {audienceFeatureList.map((item) => (
+                    <b key={`${activeBeat.id}_audience_chip_${item}`}>{item}</b>
                   ))}
-                  <i className={activeAbstractTarget === "audience" ? "is-active" : ""} />
+                </div>
+                <div className={`mk3-demo-story-phone-touch is-beacon${isArrivalIntroBeat ? " is-guided" : ""}`} aria-hidden="true">
+                  <i />
+                  <span>{isArrivalIntroBeat ? "guiding the first taps" : "audience interaction pulse"}</span>
                 </div>
               </article>
 
-              <article className={`mk3-demo-story-screen mk3-demo-story-screen-singer${activeAbstractSource === "singer" ? " is-source" : ""}${activeAbstractTarget === "singer" ? " is-target" : ""}`}>
+              <article className={`mk3-demo-story-screen mk3-demo-story-screen-singer${activeBeat.signals.some((signal) => signal.from === "singer" || signal.to === "singer") ? " is-source is-target" : ""}${getStorySurfaceClasses("singer")}`}>
                 <span>Singer Cue</span>
-                <strong>{activeAbstractEvent?.singer || activeBeat.notes.singer}</strong>
+                <strong>{activeBeat.notes.singer}</strong>
                 <div className="mk3-demo-story-singer-meter">
-                  <span>Confidence</span>
-                  <i style={{ width: `${42 + activeAbstractBeatIndex * 8 + activeAbstractMomentIndex * 9}%` }} />
+                  <span>{isArrivalIntroBeat ? "Performer readiness" : "Confidence"}</span>
+                  <i style={{ width: `${42 + activeAbstractBeatIndex * 11}%` }} />
+                </div>
+                <div className="mk3-demo-story-singer-points">
+                  {singerFeatureList.map((item) => (
+                    <b key={`${activeBeat.id}_${item}`}>{item}</b>
+                  ))}
                 </div>
                 <p className="mk3-demo-story-surface-note">
-                  The performer always knows whether to lead, wait, or hand off.
+                  {isArrivalIntroBeat
+                    ? "Only after the singer role is clear should the system start showing interplay."
+                    : "The performer always knows whether to lead, wait, or hand off."}
                 </p>
               </article>
-            </div>
 
-            <div className="mk3-demo-story-flow-grid">
-              {activeBeat.signals.map((signal) => (
-                <article key={`${activeBeat.id}_${signal.from}_${signal.to}_${signal.label}`} className={`mk3-demo-story-flow-card${activeAbstractSignal?.label === signal.label ? " is-active" : ""}`}>
-                  <span>{ABSTRACT_SURFACES[signal.from]?.short} to {ABSTRACT_SURFACES[signal.to]?.short}</span>
-                  <strong>{signal.label}</strong>
-                  <p>
-                    {ABSTRACT_SURFACES[signal.from]?.label} pushes a change that lands on {ABSTRACT_SURFACES[signal.to]?.label}.
-                  </p>
-                </article>
-              ))}
+              {!isArrivalIntroBeat && activeBeat.id !== "handoff" && (
+                <div className="mk3-demo-story-interaction-strip" aria-hidden="true">
+                  {interactionCards.map((signal) => (
+                    <article key={`${signal.from}_${signal.to}_${signal.label}`} className={signal.isActive ? "is-active" : ""}>
+                      <span>{`${ABSTRACT_SURFACES[signal.from]?.short || signal.from} -> ${ABSTRACT_SURFACES[signal.to]?.short || signal.to}`}</span>
+                      <strong>{signal.label}</strong>
+                    </article>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
+        <div className="mk3-demo-story-beat-track">
+          {ABSTRACT_SCROLL_EVENTS.map((event, eventIndex) => (
+            <section
+              key={event.id}
+              ref={(node) => {
+                abstractBeatRefs.current[eventIndex] = node;
+              }}
+              data-story-event={event.id}
+              className={`mk3-demo-story-beat-trigger${activeAbstractEvent?.id === event.id ? " is-active" : ""}`}
+              style={{ minHeight: "54vh" }}
+            >
+              <div className="mk3-demo-story-beat-anchor">
+                <span>{event.kicker}</span>
+                <strong>{event.title}</strong>
+                <div className="mk3-demo-story-bullets">
+                  <strong>Scene {event.beatIndex + 1}</strong>
+                  <strong>Step {event.momentIndex + 1} of {(ABSTRACT_MOMENTS[event.beatId] || []).length}</strong>
+                </div>
+              </div>
+            </section>
+          ))}
         </div>
       </article>
       )}
 
       {isAutoPage && (
       <article className="mk3-demo-guided">
-        <div className="mk3-demo-guided-intro">
-          <div className="mk3-chip">auto demo</div>
-          <h2>Auto-play six sellable moments across the actual host, TV, and audience UI.</h2>
-          <p>The stage should do the explaining. One surface drives, the next surface reacts, and the audience prompt only appears when it is the live action.</p>
-        </div>
-
         <div className="mk3-demo-guided-toolbar">
           <button type="button" className={playing ? "active" : ""} onClick={() => setPlaying((prev) => !prev)}>
             {playing ? "Pause Walkthrough" : "Resume Walkthrough"}
@@ -1311,119 +1707,77 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
           <article className="mk3-demo-surface mk3-demo-host">
             <header>
               <span>Host Deck</span>
-              <strong>{activeScene.host.panel}</strong>
+              <strong>Actual host room UI</strong>
             </header>
-            <div className="mk3-demo-surface-kicker">
-              <span>{activeScene.host.status}</span>
-              <strong>{activeScene.host.actionLabel}</strong>
-            </div>
-            <div className="mk3-demo-surface-pill-row">
-              <span>Actual host UI</span>
-              <span>Scene {sceneNumber}</span>
-              <span>{activeScene.kicker}</span>
-            </div>
             <div className="mk3-demo-frame-wrap mk3-demo-host-frame-wrap">
-              <DemoHostRoomShell
-                roomCode={DEMO_ROOM_CODE}
-                activeScene={activeScene}
-                hostTypedSearch={hostTypedSearch}
-                hostResults={hostResults}
-                queueSnapshot={queueSnapshot}
-                hostControlProgress={hostControlProgress}
-                hostFocusFrame={hostFocusFrame}
-                hostCursorStyle={hostCursorStyle}
-                sequenceStep={activeSequenceStep}
-                totalConnectedLabel={totalConnectedLabel}
+              <iframe
+                ref={hostFrameRef}
+                title="BeauRocks Host Demo"
+                src={hostDemoUrl}
+                className="mk3-demo-iframe mk3-demo-native-surface"
+                loading="eager"
+                onLoad={() => handleDemoFrameLoad("host")}
               />
-            </div>
-            <div className="mk3-demo-surface-status">
-              <span>The host action stays legible, so every downstream change feels caused.</span>
-              <strong>{activeScene.host.actionLabel}</strong>
+              {activeSequenceStep?.surface === "host" ? (
+                <>
+                  <div className="mk3-demo-focus-ring is-host" style={hostFocusFrame}><span>{activeSequenceStep.title}</span></div>
+                  <div className="mk3-demo-sim-cursor is-host" style={hostCursorStyle}><span>{activeScene.host.search ? "type" : "click"}</span></div>
+                </>
+              ) : null}
             </div>
           </article>
 
           <article className={`mk3-demo-surface mk3-demo-tv is-${tvSurfaceVariant}`}>
             <header>
               <span>Public TV</span>
-              <strong>{activeScene.tv.mode}</strong>
+              <strong>Actual TV room UI</strong>
             </header>
-            <div className="mk3-demo-surface-kicker">
-              <span>{activeScene.tv.footer}</span>
-              <strong>{activeScene.tv.title}</strong>
-            </div>
-            <div className="mk3-demo-surface-pill-row">
-              <span>Actual TV UI</span>
-              <span>{activeScene.singer.name} live context</span>
-              <span>{totalConnectedLabel}</span>
-            </div>
             <div className="mk3-demo-frame-wrap mk3-demo-tv-frame-wrap">
-              <DemoTvRoomShell
-                roomCode={DEMO_ROOM_CODE}
-                activeScene={activeScene}
-                activeLyric={activeLyric}
-                nextLyric={nextLyric}
-                totalConnectedLabel={totalConnectedLabel}
-                reactionItems={reactionItems}
-                triviaRows={triviaRows}
-                roomEnergy={roomEnergy}
-                tvFocusFrame={tvFocusFrame}
-                formatClockLabel={formatClock(totalSceneElapsedMs)}
-                tvSurfaceVariant={tvSurfaceVariant}
-                tapCoach={tapCoach}
-                sequenceStep={activeSequenceStep}
+              <iframe
+                ref={tvFrameRef}
+                title="BeauRocks Public TV Demo"
+                src={tvDemoUrl}
+                className="mk3-demo-iframe mk3-demo-native-surface"
+                loading="eager"
+                onLoad={() => handleDemoFrameLoad("tv")}
               />
-            </div>
-            <div className="mk3-demo-surface-status">
-              <span>The TV makes the shared moment obvious for the whole room.</span>
-              <strong>{activeScene.tv.mode}</strong>
+              {activeSequenceStep?.surface === "tv" ? (
+                <div className="mk3-demo-focus-ring is-tv" style={tvFocusFrame}><span>{activeSequenceStep.title}</span></div>
+              ) : null}
             </div>
           </article>
 
           <article className="mk3-demo-surface mk3-demo-audience">
             <header>
               <span>Audience App</span>
-              <strong>{activeScene.audience.title}</strong>
+              <strong>Actual audience room UI</strong>
             </header>
-            <div className="mk3-demo-surface-kicker">
-              <span>{activeScene.audience.subtitle}</span>
-              <strong>{activeScene.audience.metricValue}</strong>
-            </div>
-            <div className="mk3-demo-surface-pill-row">
-              <span>Room code ready</span>
-              <span>{activeScene.kicker}</span>
-              <span>{activeScene.audience.metricLabel}</span>
-            </div>
             <div className="mk3-demo-frame-wrap mk3-demo-audience-frame-wrap">
               <div className="mk3-demo-phone-shell">
                 <div className="mk3-demo-phone-notch" />
                 <div className="mk3-demo-phone-screen">
-                  <DemoAudienceRoomShell
-                    roomCode={DEMO_ROOM_CODE}
-                    activeScene={activeScene}
-                    activeActionIndex={activeActionIndex}
-                    activeFeedIndex={activeFeedIndex}
-                    audienceTapStyle={audienceTapStyle}
-                    audienceFocusFrame={audienceFocusFrame}
-                    tapCoach={tapCoach}
-                    sequenceStep={activeSequenceStep}
+                  <iframe
+                    ref={audienceFrameRef}
+                    title="BeauRocks Audience Demo"
+                    src={audienceDemoUrl}
+                    className="mk3-demo-iframe mk3-demo-native-surface"
+                    loading="eager"
+                    onLoad={() => handleDemoFrameLoad("audience")}
                   />
+                  {activeSequenceStep?.surface === "audience" ? (
+                    <>
+                      <div className="mk3-demo-focus-ring is-phone-target" style={audienceFocusFrame} />
+                      <div className="mk3-demo-sim-tap is-phone" style={audienceTapStyle}>
+                        <i />
+                        <i />
+                        <span>{tapCoach.prompt}</span>
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               </div>
             </div>
-            <div className="mk3-demo-surface-status">
-              <span>Audience input stays lightweight, but the room reacts visibly.</span>
-              <strong>{activeScene.audience.metricValue}</strong>
-            </div>
           </article>
-        </div>
-
-        <div className="mk3-demo-guided-callouts">
-          {activeScene.callouts.map((callout) => (
-            <article key={`${activeScene.id}_${callout.title}`}>
-              <span>{callout.title}</span>
-              <strong>{callout.detail}</strong>
-            </article>
-          ))}
         </div>
 
         <div className="mk3-demo-guided-stage-rail">
@@ -1467,25 +1821,6 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
               <strong>{activeSequenceStep.surface === "audience" ? tapCoach.prompt : activeSequenceStep.title}</strong>
               <p>{activeSequenceStep.surface === "audience" ? tapCoach.detail : activeSequenceStep.detail}</p>
             </div>
-          </div>
-        </div>
-
-        <div className="mk3-demo-guided-outro">
-          <div>
-            <span>Positioning note</span>
-            <strong>This auto demo is simulated product choreography, not a live room embed.</strong>
-          </div>
-          <p>
-            That keeps the sales story stable, removes sizing and layering failures from real iframes, and avoids
-            the continuous reads and writes the current implementation creates.
-          </p>
-          <div className="mk3-demo-guided-outro-actions">
-            {typeof navigate === "function" && (
-              <>
-                <button type="button" onClick={() => navigate("for_hosts")}>See Host Story</button>
-                <button type="button" onClick={() => navigate("discover")}>Explore Discovery</button>
-              </>
-            )}
           </div>
         </div>
       </article>

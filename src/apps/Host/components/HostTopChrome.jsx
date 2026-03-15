@@ -224,6 +224,13 @@ const HostTopChrome = ({
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
     const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
     const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} h-9 px-3 py-1.5 text-[12px] normal-case tracking-[0.04em]`;
+    const anyTopMenuOpen = showAutomationMenu
+        || showTvQuickMenu
+        || showOverlaysMenu
+        || showSfxQuickMenu
+        || showVibeQuickMenu
+        || showLaunchMenu
+        || showNavMenu;
     const liveModeHostGuide = bangerActive
         ? {
             toneClass: 'border-orange-400/45 bg-orange-500/12 text-orange-100',
@@ -435,62 +442,15 @@ const HostTopChrome = ({
     ]);
 
     React.useEffect(() => {
-        if (
-            !showAutomationMenu
-            && !showTvQuickMenu
-            && !showOverlaysMenu
-            && !showSfxQuickMenu
-            && !showVibeQuickMenu
-            && !showLaunchMenu
-            && !showNavMenu
-        ) return undefined;
-        const menuNodes = [
-            automationMenuRef.current,
-            tvQuickMenuRef.current,
-            overlaysMenuRef.current,
-            sfxQuickMenuRef.current,
-            vibeQuickMenuRef.current,
-            launchMenuRef.current,
-            navMenuRef.current
-        ].filter(Boolean);
-        const eventInsideMenu = (event) => {
-            if (!menuNodes.length) return false;
-            const target = event?.target || null;
-            if (target && menuNodes.some((node) => node.contains(target))) return true;
-            if (typeof event?.composedPath === 'function') {
-                const path = event.composedPath();
-                if (Array.isArray(path) && path.length) {
-                    return menuNodes.some((node) => path.includes(node));
-                }
-            }
-            return false;
-        };
-        const handleWindowInteract = (event) => {
-            if (eventInsideMenu(event)) return;
-            closeAllTopMenus();
-        };
+        if (!anyTopMenuOpen) return undefined;
         const handleEscape = (event) => {
             if (event.key === 'Escape') closeAllTopMenus();
         };
-        // iPad Safari is much more reliable when outside-close waits until the tap resolves.
-        window.addEventListener('pointerup', handleWindowInteract, true);
-        window.addEventListener('click', handleWindowInteract, true);
         window.addEventListener('keydown', handleEscape);
         return () => {
-            window.removeEventListener('pointerup', handleWindowInteract, true);
-            window.removeEventListener('click', handleWindowInteract, true);
             window.removeEventListener('keydown', handleEscape);
         };
-    }, [
-        showAutomationMenu,
-        showTvQuickMenu,
-        showOverlaysMenu,
-        showSfxQuickMenu,
-        showVibeQuickMenu,
-        showLaunchMenu,
-        showNavMenu,
-        closeAllTopMenus
-    ]);
+    }, [anyTopMenuOpen, closeAllTopMenus]);
 
     const buildCrowdObjectiveRoomPatch = React.useCallback((modeLightMode) => {
         if (!modeLightMode) return {};
@@ -642,6 +602,15 @@ const HostTopChrome = ({
     };
     return (
     <div data-host-top-chrome="true" className="bg-zinc-900 px-4 py-2 flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
+        {anyTopMenuOpen && (
+            <button
+                type="button"
+                aria-label="Close open host menus"
+                onClick={closeAllTopMenus}
+                className="fixed inset-0 z-40 bg-transparent"
+                style={{ touchAction: 'manipulation' }}
+            />
+        )}
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between w-full">
             <div className="flex items-center gap-2 lg:gap-3">
                 <img

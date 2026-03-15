@@ -37,6 +37,66 @@ const PERFORMER_SIGNAL_CARDS = [
   },
 ];
 
+const PERFORMER_TRUST_SIGNALS = [
+  {
+    label: "Discovery",
+    title: "Know which rooms are worth your time",
+    copy: "Clear host, venue, and schedule context make it easier to decide where to go next.",
+  },
+  {
+    label: "Join flow",
+    title: "A better room should be easier to enter",
+    copy: "Good karaoke nights should not start with confusion once you arrive.",
+  },
+  {
+    label: "Repeat value",
+    title: "Weekly favorites beat random guesses",
+    copy: "Performers come back to rooms that feel reliable, visible, and fun to join.",
+  },
+];
+
+const PERFORMER_SURFACE_STEPS = [
+  {
+    step: "01",
+    title: "Start with discovery that feels current",
+    copy: "Browse real karaoke nights with clearer room context instead of guessing what a venue might be like.",
+    imageUrl: "/images/marketing/bross-discovery.png",
+  },
+  {
+    step: "02",
+    title: "Join the room quickly from your phone",
+    copy: "Name, emoji, and one obvious next step help the night start faster when you arrive.",
+    imageUrl: "/images/marketing/audience-join-aahf-current.png",
+  },
+  {
+    step: "03",
+    title: "Follow the TV once the room is live",
+    copy: "Queue prompts, join state, and stage context stay visible so the room feels easier to read.",
+    imageUrl: "/images/marketing/tv-live-aahf-current.png",
+  },
+];
+
+const PERFORMER_FINAL_PATHS = [
+  {
+    title: "Browse live nights",
+    copy: "Open discovery if you want to find the next room worth trying.",
+    cta: "Open Discover",
+    route: "discover",
+  },
+  {
+    title: "See the audience experience",
+    copy: "Go to the main BeauRocks overview if you want the broader room story from the guest side.",
+    cta: "Open Overview",
+    route: "for_fans",
+  },
+  {
+    title: "Watch the product demo",
+    copy: "See how host, TV, and audience stay in sync during a live night.",
+    cta: "Open Demo",
+    route: "demo_auto",
+  },
+];
+
 const PERFORMER_FLOW_STEPS = [
   {
     step: "01",
@@ -119,11 +179,11 @@ const ForPerformersPage = ({ navigate }) => {
           </div>
           <aside className="mk3-persona-hero-visual">
             <article className="mk3-persona-visual-stage is-performer">
-              <img src="/images/marketing/BeauRocks-Audienceapp.png" alt="BeauRocks performer and audience surface" loading="lazy" />
+              <img src="/images/marketing/audience-join-aahf-current.png" alt="BeauRocks audience room join screen" loading="lazy" />
               <div className="mk3-persona-visual-overlay">
                 <div className="mk3-persona-kicker">for performers</div>
-                <strong>Stop wasting your best songs on random rooms.</strong>
-                <span>Use the directory to find nights worth repeating.</span>
+                <strong>Once you pick a room, getting in should be fast.</strong>
+                <span>A clear join flow helps good rooms feel easy to come back to.</span>
               </div>
             </article>
             <div className="mk3-persona-signal-grid">
@@ -139,18 +199,59 @@ const ForPerformersPage = ({ navigate }) => {
         </div>
       </article>
 
-      <section className="mk3-persona-proof-grid">
-        {PERFORMER_PROOF_POINTS.map((point, index) => (
-          <article key={point} className="mk3-detail-card mk3-zone">
-            <span>{`Proof 0${index + 1}`}</span>
-            <strong>{point}</strong>
-            <p>Clearer rooms are easier to come back to.</p>
-          </article>
-        ))}
+      <section className="mk3-detail-card mk3-zone mk3-marketing-rich-band">
+        <div>
+          <div className="mk3-persona-kicker">why performers care</div>
+          <h2>Better room information makes better karaoke habits.</h2>
+        </div>
+        <div className="mk3-marketing-signal-grid">
+          {PERFORMER_TRUST_SIGNALS.map((item) => (
+            <article key={item.title} className="mk3-marketing-signal-card">
+              <span>{item.label}</span>
+              <strong>{item.title}</strong>
+              <p>{item.copy}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="mk3-detail-card mk3-zone mk3-marketing-how-band">
+        <div>
+          <div className="mk3-persona-kicker">what the performer path looks like</div>
+          <h2>Find the room, join quickly, and follow the live night clearly.</h2>
+        </div>
+        <div className="mk3-marketing-step-grid">
+          {PERFORMER_SURFACE_STEPS.map((item) => (
+            <article key={item.step} className="mk3-marketing-step-card">
+              <img src={item.imageUrl} alt={item.title} loading="lazy" />
+              <div>
+                <span>{item.step}</span>
+                <strong>{item.title}</strong>
+                <p>{item.copy}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="mk3-detail-card mk3-zone mk3-marketing-outcome-band">
+        <div>
+          <div className="mk3-persona-kicker">what better discovery gives you</div>
+          <h2>Less guesswork before you leave the house.</h2>
+        </div>
+        <div className="mk3-marketing-outcome-grid">
+          {PERFORMER_PROOF_POINTS.map((point, index) => (
+            <article key={point}>
+              <span>{`Proof 0${index + 1}`}</span>
+              <strong>{point}</strong>
+              <p>{PERFORMER_STORY_POINTS[index] || "Clearer rooms are easier to come back to."}</p>
+            </article>
+          ))}
+        </div>
       </section>
 
       <section className="mk3-detail-card mk3-zone mk3-persona-flow">
-          <h2>How performers turn discovery into a real routine</h2>
+        <h2>How performers turn discovery into a real routine</h2>
         <div className="mk3-persona-flow-grid">
           {PERFORMER_FLOW_STEPS.map((item) => (
             <article key={item.step}>
@@ -162,33 +263,29 @@ const ForPerformersPage = ({ navigate }) => {
         </div>
       </section>
 
-      <div className="mk3-two-col mk3-persona-late-grid">
-        <section className="mk3-detail-card mk3-zone mk3-persona-playbook">
-          <div className="mk3-persona-kicker">build your run</div>
-          <h2>Stop leaving your karaoke nights up to chance.</h2>
-          <p className="mk3-card-story">Use BeauRocks to find rooms with the energy, crowd, and schedule you want.</p>
-          <div className="mk3-sub-list compact">
-            {PERFORMER_STORY_POINTS.map((point) => (
-              <article key={point} className="mk3-review-card">
-                <p>{point}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <aside className="mk3-actions-card mk3-persona-checklist">
-          <h4>What To Look For</h4>
-          <div className="mk3-status">
-            <strong>Choose rooms worth repeating</strong>
-            <span>Look for hosts, schedules, and room feel that make you want to come back.</span>
-          </div>
-          <div className="mk3-persona-checklist-list">
-            {PERFORMER_PROOF_POINTS.map((point) => (
-              <span key={point}>{point}</span>
-            ))}
-          </div>
-        </aside>
-      </div>
+      <section className="mk3-detail-card mk3-zone mk3-marketing-closing-band">
+        <div>
+          <div className="mk3-persona-kicker">pick the next step</div>
+          <h2>Start with discovery, the audience overview, or the full product demo.</h2>
+        </div>
+        <div className="mk3-marketing-closing-grid">
+          {PERFORMER_FINAL_PATHS.map((item) => (
+            <article key={item.title} className="mk3-marketing-closing-card">
+              <strong>{item.title}</strong>
+              <p>{item.copy}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  trackPersonaCta(`closing_${item.route}`);
+                  navigate(item.route);
+                }}
+              >
+                {item.cta}
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
     </section>
   );
 };

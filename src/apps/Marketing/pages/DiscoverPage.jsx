@@ -248,6 +248,59 @@ const escapeHtml = (value = "") =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+const MAP_KARAOKE_STYLE_META = Object.freeze({
+  interactive: { icon: "◎", label: "Interactive" },
+  singalong: { icon: "♫", label: "Singalong" },
+  performance: { icon: "★", label: "Performance" },
+  beginner: { icon: "◌", label: "Beginner" },
+  duet: { icon: "◈", label: "Duets" },
+  late_night: { icon: "◐", label: "Late Night" },
+  welcoming: { icon: "♡", label: "Welcoming" },
+  host_energy: { icon: "⚡", label: "Hype Host" },
+  virtual: { icon: "⌂", label: "Virtual" },
+  private: { icon: "◍", label: "Private" },
+});
+
+const buildMapKaraokeStyleTokens = (listing = null) => {
+  if (!listing) return [];
+  const tokens = [];
+  const funBadges = Array.isArray(listing?.experience?.funBadges) ? listing.experience.funBadges : [];
+  const capabilityBadges = Array.isArray(listing?.experience?.capabilityBadges) ? listing.experience.capabilityBadges : [];
+  const visibility = String(listing?.visibility || "").trim().toLowerCase();
+
+  if (listing?.virtualOnly) tokens.push("virtual");
+  if (visibility === "private") tokens.push("private");
+  if (capabilityBadges.includes("Audience App") || capabilityBadges.includes("Interactive TV") || listing?.isOfficialBeauRocksRoom) {
+    tokens.push("interactive");
+  }
+  if (funBadges.includes("Big Singalong Energy")) tokens.push("singalong");
+  if (funBadges.includes("Performance Forward")) tokens.push("performance");
+  if (funBadges.includes("Beginner Friendly")) tokens.push("beginner");
+  if (funBadges.includes("Duet Friendly")) tokens.push("duet");
+  if (funBadges.includes("Late-Night Crowd")) tokens.push("late_night");
+  if (funBadges.includes("Welcoming Crowd")) tokens.push("welcoming");
+  if (funBadges.includes("Strong Host Energy")) tokens.push("host_energy");
+
+  const deduped = [];
+  tokens.forEach((token) => {
+    if (!token || deduped.includes(token)) return;
+    deduped.push(token);
+  });
+  return deduped.slice(0, 4);
+};
+
+const buildMapKaraokeStyleHtml = (listing = null) => {
+  const tokens = buildMapKaraokeStyleTokens(listing);
+  if (!tokens.length) return "";
+  return `<div class="mk3-map-marker-selected-style-row">${
+    tokens.map((token) => {
+      const meta = MAP_KARAOKE_STYLE_META[token];
+      if (!meta) return "";
+      return `<span class="mk3-map-marker-selected-style-chip"><b>${escapeHtml(meta.icon)}</b><span>${escapeHtml(meta.label)}</span></span>`;
+    }).join("")
+  }</div>`;
+};
+
 const hexToRgba = (hex = "", alpha = 1) => {
   const token = String(hex || "").trim().replace(/^#/, "");
   if (!/^[0-9a-f]{6}$/i.test(token)) return `rgba(255, 255, 255, ${alpha})`;
@@ -1238,14 +1291,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
       || selectedListingInMap.distanceLabel
       || selectedListingInMap.subtitle
       || selectedListingInMap.typeLabel;
-    const statsLine = selectedListingInMap.hostLeaderboardRank > 0
-      ? `Host rank #${selectedListingInMap.hostLeaderboardRank}`
-      : selectedListingInMap.venueLeaderboardRank > 0
-        ? `Venue rank #${selectedListingInMap.venueLeaderboardRank}`
-        : "";
     const experienceLine = selectedListingInMap?.experience?.capabilityBadges?.length
       ? selectedListingInMap.experience.capabilityBadges.slice(0, 2).join(" | ")
       : selectedListingInMap?.experience?.funBadges?.slice(0, 2).join(" | ") || "";
+    const karaokeStyleHtml = buildMapKaraokeStyleHtml(selectedListingInMap);
     const elevatedBadgeImage = selectedListingInMap.isBeauRocksElevated && selectedListingInMap.officialBadgeImageUrl
       ? `<img class="mk3-map-chip-icon" src="${escapeHtml(selectedListingInMap.officialBadgeImageUrl)}" alt="Official BeauRocks logo" loading="lazy" />`
       : "";
@@ -1265,14 +1314,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
         ${elevatedBadge}
         <strong>${escapeHtml(selectedListingInMap.title)}</strong>
         <small>${escapeHtml(detailLine)}</small>
-        ${statsLine ? `<small>${escapeHtml(statsLine)}</small>` : ""}
+        ${karaokeStyleHtml}
         ${experienceLine ? `<small>${escapeHtml(experienceLine)}</small>` : ""}
         ${selectedAction}
     `;
     infoWindow.setContent(
       hasSelectedHeroImage
-        ? `<div class="mk3-map-marker-selected is-with-hero">
-            <div class="mk3-map-marker-selected-hero" style="background-image: url('${escapeHtml(selectedHeroImageUrl)}');"></div>
+        ? `<div class="mk3-map-marker-selected is-with-hero" style="background-image: url('${escapeHtml(selectedHeroImageUrl)}');">
             <div class="mk3-map-marker-selected-content">
               ${selectedContent}
             </div>
