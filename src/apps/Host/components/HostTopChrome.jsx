@@ -108,7 +108,12 @@ const HostTopChrome = ({
     onOpenAppleMusicSettings,
     onOpenAiSettings,
     onOpenAccessSettings,
-    onOpenHostDashboard
+    onOpenHostDashboard,
+    showStageQuickStart = false,
+    stageQuickStartCompletedCount = 0,
+    stageQuickStartSummary = '',
+    stageQuickStartItems = [],
+    onDismissStageQuickStart
 }) => {
     const resolvedHostBase = hostBase || appBase;
     const resolvedAudienceBase = audienceBase || appBase;
@@ -260,6 +265,12 @@ const HostTopChrome = ({
     }, [closeAllDeckMenus, setShowLaunchMenu, setShowNavMenu]);
     const closeMenusBeforeNavigation = React.useCallback(() => {
         closeAllTopMenus();
+    }, [closeAllTopMenus]);
+    const openLaunchTarget = React.useCallback((targetUrl = '') => {
+        const nextUrl = String(targetUrl || '').trim();
+        if (!nextUrl || typeof window === 'undefined') return;
+        closeAllTopMenus();
+        window.open(nextUrl, '_blank', 'noopener,noreferrer');
     }, [closeAllTopMenus]);
     const commitRoomPatch = React.useCallback((patch) => {
         Promise.resolve(updateRoom?.(patch)).catch(() => {});
@@ -682,60 +693,40 @@ const HostTopChrome = ({
                     </button>
                     {showLaunchMenu && (
                         <div className="absolute left-0 top-full mt-2 w-56 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-50">
-                            <a
-                                href={launchTvHref}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onPointerDown={closeMenusBeforeNavigation}
-                                onTouchStart={closeMenusBeforeNavigation}
-                                onMouseDown={closeMenusBeforeNavigation}
-                                onClick={closeMenusBeforeNavigation}
+                            <button
+                                type="button"
+                                onClick={() => openLaunchTarget(launchTvHref)}
                                 className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900 rounded-t-xl"
                             >
                                 <i className="fa-solid fa-tv mr-2 text-cyan-300"></i> Launch TV
-                            </a>
-                            <a
-                                href={launchAudienceHref}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onPointerDown={closeMenusBeforeNavigation}
-                                onTouchStart={closeMenusBeforeNavigation}
-                                onMouseDown={closeMenusBeforeNavigation}
-                                onClick={closeMenusBeforeNavigation}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openLaunchTarget(launchAudienceHref)}
                                 className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
                             >
                                 <i className="fa-solid fa-mobile-screen-button mr-2 text-pink-300"></i> Launch Mobile
-                            </a>
-                            <a
-                                href={`${resolvedHostBase}?room=${roomCode}&mode=host&tab=browse&catalogue=1`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onPointerDown={closeMenusBeforeNavigation}
-                                onTouchStart={closeMenusBeforeNavigation}
-                                onMouseDown={closeMenusBeforeNavigation}
-                                onClick={closeMenusBeforeNavigation}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openLaunchTarget(`${resolvedHostBase}?room=${roomCode}&mode=host&tab=browse&catalogue=1`)}
                                 className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
                             >
                                 <i className="fa-solid fa-book-open mr-2 text-yellow-300"></i> Launch Catalogue
-                            </a>
+                            </button>
                             <div className="px-4 py-2 text-sm uppercase tracking-[0.3em] text-zinc-500 border-t border-zinc-800">
                                 Game Displays
                             </div>
                             {gamesMeta.map((game, idx, arr) => (
-                                <a
+                                <button
                                     key={game.id}
-                                    href={`${resolvedHostBase}?room=${roomCode}&mode=host&game=${game.id}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onPointerDown={closeMenusBeforeNavigation}
-                                    onTouchStart={closeMenusBeforeNavigation}
-                                    onMouseDown={closeMenusBeforeNavigation}
-                                    onClick={closeMenusBeforeNavigation}
+                                    type="button"
+                                    onClick={() => openLaunchTarget(`${resolvedHostBase}?room=${roomCode}&mode=host&game=${game.id}`)}
                                     className={`block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900 ${idx === arr.length - 1 ? 'rounded-b-xl' : ''}`}
                                 >
                                     <i className="fa-solid fa-gamepad mr-2 text-cyan-300"></i>
                                     {game.name}
-                                </a>
+                                </button>
                             ))}
                         </div>
                     )}
@@ -876,6 +867,51 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
+        {showStageQuickStart && (
+            <div className="w-full rounded-2xl border border-cyan-400/20 bg-gradient-to-r from-cyan-500/12 via-zinc-950/75 to-pink-500/10 px-3 py-3">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-cyan-300/35 bg-cyan-500/12 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                Quick Start
+                            </span>
+                            <span className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-200">
+                                {stageQuickStartCompletedCount}/4 complete
+                            </span>
+                        </div>
+                        <div className="mt-2 text-sm text-zinc-300">
+                            {stageQuickStartSummary}
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 xl:max-w-[58%] xl:justify-end">
+                        {(stageQuickStartItems || []).map((item) => (
+                            <button
+                                key={item.id}
+                                type="button"
+                                onClick={item.onClick}
+                                disabled={!!item.disabled}
+                                className={`${styles.btnStd} ${
+                                    item.completed
+                                        ? styles.btnSuccess
+                                        : item.ready
+                                            ? styles.btnInfo
+                                            : styles.btnNeutral
+                                } px-3 py-1.5 text-xs normal-case tracking-[0.04em] ${item.disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                {item.label}
+                            </button>
+                        ))}
+                        <button
+                            type="button"
+                            onClick={onDismissStageQuickStart}
+                            className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-xs normal-case tracking-[0.04em]`}
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
         <div data-host-quick-strip-wrap="true" className="w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 px-3 py-2">
             <div className="host-top-quick-strip flex flex-wrap items-center gap-2">
                 <div className="relative" ref={automationMenuRef}>
@@ -886,7 +922,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowAutomationMenu(next);
                         }}
-                        className={`${quickMenuToggleClass} min-w-[220px] justify-between`}
+                        className={`${quickMenuToggleClass} min-w-[176px] sm:min-w-[220px] justify-between`}
                         title="Automation controls"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -1015,7 +1051,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowTvQuickMenu(next);
                         }}
-                        className={`${quickMenuToggleClass} min-w-[156px]`}
+                        className={`${quickMenuToggleClass} min-w-[136px] sm:min-w-[156px]`}
                         title="TV display modes"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -1210,7 +1246,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowOverlaysMenu(next);
                         }}
-                        className={`${quickMenuToggleClass} min-w-[164px]`}
+                        className={`${quickMenuToggleClass} min-w-[146px] sm:min-w-[164px]`}
                         title="Overlays and guides"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -1348,7 +1384,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowSfxQuickMenu(next);
                         }}
-                        className={`${quickMenuToggleClass} min-w-[160px]`}
+                        className={`${quickMenuToggleClass} min-w-[142px] sm:min-w-[160px]`}
                         title="Sound effects controls"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -1419,7 +1455,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowVibeQuickMenu(next);
                         }}
-                        className={`${quickMenuToggleClass} min-w-[164px]`}
+                        className={`${quickMenuToggleClass} min-w-[146px] sm:min-w-[164px]`}
                         title="Vibe sync modes"
                         style={{ touchAction: 'manipulation' }}
                     >

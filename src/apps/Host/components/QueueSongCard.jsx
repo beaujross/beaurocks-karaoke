@@ -17,8 +17,6 @@ const QueueSongCard = ({
     handleTouchEnd,
     updateStatus,
     startEdit,
-    onRetryLyrics,
-    onFetchTimedLyrics,
     statusPill,
     styles,
     compactViewport = false
@@ -37,35 +35,47 @@ const QueueSongCard = ({
     const lyricsResolution = String(song?.lyricsGenerationResolution || '').trim();
     let lyricsChipLabel = 'No Lyrics';
     let lyricsChipTone = '';
+    let lyricsSupportText = '';
     if (lyricsStatus === 'pending') {
-        lyricsChipLabel = 'Lyrics: Pending';
+        lyricsChipLabel = 'Lyrics Pending';
         lyricsChipTone = ' border-cyan-300/40 text-cyan-100 bg-cyan-500/10';
+        lyricsSupportText = 'Checking cache, Apple, and AI fallback.';
     } else if (lyricsStatus === 'resolved') {
-        lyricsChipLabel = hasTimedLyrics ? 'Timed' : 'Lyrics';
+        lyricsChipLabel = hasTimedLyrics ? 'Timed Lyrics' : 'Static Lyrics';
         lyricsChipTone = hasTimedLyrics
             ? ' border-emerald-300/40 text-emerald-100 bg-emerald-500/10'
             : ' border-sky-300/40 text-sky-100 bg-sky-500/10';
+        lyricsSupportText = hasTimedLyrics ? 'Timed sync ready for TV and singer.' : 'Lyrics ready with duration-based scroll.';
     } else if (lyricsStatus === 'needs_user_token') {
         lyricsChipLabel = 'Needs Apple Auth';
         lyricsChipTone = ' border-amber-300/45 text-amber-100 bg-amber-500/10';
+        lyricsSupportText = 'Authorize Apple Music to pull synced lyrics.';
     } else if (lyricsStatus === 'capability_blocked') {
         lyricsChipLabel = 'Capability Blocked';
         lyricsChipTone = ' border-rose-300/45 text-rose-100 bg-rose-500/10';
+        lyricsSupportText = 'Lyrics fallback is currently blocked.';
     } else if (lyricsStatus === 'error') {
         lyricsChipLabel = 'Error';
         lyricsChipTone = ' border-rose-300/45 text-rose-100 bg-rose-500/10';
+        lyricsSupportText = 'Open edit to retry or fetch timed lyrics.';
     } else if (lyricsStatus === 'no_match') {
         lyricsChipLabel = 'No Match';
         lyricsChipTone = ' border-zinc-500/45 text-zinc-300 bg-zinc-800/40';
+        lyricsSupportText = 'Open edit to add custom lyrics or try another source.';
     } else if (lyricsStatus === 'disabled') {
         lyricsChipLabel = 'Disabled';
         lyricsChipTone = ' border-zinc-500/45 text-zinc-300 bg-zinc-800/40';
+        lyricsSupportText = 'Lyrics enrichment is off for this room.';
     } else if (hasTimedLyrics) {
-        lyricsChipLabel = 'Timed';
+        lyricsChipLabel = 'Timed Lyrics';
         lyricsChipTone = ' border-emerald-300/40 text-emerald-100 bg-emerald-500/10';
+        lyricsSupportText = 'Timed sync ready for TV and singer.';
     } else if (hasLyrics) {
-        lyricsChipLabel = 'Lyrics';
+        lyricsChipLabel = 'Static Lyrics';
         lyricsChipTone = ' border-sky-300/40 text-sky-100 bg-sky-500/10';
+        lyricsSupportText = 'Lyrics ready with duration-based scroll.';
+    } else {
+        lyricsSupportText = 'Open edit to add playback or lyrics metadata.';
     }
 
     return (
@@ -122,6 +132,9 @@ const QueueSongCard = ({
                                 {lyricsChipLabel}
                             </span>
                         </div>
+                        <div className={`mt-1 text-zinc-500 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[11px]'}`}>
+                            {lyricsSupportText}
+                        </div>
                     </div>
                 </div>
                 <div className={`shrink-0 ${compactViewport ? 'flex items-center gap-1' : 'flex flex-col items-end gap-1'}`}>
@@ -136,44 +149,8 @@ const QueueSongCard = ({
                             <i className="fa-solid fa-trash"></i>
                         </button>
                     </div>
-                    {!compactViewport && (
-                        <div className="flex items-center gap-1">
-                            <button
-                                onClick={() => onRetryLyrics?.(song)}
-                                className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-[10px] min-h-[26px]`}
-                                title="Retry lyrics resolution"
-                            >
-                                Retry Lyrics
-                            </button>
-                            <button
-                                onClick={() => onFetchTimedLyrics?.(song)}
-                                className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-[10px] min-h-[26px]`}
-                                title="Fetch timed lyrics only"
-                            >
-                                Fetch Timed
-                            </button>
-                        </div>
-                    )}
                 </div>
             </div>
-            {compactViewport && (
-                <div className="mt-1 flex items-center gap-1">
-                    <button
-                        onClick={() => onRetryLyrics?.(song)}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-[10px] min-h-[22px]`}
-                        title="Retry lyrics resolution"
-                    >
-                        Retry Lyrics
-                    </button>
-                    <button
-                        onClick={() => onFetchTimedLyrics?.(song)}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-[10px] min-h-[22px]`}
-                        title="Fetch timed lyrics only"
-                    >
-                        Fetch Timed
-                    </button>
-                </div>
-            )}
         </div>
     );
 };

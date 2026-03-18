@@ -2883,7 +2883,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoDjDelaySec, setAutoDjDelaySec, autoEndOnTrackFinish, setAutoEndOnTrackFinish, autoBonusEnabled, setAutoBonusEnabled, autoBonusPoints, setAutoBonusPoints, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoDjDelaySec, setAutoDjDelaySec, autoEndOnTrackFinish, setAutoEndOnTrackFinish, autoBonusEnabled, setAutoBonusEnabled, autoBonusPoints, setAutoBonusPoints, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3660,6 +3660,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: id, error: 'stage_blocked_existing_performer' });
                 return;
             }
+            holdAutoBgDuringStageActivation();
             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), {
                 status,
                 performingStartedAt: serverTimestamp()
@@ -4188,12 +4189,15 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         if (!query) return;
         window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' karaoke')}`, '_blank');
     };
+    const isMobileLayout = layoutMode === 'mobile';
+    const isTightLayout = layoutMode === 'laptop-tight';
+    const activeEditingSong = editingSongId ? songs.find((song) => song.id === editingSongId) || null : null;
 
     useEffect(() => {
-        if (!compactViewport) return;
+        if (!isMobileLayout && !isTightLayout) return;
         setShowAddForm(false);
         setShowQueueList(true);
-    }, [compactViewport, setShowAddForm, setShowQueueList]);
+    }, [isMobileLayout, isTightLayout, setShowAddForm, setShowQueueList]);
 
     const addToQueueSection = (
         <div className="p-3 border-b border-white/10 bg-black/20 relative">
@@ -4300,12 +4304,15 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
 
             <QueueEditSongModal
                 open={!!editingSongId}
+                song={activeEditingSong}
                 styles={STYLES}
                 editForm={editForm}
                 setEditForm={setEditForm}
                 openYtSearch={openYtSearch}
                 syncEditDuration={syncEditDuration}
                 generateLyrics={generateLyrics}
+                onRetryLyrics={retryLyricsForSong}
+                onFetchTimedLyrics={fetchTimedLyricsForSong}
                 onCancel={() => setEditingSongId(null)}
                 onSave={saveEdit}
                 emoji={EMOJI}
@@ -4354,9 +4361,21 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     </div>
                 </div>
             )}
-            <div className={`flex-1 min-h-0 ${compactViewport ? 'flex flex-col gap-3' : 'grid grid-cols-3 gap-6'} overflow-hidden`}>
+            <div className={`flex-1 min-h-0 ${
+                isMobileLayout
+                    ? 'flex flex-col gap-3'
+                    : isTightLayout
+                        ? 'grid grid-cols-[minmax(0,1.35fr)_minmax(320px,0.9fr)] gap-4'
+                        : 'grid grid-cols-3 gap-6'
+            } overflow-hidden`}>
             {/* LEFT CONTROLS */}
-            <div className={`w-full ${compactViewport ? 'order-2 max-h-[32vh]' : 'min-h-0'} overflow-y-auto ${compactViewport ? 'pr-2' : 'pr-1'} custom-scrollbar`}>
+            <div className={`w-full ${
+                isMobileLayout
+                    ? 'order-2 min-h-0 max-h-[38vh] pr-1.5'
+                    : isTightLayout
+                        ? 'order-2 min-h-0 pr-1'
+                        : 'min-h-0 pr-1'
+            } overflow-y-auto custom-scrollbar`}>
                 <div className={`${STYLES.panel} overflow-hidden`}>
                     <section className="px-4 py-4 border-b border-white/10 bg-zinc-950/90 sticky top-0 z-20 backdrop-blur-md">
                         <div className="rounded-xl border border-cyan-400/25 bg-gradient-to-r from-cyan-500/12 via-black/45 to-pink-500/10 p-3">
@@ -4634,10 +4653,15 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 </div>
             </div>
 
-            {compactViewport ? (
-                <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0 order-1 min-h-[60vh]`}>
+            {isMobileLayout ? (
+                <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0 order-1 min-h-0`}>
                     {queueListSection}
                     {addToQueueSection}
+                </div>
+            ) : isTightLayout ? (
+                <div className={`${STYLES.panel} min-h-0 flex flex-col overflow-hidden min-w-0 order-1`}>
+                    {addToQueueSection}
+                    {queueListSection}
                 </div>
             ) : (
                 <>
@@ -4951,7 +4975,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [viewportHeight, setViewportHeight] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 1080));
     const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1440));
     const [tabletTouchViewport, setTabletTouchViewport] = useState(() => detectTabletTouchViewport());
-    const compactHostViewport = viewportHeight <= 900 || tabletTouchViewport || viewportWidth <= 860;
+    const compactHostViewport = tabletTouchViewport || viewportWidth <= 860;
+    const tightHostViewport = !compactHostViewport && (viewportWidth <= 1180 || viewportHeight <= 900);
+    const hostStageLayoutMode = compactHostViewport ? 'mobile' : (tightHostViewport ? 'laptop-tight' : 'desktop');
     const [audioPanelOpen, setAudioPanelOpen] = useState(() => {
         if (typeof window === 'undefined') return true;
         return window.innerHeight > 900;
@@ -5077,9 +5103,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
     }, []);
     useEffect(() => {
-        if (!compactHostViewport) return;
+        if (hostStageLayoutMode === 'desktop') return;
         setAudioPanelOpen(false);
-    }, [compactHostViewport]);
+    }, [hostStageLayoutMode]);
     useEffect(() => {
         if (!showSettings) {
             setSettingsNavOpen(false);
@@ -5642,6 +5668,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const stageMicCtxRef = useRef(null);
     const stageMicAnalyserRef = useRef(null);
     const stageMicStreamRef = useRef(null);
+    const playingBgRef = useRef(false);
+    const stageActivationPendingRef = useRef(false);
+    const stageActivationTimerRef = useRef(null);
     const stageMicRafRef = useRef(null);
     const autoDjTimerRef = useRef(null);
     const autoDjKickoffRef = useRef('');
@@ -5964,6 +5993,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         stageMicCtxRef.current = null;
         stageMicStreamRef.current = null;
         stageMicAnalyserRef.current = null;
+    }, []);
+    useEffect(() => {
+        playingBgRef.current = playingBg;
+    }, [playingBg]);
+    useEffect(() => () => {
+        if (stageActivationTimerRef.current) {
+            clearTimeout(stageActivationTimerRef.current);
+            stageActivationTimerRef.current = null;
+        }
+    }, []);
+    useEffect(() => {
+        if (!currentSong) return;
+        stageActivationPendingRef.current = false;
+        if (stageActivationTimerRef.current) {
+            clearTimeout(stageActivationTimerRef.current);
+            stageActivationTimerRef.current = null;
+        }
+    }, [currentSong]);
+    const holdAutoBgDuringStageActivation = useCallback((durationMs = 2500) => {
+        stageActivationPendingRef.current = true;
+        if (stageActivationTimerRef.current) {
+            clearTimeout(stageActivationTimerRef.current);
+        }
+        stageActivationTimerRef.current = setTimeout(() => {
+            stageActivationPendingRef.current = false;
+            stageActivationTimerRef.current = null;
+        }, durationMs);
     }, []);
     useEffect(() => {
         roomRef.current = room;
@@ -6309,6 +6365,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0));
         const next = queued[0];
         if (!next) return;
+        holdAutoBgDuringStageActivation();
         await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', next.id), {
             status: 'performing',
             performingStartedAt: serverTimestamp()
@@ -7371,6 +7428,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     ]);
 
     const setBgMusicState = useCallback((next) => {
+        if (!bgAudio.current) return;
+        if (playingBgRef.current === next) return;
+        playingBgRef.current = next;
         setPlayingBg(next);
         if (next) {
             if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
@@ -7981,7 +8041,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const skipBg = () => { const next = (currentTrackIdx + 1) % BG_TRACKS.length; setCurrentTrackIdx(next); bgAudio.current.src = BG_TRACKS[next].url; if(playingBg) { bgAudio.current.play(); updateRoom({ bgMusicUrl: BG_TRACKS[next].url }); }};
     useEffect(() => {
         if (!autoBgMusic) return;
-        if (!currentSong && !playingBg) {
+        if (stageActivationPendingRef.current) return;
+        if (!currentSong && !playingBgRef.current) {
             setBgMusicState(true);
         }
     }, [autoBgMusic, currentSong, playingBg, setBgMusicState]);
@@ -8931,6 +8992,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const activateQueueSong = async (song, roomSnapshot = roomRef.current) => {
         if (!song?.id) return;
+        holdAutoBgDuringStageActivation();
         await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id), {
             status: 'performing',
             performingStartedAt: serverTimestamp()
@@ -9527,6 +9589,45 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         updateStageQuickStartProgress({ roomSetupOpened: true });
         openAdminWorkspace('ops.room_setup');
     }, [openAdminWorkspace, updateStageQuickStartProgress]);
+    const stageQuickStartSummary = stageQuickStartCompletedCount === 4
+        ? 'Quick start complete. Keep running the room from this live deck.'
+        : (isFirstHostRoomRun
+            ? 'Open the TV, share the join link, then handle Apple Music or room setup only if you need it.'
+            : 'Use the live deck first. TV and guest entry matter most, then tune setup only if needed.');
+    const stageQuickStartItems = [
+        {
+            id: 'tv',
+            label: activeQuickStartProgress.tvOpened ? 'Open TV Again' : 'Open Public TV',
+            completed: !!activeQuickStartProgress.tvOpened,
+            ready: stageQuickStartTvReady,
+            disabled: !stageQuickStartTvReady,
+            onClick: handleStageQuickStartOpenTv
+        },
+        {
+            id: 'audience',
+            label: activeQuickStartProgress.joinLinkCopied ? 'Copy Join Link Again' : 'Copy Join Link',
+            completed: !!activeQuickStartProgress.joinLinkCopied,
+            ready: stageQuickStartAudienceReady,
+            disabled: !stageQuickStartAudienceReady,
+            onClick: handleStageQuickStartCopyJoinLink
+        },
+        {
+            id: 'setup',
+            label: activeQuickStartProgress.roomSetupOpened ? 'Reopen Room Setup' : 'Open Room Setup',
+            completed: !!activeQuickStartProgress.roomSetupOpened,
+            ready: stageQuickStartSetupReady,
+            disabled: false,
+            onClick: handleStageQuickStartOpenRoomSetup
+        },
+        {
+            id: 'apple',
+            label: appleMusicAuthorized ? 'Apple Music Connected' : 'Connect Apple Music',
+            completed: !!appleMusicAuthorized,
+            ready: stageQuickStartAppleReady,
+            disabled: !stageQuickStartAppleReady,
+            onClick: handleStageQuickStartConnectAppleMusic
+        }
+    ];
     const leaveAdminWithTarget = (targetTab = 'stage') => {
         setSettingsNavOpen(false);
         setShowSettings(false);
@@ -13118,7 +13219,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         silenceAll,
         commandPaletteRequestToken,
         showLegacyLiveEffects: false,
-        compactViewport: compactHostViewport
+        compactViewport: compactHostViewport,
+        layoutMode: hostStageLayoutMode
     };
     const inAdminWorkspace = tab === 'admin';
 
@@ -13294,6 +13396,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         setSettingsTab('general');
                     }}
                     onOpenHostDashboard={openHostRoomDashboard}
+                    showStageQuickStart={showStageQuickStartChecklist}
+                    stageQuickStartCompletedCount={stageQuickStartCompletedCount}
+                    stageQuickStartSummary={stageQuickStartSummary}
+                    stageQuickStartItems={stageQuickStartItems}
+                    onDismissStageQuickStart={dismissStageQuickStartChecklist}
                 />
                 <ModerationInboxDrawer
                     open={showModerationInbox}
@@ -13330,111 +13437,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 )}
                 {tab === 'stage' && (
                     <>
-                        {showStageQuickStartChecklist && (
-                            <div className="mb-4 rounded-3xl border border-cyan-300/30 bg-gradient-to-r from-cyan-500/12 via-sky-500/10 to-pink-500/12 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
-                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                    <div className="max-w-3xl">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-500/12 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-cyan-100">
-                                                <span className="h-2 w-2 rounded-full bg-cyan-300"></span>
-                                                Quick Start
-                                            </div>
-                                            <div className="inline-flex items-center rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-200">
-                                                {stageQuickStartCompletedCount}/4 Complete
-                                            </div>
-                                        </div>
-                                        <div className="mt-3 text-xl font-black text-white">
-                                            {isFirstHostRoomRun ? `Your first room ${roomCode} is live.` : `Room ${roomCode} is ready to run.`}
-                                        </div>
-                                        <div className="mt-1 text-sm text-cyan-100/80">
-                                            {isFirstHostRoomRun
-                                                ? 'Stay here on the live deck. Open the TV, share the join link, and only jump into Room Setup if you want to tune host identity or defaults.'
-                                                : 'Use this live deck to launch the room fast, then dip into Room Setup only if you need to change configuration.'}
-                                        </div>
-                                        <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-4">
-                                            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-left">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">1. Public TV</div>
-                                                    <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${activeQuickStartProgress.tvOpened ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : stageQuickStartTvReady ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200'}`}>
-                                                        {activeQuickStartProgress.tvOpened ? 'Complete' : stageQuickStartTvReady ? 'Ready' : 'Pending'}
-                                                    </span>
-                                                </div>
-                                                <div className="mt-2 text-xs text-zinc-300">Open the TV surface on the public screen so guests instantly understand the room.</div>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleStageQuickStartOpenTv}
-                                                    disabled={!stageQuickStartTvReady}
-                                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} mt-3 w-full justify-center ${!stageQuickStartTvReady ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                >
-                                                    {activeQuickStartProgress.tvOpened ? 'Open Public TV Again' : 'Open Public TV'}
-                                                </button>
-                                            </div>
-                                            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-left">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">2. Guest Entry</div>
-                                                    <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${activeQuickStartProgress.joinLinkCopied ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : stageQuickStartAudienceReady ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200'}`}>
-                                                        {activeQuickStartProgress.joinLinkCopied ? 'Complete' : stageQuickStartAudienceReady ? 'Ready' : 'Pending'}
-                                                    </span>
-                                                </div>
-                                                <div className="mt-2 text-xs text-zinc-300">Copy the audience link and share it, or just tell people the room code shown in the top bar.</div>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleStageQuickStartCopyJoinLink}
-                                                    disabled={!stageQuickStartAudienceReady}
-                                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 w-full justify-center ${!stageQuickStartAudienceReady ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                >
-                                                    {activeQuickStartProgress.joinLinkCopied ? 'Copy Join Link Again' : 'Copy Join Link'}
-                                                </button>
-                                            </div>
-                                            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-left">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">3. Room Setup</div>
-                                                    <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${activeQuickStartProgress.roomSetupOpened ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : stageQuickStartSetupReady ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-amber-300/40 bg-amber-500/12 text-amber-100'}`}>
-                                                        {activeQuickStartProgress.roomSetupOpened ? 'Complete' : stageQuickStartSetupReady ? 'Optional' : 'Review'}
-                                                    </span>
-                                                </div>
-                                                <div className="mt-2 text-xs text-zinc-300">Need host identity, queue defaults, branding, or automation changes? Room Setup is one click away.</div>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleStageQuickStartOpenRoomSetup}
-                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} mt-3 w-full justify-center`}
-                                                >
-                                                    {activeQuickStartProgress.roomSetupOpened ? 'Reopen Room Setup' : 'Open Room Setup'}
-                                                </button>
-                                            </div>
-                                            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-left">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">4. Apple Music</div>
-                                                    <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${appleMusicAuthorized ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : stageQuickStartAppleReady ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200'}`}>
-                                                        {appleMusicAuthorized ? 'Complete' : stageQuickStartAppleReady ? 'Ready' : 'Pending'}
-                                                    </span>
-                                                </div>
-                                                <div className="mt-2 text-xs text-zinc-300">Connect Apple Music here first. Playlist links live under media settings only after the account is connected.</div>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleStageQuickStartConnectAppleMusic}
-                                                    disabled={!stageQuickStartAppleReady}
-                                                    className={`${STYLES.btnStd} ${appleMusicAuthorized ? STYLES.btnSuccess : STYLES.btnInfo} mt-3 w-full justify-center ${!stageQuickStartAppleReady ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                >
-                                                    {appleMusicAuthorized ? 'Apple Music Connected' : 'Connect Apple Music'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-cyan-100/75">
-                                            <span>{stageQuickStartCompletedCount === 4 ? 'Quick start complete. Keep running the room from this live deck.' : 'Best order: TV first, then guest entry, then Apple Music if you want it, then any setup tuning.'}</span>
-                                            <span>Need another room later? Use <span className="font-semibold text-white">Room Manager</span> in the top bar.</span>
-                                        </div>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={dismissStageQuickStartChecklist}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} shrink-0 self-start`}
-                                    >
-                                        Dismiss
-                                    </button>
-                                </div>
-                            </div>
-                        )}
                         <QueueTab {...queueTabProps} />
                     </>
                 )}

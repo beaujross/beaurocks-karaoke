@@ -13612,6 +13612,33 @@
   pointer-events: none;
 }
 
+.mk3-nav {
+  z-index: 160;
+}
+
+.mk3-shell.mk3-shell-nav,
+.mk3-nav-inner,
+.mk3-site.mk3-site-synthwave .mk3-nav-inner {
+  overflow: visible;
+}
+
+.mk3-shell.mk3-shell-nav,
+.mk3-nav-inner,
+.mk3-mobile-menu,
+.mk3-more-menu,
+.mk3-more-list {
+  position: relative;
+}
+
+.mk3-mobile-menu,
+.mk3-more-list {
+  z-index: 170;
+}
+
+.mk3-more-list {
+  z-index: 180;
+}
+
 .mk3-site.mk3-site-synthwave .mk3-links button:hover::before,
 .mk3-site.mk3-site-synthwave .mk3-links button:focus-visible::before,
 .mk3-site.mk3-site-synthwave .mk3-account-action:hover::before,

@@ -3,6 +3,7 @@ import {
     addDoc,
     collection,
     doc,
+    getDoc,
     writeBatch,
     updateDoc,
     serverTimestamp,
@@ -731,33 +732,77 @@ const useQueueSongActions = ({
             lyrics: song.lyrics || '',
             lyricsTimed: song.lyricsTimed || null,
             appleMusicId: song.appleMusicId || '',
-            duration: song.duration || 180
+            duration: song.duration || 180,
+            lyricsGenerationStatus: song.lyricsGenerationStatus || '',
+            lyricsGenerationResolution: song.lyricsGenerationResolution || '',
+            originalUrl: song.mediaUrl || '',
+            originalLyrics: song.lyrics || '',
+            originalLyricsTimed: song.lyricsTimed || null,
+            originalAppleMusicId: song.appleMusicId || ''
         });
     };
 
     const saveEdit = async () => {
         const durationNum = Number(editForm.duration);
         const safeDuration = Number.isFinite(durationNum) && durationNum > 0 ? Math.round(durationNum) : 180;
+        const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', editingSongId);
+        const latestSnap = await getDoc(songRef).catch(() => null);
+        const latestSong = latestSnap?.exists() ? (latestSnap.data() || {}) : {};
         const normalizedBacking = normalizeBackingChoice({
             mediaUrl: editForm.url,
             appleMusicId: editForm.appleMusicId
         });
         const normalizedUrl = normalizedBacking.mediaUrl;
         const normalizedAppleMusicId = normalizedBacking.appleMusicId;
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', editingSongId), {
+        const originalBacking = normalizeBackingChoice({
+            mediaUrl: editForm.originalUrl,
+            appleMusicId: editForm.originalAppleMusicId
+        });
+        const playbackChanged = normalizedUrl !== originalBacking.mediaUrl
+            || normalizedAppleMusicId !== originalBacking.appleMusicId;
+        const lyricsChanged = String(editForm.lyrics || '') !== String(editForm.originalLyrics || '');
+        const updates = {
             songTitle: editForm.title,
             artist: editForm.artist,
             singerName: editForm.singer,
-            mediaUrl: normalizedUrl,
             albumArtUrl: editForm.art,
-            lyrics: editForm.lyrics,
-            lyricsTimed: editForm.lyricsTimed || null,
-            appleMusicId: normalizedAppleMusicId,
-            musicSource: normalizedAppleMusicId ? 'apple' : '',
-            lyricsSource: editForm.lyricsTimed ? 'apple' : (editForm.lyrics ? 'manual' : ''),
             duration: safeDuration,
             audioOnly: isAudioUrl(normalizedUrl)
-        });
+        };
+        if (playbackChanged) {
+            updates.mediaUrl = normalizedUrl;
+            updates.appleMusicId = normalizedAppleMusicId;
+            updates.musicSource = normalizedAppleMusicId ? 'apple' : '';
+        }
+        if (lyricsChanged) {
+            const nextLyrics = String(editForm.lyrics || '');
+            updates.lyrics = nextLyrics;
+            if (nextLyrics.trim()) {
+                updates.lyricsTimed = null;
+                updates.lyricsSource = 'manual';
+                updates.lyricsGenerationStatus = 'resolved';
+                updates.lyricsGenerationResolution = 'manual';
+            } else {
+                updates.lyricsTimed = null;
+                updates.lyricsSource = '';
+                updates.lyricsGenerationStatus = room?.autoLyricsOnQueue ? 'pending' : 'disabled';
+                updates.lyricsGenerationResolution = room?.autoLyricsOnQueue ? 'manual_cleared' : 'disabled';
+            }
+        } else {
+            const latestLyrics = String(latestSong?.lyrics || '');
+            const latestTimedLyrics = Array.isArray(latestSong?.lyricsTimed) && latestSong.lyricsTimed.length > 0;
+            const latestLyricsSource = String(latestSong?.lyricsSource || '').trim();
+            const latestLyricsStatus = String(latestSong?.lyricsGenerationStatus || '').trim();
+            const latestLyricsResolution = String(latestSong?.lyricsGenerationResolution || '').trim();
+            if (latestLyrics.trim() || latestTimedLyrics || latestLyricsSource || latestLyricsStatus || latestLyricsResolution) {
+                updates.lyrics = latestLyrics;
+                updates.lyricsTimed = latestTimedLyrics ? latestSong.lyricsTimed : null;
+                updates.lyricsSource = latestLyricsSource || (latestTimedLyrics ? 'apple' : '');
+                updates.lyricsGenerationStatus = latestLyricsStatus || 'resolved';
+                updates.lyricsGenerationResolution = latestLyricsResolution || (latestTimedLyrics ? 'resolved' : '');
+            }
+        }
+        await updateDoc(songRef, updates);
         setEditingSongId(null);
         toast('Song Updated');
     };
@@ -804,6 +849,7 @@ const useQueueSongActions = ({
             force: true
         });
         if (result?.toastMessage) toast(result.toastMessage);
+        return result;
     };
 
     const fetchTimedLyricsForSong = async (song) => {
@@ -814,6 +860,7 @@ const useQueueSongActions = ({
             force: true
         });
         if (result?.toastMessage) toast(result.toastMessage);
+        return result;
     };
 
     return {

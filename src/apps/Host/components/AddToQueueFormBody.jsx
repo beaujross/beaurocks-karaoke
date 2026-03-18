@@ -255,108 +255,16 @@ const AddToQueueFormBody = ({
             </div>
         </div>
         <div className="mb-2 rounded-xl border border-white/10 bg-black/30 p-3">
-            <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <div className="text-xs uppercase tracking-widest text-zinc-400">Advanced Playback And Lyrics</div>
-                    <div className="mt-1 text-xs text-zinc-500">
-                        Most songs work without this. Open it when you need to change what plays in the room or what words show on screen.
+                    <div className="text-xs uppercase tracking-widest text-zinc-400">Queue First, Refine After</div>
+                    <div className="mt-1 text-xs text-zinc-500 max-w-2xl">
+                        Add the song quickly here, then use the queue edit modal for custom playback, YouTube backing, lyrics fixes, and timed-lyrics tools.
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
                     <span className={statusPill}>Playback: {mediaSummaryLabel}</span>
-                    <span className={statusPill}>Lyrics: {manual.lyrics ? 'Custom' : 'Auto / None'}</span>
-                </div>
-            </div>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                        <div>
-                            <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-widest text-zinc-400">
-                                <span>Lyrics On Screen</span>
-                                <span className={statusPill}>
-                                    {manual.lyrics ? 'Custom' : 'Auto / None'}
-                                </span>
-                            </div>
-                            <div className="mt-1 text-xs text-zinc-500">
-                                This controls the words shown to the singer and TV.
-                            </div>
-                        </div>
-                        <div className="flex flex-wrap items-center justify-end gap-2">
-                            <button
-                                onClick={() => setLyricsOpen(v => !v)}
-                                className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-xs min-h-[30px]`}
-                            >
-                                {lyricsOpen ? 'Hide Lyrics Box' : 'Add Custom Lyrics'}
-                            </button>
-                            <button
-                                onClick={onGenerateManualLyrics}
-                                className={`${styles.btnStd} ${styles.btnHighlight} px-3 text-xs min-h-[30px]`}
-                                title="Generate lyrics with AI"
-                            >
-                                <i className="fa-solid fa-wand-magic-sparkles"></i>
-                                Auto-Generate
-                            </button>
-                        </div>
-                    </div>
-                    {lyricsOpen && (
-                        <textarea
-                            value={manual.lyrics}
-                            onChange={e=>setManual({...manual, lyrics:e.target.value})}
-                            className={`${styles.input} w-full h-24 font-mono resize-none host-lyrics-input`}
-                            placeholder="Paste custom lyrics if the default lyrics are missing or wrong..."
-                        />
-                    )}
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                        <div>
-                            <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-widest text-zinc-400">
-                                <span>Playback For The Room</span>
-                                <span
-                                    className={statusPill}
-                                    title={manualBackingChip.label === 'Apple Music'
-                                        ? 'Current playback: saved or Apple default'
-                                        : `Current playback: ${manualBackingChip.label}`
-                                    }
-                                >
-                                    {manualBackingChip.label === 'Apple Music'
-                                        ? 'Saved / Apple default'
-                                        : manualBackingChip.label
-                                    }
-                                </span>
-                            </div>
-                            <div className="mt-1 text-xs text-zinc-500">
-                                This is what the room hears and what plays behind the singer.
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <button
-                            onClick={() => setManual(prev => ({ ...prev, url: '', backingAudioOnly: false }))}
-                            className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-[#00C4D9] border-[#00C4D9]`}
-                            title="Use the saved or default backing for this song"
-                        >
-                            <i className="fa-brands fa-apple mr-1"></i>
-                            Use Saved / Default
-                        </button>
-                        <button
-                            onClick={() => openYtSearch('manual', `${manual.song} ${manual.artist}`.trim() || searchQ)}
-                            className={`${styles.btnStd} ${styles.btnNeutral} px-3 text-[#00C4D9] border-[#00C4D9]`}
-                            title="Search YouTube and choose the backing that should play"
-                        >
-                            <i className="fa-brands fa-youtube mr-1"></i>
-                            Choose YouTube Backing
-                        </button>
-                    </div>
-                    <input
-                        value={manual.url}
-                        onChange={e=>setManual({...manual, url:e.target.value})}
-                        className={styles.input}
-                        placeholder="Optional: paste a YouTube, local, or playlist URL directly"
-                    />
-                    <div className="host-form-helper mt-2">
-                        Leave this blank to use the saved/default backing. Playlist URLs queue up to 1000 tracks.
-                    </div>
+                    <span className={statusPill}>Lyrics: {manual.lyrics ? 'Custom queued' : 'Resolve after queue'}</span>
                 </div>
             </div>
         </div>
