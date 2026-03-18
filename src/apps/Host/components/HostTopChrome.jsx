@@ -258,6 +258,9 @@ const HostTopChrome = ({
         setShowLaunchMenu(false);
         setShowNavMenu(false);
     }, [closeAllDeckMenus, setShowLaunchMenu, setShowNavMenu]);
+    const closeMenusBeforeNavigation = React.useCallback(() => {
+        closeAllTopMenus();
+    }, [closeAllTopMenus]);
     const commitRoomPatch = React.useCallback((patch) => {
         Promise.resolve(updateRoom?.(patch)).catch(() => {});
     }, [updateRoom]);
@@ -451,6 +454,38 @@ const HostTopChrome = ({
             window.removeEventListener('keydown', handleEscape);
         };
     }, [anyTopMenuOpen, closeAllTopMenus]);
+
+    React.useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'hidden' || document.visibilityState === 'visible') {
+                closeAllTopMenus();
+            }
+        };
+        const handleBlur = () => {
+            closeAllTopMenus();
+        };
+        const handleFocus = () => {
+            closeAllTopMenus();
+        };
+        const handlePageHide = () => {
+            closeAllTopMenus();
+        };
+        const handlePageShow = () => {
+            closeAllTopMenus();
+        };
+        window.addEventListener('blur', handleBlur);
+        window.addEventListener('focus', handleFocus);
+        window.addEventListener('pagehide', handlePageHide);
+        window.addEventListener('pageshow', handlePageShow);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            window.removeEventListener('blur', handleBlur);
+            window.removeEventListener('focus', handleFocus);
+            window.removeEventListener('pagehide', handlePageHide);
+            window.removeEventListener('pageshow', handlePageShow);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [closeAllTopMenus]);
 
     const buildCrowdObjectiveRoomPatch = React.useCallback((modeLightMode) => {
         if (!modeLightMode) return {};
@@ -651,7 +686,10 @@ const HostTopChrome = ({
                                 href={launchTvHref}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                onClick={() => setShowLaunchMenu(false)}
+                                onPointerDown={closeMenusBeforeNavigation}
+                                onTouchStart={closeMenusBeforeNavigation}
+                                onMouseDown={closeMenusBeforeNavigation}
+                                onClick={closeMenusBeforeNavigation}
                                 className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900 rounded-t-xl"
                             >
                                 <i className="fa-solid fa-tv mr-2 text-cyan-300"></i> Launch TV
@@ -660,7 +698,10 @@ const HostTopChrome = ({
                                 href={launchAudienceHref}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                onClick={() => setShowLaunchMenu(false)}
+                                onPointerDown={closeMenusBeforeNavigation}
+                                onTouchStart={closeMenusBeforeNavigation}
+                                onMouseDown={closeMenusBeforeNavigation}
+                                onClick={closeMenusBeforeNavigation}
                                 className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
                             >
                                 <i className="fa-solid fa-mobile-screen-button mr-2 text-pink-300"></i> Launch Mobile
@@ -669,7 +710,10 @@ const HostTopChrome = ({
                                 href={`${resolvedHostBase}?room=${roomCode}&mode=host&tab=browse&catalogue=1`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                onClick={() => setShowLaunchMenu(false)}
+                                onPointerDown={closeMenusBeforeNavigation}
+                                onTouchStart={closeMenusBeforeNavigation}
+                                onMouseDown={closeMenusBeforeNavigation}
+                                onClick={closeMenusBeforeNavigation}
                                 className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
                             >
                                 <i className="fa-solid fa-book-open mr-2 text-yellow-300"></i> Launch Catalogue
@@ -683,7 +727,10 @@ const HostTopChrome = ({
                                     href={`${resolvedHostBase}?room=${roomCode}&mode=host&game=${game.id}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    onClick={() => setShowLaunchMenu(false)}
+                                    onPointerDown={closeMenusBeforeNavigation}
+                                    onTouchStart={closeMenusBeforeNavigation}
+                                    onMouseDown={closeMenusBeforeNavigation}
+                                    onClick={closeMenusBeforeNavigation}
                                     className={`block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900 ${idx === arr.length - 1 ? 'rounded-b-xl' : ''}`}
                                 >
                                     <i className="fa-solid fa-gamepad mr-2 text-cyan-300"></i>

@@ -2,8 +2,9 @@ import React from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
 import {
   MARKETING_BRAND_BADGE_URL,
-  MARKETING_DJ_BEAUROCKS_AVATAR_URL,
+  MARKETING_BRAND_NEON_URL,
 } from "./shared";
+import { PersonaSurfaceMock } from "./PersonaMarketingBlocks";
 
 const FAN_BADGES = [
   "TV-led room flow",
@@ -39,32 +40,38 @@ const HOW_IT_WORKS_STEPS = [
     step: "01",
     title: "The TV gives the room one place to look",
     copy: "The start screen, join code, and stage state make the room feel hosted before the first song starts.",
-    imageUrl: "/images/marketing/tv-start-aahf-current.png",
+    visualType: "tv",
+    visualLabel: "Public TV",
   },
   {
     step: "02",
     title: "Guests join with a name, emoji, and one clear next step",
     copy: "The audience app gets people into the room quickly instead of making them figure out an account flow first.",
-    imageUrl: "/images/marketing/audience-join-aahf-current.png",
+    visualType: "audience",
+    visualLabel: "Audience app",
   },
   {
     step: "03",
     title: "The host runs queue, TV, and room control from one deck",
     copy: "Search, queue, audio, and TV controls stay together so the room keeps moving.",
-    imageUrl: "/images/marketing/BeauRocks-HostPanel.png",
+    visualType: "host",
+    visualLabel: "Host deck",
   },
 ];
 
 const HERO_PROOF_STRIP = [
   {
+    label: "Speed",
     title: "Phones join fast",
     copy: "Guests can enter the room without passing paper or waiting for directions.",
   },
   {
+    label: "Room lead",
     title: "The TV leads the night",
     copy: "Join prompts, queue state, and stage context stay visible to the whole room.",
   },
   {
+    label: "Control",
     title: "The host keeps control",
     copy: "One deck manages search, queue, TV layout, and the room's next move.",
   },
@@ -149,19 +156,23 @@ const ForFansPage = ({ navigate }) => {
   };
 
   return (
-    <section className="mk3-page mk3-persona-command is-fan">
-      <article className="mk3-detail-card mk3-fans-home-hero mk3-zone">
-        <div className="mk3-fans-home-copy">
-          <div className="mk3-persona-kicker">beaurocks karaoke overview</div>
-          <div className="mk3-fans-home-brand-pill">
-            <img src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks badge" />
+    <section className="mk3-page mk3-fans-flagship">
+      <article className="mk3-fans-flagship-hero mk3-fans-flagship-stageband">
+        <div className="mk3-fans-flagship-copy">
+          <div className="mk3-fans-flagship-kicker">BeauRocks Karaoke Overview</div>
+          <div className="mk3-fans-flagship-brandline">
+            <img src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks logo" loading="lazy" />
             <span>Hosted karaoke software built for rooms that should feel smoother, louder, and easier to join.</span>
           </div>
           <h1>Modern karaoke nights that feel better on every screen in the room.</h1>
-          <p>The TV leads the room, guests join from their phones, and the host runs the night from one deck instead of juggling disconnected tools.</p>
-          <div className="mk3-actions-inline">
+          <p>
+            The TV leads the room, guests join from their phones, and the host runs the night from one deck
+            instead of juggling disconnected tools.
+          </p>
+          <div className="mk3-fans-flagship-actions">
             <button
               type="button"
+              className="mk3-rebuild-button is-primary"
               onClick={() => {
                 trackPersonaCta("primary_open_discover");
                 navigate("discover");
@@ -171,6 +182,7 @@ const ForFansPage = ({ navigate }) => {
             </button>
             <button
               type="button"
+              className="mk3-rebuild-button is-secondary"
               onClick={() => {
                 trackPersonaCta("secondary_open_host_overview");
                 navigate("for_hosts");
@@ -180,7 +192,7 @@ const ForFansPage = ({ navigate }) => {
             </button>
             <button
               type="button"
-              className="mk3-secondary-ghost"
+              className="mk3-rebuild-button is-ghost"
               onClick={() => {
                 trackPersonaCta("tertiary_open_demo_auto");
                 navigate("demo_auto");
@@ -189,71 +201,58 @@ const ForFansPage = ({ navigate }) => {
               Watch Auto Demo
             </button>
           </div>
-          <div className="mk3-persona-badge-row">
+          <div className="mk3-fans-flagship-badges">
             {FAN_BADGES.map((badge) => (
               <span key={badge}>{badge}</span>
             ))}
           </div>
-          <div className="mk3-fans-home-proof-strip">
-            {HERO_PROOF_STRIP.map((item) => (
-              <article key={item.title} className="mk3-fans-home-proof-pill">
-                <strong>{item.title}</strong>
-                <span>{item.copy}</span>
-              </article>
-            ))}
-          </div>
         </div>
 
-        <div className="mk3-fans-home-visual">
-          <article className="mk3-fans-home-surface-feature">
-            <img
-              className="mk3-fans-home-surface-feature-image"
-              src="/images/marketing/tv-live-aahf-current.png"
-              alt="BeauRocks Public TV live room state"
-              loading="lazy"
+        <div className="mk3-fans-flagship-stage">
+          <article className="mk3-fans-flagship-tv">
+            <PersonaSurfaceMock
+              type="tv"
+              label="Public TV"
+              title="The TV becomes the public room state, not just a passive lyrics screen."
+              copy="Room code, stage state, queue context, and visible activity make the room easier to follow from the start."
+              className="mk3-fans-stage-mock is-hero-tv"
             />
-            <div className="mk3-fans-home-surface-feature-overlay">
-              <div className="mk3-fans-home-stage-topline">
-                <div className="mk3-chip mk3-chip-elevated">
-                  <img className="mk3-chip-icon" src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks badge" loading="lazy" />
-                  <span>Public TV</span>
-                </div>
-                <div className="mk3-fans-home-host-pill">
-                  <img src={MARKETING_DJ_BEAUROCKS_AVATAR_URL} alt="DJ BeauRocks" loading="lazy" />
-                  <span>Start the show on the room screen</span>
-                </div>
-              </div>
-              <div className="mk3-fans-home-stage-copy">
-                <strong>The TV becomes the public room state, not just a passive lyrics screen.</strong>
-                <span>Room code, stage state, queue context, and visible activity make the room easier to follow from the start.</span>
-              </div>
-            </div>
           </article>
-          <div className="mk3-fans-home-stage-stack">
-            <article className="mk3-fans-home-stage-panel is-audience">
-              <span>Audience App</span>
-              <img src="/images/marketing/audience-join-aahf-current.png" alt="Audience app join screen" loading="lazy" />
+
+          <div className="mk3-fans-flagship-surface-rail">
+            <article>
+              <PersonaSurfaceMock
+                type="audience"
+                label="Audience app"
+                title="Get guests in fast"
+                copy="Name, emoji, and one obvious next step keep the room moving."
+                className="mk3-fans-stage-mock"
+              />
             </article>
-            <article className="mk3-fans-home-stage-panel">
-              <span>Public TV</span>
-              <img src="/images/marketing/tv-start-aahf-current.png" alt="Public TV room start screen" loading="lazy" />
-            </article>
-            <article className="mk3-fans-home-stage-panel is-host">
-              <span>Host Deck</span>
-              <img src="/images/marketing/BeauRocks-HostPanel.png" alt="Host dashboard" loading="lazy" />
+            <article>
+              <PersonaSurfaceMock
+                type="host"
+                label="Host deck"
+                title="Keep the room ahead"
+                copy="Search, queue, TV, and room control live in one operator surface."
+                className="mk3-fans-stage-mock"
+              />
             </article>
           </div>
         </div>
       </article>
 
-      <section className="mk3-detail-card mk3-zone mk3-fans-home-trust-band">
-        <div>
-          <div className="mk3-persona-kicker">why this feels credible</div>
-          <h2>Built for real rooms, public events, and private nights that need structure.</h2>
+      <section className="mk3-fans-proof-band mk3-fans-open-band">
+        <div className="mk3-fans-proof-head">
+          <div>
+            <div className="mk3-fans-flagship-kicker">Why the room feels different</div>
+            <h2>One clear signal for the room. One cleaner flow for everybody in it.</h2>
+          </div>
+          <img src={MARKETING_BRAND_NEON_URL} alt="" aria-hidden="true" />
         </div>
-        <div className="mk3-fans-home-trust-grid">
-          {TRUST_SIGNALS.map((item) => (
-            <article key={item.title} className="mk3-fans-home-trust-card">
+        <div className="mk3-fans-proof-grid">
+          {HERO_PROOF_STRIP.map((item) => (
+            <article key={item.title} className="mk3-fans-proof-note">
               <span>{item.label}</span>
               <strong>{item.title}</strong>
               <p>{item.copy}</p>
@@ -262,17 +261,18 @@ const ForFansPage = ({ navigate }) => {
         </div>
       </section>
 
-      <section className="mk3-detail-card mk3-zone mk3-fans-home-how-band">
-        <div>
-          <div className="mk3-persona-kicker">how beaurocks works</div>
-          <h2>Three screens. One cleaner karaoke flow.</h2>
+      <section className="mk3-fans-system-band mk3-fans-open-band">
+        <div className="mk3-fans-system-head">
+          <div className="mk3-fans-flagship-kicker">How BeauRocks works</div>
+          <h2>Three surfaces. One room signal.</h2>
+          <p>The product should feel like one hosted system across the room, not separate tools stitched together.</p>
         </div>
-        <div className="mk3-fans-home-how-grid">
+        <div className="mk3-fans-system-grid">
           {HOW_IT_WORKS_STEPS.map((item) => (
-            <article key={item.step} className="mk3-fans-home-how-card">
+            <article key={item.step} className="mk3-fans-system-card">
+              <div className="mk3-fans-system-card-index">{item.step}</div>
               <img src={item.imageUrl} alt={item.title} loading="lazy" />
               <div>
-                <span>{item.step}</span>
                 <strong>{item.title}</strong>
                 <p>{item.copy}</p>
               </div>
@@ -281,51 +281,65 @@ const ForFansPage = ({ navigate }) => {
         </div>
       </section>
 
-      <section className="mk3-detail-card mk3-zone mk3-fans-home-benefit-band">
-        <div>
-          <div className="mk3-persona-kicker">why the room feels better</div>
-          <h2>The payoff should feel obvious before someone learns every deeper feature.</h2>
-        </div>
-        <div className="mk3-fans-home-proof-grid">
+      <section className="mk3-fans-credibility-band mk3-fans-open-band">
+        <div className="mk3-fans-credibility-story">
+          <div className="mk3-fans-flagship-kicker">Why this feels credible</div>
+          <h2>Built for real rooms, public events, and private nights that need structure.</h2>
+          <p>
+            The payoff should feel obvious before someone learns every deeper feature:
+            faster room starts, stronger between-song energy, and a system that feels more sellable than basic karaoke software.
+          </p>
+          <div className="mk3-fans-benefit-stack">
           {EXPERIENCE_BENEFITS.map((item) => (
-            <article key={item.title} className="mk3-detail-card mk3-zone">
+              <article key={item.title} className="mk3-fans-benefit-note">
+                <strong>{item.title}</strong>
+                <p>{item.copy}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+        <div className="mk3-fans-credibility-grid">
+          {TRUST_SIGNALS.map((item) => (
+            <article key={item.title} className="mk3-fans-credibility-note">
+              <span>{item.label}</span>
               <strong>{item.title}</strong>
-              <span>{item.copy}</span>
+              <p>{item.copy}</p>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="mk3-detail-card mk3-zone mk3-fans-home-event-band">
-        <div>
-          <div className="mk3-persona-kicker">what beaurocks karaoke is perfect for</div>
-          <h2>Use BeauRocks for the kinds of nights that need clearer room flow and easier guest participation.</h2>
+      <section className="mk3-fans-fit-band mk3-fans-open-band">
+        <div className="mk3-fans-fit-head">
+          <div className="mk3-fans-flagship-kicker">What BeauRocks is perfect for</div>
+          <h2>Use BeauRocks for nights that need clearer room flow and easier guest participation.</h2>
         </div>
-        <div className="mk3-fans-home-event-grid">
+        <div className="mk3-fans-fit-grid">
           {EVENT_TYPE_CARDS.map((item) => (
-            <article key={item.title} className="mk3-fans-home-event-card">
+            <article key={item.title} className="mk3-fans-fit-card">
               <img src={item.imageUrl} alt={item.title} loading="lazy" />
               <div>
                 <strong>{item.title}</strong>
-                <span>{item.copy}</span>
+                <p>{item.copy}</p>
               </div>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="mk3-detail-card mk3-zone mk3-fans-home-closing-band">
-        <div>
-          <div className="mk3-persona-kicker">pick your next step</div>
+      <section className="mk3-fans-closing-band mk3-fans-open-band">
+        <div className="mk3-fans-closing-head">
+          <div className="mk3-fans-flagship-kicker">Pick your next step</div>
           <h2>Start with the path that matches why you're here.</h2>
         </div>
-        <div className="mk3-fans-home-closing-grid">
-          {FINAL_PATHS.map((item) => (
-            <article key={item.title} className="mk3-fans-home-closing-card">
+        <div className="mk3-fans-closing-grid">
+          {FINAL_PATHS.map((item, index) => (
+            <article key={item.title} className="mk3-fans-closing-note">
               <strong>{item.title}</strong>
               <p>{item.copy}</p>
               <button
                 type="button"
+                className={`mk3-rebuild-button ${index === 0 ? "is-primary" : "is-secondary"}`}
                 onClick={() => {
                   trackPersonaCta(`closing_${item.route}`);
                   navigate(item.route);

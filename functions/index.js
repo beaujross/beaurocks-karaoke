@@ -2059,8 +2059,10 @@ const normalizeDirectoryTextBlock = (value = "", maxLen = 5000) =>
 const normalizeDirectoryOptionalUrl = (value = "") => {
   const url = safeDirectoryString(value, 2048);
   if (!url) return "";
+  if (url.startsWith("/")) return url;
+  if (url.startsWith("//")) return `https:${url}`;
   if (!/^https?:\/\//i.test(url)) return "";
-  return url;
+  return url.replace(/^http:\/\//i, "https://");
 };
 
 const normalizeDirectoryStringArray = (input = [], maxItems = 8, maxLen = 260) => {
@@ -2360,6 +2362,10 @@ const isOfficialBeauRocksListing = (listing = {}) => {
     false
   );
   if (explicitOfficial) return true;
+  return !!getOfficialBeauRocksRegistryEntry(listing);
+};
+
+const getOfficialBeauRocksRegistryEntry = (listing = {}) => {
   const roomCode = normalizeRoomCode(listing?.roomCode || "");
   const text = normalizeDirectoryDiscoverBrandText(
     listing?.title,
@@ -2370,15 +2376,138 @@ const isOfficialBeauRocksListing = (listing = {}) => {
     listing?.city,
     listing?.state
   );
-  return OFFICIAL_BEAUROCKS_DISCOVER_REGISTRY.some((entry) => {
+  return OFFICIAL_BEAUROCKS_DISCOVER_REGISTRY.find((entry) => {
     if (roomCode && entry.matchRoomCodes.includes(roomCode)) return true;
     return entry.matchTerms.some((term) => text.includes(term));
-  });
+  }) || null;
 };
 
 const isOfficialBeauRocksRoomListing = (listing = {}) => {
   if (String(listing?.listingType || "") !== "room_session") return false;
   return isOfficialBeauRocksListing(listing);
+};
+
+const mergeDirectoryDiscoverDuplicateListings = (existing = {}, candidate = {}) => {
+  const existingIsOfficialRegistry = String(existing?.sourceType || "") === "official_registry";
+  const candidateIsOfficialRegistry = String(candidate?.sourceType || "") === "official_registry";
+  const primary = candidateIsOfficialRegistry && !existingIsOfficialRegistry
+    ? candidate
+    : existing;
+  const secondary = primary === existing ? candidate : existing;
+  const pickUrl = (...values) => {
+    for (const entry of values) {
+      const normalized = normalizeDirectoryOptionalUrl(entry || "");
+      if (normalized) return normalized;
+    }
+    return "";
+  };
+  const externalSources = primary?.externalSources && typeof primary.externalSources === "object"
+    && Object.keys(primary.externalSources).length
+    ? primary.externalSources
+    : (secondary?.externalSources && typeof secondary.externalSources === "object"
+      ? secondary.externalSources
+      : {});
+
+  return {
+    ...secondary,
+    ...primary,
+    hostUid: safeDirectoryString(primary?.hostUid || secondary?.hostUid || "", 180),
+    ownerUid: safeDirectoryString(primary?.ownerUid || secondary?.ownerUid || "", 180),
+    venueId: safeDirectoryString(primary?.venueId || secondary?.venueId || "", 180),
+    roomCode: normalizeRoomCode(primary?.roomCode || secondary?.roomCode || ""),
+    imageUrl: pickUrl(
+      primary?.imageUrl,
+      primary?.photoUrl,
+      primary?.heroImageUrl,
+      secondary?.imageUrl,
+      secondary?.photoUrl,
+      secondary?.heroImageUrl
+    ),
+    photoUrl: pickUrl(
+      primary?.photoUrl,
+      primary?.imageUrl,
+      secondary?.photoUrl,
+      secondary?.imageUrl
+    ),
+    heroImageUrl: pickUrl(
+      primary?.heroImageUrl,
+      primary?.imageUrl,
+      primary?.photoUrl,
+      secondary?.heroImageUrl,
+      secondary?.imageUrl
+    ),
+    coverImageUrl: pickUrl(
+      primary?.coverImageUrl,
+      primary?.heroImageUrl,
+      primary?.imageUrl,
+      secondary?.coverImageUrl,
+      secondary?.heroImageUrl
+    ),
+    bannerUrl: pickUrl(
+      primary?.bannerUrl,
+      primary?.coverImageUrl,
+      primary?.heroImageUrl,
+      secondary?.bannerUrl,
+      secondary?.coverImageUrl
+    ),
+    avatarUrl: pickUrl(
+      primary?.avatarUrl,
+      primary?.hostAvatarUrl,
+      secondary?.avatarUrl,
+      secondary?.hostAvatarUrl
+    ),
+    imageUrls: normalizeDirectoryUrlArray([
+      primary?.imageUrls,
+      primary?.galleryUrls,
+      primary?.photos,
+      primary?.imageUrl,
+      secondary?.imageUrls,
+      secondary?.galleryUrls,
+      secondary?.photos,
+      secondary?.imageUrl,
+    ], 12),
+    galleryUrls: normalizeDirectoryUrlArray([
+      primary?.galleryUrls,
+      primary?.imageUrls,
+      primary?.photos,
+      primary?.imageUrl,
+      secondary?.galleryUrls,
+      secondary?.imageUrls,
+      secondary?.photos,
+      secondary?.imageUrl,
+    ], 12),
+    photos: normalizeDirectoryUrlArray([
+      primary?.photos,
+      primary?.imageUrls,
+      primary?.galleryUrls,
+      primary?.imageUrl,
+      secondary?.photos,
+      secondary?.imageUrls,
+      secondary?.galleryUrls,
+      secondary?.imageUrl,
+    ], 12),
+    officialBadgeImageUrl: pickUrl(
+      primary?.officialBadgeImageUrl,
+      secondary?.officialBadgeImageUrl
+    ),
+    matchTerms: Array.from(new Set([
+      ...(Array.isArray(secondary?.matchTerms) ? secondary.matchTerms : []),
+      ...(Array.isArray(primary?.matchTerms) ? primary.matchTerms : []),
+    ].filter(Boolean))),
+    matchRoomCodes: Array.from(new Set([
+      ...(Array.isArray(secondary?.matchRoomCodes) ? secondary.matchRoomCodes : []),
+      ...(Array.isArray(primary?.matchRoomCodes) ? primary.matchRoomCodes : []),
+    ].filter(Boolean))),
+    externalSources,
+  };
+};
+
+const getDirectoryDiscoverDedupKey = (listing = {}) => {
+  const officialRegistryEntry = getOfficialBeauRocksRegistryEntry(listing);
+  if (officialRegistryEntry) {
+    return `official:${String(officialRegistryEntry.listingType || "event")}:${String(officialRegistryEntry.id || "").trim()}`;
+  }
+  return `${String(listing?.listingType || "").trim().toLowerCase()}:${String(listing?.id || "").trim()}`;
 };
 
 const getDirectoryDiscoverVenueId = (listing = {}) => {
@@ -4619,7 +4748,7 @@ const DEMO_SCENE_PLAYBOOK = Object.freeze({
       singerName: "DJ BeauRocks",
       singerUid: "demo_host_beaurocks",
       mediaUrl: DEMO_MEDIA_URLS[0],
-      albumArtUrl: "/images/marketing/aahf-karaoke-kickoff-2026.png",
+      albumArtUrl: "/images/marketing/CLEAN%201.png",
       lyrics: "Hands up high now, the whole room sways in time",
       duration: 228,
     },
@@ -4849,7 +4978,7 @@ const DEMO_SCENE_PLAYBOOK = Object.freeze({
         singerName: "DJ BeauRocks",
         singerUid: "demo_host_beaurocks",
         mediaUrl: DEMO_MEDIA_URLS[2],
-        albumArtUrl: "/images/marketing/aahf-karaoke-kickoff-2026.png",
+        albumArtUrl: "/images/marketing/CLEAN%201.png",
         duration: 224,
       },
     ],
@@ -4888,7 +5017,7 @@ const DEMO_SCENE_PLAYBOOK = Object.freeze({
         singerName: "DJ BeauRocks",
         singerUid: "demo_host_beaurocks",
         mediaUrl: DEMO_MEDIA_URLS[2],
-        albumArtUrl: "/images/marketing/aahf-karaoke-kickoff-2026.png",
+        albumArtUrl: "/images/marketing/CLEAN%201.png",
         duration: 224,
       },
     ],
@@ -4917,7 +5046,7 @@ const DEMO_SCENE_PLAYBOOK = Object.freeze({
         singerName: "DJ BeauRocks",
         singerUid: "demo_host_beaurocks",
         mediaUrl: DEMO_MEDIA_URLS[2],
-        albumArtUrl: "/images/marketing/aahf-karaoke-kickoff-2026.png",
+        albumArtUrl: "/images/marketing/CLEAN%201.png",
         duration: 224,
       },
     ],
@@ -4935,7 +5064,7 @@ const DEMO_SCENE_PLAYBOOK = Object.freeze({
       singerName: "DJ BeauRocks",
       singerUid: "demo_host_beaurocks",
       mediaUrl: DEMO_MEDIA_URLS[2],
-      albumArtUrl: "/images/marketing/aahf-karaoke-kickoff-2026.png",
+      albumArtUrl: "/images/marketing/CLEAN%201.png",
       lyrics: "Final round now, everybody lean in close",
       duration: 224,
     },
@@ -10131,11 +10260,16 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     })),
   ];
   const dedupedMerged = [];
-  const mergedKeys = new Set();
+  const mergedIndexByKey = new Map();
   merged.forEach((item) => {
-    const key = `${String(item?.listingType || "").trim().toLowerCase()}:${String(item?.id || "").trim()}`;
-    if (!key || mergedKeys.has(key)) return;
-    mergedKeys.add(key);
+    const key = getDirectoryDiscoverDedupKey(item);
+    if (!key) return;
+    const existingIndex = mergedIndexByKey.get(key);
+    if (Number.isInteger(existingIndex) && existingIndex >= 0) {
+      dedupedMerged[existingIndex] = mergeDirectoryDiscoverDuplicateListings(dedupedMerged[existingIndex], item);
+      return;
+    }
+    mergedIndexByKey.set(key, dedupedMerged.length);
     dedupedMerged.push(item);
   });
   const normalizeVenueLookupToken = (value = "") =>

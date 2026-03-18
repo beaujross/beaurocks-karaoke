@@ -13,8 +13,8 @@
       "AAHF"
     ],
     "description": "Official BeauRocks showcase night for the 2026 Asian Arts & Heritage Festival kickoff on Bainbridge Island.",
-    "startsAt": "2026-05-01T17:00:00-07:00",
-    "endsAt": "2026-05-01T21:00:00-07:00",
+    "startsAt": "2026-05-01T19:00:00-07:00",
+    "endsAt": "2026-05-02T00:00:00-07:00",
     "region": "wa_kitsap",
     "venueName": "Bainbridge Island Museum of Art",
     "hostName": "DJ BeauRocks",
@@ -27,8 +27,30 @@
       "lat": 47.62654,
       "lng": -122.52197
     },
-    "imageUrl": "/images/marketing/aahf-karaoke-kickoff-draft-clean.png",
-    "officialBadgeImageUrl": "/images/logo-library/AAHF 2026 Base Badge.png",
+    "imageUrl": "/images/marketing/CLEAN%201.png",
+    "photoUrl": "/images/marketing/AAHF-KaraokeKickoff-Flyer%203.17%202x.png",
+    "heroImageUrl": "/images/marketing/AAHF-KaraokeKickoff-Flyer%203.17%202x.png",
+    "coverImageUrl": "/images/marketing/AAHF-KaraokeKickoff-Flyer%203.17%202x.png",
+    "bannerUrl": "/images/marketing/AAHF-KaraokeKickoff-Flyer%203.17%202x.png",
+    "imageUrls": [
+      "/images/marketing/CLEAN%201.png",
+      "/images/marketing/AAHF-KaraokeKickoff-Flyer%203.17%202x.png",
+      "/images/marketing/GoldenTIcket.png",
+      "/images/marketing/karaoke-kickoff-logo-simple.png"
+    ],
+    "galleryUrls": [
+      "/images/marketing/CLEAN%201.png",
+      "/images/marketing/AAHF-KaraokeKickoff-Flyer%203.17%202x.png",
+      "/images/marketing/GoldenTIcket.png",
+      "/images/marketing/karaoke-kickoff-logo-simple.png"
+    ],
+    "photos": [
+      "/images/marketing/CLEAN%201.png",
+      "/images/marketing/AAHF-KaraokeKickoff-Flyer%203.17%202x.png",
+      "/images/marketing/GoldenTIcket.png",
+      "/images/marketing/karaoke-kickoff-logo-simple.png"
+    ],
+    "officialBadgeImageUrl": "/images/marketing/karaoke-kickoff-logo-simple.png",
     "beauRocksCapabilities": [
       "audience_app",
       "interactive_tv",

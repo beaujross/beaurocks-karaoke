@@ -1,5 +1,15 @@
 import React from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
+import {
+  PersonaClosingSection,
+  PersonaFeatureSection,
+  PersonaFlowSection,
+  PersonaHeroScaffold,
+  PersonaOutcomeSection,
+  PersonaPageFrame,
+  PersonaSurfaceMock,
+  PersonaSignalSection,
+} from "./PersonaMarketingBlocks";
 
 const VENUE_BADGES = [
   "Claim your listing",
@@ -11,6 +21,7 @@ const VENUE_STORY_POINTS = [
   "The best karaoke nights become part of someone's weekly routine.",
   "Clear listings and schedules help guests trust the plan.",
   "A venue page should answer the basics fast.",
+  "Reliable discovery turns drop-ins into regulars.",
 ];
 
 const VENUE_OUTCOME_POINTS = [
@@ -61,19 +72,22 @@ const VENUE_SURFACE_STEPS = [
     step: "01",
     title: "The TV tells the room where to look",
     copy: "A public join prompt and live room state make karaoke feel easier to understand in a busy venue.",
-    imageUrl: "/images/marketing/tv-live-aahf-current.png",
+    visualType: "tv",
+    visualLabel: "Public TV",
   },
   {
     step: "02",
     title: "Guest phones lower the friction",
     copy: "People join, react, and request without crowding the host stand or asking what to do next.",
-    imageUrl: "/images/marketing/audience-surface-live.png",
+    visualType: "audience",
+    visualLabel: "Audience app",
   },
   {
     step: "03",
     title: "The host keeps the venue night moving",
     copy: "Search, queue, and TV controls stay in one place so the room keeps its pace.",
-    imageUrl: "/images/marketing/BeauRocks-HostPanel.png",
+    visualType: "host",
+    visualLabel: "Host deck",
   },
 ];
 
@@ -123,6 +137,7 @@ const VENUE_FLOW_STEPS = [
 
 const ForVenuesPage = ({ navigate, session, authFlow }) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
+
   const trackPersonaCta = (cta = "") => {
     trackEvent("mk_persona_cta_click", {
       persona: "venue_owner",
@@ -131,186 +146,152 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
     });
   };
 
+  const openClaimFlow = () => {
+    trackPersonaCta(canSubmit ? "primary_claim_venue" : "primary_claim_venue_auth_gate");
+    if (canSubmit) {
+      navigate("submit");
+      return;
+    }
+    authFlow?.requireFullAuth?.({
+      intent: "listing_submit",
+      targetType: "venue",
+      targetId: "",
+      returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "venue" } },
+    });
+  };
+
   return (
-    <section className="mk3-page mk3-persona-command is-venue">
-      <article className="mk3-detail-card mk3-persona-hero mk3-zone mk3-venue-hero-shell">
-        <div className="mk3-persona-hero-grid">
-          <div className="mk3-persona-hero-copy">
-            <div className="mk3-persona-kicker">for venues</div>
-            <h1>Turn karaoke into a night guests plan around.</h1>
-            <p>Claim your venue, publish a clear schedule, and make the night easy to trust.</p>
-            <div className="mk3-persona-badge-row">
-              {VENUE_BADGES.map((badge) => (
-                <span key={badge}>{badge}</span>
-              ))}
-            </div>
-            <div className="mk3-persona-stat-row">
-              <article className="mk3-persona-stat-card">
-                <strong>Reliable schedule</strong>
-                <span>Help guests build your night into their week.</span>
+    <PersonaPageFrame theme="venue">
+      <PersonaHeroScaffold
+        theme="venue"
+        className="mk3-venue-hero"
+        railClassName="mk3-venue-hero-rail-wrap"
+        proofClassName="mk3-venue-proof-strip"
+        kicker="For venues"
+        brandLine="Claim your venue, publish a clear schedule, and make the night easy to trust."
+        title="Turn karaoke into a night guests plan around."
+        subtitle="Reliable nights beat random hype. A clear listing, a better room flow, and consistent host details turn discovery into repeat attendance."
+        actions={[
+          {
+            label: "Claim Your Venue",
+            variant: "primary",
+            onClick: openClaimFlow,
+          },
+          {
+            label: "Browse Karaoke Nights",
+            variant: "secondary",
+            onClick: () => {
+              trackPersonaCta("secondary_open_discover");
+              navigate("discover");
+            },
+          },
+        ]}
+        badges={VENUE_BADGES}
+        proofItems={VENUE_SIGNAL_CARDS.map((item) => ({ eyebrow: item.label, title: item.title, copy: item.copy }))}
+        rightRail={(
+          <div className="mk3-venue-hero-board">
+            <article className="mk3-venue-hero-screen">
+              <PersonaSurfaceMock
+                type="tv"
+                label="Venue night"
+                title="Show the room code, stage prompt, and queue on one clean screen."
+                copy="When the TV clearly says Stage Open and Scan to Sing, the room feels organized fast."
+                className="mk3-venue-hero-mock"
+              />
+            </article>
+
+            <div className="mk3-venue-hero-strip">
+              <article className="mk3-venue-hero-note is-ownership">
+                <span>Ownership</span>
+                <strong>Claim the listing</strong>
+                <p>Keep venue details and schedule updates in the right hands.</p>
               </article>
-              <article className="mk3-persona-stat-card">
-                <strong>Clear ownership</strong>
-                <span>Keep the venue, host, and public listing aligned.</span>
+              <article className="mk3-venue-hero-card is-discovery">
+                <PersonaSurfaceMock
+                  type="schedule"
+                  label="Schedule"
+                  title="Publish a reliable weekly plan"
+                  copy="Discovery should tell guests exactly when karaoke is happening and who is running it."
+                />
               </article>
-              <article className="mk3-persona-stat-card">
-                <strong>Repeat demand</strong>
-                <span>Turn discovery into return attendance.</span>
+              <article className="mk3-venue-hero-card is-audience">
+                <PersonaSurfaceMock
+                  type="audience"
+                  label="Audience"
+                  title="Lower the friction on arrival"
+                  copy="Guests join, react, and request without crowding the host stand."
+                />
               </article>
-            </div>
-            <div className="mk3-actions-inline">
-              <button
-                type="button"
-                onClick={() => {
-                  trackPersonaCta(canSubmit ? "primary_claim_venue" : "primary_claim_venue_auth_gate");
-                  if (canSubmit) {
-                    navigate("submit");
-                    return;
-                  }
-                  authFlow?.requireFullAuth?.({
-                    intent: "listing_submit",
-                    targetType: "venue",
-                    targetId: "",
-                    returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "venue" } },
-                  });
-                }}
-              >
-                Claim Your Venue
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  trackPersonaCta("secondary_open_discover");
-                  navigate("discover");
-                }}
-              >
-                Browse Karaoke Nights
-              </button>
+              <article className="mk3-venue-hero-note is-host">
+                <span>Host</span>
+                <strong>Keep the pace in one deck</strong>
+                <p>Search, queue, and TV controls stay together so the venue night keeps moving.</p>
+              </article>
             </div>
           </div>
-          <aside className="mk3-persona-hero-visual">
-            <article className="mk3-persona-visual-stage is-venue">
-              <img src="/images/marketing/tv-live-aahf-current.png" alt="BeauRocks Public TV room state with QR join prompt" loading="lazy" />
-              <div className="mk3-persona-visual-overlay">
-                <div className="mk3-persona-kicker">for venues</div>
-                <strong>Show the room code, stage prompt, and queue on one clean screen.</strong>
-                <span>When the TV clearly says Stage Open and Scan to Sing, the room feels organized fast.</span>
-              </div>
-            </article>
-            <div className="mk3-persona-signal-grid">
-              {VENUE_SIGNAL_CARDS.map((card) => (
-                <article key={card.title} className="mk3-persona-signal-card">
-                  <span>{card.label}</span>
-                  <strong>{card.title}</strong>
-                  <p>{card.copy}</p>
-                </article>
-              ))}
-            </div>
-          </aside>
-        </div>
-      </article>
+        )}
+      />
 
-      <section className="mk3-detail-card mk3-zone mk3-marketing-rich-band">
-        <div>
-          <div className="mk3-persona-kicker">why venues care</div>
-          <h2>Better karaoke nights become part of a guest's routine.</h2>
-        </div>
-        <div className="mk3-marketing-signal-grid">
-          {VENUE_TRUST_SIGNALS.map((item) => (
-            <article key={item.title} className="mk3-marketing-signal-card">
-              <span>{item.label}</span>
-              <strong>{item.title}</strong>
-              <p>{item.copy}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <PersonaSignalSection
+        theme="venue"
+        className="mk3-venue-signal-band"
+        kicker="Why venues care"
+        title="Better karaoke nights become part of a guest's routine."
+        cards={VENUE_TRUST_SIGNALS}
+      />
 
-      <section className="mk3-detail-card mk3-zone mk3-marketing-how-band">
-        <div>
-          <div className="mk3-persona-kicker">how the venue experience improves</div>
-          <h2>The room gets easier to understand on every screen.</h2>
-        </div>
-        <div className="mk3-marketing-step-grid">
-          {VENUE_SURFACE_STEPS.map((item) => (
-            <article key={item.step} className="mk3-marketing-step-card">
-              <img src={item.imageUrl} alt={item.title} loading="lazy" />
-              <div>
-                <span>{item.step}</span>
-                <strong>{item.title}</strong>
-                <p>{item.copy}</p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+      <PersonaFeatureSection
+        theme="venue"
+        className="mk3-venue-feature-band"
+        kicker="How the venue experience improves"
+        title="The room gets easier to understand on every screen."
+        steps={VENUE_SURFACE_STEPS}
+      />
 
-      <section className="mk3-detail-card mk3-zone mk3-marketing-outcome-band">
-        <div>
-          <div className="mk3-persona-kicker">venue outcomes</div>
-          <h2>Each improvement removes one more source of guest confusion.</h2>
-        </div>
-        <div className="mk3-marketing-outcome-grid">
-          {VENUE_OUTCOME_POINTS.map((point, index) => (
-            <article key={point}>
-              <span>{`Outcome 0${index + 1}`}</span>
-              <strong>{point}</strong>
-              <p>{VENUE_STORY_POINTS[index] || "One less question before a guest decides to show up."}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <PersonaOutcomeSection
+        theme="venue"
+        className="mk3-venue-outcome-band"
+        kicker="Venue outcomes"
+        title="Each improvement removes one more source of guest confusion."
+        aside={(
+          <div className="mk3-rebuild-aside-copy">
+            <span>Venue math</span>
+            <strong>Trust compounds when the listing, host, and room all tell the same story.</strong>
+            <p>Clear recurring schedules and visible room flow help guests decide to come back on purpose.</p>
+          </div>
+        )}
+        items={VENUE_OUTCOME_POINTS.map((point, index) => ({
+          label: `Outcome 0${index + 1}`,
+          title: point,
+          copy: VENUE_STORY_POINTS[index] || "One less question before a guest decides to show up.",
+        }))}
+      />
 
-      <section className="mk3-detail-card mk3-zone mk3-persona-flow">
-        <h2>How a karaoke night becomes part of someone's week</h2>
-        <div className="mk3-persona-flow-grid">
-          {VENUE_FLOW_STEPS.map((item) => (
-            <article key={item.step}>
-              <span>{item.step}</span>
-              <strong>{item.title}</strong>
-              <p>{item.copy}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <PersonaFlowSection
+        theme="venue"
+        className="mk3-venue-flow-band"
+        title="How a karaoke night becomes part of someone's week"
+        steps={VENUE_FLOW_STEPS}
+      />
 
-      <section className="mk3-detail-card mk3-zone mk3-marketing-closing-band">
-        <div>
-          <div className="mk3-persona-kicker">pick the next step</div>
-          <h2>Start with venue ownership, discovery, or the product demo.</h2>
-        </div>
-        <div className="mk3-marketing-closing-grid">
-          {VENUE_FINAL_PATHS.map((item) => (
-            <article key={item.title} className="mk3-marketing-closing-card">
-              <strong>{item.title}</strong>
-              <p>{item.copy}</p>
-              <button
-                type="button"
-                onClick={() => {
-                  trackPersonaCta(`closing_${item.action}`);
-                  if (item.action === "claim") {
-                    if (canSubmit) {
-                      navigate("submit");
-                      return;
-                    }
-                    authFlow?.requireFullAuth?.({
-                      intent: "listing_submit",
-                      targetType: "venue",
-                      targetId: "",
-                      returnRoute: { page: "submit", params: { intent: "listing_submit", targetType: "venue" } },
-                    });
-                    return;
-                  }
-                  navigate(item.action);
-                }}
-              >
-                {item.cta}
-              </button>
-            </article>
-          ))}
-        </div>
-      </section>
-    </section>
+      <PersonaClosingSection
+        theme="venue"
+        className="mk3-venue-closing-band"
+        kicker="Pick the next step"
+        title="Start with venue ownership, discovery, or the product demo."
+        cards={VENUE_FINAL_PATHS.map((item) => ({
+          ...item,
+          onClick: () => {
+            trackPersonaCta(`closing_${item.action}`);
+            if (item.action === "claim") {
+              openClaimFlow();
+              return;
+            }
+            navigate(item.action);
+          },
+        }))}
+      />
+    </PersonaPageFrame>
   );
 };
 

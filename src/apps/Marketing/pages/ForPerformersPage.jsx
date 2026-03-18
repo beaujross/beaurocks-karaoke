@@ -1,5 +1,15 @@
 import React from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
+import {
+  PersonaClosingSection,
+  PersonaFeatureSection,
+  PersonaFlowSection,
+  PersonaHeroScaffold,
+  PersonaOutcomeSection,
+  PersonaPageFrame,
+  PersonaSurfaceMock,
+  PersonaSignalSection,
+} from "./PersonaMarketingBlocks";
 
 const PERFORMER_BADGES = [
   "Find better rooms faster",
@@ -60,19 +70,22 @@ const PERFORMER_SURFACE_STEPS = [
     step: "01",
     title: "Start with discovery that feels current",
     copy: "Browse real karaoke nights with clearer room context instead of guessing what a venue might be like.",
-    imageUrl: "/images/marketing/bross-discovery.png",
+    visualType: "radar",
+    visualLabel: "Discover radar",
   },
   {
     step: "02",
     title: "Join the room quickly from your phone",
     copy: "Name, emoji, and one obvious next step help the night start faster when you arrive.",
-    imageUrl: "/images/marketing/audience-join-aahf-current.png",
+    visualType: "audience",
+    visualLabel: "Audience app",
   },
   {
     step: "03",
     title: "Follow the TV once the room is live",
     copy: "Queue prompts, join state, and stage context stay visible so the room feels easier to read.",
-    imageUrl: "/images/marketing/tv-live-aahf-current.png",
+    visualType: "tv",
+    visualLabel: "Public TV",
   },
 ];
 
@@ -130,163 +143,131 @@ const ForPerformersPage = ({ navigate }) => {
   };
 
   return (
-    <section className="mk3-page mk3-persona-command is-performer">
-      <article className="mk3-detail-card mk3-persona-hero mk3-zone mk3-performer-hero-shell">
-        <div className="mk3-persona-hero-grid">
-          <div className="mk3-persona-hero-copy">
-            <div className="mk3-persona-kicker">for performers</div>
-            <h1>Find karaoke nights worth making part of your week.</h1>
-            <p>Skip the guesswork. Find rooms with a real crowd and a clear schedule.</p>
-            <div className="mk3-persona-badge-row">
-              {PERFORMER_BADGES.map((badge) => (
-                <span key={badge}>{badge}</span>
-              ))}
-            </div>
-            <div className="mk3-persona-stat-row">
-              <article className="mk3-persona-stat-card">
-                <strong>Clearer room info</strong>
-                <span>See which nights look organized before you go.</span>
+    <PersonaPageFrame theme="performer">
+      <PersonaHeroScaffold
+        theme="performer"
+        className="mk3-performer-hero"
+        railClassName="mk3-performer-hero-rail-wrap"
+        proofClassName="mk3-performer-proof-strip"
+        kicker="For performers"
+        brandLine="Skip the guesswork. Find rooms with a real crowd and a clear schedule."
+        title="Find karaoke nights worth making part of your week."
+        subtitle="Know who is running the night, plan your route faster, and bring your best songs to rooms that actually fit."
+        actions={[
+          {
+            label: "Open Discover Map",
+            variant: "primary",
+            onClick: () => {
+              trackPersonaCta("primary_find_spotlight_nights");
+              navigate("discover");
+            },
+          },
+          {
+            label: "See Audience Experience",
+            variant: "secondary",
+            onClick: () => {
+              trackPersonaCta("secondary_open_fans");
+              navigate("for_fans");
+            },
+          },
+        ]}
+        badges={PERFORMER_BADGES}
+        proofItems={PERFORMER_SIGNAL_CARDS.map((item) => ({ eyebrow: item.label, title: item.title, copy: item.copy }))}
+        rightRail={(
+          <div className="mk3-performer-hero-board">
+            <article className="mk3-performer-hero-map">
+              <PersonaSurfaceMock
+                type="radar"
+                label="Discover"
+                title="Start with discovery that feels current instead of random guesswork."
+                copy="Good performers come back to rooms that feel reliable, visible, and easy to join."
+                className="mk3-performer-hero-mock"
+              />
+            </article>
+
+            <div className="mk3-performer-hero-strip">
+              <article className="mk3-performer-hero-card is-join">
+                <PersonaSurfaceMock
+                  type="audience"
+                  label="Join"
+                  title="Fast room entry"
+                  copy="Name, emoji, and one clear next step get you into the room faster."
+                />
               </article>
-              <article className="mk3-persona-stat-card">
-                <strong>Better planning</strong>
-                <span>Find nights that can become part of your week.</span>
+              <article className="mk3-performer-hero-card is-tv">
+                <PersonaSurfaceMock
+                  type="tv"
+                  label="TV"
+                  title="Read the room clearly"
+                  copy="Queue prompts and stage context stay visible once the room is live."
+                />
               </article>
-              <article className="mk3-persona-stat-card">
-                <strong>Better fit</strong>
-                <span>Bring your best songs to the right room.</span>
+              <article className="mk3-performer-hero-note">
+                <span>Host</span>
+                <strong>Know who is running it before you go.</strong>
+                <p>Clear host context makes it easier to choose the right night and the right crowd.</p>
               </article>
-            </div>
-            <div className="mk3-actions-inline">
-              <button
-                type="button"
-                onClick={() => {
-                  trackPersonaCta("primary_find_spotlight_nights");
-                  navigate("discover");
-                }}
-              >
-                Open Discover Map
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  trackPersonaCta("secondary_open_fans");
-                  navigate("for_fans");
-                }}
-              >
-                See Audience Experience
-              </button>
             </div>
           </div>
-          <aside className="mk3-persona-hero-visual">
-            <article className="mk3-persona-visual-stage is-performer">
-              <img src="/images/marketing/audience-join-aahf-current.png" alt="BeauRocks audience room join screen" loading="lazy" />
-              <div className="mk3-persona-visual-overlay">
-                <div className="mk3-persona-kicker">for performers</div>
-                <strong>Once you pick a room, getting in should be fast.</strong>
-                <span>A clear join flow helps good rooms feel easy to come back to.</span>
-              </div>
-            </article>
-            <div className="mk3-persona-signal-grid">
-              {PERFORMER_SIGNAL_CARDS.map((card) => (
-                <article key={card.title} className="mk3-persona-signal-card">
-                  <span>{card.label}</span>
-                  <strong>{card.title}</strong>
-                  <p>{card.copy}</p>
-                </article>
-              ))}
-            </div>
-          </aside>
-        </div>
-      </article>
+        )}
+      />
 
-      <section className="mk3-detail-card mk3-zone mk3-marketing-rich-band">
-        <div>
-          <div className="mk3-persona-kicker">why performers care</div>
-          <h2>Better room information makes better karaoke habits.</h2>
-        </div>
-        <div className="mk3-marketing-signal-grid">
-          {PERFORMER_TRUST_SIGNALS.map((item) => (
-            <article key={item.title} className="mk3-marketing-signal-card">
-              <span>{item.label}</span>
-              <strong>{item.title}</strong>
-              <p>{item.copy}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <PersonaSignalSection
+        theme="performer"
+        className="mk3-performer-signal-band"
+        kicker="Why performers care"
+        title="Better room information makes better karaoke habits."
+        cards={PERFORMER_TRUST_SIGNALS}
+      />
 
-      <section className="mk3-detail-card mk3-zone mk3-marketing-how-band">
-        <div>
-          <div className="mk3-persona-kicker">what the performer path looks like</div>
-          <h2>Find the room, join quickly, and follow the live night clearly.</h2>
-        </div>
-        <div className="mk3-marketing-step-grid">
-          {PERFORMER_SURFACE_STEPS.map((item) => (
-            <article key={item.step} className="mk3-marketing-step-card">
-              <img src={item.imageUrl} alt={item.title} loading="lazy" />
-              <div>
-                <span>{item.step}</span>
-                <strong>{item.title}</strong>
-                <p>{item.copy}</p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+      <PersonaFeatureSection
+        theme="performer"
+        className="mk3-performer-feature-band"
+        kicker="What the performer path looks like"
+        title="Find the room, join quickly, and follow the live night clearly."
+        steps={PERFORMER_SURFACE_STEPS}
+      />
 
-      <section className="mk3-detail-card mk3-zone mk3-marketing-outcome-band">
-        <div>
-          <div className="mk3-persona-kicker">what better discovery gives you</div>
-          <h2>Less guesswork before you leave the house.</h2>
-        </div>
-        <div className="mk3-marketing-outcome-grid">
-          {PERFORMER_PROOF_POINTS.map((point, index) => (
-            <article key={point}>
-              <span>{`Proof 0${index + 1}`}</span>
-              <strong>{point}</strong>
-              <p>{PERFORMER_STORY_POINTS[index] || "Clearer rooms are easier to come back to."}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <PersonaOutcomeSection
+        theme="performer"
+        className="mk3-performer-outcome-band"
+        kicker="What better discovery gives you"
+        title="Less guesswork before you leave the house."
+        aside={(
+          <div className="mk3-rebuild-aside-copy">
+            <span>Performer lens</span>
+            <strong>Weekly favorites beat random guesses.</strong>
+            <p>Clear host, venue, and schedule context make it easier to decide where to go next and where to come back.</p>
+          </div>
+        )}
+        items={PERFORMER_PROOF_POINTS.map((point, index) => ({
+          label: `Proof 0${index + 1}`,
+          title: point,
+          copy: PERFORMER_STORY_POINTS[index] || "Clearer rooms are easier to come back to.",
+        }))}
+      />
 
-      <section className="mk3-detail-card mk3-zone mk3-persona-flow">
-        <h2>How performers turn discovery into a real routine</h2>
-        <div className="mk3-persona-flow-grid">
-          {PERFORMER_FLOW_STEPS.map((item) => (
-            <article key={item.step}>
-              <span>{item.step}</span>
-              <strong>{item.title}</strong>
-              <p>{item.copy}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <PersonaFlowSection
+        theme="performer"
+        className="mk3-performer-flow-band"
+        title="How performers turn discovery into a real routine"
+        steps={PERFORMER_FLOW_STEPS}
+      />
 
-      <section className="mk3-detail-card mk3-zone mk3-marketing-closing-band">
-        <div>
-          <div className="mk3-persona-kicker">pick the next step</div>
-          <h2>Start with discovery, the audience overview, or the full product demo.</h2>
-        </div>
-        <div className="mk3-marketing-closing-grid">
-          {PERFORMER_FINAL_PATHS.map((item) => (
-            <article key={item.title} className="mk3-marketing-closing-card">
-              <strong>{item.title}</strong>
-              <p>{item.copy}</p>
-              <button
-                type="button"
-                onClick={() => {
-                  trackPersonaCta(`closing_${item.route}`);
-                  navigate(item.route);
-                }}
-              >
-                {item.cta}
-              </button>
-            </article>
-          ))}
-        </div>
-      </section>
-    </section>
+      <PersonaClosingSection
+        theme="performer"
+        className="mk3-performer-closing-band"
+        kicker="Pick the next step"
+        title="Start with discovery, the audience overview, or the full product demo."
+        cards={PERFORMER_FINAL_PATHS.map((item) => ({
+          ...item,
+          onClick: () => {
+            trackPersonaCta(`closing_${item.route}`);
+            navigate(item.route);
+          },
+        }))}
+      />
+    </PersonaPageFrame>
   );
 };
 

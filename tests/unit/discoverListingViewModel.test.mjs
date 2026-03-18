@@ -167,5 +167,5 @@ test("discoverListingViewModel.test uses curated AAHF artwork for matching disco
     },
   });
 
-  assert.equal(listing.imageUrl, "/images/marketing/aahf-karaoke-kickoff-draft-clean.png");
+  assert.equal(listing.imageUrl, "/images/marketing/CLEAN%201.png");
 });

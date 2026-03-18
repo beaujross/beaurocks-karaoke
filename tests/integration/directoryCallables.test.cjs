@@ -932,6 +932,41 @@ async function run() {
       assert.equal(Array.isArray(second.items), true);
       assert.equal(second.items.length >= 1, true);
     }],
+
+    ["listDirectoryDiscover collapses duplicate AAHF event into the official listing", async () => {
+      await db.doc("karaoke_events/aahf_duplicate_event").set({
+        title: "AAHF Karaoke Kick-Off",
+        description: "Duplicate seeded event that should collapse into the official registry entry.",
+        status: "approved",
+        visibility: "public",
+        city: "Bainbridge Island",
+        state: "WA",
+        region: "wa_kitsap",
+        venueName: "Bainbridge Island Museum of Art",
+        address1: "550 Winslow Way E",
+        startsAtMs: new Date("2026-05-01T19:00:00-07:00").getTime(),
+        endsAtMs: new Date("2026-05-02T00:00:00-07:00").getTime(),
+      });
+
+      const result = await listDirectoryDiscover.run(
+        requestFor("", {
+          search: "aahf",
+          region: "wa_kitsap",
+          listingType: "event",
+          limit: 20,
+        })
+      );
+
+      assert.equal(result.ok, true);
+      const aahfItems = (Array.isArray(result.items) ? result.items : [])
+        .filter((item) => String(item.title || "").toLowerCase().includes("aahf"));
+      assert.equal(aahfItems.length, 1);
+      assert.equal(aahfItems[0].id, "official_aahf_karaoke_kickoff_2026");
+      assert.equal(aahfItems[0].startsAtMs, new Date("2026-05-01T19:00:00-07:00").getTime());
+      assert.equal(aahfItems[0].endsAtMs, new Date("2026-05-02T00:00:00-07:00").getTime());
+      assert.equal(aahfItems[0].imageUrl, "/images/marketing/CLEAN%201.png");
+      assert.equal(aahfItems[0].officialBadgeImageUrl, "/images/marketing/karaoke-kickoff-logo-simple.png");
+    }],
   ];
 
   const results = [];

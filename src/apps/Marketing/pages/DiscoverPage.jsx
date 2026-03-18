@@ -40,33 +40,44 @@ const KITSAP_BOOTSTRAP_REGION = "wa_kitsap";
 const KITSAP_BOOTSTRAP_CENTER = { lat: 47.5964, lng: -122.6432 };
 const KITSAP_BOOTSTRAP_ZOOM = 10;
 const MAP_BRAND_STYLES = [
-  { elementType: "geometry", stylers: [{ color: "#020714" }] },
+  { elementType: "geometry", stylers: [{ color: "#050814" }] },
   { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#b9c8e8" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#020714" }] },
-  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#17314d" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#bfd0ef" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#050814" }] },
+  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#193553" }] },
+  { featureType: "administrative.country", elementType: "labels.text.fill", stylers: [{ color: "#f4d28c" }] },
+  { featureType: "administrative.province", elementType: "labels.text.fill", stylers: [{ color: "#7fdff4" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#ffd0eb" }] },
   { featureType: "administrative.land_parcel", stylers: [{ visibility: "off" }] },
   { featureType: "administrative.neighborhood", stylers: [{ visibility: "off" }] },
-  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#08111d" }] },
-  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#5d7191" }] },
+  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#060b16" }] },
+  { featureType: "landscape.man_made", elementType: "geometry", stylers: [{ color: "#0a1220" }] },
+  { featureType: "landscape.natural", elementType: "geometry", stylers: [{ color: "#07131c" }] },
+  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#09111d" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#7082a3" }] },
   { featureType: "poi.business", stylers: [{ visibility: "off" }] },
   { featureType: "poi.attraction", stylers: [{ visibility: "off" }] },
-  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#06232c" }] },
-  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#2ce6da" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#0c182b" }] },
-  { featureType: "road.local", elementType: "geometry", stylers: [{ color: "#09111f" }] },
-  { featureType: "road.local", elementType: "labels.text.fill", stylers: [{ color: "#5f7190" }] },
-  { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#0b647a" }] },
-  { featureType: "road.arterial", elementType: "geometry.stroke", stylers: [{ color: "#083442" }] },
-  { featureType: "road.arterial", elementType: "labels.text.fill", stylers: [{ color: "#79fff5" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#7a2558" }] },
-  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#381028" }] },
-  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#ffd6f3" }] },
-  { featureType: "road.highway.controlled_access", elementType: "geometry", stylers: [{ color: "#ff4db8" }] },
-  { featureType: "road.highway.controlled_access", elementType: "geometry.stroke", stylers: [{ color: "#5b1d42" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#082a33" }] },
+  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#54f0de" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#0a1322" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#070d18" }] },
+  { featureType: "road.local", elementType: "geometry", stylers: [{ color: "#08111c" }] },
+  { featureType: "road.local", elementType: "geometry.stroke", stylers: [{ color: "#07101a" }] },
+  { featureType: "road.local", elementType: "labels.text.fill", stylers: [{ color: "#627493" }] },
+  { featureType: "road.arterial", elementType: "geometry", stylers: [{ color: "#0c617c" }] },
+  { featureType: "road.arterial", elementType: "geometry.stroke", stylers: [{ color: "#083949" }] },
+  { featureType: "road.arterial", elementType: "labels.text.fill", stylers: [{ color: "#8ef0ff" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#6f2359" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#321126" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#ffe0f4" }] },
+  { featureType: "road.highway.controlled_access", elementType: "geometry", stylers: [{ color: "#ff4aa8" }] },
+  { featureType: "road.highway.controlled_access", elementType: "geometry.stroke", stylers: [{ color: "#5f1f45" }] },
+  { featureType: "transit.line", elementType: "geometry", stylers: [{ color: "#3b2f58" }] },
+  { featureType: "transit.station", elementType: "labels.text.fill", stylers: [{ color: "#86f2ff" }] },
   { featureType: "transit", stylers: [{ visibility: "off" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#03384f" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#37efff" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#043f5b" }] },
+  { featureType: "water", elementType: "geometry.stroke", stylers: [{ color: "#022231" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#5df2ff" }] },
 ];
 const DEMO_MAP_ID = "DEMO_MAP_ID";
 const TIME_WINDOW_OPTIONS = [
@@ -1899,6 +1910,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
     <section className="mk3-page">
       <div className="mk3-status mk3-zone mk3-zone-finder mk3-discover-hero mk3-discover-intro">
         <div className="mk3-discover-hero-main">
+          <div className="mk3-discover-hero-kicker-row">
+            <span>{FINDER_BRAND} radar</span>
+            <b>{activeRegionLabel}</b>
+          </div>
           <strong>Find tonight&apos;s room and join fast.</strong>
           <span>
             {isInitialCountLoading
@@ -2154,8 +2169,28 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
       )}
       <div className={`mk3-discover-shell ${mapFirst ? "is-map-first" : "is-balanced"} ${mapOnly ? "is-map-only" : ""} ${isMobileViewport ? `is-mobile-surface-${mobileSurface}` : ""}`}>
         <article className={`mk3-map-card mk3-zone mk3-zone-map ${isMobileViewport && mobileSurface !== "map" ? "is-mobile-hidden" : ""}`}>
-          <h2>{FINDER_BRAND} Map</h2>
-          <div className={`mk3-map-toolbar ${isMobileViewport ? "is-mobile-compact" : ""}`}>
+          <div className="mk3-discover-map-head">
+            <div className="mk3-discover-map-head-copy">
+              <span>Discover radar</span>
+              <h2>{FINDER_BRAND} Map</h2>
+              <p>Live rooms, upcoming events, and venues stay on one board so people can move from browsing to joining faster.</p>
+            </div>
+            <div className="mk3-discover-map-head-stats">
+              <article>
+                <span>Visible now</span>
+                <strong>{visibleListings.length}</strong>
+              </article>
+              <article>
+                <span>Joinable rooms</span>
+                <strong>{joinableRoomCount}</strong>
+              </article>
+              <article>
+                <span>Official</span>
+                <strong>{officialBeauRocksListingCount}</strong>
+              </article>
+            </div>
+          </div>
+          <div className={`mk3-map-toolbar mk3-discover-map-toolbar ${isMobileViewport ? "is-mobile-compact" : ""}`}>
             {!isMobileViewport && (
               <label className="mk3-inline">
                 <input
@@ -2251,9 +2286,12 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, heroStats }) =>
 
         <aside className={`mk3-feed-column mk3-zone mk3-zone-rail ${isMobileViewport && mobileSurface !== "list" ? "is-mobile-hidden" : ""} ${mapOnly ? "is-map-only-hidden" : ""}`}>
           <div className="mk3-rail-head">
-            <strong>Results</strong>
+            <div className="mk3-discover-results-head-copy">
+              <span>Results rail</span>
+              <strong>Browse the room mix fast</strong>
+              <p>{visibleListings.length} shown{Number(total || 0) > visibleListings.length ? ` of ${Number(total || 0)}` : ""}. Switch between scan-friendly tiles and fuller result cards.</p>
+            </div>
             <div className="mk3-rail-head-meta">
-              <span>{visibleListings.length} shown{Number(total || 0) > visibleListings.length ? ` of ${Number(total || 0)}` : ""}</span>
               <div className="mk3-rail-view-toggle" role="group" aria-label="Results display mode">
                 <button
                   type="button"

@@ -12,7 +12,7 @@ import {
 import { applyMarketingSeo } from "./seo";
 import { directoryActions } from "./api/directoryApi";
 import { useDirectorySession } from "./hooks/useDirectorySession";
-import { formatDateTime } from "./pages/shared";
+import { formatDateTime, MARKETING_BRAND_BADGE_URL } from "./pages/shared";
 import { buildSurfaceUrl, inferSurfaceFromHostname } from "../../lib/surfaceDomains";
 import { getMarketingNavModel } from "./iaModel";
 import "./marketing.css";
@@ -239,20 +239,32 @@ const MarketingSite = () => {
   const [hostApplicationNotice, setHostApplicationNotice] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const authPanelRef = useRef(null);
+  const moreMenuRef = useRef(null);
   const { session, actions } = useDirectorySession();
   const isAuthed = !!session?.isAuthed;
   const isAnonymous = !!session?.isAnonymous;
   const hasFullAccount = isAuthed && !isAnonymous;
 
+  const collapseNavMenus = useCallback(() => {
+    setMobileMenuOpen(false);
+    if (moreMenuRef.current?.open) {
+      moreMenuRef.current.open = false;
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return () => {};
     const onPopState = () => {
       setRoute(readRouteFromWindow());
-      setMobileMenuOpen(false);
+      collapseNavMenus();
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  }, [collapseNavMenus]);
+
+  useEffect(() => {
+    collapseNavMenus();
+  }, [collapseNavMenus, route.page, route.id]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -350,9 +362,9 @@ const MarketingSite = () => {
       window.history.pushState({}, "", nextUrl);
     }
     setRoute(nextRoute);
-    setMobileMenuOpen(false);
+    collapseNavMenus();
     trackEvent("marketing_directory_navigate", { page: nextRoute.page || MARKETING_ROUTE_PAGES.discover });
-  }, []);
+  }, [collapseNavMenus]);
 
   const scrollAuthPanelIntoView = useCallback(() => {
     authPanelRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
@@ -724,7 +736,7 @@ const MarketingSite = () => {
   }, [activePage, requireFullAuth, route, navigate, mapsConfig, heroStats, session]);
 
   return (
-    <div className="mk3-site mk3-site-cinematic" data-page={activePage}>
+    <div className="mk3-site mk3-site-cinematic mk3-site-synthwave" data-page={activePage}>
       <div className="mk3-cinematic-backdrop" aria-hidden="true">
         <span className="mk3-cinematic-orb is-gold" />
         <span className="mk3-cinematic-orb is-cyan" />
@@ -737,52 +749,64 @@ const MarketingSite = () => {
             <button
               type="button"
               className="mk3-brand"
-              onClick={() => navigate(MARKETING_ROUTE_PAGES.forFans, "", withCampaignParams({ utm_content: "nav_brand" }))}
+              onClick={() => {
+                collapseNavMenus();
+                navigate(MARKETING_ROUTE_PAGES.forFans, "", withCampaignParams({ utm_content: "nav_brand" }));
+              }}
             >
-              <img src="/images/marketing/beaurocks-karaoke-logo 2.png" alt="BeauRocks Karaoke logo" />
+              <img src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks Karaoke logo" />
               <div>
                 <strong>{PRODUCT_BRAND.name}</strong>
                 <span>{PRODUCT_BRAND.tagline}</span>
               </div>
             </button>
-            <nav className="mk3-links" aria-label="Primary">
-              {navPrimaryOptions.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={activePage === item.id ? "active" : ""}
-                  onClick={() => navigate(item.id, "", withCampaignParams({ utm_content: `nav_primary_${item.id}` }))}
-                >
-                  {item.label}
-                </button>
-              ))}
-              {navSecondaryOptions.length > 0 && (
-                <details className={`mk3-more-menu ${moreMenuActive ? "is-active" : ""}`}>
-                  <summary>More</summary>
-                  <div className="mk3-more-list">
-                    {navSecondaryOptions.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={activePage === item.id ? "active" : ""}
-                        onClick={() => navigate(item.id, "", withCampaignParams({ utm_content: `nav_secondary_${item.id}` }))}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </details>
-              )}
-            </nav>
+            <div className="mk3-nav-center">
+              <nav className="mk3-links" aria-label="Primary">
+                {navPrimaryOptions.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={activePage === item.id ? "active" : ""}
+                    onClick={() => {
+                      collapseNavMenus();
+                      navigate(item.id, "", withCampaignParams({ utm_content: `nav_primary_${item.id}` }));
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+                {navSecondaryOptions.length > 0 && (
+                  <details ref={moreMenuRef} className={`mk3-more-menu ${moreMenuActive ? "is-active" : ""}`}>
+                    <summary>More</summary>
+                    <div className="mk3-more-list">
+                      {navSecondaryOptions.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={activePage === item.id ? "active" : ""}
+                          onClick={() => {
+                            collapseNavMenus();
+                            navigate(item.id, "", withCampaignParams({ utm_content: `nav_secondary_${item.id}` }));
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </nav>
+            </div>
             <div className="mk3-account">
               <button
                 type="button"
                 className="mk3-account-action"
-                onClick={() => {
-                  if (hasFullAccount) {
-                    openHostDashboard("marketing_nav_host_dashboard_primary");
-                    return;
-                  }
+                  onClick={() => {
+                    collapseNavMenus();
+                    if (hasFullAccount) {
+                      openHostDashboard("marketing_nav_host_dashboard_primary");
+                      return;
+                    }
                   trackEvent("mk_nav_host_access_click", { source: "nav_primary_host_access" });
                   requireFullAuth({
                     intent: "host_dashboard_resume",
@@ -819,7 +843,10 @@ const MarketingSite = () => {
                   key={item.id}
                   type="button"
                   className={activePage === item.id ? "active" : ""}
-                  onClick={() => navigate(item.id, "", withCampaignParams({ utm_content: `mobile_primary_${item.id}` }))}
+                  onClick={() => {
+                    collapseNavMenus();
+                    navigate(item.id, "", withCampaignParams({ utm_content: `mobile_primary_${item.id}` }));
+                  }}
                 >
                   {item.label}
                 </button>
@@ -829,7 +856,10 @@ const MarketingSite = () => {
                   key={item.id}
                   type="button"
                   className={activePage === item.id ? "active" : ""}
-                  onClick={() => navigate(item.id, "", withCampaignParams({ utm_content: `mobile_secondary_${item.id}` }))}
+                  onClick={() => {
+                    collapseNavMenus();
+                    navigate(item.id, "", withCampaignParams({ utm_content: `mobile_secondary_${item.id}` }));
+                  }}
                 >
                   {item.label}
                 </button>
@@ -1109,7 +1139,7 @@ const MarketingSite = () => {
           )}
 
           {!isHostAccessPage && activePage !== MARKETING_ROUTE_PAGES.forFans && (
-            <footer className="mk3-site-footer mk3-zone" aria-label="Marketing quick links">
+            <footer className="mk3-site-footer" aria-label="Marketing quick links">
               <div className="mk3-actions-inline">
                 <button
                   type="button"
