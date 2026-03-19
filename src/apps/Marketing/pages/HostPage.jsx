@@ -23,7 +23,7 @@ import {
   resolveProfileAvatarUrl,
 } from "./shared";
 
-const HostPage = ({ id, route, navigate, session, authFlow }) => {
+const HostPage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEntity }) => {
   const [profile, setProfile] = useState(null);
   const [events, setEvents] = useState([]);
   const [sessions, setSessions] = useState([]);
@@ -33,6 +33,20 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
     const q = query(collection(db, "directory_profiles"), where("__name__", "==", id), limit(1));
     return onSnapshot(q, (snap) => setProfile(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() }));
   }, [id]);
+
+  useEffect(() => {
+    if (typeof setSeoEntity !== "function") return;
+    if (!profile) {
+      setSeoEntity(null);
+      return;
+    }
+    setSeoEntity({
+      ...profile,
+      title: profile.displayName || profile.handle || profile.id,
+      description: profile.bio || "",
+      listingType: "host",
+    });
+  }, [profile, setSeoEntity]);
 
   useEffect(() => {
     if (!id) return () => {};
@@ -112,7 +126,7 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
       <article className="mk3-detail-card">
         <div className="mk3-listing-title-block">
           <div className="mk3-listing-chip-row">
-            <div className="mk3-chip">host profile</div>
+            <div className="mk3-chip">host</div>
             {hostIsBeauRocksPowered && (
               <div className="mk3-chip mk3-chip-elevated">
                 <img className="mk3-chip-icon" src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks badge" loading="lazy" />
@@ -125,15 +139,15 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
         </div>
         <div className="mk3-venue-stat-grid">
           <article>
-            <span>Upcoming Events</span>
+            <span>Upcoming nights</span>
             <strong>{events.length}</strong>
           </article>
           <article>
-            <span>Public Sessions</span>
+            <span>Public rooms</span>
             <strong>{sessions.length}</strong>
           </article>
           <article>
-            <span>Home Base</span>
+            <span>Area</span>
             <strong>{[profile.city, profile.state].filter(Boolean).join(", ") || "Unspecified"}</strong>
           </article>
         </div>
@@ -144,7 +158,7 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
               : <span>{getInitials(hostName)}</span>}
           </div>
           <div className="mk3-profile-copy">
-            <strong>Host Handle</strong>
+            <strong>Host</strong>
             <span>{profile.handle || hostName}</span>
           </div>
         </div>
@@ -154,8 +168,8 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
         <p>{profile.bio || "No host bio yet."}</p>
         <DirectoryExperienceSpotlight
           entry={hostExperienceSource}
-          title="Host Signature"
-          eyebrow="host identity"
+          title="What to expect"
+          eyebrow="host details"
         />
         <div className="mk3-venue-gallery" aria-label="Host media gallery">
           {listingGallery.map((imageUrl, index) => (
@@ -166,17 +180,25 @@ const HostPage = ({ id, route, navigate, session, authFlow }) => {
         </div>
 
         <div className="mk3-sub-list">
-          <h3>Upcoming Events</h3>
+          <h3>Upcoming nights</h3>
           {events.length === 0 && <div className="mk3-status">No approved host events yet.</div>}
           {events.map((item) => (
-            <button type="button" className="mk3-list-row" key={item.id} onClick={() => navigate("event", item.id)}>
+            <a
+              className="mk3-list-row"
+              key={item.id}
+              href={buildHref ? buildHref("event", item.id) : "#"}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate("event", item.id);
+              }}
+            >
               <span>{item.title}</span>
               <span>{formatDateTime(item.startsAtMs)}</span>
-            </button>
+            </a>
           ))}
         </div>
         <div className="mk3-sub-list">
-          <h3>Public Sessions</h3>
+          <h3>Public rooms</h3>
           {sessions.length === 0 && <div className="mk3-status">No public sessions yet.</div>}
           {sessions.map((item) => (
             <button type="button" className="mk3-list-row" key={item.id} onClick={() => navigate("session", item.id)}>

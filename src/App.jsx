@@ -54,12 +54,18 @@ const getCanonicalSurfaceRedirectUrl = (locationLike = null) => {
     const normalizedPathname = pathname.replace(/\/+$/, '') || '/';
     const params = new URLSearchParams(locationLike.search || '');
     const detectedSurface = inferSurfaceFromHostname(locationLike.hostname, locationLike);
+    const explicitMode = String(params.get('mode') || '').trim().toLowerCase();
+    const interactiveModeRequested = explicitMode === 'host'
+        || explicitMode === 'tv'
+        || explicitMode === 'recap'
+        || !!String(params.get('room') || '').trim();
     const legacyPage = String(params.get('page') || '').trim().toLowerCase();
     const isHostAccessRoute = normalizedPathname === '/host-access'
         || legacyPage === 'host_access'
         || legacyPage === 'host-access';
+    if (interactiveModeRequested) return '';
     const marketingRouteRequested = (
-        params.get('mode') === 'marketing'
+        explicitMode === 'marketing'
         || isMarketingPath(normalizedPathname)
         || /\/marketing(\/.*)?$/i.test(pathname)
     );
@@ -126,8 +132,16 @@ const getInitialRouteState = () => {
     if (m === 'recap') {
         return { view: 'recap', roomCode: r ? r.toUpperCase() : '' };
     }
+    if (m === 'tv') {
+        return { view: 'tv', roomCode: r ? r.toUpperCase() : '' };
+    }
     if (pathname === '/host' || pathname === '/host-dashboard') {
         return { view: 'host', roomCode: r ? r.toUpperCase() : '' };
+    }
+    // Interactive room launches can be server-redirected to marketing-looking paths
+    // (for example "/" -> "/for-fans") on custom surfaces, so room intent must win.
+    if (r) {
+        return { view: 'mobile', roomCode: r.toUpperCase() };
     }
     if (m === 'marketing') {
         return { view: 'marketing', roomCode: '' };
@@ -137,9 +151,6 @@ const getInitialRouteState = () => {
     }
     if (/\/marketing(\/.*)?$/.test(pathname)) {
         return { view: 'marketing', roomCode: '' };
-    }
-    if (r) {
-        return { view: m === 'tv' ? 'tv' : 'mobile', roomCode: r.toUpperCase() };
     }
     if (detectedSurface === 'marketing') {
         return { view: 'marketing', roomCode: '' };

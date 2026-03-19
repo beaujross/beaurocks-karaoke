@@ -4,10 +4,8 @@ import { GAMES_META } from '../../lib/gameRegistry';
 import StageNowPlayingPanel from './components/StageNowPlayingPanel';
 import AddToQueueFormBody from './components/AddToQueueFormBody';
 import TvDashboardControls from './components/TvDashboardControls';
-import AutomationControls from './components/AutomationControls';
 import SoundboardControls from './components/SoundboardControls';
 import HostChatPanel from './components/HostChatPanel';
-import OverlaysGuidesPanel from './components/OverlaysGuidesPanel';
 import QueueListPanel from './components/QueueListPanel';
 import QueueYouTubeSearchModal from './components/QueueYouTubeSearchModal';
 import QueueEditSongModal from './components/QueueEditSongModal';
@@ -2955,7 +2953,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
 
     const SectionHeader = ({ label, open, onToggle, toneClass = '', featureId = '' }) => (
         <button
+            type="button"
             onClick={onToggle}
+            aria-expanded={!!open}
             data-feature-id={featureId || undefined}
             className={`w-full flex items-center justify-between ${STYLES.header} ${toneClass}`}
         >
@@ -3449,16 +3449,6 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         setResults([]); setSearchQ('');
     };
 
-    const manualBackingChip = (() => {
-        const ytId = manual.url ? parseYouTubeId(manual.url) : null;
-        if (manual.appleMusicId || !manual.url) {
-            return { label: 'Apple Music', tone: 'cyan' };
-        }
-        if (ytId) {
-            return { label: 'YouTube', tone: 'red' };
-        }
-        return { label: 'Custom', tone: 'cyan' };
-    })();
     const statusPill = "px-2 py-0.5 rounded-full text-[10px] uppercase tracking-widest border bg-black/40 text-zinc-200 border-white/10";
 
 
@@ -3916,7 +3906,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: pendingSongId, error: error?.message || 'fallback_finalize_failed' });
                     hostLogger.warn('Auto-DJ applause fallback finalization failed', error);
                 });
-            }, 17000);
+            }, 26000);
         }
         await updateRoom({ activeMode: 'applause_countdown', applausePeak: 0, currentApplauseLevel: 0 });
         if (autoFinalize) toast('Measuring applause now. Auto-DJ will end this performance after results.');
@@ -4195,9 +4185,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
 
     useEffect(() => {
         if (!isMobileLayout && !isTightLayout) return;
-        setShowAddForm(false);
+        if (showAddForm || showQueueList) return;
         setShowQueueList(true);
-    }, [isMobileLayout, isTightLayout, setShowAddForm, setShowQueueList]);
+    }, [isMobileLayout, isTightLayout, showAddForm, showQueueList, setShowQueueList]);
 
     const addToQueueSection = (
         <div className="p-3 border-b border-white/10 bg-black/20 relative">
@@ -4238,7 +4228,6 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     lyricsOpen={lyricsOpen}
                     setLyricsOpen={setLyricsOpen}
                     onGenerateManualLyrics={generateManualLyrics}
-                    manualBackingChip={manualBackingChip}
                     openYtSearch={openYtSearch}
                     addSong={addSong}
                     appleMusicAuthorized={appleMusicAuthorized}
@@ -4377,90 +4366,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                         : 'min-h-0 pr-1'
             } overflow-y-auto custom-scrollbar`}>
                 <div className={`${STYLES.panel} overflow-hidden`}>
-                    <section className="px-4 py-4 border-b border-white/10 bg-zinc-950/90 sticky top-0 z-20 backdrop-blur-md">
-                        <div className="rounded-xl border border-cyan-400/25 bg-gradient-to-r from-cyan-500/12 via-black/45 to-pink-500/10 p-3">
-                            <div className="flex items-center justify-between gap-2">
-                                <div className="text-[10px] uppercase tracking-[0.25em] text-cyan-200">Stage Quick Actions</div>
-                                <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.15em] border ${current ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100' : 'border-zinc-600 bg-zinc-900/70 text-zinc-300'}`}>
-                                    {current ? 'Live' : 'Idle'}
-                                </span>
-                            </div>
-                            {autoDj && (
-                                <div className="mt-2 rounded-lg border border-cyan-400/25 bg-black/35 px-2.5 py-2">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className={`text-[10px] uppercase tracking-[0.18em] ${autoDjSequenceSummary.tone === 'danger' ? 'text-rose-200' : autoDjSequenceSummary.tone === 'warning' ? 'text-amber-200' : autoDjSequenceSummary.tone === 'success' ? 'text-emerald-200' : 'text-cyan-200'}`}>
-                                            {autoDjSequenceSummary.title}
-                                        </div>
-                                        <div className="text-[10px] text-zinc-300 truncate max-w-[50%]">{autoDjSequenceSummary.detail}</div>
-                                    </div>
-                                    <div className="mt-2 grid grid-cols-4 gap-1">
-                                        {autoDjStepItems.map((step) => (
-                                            <div
-                                                key={step.id}
-                                                className={`rounded px-1.5 py-1 text-[9px] uppercase tracking-[0.12em] text-center border ${
-                                                    step.status === 'complete'
-                                                        ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100'
-                                                        : step.status === 'active'
-                                                            ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100'
-                                                            : step.status === 'retrying'
-                                                                ? 'border-amber-300/45 bg-amber-500/15 text-amber-100'
-                                                                : step.status === 'error'
-                                                                    ? 'border-rose-300/45 bg-rose-500/15 text-rose-100'
-                                                                    : 'border-white/15 bg-black/25 text-zinc-300'
-                                                }`}
-                                                title={step.retries > 0 ? `${step.label} retries: ${step.retries}` : step.label}
-                                            >
-                                                {step.short}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            <div className="mt-3 grid grid-cols-4 gap-2">
-                                <button
-                                    onClick={togglePlay}
-                                    disabled={!current}
-                                    className={`${STYLES.btnStd} ${currentSourcePlaying ? STYLES.btnNeutral : STYLES.btnPrimary} py-2 text-[11px] ${!current ? 'opacity-55 cursor-not-allowed' : ''}`}
-                                >
-                                    <i className={`fa-solid ${currentSourcePlaying ? 'fa-pause' : 'fa-play'} mr-1`}></i>
-                                    {currentSourcePlaying ? 'Pause' : 'Play'}
-                                </button>
-                                <button
-                                    onClick={() => current && startApplauseSequence({ songId: current.id, autoFinalize: false })}
-                                    disabled={!current}
-                                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} py-2 text-[11px] ${!current ? 'opacity-55 cursor-not-allowed' : ''}`}
-                                    title="Start applause countdown + crowd meter"
-                                >
-                                    <i className="fa-solid fa-microphone-lines mr-1"></i>
-                                    Applause
-                                </button>
-                                <button
-                                    onClick={() => current && handleEndPerformance(current.id)}
-                                    disabled={!current}
-                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} py-2 text-[11px] ${!current ? 'opacity-55 cursor-not-allowed' : ''}`}
-                                    title={autoDj ? 'Runs applause flow first, then auto-ends performance' : 'End performance now'}
-                                >
-                                    <i className="fa-solid fa-flag-checkered mr-1"></i>
-                                    End
-                                </button>
-                                <button
-                                    onClick={progressStageToNext}
-                                    disabled={!nextQueueSong}
-                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} py-2 text-[11px] ${!nextQueueSong ? 'opacity-55 cursor-not-allowed' : ''}`}
-                                >
-                                    <i className="fa-solid fa-forward-step mr-1"></i>
-                                    Next
-                                </button>
-                            </div>
-                        </div>
-                    </section>
-
-                    <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
-                        Stage Operations
-                    </div>
                     <section className="px-4 py-4 border-b border-white/10">
                         <SectionHeader
-                            label="Now Playing"
+                            label="Stage"
                             open={stagePanelOpen}
                             onToggle={() => setStagePanelOpen(v => !v)}
                             featureId="panel-now-playing"
@@ -4482,6 +4390,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 currentSourceLabel={currentSourceLabel}
                                 currentSourceToneClass={currentSourceToneClass}
                                 appleMusicStatus={appleMusicStatus}
+                                autoDj={autoDj}
+                                autoDjSequenceSummary={autoDjSequenceSummary}
+                                autoDjStepItems={autoDjStepItems}
                                 togglePlay={togglePlay}
                                 playAppleMusicTrack={playAppleMusicTrack}
                                 stopAppleMusic={stopAppleMusic}
@@ -4493,39 +4404,11 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 updateStatus={updateStatus}
                                 onMeasureApplause={() => current && startApplauseSequence({ songId: current.id, autoFinalize: false })}
                                 onEndPerformance={(songId) => handleEndPerformance(songId)}
+                                progressStageToNext={progressStageToNext}
                                 styles={STYLES}
                                 emoji={EMOJI}
                             />
                         )}
-                    </section>
-                    <section className="px-4 py-4 border-b border-white/10">
-                        <SectionHeader
-                            label="Automation"
-                            open={automationOpen}
-                            onToggle={() => setAutomationOpen(v => !v)}
-                            featureId="panel-automation"
-                        />
-                        <AutomationControls
-                            automationOpen={automationOpen}
-                            autoDj={autoDj}
-                            setAutoDj={setAutoDj}
-                            autoDjDelaySec={autoDjDelaySec}
-                            setAutoDjDelaySec={setAutoDjDelaySec}
-                            autoEndOnTrackFinish={autoEndOnTrackFinish}
-                            setAutoEndOnTrackFinish={setAutoEndOnTrackFinish}
-                            autoBonusEnabled={autoBonusEnabled}
-                            setAutoBonusEnabled={setAutoBonusEnabled}
-                            autoBonusPoints={autoBonusPoints}
-                            setAutoBonusPoints={setAutoBonusPoints}
-                            room={room}
-                            updateRoom={updateRoom}
-                            autoBgMusic={autoBgMusic}
-                            setAutoBgMusic={setAutoBgMusic}
-                            playingBg={playingBg}
-                            setBgMusicState={setBgMusicState}
-                            toggleSwitch={ToggleSwitch}
-                            styles={STYLES}
-                        />
                     </section>
                     {!essentialsMode && showLegacyLiveEffects && (
                         <section className="px-4 py-4 border-b border-white/10">
@@ -4571,37 +4454,6 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     </section>
                     {!essentialsMode && (
                         <>
-                            <section className="px-4 py-4 border-b border-white/10">
-                                <SectionHeader
-                                    label="Overlays & Guides"
-                                    open={overlaysOpen}
-                                    onToggle={() => setOverlaysOpen(v => !v)}
-                                    featureId="panel-overlays-guides"
-                                />
-                                <OverlaysGuidesPanel
-                                    overlaysOpen={overlaysOpen}
-                                    room={room}
-                                    updateRoom={updateRoom}
-                                    toggleHowToPlay={toggleHowToPlay}
-                                    startReadyCheck={startReadyCheck}
-                                    marqueeEnabled={marqueeEnabled}
-                                    setMarqueeEnabled={setMarqueeEnabled}
-                                    chatShowOnTv={chatShowOnTv}
-                                    setChatShowOnTv={setChatShowOnTv}
-                                    popTriviaEnabled={popTriviaEnabled}
-                                    setPopTriviaEnabled={setPopTriviaEnabled}
-                                    chatUnread={chatUnread}
-                                    vibeSyncOpen={vibeSyncOpen}
-                                    setVibeSyncOpen={setVibeSyncOpen}
-                                    startBeatDrop={startBeatDrop}
-                                    startStormSequence={startStormSequence}
-                                    stopStormSequence={stopStormSequence}
-                                    showVibeSync={showLegacyLiveEffects}
-                                    styles={STYLES}
-                                    sectionHeader={SectionHeader}
-                                />
-                            </section>
-
                             <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
                                 Audience Controls
                             </div>
@@ -5263,7 +5115,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         renewalAtMs: 0,
         cancelAtPeriodEnd: false,
         capabilities: {},
-        loading: false,
+        loading: true,
         error: ''
     });
     const [billingActionLoading, setBillingActionLoading] = useState(false);
@@ -5697,6 +5549,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const moderationNudgeAtRef = useRef(0);
     const openModerationInbox = useCallback(() => setShowModerationInbox(true), []);
     const closeModerationInbox = useCallback(() => setShowModerationInbox(false), []);
+    const holdAutoBgDuringStageActivation = useCallback((durationMs = 2500) => {
+        stageActivationPendingRef.current = true;
+        if (stageActivationTimerRef.current) {
+            clearTimeout(stageActivationTimerRef.current);
+        }
+        stageActivationTimerRef.current = setTimeout(() => {
+            stageActivationPendingRef.current = false;
+            stageActivationTimerRef.current = null;
+        }, durationMs);
+    }, []);
     const logActivity = useCallback(async (targetRoomCode, user, text, icon) => {
         try {
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
@@ -6011,16 +5873,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             stageActivationTimerRef.current = null;
         }
     }, [currentSong]);
-    const holdAutoBgDuringStageActivation = useCallback((durationMs = 2500) => {
-        stageActivationPendingRef.current = true;
-        if (stageActivationTimerRef.current) {
-            clearTimeout(stageActivationTimerRef.current);
-        }
-        stageActivationTimerRef.current = setTimeout(() => {
-            stageActivationPendingRef.current = false;
-            stageActivationTimerRef.current = null;
-        }, durationMs);
-    }, []);
     useEffect(() => {
         roomRef.current = room;
     }, [room]);
@@ -11924,18 +11776,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const quickStartRoleAllowed = canQuickStartForRole(hostPermissionLevel);
         const canQuickStartRoom = hasWorkspaceIdentity && hasHostIdentity && quickStartRoleAllowed;
         const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+        const authPending = !uid && !authError;
+        const launchAccessPending = (authPending || (!!uid && orgContext.loading) || billingActionLoading || !!subscriptionActionLoading) && !authError;
         const authHealthLabel = authError
             ? 'Auth Error'
-            : uid
-                ? 'Authenticated'
-                : 'Auth Pending';
+            : launchAccessPending
+                ? 'Checking Access'
+                : uid
+                    ? 'Authenticated'
+                    : 'Auth Pending';
         const roomClosed = Boolean(room?.closedAt);
         const roomPaused = Boolean(room?.paused || room?.isPaused || String(room?.activeMode || '').toLowerCase() === 'paused');
         const launchRoomCodeCandidate = String(roomCodeInput || roomCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
         const hasLaunchRoomCode = launchRoomCodeCandidate.length >= 4 && launchRoomCodeCandidate.length <= 10;
+        const primaryLaunchDisabled = creatingRoom || joiningRoom || !!roomManagerBusyCode || launchAccessPending;
         let launchState = 'Idle';
         if (entryError) {
             launchState = 'Error';
+        } else if (launchAccessPending) {
+            launchState = 'Syncing';
         } else if (creatingRoom || joiningRoom) {
             launchState = 'Starting';
         } else if (roomClosed) {
@@ -11949,6 +11808,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         const launchStateTone = (() => {
             switch (launchState) {
+                case 'Syncing':
+                    return 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100';
                 case 'Starting':
                     return 'border-cyan-300/40 bg-cyan-500/15 text-cyan-100';
                 case 'Live':
@@ -11967,6 +11828,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         })();
         const launchStateHelp = (() => {
             switch (launchState) {
+                case 'Syncing':
+                    return 'Checking auth, workspace access, and room tools.';
                 case 'Starting':
                     return 'Provisioning room and host controls.';
                 case 'Live':
@@ -12011,22 +11874,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const launchModeMeta = {
             start: {
                 label: 'Start Tonight',
-                title: shouldShowSetupCard ? 'Set up once, then start tonight' : 'Create a fresh room for tonight',
+                title: shouldShowSetupCard ? 'Finish setup, then launch' : 'Create a fresh room',
                 detail: shouldShowSetupCard
-                    ? 'Guided setup stays attached to the start flow for first-time hosts.'
-                    : 'The fastest path from host launch to a live room.'
+                    ? 'One quick setup pass.'
+                    : 'Fastest path to a live room.'
             },
             resume: {
-                label: 'Reopen Previous Room',
-                title: featuredRecentRoom ? `Latest room ${featuredRecentRoom.code}` : 'Open a room code or recent room',
+                label: 'Reopen',
+                title: featuredRecentRoom ? `Latest room ${featuredRecentRoom.code}` : 'Open a room code',
                 detail: featuredRecentRoom
-                    ? 'Jump back into a recent room without browsing the full workspace first.'
-                    : 'Use a room code when you need to get back in quickly.'
+                    ? 'Jump back in fast.'
+                    : 'Use a room code to get back in.'
             },
             advanced: {
-                label: 'Advanced Setup',
-                title: 'Discovery, diagnostics, and room management',
-                detail: 'Use this lane for optional listing details, recovery steps, cleanup, and archive tools.'
+                label: 'Advanced',
+                title: 'Diagnostics + room management',
+                detail: 'Recovery, listing details, and cleanup.'
             }
         };
         const renderRecentRoomList = ({ managementMode = false } = {}) => (
@@ -12205,18 +12068,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
                 <div className="mb-4 flex flex-col items-center gap-3 md:flex-row md:items-center md:text-left">
                     <img
-                        src="https://beauross.com/wp-content/uploads/bross-entertainment-chrome.png"
-                        className="w-36 md:w-40 shrink-0 drop-shadow-[0_0_30px_rgba(0,196,217,0.34)]"
-                        alt="Bross Entertainment"
+                        src={ASSETS.logo}
+                        className="w-44 md:w-52 shrink-0 object-contain drop-shadow-[0_0_30px_rgba(0,196,217,0.34)]"
+                        alt="BeauRocks Karaoke"
                     />
                     <div className="max-w-xl">
                         <h1 className="text-[1.85rem] md:text-[2.65rem] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] via-[#84e7f4] to-[#EC4899] leading-tight">
-                            {isFirstHostRun ? "Let's Get Your First Karaoke Room Ready" : 'Start Your Karaoke Night'}
+                            {isFirstHostRun ? 'Set Up + Start' : 'Start Tonight'}
                         </h1>
                         <div className="text-sm text-cyan-100/85 mt-2">
                             {isFirstHostRun
-                                ? 'Finish a quick setup once, then start hosting. Guests join with the room code you share.'
-                                : 'Create a room for tonight or reopen one from a recent show. Guests join with the room code you share.'}
+                                ? 'Finish setup once, then launch every night from here.'
+                                : 'Create a room or reopen a recent one.'}
                         </div>
                     </div>
                 </div>
@@ -12228,6 +12091,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </div>
                     </div>
                     <div className="mt-1 text-xs text-cyan-100/70">{launchStateHelp}</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${launchAccessPending ? 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100' : 'border-emerald-300/35 bg-emerald-500/10 text-emerald-100'}`}>
+                            {launchAccessPending ? 'Syncing Host Access' : 'Host Access Ready'}
+                        </span>
+                        {hostPermissionLevel && (
+                            <span className="rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] border-white/15 bg-white/5 text-zinc-200">
+                                {hostPermissionLevel}
+                            </span>
+                        )}
+                    </div>
                     {(authError || !isOnline) && (
                         <div className="mt-2 flex flex-wrap gap-2">
                             <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${authError ? 'border-rose-300/40 bg-rose-500/12 text-rose-100' : 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100'}`}>
@@ -12242,7 +12115,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     )}
                 </div>
                 <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Choose What You Want To Do</div>
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Launch Path</div>
                     <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
                         {['start', 'resume', 'advanced'].map((modeId) => {
                             const active = landingLaunchMode === modeId;
@@ -12271,20 +12144,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
                             <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Start Tonight</div>
                             <div className="mt-1 text-sm font-semibold text-white">
-                                {shouldShowSetupCard ? 'Finish host setup, then open your first room' : 'Create a fresh room and go live fast'}
+                                {shouldShowSetupCard ? 'Finish setup, then open your first room' : 'Create a fresh room and go live fast'}
                             </div>
                             <div className="mt-1 text-xs text-cyan-100/72">
                                 {shouldShowSetupCard
-                                    ? 'The first-time setup path stays here so new hosts can complete identity and launch from the same place.'
-                                    : 'The main launch path is intentionally narrow. Discovery listing details and diagnostics live under Advanced Setup.'}
+                                    ? 'Keep the first launch simple.'
+                                    : 'Discovery and recovery stay under Advanced.'}
                             </div>
                             {shouldShowSetupCard && (
                                 <div className="mt-3 rounded-xl border border-pink-300/30 bg-gradient-to-r from-cyan-500/10 via-sky-500/10 to-pink-500/10 px-3 py-3">
                                     <div className="text-[10px] uppercase tracking-[0.22em] text-pink-100/75">First-Time Setup</div>
-                                    <div className="mt-1 text-sm font-semibold text-white">Set up your host profile once.</div>
-                                    <div className="mt-1 text-xs text-cyan-100/75">
-                                        Add your host name, workspace details, and branding. After that, you can start rooms without seeing setup every time.
-                                    </div>
+                                    <div className="mt-1 text-sm font-semibold text-white">Set your host identity once.</div>
                                     <button
                                         onClick={() => {
                                             if (!canUseWorkspaceOnboarding) {
@@ -12304,7 +12174,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         <button
                             data-host-create-room-primary
                             onClick={() => {
-                                if (creatingRoom || joiningRoom || roomManagerBusyCode) return;
+                                if (creatingRoom || joiningRoom || roomManagerBusyCode || launchAccessPending) return;
                                 if (canQuickStartRoom) {
                                     createRoom({ openNightSetup: false });
                                     return;
@@ -12316,10 +12186,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 }
                                 toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
                             }}
-                            disabled={creatingRoom || joiningRoom || !!roomManagerBusyCode}
-                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-3 ${creatingRoom || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            disabled={primaryLaunchDisabled}
+                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-3 ${primaryLaunchDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
-                            {creatingRoom ? 'Starting Room...' : (shouldShowSetupCard && !canQuickStartRoom ? 'Finish Setup First' : 'Start New Room')}
+                            {launchAccessPending
+                                ? 'Checking Access...'
+                                : creatingRoom
+                                    ? 'Starting Room...'
+                                    : (shouldShowSetupCard && !canQuickStartRoom ? 'Finish Setup First' : 'Start New Room')}
                         </button>
                         <button
                             type="button"
@@ -12335,15 +12209,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
                             </summary>
                             <div className="mt-3 text-xs text-cyan-100/70">
-                                Quick start skips the setup checklist and opens a room immediately. Reopen and room management stay in their own lanes.
+                                Quick start opens a room immediately. Reopen and diagnostics stay separate.
                             </div>
                             <button
                                 data-host-quick-start
                                 onClick={() => createRoom()}
-                                disabled={creatingRoom || !canQuickStartRoom}
-                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 w-full py-2.5 text-xs uppercase tracking-[0.2em] shadow-[0_0_28px_rgba(236,72,153,0.25)] ${creatingRoom || !canQuickStartRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                disabled={creatingRoom || !canQuickStartRoom || launchAccessPending}
+                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 w-full py-2.5 text-xs uppercase tracking-[0.2em] shadow-[0_0_28px_rgba(236,72,153,0.25)] ${creatingRoom || !canQuickStartRoom || launchAccessPending ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
-                                {creatingRoom ? 'Starting Room...' : 'Quick Start Room'}
+                                {launchAccessPending ? 'Checking Access...' : creatingRoom ? 'Starting Room...' : 'Quick Start Room'}
                             </button>
                             {!canQuickStartRoom && (
                                 <div className="mt-2 text-[11px] text-amber-200/85">
@@ -13401,6 +13275,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     stageQuickStartSummary={stageQuickStartSummary}
                     stageQuickStartItems={stageQuickStartItems}
                     onDismissStageQuickStart={dismissStageQuickStartChecklist}
+                    audiencePreviewVisible={audiencePreviewVisible}
+                    setAudiencePreviewVisible={setAudiencePreviewVisible}
                 />
                 <ModerationInboxDrawer
                     open={showModerationInbox}
@@ -13914,15 +13790,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         onToggleCollapsed={() => setAudiencePreviewCollapsed(prev => !prev)}
                         onHide={() => setAudiencePreviewVisible(false)}
                     />
-                ) : (
-                    <button
-                        onClick={() => setAudiencePreviewVisible(true)}
-                        className={`${STYLES.btnStd} ${STYLES.btnInfo} fixed right-3 bottom-3 z-[35] px-3 py-2`}
-                    >
-                        <i className="fa-solid fa-tv"></i>
-                        Audience View
-                    </button>
-                )
+                ) : null
             )}
             {modifyingScoreId && (
                 <div className="fixed inset-0 z-[85] bg-black/70 flex items-center justify-center p-4">

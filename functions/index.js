@@ -1873,6 +1873,16 @@ const sanitizeWaitlistSource = (value = "") => {
   return safe;
 };
 
+const buildHostApplicationNextStepsMessage = ({ linePosition = 0, isNewSignup = false } = {}) => {
+  const safePosition = Number(linePosition);
+  const queueLine = Number.isFinite(safePosition) && safePosition > 0
+    ? ` Queue position: #${safePosition}.`
+    : "";
+  return isNewSignup
+    ? `Host access request received.${queueLine} Next steps: we notify BeauRocks admins, review the request by hand, and if approved this email/account can sign in on host.beaurocks.app to open Host Dashboard. No further action is needed right now.`
+    : `Host access request already on file.${queueLine} Next steps: BeauRocks admins review the request by hand, and if approved this email/account can sign in on host.beaurocks.app to open Host Dashboard. No further action is needed right now.`;
+};
+
 const sanitizeHostApplicationStatus = (value = "", fallback = "pending") => {
   const token = String(value || "").trim().toLowerCase();
   if (["pending", "approved", "rejected"].includes(token)) return token;
@@ -4148,16 +4158,42 @@ const requireCapability = async (request, capability) => {
   return { uid, entitlements };
 };
 
-const hasHostApprovalAccess = async (uid = "") => {
+const hasHostApprovalAccess = async (uid = "", email = "") => {
   const safeUid = normalizeUidToken(uid);
-  if (!safeUid) return false;
-  const [approvalSnap, legacySnap] = await Promise.all([
-    hostAccessApprovalDocRef(safeUid).get(),
-    legacyMarketingPrivateAccessDocRef(safeUid).get(),
+  const safeEmail = normalizeEmailToken(email);
+  if (!safeUid && !safeEmail) return false;
+
+  const refs = [];
+  if (safeUid) {
+    refs.push(
+      hostAccessApprovalDocRef(safeUid).get(),
+      legacyMarketingPrivateAccessDocRef(safeUid).get()
+    );
+  }
+  if (safeEmail) {
+    refs.push(
+      hostAccessApprovalInviteDocRef(safeEmail).get(),
+      legacyMarketingPrivateInviteDocRef(safeEmail).get()
+    );
+  }
+
+  const [
+    approvalSnap,
+    legacySnap,
+    approvalInviteSnap,
+    legacyInviteSnap,
+  ] = await Promise.all([
+    refs[0] || Promise.resolve(null),
+    refs[1] || Promise.resolve(null),
+    refs[2] || Promise.resolve(null),
+    refs[3] || Promise.resolve(null),
   ]);
+
   return (
-    (approvalSnap.exists && approvalSnap.data()?.hostApprovalEnabled === true)
-    || (legacySnap.exists && legacySnap.data()?.privateHostAccessEnabled === true)
+    (approvalSnap?.exists && approvalSnap.data()?.hostApprovalEnabled === true)
+    || (legacySnap?.exists && legacySnap.data()?.privateHostAccessEnabled === true)
+    || (approvalInviteSnap?.exists && approvalInviteSnap.data()?.hostApprovalEnabled === true)
+    || (legacyInviteSnap?.exists && legacyInviteSnap.data()?.privateHostAccessEnabled === true)
   );
 };
 
@@ -4177,7 +4213,8 @@ const hasEntitledHostWorkspaceAccess = (entitlements = null) => {
 const requireHostWorkspaceAccess = async (request, options = {}) => {
   const uid = requireAuth(request, options.authMessage || "Sign in required.");
   const entitlements = await resolveUserEntitlements(uid);
-  const hostApprovalEnabled = await hasHostApprovalAccess(uid);
+  const email = normalizeEmailToken(request.auth?.token?.email || "");
+  const hostApprovalEnabled = await hasHostApprovalAccess(uid, email);
   if (!hasEntitledHostWorkspaceAccess(entitlements) && !hostApprovalEnabled) {
     throw new HttpsError(
       "permission-denied",
@@ -4202,7 +4239,7 @@ const resolveHostApplicationRecord = async ({ uid = "", email = "" } = {}) => {
 
 const resolveHostWorkspaceAccess = async (uid = "", email = "") => {
   const entitlements = await resolveUserEntitlements(uid);
-  const hostApprovalEnabled = await hasHostApprovalAccess(uid);
+  const hostApprovalEnabled = await hasHostApprovalAccess(uid, email);
   const entitledHostAccess = hasEntitledHostWorkspaceAccess(entitlements);
   const application = await resolveHostApplicationRecord({ uid, email });
   const applicationStatus = sanitizeHostApplicationStatus(application?.data?.status || "", "");
@@ -8694,10 +8731,39 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
     linePosition,
     isNewSignup,
     message: isNewSignup
-      ? `You are in line. Early access position: #${linePosition}.`
-      : `You are already on the list. Current position: #${linePosition}.`,
+      ? buildHostApplicationNextStepsMessage({ linePosition, isNewSignup: true })
+      : buildHostApplicationNextStepsMessage({ linePosition, isNewSignup: false }),
   };
 });
+
+exports.notifyOnHostApplicationCreated = onDocumentCreated(
+  {
+    document: "host_access_applications/{applicationId}",
+    secrets: [REMINDER_EMAIL_WEBHOOK_URL],
+  },
+  async (event) => {
+    const application = event.data?.data();
+    if (!application) return;
+
+    const applicationId = safeDirectoryString(event.params?.applicationId || "", 180);
+    const hookResult = await dispatchHostApplicationAlert({
+      applicationId,
+      application,
+    });
+
+    await admin.firestore().collection("host_application_notifications").doc(`created_${applicationId || nowMs()}`).set({
+      applicationId,
+      status: hookResult.status || "unknown",
+      sent: !!hookResult.sent,
+      providerUrl: hookResult.url || "",
+      providerHttpStatus: Number(hookResult.httpStatus || 0),
+      providerResponse: safeDirectoryString(hookResult.responseText || "", 600),
+      createdAt: buildDirectoryNow(),
+      eventType: "host_application_created",
+      recipients: Array.from(SUPER_ADMIN_EMAILS).filter(Boolean),
+    }, { merge: true });
+  }
+);
 
 exports.redeemMarketingPrivateHostAccess = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "redeem_marketing_private_host_access", { perMinute: 18, perHour: 120 });
@@ -10989,6 +11055,92 @@ const dispatchDirectoryReminderHook = async ({ channel = "", payload = {} }) => 
       url,
     };
   }
+};
+
+const escapeAlertHtml = (value = "") =>
+  String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const dispatchHostApplicationAlert = async ({ applicationId = "", application = {} } = {}) => {
+  const recipients = Array.from(SUPER_ADMIN_EMAILS).filter(Boolean);
+  if (!recipients.length) {
+    return {
+      sent: false,
+      status: "no_recipients",
+      httpStatus: 0,
+      responseText: "",
+      url: "",
+    };
+  }
+
+  const safeApplicationId = safeDirectoryString(applicationId || "", 180);
+  const name = sanitizeWaitlistName(application?.name || "");
+  const email = sanitizeOptionalWaitlistEmail(application?.email || "");
+  const uid = normalizeUidToken(application?.uid || "");
+  const source = sanitizeWaitlistSource(application?.source || "unknown");
+  const status = sanitizeHostApplicationStatus(application?.status || "", "pending");
+  const linePosition = Math.max(0, Number(application?.linePosition || 0) || 0);
+  const submittedAtMs = valueToMillis(application?.submittedAt || application?.createdAt) || Date.now();
+  const submittedAtIso = new Date(submittedAtMs).toISOString();
+  const adminUrl = "https://beaurocks.app/admin/moderation";
+
+  const summaryLabel = name || email || uid || safeApplicationId || "Unknown applicant";
+  const text = [
+    "New BeauRocks host application received.",
+    `Applicant: ${summaryLabel}`,
+    email ? `Email: ${email}` : "",
+    uid ? `UID: ${uid}` : "",
+    linePosition > 0 ? `Queue position: #${linePosition}` : "",
+    `Status: ${status}`,
+    `Source: ${source}`,
+    `Submitted: ${submittedAtIso}`,
+    `Review: ${adminUrl}`,
+  ].filter(Boolean).join("\n");
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:#0b1020;color:#f4f4f5;padding:24px">
+      <div style="max-width:640px;margin:0 auto;background:#12182a;border:1px solid rgba(103,232,249,0.22);border-radius:18px;padding:24px">
+        <div style="font-size:12px;letter-spacing:0.28em;text-transform:uppercase;color:#67e8f9;margin-bottom:12px">BeauRocks Host Access</div>
+        <h1 style="font-size:28px;line-height:1.1;margin:0 0 16px;color:#ffffff">New host application received</h1>
+        <div style="font-size:18px;font-weight:700;color:#f9a8d4;margin-bottom:16px">${escapeAlertHtml(summaryLabel)}</div>
+        <div style="display:grid;gap:10px;margin-bottom:20px">
+          ${email ? `<div><strong>Email:</strong> ${escapeAlertHtml(email)}</div>` : ""}
+          ${uid ? `<div><strong>UID:</strong> ${escapeAlertHtml(uid)}</div>` : ""}
+          ${linePosition > 0 ? `<div><strong>Queue position:</strong> #${linePosition}</div>` : ""}
+          <div><strong>Status:</strong> ${escapeAlertHtml(status)}</div>
+          <div><strong>Source:</strong> ${escapeAlertHtml(source)}</div>
+          <div><strong>Submitted:</strong> ${escapeAlertHtml(submittedAtIso)}</div>
+        </div>
+        <a href="${adminUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:linear-gradient(90deg,#22d3ee,#ec4899);color:#050816;text-decoration:none;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">Open moderation</a>
+      </div>
+    </div>
+  `;
+
+  return dispatchDirectoryReminderHook({
+    channel: "email",
+    payload: {
+      eventType: "host_application_created",
+      to: recipients,
+      subject: `New BeauRocks host application: ${summaryLabel}`,
+      text,
+      html,
+      applicationId: safeApplicationId,
+      application: {
+        uid,
+        email,
+        name,
+        source,
+        status,
+        linePosition,
+        submittedAtMs,
+      },
+      adminUrl,
+    },
+  });
 };
 
 exports.dispatchDirectoryReminders = onSchedule(

@@ -23,7 +23,7 @@ const defaultRecordJson = JSON.stringify([
   },
 ], null, 2);
 
-const AdminModerationPage = ({ session }) => {
+const AdminModerationPage = ({ session, pendingHostApplicationsCount = 0, onHostApplicationsChanged = null }) => {
   const canModerate = !!session?.isModerator;
   const canManageHostAccess = !!session?.isAdmin;
   const [queue, setQueue] = useState([]);
@@ -105,6 +105,9 @@ const AdminModerationPage = ({ session }) => {
         limit: 40,
       });
       setHostApplications(Array.isArray(payload?.items) ? payload.items : []);
+      if (typeof onHostApplicationsChanged === "function") {
+        onHostApplicationsChanged();
+      }
     } catch (error) {
       setStatus(String(error?.message || "Could not load host applications."));
       setHostApplications([]);
@@ -418,7 +421,10 @@ const AdminModerationPage = ({ session }) => {
 
       <aside className="mk3-actions-card">
         <h4>Host Applications</h4>
-        <p>Review host applications and approve the accounts you want to onboard.</p>
+        <p>
+          Review host applications and approve the accounts you want to onboard.
+          {pendingHostApplicationsCount > 0 ? ` ${pendingHostApplicationsCount} pending.` : ""}
+        </p>
         {canManageHostAccess ? (
           <>
             <div className="mk3-filter-row">
@@ -433,6 +439,10 @@ const AdminModerationPage = ({ session }) => {
             </div>
             <div className="mk3-sub-list compact">
               <h3>Applications ({hostApplications.length})</h3>
+              <div className="mk3-status">
+                <strong>Approval workflow</strong>
+                <span>Approve Host marks the application approved and grants host access to the applicant email or UID. Reject stores the review result but does not grant access.</span>
+              </div>
               {hostApplications.map((application) => (
                 <article key={application.applicationId} className="mk3-review-card">
                   <div className="mk3-review-head">

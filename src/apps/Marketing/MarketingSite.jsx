@@ -12,7 +12,7 @@ import {
 import { applyMarketingSeo } from "./seo";
 import { directoryActions } from "./api/directoryApi";
 import { useDirectorySession } from "./hooks/useDirectorySession";
-import { formatDateTime, MARKETING_BRAND_BADGE_URL } from "./pages/shared";
+import { formatDateTime, MARKETING_BRAND_NEON_URL } from "./pages/shared";
 import { buildSurfaceUrl, inferSurfaceFromHostname } from "../../lib/surfaceDomains";
 import { getMarketingNavModel } from "./iaModel";
 import "./marketing.css";
@@ -228,6 +228,7 @@ const pickCampaignParams = (params = {}) => {
 
 const MarketingSite = () => {
   const [route, setRoute] = useState(() => readRouteFromWindow());
+  const [seoEntity, setSeoEntity] = useState(null);
   const [mapsConfig, setMapsConfig] = useState(() => readCachedMapsConfig());
   const [mapsConfigError, setMapsConfigError] = useState("");
   const [heroStats, setHeroStats] = useState(null);
@@ -237,6 +238,7 @@ const MarketingSite = () => {
   const [authNotice, setAuthNotice] = useState("");
   const [hostApplicationBusy, setHostApplicationBusy] = useState(false);
   const [hostApplicationNotice, setHostApplicationNotice] = useState("");
+  const [pendingHostApplicationsCount, setPendingHostApplicationsCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const authPanelRef = useRef(null);
   const moreMenuRef = useRef(null);
@@ -335,36 +337,79 @@ const MarketingSite = () => {
   }, [route.page, route.id]);
 
   useEffect(() => {
+    setSeoEntity(null);
+  }, [route.page, route.id]);
+
+  useEffect(() => {
     applyMarketingSeo({
       page: route.page,
       id: route.id,
       params: route.params,
+    }, {
+      entity: seoEntity,
     });
-  }, [route.page, route.id, route.params]);
+  }, [route.page, route.id, route.params, seoEntity]);
+
+  const buildRelativeHref = useCallback((pageOrRoute = MARKETING_ROUTE_PAGES.discover, id = "", params = {}) => {
+    const nextRoute = normalizeRouteInput(pageOrRoute, id, params);
+    if (marketingFlags.routePathsEnabled) return buildMarketingUrl(nextRoute);
+    const legacyBase = buildLegacyMarketingQuery(nextRoute);
+    const legacySearch = buildMarketingSearch(nextRoute);
+    const separator = legacyBase.includes("?") && legacySearch ? "&" : "";
+    return `${legacyBase}${legacySearch ? `${separator}${legacySearch.replace(/^\?/, "")}` : ""}`;
+  }, []);
+
+  const buildHref = useCallback((pageOrRoute = MARKETING_ROUTE_PAGES.discover, id = "", params = {}) => {
+    const relativeHref = buildRelativeHref(pageOrRoute, id, params);
+    if (typeof window === "undefined") return relativeHref;
+
+    const marketingBase = buildSurfaceUrl({ surface: "marketing" }, window.location);
+    const targetUrl = new URL(relativeHref, marketingBase);
+    const currentSurface = inferSurfaceFromHostname(window.location.hostname, window.location);
+    const targetOrigin = String(targetUrl.origin || "").trim().toLowerCase();
+    const currentOrigin = String(window.location.origin || "").trim().toLowerCase();
+
+    if (currentSurface && currentSurface !== "marketing" && targetOrigin && targetOrigin !== currentOrigin) {
+      return targetUrl.toString();
+    }
+    return `${targetUrl.pathname}${targetUrl.search}`;
+  }, [buildRelativeHref]);
 
   const navigate = useCallback((pageOrRoute = MARKETING_ROUTE_PAGES.discover, id = "", params = {}, options = {}) => {
     if (typeof window === "undefined") return;
     const nextRoute = normalizeRouteInput(pageOrRoute, id, params);
+    const nextHref = buildHref(nextRoute);
+    const nextUrl = new URL(`${nextHref}${window.location.hash || ""}`, window.location.origin);
 
-    let nextUrl = "";
-    if (marketingFlags.routePathsEnabled) {
-      nextUrl = `${buildMarketingUrl(nextRoute)}${window.location.hash || ""}`;
-    } else {
-      const legacyBase = buildLegacyMarketingQuery(nextRoute);
-      const legacySearch = buildMarketingSearch(nextRoute);
-      const separator = legacyBase.includes("?") && legacySearch ? "&" : "";
-      nextUrl = `${legacyBase}${legacySearch ? `${separator}${legacySearch.replace(/^\?/, "")}` : ""}${window.location.hash || ""}`;
+    if (nextUrl.origin !== window.location.origin) {
+      window.location.assign(nextUrl.toString());
+      return;
     }
 
     if (options?.replace) {
-      window.history.replaceState({}, "", nextUrl);
+      window.history.replaceState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
     } else {
-      window.history.pushState({}, "", nextUrl);
+      window.history.pushState({}, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
     }
     setRoute(nextRoute);
     collapseNavMenus();
     trackEvent("marketing_directory_navigate", { page: nextRoute.page || MARKETING_ROUTE_PAGES.discover });
-  }, [collapseNavMenus]);
+  }, [buildHref, collapseNavMenus]);
+
+  const onMarketingAnchorClick = useCallback((event, pageOrRoute = MARKETING_ROUTE_PAGES.discover, id = "", params = {}, options = {}) => {
+    if (
+      event.defaultPrevented
+      || event.button !== 0
+      || event.metaKey
+      || event.altKey
+      || event.ctrlKey
+      || event.shiftKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    navigate(pageOrRoute, id, params, options);
+  }, [navigate]);
 
   const scrollAuthPanelIntoView = useCallback(() => {
     authPanelRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
@@ -551,6 +596,7 @@ const MarketingSite = () => {
     return inferSurfaceFromHostname(window.location.hostname, window.location);
   }, []);
   const isHostSurface = currentSurface === "host";
+  const hostAccessHandoffRef = useRef("");
   const openHostDashboard = useCallback((source = "marketing_nav") => {
     if (typeof window === "undefined") return;
     trackEvent("mk_nav_host_dashboard_click", {
@@ -574,6 +620,21 @@ const MarketingSite = () => {
     if (!nextHref) return;
     window.location.href = nextHref;
   }, [buildHostSurfaceAuthHref]);
+  const continueToHostLogin = useCallback((source = "host_access_root_handoff") => {
+    trackEvent("mk_nav_host_access_click", { source });
+    openHostAuthGate({
+      intent: String(route.params?.intent || "").trim() || "continue",
+      targetType: String(route.params?.targetType || "").trim(),
+      targetId: String(route.params?.targetId || "").trim(),
+      returnRoute: {
+        page: MARKETING_ROUTE_PAGES.hostAccess,
+        params: {
+          ...withCampaignParams(route.params || {}),
+          ...stripIntentParams(route.params || {}),
+        },
+      },
+    });
+  }, [openHostAuthGate, route.params, withCampaignParams]);
 
   const applyForHostAccess = useCallback(async (source = "marketing_host_apply") => {
     if (!hasFullAccount) {
@@ -610,6 +671,24 @@ const MarketingSite = () => {
   const hostAccessLoading = !!session?.hostAccessLoading;
   const hostAccessRetryRequired = !!session?.hostAccessRetryRequired;
 
+  const refreshPendingHostApplicationsCount = useCallback(async () => {
+    if (!session?.isAdmin) {
+      setPendingHostApplicationsCount(0);
+      return 0;
+    }
+    try {
+      const payload = await directoryActions.listHostApplications({
+        status: "pending",
+        limit: 100,
+      });
+      const count = Array.isArray(payload?.items) ? payload.items.length : 0;
+      setPendingHostApplicationsCount(count);
+      return count;
+    } catch {
+      return 0;
+    }
+  }, [session?.isAdmin]);
+
   useEffect(() => {
     if (!isHostAccessPage) return;
     if (!route.params?.intent) return;
@@ -622,6 +701,37 @@ const MarketingSite = () => {
     if (intent !== "host_dashboard_resume") return;
     openHostDashboard("host_resume_after_login");
   }, [hasFullAccount, openHostDashboard, route.params?.intent, session.hasHostWorkspaceAccess]);
+
+  useEffect(() => {
+    const intent = String(route.params?.intent || "").trim().toLowerCase();
+    const targetType = String(route.params?.targetType || "").trim().toLowerCase();
+    if (!isHostAccessPage || isHostSurface || hasFullAccount) return;
+    if (intent !== "host_dashboard_resume" && targetType !== "host_dashboard" && targetType !== "session") return;
+    const runKey = `${intent}:${targetType}:${String(route.params?.return_to || "").trim()}`;
+    if (hostAccessHandoffRef.current === runKey) return;
+    hostAccessHandoffRef.current = runKey;
+    continueToHostLogin("host_access_root_auto_handoff");
+  }, [
+    continueToHostLogin,
+    hasFullAccount,
+    isHostAccessPage,
+    isHostSurface,
+    route.params?.intent,
+    route.params?.return_to,
+    route.params?.targetType,
+  ]);
+
+  useEffect(() => {
+    if (!session?.isAdmin) {
+      setPendingHostApplicationsCount(0);
+      return () => {};
+    }
+    refreshPendingHostApplicationsCount();
+    const timer = setInterval(() => {
+      refreshPendingHostApplicationsCount();
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [refreshPendingHostApplicationsCount, session?.isAdmin]);
 
   const onAuthSubmit = async (event) => {
     event.preventDefault();
@@ -684,6 +794,16 @@ const MarketingSite = () => {
     () => navSecondaryOptions.some((item) => item.id === activePage),
     [activePage, navSecondaryOptions]
   );
+  const renderNavItemLabel = useCallback((item) => {
+    const badgeCount = item?.id === MARKETING_ROUTE_PAGES.admin ? pendingHostApplicationsCount : 0;
+    if (!badgeCount) return item.label;
+    return (
+      <span className="mk3-nav-item-label">
+        <span>{item.label}</span>
+        <span className="mk3-nav-item-badge">{badgeCount}</span>
+      </span>
+    );
+  }, [pendingHostApplicationsCount]);
 
   const postAuthHint = useMemo(() => {
     if (authMode === "signup") {
@@ -710,6 +830,10 @@ const MarketingSite = () => {
       authFlow: {
         requireFullAuth,
       },
+      pendingHostApplicationsCount,
+      onHostApplicationsChanged: refreshPendingHostApplicationsCount,
+      buildHref,
+      setSeoEntity,
     };
     if (activePage === MARKETING_ROUTE_PAGES.discover) return <DiscoverPage {...pageProps} />;
     if (activePage === MARKETING_ROUTE_PAGES.demo) return <DemoExperiencePage {...pageProps} demoMode="abstract" />;
@@ -733,7 +857,7 @@ const MarketingSite = () => {
       return <GeoLandingPage {...pageProps} />;
     }
     return <DiscoverPage {...pageProps} />;
-  }, [activePage, requireFullAuth, route, navigate, mapsConfig, heroStats, session]);
+  }, [activePage, requireFullAuth, route, navigate, mapsConfig, heroStats, session, pendingHostApplicationsCount, refreshPendingHostApplicationsCount, buildHref]);
 
   return (
     <div className="mk3-site mk3-site-cinematic mk3-site-synthwave" data-page={activePage}>
@@ -746,51 +870,51 @@ const MarketingSite = () => {
       <header className="mk3-nav">
         <div className="mk3-shell mk3-shell-nav">
           <div className="mk3-nav-inner">
-            <button
-              type="button"
+            <a
               className="mk3-brand"
-              onClick={() => {
+              href={buildHref(MARKETING_ROUTE_PAGES.forFans, "", withCampaignParams({ utm_content: "nav_brand" }))}
+              onClick={(event) => {
                 collapseNavMenus();
-                navigate(MARKETING_ROUTE_PAGES.forFans, "", withCampaignParams({ utm_content: "nav_brand" }));
+                onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.forFans, "", withCampaignParams({ utm_content: "nav_brand" }));
               }}
             >
-              <img src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks Karaoke logo" />
+              <img src={MARKETING_BRAND_NEON_URL} alt="BeauRocks Karaoke logo" />
               <div>
                 <strong>{PRODUCT_BRAND.name}</strong>
                 <span>{PRODUCT_BRAND.tagline}</span>
               </div>
-            </button>
+            </a>
             <div className="mk3-nav-center">
               <nav className="mk3-links" aria-label="Primary">
                 {navPrimaryOptions.map((item) => (
-                  <button
+                  <a
                     key={item.id}
-                    type="button"
+                    href={buildHref(item.id, "", withCampaignParams({ utm_content: `nav_primary_${item.id}` }))}
                     className={activePage === item.id ? "active" : ""}
-                    onClick={() => {
+                    onClick={(event) => {
                       collapseNavMenus();
-                      navigate(item.id, "", withCampaignParams({ utm_content: `nav_primary_${item.id}` }));
+                      onMarketingAnchorClick(event, item.id, "", withCampaignParams({ utm_content: `nav_primary_${item.id}` }));
                     }}
                   >
-                    {item.label}
-                  </button>
+                    {renderNavItemLabel(item)}
+                  </a>
                 ))}
                 {navSecondaryOptions.length > 0 && (
                   <details ref={moreMenuRef} className={`mk3-more-menu ${moreMenuActive ? "is-active" : ""}`}>
                     <summary>More</summary>
                     <div className="mk3-more-list">
                       {navSecondaryOptions.map((item) => (
-                        <button
+                        <a
                           key={item.id}
-                          type="button"
+                          href={buildHref(item.id, "", withCampaignParams({ utm_content: `nav_secondary_${item.id}` }))}
                           className={activePage === item.id ? "active" : ""}
-                          onClick={() => {
+                          onClick={(event) => {
                             collapseNavMenus();
-                            navigate(item.id, "", withCampaignParams({ utm_content: `nav_secondary_${item.id}` }));
+                            onMarketingAnchorClick(event, item.id, "", withCampaignParams({ utm_content: `nav_secondary_${item.id}` }));
                           }}
                         >
-                          {item.label}
-                        </button>
+                          {renderNavItemLabel(item)}
+                        </a>
                       ))}
                     </div>
                   </details>
@@ -839,30 +963,30 @@ const MarketingSite = () => {
           <div id="mk3-mobile-menu" className={mobileMenuOpen ? "mk3-mobile-menu is-open" : "mk3-mobile-menu"}>
             <div className="mk3-mobile-link-grid">
               {navPrimaryOptions.map((item) => (
-                <button
+                <a
                   key={item.id}
-                  type="button"
+                  href={buildHref(item.id, "", withCampaignParams({ utm_content: `mobile_primary_${item.id}` }))}
                   className={activePage === item.id ? "active" : ""}
-                  onClick={() => {
+                  onClick={(event) => {
                     collapseNavMenus();
-                    navigate(item.id, "", withCampaignParams({ utm_content: `mobile_primary_${item.id}` }));
+                    onMarketingAnchorClick(event, item.id, "", withCampaignParams({ utm_content: `mobile_primary_${item.id}` }));
                   }}
                 >
-                  {item.label}
-                </button>
+                  {renderNavItemLabel(item)}
+                </a>
               ))}
               {navSecondaryOptions.map((item) => (
-                <button
+                <a
                   key={item.id}
-                  type="button"
+                  href={buildHref(item.id, "", withCampaignParams({ utm_content: `mobile_secondary_${item.id}` }))}
                   className={activePage === item.id ? "active" : ""}
-                  onClick={() => {
+                  onClick={(event) => {
                     collapseNavMenus();
-                    navigate(item.id, "", withCampaignParams({ utm_content: `mobile_secondary_${item.id}` }));
+                    onMarketingAnchorClick(event, item.id, "", withCampaignParams({ utm_content: `mobile_secondary_${item.id}` }));
                   }}
                 >
-                  {item.label}
-                </button>
+                  {renderNavItemLabel(item)}
+                </a>
               ))}
             </div>
           </div>
@@ -962,8 +1086,8 @@ const MarketingSite = () => {
                             : hostApplicationStatus === "rejected"
                               ? "This application is currently closed. Reach out if you need another review."
                               : hostApplicationStatus === "pending"
-                                ? "Your application will be reviewed before host tools are enabled for this account."
-                                : "Apply now and we will follow up when host access is available for your account."}
+                                ? "Your request is in review. BeauRocks admins were notified, the application is reviewed by hand, and this same email/account will unlock host sign-in if approved."
+                                : "Apply now. We notify BeauRocks admins, review the request by hand, and unlock host sign-in on this same email/account if approved."}
                         </span>
                       </div>
                       <div className="mk3-actions-inline">
@@ -995,21 +1119,7 @@ const MarketingSite = () => {
                     <button
                       className="mk3-host-canon-button is-primary"
                       type="button"
-                      onClick={() => {
-                        trackEvent("mk_nav_host_access_click", { source: "host_access_root_handoff" });
-                        openHostAuthGate({
-                          intent: String(route.params?.intent || "").trim() || "continue",
-                          targetType: String(route.params?.targetType || "").trim(),
-                          targetId: String(route.params?.targetId || "").trim(),
-                          returnRoute: {
-                            page: MARKETING_ROUTE_PAGES.hostAccess,
-                            params: {
-                              ...withCampaignParams(route.params || {}),
-                              ...stripIntentParams(route.params || {}),
-                            },
-                          },
-                        });
-                      }}
+                      onClick={() => continueToHostLogin("host_access_root_handoff_manual")}
                     >
                       Continue To Host Login
                     </button>
@@ -1138,9 +1248,36 @@ const MarketingSite = () => {
             </div>
           )}
 
-          {!isHostAccessPage && activePage !== MARKETING_ROUTE_PAGES.forFans && (
+          {!isHostAccessPage && (
             <footer className="mk3-site-footer" aria-label="Marketing quick links">
-              <div className="mk3-actions-inline">
+              <div className="mk3-site-footer-brand">
+                <img src={MARKETING_BRAND_NEON_URL} alt="BeauRocks Karaoke logo" loading="lazy" />
+                <div>
+                  <strong>{PRODUCT_BRAND.name}</strong>
+                  <span>Live rooms, real hosts, and one shared room signal.</span>
+                </div>
+              </div>
+              <div className="mk3-site-footer-links">
+                <a
+                  href={buildHref(MARKETING_ROUTE_PAGES.forFans, "", withCampaignParams({ utm_content: "footer_overview" }))}
+                  onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.forFans, "", withCampaignParams({ utm_content: "footer_overview" }))}
+                >
+                  Overview
+                </a>
+                <a
+                  href={buildHref(MARKETING_ROUTE_PAGES.discover, "", withCampaignParams({ utm_content: "footer_discover" }))}
+                  onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.discover, "", withCampaignParams({ utm_content: "footer_discover" }))}
+                >
+                  Discover
+                </a>
+                <a
+                  href={buildHref(MARKETING_ROUTE_PAGES.demoAuto, "", withCampaignParams({ utm_content: "footer_demo_auto" }))}
+                  onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.demoAuto, "", withCampaignParams({ utm_content: "footer_demo_auto" }))}
+                >
+                  Auto Demo
+                </a>
+              </div>
+              <div className="mk3-site-footer-actions">
                 <button
                   type="button"
                   onClick={() => {

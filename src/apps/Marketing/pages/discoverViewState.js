@@ -1,6 +1,6 @@
 export const createDiscoverViewState = ({ isMobile = false } = {}) => ({
   resultsView: "results",
-  mobileSurface: "list",
+  mobileSurface: isMobile ? "map" : "list",
   mobileFiltersExpanded: !isMobile,
 });
 
@@ -13,7 +13,7 @@ export const reduceDiscoverViewState = (state, action) => {
     if (!isMobile) {
       return { ...current, mobileSurface: "list", mobileFiltersExpanded: true };
     }
-    return { ...current, mobileSurface: "list" };
+    return { ...current, mobileSurface: "map", mobileFiltersExpanded: false };
   }
 
   if (type === "show_map") {

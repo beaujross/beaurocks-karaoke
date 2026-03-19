@@ -17,12 +17,12 @@ export const DEFAULT_TIP_CRATES = Object.freeze([
 ]);
 
 export const DEFAULT_LOGO_PRESETS = Object.freeze([
-    { id: 'default-bross', label: 'BROSS Default', url: ASSETS.logo },
+    { id: 'default-bross', label: 'BeauRocks Neon Default', url: ASSETS.logo },
     { id: 'bross-entertainment', label: 'Bross Entertainment', url: '/images/logo-library/bross-entertainment.png' },
     { id: 'bross-entertainment-chrome', label: 'Bross Chrome', url: '/images/logo-library/bross-entertainment-chrome.png' },
-    { id: 'beaurocks-karaoke-logo-2', label: 'Beaurocks Logo 2', url: '/images/logo-library/beaurocks-karaoke-logo-2.png' },
-    { id: 'icon-reversed-gradient', label: 'Icon Reversed Gradient', url: '/images/logo-library/icon-reversed-gradient.png' },
-    { id: 'bross-ent-favicon-1', label: 'Bross Favicon 1', url: '/images/logo-library/bross-ent-favicon-1.png' },
+    { id: 'beaurocks-logo-neon-transparent', label: 'BeauRocks Neon Transparent', url: '/images/logo-library/beaurocks-logo-neon trasnparent.png' },
+    { id: 'icon-reversed-gradient', label: 'Icon Reversed Gradient', url: '/images/logo-library/beaurocks-logo-neon trasnparent.png' },
+    { id: 'bross-ent-favicon-1', label: 'BeauRocks Neon Mark', url: '/images/logo-library/beaurocks-logo-neon trasnparent.png' },
     { id: 'chatgpt-2026-02-08-032254pm', label: 'ChatGPT Concept 03:22 PM', url: '/images/logo-library/chatgpt-2026-02-08-032254pm.png' },
     { id: 'chatgpt-2026-02-08-103037pm', label: 'ChatGPT Concept 10:30 PM', url: '/images/logo-library/chatgpt-2026-02-08-103037pm.png' },
     { id: 'chatgpt-2026-02-08-115558pm', label: 'ChatGPT Concept 11:55 PM', url: '/images/logo-library/chatgpt-2026-02-08-115558pm.png' }

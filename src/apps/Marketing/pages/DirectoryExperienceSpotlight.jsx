@@ -14,8 +14,8 @@ const renderBadgeGroup = (items = [], tone = "fun") => {
 
 const DirectoryExperienceSpotlight = ({
   entry = null,
-  title = "Night Personality",
-  eyebrow = "karaoke vibe",
+  title = "What to expect",
+  eyebrow = "night details",
   actionLabel = "",
   onAction = null,
   showUpgradePrompt = true,
@@ -27,14 +27,14 @@ const DirectoryExperienceSpotlight = ({
       <div className="mk3-chip">{eyebrow}</div>
       <h3>{title}</h3>
       <p className="mk3-experience-story">{experience.storyLine}</p>
-      {renderBadgeGroup(experience.capabilityBadges.slice(0, 4), "modern")}
-      {renderBadgeGroup(experience.funBadges.slice(0, 4), "fun")}
-      {renderBadgeGroup(experience.trustBadges.slice(0, 3), "trust")}
+      {renderBadgeGroup(experience.capabilityBadges.slice(0, 2), "modern")}
+      {renderBadgeGroup(experience.funBadges.slice(0, 2), "fun")}
+      {renderBadgeGroup(experience.trustBadges.slice(0, 2), "trust")}
       {!!experience.bestForBadges.length && (
         <div className="mk3-experience-best-for">
-          <strong>Best for</strong>
+          <strong>Good fit for</strong>
           <div className="mk3-experience-pill-row is-best-for">
-            {experience.bestForBadges.slice(0, 4).map((item) => (
+            {experience.bestForBadges.slice(0, 3).map((item) => (
               <span key={`best-for-${item}`} className="mk3-experience-pill is-best-for">{item}</span>
             ))}
           </div>
@@ -42,14 +42,14 @@ const DirectoryExperienceSpotlight = ({
       )}
       {!!experience.whyThisNightWorks.length && (
         <div className="mk3-experience-notes">
-          {experience.whyThisNightWorks.slice(0, 3).map((item) => (
+          {experience.whyThisNightWorks.slice(0, 2).map((item) => (
             <div key={item} className="mk3-experience-note">{item}</div>
           ))}
         </div>
       )}
       {showUpgradePrompt && !experience.isBeauRocksPowered && (
         <div className="mk3-experience-upgrade-callout">
-          <strong>Modernize this karaoke night</strong>
+          <strong>Run this night on BeauRocks</strong>
           <span>{experience.upgradePitch}</span>
           {typeof onAction === "function" && actionLabel ? (
             <button type="button" onClick={onAction}>{actionLabel}</button>

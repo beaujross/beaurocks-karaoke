@@ -25,19 +25,13 @@ const AddToQueueFormBody = ({
     setManualSingerMode,
     hostName,
     users,
-    statusPill,
     lyricsOpen,
     setLyricsOpen,
     onGenerateManualLyrics,
-    manualBackingChip,
     openYtSearch,
     addSong,
     appleMusicAuthorized
 }) => {
-    const mediaSummaryLabel = manualBackingChip.label === 'Apple Music'
-        ? 'Saved / Apple default'
-        : manualBackingChip.label;
-
     return (
     <div className="mt-2 pr-1">
         <div className="host-autocomplete-shell relative mb-2 z-30">
@@ -252,20 +246,6 @@ const AddToQueueFormBody = ({
                         placeholder="Custom performer"
                     />
                 )}
-            </div>
-        </div>
-        <div className="mb-2 rounded-xl border border-white/10 bg-black/30 p-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <div className="text-xs uppercase tracking-widest text-zinc-400">Queue First, Refine After</div>
-                    <div className="mt-1 text-xs text-zinc-500 max-w-2xl">
-                        Add the song quickly here, then use the queue edit modal for custom playback, YouTube backing, lyrics fixes, and timed-lyrics tools.
-                    </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
-                    <span className={statusPill}>Playback: {mediaSummaryLabel}</span>
-                    <span className={statusPill}>Lyrics: {manual.lyrics ? 'Custom queued' : 'Resolve after queue'}</span>
-                </div>
             </div>
         </div>
         <div className="mb-2 flex justify-end">

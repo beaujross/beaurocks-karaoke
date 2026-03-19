@@ -102,45 +102,46 @@ const applyBasePath = (pathname = "") => {
 
 const routeForPathTokens = (parts = []) => {
   if (!Array.isArray(parts) || !parts.length) return null;
+  const normalizedParts = parts.map((token) => lower(token));
 
-  if (parts[0] === "discover") return { page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} };
-  if (parts[0] === "demo") return { page: MARKETING_ROUTE_PAGES.demo, id: "", params: {} };
-  if (parts[0] === "demo-auto") return { page: MARKETING_ROUTE_PAGES.demoAuto, id: "", params: {} };
-  if (parts[0] === "changelog") return { page: MARKETING_ROUTE_PAGES.changelog, id: "", params: {} };
-  if (parts[0] === "host-access") return { page: MARKETING_ROUTE_PAGES.hostAccess, id: "", params: {} };
-  if (parts[0] === "for-hosts") return { page: MARKETING_ROUTE_PAGES.forHosts, id: "", params: {} };
-  if (parts[0] === "for-venues") return { page: MARKETING_ROUTE_PAGES.forVenues, id: "", params: {} };
-  if (parts[0] === "for-performers") return { page: MARKETING_ROUTE_PAGES.forPerformers, id: "", params: {} };
-  if (parts[0] === "for-fans") return { page: MARKETING_ROUTE_PAGES.forFans, id: "", params: {} };
-  if (parts[0] === "hosts" && parts[1]) return { page: MARKETING_ROUTE_PAGES.host, id: parts[1], params: {} };
-  if (parts[0] === "venues" && parts[1]) return { page: MARKETING_ROUTE_PAGES.venue, id: parts[1], params: {} };
-  if (parts[0] === "events" && parts[1]) return { page: MARKETING_ROUTE_PAGES.event, id: parts[1], params: {} };
-  if (parts[0] === "sessions" && parts[1]) return { page: MARKETING_ROUTE_PAGES.session, id: parts[1], params: {} };
-  if (parts[0] === "performers" && parts[1]) return { page: MARKETING_ROUTE_PAGES.performer, id: parts[1], params: {} };
-  if (parts[0] === "profile") return { page: MARKETING_ROUTE_PAGES.profile, id: "", params: {} };
-  if (parts[0] === "submit") return { page: MARKETING_ROUTE_PAGES.submit, id: "", params: {} };
-  if (parts[0] === "admin" && (!parts[1] || parts[1] === "moderation")) {
+  if (normalizedParts[0] === "discover") return { page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} };
+  if (normalizedParts[0] === "demo") return { page: MARKETING_ROUTE_PAGES.demo, id: "", params: {} };
+  if (normalizedParts[0] === "demo-auto") return { page: MARKETING_ROUTE_PAGES.demoAuto, id: "", params: {} };
+  if (normalizedParts[0] === "changelog") return { page: MARKETING_ROUTE_PAGES.changelog, id: "", params: {} };
+  if (normalizedParts[0] === "host-access") return { page: MARKETING_ROUTE_PAGES.hostAccess, id: "", params: {} };
+  if (normalizedParts[0] === "for-hosts") return { page: MARKETING_ROUTE_PAGES.forHosts, id: "", params: {} };
+  if (normalizedParts[0] === "for-venues") return { page: MARKETING_ROUTE_PAGES.forVenues, id: "", params: {} };
+  if (normalizedParts[0] === "for-performers") return { page: MARKETING_ROUTE_PAGES.forPerformers, id: "", params: {} };
+  if (normalizedParts[0] === "for-fans") return { page: MARKETING_ROUTE_PAGES.forFans, id: "", params: {} };
+  if (normalizedParts[0] === "hosts" && parts[1]) return { page: MARKETING_ROUTE_PAGES.host, id: parts[1], params: {} };
+  if (normalizedParts[0] === "venues" && parts[1]) return { page: MARKETING_ROUTE_PAGES.venue, id: parts[1], params: {} };
+  if (normalizedParts[0] === "events" && parts[1]) return { page: MARKETING_ROUTE_PAGES.event, id: parts[1], params: {} };
+  if (normalizedParts[0] === "sessions" && parts[1]) return { page: MARKETING_ROUTE_PAGES.session, id: parts[1], params: {} };
+  if (normalizedParts[0] === "performers" && parts[1]) return { page: MARKETING_ROUTE_PAGES.performer, id: parts[1], params: {} };
+  if (normalizedParts[0] === "profile") return { page: MARKETING_ROUTE_PAGES.profile, id: "", params: {} };
+  if (normalizedParts[0] === "submit") return { page: MARKETING_ROUTE_PAGES.submit, id: "", params: {} };
+  if (normalizedParts[0] === "admin" && (!normalizedParts[1] || normalizedParts[1] === "moderation")) {
     return { page: MARKETING_ROUTE_PAGES.admin, id: "", params: {} };
   }
-  if (parts[0] === "join") {
+  if (normalizedParts[0] === "join") {
     const roomCode = String(parts[1] || "").trim().toUpperCase();
     return { page: MARKETING_ROUTE_PAGES.join, id: roomCode, params: { roomCode } };
   }
-  if (parts[0] === "karaoke" && parts[1] === "us" && parts[2] && parts[3]) {
+  if (normalizedParts[0] === "karaoke" && normalizedParts[1] === "us" && normalizedParts[2] && normalizedParts[3]) {
     return {
       page: MARKETING_ROUTE_PAGES.geoCity,
-      id: `${parts[2]}:${parts[3]}`,
+      id: `${normalizedParts[2]}:${normalizedParts[3]}`,
       params: {
-        state: lower(parts[2]),
-        city: lower(parts[3]),
+        state: normalizedParts[2],
+        city: normalizedParts[3],
       },
     };
   }
-  if (parts[0] === "karaoke" && parts[1]) {
+  if (normalizedParts[0] === "karaoke" && normalizedParts[1]) {
     return {
       page: MARKETING_ROUTE_PAGES.geoRegion,
-      id: lower(parts[1]),
-      params: { regionToken: lower(parts[1]) },
+      id: normalizedParts[1],
+      params: { regionToken: normalizedParts[1] },
     };
   }
   return null;
@@ -227,10 +228,11 @@ const parseLegacyQueryRoute = (search = "") => {
 export const parseMarketingRouteFromLocation = (locationLike = null) => {
   const pathname = stripBasePath(String(locationLike?.pathname || "/"));
   const search = String(locationLike?.search || "");
-  const pathTokens = trimSlashes(pathname).split("/").filter(Boolean).map((token) => lower(token));
+  const pathTokens = trimSlashes(pathname).split("/").filter(Boolean);
+  const normalizedTokens = pathTokens.map((token) => lower(token));
   const legacyRoute = parseLegacyQueryRoute(search);
 
-  if (pathTokens[0] === "marketing") {
+  if (normalizedTokens[0] === "marketing") {
     const childRoute = routeForPathTokens(pathTokens.slice(1)) || defaultRoute();
     if (legacyRoute && pathTokens.length <= 1) {
       return appendQueryParamsToRoute(legacyRoute, search);
@@ -346,9 +348,10 @@ export const buildLegacyMarketingQuery = ({ page = MARKETING_ROUTE_PAGES.discove
 };
 
 export const isMarketingPath = (pathname = "") => {
-  const parts = trimSlashes(stripBasePath(pathname)).split("/").filter(Boolean).map((token) => lower(token));
-  if (!parts.length) return false;
-  if (parts[0] === "karaoke" && parts[1] === "terms") return false;
-  if (parts[0] === "marketing") return true;
+  const parts = trimSlashes(stripBasePath(pathname)).split("/").filter(Boolean);
+  const normalizedParts = parts.map((token) => lower(token));
+  if (!normalizedParts.length) return false;
+  if (normalizedParts[0] === "karaoke" && normalizedParts[1] === "terms") return false;
+  if (normalizedParts[0] === "marketing") return true;
   return !!routeForPathTokens(parts);
 };

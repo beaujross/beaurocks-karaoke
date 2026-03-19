@@ -90,7 +90,6 @@ const HostTopChrome = ({
     aiToolsConnected = false,
     permissionLevel = 'unknown',
     authSessionReady = false,
-    onOpenCommandPalette,
     sfxMuted = false,
     setSfxMuted,
     sfxVolume = 0.5,
@@ -113,7 +112,9 @@ const HostTopChrome = ({
     stageQuickStartCompletedCount = 0,
     stageQuickStartSummary = '',
     stageQuickStartItems = [],
-    onDismissStageQuickStart
+    onDismissStageQuickStart,
+    audiencePreviewVisible = false,
+    setAudiencePreviewVisible
 }) => {
     const resolvedHostBase = hostBase || appBase;
     const resolvedAudienceBase = audienceBase || appBase;
@@ -127,12 +128,14 @@ const HostTopChrome = ({
     };
     const SmallWaveform = smallWaveform;
     const [showAutomationMenu, setShowAutomationMenu] = React.useState(false);
+    const [showQuickStartMenu, setShowQuickStartMenu] = React.useState(false);
     const [showTvQuickMenu, setShowTvQuickMenu] = React.useState(false);
     const [showOverlaysMenu, setShowOverlaysMenu] = React.useState(false);
     const [showSfxQuickMenu, setShowSfxQuickMenu] = React.useState(false);
     const [showVibeQuickMenu, setShowVibeQuickMenu] = React.useState(false);
     const launchMenuRef = React.useRef(null);
     const navMenuRef = React.useRef(null);
+    const quickStartMenuRef = React.useRef(null);
     const automationMenuRef = React.useRef(null);
     const tvQuickMenuRef = React.useRef(null);
     const overlaysMenuRef = React.useRef(null);
@@ -222,6 +225,10 @@ const HostTopChrome = ({
         + Number(!!autoPartyEnabled)
         + Number(!!room?.bouncerMode);
     const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive) + Number(popTriviaActive);
+    const quickStartTotalCount = Math.max(stageQuickStartItems?.length || 0, stageQuickStartCompletedCount || 0, 4);
+    const quickStartPendingCount = Math.max(quickStartTotalCount - (stageQuickStartCompletedCount || 0), 0);
+    const quickStartToneClass = quickStartPendingCount === 0 ? styles.btnSuccess : styles.btnInfo;
+    const shouldShowQuickStartButton = (stageQuickStartItems?.length || 0) > 0 && (showStageQuickStart || quickStartPendingCount > 0);
     const quickMenuPanelClass = 'absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[80]';
     const quickMenuScrollClass = 'overflow-y-auto custom-scrollbar overscroll-contain';
     const quickMenuSectionTitleClass = 'text-xs uppercase tracking-[0.22em] text-zinc-100';
@@ -229,7 +236,8 @@ const HostTopChrome = ({
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
     const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
     const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} h-9 px-3 py-1.5 text-[12px] normal-case tracking-[0.04em]`;
-    const anyTopMenuOpen = showAutomationMenu
+    const anyTopMenuOpen = showQuickStartMenu
+        || showAutomationMenu
         || showTvQuickMenu
         || showOverlaysMenu
         || showSfxQuickMenu
@@ -252,6 +260,7 @@ const HostTopChrome = ({
             }
             : null;
     const closeAllDeckMenus = React.useCallback(() => {
+        setShowQuickStartMenu(false);
         setShowAutomationMenu(false);
         setShowTvQuickMenu(false);
         setShowOverlaysMenu(false);
@@ -457,14 +466,39 @@ const HostTopChrome = ({
 
     React.useEffect(() => {
         if (!anyTopMenuOpen) return undefined;
+        const handlePointerDown = (event) => {
+            const target = event.target;
+            const menuRefs = [
+                quickStartMenuRef,
+                automationMenuRef,
+                tvQuickMenuRef,
+                overlaysMenuRef,
+                sfxQuickMenuRef,
+                vibeQuickMenuRef,
+                launchMenuRef,
+                navMenuRef
+            ];
+            const clickedInsideMenu = menuRefs.some((menuRef) => menuRef.current?.contains(target));
+            if (!clickedInsideMenu) {
+                closeAllTopMenus();
+            }
+        };
         const handleEscape = (event) => {
             if (event.key === 'Escape') closeAllTopMenus();
         };
+        window.addEventListener('pointerdown', handlePointerDown);
         window.addEventListener('keydown', handleEscape);
         return () => {
+            window.removeEventListener('pointerdown', handlePointerDown);
             window.removeEventListener('keydown', handleEscape);
         };
     }, [anyTopMenuOpen, closeAllTopMenus]);
+
+    React.useEffect(() => {
+        if (quickStartPendingCount === 0) {
+            setShowQuickStartMenu(false);
+        }
+    }, [quickStartPendingCount]);
 
     React.useEffect(() => {
         const handleVisibilityChange = () => {
@@ -648,15 +682,6 @@ const HostTopChrome = ({
     };
     return (
     <div data-host-top-chrome="true" className="bg-zinc-900 px-4 py-2 flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
-        {anyTopMenuOpen && (
-            <button
-                type="button"
-                aria-label="Close open host menus"
-                onClick={closeAllTopMenus}
-                className="fixed inset-0 z-40 bg-transparent"
-                style={{ touchAction: 'manipulation' }}
-            />
-        )}
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between w-full">
             <div className="flex items-center gap-2 lg:gap-3">
                 <img
@@ -867,53 +892,93 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
-        {showStageQuickStart && (
-            <div className="w-full rounded-2xl border border-cyan-400/20 bg-gradient-to-r from-cyan-500/12 via-zinc-950/75 to-pink-500/10 px-3 py-3">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-cyan-300/35 bg-cyan-500/12 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
-                                Quick Start
-                            </span>
-                            <span className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-200">
-                                {stageQuickStartCompletedCount}/4 complete
-                            </span>
-                        </div>
-                        <div className="mt-2 text-sm text-zinc-300">
-                            {stageQuickStartSummary}
-                        </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 xl:max-w-[58%] xl:justify-end">
-                        {(stageQuickStartItems || []).map((item) => (
-                            <button
-                                key={item.id}
-                                type="button"
-                                onClick={item.onClick}
-                                disabled={!!item.disabled}
-                                className={`${styles.btnStd} ${
-                                    item.completed
-                                        ? styles.btnSuccess
-                                        : item.ready
-                                            ? styles.btnInfo
-                                            : styles.btnNeutral
-                                } px-3 py-1.5 text-xs normal-case tracking-[0.04em] ${item.disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                {item.label}
-                            </button>
-                        ))}
-                        <button
-                            type="button"
-                            onClick={onDismissStageQuickStart}
-                            className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-xs normal-case tracking-[0.04em]`}
-                        >
-                            Dismiss
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
         <div data-host-quick-strip-wrap="true" className="w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 px-3 py-2">
             <div className="host-top-quick-strip flex flex-wrap items-center gap-2">
+                {shouldShowQuickStartButton && (
+                    <div className="relative" ref={quickStartMenuRef}>
+                        <button
+                            data-feature-id="deck-quick-start-menu-toggle"
+                            onClick={() => {
+                                const next = !showQuickStartMenu;
+                                closeAllTopMenus();
+                                setShowQuickStartMenu(next);
+                            }}
+                            className={`${quickMenuToggleClass} ${quickStartToneClass} min-w-[168px] sm:min-w-[192px] justify-between`}
+                            title="Quick start checklist"
+                            style={{ touchAction: 'manipulation' }}
+                        >
+                            <span className="inline-flex items-center gap-2">
+                                <i className="fa-solid fa-list-check"></i>
+                                Quick Start
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                                <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em]">
+                                    {stageQuickStartCompletedCount}/{quickStartTotalCount}
+                                </span>
+                                <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${showQuickStartMenu ? 'rotate-180' : ''}`}></i>
+                            </span>
+                        </button>
+                        {showQuickStartMenu && (
+                            <div className={`${quickMenuPanelClass} left-0 w-[min(430px,94vw)] p-3.5`}>
+                                <div className={`${quickMenuSectionTitleClass} flex items-center justify-between gap-3`}>
+                                    <span>Quick Start Checklist</span>
+                                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-200">
+                                        {quickStartPendingCount === 0 ? 'Ready' : `${quickStartPendingCount} left`}
+                                    </span>
+                                </div>
+                                <div className={quickMenuSectionHintClass}>
+                                    {stageQuickStartSummary || 'Complete the key room-launch steps from here.'}
+                                </div>
+                                <div className={`${quickMenuCardClass} mt-2 space-y-2`}>
+                                    {(stageQuickStartItems || []).length > 0 ? (
+                                        (stageQuickStartItems || []).map((item) => (
+                                            <button
+                                                key={item.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    closeAllTopMenus();
+                                                    item.onClick?.();
+                                                }}
+                                                disabled={!!item.disabled}
+                                                className={`${styles.btnStd} ${
+                                                    item.completed
+                                                        ? styles.btnSuccess
+                                                        : item.ready
+                                                            ? styles.btnInfo
+                                                            : styles.btnNeutral
+                                                } w-full justify-between px-3 py-2 text-sm normal-case tracking-[0.03em] ${item.disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                <span className="inline-flex items-center gap-2">
+                                                    <i className={`fa-solid ${item.completed ? 'fa-circle-check' : item.ready ? 'fa-arrow-right' : 'fa-clock'}`}></i>
+                                                    {item.label}
+                                                </span>
+                                                <span className="text-[10px] uppercase tracking-[0.16em] text-white/75">
+                                                    {item.completed ? 'Done' : item.ready ? 'Open' : 'Pending'}
+                                                </span>
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-300">
+                                            Quick start steps will appear here when the room needs setup guidance.
+                                        </div>
+                                    )}
+                                </div>
+                                {showStageQuickStart && typeof onDismissStageQuickStart === 'function' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            closeAllTopMenus();
+                                            onDismissStageQuickStart();
+                                        }}
+                                        className={`${styles.btnStd} ${styles.btnNeutral} mt-2 w-full px-3 py-2 text-sm normal-case tracking-[0.03em]`}
+                                    >
+                                        Hide Quick Start
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
                 <div className="relative" ref={automationMenuRef}>
                     <button
                         data-feature-id="deck-automation-menu-toggle"
@@ -1129,6 +1194,77 @@ const HostTopChrome = ({
                                 </div>
                                 <div className="mt-2 text-[10px] text-zinc-400">
                                     Active profile: <span className="text-zinc-100 uppercase font-semibold">{tvPresentationProfile}</span>
+                                </div>
+                            </div>
+                            <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-200">Screen Elements</div>
+                            <div className={`${quickMenuCardClass} mt-2`}>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={() => updateRoom({ hideWaveform: !room?.hideWaveform })}
+                                        className={`${styles.btnStd} ${room?.hideWaveform ? styles.btnNeutral : styles.btnHighlight} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Show or hide the waveform strip on Public TV"
+                                    >
+                                        <span className="inline-flex items-center gap-2">
+                                            <i className="fa-solid fa-wave-square"></i>
+                                            Waveform
+                                        </span>
+                                        <span className="text-[11px] uppercase tracking-widest">{room?.hideWaveform ? 'Off' : 'On'}</span>
+                                    </button>
+                                    <button
+                                        onClick={() => updateRoom({ hideOverlay: !room?.hideOverlay })}
+                                        className={`${styles.btnStd} ${room?.hideOverlay ? styles.btnNeutral : styles.btnHighlight} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Show or hide the main TV overlay layer"
+                                    >
+                                        <span className="inline-flex items-center gap-2">
+                                            <i className="fa-solid fa-layer-group"></i>
+                                            Overlay
+                                        </span>
+                                        <span className="text-[11px] uppercase tracking-widest">{room?.hideOverlay ? 'Off' : 'On'}</span>
+                                    </button>
+                                    <button
+                                        onClick={() => updateRoom({ hideLogo: !room?.hideLogo })}
+                                        className={`${styles.btnStd} ${room?.hideLogo ? styles.btnNeutral : styles.btnHighlight} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Show or hide the BeauRocks or room logo on TV"
+                                    >
+                                        <span className="inline-flex items-center gap-2">
+                                            <i className="fa-solid fa-star"></i>
+                                            Logo
+                                        </span>
+                                        <span className="text-[11px] uppercase tracking-widest">{room?.hideLogo ? 'Off' : 'On'}</span>
+                                    </button>
+                                    <button
+                                        onClick={() => updateRoom({ hideCornerOverlay: !room?.hideCornerOverlay })}
+                                        className={`${styles.btnStd} ${room?.hideCornerOverlay ? styles.btnNeutral : styles.btnHighlight} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Show or hide the on-stage corner callout"
+                                    >
+                                        <span className="inline-flex items-center gap-2">
+                                            <i className="fa-solid fa-user"></i>
+                                            On Stage
+                                        </span>
+                                        <span className="text-[11px] uppercase tracking-widest">{room?.hideCornerOverlay ? 'Off' : 'On'}</span>
+                                    </button>
+                                    <button
+                                        onClick={() => updateRoom({ showScoring: room?.showScoring === false })}
+                                        className={`${styles.btnStd} ${room?.showScoring === false ? styles.btnNeutral : styles.btnHighlight} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Show or hide the score HUD and room scoring surfaces"
+                                    >
+                                        <span className="inline-flex items-center gap-2">
+                                            <i className="fa-solid fa-chart-line"></i>
+                                            Score HUD
+                                        </span>
+                                        <span className="text-[11px] uppercase tracking-widest">{room?.showScoring === false ? 'Off' : 'On'}</span>
+                                    </button>
+                                    <button
+                                        onClick={() => updateRoom({ reduceMotionFx: !room?.reduceMotionFx })}
+                                        className={`${styles.btnStd} ${room?.reduceMotionFx ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Reduce TV motion for readability and comfort"
+                                    >
+                                        <span className="inline-flex items-center gap-2">
+                                            <i className="fa-solid fa-universal-access"></i>
+                                            Motion Safe
+                                        </span>
+                                        <span className="text-[11px] uppercase tracking-widest">{room?.reduceMotionFx ? 'On' : 'Off'}</span>
+                                    </button>
                                 </div>
                             </div>
                             <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-200">Visualizer Engine</div>
@@ -1372,6 +1508,19 @@ const HostTopChrome = ({
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{chatFullscreenActive ? 'On' : 'Off'}</span>
                                 </button>
+                                <button
+                                    onClick={() => setAudiencePreviewVisible?.((prev) => !prev)}
+                                    className={`${styles.btnStd} ${audiencePreviewVisible ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2 text-left">
+                                        <i className="fa-solid fa-mobile-screen-button"></i>
+                                        <span className="flex flex-col">
+                                            <span>Audience View</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Host-side preview of the audience app</span>
+                                        </span>
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{audiencePreviewVisible ? 'On' : 'Off'}</span>
+                                </button>
                             </div>
                         </div>
                     )}
@@ -1516,18 +1665,6 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
-                <button
-                    data-feature-id="deck-command-palette"
-                    onClick={() => {
-                        closeAllTopMenus();
-                        onOpenCommandPalette?.();
-                    }}
-                    className={`${styles.btnStd} ${styles.btnPrimary} px-3 py-1.5 text-[12px] normal-case tracking-[0.04em] min-w-[166px]`}
-                    title="Open command palette"
-                >
-                    <i className="fa-solid fa-terminal mr-1"></i>
-                    Command Palette
-                </button>
             </div>
             {missionControlEnabled && missionStatus === 'needs_attention' && (
                 <div className="mt-2 rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">

@@ -372,6 +372,7 @@ const LOBBY_ORB_EVENT_CAP = 14;
 const LOBBY_PARTICLE_MAX = 10;
 const LOBBY_ORB_MIN_TOP_PCT = 24;
 const LOBBY_GROUND_LINE_TOP_PCT = 92;
+const TV_REACTION_VISIBILITY_MS = 5200;
 const GUITAR_SYNC_DECAY_PER_SECOND = 14;
 const GUITAR_SYNC_GAIN_PER_HIT = 11;
 const GUITAR_SYNC_GROUND_THRESHOLD = 12;
@@ -847,7 +848,8 @@ const PublicTV = ({ roomCode }) => {
     const [showHypeMeter, setShowHypeMeter] = useState(true);
     const [multiplier, setMultiplier] = useState(1);
     const [applauseStep, setApplauseStep] = useState('idle');
-    const [countdown, setCountdown] = useState(3);
+    const [celebrateCountdown, setCelebrateCountdown] = useState(5);
+    const [countdown, setCountdown] = useState(5);
     const [measure, setMeasure] = useState(5);
     const [applauseMax, setApplauseMax] = useState(0);
     const [tipPulse, setTipPulse] = useState(false);
@@ -910,6 +912,9 @@ const PublicTV = ({ roomCode }) => {
         if (fixture.recap !== undefined) setRecap(fixture.recap || null);
         if (fixture.previewSession) setPreviewSession(fixture.previewSession);
         if (typeof fixture.started === 'boolean') setStarted(fixture.started);
+        if (fixture.lobbyVolleyState !== undefined) {
+            setLobbyVolleyState(fixture.lobbyVolleyState || createLobbyVolleyState());
+        }
     }, [demoFixture, isMarketingDemoFixture]);
     const [viewportSize, setViewportSize] = useState(() => ({
         width: typeof window !== 'undefined' ? window.innerWidth : 1920,
@@ -2039,7 +2044,16 @@ const PublicTV = ({ roomCode }) => {
                               for (let i = 0; i < count; i += 1) {
                                   const left = Math.random() * 80 + 10;
                                   setTimeout(() => {
-                                      setReactions(prev => [...prev, {id: `${c.doc.id}_${i}`, ...d, left, points, basePoints, multiplier, isVip}]);
+                                      setReactions(prev => [...prev, {
+                                          id: `${c.doc.id}_${i}`,
+                                          ...d,
+                                          left,
+                                          points,
+                                          basePoints,
+                                          multiplier,
+                                          isVip,
+                                          createdAtMs: nowMs()
+                                      }]);
                                   }, i * 80);
                               }
                               setCombo(prev => Math.min(100, prev + totalVal));
@@ -2089,7 +2103,7 @@ const PublicTV = ({ roomCode }) => {
                 strobeSessionId: u.strobeSessionId || null
             }));
             const sorted = list.sort((a,b) => (b.guitarHits || 0) - (a.guitarHits || 0));
-            setVibeUsers(sorted.slice(0, 8));
+            setVibeUsers(sorted);
         });
 
         const unsubMsg = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'messages'), where('roomCode', '==', roomCode), limit(10)), s => {
@@ -2458,7 +2472,7 @@ const PublicTV = ({ roomCode }) => {
     useEffect(() => {
         const i = setInterval(() => {
             const tickNow = nowMs();
-            setReactions(prev => prev.filter(r => tickNow - (r.timestamp?.seconds * 1000 || tickNow) < 4000));
+            setReactions(prev => prev.filter((r) => (tickNow - Number(r?.createdAtMs || toEpochMs(r?.timestamp) || 0)) < TV_REACTION_VISIBILITY_MS));
             setLobbyPlayBursts((prev) => prev.filter((burst) => (tickNow - Number(burst?.createdAt || 0)) < LOBBY_BURST_WINDOW_MS));
             setLobbyPlayScreenFx((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAt || 0)) < LOBBY_SCREEN_FX_WINDOW_MS));
             setLobbyComboMoments((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAtMs || 0)) < LOBBY_COMBO_WINDOW_MS));
@@ -2651,36 +2665,59 @@ const PublicTV = ({ roomCode }) => {
 
     // Applause Sequence
     useEffect(() => {
-        if (room?.activeMode === 'applause_countdown' && applauseStep === 'idle') { 
-            setApplauseStep('countdown'); setCountdown(3); setApplauseMax(0); 
-        } 
+        if (room?.activeMode === 'applause_countdown' && applauseStep === 'idle') {
+            setApplauseStep('celebrate');
+            setCelebrateCountdown(5);
+            setCountdown(5);
+            setMeasure(5);
+            setApplauseMax(0);
+        }
     }, [room?.activeMode, applauseStep]);
     useEffect(() => () => {
         if (applauseResetRef.current) clearTimeout(applauseResetRef.current);
     }, []);
 
-    useEffect(() => { 
-        let timer; 
-        if (applauseStep === 'countdown') { 
-            if (countdown > 0) timer = setTimeout(() => setCountdown(c => c - 1), 1000); 
-            else { setApplauseStep('measuring'); setMeasure(5); updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { activeMode: 'applause' }); } 
-        } else if (applauseStep === 'measuring') { 
-            if (measure > 0) timer = setTimeout(() => setMeasure(m => m - 1), 1000); 
-            else { 
-                setApplauseStep('result'); 
+    useEffect(() => {
+        let timer;
+        if (applauseStep === 'celebrate') {
+            if (celebrateCountdown > 0) timer = setTimeout(() => setCelebrateCountdown((c) => c - 1), 1000);
+            else setApplauseStep('countdown');
+        } else if (applauseStep === 'countdown') {
+            if (countdown > 0) timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
+            else {
+                setApplauseStep('measuring');
+                setMeasure(5);
+                updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { activeMode: 'applause' });
+            }
+        } else if (applauseStep === 'measuring') {
+            if (measure > 0) timer = setTimeout(() => setMeasure((m) => m - 1), 1000);
+            else {
+                setApplauseStep('result');
                 triggerTipPulse(`applause-${nowMs()}`);
-                updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { applausePeak: applauseMax, activeMode: 'applause_result' }); 
+                updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { applausePeak: applauseMax, activeMode: 'applause_result' });
                 if (applauseResetRef.current) clearTimeout(applauseResetRef.current);
-                applauseResetRef.current = setTimeout(() => { 
-                    setApplauseStep('idle'); 
-                    updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { activeMode: 'karaoke' }); 
-                }, 5000); 
-            } 
-        } 
-        return () => clearTimeout(timer); 
-    }, [applauseStep, countdown, measure, applauseMax, roomCode, triggerTipPulse]);
+                applauseResetRef.current = setTimeout(() => {
+                    setApplauseStep('idle');
+                    updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { activeMode: 'karaoke' });
+                }, 5000);
+            }
+        }
+        return () => clearTimeout(timer);
+    }, [applauseStep, celebrateCountdown, countdown, measure, applauseMax, roomCode, triggerTipPulse]);
 
     const current = songs.find(s => s.status === 'performing');
+    const applauseSubject = current || room?.lastPerformance || null;
+    const applausePerformerName = String(
+        applauseSubject?.singerName
+        || applauseSubject?.performerName
+        || applauseSubject?.displayName
+        || 'Tonight\'s singer'
+    ).trim();
+    const applauseSongTitle = String(
+        applauseSubject?.songTitle
+        || applauseSubject?.title
+        || ''
+    ).trim();
     const popTriviaRoundSec = Math.max(
         8,
         Number(room?.popTriviaRoundSec || room?.gameDefaults?.triviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC)
@@ -3180,10 +3217,41 @@ const PublicTV = ({ roomCode }) => {
     });
     // eslint-disable-next-line react-hooks/refs
     const visualizerSourceElement = shouldUseBgMediaElement ? bgVisualizerAudioRef.current : null;
-    const guitarLeaders = room?.guitarSessionId
-        ? vibeUsers.filter(u => u.guitarSessionId === room.guitarSessionId)
-        : vibeUsers;
-    const guitarLeaderMaxHits = Math.max(1, ...guitarLeaders.map((user) => Number(user.guitarHits || 0)));
+    const guitarSessionParticipants = useMemo(
+        () => (room?.guitarSessionId
+            ? roomUsers
+                .filter((user) => user?.guitarSessionId === room.guitarSessionId)
+                .map((user) => ({
+                    uid: user?.uid || '',
+                    name: user?.name || 'Guest',
+                    avatar: user?.avatar || EMOJI.guitar,
+                    guitarHits: Number(user?.guitarHits || 0),
+                    lastVibeAt: toEpochMs(user?.lastVibeAt)
+                }))
+                .sort((a, b) => {
+                    const activityGap = Number(b?.lastVibeAt || 0) - Number(a?.lastVibeAt || 0);
+                    if (activityGap !== 0) return activityGap;
+                    return Number(b?.guitarHits || 0) - Number(a?.guitarHits || 0);
+                })
+            : []),
+        [roomUsers, room?.guitarSessionId]
+    );
+    const guitarLeaders = [...guitarSessionParticipants]
+        .sort((a, b) => Number(b?.guitarHits || 0) - Number(a?.guitarHits || 0))
+        .slice(0, 5);
+    const guitarTopJammer = guitarLeaders[0] || null;
+    const guitarRunnerUp = guitarLeaders[1] || null;
+    const guitarLeaderMaxHits = Math.max(1, ...guitarSessionParticipants.map((user) => Number(user.guitarHits || 0)));
+    const guitarRecentHitMap = useMemo(() => {
+        const totals = new Map();
+        (guitarSyncState?.recentHits || []).forEach((entry) => {
+            const key = String(entry?.uid || '').trim();
+            if (!key) return;
+            totals.set(key, Number(totals.get(key) || 0) + Math.max(1, Number(entry?.count || 1)));
+        });
+        return totals;
+    }, [guitarSyncState?.recentHits]);
+    const guitarDisplayParticipants = guitarSessionParticipants.slice(0, 24);
     const strobeSessionId = room?.strobeSessionId;
     const strobeUsers = useMemo(
         () => (strobeSessionId
@@ -3252,10 +3320,10 @@ const PublicTV = ({ roomCode }) => {
         [strobeTotalTaps, strobeLeaders.length, strobePhase, strobeModeEvents]
     );
     const strobeEngagementScore = clampPct(Number(strobeModeState?.score || 0));
-    const guitarPeakHits = guitarLeaders.length
-        ? Math.max(...guitarLeaders.map((user) => Number(user.guitarHits || 0)))
+    const guitarPeakHits = guitarSessionParticipants.length
+        ? Math.max(...guitarSessionParticipants.map((user) => Number(user.guitarHits || 0)))
         : 0;
-    const guitarSessionTotalHits = guitarLeaders.reduce((sum, user) => sum + Number(user?.guitarHits || 0), 0);
+    const guitarSessionTotalHits = guitarSessionParticipants.reduce((sum, user) => sum + Number(user?.guitarHits || 0), 0);
     const guitarActivePlayers = room?.guitarSessionId
         ? roomUsers.filter((user) => (
             user?.guitarSessionId === room.guitarSessionId
@@ -3266,15 +3334,12 @@ const PublicTV = ({ roomCode }) => {
     const guitarSyncAccuracy = Number(guitarSyncState?.totalHits || 0) > 0
         ? Math.round((Number(guitarSyncState?.perfectHits || 0) / Number(guitarSyncState?.totalHits || 1)) * 100)
         : 0;
-    const guitarTeamworkMultiplier = Number((1 + Math.min(4, (Number(guitarSyncState?.airtimeMs || 0) / 14000) + (guitarActiveCount * 0.22))).toFixed(1));
-    const guitarStreakSeconds = Math.floor(Number(guitarSyncState?.streakMs || 0) / 1000);
     const guitarSyncPower = clampPct(
         (Number(guitarSyncState?.meter || 0) * 0.5)
         + (Number(guitarSyncState?.cadenceScore || 0) * 0.28)
         + (guitarSyncAccuracy * 0.22)
         + (guitarActiveCount * 10)
     );
-    const guitarOrbBottomPct = clampLobby(10 + (Number(guitarSyncState?.meter || 0) * 0.78), 10, 88);
     const guitarEngagementScore = clampPct(
         (guitarSyncPower * 0.64)
         + (Math.min(100, guitarSessionTotalHits) * 0.2)
@@ -3801,6 +3866,42 @@ const PublicTV = ({ roomCode }) => {
         const topFan = recap.topFan;
         const vibeStats = recap.vibeStats;
         const popTriviaSummary = recap.popTriviaSummary;
+        const rawSongTitle = String(recap.songTitle || '').trim();
+        const parseRecapSongTitle = (value) => {
+            const raw = String(value || '').trim();
+            if (!raw) {
+                return {
+                    title: 'Featured Performance',
+                    artist: '',
+                    source: ''
+                };
+            }
+            const zoomMatch = raw.match(/^(.*?)\s*-\s*(.*?)\s*-\s*Karaoke Version(?: from (.*))?$/i);
+            if (zoomMatch) {
+                return {
+                    title: String(zoomMatch[2] || '').trim() || raw,
+                    artist: String(zoomMatch[1] || '').trim(),
+                    source: String(zoomMatch[3] || '').trim()
+                };
+            }
+            const pipeMatch = raw.match(/^(.*?)\s*\((?:karaoke|instrumental)\)\s*\|\s*(.*)$/i);
+            if (pipeMatch) {
+                return {
+                    title: String(pipeMatch[1] || '').trim() || raw,
+                    artist: String(pipeMatch[2] || '').trim(),
+                    source: ''
+                };
+            }
+            return {
+                title: raw
+                    .replace(/\s*-\s*Karaoke Version.*$/i, '')
+                    .replace(/\s*\((?:karaoke|instrumental)\)\s*$/i, '')
+                    .trim() || raw,
+                artist: '',
+                source: ''
+            };
+        };
+        const recapSongMeta = parseRecapSongTitle(rawSongTitle);
         const vibeScore = Math.max(0, Number(recap.hypeScore || 0));
         const applauseScore = Math.max(0, Math.round(recap.applauseScore || 0));
         const hostBonus = Math.max(0, Number(recap.hostBonus || 0));
@@ -3817,6 +3918,52 @@ const PublicTV = ({ roomCode }) => {
         const triviaQuestions = Math.max(0, Number(popTriviaSummary?.questionCount || 0));
         const triviaPlayers = Math.max(0, Number(popTriviaSummary?.participantCount || 0));
         const triviaAnswers = Math.max(0, Number(popTriviaSummary?.answerCount || 0));
+        const topFanGifted = Math.max(0, Number(topFan?.pointsGifted || 0));
+        const recapProgressPct = Math.max(16, Math.min(100, Math.round((totalPoints / 300) * 100)));
+        const recapHighlights = [
+            {
+                key: 'vibe',
+                label: 'Vibe',
+                value: vibeScore,
+                tone: 'border-fuchsia-400/25 bg-fuchsia-400/10 text-fuchsia-100'
+            },
+            {
+                key: 'applause',
+                label: 'Applause',
+                value: applauseScore,
+                tone: 'border-amber-300/25 bg-amber-300/10 text-amber-100'
+            },
+            hostBonus > 0 ? {
+                key: 'bonus',
+                label: 'Bonus',
+                value: hostBonus,
+                tone: 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100'
+            } : null,
+            topFanGifted > 0 ? {
+                key: 'fan',
+                label: 'Fan Gift',
+                value: `${topFanGifted} pts`,
+                tone: 'border-cyan-300/25 bg-cyan-300/10 text-cyan-100'
+            } : null,
+            guitarHits > 0 ? {
+                key: 'guitar',
+                label: 'Guitar Hits',
+                value: guitarHits,
+                tone: 'border-orange-300/25 bg-orange-300/10 text-orange-100'
+            } : null,
+            beatTaps > 0 ? {
+                key: 'beat',
+                label: 'Beat Taps',
+                value: beatTaps,
+                tone: 'border-pink-300/25 bg-pink-300/10 text-pink-100'
+            } : null,
+            triviaPlayers > 0 ? {
+                key: 'trivia',
+                label: 'Trivia Players',
+                value: triviaPlayers,
+                tone: 'border-sky-300/25 bg-sky-300/10 text-sky-100'
+            } : null
+        ].filter(Boolean).slice(0, 4);
         return (
             <div className="fixed inset-0 z-[200] overflow-hidden bg-[#05070f] text-white animate-in fade-in duration-500">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(139,92,246,0.28),_transparent_32%),radial-gradient(circle_at_18%_30%,_rgba(244,114,182,0.18),_transparent_24%),radial-gradient(circle_at_82%_24%,_rgba(34,211,238,0.22),_transparent_22%),linear-gradient(180deg,_rgba(9,12,22,0.96),_rgba(3,5,10,0.98))]" />
@@ -3844,172 +3991,153 @@ const PublicTV = ({ roomCode }) => {
                                         </div>
                                     )}
                                 </div>
-                                {recap.hallOfFame?.newAllTime && (
-                                    <div className="inline-flex items-center gap-2 rounded-full border border-yellow-300/45 bg-yellow-300/15 px-4 py-2 text-xs md:text-sm uppercase tracking-[0.28em] text-yellow-100 shadow-[0_0_32px_rgba(250,204,21,0.18)]">
-                                        <i className="fa-solid fa-trophy" />
-                                        New Global High Score
-                                    </div>
-                                )}
+                                <div className="flex items-center gap-4">
+                                    {recap.hallOfFame?.newAllTime && (
+                                        <div className="inline-flex items-center gap-2 rounded-full border border-yellow-300/45 bg-yellow-300/15 px-4 py-2 text-xs md:text-sm uppercase tracking-[0.28em] text-yellow-100 shadow-[0_0_32px_rgba(250,204,21,0.18)]">
+                                            <i className="fa-solid fa-trophy" />
+                                            New Global High Score
+                                        </div>
+                                    )}
+                                    <img
+                                        src={room?.logoUrl || ASSETS.logo}
+                                        alt="BeauRocks Karaoke"
+                                        className="h-12 w-auto object-contain opacity-90 drop-shadow-[0_0_22px_rgba(34,211,238,0.28)]"
+                                    />
+                                </div>
                             </div>
                         </div>
 
-                        <div className="grid gap-5 p-5 md:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.82fr)] md:gap-6 md:p-8 2xl:p-10">
-                            <div className="space-y-5 md:space-y-6">
-                                <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(16,18,34,0.94),rgba(26,11,37,0.9),rgba(5,28,40,0.9))] p-5 md:p-7">
-                                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(250,204,21,0.18),transparent_24%),radial-gradient(circle_at_82%_18%,rgba(34,211,238,0.16),transparent_18%)]" />
-                                    <div className="relative z-10 flex flex-col gap-5 md:flex-row md:items-center md:gap-6">
+                        <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.75fr)] md:gap-7 md:p-8 2xl:p-10">
+                            <div className="space-y-5">
+                                <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(16,18,34,0.94),rgba(26,11,37,0.9),rgba(5,28,40,0.9))] p-6 md:p-8 2xl:p-10">
+                                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_16%,rgba(250,204,21,0.18),transparent_24%),radial-gradient(circle_at_84%_18%,rgba(34,211,238,0.18),transparent_18%)]" />
+                                    <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:gap-8">
                                         <div className="relative shrink-0">
                                             {recap.albumArtUrl ? (
                                                 <img
                                                     src={recap.albumArtUrl}
                                                     alt={recap.songTitle}
-                                                    className="h-28 w-28 rounded-[1.5rem] object-cover border border-white/15 shadow-[0_18px_45px_rgba(0,0,0,0.4)] md:h-40 md:w-40"
+                                                    className="h-32 w-32 rounded-[1.6rem] object-cover border border-white/15 shadow-[0_18px_45px_rgba(0,0,0,0.4)] md:h-44 md:w-44 2xl:h-52 2xl:w-52"
                                                 />
                                             ) : (
-                                                <div className="flex h-28 w-28 items-center justify-center rounded-[1.5rem] border border-white/15 bg-white/6 text-5xl text-yellow-200 shadow-[0_18px_45px_rgba(0,0,0,0.35)] md:h-40 md:w-40">
+                                                <div className="flex h-32 w-32 items-center justify-center rounded-[1.6rem] border border-white/15 bg-white/6 text-5xl text-yellow-200 shadow-[0_18px_45px_rgba(0,0,0,0.35)] md:h-44 md:w-44 2xl:h-52 2xl:w-52 2xl:text-7xl">
                                                     <i className="fa-solid fa-microphone-lines" />
                                                 </div>
                                             )}
-                                            <div className="absolute -bottom-3 left-4 rounded-full border border-white/15 bg-black/70 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-zinc-100 backdrop-blur">
-                                                On Stage
-                                            </div>
                                         </div>
                                         <div className="min-w-0 flex-1 text-left">
-                                            <div className="text-[11px] uppercase tracking-[0.35em] text-zinc-300">Room spotlight</div>
-                                            <div className="mt-2 text-3xl font-black leading-[0.95] text-white md:text-5xl 2xl:text-6xl">
-                                                {recap.songTitle}
+                                            <div className="flex flex-wrap items-center gap-2 text-[12px] uppercase tracking-[0.34em] text-zinc-300">
+                                                <span>Room Spotlight</span>
+                                                <span className="inline-flex h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.9)]"></span>
+                                                <span>Powered by BeauRocks</span>
                                             </div>
-                                            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-lg md:text-2xl 2xl:text-3xl">
-                                                <span className="font-black text-fuchsia-200">{recap.singerName}</span>
-                                                <span className="hidden text-zinc-500 md:inline">/</span>
-                                                <span className="text-zinc-300">just closed a strong round</span>
+                                            <div className="mt-3 text-4xl font-black leading-[0.92] text-white md:text-6xl 2xl:text-[5.2rem]">
+                                                {recapSongMeta.title}
                                             </div>
-                                            <div className="mt-4 flex flex-wrap gap-2">
-                                                <div className="rounded-full border border-white/12 bg-white/7 px-3 py-1.5 text-xs uppercase tracking-[0.22em] text-zinc-100">
-                                                    {vibeScore} vibe
+                                            {(recapSongMeta.artist || recapSongMeta.source) && (
+                                                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-base uppercase tracking-[0.22em] text-cyan-100 md:text-lg 2xl:text-xl">
+                                                    {recapSongMeta.artist && <span>{recapSongMeta.artist}</span>}
+                                                    {recapSongMeta.artist && recapSongMeta.source && <span className="text-white/30">/</span>}
+                                                    {recapSongMeta.source && <span>{recapSongMeta.source}</span>}
                                                 </div>
-                                                <div className="rounded-full border border-white/12 bg-white/7 px-3 py-1.5 text-xs uppercase tracking-[0.22em] text-zinc-100">
-                                                    {applauseScore} applause
-                                                </div>
-                                                <div className="rounded-full border border-white/12 bg-white/7 px-3 py-1.5 text-xs uppercase tracking-[0.22em] text-zinc-100">
-                                                    {hostBonus} bonus
-                                                </div>
+                                            )}
+                                            <div className="mt-5 text-2xl font-black text-fuchsia-200 md:text-4xl 2xl:text-[3.4rem]">
+                                                {recap.singerName}
+                                            </div>
+                                            <div className="mt-2 text-sm uppercase tracking-[0.3em] text-zinc-300 md:text-base 2xl:text-lg">
+                                                Singer just closed the round
+                                            </div>
+                                            <div className="mt-4 text-base uppercase tracking-[0.26em] text-zinc-300 md:text-lg 2xl:text-xl">
+                                                {performanceTier}
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4">
-                                    <div className="rounded-[1.6rem] border border-fuchsia-400/24 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(244,114,182,0.08))] p-4 md:p-5">
-                                        <div className="text-[11px] uppercase tracking-[0.32em] text-fuchsia-200">Vibe</div>
-                                        <div className="mt-3 text-4xl font-black text-white md:text-6xl">{vibeScore}</div>
-                                        <div className="mt-2 text-sm text-zinc-300">Crowd energy generated during the song.</div>
-                                    </div>
-                                    <div className="rounded-[1.6rem] border border-amber-300/24 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(251,191,36,0.08))] p-4 md:p-5">
-                                        <div className="text-[11px] uppercase tracking-[0.32em] text-amber-100">Applause</div>
-                                        <div className="mt-3 text-4xl font-black text-white md:text-6xl">{applauseScore}</div>
-                                        <div className="mt-2 text-sm text-zinc-300">Reaction lift from the room as the round landed.</div>
-                                    </div>
-                                    <div className="rounded-[1.6rem] border border-emerald-300/24 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(74,222,128,0.08))] p-4 md:p-5">
-                                        <div className="text-[11px] uppercase tracking-[0.32em] text-emerald-100">Bonus</div>
-                                        <div className="mt-3 text-4xl font-black text-white md:text-6xl">{hostBonus}</div>
-                                        <div className="mt-2 text-sm text-zinc-300">Any extra lift awarded by the room setup.</div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4">
-                                    <div className="rounded-[1.6rem] border border-cyan-300/18 bg-black/25 p-4 md:col-span-1">
-                                        <div className="text-[11px] uppercase tracking-[0.32em] text-cyan-100">Top fan</div>
-                                        <div className="mt-3 flex items-center gap-3">
-                                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-300/25 bg-cyan-300/10 text-3xl">
-                                                {topFan?.avatar || EMOJI.sparkle}
+                                <div className="rounded-[1.8rem] border border-white/10 bg-black/20 p-4 md:p-5 2xl:p-6">
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        {recapHighlights.map((item) => (
+                                            <div
+                                                key={item.key}
+                                                className={`inline-flex min-w-[180px] flex-1 items-center justify-between gap-4 rounded-[1.2rem] border px-4 py-3 md:px-5 md:py-4 ${item.tone}`}
+                                            >
+                                                <span className="text-[11px] uppercase tracking-[0.28em]">{item.label}</span>
+                                                <span className="text-2xl font-black text-white md:text-3xl">{item.value}</span>
                                             </div>
-                                            <div className="min-w-0 text-left">
-                                                <div className="truncate text-xl font-black text-white md:text-2xl">
-                                                    {topFan?.name || 'Crowd favorite'}
-                                                </div>
-                                                <div className="text-sm text-cyan-100/90">
-                                                    {Math.max(0, Number(topFan?.pointsGifted || 0))} pts gifted
-                                                </div>
-                                            </div>
+                                        ))}
+                                    </div>
+                                    {(triviaQuestions > 0 || triviaAnswers > 0 || topFanGifted > 0) && (
+                                        <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm uppercase tracking-[0.22em] text-zinc-300 md:text-base">
+                                            {topFanGifted > 0 && (
+                                                <span className="truncate">
+                                                    Top fan {topFan?.avatar || EMOJI.sparkle} {topFan?.name || 'Crowd favorite'}
+                                                </span>
+                                            )}
+                                            {triviaQuestions > 0 && <span>{triviaQuestions} trivia prompts</span>}
+                                            {triviaAnswers > 0 && <span>{triviaAnswers} total trivia answers</span>}
                                         </div>
-                                    </div>
-                                    <div className="rounded-[1.6rem] border border-fuchsia-300/18 bg-black/25 p-4">
-                                        <div className="text-[11px] uppercase tracking-[0.32em] text-fuchsia-100">Vibe Sync</div>
-                                        <div className="mt-3 space-y-3 text-left text-sm text-zinc-200">
-                                            <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/5 px-3 py-2.5">
-                                                <span>Guitar hits</span>
-                                                <span className="text-lg font-black text-white">{guitarHits}</span>
-                                            </div>
-                                            <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/5 px-3 py-2.5">
-                                                <span>Beat taps</span>
-                                                <span className="text-lg font-black text-white">{beatTaps}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="rounded-[1.6rem] border border-cyan-300/18 bg-black/25 p-4">
-                                        <div className="text-[11px] uppercase tracking-[0.32em] text-cyan-100">Pop Trivia</div>
-                                        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                                            <div className="rounded-2xl border border-white/8 bg-white/5 px-2 py-3">
-                                                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-400">Qs</div>
-                                                <div className="mt-1 text-2xl font-black text-white">{triviaQuestions}</div>
-                                            </div>
-                                            <div className="rounded-2xl border border-white/8 bg-white/5 px-2 py-3">
-                                                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-400">Players</div>
-                                                <div className="mt-1 text-2xl font-black text-white">{triviaPlayers}</div>
-                                            </div>
-                                            <div className="rounded-2xl border border-white/8 bg-white/5 px-2 py-3">
-                                                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-400">Answers</div>
-                                                <div className="mt-1 text-2xl font-black text-white">{triviaAnswers}</div>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
                             </div>
 
-                            <div className="space-y-4 md:space-y-5">
-                                <div className="relative overflow-hidden rounded-[2rem] border border-yellow-300/24 bg-[linear-gradient(180deg,rgba(255,214,102,0.10),rgba(255,255,255,0.03),rgba(255,255,255,0.02))] p-5 md:p-6">
+                            <div className="space-y-5">
+                                <div className="relative overflow-hidden rounded-[2rem] border border-yellow-300/24 bg-[linear-gradient(180deg,rgba(255,214,102,0.10),rgba(255,255,255,0.03),rgba(255,255,255,0.02))] p-6 md:p-7 2xl:p-8">
                                     <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-yellow-200/60 to-transparent" />
-                                    <div className="text-[11px] uppercase tracking-[0.36em] text-yellow-100">Final score</div>
-                                    <div className="mt-3 text-6xl font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-white to-yellow-300 md:text-8xl 2xl:text-[7rem]">
+                                    <div className="absolute right-5 top-5 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100">
+                                        BeauRocks Score
+                                    </div>
+                                    <div className="text-[12px] uppercase tracking-[0.38em] text-yellow-100">Final Score</div>
+                                    <div className="mt-5 text-7xl font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-white to-yellow-300 md:text-[8rem] 2xl:text-[10rem]">
                                         {totalPoints}
                                     </div>
-                                    <div className="mt-2 text-lg font-bold uppercase tracking-[0.28em] text-yellow-100/90">
-                                        Total points
+                                    <div className="mt-3 text-lg font-bold uppercase tracking-[0.3em] text-yellow-100/90 md:text-xl">
+                                        Total Points
                                     </div>
-                                    <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-black/25 p-4">
-                                        <div className="flex items-center justify-between text-sm text-zinc-300">
-                                            <span>Crowd reaction level</span>
+                                    <div className="mt-6 rounded-[1.5rem] border border-white/10 bg-black/25 p-4 md:p-5">
+                                        <div className="flex items-center justify-between text-base text-zinc-200 md:text-lg">
+                                            <span>Room energy</span>
                                             <span className="font-black text-white">{performanceTier}</span>
                                         </div>
-                                        <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/8">
+                                        <div className="mt-4 h-4 overflow-hidden rounded-full bg-white/8">
                                             <div
                                                 className="h-full rounded-full bg-gradient-to-r from-fuchsia-400 via-amber-300 to-cyan-300"
-                                                style={{ width: `${Math.max(14, Math.min(100, Math.round((totalPoints / 300) * 100)))}%` }}
+                                                style={{ width: `${recapProgressPct}%` }}
                                             />
-                                        </div>
-                                        <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-                                            <span>Building</span>
-                                            <span>Peak room energy</span>
                                         </div>
                                     </div>
                                 </div>
 
                                 <div className="rounded-[2rem] border border-white/10 bg-black/20 p-5 md:p-6">
-                                    <div className="text-[11px] uppercase tracking-[0.34em] text-zinc-300">Night snapshot</div>
-                                    <div className="mt-4 space-y-3">
-                                        <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
-                                            <span className="text-zinc-300">Singer</span>
-                                            <span className="max-w-[60%] truncate text-right font-black text-white">{recap.singerName}</span>
+                                    <div className="flex items-center justify-between gap-4">
+                                        <div>
+                                            <div className="text-[11px] uppercase tracking-[0.34em] text-zinc-300">BeauRocks Room Signal</div>
+                                            <div className="mt-2 text-lg font-black text-white md:text-2xl">One room. One score. Shared energy.</div>
                                         </div>
-                                        <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
-                                            <span className="text-zinc-300">Song</span>
-                                            <span className="max-w-[60%] truncate text-right font-black text-white">{recap.songTitle}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/5 px-4 py-3">
-                                            <span className="text-zinc-300">Top fan gift</span>
-                                            <span className="font-black text-white">{Math.max(0, Number(topFan?.pointsGifted || 0))} pts</span>
-                                        </div>
+                                        <img
+                                            src={room?.logoUrl || ASSETS.logo}
+                                            alt="BeauRocks Karaoke"
+                                            className="h-14 w-auto object-contain opacity-90 drop-shadow-[0_0_24px_rgba(34,211,238,0.2)]"
+                                        />
+                                    </div>
+                                    <div className="mt-4 grid grid-cols-1 gap-3">
+                                        {topFanGifted > 0 && (
+                                            <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-4">
+                                                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Top fan gift</div>
+                                                <div className="mt-2 text-2xl font-black text-white md:text-3xl">
+                                                    {topFan?.avatar || EMOJI.sparkle} {topFan?.name || 'Crowd favorite'} · {topFanGifted} pts
+                                                </div>
+                                            </div>
+                                        )}
+                                        {(guitarHits > 0 || beatTaps > 0 || triviaPlayers > 0) && (
+                                            <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-4">
+                                                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Audience play</div>
+                                                <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-lg font-black text-white md:text-2xl">
+                                                    {guitarHits > 0 && <span>{guitarHits} guitar hits</span>}
+                                                    {beatTaps > 0 && <span>{beatTaps} beat taps</span>}
+                                                    {triviaPlayers > 0 && <span>{triviaPlayers} trivia players</span>}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -4030,6 +4158,16 @@ const PublicTV = ({ roomCode }) => {
     const exploreCinema = tvPresentationProfile === 'cinema';
     const isCinema = exploreSimple || exploreCinema || roomLayoutMode === 'cinema';
     const isMinimal = !exploreSimple && !exploreCinema && roomLayoutMode === 'minimal';
+    const hasActivePopTriviaPanel = !!(popTriviaQuestion || showPopTriviaEndState);
+    const popTriviaOptionCount = Array.isArray(popTriviaQuestion?.options) ? popTriviaQuestion.options.length : 0;
+    const popTriviaStageSpanClass = isCinema
+        ? 'col-span-12'
+        : hasActivePopTriviaPanel
+            ? (lobbyCompactHudMode ? 'col-span-12 lg:col-span-8' : 'col-span-12 lg:col-span-7')
+            : (lobbyCompactHudMode ? 'col-span-12 lg:col-span-9' : 'col-span-12 lg:col-span-8');
+    const popTriviaSidebarSpanClass = hasActivePopTriviaPanel
+        ? (lobbyCompactHudMode ? 'col-span-12 lg:col-span-4' : 'col-span-12 lg:col-span-5')
+        : (lobbyCompactHudMode ? 'col-span-12 lg:col-span-3' : 'col-span-12 lg:col-span-4');
     const showAmbientFx = !exploreSimple;
     const showVisualizerTv = !!room?.showVisualizerTv;
     const visualizerBaseMode = room?.visualizerMode || 'ribbon';
@@ -4377,16 +4515,18 @@ const PublicTV = ({ roomCode }) => {
                             <div className="mx-auto max-w-[1080px] flex flex-col md:flex-row md:items-start md:justify-between gap-3 md:gap-4">
                                 <div className="min-w-0">
                                     <div className={`${motionSafeFx ? 'text-3xl md:text-5xl' : 'text-[clamp(2.4rem,8.6vw,5.5rem)]'} font-bebas text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 drop-shadow-[0_0_26px_rgba(255,120,0,0.8)] ${motionSafeFx ? '' : 'animate-pulse'}`}>GUITAR VIBE SYNC</div>
-                                    <div className="text-xs md:text-sm uppercase tracking-[0.2em] text-yellow-100/90">Keep the sync orb above the ground line.</div>
+                                    <div className="text-xs md:text-sm uppercase tracking-[0.2em] text-yellow-100/90">The room spotlight follows whoever is jamming hardest right now.</div>
                                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                                        <div className="bg-black/65 border border-yellow-300/35 rounded-full px-3 py-1 text-[11px] md:text-xs uppercase tracking-[0.16em] text-yellow-100">Teamwork x{guitarTeamworkMultiplier.toFixed(1)}</div>
-                                        <div className="bg-black/65 border border-cyan-300/35 rounded-full px-3 py-1 text-[11px] md:text-xs uppercase tracking-[0.16em] text-cyan-100">Streak {guitarStreakSeconds}s</div>
-                                        <div className="bg-black/65 border border-fuchsia-300/35 rounded-full px-3 py-1 text-[11px] md:text-xs uppercase tracking-[0.16em] text-fuchsia-100">{guitarActiveCount} Active</div>
+                                        <div className="bg-black/65 border border-yellow-300/35 rounded-full px-3 py-1 text-[11px] md:text-xs uppercase tracking-[0.16em] text-yellow-100">
+                                            Top Jammer {guitarTopJammer ? `${guitarTopJammer.name} ${guitarTopJammer.guitarHits}` : 'Waiting'}
+                                        </div>
+                                        <div className="bg-black/65 border border-cyan-300/35 rounded-full px-3 py-1 text-[11px] md:text-xs uppercase tracking-[0.16em] text-cyan-100">{guitarActiveCount} Live Jammers</div>
+                                        <div className="bg-black/65 border border-fuchsia-300/35 rounded-full px-3 py-1 text-[11px] md:text-xs uppercase tracking-[0.16em] text-fuchsia-100">{guitarSessionTotalHits} Total Hits</div>
                                     </div>
                                 </div>
                                 <div className="bg-black/65 border border-white/20 rounded-2xl px-4 py-3 min-w-[220px] md:min-w-[280px]">
                                     <div className="flex items-center justify-between gap-3 text-[11px] md:text-xs uppercase tracking-[0.2em] text-zinc-200">
-                                        <span>Sync Power</span>
+                                        <span>Room Jam Intensity</span>
                                         <span className="font-black text-white">{guitarSyncPower}%</span>
                                     </div>
                                     <div className="mt-2 h-2.5 w-full bg-white/20 rounded-full overflow-hidden border border-white/20">
@@ -4394,46 +4534,146 @@ const PublicTV = ({ roomCode }) => {
                                     </div>
                                     <div className="mt-2 flex items-center justify-between text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-zinc-200">
                                         <span>Accuracy {guitarSyncAccuracy}%</span>
-                                        <span>Drops {Number(guitarSyncState?.drops || 0)}</span>
+                                        <span>Peak {guitarLeaderMaxHits} hits</span>
                                     </div>
-                                    <div className="mt-1 text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-zinc-300">Energy {guitarEngagementScore}%</div>
+                                    <div className="mt-1 text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-zinc-300">
+                                        {guitarTopJammer ? `Now leading: ${guitarTopJammer.name}` : `Energy ${guitarEngagementScore}%`}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         <div className="w-full px-3 md:px-6 pb-2 md:pb-4">
-                            <div className="mx-auto max-w-[1220px] grid grid-cols-1 lg:grid-cols-[210px_minmax(0,1fr)] gap-3 md:gap-4 items-end">
-                                <div className="bg-black/65 border border-white/15 rounded-2xl p-3 md:p-4 backdrop-blur-md">
-                                    <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] text-zinc-300 text-center">Sync Orb</div>
-                                    <div className="relative mx-auto mt-2 h-[176px] w-[104px] rounded-2xl border border-white/20 bg-gradient-to-b from-white/5 to-black/50 overflow-hidden">
-                                        <div className="absolute inset-x-2 bottom-[10%] border-t-2 border-red-300/70"></div>
-                                        <div className="absolute left-1/2 -translate-x-1/2 bottom-[2%] text-[10px] uppercase tracking-[0.2em] text-red-100">Ground</div>
-                                        <div className={`absolute left-1/2 -translate-x-1/2 transition-all duration-150 ${motionSafeFx ? '' : 'animate-pulse'}`} style={{ bottom: `${guitarOrbBottomPct}%` }}>
-                                            <div className="h-12 w-12 md:h-14 md:w-14 rounded-full border border-yellow-300/65 bg-gradient-to-br from-yellow-300 via-orange-400 to-pink-500 shadow-[0_0_28px_rgba(251,146,60,0.65)] flex items-center justify-center text-black text-xl md:text-2xl">
-                                                {EMOJI.guitar}
-                                            </div>
+                            <div className="mx-auto max-w-[1280px] grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_290px] gap-3 md:gap-4 items-stretch">
+                                <div className="bg-black/62 border border-white/10 rounded-2xl md:rounded-3xl px-4 py-3 md:px-6 md:py-5 2xl:px-8 2xl:py-6 backdrop-blur-md min-w-0">
+                                    <div className="flex items-center justify-between gap-3 mb-3 md:mb-4">
+                                        <div>
+                                            <div className="text-sm text-zinc-200 tracking-[0.28em] uppercase">Crowd Fretboard</div>
+                                            <div className="text-[11px] md:text-xs uppercase tracking-[0.16em] text-zinc-300">Every phone in sync shows up here live.</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-[11px] md:text-xs uppercase tracking-[0.16em] text-zinc-300">Players</div>
+                                            <div className="text-2xl md:text-3xl font-bebas text-yellow-200">{guitarSessionParticipants.length}</div>
                                         </div>
                                     </div>
-                                    <div className="mt-2 text-[10px] md:text-[11px] uppercase tracking-[0.16em] text-zinc-200 text-center">Do not let it touch the line</div>
-                                </div>
-                                <div className="bg-black/60 border border-white/10 rounded-2xl md:rounded-3xl px-4 py-3 md:px-6 md:py-5 2xl:px-8 2xl:py-6 backdrop-blur-md min-w-0">
-                                    <div className="flex items-center justify-between gap-3 mb-3 md:mb-4">
-                                        <div className="text-sm text-zinc-200 tracking-[0.28em] uppercase">Top Strummers</div>
-                                        <div className="text-[11px] md:text-xs uppercase tracking-[0.16em] text-zinc-300">Session hits {guitarSessionTotalHits}</div>
-                                    </div>
-                                    <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 2xl:gap-5">
-                                        {guitarLeaders.length === 0 && (
-                                            <div className="text-zinc-400 text-sm">Start strumming to appear here.</div>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-2.5 md:gap-3">
+                                        {guitarDisplayParticipants.length === 0 && (
+                                            <div className="col-span-full text-zinc-400 text-sm md:text-base border border-dashed border-white/15 rounded-2xl px-4 py-8 text-center">
+                                                Start strumming to light up the crowd wall.
+                                            </div>
                                         )}
-                                        {guitarLeaders.map((p) => {
-                                            const scale = 1 + Math.min(0.9, (p.guitarHits || 0) / guitarLeaderMaxHits * 0.9);
+                                        {guitarDisplayParticipants.map((p) => {
+                                            const playerHits = Number(p?.guitarHits || 0);
+                                            const recentBurst = Number(guitarRecentHitMap.get(p.uid) || 0);
+                                            const isLive = (nowMs() - Number(p?.lastVibeAt || 0)) <= GUITAR_SYNC_ACTIVE_WINDOW_MS;
+                                            const intensity = Math.min(1, ((recentBurst * 0.24) + (isLive ? 0.55 : 0.08)));
+                                            const meterPct = Math.max(8, Math.round((playerHits / Math.max(1, guitarLeaderMaxHits)) * 100));
                                             return (
-                                                <div key={p.uid} className="flex items-center gap-2 md:gap-3 bg-black/70 px-3 py-1.5 md:px-4 md:py-2 rounded-full border border-white/15 shadow-lg transition-transform duration-200 max-w-full" style={{ transform: `scale(${scale})` }}>
-                                                    <div className="text-2xl md:text-4xl">{p.avatar}</div>
-                                                    <div className="text-white font-bold text-sm md:text-lg truncate max-w-[26vw] md:max-w-[32vw]">{p.name}</div>
-                                                    <div className="text-yellow-400 font-mono text-sm md:text-lg ml-1 md:ml-2">{p.guitarHits || 0}</div>
+                                                <div
+                                                    key={p.uid}
+                                                    className={`relative overflow-hidden rounded-2xl border px-3 py-3 md:px-4 md:py-4 transition-all duration-200 ${isLive ? 'border-cyan-300/45 bg-cyan-400/[0.08] shadow-[0_0_28px_rgba(34,211,238,0.16)]' : 'border-white/10 bg-black/45'}`}
+                                                    style={{
+                                                        transform: `scale(${1 + Math.min(0.06, intensity * 0.06)})`
+                                                    }}
+                                                >
+                                                    <div
+                                                        className="absolute inset-0 pointer-events-none"
+                                                        style={{
+                                                            background: `radial-gradient(circle at 50% 0%, rgba(255,190,92,${0.18 + (intensity * 0.18)}), transparent 55%), radial-gradient(circle at 50% 100%, rgba(34,211,238,${0.08 + (intensity * 0.16)}), transparent 62%)`
+                                                        }}
+                                                    ></div>
+                                                    <div className="relative flex items-start justify-between gap-3">
+                                                        <div className="flex items-center gap-3 min-w-0">
+                                                            <div className={`h-12 w-12 md:h-14 md:w-14 rounded-2xl border border-white/15 bg-black/45 flex items-center justify-center text-3xl md:text-4xl ${isLive ? 'shadow-[0_0_20px_rgba(34,211,238,0.2)]' : ''}`}>
+                                                                {p.avatar || EMOJI.guitar}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <div className="text-white font-bold text-sm md:text-base truncate">{p.name}</div>
+                                                                <div className="text-[10px] md:text-[11px] uppercase tracking-[0.18em] text-zinc-300">
+                                                                    {isLive ? 'Live on beat' : 'In session'}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right shrink-0">
+                                                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-300">Hits</div>
+                                                            <div className="text-lg md:text-2xl font-bebas text-yellow-200 leading-none">{playerHits}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="relative mt-3 h-2.5 w-full rounded-full bg-white/10 overflow-hidden border border-white/10">
+                                                        <div
+                                                            className="h-full rounded-full bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500"
+                                                            style={{ width: `${meterPct}%` }}
+                                                        ></div>
+                                                    </div>
+                                                    <div className="relative mt-2 flex items-center justify-between text-[10px] md:text-[11px] uppercase tracking-[0.16em] text-zinc-300">
+                                                        <span>{recentBurst > 0 ? `Burst x${recentBurst}` : 'Ready'}</span>
+                                                        <span>{isLive ? 'Active' : 'Standing by'}</span>
+                                                    </div>
                                                 </div>
                                             );
                                         })}
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 gap-3 md:gap-4">
+                                    <div className="bg-black/65 border border-white/15 rounded-2xl p-3 md:p-4 backdrop-blur-md">
+                                        <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] text-zinc-300 text-center">Jam Spotlight</div>
+                                        {guitarTopJammer ? (
+                                            <div className="mt-3 rounded-2xl border border-yellow-300/30 bg-gradient-to-br from-yellow-300/10 via-orange-400/10 to-fuchsia-400/10 p-4">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="h-16 w-16 rounded-2xl border border-white/15 bg-black/45 flex items-center justify-center text-4xl shadow-[0_0_24px_rgba(250,204,21,0.18)]">
+                                                        {guitarTopJammer.avatar || EMOJI.guitar}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="text-[10px] md:text-[11px] uppercase tracking-[0.18em] text-yellow-100">Most active right now</div>
+                                                        <div className="text-2xl md:text-3xl font-bebas text-white leading-none truncate">{guitarTopJammer.name}</div>
+                                                        <div className="mt-1 text-sm md:text-base uppercase tracking-[0.16em] text-zinc-200">{guitarTopJammer.guitarHits} hits</div>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-4 h-3 w-full rounded-full bg-white/10 overflow-hidden border border-white/10">
+                                                    <div className="h-full rounded-full bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500" style={{ width: '100%' }}></div>
+                                                </div>
+                                                <div className="mt-3 flex items-center justify-between text-[10px] md:text-[11px] uppercase tracking-[0.16em] text-zinc-300">
+                                                    <span>{guitarRunnerUp ? `Next up: ${guitarRunnerUp.name}` : 'No challenger yet'}</span>
+                                                    <span>{guitarActiveCount} live</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="mt-3 rounded-2xl border border-dashed border-white/15 px-4 py-8 text-center text-sm text-zinc-400">
+                                                Start strumming and the hottest jammer will take this spotlight.
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="bg-black/60 border border-white/10 rounded-2xl p-3 md:p-4 backdrop-blur-md min-w-0">
+                                        <div className="flex items-center justify-between gap-3 mb-3">
+                                            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-zinc-200">Jam Leaderboard</div>
+                                            <div className="text-[10px] md:text-[11px] uppercase tracking-[0.16em] text-zinc-300">Hits {guitarSessionTotalHits}</div>
+                                        </div>
+                                        <div className="space-y-2.5">
+                                            {guitarLeaders.length === 0 && (
+                                                <div className="text-zinc-400 text-sm">No leaders yet.</div>
+                                            )}
+                                            {guitarLeaders.map((p, idx) => {
+                                                const meterPct = Math.max(12, Math.round((Number(p?.guitarHits || 0) / Math.max(1, guitarLeaderMaxHits)) * 100));
+                                                return (
+                                                    <div key={p.uid} className="rounded-2xl border border-white/10 bg-black/45 px-3 py-2.5">
+                                                        <div className="flex items-center justify-between gap-3">
+                                                            <div className="flex items-center gap-3 min-w-0">
+                                                                <div className="h-10 w-10 rounded-xl border border-white/10 bg-black/55 flex items-center justify-center text-2xl">
+                                                                    {p.avatar || EMOJI.guitar}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <div className="text-white font-bold text-sm truncate">{idx + 1}. {p.name}</div>
+                                                                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-300">{p.guitarHits || 0} hits</div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-lg font-bebas text-yellow-200">{p.guitarHits || 0}</div>
+                                                        </div>
+                                                        <div className="mt-2 h-2 w-full rounded-full bg-white/10 overflow-hidden border border-white/10">
+                                                            <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-fuchsia-400 to-yellow-300" style={{ width: `${meterPct}%` }}></div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -4446,7 +4686,7 @@ const PublicTV = ({ roomCode }) => {
 
             <div className={`relative z-10 h-full grid grid-cols-1 lg:grid-cols-12 ${gridSpacingClass} ${isCinema ? 'pt-0 pb-0' : `${effectiveGridTopPaddingClass} ${gridBottomPaddingClass}`}`}>
                 {/* STAGE AREA */}
-                <div className={`${isCinema ? 'col-span-12' : `col-span-12 ${lobbyCompactHudMode ? 'lg:col-span-9' : 'lg:col-span-8'}`} flex flex-col transition-all duration-500`}>
+                <div className={`${popTriviaStageSpanClass} flex flex-col transition-all duration-500`}>
                     <div className={`flex-1 ${isMinimal || isCinema ? 'bg-black' : 'bg-black/30 backdrop-blur-md border border-white/10'} rounded-2xl md:rounded-3xl relative shadow-2xl overflow-hidden ${effectiveStageMinHeightClass}`}>
                         <div className="absolute inset-0 pointer-events-none tv-light-sweep"></div>
                           {current && showScoring && (
@@ -4526,13 +4766,13 @@ const PublicTV = ({ roomCode }) => {
                 
                 {/* SIDEBAR: Hidden in Cinema Mode */}
                 {!isCinema && (
-                    <div className={`col-span-12 ${lobbyCompactHudMode ? 'lg:col-span-3' : 'lg:col-span-4'} flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden`}>
+                    <div className={`${popTriviaSidebarSpanClass} flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden transition-all duration-500`}>
                          {(popTriviaQuestion || showPopTriviaEndState) && (
                             <div
                                 data-feature-id="tv-pop-trivia-card"
                                 className={`rounded-2xl md:rounded-3xl border shadow-[0_0_30px_rgba(34,211,238,0.18)] backdrop-blur overflow-hidden ${
                                     popTriviaQuestion
-                                        ? 'border-cyan-300/45 bg-gradient-to-br from-[#050916]/96 via-[#0b1220]/96 to-[#160a21]/96'
+                                        ? 'border-cyan-300/55 bg-gradient-to-br from-[#050916]/98 via-[#0b1220]/98 to-[#160a21]/98 shadow-[0_0_42px_rgba(34,211,238,0.24)]'
                                         : 'border-emerald-300/35 bg-gradient-to-br from-[#07141a]/96 via-[#08151f]/96 to-[#102115]/96'
                                 }`}
                             >
@@ -4547,20 +4787,25 @@ const PublicTV = ({ roomCode }) => {
                                     </span>
                                 </div>
                                 {popTriviaQuestion ? (
-                                    <div className={`${lobbyCompactHudMode ? 'px-3 py-3' : 'px-4 py-4 md:px-5 md:py-5'} flex max-h-[32vh] md:max-h-[36vh] min-h-0 flex-col`}>
-                                        <div className="text-xl md:text-[1.6rem] 2xl:text-[1.9rem] font-black text-white leading-[1.06]">
+                                    <div className={`${lobbyCompactHudMode ? 'px-3 py-3' : 'px-4 py-4 md:px-5 md:py-5'} flex min-h-[34vh] md:min-h-[42vh] 2xl:min-h-[46vh] flex-col`}>
+                                        <div className="text-[1.35rem] md:text-[2rem] 2xl:text-[2.3rem] font-black text-white leading-[1.02]">
                                             {popTriviaQuestion.q}
                                         </div>
-                                        <div className="mt-3 grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto pr-1">
+                                        <div className="mt-4 grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2 gap-3 pr-1">
                                             {popTriviaQuestion.options?.map((option, idx) => (
-                                                <div key={`${popTriviaQuestion.id}_${idx}`} className="rounded-2xl border border-white/12 bg-black/32 px-3 py-2.5 md:px-3.5 md:py-3 text-white flex items-center justify-between gap-3">
-                                                    <span className="text-cyan-300 font-black text-sm tracking-[0.16em]">{String.fromCharCode(65 + idx)}</span>
-                                                    <span className="min-w-0 flex-1 text-sm md:text-[0.95rem] 2xl:text-lg font-bold leading-snug">{option}</span>
-                                                    <span className="text-zinc-300 font-mono text-sm">{popTriviaVoteCounts[idx] || 0}</span>
+                                                <div
+                                                    key={`${popTriviaQuestion.id}_${idx}`}
+                                                    className={`rounded-2xl border border-white/12 bg-black/36 px-4 py-3 md:px-4 md:py-4 text-white flex items-start justify-between gap-3 ${
+                                                        popTriviaOptionCount >= 4 ? 'min-h-[110px] md:min-h-[132px]' : ''
+                                                    }`}
+                                                >
+                                                    <span className="shrink-0 text-cyan-300 font-black text-base md:text-lg tracking-[0.16em]">{String.fromCharCode(65 + idx)}</span>
+                                                    <span className="min-w-0 flex-1 text-base md:text-[1.08rem] 2xl:text-[1.22rem] font-bold leading-snug">{option}</span>
+                                                    <span className="shrink-0 text-zinc-200 font-mono text-base md:text-lg">{popTriviaVoteCounts[idx] || 0}</span>
                                                 </div>
                                             ))}
                                         </div>
-                                        <div className="mt-3 flex items-center justify-between gap-3 text-[11px] md:text-xs uppercase tracking-[0.16em] text-zinc-200">
+                                        <div className="mt-4 flex items-center justify-between gap-3 text-[11px] md:text-sm uppercase tracking-[0.16em] text-zinc-200">
                                             <span>{popTriviaTotalVotes} answers locked</span>
                                             <span className="text-cyan-100">Vote in Party app</span>
                                         </div>
@@ -4948,7 +5193,23 @@ const PublicTV = ({ roomCode }) => {
             {/* Applause Meter Overlay */}
             {applauseStep !== 'idle' && (
                 <div className="absolute inset-0 z-[150] bg-black/95 flex flex-col items-center justify-center animate-in fade-in">
-                    <h1 className="text-3xl md:text-6xl font-bebas text-white mb-4 md:mb-8 tracking-[0.14em] md:tracking-widest animate-pulse">NOISE LEVEL</h1>
+                    <div className="mb-4 md:mb-8 flex flex-col items-center gap-3 text-center px-8">
+                        <div className="inline-flex items-center gap-3 rounded-full border border-cyan-400/35 bg-cyan-400/10 px-5 py-2 text-sm md:text-lg font-black uppercase tracking-[0.28em] text-cyan-200 shadow-[0_0_30px_rgba(34,211,238,0.16)]">
+                            <span className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.9)]"></span>
+                            Crowd Moment
+                        </div>
+                        <h1 className="text-[clamp(2.75rem,7vw,6.5rem)] font-bebas text-white tracking-[0.12em] md:tracking-[0.2em] leading-none">
+                            {applauseStep === 'celebrate' ? 'MAKE SOME NOISE FOR' : 'CHEER FOR'}
+                        </h1>
+                        <div className="text-[clamp(3rem,9vw,8rem)] font-black uppercase tracking-tight leading-[0.9] text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 via-white to-cyan-300 drop-shadow-[0_0_28px_rgba(236,72,153,0.22)]">
+                            {applausePerformerName}
+                        </div>
+                        {applauseSongTitle ? (
+                            <div className="text-lg md:text-3xl font-semibold text-zinc-300 max-w-[70vw] leading-tight">
+                                {applauseSongTitle}
+                            </div>
+                        ) : null}
+                    </div>
                     <div className="relative w-[76vw] h-[76vw] max-w-[500px] max-h-[500px] flex items-center justify-center">
                         <div className="absolute inset-0 rounded-full border-[20px] border-zinc-800"></div>
                         <svg className="absolute inset-0 w-full h-full -rotate-90 transform drop-shadow-[0_0_30px_rgba(0,196,217,0.5)]" viewBox="0 0 100 100">
@@ -4962,17 +5223,43 @@ const PublicTV = ({ roomCode }) => {
                         </svg>
                         <div className="relative z-10 flex flex-col items-center">
                             <div className="text-[clamp(3.25rem,16vw,10rem)] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] font-mono leading-none drop-shadow-[0_0_20px_rgba(236,72,153,0.35)]">
-                                {Math.round(applauseStep === 'result' ? applauseMax : micVolume)}
+                                {Math.round(applauseStep === 'result' ? applauseMax : applauseStep === 'celebrate' ? 0 : micVolume)}
                             </div>
                             <div className="text-lg md:text-2xl text-zinc-500 font-bold">dB</div>
                         </div>
                     </div>
-                    <div className="mt-4 md:mt-8 text-xl md:text-4xl text-cyan-300 font-bebas tracking-[0.1em] md:tracking-widest animate-bounce text-center px-4">
-                        {applauseStep === 'countdown'
-                            ? `GET READY... ${countdown}`
-                            : applauseStep === 'measuring'
-                                ? `MEASURING... ${measure}`
-                                : "PEAK LEVEL REACHED"}
+                    <div className="mt-4 md:mt-8 text-center px-4">
+                        <div className="text-xl md:text-4xl text-cyan-300 font-bebas tracking-[0.1em] md:tracking-widest animate-bounce">
+                            {applauseStep === 'celebrate'
+                                ? 'CELEBRATE THE PERFORMANCE'
+                                : applauseStep === 'countdown'
+                                    ? 'APPLAUSE METER OPENS SOON'
+                                    : applauseStep === 'measuring'
+                                        ? `MEASURING... ${measure}`
+                                        : 'PEAK LEVEL REACHED'}
+                        </div>
+                        {(applauseStep === 'celebrate' || applauseStep === 'countdown') ? (
+                            <div className="mt-3 text-sm md:text-xl uppercase tracking-[0.24em] text-zinc-400">
+                                {applauseStep === 'celebrate'
+                                    ? `Crowd warm-up ${celebrateCountdown}`
+                                    : `Noise meter in ${countdown}`}
+                            </div>
+                        ) : null}
+                        {applauseStep === 'countdown' ? (
+                            <div className="mt-4 flex items-center justify-center gap-2 md:gap-3">
+                                {Array.from({ length: 5 }, (_, idx) => {
+                                    const active = idx < countdown;
+                                    return (
+                                        <span
+                                            key={`applause-count-${idx}`}
+                                            className={`h-2.5 w-8 md:h-3 md:w-12 rounded-full transition-all duration-300 ${
+                                                active ? 'bg-cyan-300 shadow-[0_0_16px_rgba(103,232,249,0.9)]' : 'bg-white/10'
+                                            }`}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             )}
@@ -5531,15 +5818,15 @@ const PublicTV = ({ roomCode }) => {
                                 )}
                             </div>
                             <div className="mt-3 flex flex-col items-center gap-1 reaction-label">
-                                <div className={`px-3 py-1 md:px-4 rounded-full text-base md:text-2xl font-black tracking-widest ${r.isVip ? 'text-yellow-300 border-2 border-yellow-300 bg-black/70 shadow-[0_0_18px_rgba(253,224,71,0.6)]' : 'text-yellow-200 border-2 border-yellow-500/40 bg-black/60'}`}>
-                                    +{r.points || 0}
-                                </div>
-                                <div className={`px-3 py-1 md:px-4 rounded-full text-sm md:text-xl font-bold flex items-center gap-2 ${r.isVip ? 'text-yellow-300 border-2 border-yellow-400 bg-black/70 shadow-[0_0_20px_rgba(253,224,71,0.5)]' : 'text-white border-2 border-white/20 bg-black/60'}`}>
-                                    <span className="truncate max-w-[9rem] md:max-w-[12rem]">{r.userName || 'Guest'}</span>
+                                <div className={`px-4 py-1.5 md:px-6 md:py-2 rounded-full text-lg md:text-3xl font-black flex items-center gap-2 ${r.isVip ? 'text-yellow-200 border-2 border-yellow-300 bg-black/72 shadow-[0_0_22px_rgba(253,224,71,0.55)]' : 'text-white border-2 border-white/25 bg-black/64 shadow-[0_0_18px_rgba(255,255,255,0.08)]'}`}>
+                                    <span className="truncate max-w-[11rem] md:max-w-[15rem]">{r.userName || 'Guest'}</span>
                                     {r.isVip && <span className="text-xs font-black tracking-widest">VIP</span>}
                                 </div>
-                                <div className="px-3 py-1 rounded-full text-xs md:text-base font-semibold text-cyan-200 border border-cyan-400/40 bg-black/60">
-                                    +{r.basePoints || 0} x{r.multiplier || 1} = {r.points || 0}
+                                <div className={`px-3 py-1 md:px-4 md:py-1.5 rounded-full text-xs md:text-lg font-bold tracking-[0.24em] uppercase ${r.isVip ? 'text-cyan-100 border border-cyan-300/45 bg-cyan-500/10' : 'text-cyan-200 border border-cyan-400/40 bg-black/60'}`}>
+                                    {getLobbyReactionLabel(r.type)}
+                                </div>
+                                <div className={`px-3 py-1 rounded-full text-[11px] md:text-sm font-semibold ${r.isVip ? 'text-yellow-200/90 bg-yellow-400/10 border border-yellow-300/35' : 'text-zinc-200 bg-white/5 border border-white/10'}`}>
+                                    +{r.points || 0} pts
                                 </div>
                             </div>
                         </div>
@@ -5674,7 +5961,7 @@ const PublicTV = ({ roomCode }) => {
               .points-burst-a { top: -6px; left: 18px; }
               .points-burst-b { top: 6px; right: 10px; background: #22d3ee; box-shadow: 0 0 12px rgba(34, 211, 238, 0.7); }
               .points-burst-c { bottom: -4px; left: 40px; background: #f472b6; box-shadow: 0 0 12px rgba(244, 114, 182, 0.7); }
-              .reaction-stack { animation: float-up 2.6s ease-out forwards; will-change: transform, opacity; }
+              .reaction-stack { animation: float-up 4.6s ease-out forwards; will-change: transform, opacity; }
               .reaction-label { animation: reaction-label-in 0.35s ease-out forwards; }
               .animate-vip-glow { animation: vip-glow 1.2s ease-in-out infinite; }
               .vip-reaction-emoji { animation: vip-jolt 0.6s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(250, 204, 21, 0.75)); }

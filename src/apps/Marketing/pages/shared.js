@@ -1,4 +1,4 @@
-export const MARKETING_BRAND_BADGE_URL = "/images/logo-library/beaurocks-logo-background.png";
+export const MARKETING_BRAND_BADGE_URL = "/images/logo-library/beaurocks-logo-neon trasnparent.png";
 export const MARKETING_BRAND_NEON_URL = "/images/logo-library/beaurocks-logo-neon trasnparent.png";
 export const MARKETING_DJ_BEAUROCKS_AVATAR_URL = "/images/marketing/bross-host-beaurocks.png";
 export const MARKETING_AAHF_DISCOVER_FEATURE_URL = "/images/marketing/CLEAN%201.png";
@@ -92,7 +92,7 @@ const MARKETING_PLACEHOLDER_IMAGE_TOKENS = [
   "/images/marketing/beaurocks-audienceapp.png",
   MARKETING_BRAND_BADGE_URL,
   MARKETING_BRAND_NEON_URL,
-  "/images/logo-library/beaurocks-karaoke-logo-2.png",
+  "/images/logo-library/beaurocks-logo-neon trasnparent.png",
   "/images/logo-library/bross-entertainment",
 ];
 

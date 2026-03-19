@@ -19,7 +19,7 @@ import {
   resolveProfileAvatarUrl,
 } from "./shared";
 
-const PerformerPage = ({ id, route, session, navigate, authFlow }) => {
+const PerformerPage = ({ id, route, session, navigate, authFlow, setSeoEntity }) => {
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
 
@@ -28,6 +28,18 @@ const PerformerPage = ({ id, route, session, navigate, authFlow }) => {
     const q = query(collection(db, "directory_profiles"), where("__name__", "==", id), limit(1));
     return onSnapshot(q, (snap) => setProfile(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() }));
   }, [id]);
+
+  useEffect(() => {
+    if (typeof setSeoEntity !== "function") return;
+    if (!profile) {
+      setSeoEntity(null);
+      return;
+    }
+    setSeoEntity({
+      ...profile,
+      listingType: "performer",
+    });
+  }, [profile, setSeoEntity]);
 
   useEffect(() => {
     if (!id) return () => {};

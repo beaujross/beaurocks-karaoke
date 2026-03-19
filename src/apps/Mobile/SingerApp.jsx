@@ -100,7 +100,7 @@ const AnimatedPoints = ({ value, onClick, className = '' }) => {
 };
 
 const DEFAULT_EMOJI = emoji(0x1F600);
-const BRAND_ICON = 'https://beauross.com/wp-content/uploads/beaurocks-karaoke-logo-2.png';
+const BRAND_ICON = '/images/logo-library/beaurocks-logo-neon trasnparent.png';
 const MOBILE_THEME_COLOR = '#7a2b76';
 const MOBILE_APP_BG = '#090612';
 const MOBILE_BROWSER_CHROME_BG = 'linear-gradient(180deg, #4b1436 0%, #110a1d 24%, #090612 74%, #3a1b5c 100%)';
@@ -117,6 +117,34 @@ const STORM_LAYER_VIBRATE = {
     tap: 28,
     stomp: [45, 24, 45],
     clap: [20, 16, 20]
+};
+const GUITAR_LANE_COUNT = 5;
+const GUITAR_BEAT_MS = 620;
+const GUITAR_SYNC_WINDOW_MS = 130;
+const GUITAR_PREVIEW_BEATS = 5;
+const GUITAR_LANE_THEME = [
+    { label: 'I', accent: 'from-cyan-300 via-sky-400 to-cyan-500', border: 'border-cyan-300/60', glow: 'shadow-[0_0_20px_rgba(34,211,238,0.35)]' },
+    { label: 'II', accent: 'from-fuchsia-300 via-pink-400 to-fuchsia-500', border: 'border-fuchsia-300/60', glow: 'shadow-[0_0_20px_rgba(236,72,153,0.35)]' },
+    { label: 'III', accent: 'from-yellow-200 via-amber-300 to-orange-400', border: 'border-yellow-200/60', glow: 'shadow-[0_0_20px_rgba(251,191,36,0.35)]' },
+    { label: 'IV', accent: 'from-violet-300 via-indigo-400 to-violet-500', border: 'border-violet-300/60', glow: 'shadow-[0_0_20px_rgba(167,139,250,0.35)]' },
+    { label: 'V', accent: 'from-emerald-200 via-teal-300 to-cyan-400', border: 'border-emerald-200/60', glow: 'shadow-[0_0_20px_rgba(45,212,191,0.35)]' }
+];
+const getGuitarSessionSeed = (sessionId) => {
+    const raw = String(sessionId || 'beaurocks-guitar');
+    let hash = 2166136261;
+    for (let idx = 0; idx < raw.length; idx += 1) {
+        hash ^= raw.charCodeAt(idx);
+        hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+};
+const getGuitarTargetLane = (sessionId, beatIndex, laneCount = GUITAR_LANE_COUNT) => {
+    const seed = getGuitarSessionSeed(sessionId);
+    let mixed = (seed ^ Math.imul((beatIndex + 1) >>> 0, 2654435761)) >>> 0;
+    mixed ^= mixed >>> 15;
+    mixed = Math.imul(mixed, 2246822519) >>> 0;
+    mixed ^= mixed >>> 13;
+    return mixed % Math.max(1, laneCount);
 };
 const LOBBY_PLAYGROUND_INTERACTIONS = VOLLEY_ORB_BASE_ACTIONS.map((item) => ({
     ...item,
@@ -853,6 +881,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const joinLogoRef = useRef(null);
     const demoAutoJoinAttemptRef = useRef('');
     const demoJoinRef = useRef(null);
+    const ensureUserProfileKeyRef = useRef('');
     const [joinRayPos, setJoinRayPos] = useState({ x: '50%', y: '30%' });
     const joinRayFrameRef = useRef(0);
 
@@ -898,6 +927,16 @@ const SingerApp = ({ roomCode, uid }) => {
         }
         if (typeof fixture.searchQ === 'string') setSearchQ(fixture.searchQ);
         if (Array.isArray(fixture.results)) setResults(fixture.results);
+        if (typeof fixture.viewLyrics === 'boolean') setViewLyrics(fixture.viewLyrics);
+        if (typeof fixture.inlineLyrics === 'boolean') setInlineLyrics(fixture.inlineLyrics);
+        if (typeof fixture.showAudienceVideo === 'boolean') setShowAudienceVideo(fixture.showAudienceVideo);
+        if (typeof fixture.showAudienceVideoFullscreen === 'boolean') setShowAudienceVideoFullscreen(fixture.showAudienceVideoFullscreen);
+        if (typeof fixture.stageHomePanelExpanded === 'boolean') setStageHomePanelExpanded(fixture.stageHomePanelExpanded);
+        if (Array.isArray(fixture.localReactions)) setLocalReactions(fixture.localReactions);
+        if (fixture.lobbyVolleyPreview !== undefined) {
+            setLobbyVolleyPreview(fixture.lobbyVolleyPreview || createLobbyVolleyState());
+            setLobbyVolleyNowMs(Date.now());
+        }
     }, [demoFixture, isMarketingDemoFixture]);
 
     const [localReactions, setLocalReactions] = useState([]);
@@ -934,6 +973,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [dismissedHostLyrics, setDismissedHostLyrics] = useState(false);
     const [showAudienceVideo, setShowAudienceVideo] = useState(false);
     const [showAudienceVideoFullscreen, setShowAudienceVideoFullscreen] = useState(false);
+    const [stageHomePanelExpanded, setStageHomePanelExpanded] = useState(false);
     const [isFormInitialized, setIsFormInitialized] = useState(false);
     const [cooldownFlash, setCooldownFlash] = useState(false);
     const [stormPhase, setStormPhase] = useState('off');
@@ -1764,6 +1804,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const chatLastSentRef = useRef(0);
     const videoRef = useRef(null);
     const audienceVideoRef = useRef(null);
+    const audienceIframeRef = useRef(null);
     const [cameraActive, setCameraActive] = useState(false);
     const [cameraError, setCameraError] = useState('');
 
@@ -1784,11 +1825,13 @@ const SingerApp = ({ roomCode, uid }) => {
     const [guitarPerfectHits, setGuitarPerfectHits] = useState(0);
     const [guitarTotalHits, setGuitarTotalHits] = useState(0);
     const [guitarLastHitAt, setGuitarLastHitAt] = useState(0);
+    const [guitarHitFeedback, setGuitarHitFeedback] = useState({ label: 'Ready', tone: 'idle' });
     const lastStrum = useRef(0);
     const guitarLastHitRef = useRef(0);
     const guitarComboRef = useRef(0);
     const guitarStringCooldownRef = useRef([0,0,0,0,0]);
     const stringTimers = useRef([]);
+    const guitarFeedbackTimerRef = useRef(null);
     const lastReactionAt = useRef(0);
     const reactionFlushTimer = useRef(null);
     const pendingReactions = useRef({});
@@ -2384,10 +2427,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [applePlaybackActive, applePlayback?.title, applePlayback?.status, mediaUrl, room?.videoPlaying, isYoutube, isNativeVideo, isAudio, currentSinger?.songTitle]);
     const hostLyricsActive = !!room?.showLyricsSinger && hasLyrics;
     const audienceVideoForced = room?.audienceVideoMode === 'force';
+    const audienceYoutubeStateRef = useRef({ currentTime: null, playerState: null });
     const audienceIframeSrc = useMemo(() => {
         if (!youtubeId) return null;
         const start = room?.videoStartTimestamp ? (Date.now() - room.videoStartTimestamp) / 1000 : 0;
-        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=1&playsinline=1&mute=1&start=${Math.floor(Math.max(0, start))}`;
+        const origin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
+        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=1&playsinline=1&mute=1&enablejsapi=1&origin=${origin}&rel=0&modestbranding=1&start=${Math.floor(Math.max(0, start))}`;
     }, [youtubeId, room?.videoStartTimestamp]);
     const showAudienceVideoInline = (audienceVideoForced || showAudienceVideo) && !!mediaUrl && !isAudio;
     const showAudienceVideoActive = showAudienceVideoInline || showAudienceVideoFullscreen;
@@ -2401,6 +2446,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             vid.play().catch(() => {});
         }
     }, [room?.videoStartTimestamp, room?.videoPlaying]);
+    const postAudienceYoutubeCommand = useCallback((func, args = []) => {
+        if (!audienceIframeRef.current?.contentWindow) return false;
+        audienceIframeRef.current.contentWindow.postMessage(
+            JSON.stringify({ event: 'command', func, args }),
+            '*'
+        );
+        return true;
+    }, []);
+    const syncAudienceYoutubeNow = useCallback(() => {
+        if (!audienceIframeRef.current?.contentWindow || !youtubeId || !room?.videoStartTimestamp) return;
+        const targetTime = Math.max(0, (Date.now() - room.videoStartTimestamp) / 1000);
+        const currentTime = audienceYoutubeStateRef.current.currentTime;
+        const drift = Number.isFinite(currentTime) ? Math.abs(currentTime - targetTime) : Number.POSITIVE_INFINITY;
+        if (drift > 0.75) {
+            postAudienceYoutubeCommand('seekTo', [targetTime, true]);
+        }
+        postAudienceYoutubeCommand(room?.videoPlaying ? 'playVideo' : 'pauseVideo', []);
+    }, [postAudienceYoutubeCommand, youtubeId, room?.videoStartTimestamp, room?.videoPlaying]);
 
     const submitDoodleDrawing = useCallback(async () => {
         if (!roomCode || !user || !room?.doodleOke?.promptId) return;
@@ -2452,8 +2515,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (audienceVideoForced) {
             setShowAudienceVideo(true);
             setTimeout(syncAudienceVideoNow, 60);
+            setTimeout(syncAudienceYoutubeNow, 220);
         }
-    }, [audienceVideoForced, syncAudienceVideoNow]);
+    }, [audienceVideoForced, syncAudienceVideoNow, syncAudienceYoutubeNow]);
     useEffect(() => {
         if (!showAudienceVideoInline) {
             setShowAudienceVideoFullscreen(false);
@@ -2464,6 +2528,40 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const timer = setTimeout(syncAudienceVideoNow, 80);
         return () => clearTimeout(timer);
     }, [showAudienceVideoActive, isNativeVideo, room?.videoStartTimestamp, syncAudienceVideoNow]);
+    useEffect(() => {
+        if (!showAudienceVideoActive || !isYoutube || !youtubeId) return;
+        const timer = setTimeout(syncAudienceYoutubeNow, 160);
+        const syncTimer = setInterval(syncAudienceYoutubeNow, room?.videoPlaying ? 700 : 1100);
+        return () => {
+            clearTimeout(timer);
+            clearInterval(syncTimer);
+        };
+    }, [showAudienceVideoActive, isYoutube, youtubeId, room?.videoPlaying, room?.videoStartTimestamp, syncAudienceYoutubeNow]);
+    useEffect(() => {
+        if (typeof window === 'undefined' || !showAudienceVideoActive || !isYoutube || !youtubeId) return undefined;
+        audienceYoutubeStateRef.current = { currentTime: null, playerState: null };
+        const handleMessage = (event) => {
+            if (event.source !== audienceIframeRef.current?.contentWindow) return;
+            let payload = event.data;
+            if (typeof payload === 'string') {
+                try {
+                    payload = JSON.parse(payload);
+                } catch {
+                    return;
+                }
+            }
+            if (!payload || payload.event !== 'infoDelivery') return;
+            const info = payload.info || {};
+            if (typeof info.currentTime === 'number') {
+                audienceYoutubeStateRef.current.currentTime = info.currentTime;
+            }
+            if (typeof info.playerState === 'number') {
+                audienceYoutubeStateRef.current.playerState = info.playerState;
+            }
+        };
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
+    }, [showAudienceVideoActive, isYoutube, youtubeId]);
 
     useEffect(() => {
         if (!room?.howToPlay?.active || !room?.howToPlay?.id) return;
@@ -2743,6 +2841,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const karaokePerformanceVotingOpen = !!currentSinger && (!room?.activeMode || room.activeMode === 'karaoke');
     const showPerformanceVotingPromptCta = karaokePerformanceVotingOpen && tab !== 'home';
     const showPopTriviaPromptCta = !!popTriviaQuestion && !['home', 'request', 'social'].includes(tab);
+    const lobbyVolleySceneActive = isVolleyOrbSceneActive({
+        hasCurrentSinger: !!currentSinger,
+        activeMode: room?.activeMode,
+        lightMode: room?.lightMode
+    });
     const floatingEngagementPrompt = useMemo(() => {
         if (showPerformanceVotingPromptCta && showPopTriviaPromptCta) {
             return {
@@ -2764,6 +2867,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
         return null;
     }, [showPerformanceVotingPromptCta, showPopTriviaPromptCta, popTriviaMyVote]);
+    useEffect(() => {
+        setStageHomePanelExpanded(false);
+    }, [currentSinger?.id, popTriviaCardKey, lobbyVolleySceneActive, karaokePerformanceVotingOpen]);
 
     useEffect(() => {
         if (!popTriviaQuestionId) {
@@ -2796,19 +2902,34 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     // Ensure a persistent user doc for account-level data (tight15, vipLevel)
     useEffect(() => {
         if (!authReadyUid || auth.currentUser?.uid !== authReadyUid) return;
-        // Use current form values as hints for profile creation
-        if (typeof window !== 'undefined') {
-            const host = window.location?.hostname || 'unknown';
-            console.info('[SingerApp] ensureUserProfile call host=%s authReadyUid=%s authUid=%s', host, authReadyUid, auth.currentUser?.uid || 'none');
-        }
-        ensureUserProfile(authReadyUid, { name: clampName((form.name || 'Guest').trim()), avatar: form.emoji || DEFAULT_EMOJI });
+        const nextName = clampName((form.name || 'Guest').trim());
+        const nextAvatar = form.emoji || DEFAULT_EMOJI;
+        const ensureKey = `${authReadyUid}:${nextName}:${nextAvatar}`;
+        if (ensureUserProfileKeyRef.current === ensureKey) return;
+        ensureUserProfileKeyRef.current = ensureKey;
+        ensureUserProfile(authReadyUid, { name: nextName, avatar: nextAvatar }).catch((error) => {
+            if (isQueuePermissionDeniedError(error) || isQueueUnauthenticatedError(error)) {
+                return;
+            }
+            console.error('ensureUserProfile failed', error);
+        });
     }, [authReadyUid, form.emoji, form.name]);
 
     // Listen for top-level user profile (persistent across rooms)
     useEffect(() => {
         if (!authReadyUid || auth.currentUser?.uid !== authReadyUid) return;
         const uRef = doc(db, 'users', authReadyUid);
-        const unsub = onSnapshot(uRef, s => setProfile(s.exists() ? s.data() : null));
+        const unsub = onSnapshot(
+            uRef,
+            (snapshot) => setProfile(snapshot.exists() ? snapshot.data() : null),
+            (error) => {
+                if (isQueuePermissionDeniedError(error) || isQueueUnauthenticatedError(error)) {
+                    setProfile(null);
+                    return;
+                }
+                console.error('User profile subscription failed', error);
+            }
+        );
         return () => unsub();
     }, [authReadyUid]);
 
@@ -3343,9 +3464,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setGuitarPerfectHits(0);
             setGuitarTotalHits(0);
             setGuitarLastHitAt(0);
+            setGuitarHitFeedback({ label: 'Ready', tone: 'idle' });
             guitarLastHitRef.current = 0;
             guitarComboRef.current = 0;
             guitarStringCooldownRef.current = [0, 0, 0, 0, 0];
+            if (guitarFeedbackTimerRef.current) {
+                clearTimeout(guitarFeedbackTimerRef.current);
+                guitarFeedbackTimerRef.current = null;
+            }
             return;
         }
         const timer = setInterval(() => {
@@ -3361,16 +3487,32 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         return () => clearInterval(timer);
     }, [room?.lightMode]);
 
+    useEffect(() => () => {
+        if (guitarFeedbackTimerRef.current) {
+            clearTimeout(guitarFeedbackTimerRef.current);
+            guitarFeedbackTimerRef.current = null;
+        }
+    }, []);
+
+    const pushGuitarFeedback = useCallback((label, tone = 'idle') => {
+        setGuitarHitFeedback({ label, tone });
+        if (guitarFeedbackTimerRef.current) clearTimeout(guitarFeedbackTimerRef.current);
+        guitarFeedbackTimerRef.current = setTimeout(() => {
+            setGuitarHitFeedback({ label: 'Ready', tone: 'idle' });
+            guitarFeedbackTimerRef.current = null;
+        }, tone === 'miss' ? 680 : 520);
+    }, []);
+
     // Guitar Handling
     const handleGuitarTouch = (e) => {
         if (!user) return;
         const touch = e.touches[0];
         const rect = e.currentTarget.getBoundingClientRect();
         const x = touch.clientX - rect.left;
-        const stringWidth = rect.width / 5;
+        const stringWidth = rect.width / GUITAR_LANE_COUNT;
         const stringIdx = Math.floor(x / stringWidth);
         
-        if (stringIdx >= 0 && stringIdx < 5) {
+        if (stringIdx >= 0 && stringIdx < GUITAR_LANE_COUNT) {
                 handleStrum(stringIdx);
         }
     };
@@ -3382,37 +3524,57 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (now - lastStringHitAt < 90) return;
         guitarStringCooldownRef.current[i] = now;
 
-        const beatMs = 620;
-        const beatMod = ((now % beatMs) + beatMs) % beatMs;
-        const beatOffsetMs = Math.min(beatMod, beatMs - beatMod);
-        const inSyncWindow = beatOffsetMs <= 130;
+        const sessionId = room?.guitarSessionId || 'beaurocks-guitar';
+        const nearestBeatIndex = Math.round(now / GUITAR_BEAT_MS);
+        const beatCenterMs = nearestBeatIndex * GUITAR_BEAT_MS;
+        const beatDeltaMs = now - beatCenterMs;
+        const beatOffsetMs = Math.abs(beatDeltaMs);
+        const targetLane = getGuitarTargetLane(sessionId, nearestBeatIndex);
+        const correctLane = i === targetLane;
+        const inSyncWindow = beatOffsetMs <= GUITAR_SYNC_WINDOW_MS;
+        const successfulHit = correctLane && inSyncWindow;
         const prevHitAt = Number(guitarLastHitRef.current || 0);
-        const nextCombo = (prevHitAt && (now - prevHitAt) <= 950)
-            ? Math.min(99, Number(guitarComboRef.current || 0) + 1)
-            : 1;
-        guitarLastHitRef.current = now;
-        guitarComboRef.current = nextCombo;
+        let nextCombo = 0;
         setGuitarNow(now);
-        setGuitarLastHitAt(now);
-        setGuitarLocalCombo(nextCombo);
         setGuitarTotalHits((value) => value + 1);
-        if (inSyncWindow) setGuitarPerfectHits((value) => value + 1);
 
         setStrings(prev => { const next = [...prev]; next[i] = 1; return next; });
         if (stringTimers.current[i]) clearTimeout(stringTimers.current[i]);
         stringTimers.current[i] = setTimeout(() => {
             setStrings(prev => { const next = [...prev]; next[i] = 0; return next; });
         }, 500);
-        try { if(window.navigator && window.navigator.vibrate) window.navigator.vibrate(inSyncWindow ? 90 : 65); } catch (_err) { /* ignore */ }
 
-        if(now - lastStrum.current > 200) {
-            // Emit a strum reaction for TV and other clients (throttled)
+        if (successfulHit) {
+            nextCombo = (prevHitAt && (now - prevHitAt) <= 950)
+                ? Math.min(99, Number(guitarComboRef.current || 0) + 1)
+                : 1;
+            guitarLastHitRef.current = now;
+            guitarComboRef.current = nextCombo;
+            setGuitarLastHitAt(now);
+            setGuitarLocalCombo(nextCombo);
+            setGuitarPerfectHits((value) => value + 1);
+            pushGuitarFeedback(beatOffsetMs <= 60 ? 'Perfect' : 'On Beat', beatOffsetMs <= 60 ? 'perfect' : 'good');
+            try { if(window.navigator && window.navigator.vibrate) window.navigator.vibrate(90); } catch (_err) { /* ignore */ }
+        } else {
+            guitarComboRef.current = 0;
+            setGuitarLocalCombo(0);
+            if (!correctLane) {
+                pushGuitarFeedback('Wrong String', 'miss');
+            } else if (beatDeltaMs < 0) {
+                pushGuitarFeedback('Too Early', 'miss');
+            } else {
+                pushGuitarFeedback('Too Late', 'miss');
+            }
+            try { if(window.navigator && window.navigator.vibrate) window.navigator.vibrate([28, 18, 28]); } catch (_err) { /* ignore */ }
+        }
+
+        if(successfulHit && (now - lastStrum.current > 200)) {
             queueStrumWrite();
             lastStrum.current = now;
             markActive();
 
             queuePointDelta(2);
-            if (inSyncWindow) queuePointDelta(1);
+            queuePointDelta(1);
             if (nextCombo >= 16 && nextCombo % 8 === 0) queuePointDelta(1);
         }
     };
@@ -5446,10 +5608,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }
 
     if (room?.lightMode === 'guitar') {
-        const beatMs = 620;
+        const beatMs = GUITAR_BEAT_MS;
+        const sessionId = room?.guitarSessionId || 'beaurocks-guitar';
         const beatMod = ((guitarNow % beatMs) + beatMs) % beatMs;
         const beatOffsetMs = Math.min(beatMod, beatMs - beatMod);
-        const syncWindowMs = 130;
+        const syncWindowMs = GUITAR_SYNC_WINDOW_MS;
         const syncReady = beatOffsetMs <= syncWindowMs;
         const syncAccuracy = guitarTotalHits > 0
             ? Math.round((guitarPerfectHits / Math.max(1, guitarTotalHits)) * 100)
@@ -5458,13 +5621,38 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const comboPct = Math.min(100, guitarLocalCombo * 2.2);
         const pulseScale = 1 + Math.max(0, ((syncWindowMs - beatOffsetMs) / syncWindowMs) * 0.16);
         const secondsSinceHit = guitarLastHitAt ? Math.floor((guitarNow - guitarLastHitAt) / 1000) : null;
+        const nearestBeatIndex = Math.round(guitarNow / beatMs);
+        const currentTargetLane = getGuitarTargetLane(sessionId, nearestBeatIndex);
+        const upcomingTargets = Array.from({ length: GUITAR_PREVIEW_BEATS }, (_unused, offset) => {
+            const beatIndex = nearestBeatIndex + offset;
+            return {
+                beatIndex,
+                lane: getGuitarTargetLane(sessionId, beatIndex),
+                beatLabel: offset === 0 ? 'Now' : `+${offset}`
+            };
+        });
+        const upcomingNotes = Array.from({ length: GUITAR_PREVIEW_BEATS + 1 }, (_unused, offset) => {
+            const beatIndex = nearestBeatIndex + offset;
+            const beatsAway = beatIndex - (guitarNow / beatMs);
+            return {
+                beatIndex,
+                lane: getGuitarTargetLane(sessionId, beatIndex),
+                topPct: Math.max(14, Math.min(78, 78 - (beatsAway * 15.5)))
+            };
+        });
+        const feedbackToneClasses = {
+            idle: 'border-white/15 bg-black/50 text-zinc-200',
+            perfect: 'border-emerald-300/55 bg-emerald-400/18 text-emerald-100 shadow-[0_0_22px_rgba(74,222,128,0.22)]',
+            good: 'border-cyan-300/55 bg-cyan-400/18 text-cyan-100 shadow-[0_0_22px_rgba(34,211,238,0.22)]',
+            miss: 'border-rose-300/55 bg-rose-500/18 text-rose-100 shadow-[0_0_22px_rgba(244,63,94,0.22)]'
+        };
         return (
             <div className="h-screen bg-black/90 flex flex-col relative overflow-hidden text-white font-saira justify-center">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(250,204,21,0.16),transparent_52%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.18),transparent_60%)]"></div>
                 <div className="absolute top-6 left-1/2 -translate-x-1/2 w-[min(92vw,460px)] text-center z-30 pointer-events-none">
                     <div className="text-[10px] uppercase tracking-[0.42em] text-zinc-300">Vibe Sync</div>
                     <h1 className={`mt-1 text-5xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 drop-shadow-[0_0_20px_rgba(236,72,153,0.45)] ${motionSafeFx ? '' : 'animate-pulse'}`}>GUITAR MODE</h1>
-                    <p className="text-sm text-cyan-100 uppercase tracking-[0.14em]">Strum in rhythm to stack team energy</p>
+                    <p className="text-sm text-cyan-100 uppercase tracking-[0.14em]">Hit the glowing string on beat to build team energy</p>
                     <div className="mt-3 grid grid-cols-3 gap-2">
                         <div className="bg-black/60 border border-yellow-300/40 rounded-xl px-2 py-1.5">
                             <div className="text-[9px] uppercase tracking-[0.2em] text-zinc-300">Combo</div>
@@ -5482,6 +5670,23 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <div className="mt-3 h-2.5 w-full bg-white/15 rounded-full overflow-hidden border border-white/20">
                         <div className="h-full bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 transition-all duration-150" style={{ width: `${comboPct}%` }}></div>
                     </div>
+                    <div className="mt-3 grid grid-cols-5 gap-1.5 pointer-events-none">
+                        {upcomingTargets.map((target) => {
+                            const laneTheme = GUITAR_LANE_THEME[target.lane];
+                            const isCurrent = target.beatLabel === 'Now';
+                            return (
+                                <div
+                                    key={target.beatIndex}
+                                    className={`rounded-2xl border px-1.5 py-2 bg-black/55 backdrop-blur ${laneTheme.border} ${laneTheme.glow} ${isCurrent ? 'scale-[1.04]' : 'opacity-85'}`}
+                                >
+                                    <div className="text-[9px] uppercase tracking-[0.2em] text-zinc-300">{target.beatLabel}</div>
+                                    <div className={`mt-1 rounded-full border border-white/10 bg-gradient-to-r ${laneTheme.accent} px-2 py-1 text-[10px] font-black tracking-[0.22em] text-black`}>
+                                        {laneTheme.label}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
                 <div
                     className="absolute inset-0 flex justify-around items-center px-6 sm:px-8"
@@ -5489,25 +5694,52 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     onTouchMove={(e)=>handleGuitarTouch(e)}
                     style={{ touchAction: 'none' }}
                 >
-                    {[0,1,2,3,4].map(i => (
+                    {[0,1,2,3,4].map(i => {
+                        const laneTheme = GUITAR_LANE_THEME[i];
+                        const isTargetLane = currentTargetLane === i;
+                        const laneNotes = upcomingNotes.filter((note) => note.lane === i);
+                        return (
                         <div
                             key={i}
                             onClick={() => handleStrum(i)}
-                            className={`flex-1 h-full border-r border-white/10 flex items-center justify-center relative guitar-string-zone ${strings[i] ? 'active' : ''}`}
+                            className={`flex-1 h-full border-r border-white/10 flex items-center justify-center relative guitar-string-zone ${strings[i] ? 'active' : ''} ${isTargetLane ? 'bg-white/[0.04]' : ''}`}
                         >
+                            <div className="absolute inset-x-1 bottom-[20%] h-[2px] rounded-full bg-white/35 shadow-[0_0_16px_rgba(255,255,255,0.18)]"></div>
+                            {laneNotes.map((note) => (
+                                <div
+                                    key={note.beatIndex}
+                                    className="absolute left-1/2 -translate-x-1/2 transition-[top] duration-150"
+                                    style={{ top: `${note.topPct}%` }}
+                                >
+                                    <div className={`h-8 w-8 rounded-full border bg-gradient-to-br ${laneTheme.accent} ${laneTheme.border} ${laneTheme.glow} ${note.beatIndex === nearestBeatIndex ? 'scale-110' : 'scale-90 opacity-85'}`}></div>
+                                </div>
+                            ))}
                             <div className={`guitar-string ${strings[i] ? 'vibrating' : ''}`}></div>
+                            <div className={`absolute bottom-7 left-1/2 -translate-x-1/2 rounded-full border px-2 py-1 text-[10px] font-black tracking-[0.18em] ${laneTheme.border} ${isTargetLane ? `bg-gradient-to-r ${laneTheme.accent} text-black` : 'bg-black/45 text-zinc-200'}`}>
+                                {laneTheme.label}
+                            </div>
                         </div>
-                    ))}
+                    )})}
                 </div>
                 <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-                    <div className="h-20 w-20 rounded-full border-2 border-cyan-300/60 bg-black/55 shadow-[0_0_24px_rgba(34,211,238,0.4)] flex items-center justify-center transition-transform duration-120" style={{ transform: `scale(${pulseScale})` }}>
-                        <div className={`h-10 w-10 rounded-full ${syncReady ? 'bg-cyan-300/80' : 'bg-zinc-500/40'} transition-colors duration-100`}></div>
+                    <div className="h-24 w-[220px] rounded-[28px] border border-white/15 bg-black/65 shadow-[0_0_28px_rgba(34,211,238,0.18)] backdrop-blur-md flex items-center justify-center gap-4 px-5">
+                        <div className="flex flex-col items-start">
+                            <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-300">Target String</div>
+                            <div className={`mt-2 rounded-full border px-3 py-1.5 text-sm font-black tracking-[0.28em] bg-gradient-to-r ${GUITAR_LANE_THEME[currentTargetLane].accent} ${GUITAR_LANE_THEME[currentTargetLane].border} text-black`}>
+                                {GUITAR_LANE_THEME[currentTargetLane].label}
+                            </div>
+                        </div>
+                        <div className="h-16 w-16 rounded-full border-2 border-cyan-300/60 bg-black/55 shadow-[0_0_24px_rgba(34,211,238,0.4)] flex items-center justify-center transition-transform duration-120" style={{ transform: `scale(${pulseScale})` }}>
+                            <div className={`h-8 w-8 rounded-full ${syncReady ? 'bg-cyan-300/80' : 'bg-zinc-500/40'} transition-colors duration-100`}></div>
+                        </div>
                     </div>
                 </div>
                 <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none text-center">
-                    <div className="text-xs uppercase tracking-[0.3em] text-cyan-100">{syncReady ? 'SYNC WINDOW OPEN' : 'FOLLOW THE PULSE'}</div>
+                    <div className={`inline-flex items-center justify-center rounded-full border px-4 py-2 text-xs uppercase tracking-[0.3em] ${feedbackToneClasses[guitarHitFeedback.tone] || feedbackToneClasses.idle}`}>
+                        {guitarHitFeedback.label}
+                    </div>
                     <div className="text-[11px] text-zinc-300 mt-1">
-                        {secondsSinceHit === null ? 'Hit any string to start your combo.' : `Last strum ${secondsSinceHit}s ago`}
+                        {secondsSinceHit === null ? 'Watch the note highway and hit the marked string on beat.' : `Last clean hit ${secondsSinceHit}s ago`}
                     </div>
                 </div>
                 <button onClick={handleExitGuitarMode} className="absolute bottom-10 left-1/2 transform -translate-x-1/2 bg-[#EC4899] text-black px-4 py-2 rounded-full z-50 text-xs font-bold">EXIT MODE</button>
@@ -6820,11 +7052,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     {!isNativeVideo && youtubeId && (
                         <iframe
                             key={`${youtubeId}_${room?.videoStartTimestamp || 0}`}
+                            ref={audienceIframeRef}
                             className="absolute inset-0 w-full h-full"
                             src={audienceIframeSrc}
                             allow="autoplay; fullscreen"
                             title="Audience Video"
                             frameBorder="0"
+                            onLoad={syncAudienceYoutubeNow}
                         ></iframe>
                     )}
                     {!isNativeVideo && !youtubeId && (
@@ -7259,11 +7493,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const activeMessages = chatTab === 'host' ? dmMessages : loungeMessages;
     const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
     const noSingerOnStage = !currentSinger;
-    const lobbyVolleySceneActive = isVolleyOrbSceneActive({
-        hasCurrentSinger: !noSingerOnStage,
-        activeMode: room?.activeMode,
-        lightMode: room?.lightMode
-    });
     const lobbyPlayStrictMode = !!room?.lobbyPlaygroundStrictMode;
     const lobbyPlaygroundPaused = !!room?.lobbyPlaygroundPaused;
     const lobbyRatePlan = getLobbyVolleyAudienceRatePlan(lobbyVolleyPreview || createLobbyVolleyState(), {
@@ -7303,6 +7532,32 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         || (autoCrowdMomentType === 'volley'
             ? 'Audience relay is live between singers.'
             : 'Audience check-in is live before the next singer.');
+    const forceExpandedHomeStageCard = showAudienceVideoInline || showAudienceVideoFullscreen || inlineLyrics || viewLyrics;
+    const homeStageInteractionState = showPopTriviaCard
+        ? 'trivia'
+        : lobbyVolleySceneActive
+            ? 'volley'
+            : karaokePerformanceVotingOpen
+                ? 'voting'
+                : '';
+    const shouldOfferCompactHomeStageCard = tab === 'home' && !!currentSinger && !!homeStageInteractionState;
+    const showCompactHomeStageCard = shouldOfferCompactHomeStageCard && !forceExpandedHomeStageCard && !stageHomePanelExpanded;
+    const compactHomeStageStatusLabel = homeStageInteractionState === 'trivia'
+        ? (
+            popTriviaQuestion
+                ? (popTriviaMyVote !== null ? 'Trivia live · Answer locked' : `Trivia live · ${popTriviaState?.timeLeftSec || 0}s`)
+                : 'Trivia recap'
+        )
+        : homeStageInteractionState === 'volley'
+            ? (
+                lobbyPlaygroundPaused
+                    ? 'Volley Orb · Paused'
+                    : lobbyRelayObjective.active
+                        ? 'Volley Orb · Hit target'
+                        : 'Volley Orb · Tap to launch'
+            )
+            : 'Performance voting open';
+
     const chatTitle = socialTab === 'host' ? 'DM Host' : 'VIP Lounge';
     const chatStatusLabel = !room?.chatEnabled
         ? 'Chat paused'
@@ -7588,7 +7843,40 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     )}
                     {currentSinger ? (
                         <div data-feature-id="singer-current-performance-card" className={`bg-indigo-900/80 rounded-2xl border border-indigo-500/30 shadow-lg backdrop-blur-md relative overflow-hidden ${isNativeMobileLayout ? 'mobile-native-stage-card' : ''}`}>
-                            <div className={`px-4 py-3 border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70 ${isNativeMobileLayout ? 'mobile-native-stage-meta' : ''}`}>
+                            {showCompactHomeStageCard && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        pulseNativeUiFeedback();
+                                        setStageHomePanelExpanded(true);
+                                    }}
+                                    className="w-full px-4 py-3 text-left border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        {currentSinger.albumArtUrl ? (
+                                            <img src={currentSinger.albumArtUrl} className="w-12 h-12 rounded-xl shadow-md object-cover flex-shrink-0" />
+                                        ) : (
+                                            <div className="w-12 h-12 rounded-xl bg-indigo-700/50 flex items-center justify-center text-2xl shadow-md flex-shrink-0">{DEFAULT_EMOJI}</div>
+                                        )}
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-indigo-200">
+                                                <span>Now performing</span>
+                                                <span className="rounded-full border border-cyan-300/35 bg-cyan-500/14 px-2 py-0.5 text-cyan-100">
+                                                    {compactHomeStageStatusLabel}
+                                                </span>
+                                            </div>
+                                            <div className="mt-1 text-base font-black leading-tight text-white truncate">{currentSinger.singerName}</div>
+                                            <div className="text-sm text-indigo-100/85 italic truncate">{currentSinger.songTitle}</div>
+                                        </div>
+                                        <div className="shrink-0 text-right">
+                                            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">Room</div>
+                                            <div className="font-bebas text-xl tracking-[0.2em] text-cyan-200">{roomCode}</div>
+                                            <div className="mt-1 text-[11px] text-zinc-300">Tap to expand</div>
+                                        </div>
+                                    </div>
+                                </button>
+                            )}
+                            <div className={`${showCompactHomeStageCard ? 'hidden ' : ''}px-4 py-3 border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70 ${isNativeMobileLayout ? 'mobile-native-stage-meta' : ''}`}>
                                 <div className="flex items-center justify-between gap-3">
                                     <div className="flex items-center gap-2">
                                         <div className="flex items-center gap-2 bg-black/50 border border-cyan-400/40 px-3 py-1.5 rounded-full">
@@ -7609,6 +7897,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
+                                        {shouldOfferCompactHomeStageCard && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    pulseNativeUiFeedback();
+                                                    setStageHomePanelExpanded(false);
+                                                }}
+                                                className="flex items-center gap-1 text-base font-bold text-cyan-100 bg-cyan-500/15 border border-cyan-300/35 px-3 py-1.5 rounded-full leading-none hover:bg-cyan-500/25"
+                                            >
+                                                <i className="fa-solid fa-minimize stage-icon text-cyan-100"></i>
+                                                Focus
+                                            </button>
+                                        )}
                                         {room?.hostName && (
                                             <button
                                                 onClick={() => { setTab('social'); setSocialTab('host'); }}
@@ -7635,9 +7937,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             Bingo Live
                                         </button>
                                     )}
+                                    {shouldOfferCompactHomeStageCard && (
+                                        <span className="rounded-full border border-cyan-300/35 bg-cyan-500/12 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">
+                                            {compactHomeStageStatusLabel}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
-                            <div className="p-4 border-t border-white/10">
+                            <div className={`${showCompactHomeStageCard ? 'hidden ' : ''}p-4 border-t border-white/10`}>
                             <div className="flex items-start gap-3">
                             <div className="min-w-0 flex-1 text-left">
                                 <div className="text-[12px] text-indigo-300 uppercase tracking-widest font-bold mb-1">NOW PERFORMING</div>
@@ -7702,6 +8009,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             }
                                             setShowAudienceVideo(false);
                                             setShowAudienceVideoFullscreen(false);
+                                            if (room?.videoStartTimestamp && currentSinger?.status === 'performing') {
+                                                setInlineLyrics(false);
+                                                setViewLyrics(true);
+                                                return;
+                                            }
                                             if (!inlineLyrics && !viewLyrics) {
                                                 setInlineLyrics(true);
                                                 return;
@@ -7755,11 +8067,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     {!isNativeVideo && youtubeId && (
                                                         <iframe
                                                             key={`${youtubeId}_${room?.videoStartTimestamp || 0}`}
+                                                            ref={audienceIframeRef}
                                                             className="absolute inset-0 w-full h-full"
                                                             src={audienceIframeSrc}
                                                             allow="autoplay; fullscreen"
                                                             title="Audience Video"
                                                             frameBorder="0"
+                                                            onLoad={syncAudienceYoutubeNow}
                                                         ></iframe>
                                                     )}
                                                     {!isNativeVideo && !youtubeId && (

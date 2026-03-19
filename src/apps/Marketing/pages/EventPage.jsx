@@ -1,12 +1,5 @@
 import React, { useEffect, useState } from "react";
-import {
-  db,
-  collection,
-  query,
-  where,
-  limit,
-  onSnapshot,
-} from "../../../lib/firebase";
+import { directoryActions } from "../api/directoryApi";
 import { EMPTY_STATE_CONTEXT, getEmptyStateConfig } from "../emptyStateOrchestrator";
 import EntityActionsCard from "./EntityActionsCard";
 import CadenceUpdateCard from "./CadenceUpdateCard";
@@ -33,47 +26,84 @@ const applyImageFallback = (event, fallbackUrl = "/images/marketing/venue-locati
   target.src = fallbackUrl;
 };
 
-const EventPage = ({ id, route, navigate, session, authFlow }) => {
+const EventPage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEntity }) => {
   const [eventItem, setEventItem] = useState(null);
-  const [venue, setVenue] = useState(null);
-  const [hostProfile, setHostProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!id) return () => {};
-    const eventQuery = query(
-      collection(db, "karaoke_events"),
-      where("__name__", "==", id),
-      limit(1)
-    );
-    return onSnapshot(
-      eventQuery,
-      (snap) => setEventItem(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() }),
-      (err) => setError(String(err?.message || "Failed to load event."))
-    );
+    let cancelled = false;
+
+    const loadEvent = async () => {
+      if (!id) {
+        setEventItem(null);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+
+      try {
+        let nextCursor = "";
+        let match = null;
+
+        for (let pageIndex = 0; pageIndex < 6; pageIndex += 1) {
+          const payload = await directoryActions.listDirectoryDiscover({
+            listingType: "event",
+            timeWindow: "all",
+            sortMode: "soonest",
+            limit: 60,
+            cursor: nextCursor,
+          });
+
+          const items = Array.isArray(payload?.items) ? payload.items : [];
+          match = items.find((item) => String(item?.id || "") === String(id || "")) || null;
+          if (match || !String(payload?.nextCursor || "").trim()) break;
+          nextCursor = String(payload?.nextCursor || "").trim();
+        }
+
+        if (cancelled) return;
+        setEventItem(match);
+      } catch (err) {
+        if (cancelled) return;
+        setError(String(err?.message || "Failed to load event."));
+        setEventItem(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadEvent();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   useEffect(() => {
-    if (!eventItem?.venueId) return () => {};
-    return onSnapshot(
-      query(collection(db, "venues"), where("__name__", "==", eventItem.venueId), limit(1)),
-      (snap) => setVenue(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() }),
-      () => setVenue(null)
-    );
-  }, [eventItem?.venueId]);
-
-  useEffect(() => {
-    if (!eventItem?.hostUid) return () => {};
-    return onSnapshot(
-      query(collection(db, "directory_profiles"), where("__name__", "==", eventItem.hostUid), limit(1)),
-      (snap) => setHostProfile(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() }),
-      () => setHostProfile(null)
-    );
-  }, [eventItem?.hostUid]);
+    if (typeof setSeoEntity !== "function") return;
+    if (!eventItem) {
+      setSeoEntity(null);
+      return;
+    }
+    setSeoEntity({
+      ...eventItem,
+      listingType: "event",
+    });
+  }, [eventItem, setSeoEntity]);
 
   if (error) {
     return <section className="mk3-page"><div className="mk3-status mk3-status-error">{error}</div></section>;
   }
+
+  if (loading) {
+    return (
+      <section className="mk3-page">
+        <div className="mk3-status">Loading event...</div>
+      </section>
+    );
+  }
+
   if (!eventItem) {
     return (
       <section className="mk3-page">
@@ -88,16 +118,12 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
     );
   }
 
-  const hostLabel = hostProfile?.displayName
-    || hostProfile?.handle
-    || eventItem.hostName
-    || "Unassigned Host";
-  const hostAvatarUrl = resolveProfileAvatarUrl(hostProfile || eventItem);
+  const hostLabel = eventItem.hostName || "Unassigned Host";
+  const hostAvatarUrl = resolveProfileAvatarUrl(eventItem);
   const eventImageCandidates = [
     ...resolveListingImageCandidates(eventItem, "event"),
-    ...resolveListingImageCandidates(venue || {}, "venue"),
   ].filter((value, index, arr) => arr.indexOf(value) === index);
-  const fallbackEventImage = buildPublicLocationImageUrl(eventItem) || buildPublicLocationImageUrl(venue || {})
+  const fallbackEventImage = buildPublicLocationImageUrl(eventItem)
     || "/images/marketing/venue-location-fallback.svg";
   const heroImage = eventImageCandidates[0] || fallbackEventImage;
   const listingGallery = eventImageCandidates.slice(0, 3);
@@ -106,30 +132,28 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
     startsAtMs: eventItem.startsAtMs,
     max: 7,
   });
-  const websiteUrl = String(eventItem.websiteUrl || venue?.websiteUrl || "").trim();
-  const bookingUrl = String(eventItem.bookingUrl || venue?.bookingUrl || "").trim();
-  const mapsUrl = String(eventItem?.externalSources?.google?.mapsUrl || venue?.externalSources?.google?.mapsUrl || "").trim()
+  const websiteUrl = String(eventItem.websiteUrl || "").trim();
+  const bookingUrl = String(eventItem.bookingUrl || "").trim();
+  const mapsUrl = String(eventItem?.externalSources?.google?.mapsUrl || "").trim()
     || buildGoogleMapsSearchUrl([
-      venue?.address1 || eventItem?.address1,
-      venue?.city || eventItem?.city,
-      venue?.state || eventItem?.state,
-      venue?.postalCode || eventItem?.postalCode,
+      eventItem?.address1,
+      eventItem?.city,
+      eventItem?.state,
+      eventItem?.postalCode,
     ]);
-  const phoneLabel = String(venue?.phone || eventItem?.phone || "").trim();
+  const phoneLabel = String(eventItem?.phone || "").trim();
   const phoneHref = toTelephoneHref(phoneLabel);
   const addressLabel = [
-    venue?.address1 || eventItem?.address1,
-    venue?.city || eventItem?.city,
-    venue?.state || eventItem?.state,
-    venue?.postalCode || eventItem?.postalCode,
+    eventItem?.address1,
+    eventItem?.city,
+    eventItem?.state,
+    eventItem?.postalCode,
   ].filter(Boolean).join(", ");
   const eventExperienceSource = {
     ...eventItem,
-    ...(venue || {}),
-    ...(hostProfile || {}),
     title: eventItem.title,
     hostName: hostLabel,
-    venueName: venue?.title || eventItem.venueName || "",
+    venueName: eventItem.venueName || "",
     imageUrl: heroImage,
   };
   const eventIsBeauRocksPowered = isBeauRocksPoweredListing(eventExperienceSource);
@@ -154,18 +178,19 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
             {eventItem.endsAtMs ? ` -> ${formatDateTime(eventItem.endsAtMs)}` : ""}
           </div>
         </div>
+
         <div className="mk3-venue-stat-grid">
           <article>
-            <span>Start Time</span>
+            <span>Starts</span>
             <strong>{formatDateTime(eventItem.startsAtMs)}</strong>
           </article>
           <article>
             <span>Venue</span>
-            <strong>{venue?.title || eventItem.venueName || "TBD"}</strong>
+            <strong>{eventItem.venueName || "TBD"}</strong>
           </article>
           <article>
-            <span>Region</span>
-            <strong>{[venue?.city || eventItem?.city, venue?.state || eventItem?.state].filter(Boolean).join(", ") || "Unspecified"}</strong>
+            <span>Area</span>
+            <strong>{[eventItem?.city, eventItem?.state].filter(Boolean).join(", ") || "Unspecified"}</strong>
           </article>
         </div>
 
@@ -182,7 +207,7 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
         </div>
 
         <div className="mk3-info-module">
-          <strong>Karaoke Times</strong>
+          <strong>Schedule</strong>
           {!!cadenceBadges.length && (
             <div className="mk3-day-badge-row">
               {cadenceBadges.map((label) => (
@@ -192,37 +217,40 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
           )}
           {eventItem.recurringRule && <span className="mk3-info-note">{eventItem.recurringRule}</span>}
           {!cadenceBadges.length && !eventItem.recurringRule && (
-            <span className="mk3-info-note">Cadence pending.</span>
+            <span className="mk3-info-note">Schedule not listed yet.</span>
           )}
         </div>
+
         <div className="mk3-info-module">
-          <strong>Venue / Host / Links</strong>
+          <strong>Details</strong>
           <div className="mk3-sub-list">
-            {eventItem.venueName && !venue && (
+            {eventItem.venueName && (
               <div className="mk3-list-row static">
                 <span>Venue</span>
                 <span>{eventItem.venueName}</span>
               </div>
             )}
-            {venue && (
-              <button type="button" className="mk3-list-row" onClick={() => navigate("venue", venue.id)}>
-                <span>Venue</span>
-                <span>{venue.title}</span>
-              </button>
-            )}
-            {eventItem.hostName && !hostProfile && (
+            {eventItem.hostName && !eventItem.hostUid && (
               <div className="mk3-list-row static">
                 <span>Host</span>
                 <span>{eventItem.hostName}</span>
               </div>
             )}
-            {hostProfile && (
-              <button type="button" className="mk3-list-row" onClick={() => navigate("host", hostProfile.id)}>
+            {!!eventItem.hostUid && (
+              <a
+                className="mk3-list-row"
+                href={buildHref ? buildHref("host", eventItem.hostUid) : "#"}
+                onClick={(clickEvent) => {
+                  clickEvent.preventDefault();
+                  navigate("host", eventItem.hostUid);
+                }}
+              >
                 <span>Host</span>
-                <span>{hostProfile.displayName || hostProfile.handle || hostProfile.id}</span>
-              </button>
+                <span>{eventItem.hostName || eventItem.hostUid}</span>
+              </a>
             )}
           </div>
+
           <div className="mk3-info-link-row">
             {websiteUrl && (
               <a className="mk3-venue-link" href={websiteUrl} target="_blank" rel="noreferrer">
@@ -240,6 +268,7 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
               </a>
             )}
           </div>
+
           <div className="mk3-info-kv-grid">
             {phoneLabel && (
               <div className="mk3-info-kv">
@@ -257,6 +286,7 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
             )}
           </div>
         </div>
+
         <div className="mk3-listing-hero">
           <img
             src={heroImage}
@@ -265,6 +295,7 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
             onError={(event) => applyImageFallback(event, fallbackEventImage)}
           />
         </div>
+
         <div className="mk3-venue-gallery" aria-label="Event media gallery">
           {listingGallery.map((imageUrl, index) => (
             <figure key={`${imageUrl}-${index}`}>
@@ -277,14 +308,17 @@ const EventPage = ({ id, route, navigate, session, authFlow }) => {
             </figure>
           ))}
         </div>
-        <p>{eventItem.description || "No event description yet."}</p>
+
+        <p>{eventItem.description || "No event details yet."}</p>
+
         <DirectoryExperienceSpotlight
           entry={eventExperienceSource}
-          title="Why This Event Feels Different"
-          eyebrow="event experience"
+          title="What to expect"
+          eyebrow="night details"
           showUpgradePrompt={false}
         />
       </article>
+
       <div className="mk3-side-stack">
         <CadenceUpdateCard
           listingType="event"

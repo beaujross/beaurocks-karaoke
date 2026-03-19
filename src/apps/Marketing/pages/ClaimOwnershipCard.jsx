@@ -64,7 +64,7 @@ const ClaimOwnershipCard = ({
       });
       setStatus(`Claim request submitted (${result?.claimId || "pending"}).`);
       setNextStep({
-        label: "Next: Set cadence",
+        label: "Next: Update schedule",
         onClick: () => navigate?.(
           routeForListing(listingType, listingId).page,
           routeForListing(listingType, listingId).id,
@@ -118,7 +118,7 @@ const ClaimOwnershipCard = ({
       <h4>{isModernized ? "Claim This Listing" : "Claim + Upgrade This Listing"}</h4>
       <p>
         {isModernized
-          ? "Verified owners and hosts get faster direct-publish cadence updates."
+          ? "Verified owners and hosts can update listing details faster."
           : "Claim this listing to modernize the night with live join, audience app moments, smoother host flow, and recap-ready proof."}
       </p>
       {!isModernized && (

@@ -157,7 +157,7 @@ export const PARTY_LIGHTS_STYLE = `
  */
 export const SINGER_APP_CONFIG = {
     DEFAULT_EMOJI: '😀',
-    BRAND_ICON: 'https://beauross.com/wp-content/uploads/Icon-Reversed-gradient-small.png'
+    BRAND_ICON: '/images/logo-library/beaurocks-logo-neon trasnparent.png'
 };
 
 /**

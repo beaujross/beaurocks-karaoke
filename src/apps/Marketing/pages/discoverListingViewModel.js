@@ -23,7 +23,7 @@ const PLACEHOLDER_SCREEN_IMAGE_TOKENS = [
   "/images/marketing/beaurocks-hostpanel.png",
   "/images/marketing/beaurocks-audienceapp.png",
   MARKETING_BRAND_BADGE_URL,
-  "/images/logo-library/beaurocks-karaoke-logo-2.png",
+  "/images/logo-library/beaurocks-logo-neon trasnparent.png",
   "/images/logo-library/bross-entertainment",
 ];
 

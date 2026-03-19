@@ -74,7 +74,7 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-listing-title-block">
-          <div className="mk3-chip">room session</div>
+          <div className="mk3-chip">live room</div>
           <h2>{sessionItem.title}</h2>
           <div className="mk3-detail-meta">{formatDateTime(sessionItem.startsAtMs)}</div>
         </div>
@@ -84,11 +84,11 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
             <strong>{formatDateTime(sessionItem.startsAtMs)}</strong>
           </article>
           <article>
-            <span>Visibility</span>
+            <span>Access</span>
             <strong>{sessionItem.visibility || "public"}</strong>
           </article>
           <article>
-            <span>Room Code</span>
+            <span>Join code</span>
             <strong>{sessionItem.roomCode || "Private"}</strong>
           </article>
         </div>
@@ -114,8 +114,8 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
             hostName,
             imageUrl: heroImage,
           }}
-          title="Why Guests Pick This Room"
-          eyebrow="room personality"
+          title="What to expect"
+          eyebrow="room details"
           showUpgradePrompt={false}
         />
         <p>{sessionItem.description || "No session notes yet."}</p>

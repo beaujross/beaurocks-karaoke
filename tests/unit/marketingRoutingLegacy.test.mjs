@@ -45,6 +45,14 @@ test("marketingRoutingLegacy.test", () => {
   assert.equal(isMarketingPath("/marketing"), true);
   assert.equal(isMarketingPath("/random-unrelated-path"), false);
   assert.equal(isMarketingPath("/karaoke/terms"), false);
+  assert.equal(parseMarketingRouteFromLocation({
+    pathname: "/hosts/AbC123HostId",
+    search: "",
+  }).id, "AbC123HostId");
+  assert.equal(parseMarketingRouteFromLocation({
+    pathname: "/venues/Venue_MixedCase_42",
+    search: "",
+  }).id, "Venue_MixedCase_42");
 
   const fromRootFallback = parseMarketingRouteFromLocation({
     pathname: "/",

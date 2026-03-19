@@ -760,14 +760,13 @@ const initAuth = async (customToken) => {
 };
 
 // Ensure a top-level user profile exists for persistent data across rooms
+const ensuredUserProfileCache = new Map();
 const ensureUserProfile = async (uid, opts = {}) => {
   try {
     if (!uid) return;
-    if (typeof window !== 'undefined') {
-      const host = window.location?.hostname || 'unknown';
-      firebaseLogger.debug('ensureUserProfile host=%s uid=%s authUid=%s', host, uid, auth.currentUser?.uid || 'none');
-    }
     const { name = 'Guest', avatar = '\uD83D\uDE00' } = opts;
+    const ensureKey = `${uid}:${String(name)}:${String(avatar)}`;
+    if (ensuredUserProfileCache.get(uid) === ensureKey) return;
     const userRef = doc(db, 'users', uid);
     const snap = await getDoc(userRef);
 
@@ -829,11 +828,15 @@ const ensureUserProfile = async (uid, opts = {}) => {
           recordLabel: false
         }
       });
+      ensuredUserProfileCache.set(uid, ensureKey);
       return;
     }
 
     const data = snap.data() || {};
-    const updates = { uid, name, avatar };
+    const updates = {};
+    if (data.uid !== uid) updates.uid = uid;
+    if (data.name !== name) updates.name = name;
+    if (data.avatar !== avatar) updates.avatar = avatar;
     if (!('tight15' in data)) updates.tight15 = [];
     if (!('unlockedEmojis' in data)) updates.unlockedEmojis = [];
     if (!('firstPerformanceUnlocked' in data)) updates.firstPerformanceUnlocked = false;
@@ -865,9 +868,16 @@ const ensureUserProfile = async (uid, opts = {}) => {
       socialLinks: [],
       recordLabel: false
     };
-    
+
+    if (!Object.keys(updates).length) {
+      ensuredUserProfileCache.set(uid, ensureKey);
+      return;
+    }
+
     await setDoc(userRef, updates, { merge: true });
+    ensuredUserProfileCache.set(uid, ensureKey);
   } catch (e) {
+    ensuredUserProfileCache.delete(uid);
     firebaseLogger.error("ensureUserProfile error", e);
   }
 };

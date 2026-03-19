@@ -1,5 +1,5 @@
 import React from "react";
-import { MARKETING_BRAND_BADGE_URL, MARKETING_BRAND_NEON_URL } from "./shared";
+import { MARKETING_BRAND_NEON_URL } from "./shared";
 
 export const PersonaPageFrame = ({ theme = "fan", children }) => (
   <section className={`mk3-page mk3-rebuild-page is-${theme}`}>
@@ -192,7 +192,7 @@ export const PersonaHeroScaffold = ({
         <div className="mk3-rebuild-kicker">{kicker}</div>
         {!!brandLine && (
           <div className="mk3-rebuild-brandline">
-            <img src={MARKETING_BRAND_BADGE_URL} alt="BeauRocks logo" loading="lazy" />
+            <img src={MARKETING_BRAND_NEON_URL} alt="BeauRocks logo" loading="lazy" />
             <span>{brandLine}</span>
           </div>
         )}

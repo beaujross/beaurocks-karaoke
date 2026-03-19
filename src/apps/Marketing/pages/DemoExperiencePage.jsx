@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
 import { buildSurfaceUrl } from "../../../lib/surfaceDomains";
+import {
+  applyLobbyInteraction,
+  createLobbyVolleyState,
+} from "../../TV/lobbyPlaygroundEngine";
 
 const clampNumber = (value, min, max, fallback = min) => {
   const parsed = Number(value);
@@ -339,137 +343,103 @@ const ABSTRACT_SCROLL_EVENTS = ABSTRACT_BEATS.flatMap((beat, beatIndex) =>
   }))
 );
 
+const DEMO_YOUTUBE_URL = "https://www.youtube.com/watch?v=M7lc1UVf-VE";
+const DEMO_TIMED_LYRICS = [
+  { startMs: 0, text: "Hands up now, the room is waking." },
+  { startMs: 4200, text: "Phones light up and the crowd starts taking." },
+  { startMs: 8600, text: "One big screen keeps the whole room moving." },
+  { startMs: 12800, text: "Host plus audience, same beat proving." },
+  { startMs: 17000, text: "Vote, react, then send it higher." },
+  { startMs: 21400, text: "Lyrics, games, and neon fire." },
+];
+
 const GUIDED_SCENES = [
   {
-    id: "join_identity",
-    label: "Join + Identity",
-    durationMs: 9000,
-    accent: "pink",
-    kicker: "scene 01",
-    headline: "Guests join fast, pick a vibe, and the singer claims the mic.",
-    summary: "Use this to sell the low-friction start: a guest picks a name and emoji, while the singer stakes out the next moment before the room is even fully warmed up.",
-    host: {
-      panel: "Room launch",
-      status: "Opening room and sharing join prompt",
-      search: "",
-      actionLabel: "Broadcast room code",
-      actionCopy: "Host opens the night and pushes one clean join path.",
-      controls: ["Room live", "Join prompt", "Queue open", "Singer ready"],
-      activeControl: 1,
-    },
-    audience: {
-      title: "Audience picks an identity",
-      subtitle: "Name, emoji, join, react",
-      actions: ["Alex + crown", "Jordan + fire", "Taylor + heart", "Casey + wow"],
-      feed: ["Alex joined", "Jordan tapped fire", "Taylor picked heart"],
-      metricLabel: "joined in under",
-      metricValue: "08 sec",
-    },
-    singer: {
-      name: "Jordan",
-      emoji: "fire",
-      status: "Singer selected",
-      note: "Claiming the mic before the opener starts.",
-      prompt: "You are up second",
-    },
-    tv: {
-      mode: "Room intro",
-      title: "JOIN THE ROOM",
-      lines: ["Scan or type the room code", "Pick your icon", "Watch the room light up"],
-      footer: "The room state gets legible before the first lyric even lands.",
-    },
-    callouts: [
-      { title: "Host -> Audience", detail: "One clear join action creates the first shared moment." },
-      { title: "Audience -> TV", detail: "Identity picks give the room visible life right away." },
-      { title: "Singer -> Host", detail: "The next performer is already accounted for." },
-    ],
-  },
-  {
-    id: "karaoke_launch",
-    label: "Karaoke Launch",
-    durationMs: 9000,
+    id: "karaoke_video_lyrics",
+    label: "YouTube + Lyrics",
+    durationMs: 10000,
     accent: "amber",
-    kicker: "scene 02",
-    headline: "Host search and cueing is visible, then lyrics take over the room.",
-    summary: "This is the direct karaoke sell: people can see the host doing something concrete, then instantly understand what changed on the TV and on the singer side.",
+    kicker: "scene 01",
+    headline: "A YouTube-backed song and synced lyrics can land across the room fast.",
+    summary: "Lead with the practical proof: host cues a track, the TV shows lyrics, and the audience phone can stay synced to the same media moment.",
     host: {
-      panel: "Catalog search",
-      status: "Typing and cueing the opener",
-      search: "sweet caroline karaoke",
-      actionLabel: "Cue song",
-      actionCopy: "The host action is readable enough that the switch to karaoke feels earned.",
-      controls: ["Search", "Preview", "Cue song", "Go live"],
+      panel: "Stage cue",
+      status: "Launching a YouTube-backed opener",
+      search: "room anthem karaoke youtube",
+      actionLabel: "Cue lyrics + video",
+      actionCopy: "The host moves from search to live playback without a messy handoff.",
+      controls: ["Search", "Cue song", "Video live", "Lyrics on"],
       activeControl: 2,
     },
     audience: {
-      title: "Audience settles into singalong mode",
-      subtitle: "Phones move from join to lightweight support",
-      actions: ["Clap", "Fire", "Heart", "Cheer"],
-      feed: ["Crowd synced", "Phones ready", "Encore energy building"],
-      metricLabel: "ready phones",
-      metricValue: "17 connected",
+      title: "Audience sees synced media",
+      subtitle: "Phone video and room lyrics stay on the same beat",
+      actions: ["Video", "Lyrics", "Clap", "Heart"],
+      feed: ["Video synced", "Lyrics readable", "Crowd locked in"],
+      metricLabel: "sync drift",
+      metricValue: "~0 sec",
     },
     singer: {
       name: "Jordan",
       emoji: "fire",
-      status: "Singer on deck",
-      note: "Singer sees confidence-building context, not chaos.",
-      prompt: "Sweet Caroline queued",
+      status: "Singer in the chorus",
+      note: "Media and lyrics are already aligned before the crowd interaction starts.",
+      prompt: "Stay with the TV lead",
     },
     tv: {
-      mode: "Lyrics live",
-      title: "HANDS UP HIGH NOW",
-      lines: ["The whole room sways in time", "Voices rise from left to right", "Big singalong, easy cue"],
-      footer: "The room instantly understands what to do next.",
+      mode: "Video + lyrics",
+      title: "ROOM ANTHEM DEMO",
+      lines: ["Hands up now, the room is waking", "One big screen keeps the whole room moving", "Lyrics stay legible while media runs"],
+      footer: "The media path should feel coordinated, not bolted on.",
     },
     callouts: [
-      { title: "Host -> TV", detail: "Typing and cueing become a visible switch to lyric-first mode." },
-      { title: "TV -> Audience", detail: "The TV tells the audience when to sing and when to react." },
-      { title: "TV -> Singer", detail: "Singer sees the exact room moment they are stepping into." },
+      { title: "Host -> TV", detail: "The same host cue can bring in media and TV lyrics together." },
+      { title: "TV -> Audience", detail: "The room has one public lyric anchor while phones stay in sync." },
+      { title: "Audience -> Song", detail: "Phone video support should feel like part of the room, not a separate app." },
     ],
   },
   {
-    id: "crowd_hype",
-    label: "Crowd Hype",
+    id: "crowd_vote_burst",
+    label: "Live Reactions",
     durationMs: 8500,
     accent: "cyan",
-    kicker: "scene 03",
-    headline: "Audience reactions visibly feed the moment instead of sitting off to the side.",
-    summary: "This is the social proof beat. The crowd is not just watching the singer. The crowd is part of the room logic and that shows up on the big screen.",
+    kicker: "scene 02",
+    headline: "Audience taps should look like they land on the Public TV in the same moment.",
+    summary: "This is the proof beat for audience participation: the phone shows reaction controls, then the TV visibly reflects the crowd burst.",
     host: {
-      panel: "Live run",
+      panel: "Live room",
       status: "Calling for a reaction burst",
       search: "",
-      actionLabel: "Trigger hype prompt",
-      actionCopy: "A lightweight host prompt is enough to push the room into a louder state.",
-      controls: ["Lyrics", "Reaction burst", "Spotlight", "Queue peek"],
+      actionLabel: "Trigger room hype",
+      actionCopy: "A light host cue can turn the audience from passive watchers into visible participants.",
+      controls: ["Stage", "Reactions", "Spotlight", "Queue peek"],
       activeControl: 1,
     },
     audience: {
-      title: "Audience fires off quick reactions",
-      subtitle: "Fast taps, no setup tax",
-      actions: ["Clap x12", "Fire x18", "Heart x09", "Cheer x14"],
-      feed: ["Fire streak rising", "Cheer combo linked", "Heart wave crossed the room"],
+      title: "The audience votes with taps",
+      subtitle: "Simple buttons, immediate room payoff",
+      actions: ["Fire", "Clap", "Heart", "Cheer"],
+      feed: ["Fire streak rising", "Clap wave landed", "Heart burst mirrored on TV"],
       metricLabel: "reaction burst",
       metricValue: "53 taps",
     },
     singer: {
       name: "Jordan",
       emoji: "fire",
-      status: "Singer backed by the room",
-      note: "The performer feels the room support visually and rhythmically.",
+      status: "Singer backed by the crowd",
+      note: "The performer sees proof that the room is actually with them.",
       prompt: "Crowd glow climbing",
     },
     tv: {
       mode: "Crowd support",
       title: "ROOM ENERGY RISING",
-      lines: ["Reactions stack in real time", "Momentum pushes the chorus", "The crowd becomes visible"],
-      footer: "Audience input is not decorative. It changes the feel of the room.",
+      lines: ["Tap bursts show up publicly", "The room watches the reaction loop", "Audience input changes the feel instantly"],
+      footer: "Audience participation should feel visible, not hidden in the phone.",
     },
     callouts: [
-      { title: "Audience -> TV", detail: "The crowd produces a visible shared payoff." },
-      { title: "Audience -> Singer", detail: "The singer gets a confidence signal, not just noise." },
-      { title: "Host -> Crowd", detail: "A simple cue amplifies the room without adding friction." },
+      { title: "Audience -> TV", detail: "The same taps on the phone should feel present on the big screen." },
+      { title: "TV -> Singer", detail: "The singer gets a confidence signal, not just background noise." },
+      { title: "Host -> Crowd", detail: "The host only needs one prompt to lift the room." },
     ],
   },
   {
@@ -477,131 +447,175 @@ const GUIDED_SCENES = [
     label: "Guitar Vibe Sync",
     durationMs: 9500,
     accent: "violet",
-    kicker: "scene 04",
-    headline: "One host trigger repurposes every surface into a playable mode switch.",
-    summary: "This is the most sellable systems moment on the page. The host launches Guitar Vibe Sync, the TV drops into solo visuals, audience phones become instruments, and the singer gets a clean handoff.",
+    kicker: "scene 03",
+    headline: "Guitar Vibe Sync should look like a room game, not just a visualizer.",
+    summary: "The audience phone becomes a rhythm surface, the TV turns into a crowd scoreboard, and the host only has to launch the mode once.",
     host: {
       panel: "Mode trigger",
       status: "Launching Guitar Vibe Sync",
       search: "",
-      actionLabel: "Activate Vibe Sync",
-      actionCopy: "The host presses one button and every surface immediately changes role.",
-      controls: ["Karaoke", "Guitar Vibe Sync", "Confetti", "Laser pop"],
+      actionLabel: "Start guitar mode",
+      actionCopy: "One host action should make the crowd phones feel instantly playable.",
+      controls: ["Karaoke", "Guitar", "Confetti", "Return"],
       activeControl: 1,
     },
     audience: {
-      title: "Phones become instruments",
-      subtitle: "Tap, hold, strum, power spike",
-      actions: ["Strum", "Power chord", "Pulse", "Cheer"],
-      feed: ["Strum lane synced", "Power spike ready", "Crowd chain extended"],
-      metricLabel: "active strummers",
-      metricValue: "14 live",
+      title: "Phones become rhythm pads",
+      subtitle: "Hit the target lane and build combo",
+      actions: ["Lane I", "Lane III", "Lane V", "Perfect"],
+      feed: ["Combo up", "Perfect hit", "Top jammer changed"],
+      metricLabel: "live strummers",
+      metricValue: "14 active",
     },
     singer: {
       name: "Jordan",
       emoji: "fire",
       status: "Instrumental handoff",
-      note: "The singer can step back while the room carries the solo moment.",
-      prompt: "Re-enter on the next vocal cue",
+      note: "The room carries the solo beat while the singer waits for the next vocal return.",
+      prompt: "Re-enter after the break",
     },
     tv: {
-      mode: "Vibe Sync",
-      title: "SOLO MODE LIVE",
-      lines: ["Lyrics step away", "Phones drive the groove", "The TV becomes a crowd instrument"],
-      footer: "A mode switch feels dramatic without feeling confusing.",
+      mode: "Guitar mode",
+      title: "JAMMERS TAKE OVER",
+      lines: ["Phones stop being passive", "The TV spotlights top jammers", "Crowd hits become the show"],
+      footer: "This should read like a playable crowd moment, not a side effect.",
     },
     callouts: [
-      { title: "Host -> All", detail: "One action updates host, TV, audience, and singer expectations." },
-      { title: "Audience -> TV", detail: "Phones stop being passive and start driving the scene." },
-      { title: "TV -> Singer", detail: "The singer knows exactly when the room is carrying the moment." },
+      { title: "Host -> All", detail: "The host triggers the mode once and the whole room changes role." },
+      { title: "Audience -> TV", detail: "Player effort becomes visible on the shared gameboard." },
+      { title: "TV -> Crowd", detail: "The room can tell who is actually jamming the hardest." },
+    ],
+  },
+  {
+    id: "volley_vibe_sync",
+    label: "Volley Sync",
+    durationMs: 9000,
+    accent: "teal",
+    kicker: "scene 04",
+    headline: "Volley Sync should look like a shared relay with active crowd support.",
+    summary: "The phone should show Save / Lift / Pass / Burst while the TV orb and participant cloud react to the same simulated crowd relay.",
+    host: {
+      panel: "Auto party",
+      status: "Launching Volley Sync",
+      search: "",
+      actionLabel: "Start volley relay",
+      actionCopy: "The room can switch into a short team relay without losing clarity.",
+      controls: ["Auto party", "Volley", "Pause", "Reset"],
+      activeControl: 1,
+    },
+    audience: {
+      title: "Crowd relay is live",
+      subtitle: "Save, lift, pass, and burst the orb together",
+      actions: ["Save", "Lift", "Pass", "Burst"],
+      feed: ["Relay target changed", "Crowd kept it airborne", "Burst extended the streak"],
+      metricLabel: "relay streak",
+      metricValue: "11 saves",
+    },
+    singer: {
+      name: "Casey",
+      emoji: "crown",
+      status: "Stage waiting",
+      note: "The singer can wait while the crowd handles a quick shared mini-mode.",
+      prompt: "Room relay in progress",
+    },
+    tv: {
+      mode: "Volley relay",
+      title: "KEEP IT AIRBORNE",
+      lines: ["The TV becomes the shared gameboard", "Crowd inputs keep the relay alive", "Each phone helps the same room objective"],
+      footer: "Volley needs to look coordinated, not random.",
+    },
+    callouts: [
+      { title: "Audience -> TV", detail: "The orb and participant network should react to the crowd taps immediately." },
+      { title: "TV -> Crowd", detail: "The whole room can read the current relay target." },
+      { title: "Host -> Night", detail: "The host can drop in a short crowd mode without losing control." },
     ],
   },
   {
     id: "trivia_break",
-    label: "Trivia Break",
-    durationMs: 8500,
+    label: "Trivia",
+    durationMs: 9000,
     accent: "teal",
     kicker: "scene 05",
-    headline: "Between-song moments stay active with a fast room-wide prompt.",
-    summary: "This beat proves the room can stay alive between singers. It sells the app as a night-running system, not just a lyric renderer.",
+    headline: "Trivia should feel like a real live side game, not a dead-air filler.",
+    summary: "Phones should show real answer choices while the TV becomes the public question board and tally surface.",
     host: {
       panel: "Games workspace",
-      status: "Launching a quick trivia beat",
+      status: "Launching a fast trivia round",
       search: "",
       actionLabel: "Start trivia",
-      actionCopy: "A short interlude keeps the room engaged while the queue resets.",
-      controls: ["Queue", "Trivia", "Would you rather", "Auto DJ"],
+      actionCopy: "Between-song moments stay active if the prompt is fast and room-sized.",
+      controls: ["Queue", "Trivia", "WYR", "Auto DJ"],
       activeControl: 1,
     },
     audience: {
-      title: "Audience votes live",
-      subtitle: "Phones become voting pads",
-      actions: ["Public TV", "Host Deck", "Audience App", "All three"],
-      feed: ["Votes rising", "Reveal almost ready", "Crowd split still moving"],
-      metricLabel: "votes in",
-      metricValue: "70 total",
+      title: "Audience answers on phone",
+      subtitle: "A/B/C/D votes land quickly",
+      actions: ["Host Deck", "Public TV", "Audience App", "All three"],
+      feed: ["Votes locked", "Reveal incoming", "Crowd split tightening"],
+      metricLabel: "answers in",
+      metricValue: "24 votes",
     },
     singer: {
       name: "Casey",
       emoji: "crown",
       status: "Next singer staged",
-      note: "The next singer can get ready while the room stays occupied.",
+      note: "The queue can reset while the room stays busy.",
       prompt: "Mic check in progress",
     },
     tv: {
-      mode: "Trivia reveal",
+      mode: "Trivia board",
       title: "WHICH SURFACE RUNS THE NIGHT?",
-      lines: ["The room keeps moving", "Votes stream in live", "Reveal lands without dead air"],
-      footer: "This sells continuity, not just novelty.",
+      lines: ["Phones lock answers", "TV becomes the public reveal", "The room stays active between songs"],
+      footer: "Trivia keeps the room warm while the next performance is staging.",
     },
     callouts: [
-      { title: "Host -> Audience", detail: "The host can repurpose the room without losing momentum." },
-      { title: "Audience -> TV", detail: "Voting becomes a visible shared reveal." },
-      { title: "Trivia -> Queue", detail: "The next singer gets cover while the room stays active." },
+      { title: "Host -> Audience", detail: "The host can launch a fast room-wide vote from the same deck." },
+      { title: "Audience -> TV", detail: "The TV turns the private answer into a shared reveal." },
+      { title: "Trivia -> Queue", detail: "A side round buys setup time without killing momentum." },
     ],
   },
   {
-    id: "auto_dj_handoff",
-    label: "Auto DJ Handoff",
+    id: "would_you_rather",
+    label: "Would You Rather",
     durationMs: 9000,
-    accent: "lime",
+    accent: "pink",
     kicker: "scene 06",
-    headline: "Auto DJ and queue awareness make the handoff feel intentional, not awkward.",
-    summary: "This closes the sales walkthrough on a practical operator value prop: smoother transitions, less dead time, and a room that feels continuously run.",
+    headline: "Would You Rather should read like a room split with personality.",
+    summary: "Phones pick a side, the TV shows the split, and the host gets an easy crowd moment that feels social instead of filler.",
     host: {
-      panel: "Handoff control",
-      status: "Bridging to the next singer",
+      panel: "Games workspace",
+      status: "Launching Would You Rather",
       search: "",
-      actionLabel: "Auto DJ bridge live",
-      actionCopy: "The host gets breathing room while the next performer steps in cleanly.",
-      controls: ["Auto DJ", "Next singer", "Room pulse", "Finale cue"],
-      activeControl: 0,
+      actionLabel: "Start WYR",
+      actionCopy: "This is the quickest way to force the room to pick a side and react together.",
+      controls: ["Queue", "Trivia", "Would You Rather", "Resume karaoke"],
+      activeControl: 2,
     },
     audience: {
-      title: "Audience stays with the room",
-      subtitle: "No awkward reset between performers",
-      actions: ["Clap through bridge", "Cheer next singer", "Heart the handoff", "Stay locked in"],
-      feed: ["Bridge audio carrying", "Next singer visible", "Room never drops"],
-      metricLabel: "handoff gap",
-      metricValue: "near zero",
+      title: "Audience picks a side",
+      subtitle: "Two big buttons, one room split",
+      actions: ["Glow stick chorus", "Confetti drop"],
+      feed: ["Split forming", "The room picked a side", "Reveal is easy to read"],
+      metricLabel: "crowd split",
+      metricValue: "62 / 38",
     },
     singer: {
       name: "Casey",
       emoji: "crown",
-      status: "Now stepping on stage",
-      note: "The next performer inherits a live room, not a cold restart.",
-      prompt: "Chorus re-entry in 3...",
+      status: "Singer waiting in the wings",
+      note: "The room stays socially engaged before the next song comes back in.",
+      prompt: "Next vocal return after reveal",
     },
     tv: {
-      mode: "Smooth handoff",
-      title: "NEXT SINGER READY",
-      lines: ["Bridge audio keeps the room warm", "The queue handoff stays visible", "Momentum carries into the next lead"],
-      footer: "The room feels managed, not improvised.",
+      mode: "Would You Rather",
+      title: "PICK YOUR SIDE",
+      lines: ["Two options, one loud room split", "Phones make the choice clear", "The TV turns it into a shared moment"],
+      footer: "WYR should feel quick, playful, and big on the TV.",
     },
     callouts: [
-      { title: "Auto DJ -> Room", detail: "Transitions stop feeling like operational dead space." },
-      { title: "Host -> Singer", detail: "The next singer enters with timing and context." },
-      { title: "Audience -> Night", detail: "Attention stays continuous between performers." },
+      { title: "Audience -> TV", detail: "A binary phone vote should become a visible room split." },
+      { title: "Host -> Crowd", detail: "The host gets a social reset without a long explanation." },
+      { title: "WYR -> Night", detail: "The room stays engaged before sliding back into karaoke." },
     ],
   },
 ];
@@ -837,7 +851,7 @@ const buildDemoSongs = (scene, nextScene, sceneProgress = 0, nowMs = Date.now())
 const buildDemoRoom = (scene, sceneProgress = 0, nowMs = Date.now()) => ({
   roomCode: DEMO_ROOM_CODE,
   hostName: DEMO_HOST_NAME,
-  logoUrl: "/images/logo-library/beaurocks-karaoke-logo-2.png",
+  logoUrl: "/images/logo-library/beaurocks-logo-neon trasnparent.png",
   activeMode: scene.id === "trivia_break" ? "karaoke" : "karaoke",
   lightMode: getLightModeForScene(scene.id),
   showLyricsTv: scene.id !== "guitar_vibe_sync",
@@ -1104,6 +1118,564 @@ const getAudienceFocusFrame = (sceneId = "", activeIndex = 0) => {
 
 const getActionDisplayLabel = (value = "") => String(value || "").split(" x")[0].trim();
 
+const DEMO_AUTO_AVATARS = {
+  jordan: String.fromCodePoint(0x1f525),
+  casey: String.fromCodePoint(0x1f451),
+  alex: String.fromCodePoint(0x1f49c),
+  taylor: String.fromCodePoint(0x1f389),
+  mic: String.fromCodePoint(0x1f3a4),
+};
+
+const buildAutoTimedLyrics = () => DEMO_TIMED_LYRICS.map((entry, index) => ({
+  ...entry,
+  endMs: DEMO_TIMED_LYRICS[index + 1]?.startMs || (entry.startMs + 3800),
+}));
+
+const buildAutoLyricsText = () => DEMO_TIMED_LYRICS.map((entry) => entry.text).join("\n");
+
+const getTvSurfaceVariantAuto = (sceneId = "") => (
+  ({
+    guitar_vibe_sync: "guitar",
+    trivia_break: "trivia",
+    would_you_rather: "trivia",
+  }[sceneId] || "karaoke")
+);
+
+const getLightModeForSceneAuto = (sceneId = "") => (
+  ({
+    crowd_vote_burst: "banger",
+    guitar_vibe_sync: "guitar",
+    volley_vibe_sync: "volley",
+  }[sceneId] || "off")
+);
+
+const getHostTabForSceneAuto = (sceneId = "") => (
+  ({
+    karaoke_video_lyrics: "browse",
+    trivia_break: "games",
+    would_you_rather: "games",
+  }[sceneId] || "stage")
+);
+
+const getAudienceTabForSceneAuto = () => "home";
+
+const getAudienceSongsTabForSceneAuto = (sceneId = "") => (
+  sceneId === "volley_vibe_sync" ? "queue" : "requests"
+);
+
+const buildDemoUsersAuto = (scene, nextScene, nowMs) => {
+  const users = [
+    {
+      uid: "demo_user_jordan",
+      roomCode: DEMO_ROOM_CODE,
+      name: "Jordan",
+      avatar: DEMO_AUTO_AVATARS.jordan,
+      points: 184,
+      totalEmojis: 61,
+      isVip: true,
+      vipLevel: 1,
+      lastSeen: toFakeTimestamp(nowMs - 4000),
+      lastActiveAt: toFakeTimestamp(nowMs - 2000),
+    },
+    {
+      uid: "demo_user_casey",
+      roomCode: DEMO_ROOM_CODE,
+      name: "Casey",
+      avatar: DEMO_AUTO_AVATARS.casey,
+      points: 132,
+      totalEmojis: 42,
+      isVip: false,
+      vipLevel: 0,
+      lastSeen: toFakeTimestamp(nowMs - 7000),
+      lastActiveAt: toFakeTimestamp(nowMs - 5000),
+    },
+    {
+      uid: "demo_user_alex",
+      roomCode: DEMO_ROOM_CODE,
+      name: "Alex",
+      avatar: DEMO_AUTO_AVATARS.alex,
+      points: 98,
+      totalEmojis: 28,
+      isVip: false,
+      vipLevel: 0,
+      lastSeen: toFakeTimestamp(nowMs - 10000),
+      lastActiveAt: toFakeTimestamp(nowMs - 9000),
+    },
+    {
+      uid: "demo_user_taylor",
+      roomCode: DEMO_ROOM_CODE,
+      name: nextScene?.singer?.name || "Taylor",
+      avatar: nextScene?.singer?.emoji === "crown" ? DEMO_AUTO_AVATARS.casey : DEMO_AUTO_AVATARS.taylor,
+      points: 74,
+      totalEmojis: 22,
+      isVip: false,
+      vipLevel: 0,
+      lastSeen: toFakeTimestamp(nowMs - 14000),
+      lastActiveAt: toFakeTimestamp(nowMs - 12000),
+    },
+  ];
+  if (scene?.id !== "guitar_vibe_sync") return users;
+  return users.map((user, index) => ({
+    ...user,
+    guitarSessionId: "demo_guitar_session",
+    guitarHits: [29, 23, 18, 14][index] || 10,
+    guitarAccuracy: [0.96, 0.91, 0.88, 0.83][index] || 0.8,
+  }));
+};
+
+const buildVolleyPreviewStateAuto = (sceneProgress = 0, nowMs = Date.now()) => {
+  const interactions = [
+    { uid: "demo_user_jordan", userName: "Jordan", avatar: DEMO_AUTO_AVATARS.jordan, type: "wave", count: 1 },
+    { uid: "demo_user_casey", userName: "Casey", avatar: DEMO_AUTO_AVATARS.casey, type: "laser", count: 1 },
+    { uid: "demo_user_alex", userName: "Alex", avatar: DEMO_AUTO_AVATARS.alex, type: "echo", count: 1 },
+    { uid: "demo_user_taylor", userName: "Taylor", avatar: DEMO_AUTO_AVATARS.taylor, type: "confetti", count: 1 },
+    { uid: "demo_user_jordan", userName: "Jordan", avatar: DEMO_AUTO_AVATARS.jordan, type: "wave", count: 1 },
+    { uid: "demo_user_casey", userName: "Casey", avatar: DEMO_AUTO_AVATARS.casey, type: "laser", count: 1 },
+    { uid: "demo_user_alex", userName: "Alex", avatar: DEMO_AUTO_AVATARS.alex, type: "echo", count: 1 },
+  ];
+  const visibleCount = Math.max(1, Math.min(interactions.length, 2 + Math.round(sceneProgress * (interactions.length - 1))));
+  const baseStartMs = nowMs - 3200;
+  return interactions.slice(0, visibleCount).reduce(
+    (state, event, index) => applyLobbyInteraction(state, event, baseStartMs + (index * 420)),
+    createLobbyVolleyState()
+  );
+};
+
+const buildDemoSongsAuto = (scene, nextScene, sceneProgress = 0, nowMs = Date.now()) => {
+  const activePerformanceScene = ["karaoke_video_lyrics", "crowd_vote_burst", "guitar_vibe_sync"].includes(scene?.id);
+  const currentDuration = 192;
+  const elapsedMs = Math.round(currentDuration * 1000 * clampNumber(sceneProgress, 0.12, 0.82, 0.36));
+  const currentSong = {
+    id: `demo_song_${scene.id}`,
+    roomCode: DEMO_ROOM_CODE,
+    singerUid: `demo_user_${String(scene?.singer?.name || "jordan").toLowerCase()}`,
+    singerName: scene?.singer?.name || "Jordan",
+    emoji: scene?.singer?.emoji === "crown" ? DEMO_AUTO_AVATARS.casey : DEMO_AUTO_AVATARS.jordan,
+    songTitle: scene?.id === "karaoke_video_lyrics" ? "Room Anthem Demo" : scene?.label || "BeauRocks Demo",
+    artist: scene?.id === "karaoke_video_lyrics" ? "The Shared Moment" : "BeauRocks Demo",
+    albumArtUrl: "/images/marketing/tv-live-aahf-current.png",
+    mediaUrl: DEMO_YOUTUBE_URL,
+    lyrics: buildAutoLyricsText(),
+    lyricsTimed: buildAutoTimedLyrics(),
+    duration: currentDuration,
+    durationSec: currentDuration,
+    currentDurationSec: currentDuration,
+    appleDurationSec: currentDuration,
+    performanceId: `demo_perf_${scene.id}`,
+    timestamp: toFakeTimestamp(nowMs - elapsedMs),
+    performingStartedAt: toFakeTimestamp(nowMs - elapsedMs),
+    stageStartedAt: toFakeTimestamp(nowMs - elapsedMs),
+    status: activePerformanceScene ? "performing" : "requested",
+    applauseScore: 83,
+    hypeScore: 164,
+    hostBonus: scene?.id === "crowd_vote_burst" ? 15 : 10,
+  };
+  const nextSong = {
+    id: `demo_song_next_${scene.id}`,
+    roomCode: DEMO_ROOM_CODE,
+    singerUid: `demo_user_${String(nextScene?.singer?.name || "casey").toLowerCase()}`,
+    singerName: nextScene?.singer?.name || "Casey",
+    emoji: nextScene?.singer?.emoji === "crown" ? DEMO_AUTO_AVATARS.casey : DEMO_AUTO_AVATARS.taylor,
+    songTitle: nextScene?.id === "would_you_rather" ? "Crowd Reset" : (nextScene?.label || "Encore queue"),
+    artist: "BeauRocks Demo",
+    albumArtUrl: "/images/marketing/tv-start-aahf-current.png",
+    mediaUrl: DEMO_YOUTUBE_URL,
+    lyrics: buildAutoLyricsText(),
+    lyricsTimed: buildAutoTimedLyrics(),
+    duration: 188,
+    durationSec: 188,
+    status: "requested",
+    priorityScore: 1,
+    timestamp: toFakeTimestamp(nowMs - 18000),
+  };
+  const thirdSong = {
+    id: `demo_song_hold_${scene.id}`,
+    roomCode: DEMO_ROOM_CODE,
+    singerUid: "demo_user_alex",
+    singerName: "Alex",
+    emoji: DEMO_AUTO_AVATARS.alex,
+    songTitle: "Crowd Favorite",
+    artist: "BeauRocks Demo",
+    duration: 176,
+    durationSec: 176,
+    status: "requested",
+    priorityScore: 2,
+    timestamp: toFakeTimestamp(nowMs - 26000),
+  };
+  return [currentSong, nextSong, thirdSong];
+};
+
+const buildDemoRoomAuto = (scene, sceneProgress = 0, nowMs = Date.now()) => {
+  const isVideoScene = scene?.id === "karaoke_video_lyrics";
+  const isCrowdVoteScene = scene?.id === "crowd_vote_burst";
+  const isGuitarScene = scene?.id === "guitar_vibe_sync";
+  const isVolleyScene = scene?.id === "volley_vibe_sync";
+  const isTriviaScene = scene?.id === "trivia_break";
+  const isWyrScene = scene?.id === "would_you_rather";
+  const videoElapsedMs = 24000 + Math.round(sceneProgress * 10000);
+  const roundStartedAtMs = nowMs - Math.round(3200 + (sceneProgress * 2800));
+  const questionDurationSec = 10;
+
+  return {
+    roomCode: DEMO_ROOM_CODE,
+    hostName: DEMO_HOST_NAME,
+    logoUrl: "/images/logo-library/beaurocks-logo-neon trasnparent.png",
+    activeMode: isTriviaScene ? "trivia_pop" : isWyrScene ? "wyr" : "karaoke",
+    lightMode: getLightModeForSceneAuto(scene?.id),
+    showLyricsTv: isVideoScene,
+    showVisualizerTv: isCrowdVoteScene || isGuitarScene || isVolleyScene,
+    popTriviaEnabled: isTriviaScene,
+    popTriviaRoundSec: questionDurationSec,
+    layoutMode: "standard",
+    showScoring: true,
+    showFameLevel: true,
+    marqueeEnabled: isVolleyScene,
+    marqueeItems: isVolleyScene ? [{ text: "Volley Sync Live | save, lift, pass, burst" }] : [],
+    chatShowOnTv: isCrowdVoteScene,
+    chatAudienceMode: "all",
+    tvPresentationProfile: isGuitarScene ? "cinema" : isCrowdVoteScene ? "simple" : "room",
+    autoDj: false,
+    autoPlayMedia: true,
+    autoBonusEnabled: true,
+    autoLyricsOnQueue: true,
+    audienceVideoMode: isVideoScene ? "force" : "off",
+    videoPlaying: isVideoScene,
+    videoStartTimestamp: isVideoScene ? toFakeTimestamp(nowMs - videoElapsedMs) : null,
+    visualizerMode: isGuitarScene ? "comet" : isVolleyScene ? "pulse" : "ribbon",
+    visualizerPreset: isGuitarScene ? "neon" : isVolleyScene ? "teal" : "glow",
+    visualizerSource: "auto",
+    crowdPrompt: {
+      title: scene?.audience?.title,
+      detail: scene?.audience?.subtitle,
+      prompt: getActionDisplayLabel(scene?.audience?.actions?.[0] || ""),
+    },
+    multiplier: isCrowdVoteScene ? 4 : isGuitarScene ? 3 : isVolleyScene ? 2 : 1,
+    queueSettings: {
+      limitMode: "none",
+      limitCount: 0,
+      rotation: "round_robin",
+      firstTimeBoost: true,
+    },
+    readyCheckDurationSec: 12,
+    timestamp: toFakeTimestamp(nowMs - Math.round(sceneProgress * 10000)),
+    missionControl: isVolleyScene ? {
+      autoMoment: {
+        status: "live",
+        source: "autopilot",
+        type: "volley",
+        title: "Volley Sync Live",
+        detail: "Crowd relay is bouncing across the room.",
+      },
+    } : null,
+    triviaQuestion: isTriviaScene ? {
+      id: "demo_trivia_01",
+      q: "Which surface keeps the room in sync during a live night?",
+      options: ["All three", "Audience App", "Host Deck", "Public TV"],
+      correct: 0,
+      source: "demo",
+      status: "live",
+      rewarded: false,
+      points: 100,
+      startedAt: toFakeTimestamp(roundStartedAtMs),
+      durationSec: questionDurationSec,
+      autoReveal: true,
+      revealAt: toFakeTimestamp(roundStartedAtMs + (questionDurationSec * 1000)),
+    } : null,
+    wyrData: isWyrScene ? {
+      id: "demo_wyr_01",
+      question: "Would you rather trigger a glow-stick chorus or a confetti drop?",
+      optionA: "Glow stick chorus",
+      optionB: "Confetti drop",
+      status: "live",
+      rewarded: false,
+      points: 80,
+      startedAt: toFakeTimestamp(roundStartedAtMs),
+      durationSec: questionDurationSec,
+      autoReveal: true,
+      revealAt: toFakeTimestamp(roundStartedAtMs + (questionDurationSec * 1000)),
+    } : null,
+  };
+};
+
+const getReactionItemsAuto = (scene, progress = 0) => {
+  const labels = (scene?.audience?.actions || []).map((entry) => getActionDisplayLabel(entry)).filter(Boolean);
+  const baselines = [12, 18, 24, 30];
+  return labels.map((label, index) => ({
+    label,
+    count: baselines[index] + Math.round(progress * (14 + index * 5)),
+  }));
+};
+
+const getTriviaRowsAuto = (scene, progress = 0) => {
+  const optionCount = Array.isArray(scene?.audience?.actions) ? scene.audience.actions.length : 0;
+  const baselines = optionCount === 2 ? [62, 38] : [14, 18, 16, 22];
+  const growth = optionCount === 2 ? [6, 4] : [8, 12, 10, 24];
+  return (scene?.audience?.actions || []).map((label, index) => ({
+    label,
+    value: baselines[index] + Math.round(progress * growth[index]),
+    highlight: index === (optionCount === 2 ? 0 : optionCount - 1),
+  }));
+};
+
+const buildAudienceFixtureAuto = ({ scene, nextScene, sceneProgress, activeActionIndex, hostTypedSearch }) => {
+  const nowMs = Date.now();
+  const room = buildDemoRoomAuto(scene, sceneProgress, nowMs);
+  const songs = buildDemoSongsAuto(scene, nextScene, sceneProgress, nowMs);
+  const allUsers = buildDemoUsersAuto(scene, nextScene, nowMs);
+  const reactionTypes = ["fire", "clap", "heart", "drink"];
+  const localReactionCount = Math.max(1, Math.min(5, 1 + activeActionIndex));
+  return {
+    room,
+    songs,
+    allUsers,
+    user: {
+      uid: "demo_user_jordan",
+      roomCode: DEMO_ROOM_CODE,
+      name: "Jordan",
+      avatar: DEMO_AUTO_AVATARS.jordan,
+      points: 184,
+      totalEmojis: 61,
+      isVip: false,
+      vipLevel: 0,
+      lastSeen: toFakeTimestamp(nowMs - 2000),
+      lastActiveAt: toFakeTimestamp(nowMs - 1000),
+    },
+    profile: null,
+    form: {
+      name: "Jordan",
+      emoji: DEMO_AUTO_AVATARS.jordan,
+      song: scene?.id === "karaoke_video_lyrics" ? hostTypedSearch : "",
+      artist: scene?.id === "karaoke_video_lyrics" ? "BeauRocks Demo" : "",
+    },
+    tab: getAudienceTabForSceneAuto(scene?.id),
+    songsTab: getAudienceSongsTabForSceneAuto(scene?.id),
+    showReturningPrompt: false,
+    termsAccepted: true,
+    searchQ: scene?.id === "karaoke_video_lyrics" ? hostTypedSearch : "",
+    results: [],
+    viewLyrics: false,
+    inlineLyrics: false,
+    showAudienceVideo: scene?.id === "karaoke_video_lyrics",
+    showAudienceVideoFullscreen: false,
+    stageHomePanelExpanded: scene?.id === "karaoke_video_lyrics",
+    localReactions: scene?.id === "crowd_vote_burst"
+      ? Array.from({ length: localReactionCount }, (_, index) => ({
+          id: `demo_reaction_${scene.id}_${index}`,
+          type: reactionTypes[index % reactionTypes.length],
+          left: 18 + (index * 17),
+        }))
+      : [],
+    lobbyVolleyPreview: scene?.id === "volley_vibe_sync" ? buildVolleyPreviewStateAuto(sceneProgress, nowMs) : createLobbyVolleyState(),
+  };
+};
+
+const buildTvFixtureAuto = ({ scene, nextScene, sceneProgress, reactionItems }) => {
+  const nowMs = Date.now();
+  const room = buildDemoRoomAuto(scene, sceneProgress, nowMs);
+  const songs = buildDemoSongsAuto(scene, nextScene, sceneProgress, nowMs);
+  const roomUsers = buildDemoUsersAuto(scene, nextScene, nowMs);
+  return {
+    room,
+    songs,
+    roomUsers,
+    started: true,
+    activities: reactionItems.map((item, index) => ({
+      id: `activity_${scene.id}_${index}`,
+      roomCode: DEMO_ROOM_CODE,
+      type: "reaction_burst",
+      text: `${item.label} x${item.count}`,
+      timestamp: toFakeTimestamp(nowMs - (index * 900)),
+    })),
+    messages: scene?.id === "crowd_vote_burst" ? [
+      { id: "msg_1", user: "Alex", userName: "Alex", avatar: DEMO_AUTO_AVATARS.alex, text: "That chorus hit", timestamp: toFakeTimestamp(nowMs - 2000) },
+      { id: "msg_2", user: DEMO_HOST_NAME, userName: DEMO_HOST_NAME, avatar: DEMO_AUTO_AVATARS.mic, text: "Keep the room loud", timestamp: toFakeTimestamp(nowMs - 1500), isHost: true },
+    ] : [],
+    reactions: reactionItems.map((item, index) => ({
+      id: `reaction_${scene.id}_${index}`,
+      roomCode: DEMO_ROOM_CODE,
+      type: item.label.toLowerCase().replace(/\s+/g, "_"),
+      userName: roomUsers[index % roomUsers.length]?.name || "Guest",
+      avatar: roomUsers[index % roomUsers.length]?.avatar || DEMO_AUTO_AVATARS.jordan,
+      count: item.count,
+      timestamp: toFakeTimestamp(nowMs - (index * 500)),
+    })),
+    lobbyVolleyState: scene?.id === "volley_vibe_sync" ? buildVolleyPreviewStateAuto(sceneProgress, nowMs) : null,
+  };
+};
+
+const buildHostFixtureAuto = ({ scene, nextScene, sceneProgress, reactionItems }) => {
+  const nowMs = Date.now();
+  const room = buildDemoRoomAuto(scene, sceneProgress, nowMs);
+  return {
+    roomCode: DEMO_ROOM_CODE,
+    view: "workspace",
+    tab: getHostTabForSceneAuto(scene?.id),
+    lobbyTab: "users",
+    room,
+    songs: buildDemoSongsAuto(scene, nextScene, sceneProgress, nowMs),
+    users: buildDemoUsersAuto(scene, nextScene, nowMs),
+    activities: reactionItems.map((item, index) => ({
+      id: `host_activity_${scene.id}_${index}`,
+      roomCode: DEMO_ROOM_CODE,
+      text: `${item.label} burst landed`,
+      timestamp: toFakeTimestamp(nowMs - (index * 1000)),
+    })),
+    contacts: [],
+  };
+};
+
+const getHostFocusFrameAuto = (sceneId = "") => {
+  switch (sceneId) {
+    case "karaoke_video_lyrics":
+      return { left: "17%", top: "17%", width: "42%", height: "14%", label: "Search + cue song" };
+    case "crowd_vote_burst":
+      return { left: "35%", top: "50%", width: "28%", height: "13%", label: "Prompt reactions" };
+    case "guitar_vibe_sync":
+      return { left: "35%", top: "49%", width: "32%", height: "14%", label: "Launch guitar mode" };
+    case "volley_vibe_sync":
+      return { left: "24%", top: "49%", width: "34%", height: "14%", label: "Start volley relay" };
+    case "trivia_break":
+      return { left: "27%", top: "49%", width: "28%", height: "14%", label: "Launch trivia" };
+    case "would_you_rather":
+      return { left: "39%", top: "49%", width: "34%", height: "14%", label: "Launch Would You Rather" };
+    default:
+      return { left: "18%", top: "17%", width: "34%", height: "14%", label: "Host action" };
+  }
+};
+
+const getTvFocusFrameAuto = (sceneId = "") => {
+  switch (sceneId) {
+    case "guitar_vibe_sync":
+      return { left: "18%", top: "16%", width: "62%", height: "50%", label: "Crowd jammers take over TV" };
+    case "volley_vibe_sync":
+      return { left: "18%", top: "18%", width: "62%", height: "46%", label: "Volley relay goes room-wide" };
+    case "trivia_break":
+      return { left: "69%", top: "12%", width: "27%", height: "42%", label: "Trivia tally" };
+    case "would_you_rather":
+      return { left: "69%", top: "16%", width: "27%", height: "36%", label: "Crowd split reveal" };
+    case "crowd_vote_burst":
+      return { left: "66%", top: "68%", width: "30%", height: "18%", label: "Reactions hit the room" };
+    case "karaoke_video_lyrics":
+    default:
+      return { left: "10%", top: "57%", width: "58%", height: "16%", label: "Lyrics take over" };
+  }
+};
+
+const getAudienceFocusFrameAuto = (sceneId = "", activeIndex = 0) => {
+  if (sceneId === "karaoke_video_lyrics") {
+    const mediaFrames = [
+      { left: "10%", top: "58%", width: "38%", height: "10%" },
+      { left: "52%", top: "58%", width: "38%", height: "10%" },
+      { left: "10%", top: "72%", width: "38%", height: "10%" },
+      { left: "52%", top: "72%", width: "38%", height: "10%" },
+    ];
+    return {
+      ...(mediaFrames[activeIndex] || mediaFrames[0]),
+      label: activeIndex === 0 ? "Video toggle" : activeIndex === 1 ? "Lyrics toggle" : "Crowd support",
+    };
+  }
+  if (sceneId === "trivia_break") {
+    const triviaFrames = [
+      { left: "10%", top: "43%", width: "80%", height: "10%" },
+      { left: "10%", top: "55%", width: "80%", height: "10%" },
+      { left: "10%", top: "67%", width: "80%", height: "10%" },
+      { left: "10%", top: "79%", width: "80%", height: "10%" },
+    ];
+    return { ...(triviaFrames[activeIndex] || triviaFrames[0]), label: "Vote on the phone" };
+  }
+  if (sceneId === "would_you_rather") {
+    const wyrFrames = [
+      { left: "10%", top: "57%", width: "80%", height: "12%" },
+      { left: "10%", top: "73%", width: "80%", height: "12%" },
+    ];
+    return { ...(wyrFrames[activeIndex] || wyrFrames[0]), label: "Pick a side" };
+  }
+  if (sceneId === "guitar_vibe_sync" || sceneId === "volley_vibe_sync") {
+    return {
+      left: "18%",
+      top: "60%",
+      width: "64%",
+      height: "14%",
+      label: sceneId === "guitar_vibe_sync" ? "Hit the target lane" : "Tap the live relay action",
+    };
+  }
+  const actionFrames = [
+    { left: "13%", top: "56%", width: "32%", height: "16%" },
+    { left: "55%", top: "56%", width: "32%", height: "16%" },
+    { left: "13%", top: "74%", width: "32%", height: "16%" },
+    { left: "55%", top: "74%", width: "32%", height: "16%" },
+  ];
+  return { ...(actionFrames[activeIndex] || actionFrames[0]), label: "Audience taps in" };
+};
+
+const getTapCoachAuto = (scene, activeIndex = 0) => {
+  const currentAction = getActionDisplayLabel(scene?.audience?.actions?.[activeIndex] || scene?.audience?.actions?.[0] || "");
+  switch (scene?.id) {
+    case "karaoke_video_lyrics":
+      return {
+        title: "Open synced media",
+        prompt: currentAction || "Video",
+        detail: "Show the audience phone reading the same media moment as the TV.",
+      };
+    case "crowd_vote_burst":
+      return {
+        title: "Hit the room prompt",
+        prompt: currentAction || "Fire",
+        detail: "The audience should tap first, then see the TV mirror the burst.",
+      };
+    case "guitar_vibe_sync":
+      return {
+        title: "Hit the lane",
+        prompt: currentAction || "Lane III",
+        detail: "The phone becomes a rhythm surface and the TV rewards the strongest jammers.",
+      };
+    case "volley_vibe_sync":
+      return {
+        title: "Keep the relay alive",
+        prompt: currentAction || "Save",
+        detail: "Show the crowd sharing one live objective instead of isolated taps.",
+      };
+    case "trivia_break":
+      return {
+        title: "Vote now",
+        prompt: currentAction || "All three",
+        detail: "The audience answers on phone while the TV becomes the reveal board.",
+      };
+    default:
+      return {
+        title: "Pick your side",
+        prompt: currentAction || "Glow stick chorus",
+        detail: "Would You Rather should feel immediate, social, and easy to read on TV.",
+      };
+  }
+};
+
+const getSceneSequenceAuto = (scene, tapCoach) => {
+  if (scene?.id === "karaoke_video_lyrics") {
+    return [
+      { surface: "host", title: "Cue video + lyrics", detail: "The host loads one YouTube-backed song and the room locks to it." },
+      { surface: "tv", title: "TV shows synced lyrics", detail: "The public screen becomes the lyric anchor while media runs." },
+      { surface: "audience", title: `Audience opens ${tapCoach.prompt}`, detail: "The phone can join the same media moment without drifting." },
+    ];
+  }
+  return [
+    { surface: "host", title: activeSceneSurfaceLabel(scene, "host"), detail: scene?.host?.actionCopy || "The host causes the shift first." },
+    { surface: "audience", title: `${tapCoach.title}: ${tapCoach.prompt}`, detail: tapCoach.detail },
+    { surface: "tv", title: activeSceneSurfaceLabel(scene, "tv"), detail: "The public screen makes the result visible to the whole room." },
+  ];
+};
+
+const getSequenceIndexAuto = (sceneId = "", progress = 0) => {
+  if (sceneId === "karaoke_video_lyrics") {
+    if (progress < 0.34) return 0;
+    if (progress < 0.67) return 1;
+    return 2;
+  }
+  if (progress < 0.3) return 0;
+  if (progress < 0.68) return 1;
+  return 2;
+};
+
 const getTapCoach = (scene, activeIndex = 0) => {
   const currentAction = getActionDisplayLabel(scene?.audience?.actions?.[activeIndex] || scene?.audience?.actions?.[0] || "");
   switch (scene?.id) {
@@ -1187,6 +1759,136 @@ const getSequenceIndex = (sceneId = "", progress = 0) => {
   return 2;
 };
 
+const DemoAudienceOverlay = ({ scene, activeActionIndex = 0 }) => {
+  const actions = Array.isArray(scene?.audience?.actions) ? scene.audience.actions : [];
+  const buttonCount = Math.max(2, Math.min(4, actions.length || 4));
+  return (
+    <>
+      <div className="mk3-demo-phone-appbar is-overlay">
+        <div>
+          <span>Audience live moment</span>
+          <strong>{scene?.audience?.title || "Audience action"}</strong>
+        </div>
+        <div>
+          <span>{scene?.audience?.metricLabel || "live"}</span>
+          <strong>{scene?.audience?.metricValue || "active"}</strong>
+        </div>
+      </div>
+      <div
+        className="mk3-demo-mini-actions is-overlay"
+        style={{ gridTemplateColumns: `repeat(${buttonCount}, minmax(0, 1fr))` }}
+      >
+        {actions.map((action, index) => (
+          <button key={`${scene?.id || "scene"}_${action}`} type="button" tabIndex={-1} className={index === activeActionIndex ? "active" : ""}>
+            {action}
+          </button>
+        ))}
+      </div>
+      <div className="mk3-demo-audience-banner is-overlay">
+        <span>{scene?.label || "Live room moment"}</span>
+        <strong>{scene?.audience?.subtitle || "Phones and TV should feel coordinated."}</strong>
+        <p>{scene?.audience?.feed?.[activeActionIndex] || scene?.audience?.feed?.[0] || "Audience taps are driving the room."}</p>
+      </div>
+    </>
+  );
+};
+
+const DemoTvOverlay = ({ scene, reactionItems = [], triviaRows = [] }) => {
+  const overlayRows = triviaRows.length ? triviaRows : reactionItems;
+  const showLyrics = scene?.id === "karaoke_video_lyrics";
+  const showScoreboard = ["crowd_vote_burst", "guitar_vibe_sync", "volley_vibe_sync", "trivia_break", "would_you_rather"].includes(scene?.id);
+  return (
+    <>
+      <div className="mk3-demo-tv-singer-card is-overlay">
+        <span>{showLyrics ? "Now playing" : scene?.tv?.mode || "Public TV"}</span>
+        <strong>{showLyrics ? "Jordan | Room Anthem Demo" : scene?.tv?.title || "Live room payoff"}</strong>
+      </div>
+      {showLyrics ? (
+        <div className="mk3-demo-real-shot-callout is-tv-lyrics">
+          <strong>TV lyrics + video stay in the same moment</strong>
+          <p>The screen should feel like one coordinated karaoke beat, not a separate media layer bolted on afterward.</p>
+        </div>
+      ) : null}
+      {showScoreboard ? (
+        <div
+          className="mk3-demo-reaction-rail is-overlay"
+          style={{ gridTemplateColumns: `repeat(${Math.max(2, Math.min(4, overlayRows.length || 4))}, minmax(0, 1fr))` }}
+        >
+          {overlayRows.map((item) => (
+            <div key={`${scene?.id || "scene"}_${item.label}`} className="mk3-demo-reaction-item">
+              <span>{scene?.id === "guitar_vibe_sync" ? "🎸" : scene?.id === "volley_vibe_sync" ? "✨" : scene?.id === "would_you_rather" ? "🗳" : "👏"}</span>
+              <small>{item.label}</small>
+              <small>{item.value ?? item.count}</small>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {scene?.id === "trivia_break" ? (
+        <div className="mk3-demo-real-shot-callout is-tv-trivia">
+          <strong>Trivia answers are landing live</strong>
+          <p>The same answer buttons on the phone should read as a shared tally on the Public TV.</p>
+        </div>
+      ) : null}
+      {scene?.id === "would_you_rather" ? (
+        <div className="mk3-demo-audience-banner is-overlay" style={{ left: "18px", right: "18px", bottom: "88px", zIndex: 3 }}>
+          <span>Would You Rather</span>
+          <strong>The room split should be obvious at a glance.</strong>
+          <p>Two options, one shared result, and enough contrast for the whole room to react together.</p>
+        </div>
+      ) : null}
+    </>
+  );
+};
+
+const GuidedAudiencePhone = ({
+  scene,
+  audienceDemoUrl,
+  audienceFrameRef,
+  onFrameLoad,
+  activeActionIndex = 0,
+  showFocus = false,
+  focusFrame = null,
+  focusLabel = "",
+}) => {
+  const sceneCallouts = Array.isArray(scene?.callouts) ? scene.callouts.slice(0, 3) : [];
+
+  return (
+    <div className="mk3-demo-guided-audience-stack">
+      <div className="mk3-demo-phone-shell">
+        <div className="mk3-demo-phone-notch" />
+        <div className="mk3-demo-phone-screen mk3-demo-phone-screen-guided">
+          <iframe
+            ref={audienceFrameRef}
+            title="BeauRocks Audience Demo"
+            src={audienceDemoUrl}
+            className="mk3-demo-iframe mk3-demo-native-surface"
+            loading="eager"
+            onLoad={() => onFrameLoad("audience")}
+          />
+          <DemoAudienceOverlay scene={scene} activeActionIndex={activeActionIndex} />
+          {showFocus && focusFrame ? (
+            <div className="mk3-demo-focus-ring is-phone-target" style={focusFrame}>
+              <span>{focusLabel}</span>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mk3-demo-guided-audience-notes">
+        <span>Audience scene callouts</span>
+        <ul>
+          {sceneCallouts.map((callout) => (
+            <li key={`${scene?.id || "scene"}_${callout.title}`}>
+              <strong>{callout.title}</strong>
+              <p>{callout.detail}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+};
+
 const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
   const isAutoPage = String(demoMode || "").trim().toLowerCase() === "auto";
   const [timelineMs, setTimelineMs] = useState(0);
@@ -1229,7 +1931,6 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
       },
     }, window.location);
   }, []);
-
   useEffect(() => {
     if (!isAutoPage) return () => {};
     if (!playing) return () => {};
@@ -1342,69 +2043,54 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     if (index < 0 || index >= WALKTHROUGH_TIMELINE.length - 1) return null;
     return WALKTHROUGH_TIMELINE[index + 1];
   }, [activeScene.id]);
-  const tvSurfaceVariant = useMemo(() => getTvSurfaceVariant(activeScene.id), [activeScene.id]);
+  const tvSurfaceVariant = useMemo(() => getTvSurfaceVariantAuto(activeScene.id), [activeScene.id]);
   const reactionItems = useMemo(
-    () => getReactionItems(activeScene, sceneProgress),
+    () => getReactionItemsAuto(activeScene, sceneProgress),
     [activeScene, sceneProgress]
   );
   const triviaRows = useMemo(
-    () => getTriviaRows(activeScene, sceneProgress),
+    () => getTriviaRowsAuto(activeScene, sceneProgress),
     [activeScene, sceneProgress]
   );
   const hostCursorStyle = useMemo(() => {
     switch (activeScene.id) {
-      case "karaoke_launch":
+      case "karaoke_video_lyrics":
         return { left: `${24 + sceneProgress * 18}%`, top: "18%" };
-      case "crowd_hype":
+      case "crowd_vote_burst":
         return { left: "42%", top: `${54 - sceneProgress * 12}%` };
       case "guitar_vibe_sync":
         return { left: "44%", top: "57%" };
+      case "volley_vibe_sync":
+        return { left: "30%", top: "57%" };
       case "trivia_break":
         return { left: "33%", top: "57%" };
-      case "auto_dj_handoff":
-        return { left: "12%", top: "57%" };
-      case "join_identity":
+      case "would_you_rather":
+        return { left: "48%", top: "57%" };
       default:
-        return { left: "72%", top: `${30 + sceneProgress * 14}%` };
+        return { left: "72%", top: `${34 + sceneProgress * 14}%` };
     }
   }, [activeScene.id, sceneProgress]);
-  const audienceTapStyle = useMemo(() => {
-    const positions = [
-      { left: "18%", top: "58%" },
-      { left: "50%", top: "58%" },
-      { left: "82%", top: "58%" },
-      { left: "18%", top: "71%" },
-    ];
-    const sceneOnePositions = [
-      { left: "22%", top: "24%" },
-      { left: "52%", top: "24%" },
-      { left: "78%", top: "24%" },
-      { left: "52%", top: "38%" },
-    ];
-    const source = activeScene.id === "join_identity" ? sceneOnePositions : positions;
-    return source[activeActionIndex] || source[0];
-  }, [activeActionIndex, activeScene.id]);
-  const hostFocusFrame = useMemo(() => getHostFocusFrame(activeScene.id), [activeScene.id]);
-  const tvFocusFrame = useMemo(() => getTvFocusFrame(activeScene.id), [activeScene.id]);
+  const hostFocusFrame = useMemo(() => getHostFocusFrameAuto(activeScene.id), [activeScene.id]);
+  const tvFocusFrame = useMemo(() => getTvFocusFrameAuto(activeScene.id), [activeScene.id]);
   const audienceFocusFrame = useMemo(
-    () => getAudienceFocusFrame(activeScene.id, activeActionIndex),
+    () => getAudienceFocusFrameAuto(activeScene.id, activeActionIndex),
     [activeActionIndex, activeScene.id]
   );
   const tapCoach = useMemo(
-    () => getTapCoach(activeScene, activeActionIndex),
+    () => getTapCoachAuto(activeScene, activeActionIndex),
     [activeActionIndex, activeScene]
   );
   const sceneSequence = useMemo(
-    () => getSceneSequence(activeScene, tapCoach),
+    () => getSceneSequenceAuto(activeScene, tapCoach),
     [activeScene, tapCoach]
   );
   const activeSequenceIndex = useMemo(
-    () => getSequenceIndex(activeScene.id, sceneProgress),
+    () => getSequenceIndexAuto(activeScene.id, sceneProgress),
     [activeScene.id, sceneProgress]
   );
   const activeSequenceStep = sceneSequence[activeSequenceIndex] || sceneSequence[0];
   const audienceFixture = useMemo(
-    () => buildAudienceFixture({
+    () => buildAudienceFixtureAuto({
       scene: activeScene,
       nextScene,
       sceneProgress,
@@ -1414,7 +2100,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     [activeActionIndex, activeScene, hostTypedSearch, nextScene, sceneProgress]
   );
   const tvFixture = useMemo(
-    () => buildTvFixture({
+    () => buildTvFixtureAuto({
       scene: activeScene,
       nextScene,
       sceneProgress,
@@ -1424,7 +2110,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     [activeScene, nextScene, reactionItems, sceneProgress, triviaRows]
   );
   const hostFixture = useMemo(
-    () => buildHostFixture({
+    () => buildHostFixtureAuto({
       scene: activeScene,
       nextScene,
       sceneProgress,
@@ -1492,14 +2178,14 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
           <h1>{isAutoPage ? "Auto-play the actual room UI across the surfaces." : "Scroll to change the primary abstract scene."}</h1>
           <p>
             {isAutoPage
-              ? "This page is the deterministic sales walkthrough: the host, TV, and audience surfaces mount the native app UI, then the timeline simulates taps, typing, and handoffs."
+              ? "This page is the deterministic sales walkthrough: the host, TV, and audience surfaces mount the current room UI, while the callout rail explains what each scene is proving."
               : "This page stays conceptual on purpose. Scroll advances one scene at a time while the main stage shows host, TV, audience, and singer reacting together."}
           </p>
         </div>
         <div className="mk3-demo-sales-hero-pills">
           <span>{isAutoPage ? "Dedicated auto demo page" : "Dedicated abstract page"}</span>
-          <span>{isAutoPage ? "Native app surfaces" : "Concept-first motion"}</span>
-          <span>{isAutoPage ? "Timeline-driven overlays" : "Scene-by-scene scroll"}</span>
+          <span>{isAutoPage ? "Native room surfaces" : "Concept-first motion"}</span>
+          <span>{isAutoPage ? "Timeline-driven callouts" : "Scene-by-scene scroll"}</span>
           {typeof navigate === "function" && (
             <button type="button" onClick={() => navigate(isAutoPage ? "demo" : "demo_auto")}>
               {isAutoPage ? "Open Abstract Demo" : "Open Auto Demo"}
@@ -1741,6 +2427,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                 loading="eager"
                 onLoad={() => handleDemoFrameLoad("tv")}
               />
+              <DemoTvOverlay scene={activeScene} reactionItems={reactionItems} triviaRows={triviaRows} />
               {activeSequenceStep?.surface === "tv" ? (
                 <div className="mk3-demo-focus-ring is-tv" style={tvFocusFrame}><span>{activeSequenceStep.title}</span></div>
               ) : null}
@@ -1753,29 +2440,16 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
               <strong>Actual audience room UI</strong>
             </header>
             <div className="mk3-demo-frame-wrap mk3-demo-audience-frame-wrap">
-              <div className="mk3-demo-phone-shell">
-                <div className="mk3-demo-phone-notch" />
-                <div className="mk3-demo-phone-screen">
-                  <iframe
-                    ref={audienceFrameRef}
-                    title="BeauRocks Audience Demo"
-                    src={audienceDemoUrl}
-                    className="mk3-demo-iframe mk3-demo-native-surface"
-                    loading="eager"
-                    onLoad={() => handleDemoFrameLoad("audience")}
-                  />
-                  {activeSequenceStep?.surface === "audience" ? (
-                    <>
-                      <div className="mk3-demo-focus-ring is-phone-target" style={audienceFocusFrame} />
-                      <div className="mk3-demo-sim-tap is-phone" style={audienceTapStyle}>
-                        <i />
-                        <i />
-                        <span>{tapCoach.prompt}</span>
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              </div>
+              <GuidedAudiencePhone
+                scene={activeScene}
+                audienceDemoUrl={audienceDemoUrl}
+                audienceFrameRef={audienceFrameRef}
+                onFrameLoad={handleDemoFrameLoad}
+                activeActionIndex={activeActionIndex}
+                showFocus={activeSequenceStep?.surface === "audience"}
+                focusFrame={audienceFocusFrame}
+                focusLabel={tapCoach.prompt}
+              />
             </div>
           </article>
         </div>
@@ -1804,17 +2478,34 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
             ))}
           </div>
           <div className="mk3-demo-guided-stage-rail-footer">
-            <div className="mk3-demo-guided-scene-nav">
-              {WALKTHROUGH_TIMELINE.map((scene) => (
-                <button
-                  key={scene.id}
-                  type="button"
-                  className={activeScene.id === scene.id ? "active" : ""}
-                  onClick={() => jumpToScene(scene.id)}
-                >
-                  {scene.label}
+            <div className="mk3-demo-guided-stage-rail-controls">
+              <div className="mk3-demo-guided-control-row">
+                <button type="button" className={playing ? "active" : ""} onClick={() => setPlaying((prev) => !prev)}>
+                  {playing ? "Pause Walkthrough" : "Resume Walkthrough"}
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTimelineMs(0);
+                    setPlaying(true);
+                    trackEvent("mk_demo_walkthrough_restart", { source: "sticky_rail" });
+                  }}
+                >
+                  Restart From Scene 01
+                </button>
+              </div>
+              <div className="mk3-demo-guided-scene-nav">
+                {WALKTHROUGH_TIMELINE.map((scene) => (
+                  <button
+                    key={scene.id}
+                    type="button"
+                    className={activeScene.id === scene.id ? "active" : ""}
+                    onClick={() => jumpToScene(scene.id)}
+                  >
+                    {scene.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="mk3-demo-guided-stage-prompt">
               <span>{activeSequenceStep.surface} active now</span>

@@ -15,7 +15,7 @@ const toLabel = (value = "") =>
     .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
     .join(" ");
 
-const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
+const GeoLandingPage = ({ route = {}, navigate, session, authFlow, buildHref, setSeoEntity }) => {
   const state = String(route?.params?.state || "").toLowerCase();
   const city = String(route?.params?.city || "").toLowerCase();
   const regionToken = String(route?.params?.regionToken || route?.id || "").toLowerCase();
@@ -70,6 +70,15 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
   }, [payload]);
   const experienceSummary = useMemo(() => summarizeGeoExperience(entries), [entries]);
 
+  useEffect(() => {
+    if (typeof setSeoEntity !== "function") return;
+    setSeoEntity({
+      geoLabel: label,
+      listingType: "geo",
+      description: payload?.heroSummary || "",
+    });
+  }, [label, payload?.heroSummary, setSeoEntity]);
+
   const onEmptyAction = (action = {}) => {
     const intent = String(action.intent || "");
     if (intent === "auth") {
@@ -104,9 +113,25 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <nav className="mk3-breadcrumb" aria-label="Geo landing breadcrumb">
-          <button type="button" onClick={() => navigate("for-fans")}>Home</button>
+          <a
+            href={buildHref ? buildHref("for-fans") : "#"}
+            onClick={(event) => {
+              event.preventDefault();
+              navigate("for-fans");
+            }}
+          >
+            Home
+          </a>
           <span className="mk3-breadcrumb-sep">/</span>
-          <button type="button" onClick={() => navigate("discover")}>Discover</button>
+          <a
+            href={buildHref ? buildHref("discover") : "#"}
+            onClick={(event) => {
+              event.preventDefault();
+              navigate("discover");
+            }}
+          >
+            Discover
+          </a>
           <span className="mk3-breadcrumb-sep">/</span>
           <span>Karaoke</span>
           {state && city && (
@@ -178,14 +203,28 @@ const GeoLandingPage = ({ route = {}, navigate, session, authFlow }) => {
             });
             return (
             <article key={`${entry.routePage}_${entry.id}`} className="mk3-review-card">
-              <button
-                type="button"
+              {entry.routePage === "session" ? (
+                <button
+                  type="button"
+                  className="mk3-list-row"
+                  onClick={() => navigate(entry.routePage, entry.id)}
+                >
+                  <span>{entry.title || "Untitled listing"}</span>
+                  <span>{entry.startsAtMs ? formatDateTime(entry.startsAtMs) : [entry.city, entry.state].filter(Boolean).join(", ")}</span>
+                </button>
+              ) : (
+              <a
                 className="mk3-list-row"
-                onClick={() => navigate(entry.routePage, entry.id)}
+                href={buildHref ? buildHref(entry.routePage, entry.id) : "#"}
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate(entry.routePage, entry.id);
+                }}
               >
                 <span>{entry.title || "Untitled listing"}</span>
                 <span>{entry.startsAtMs ? formatDateTime(entry.startsAtMs) : [entry.city, entry.state].filter(Boolean).join(", ")}</span>
-              </button>
+              </a>
+              )}
               {experience.storyLine && <div className="mk3-card-story">{experience.storyLine}</div>}
               {!!experience.capabilityBadges.length && (
                 <div className="mk3-experience-pill-row is-modern">

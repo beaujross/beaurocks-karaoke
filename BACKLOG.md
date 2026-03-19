@@ -1,6 +1,6 @@
 # Backlog
 
-Last updated: 2026-03-10
+Last updated: 2026-03-18
 
 ## Purpose
 
@@ -50,6 +50,8 @@ These items are the active engineering priorities. Nothing below this section sh
 
 These items matter after the current execution plan is materially complete.
 
+- [ ] Take Stripe out of test mode before the first live event.
+  - Scope: production Stripe keys/webhook/config verification, checkout smoke, and rollback path.
 - [ ] Turnkey customer onboarding + subscriptions.
   - Scope: self-serve onboarding, provisioning, monthly subscription flow, entitlement sync.
 - [ ] Organization/workspace model hardening.

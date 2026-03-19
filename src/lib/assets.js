@@ -5,7 +5,7 @@ const BASE_URL = import.meta.env.BASE_URL || '/';
 const localAsset = (path) => `${BASE_URL}${String(path || '').replace(/^\/+/, '')}`;
 
 export const ASSETS = { 
-    logo: "https://beauross.com/wp-content/uploads/Icon-Reversed-gradient-small.png", 
+    logo: localAsset('images/logo-library/beaurocks-logo-neon trasnparent.png'), 
     venmoQr: "https://beauross.com/wp-content/uploads/2025/08/MyVenmoQRCode-2.png" 
 };
 

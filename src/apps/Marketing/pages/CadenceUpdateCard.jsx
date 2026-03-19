@@ -57,7 +57,7 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
   const cadencePreview = useMemo(() => {
     if (!listing) return "";
     if (listingType === "venue") {
-      return String(listing.karaokeNightsLabel || "").trim() || "No cadence listed yet.";
+      return String(listing.karaokeNightsLabel || "").trim() || "No schedule listed yet.";
     }
     const start = formatDateTime(Number(listing.startsAtMs || 0));
     const endMs = Number(listing.endsAtMs || 0);
@@ -87,7 +87,7 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
       setStatus("Listing not loaded yet.");
       return;
     }
-    if (!canSubmit) {
+      if (!canSubmit) {
       authFlow?.requireFullAuth?.({
         intent: "cadence",
         targetType: listingType,
@@ -101,7 +101,7 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
           },
         },
       });
-      setStatus("Create your BeauRocks account to suggest or update cadence.");
+      setStatus("Sign in to suggest schedule changes.");
       return;
     }
     setBusy(true);
@@ -127,10 +127,10 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
         payload,
       });
       if (result?.mode === "owner_direct_update" || result?.mode === "direct_update") {
-        setStatus("Cadence updated live.");
+        setStatus("Schedule updated.");
         trackEvent("mk_cadence_update_owner_direct_update", { listingType, listingId: listing.id });
       } else {
-        setStatus(`Cadence update submitted for moderation (${result?.submissionId || "pending"}).`);
+        setStatus(`Schedule update sent for review (${result?.submissionId || "pending"}).`);
         trackEvent("mk_cadence_update_queued_for_review", {
           listingType,
           listingId: listing.id,
@@ -138,7 +138,7 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
         });
       }
     } catch (error) {
-      setStatus(String(error?.message || "Could not update cadence."));
+      setStatus(String(error?.message || "Could not update schedule."));
     } finally {
       setBusy(false);
     }
@@ -146,19 +146,19 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
 
   return (
     <aside className="mk3-actions-card">
-      <h4>Cadence Updates</h4>
+      <h4>Update schedule</h4>
       <p>
         {isOwner
-          ? "You are listed as owner/host. Cadence updates publish immediately."
-          : "Hosts and community members can submit cadence updates for moderation."}
+          ? "You are listed as the owner or host, so schedule changes publish right away."
+          : "Hosts and community members can suggest schedule changes for review."}
       </p>
       <div className="mk3-status">
-        <strong>Current cadence</strong>
+        <strong>Current schedule</strong>
         <span>{cadencePreview}</span>
       </div>
       {!canSubmit && (
         <div className="mk3-actions-block">
-          <div className="mk3-status">Create your BeauRocks account to submit cadence updates.</div>
+          <div className="mk3-status">Sign in to suggest schedule changes.</div>
           <button
             type="button"
             onClick={() => authFlow?.requireFullAuth?.({
@@ -183,14 +183,14 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
       <form className="mk3-actions-block" onSubmit={submitCadenceUpdate}>
         {listingType === "venue" ? (
           <div className="mk3-cadence-field">
-            <span>Weekly Karaoke Schedule</span>
+            <span>Weekly schedule</span>
             <WeeklyScheduleEditor
               value={form.cadenceRows}
               onChange={(cadenceRows) => setForm((prev) => ({ ...prev, cadenceRows }))}
             />
             {!hasStructuredCadence && !!form.karaokeNightsLabel && (
               <div className="mk3-status mk3-status-warning">
-                Existing cadence text will be preserved unless you set a structured schedule.
+                Existing schedule text will stay in place unless you set a weekly schedule here.
               </div>
             )}
           </div>
@@ -213,14 +213,14 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
               />
             </label>
             <div className="mk3-cadence-field">
-              <span>Recurring Weekly Schedule</span>
+              <span>Repeat weekly</span>
               <WeeklyScheduleEditor
                 value={form.cadenceRows}
                 onChange={(cadenceRows) => setForm((prev) => ({ ...prev, cadenceRows }))}
               />
               {!hasStructuredCadence && !!form.recurringRule && (
                 <div className="mk3-status mk3-status-warning">
-                  Existing recurring rule will stay unchanged unless you set a structured schedule.
+                  The current repeat rule will stay unchanged unless you set a weekly schedule here.
                 </div>
               )}
             </div>
@@ -244,13 +244,13 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
         )}
         {listingType === "venue" && !!cadenceLabelPreview && (
           <div className="mk3-status">
-            <strong>Cadence Preview</strong>
+            <strong>Schedule preview</strong>
             <span>{cadenceLabelPreview}</span>
           </div>
         )}
         {listingType !== "venue" && !!recurringRulePreview && (
           <div className="mk3-status">
-            <strong>Recurring Rule Preview</strong>
+            <strong>Repeat preview</strong>
             <span>{recurringRulePreview}</span>
           </div>
         )}
@@ -259,11 +259,11 @@ const CadenceUpdateCard = ({ listingType = "venue", listing = null, session, aut
           <textarea
             value={form.description}
             onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-            placeholder="Details about this cadence update"
+            placeholder="Anything else people should know"
           />
         </label>
         <button type="submit" disabled={busy}>
-          {busy ? "Saving..." : isOwner ? "Save Cadence" : "Submit Cadence Update"}
+          {busy ? "Saving..." : isOwner ? "Save Schedule" : "Send Schedule Update"}
         </button>
       </form>
       )}

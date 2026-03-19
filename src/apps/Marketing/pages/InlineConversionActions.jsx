@@ -84,7 +84,7 @@ const InlineConversionActions = ({ entry = {}, session, navigate, authFlow }) =>
       });
       setStatus("Claim submitted.");
       setNextStep({
-        label: "Next: Set cadence",
+        label: "Next: Update schedule",
         action: () => navigate("venue", targetId, { intent: "cadence", targetType: "venue", targetId }),
       });
       trackEvent("mk_listing_claim_submit", { listingType: "venue", listingId: targetId, source: "inline_card" });

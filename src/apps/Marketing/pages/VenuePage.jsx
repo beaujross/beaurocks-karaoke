@@ -33,7 +33,7 @@ const applyImageFallback = (event, fallbackUrl = "/images/marketing/venue-locati
   target.src = fallbackUrl;
 };
 
-const VenuePage = ({ id, route, navigate, session, authFlow }) => {
+const VenuePage = ({ id, route, navigate, session, authFlow, buildHref, setSeoEntity }) => {
   const [venue, setVenue] = useState(null);
   const [events, setEvents] = useState([]);
   const [error, setError] = useState("");
@@ -51,6 +51,18 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
       (err) => setError(String(err?.message || "Failed to load venue."))
     );
   }, [id]);
+
+  useEffect(() => {
+    if (typeof setSeoEntity !== "function") return;
+    if (!venue) {
+      setSeoEntity(null);
+      return;
+    }
+    setSeoEntity({
+      ...venue,
+      listingType: "venue",
+    });
+  }, [venue, setSeoEntity]);
 
   useEffect(() => {
     if (!id) return () => {};
@@ -150,21 +162,21 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
 
         <div className="mk3-venue-stat-grid">
           <article>
-            <span>Upcoming Events</span>
+            <span>Upcoming nights</span>
             <strong>{eventCount}</strong>
           </article>
           <article>
-            <span>Next Karaoke Slot</span>
+            <span>Next listed time</span>
             <strong>{nextEvent ? formatDateTime(nextEvent.startsAtMs) : "TBD"}</strong>
           </article>
           <article>
-            <span>Region</span>
+            <span>Area</span>
             <strong>{[venue.city, venue.state].filter(Boolean).join(", ") || "Unspecified"}</strong>
           </article>
         </div>
 
         <div className="mk3-info-module">
-          <strong>Karaoke Times</strong>
+          <strong>Schedule</strong>
           {!!cadenceBadges.length && (
             <div className="mk3-day-badge-row">
               {cadenceBadges.map((label) => (
@@ -174,11 +186,11 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
           )}
           {venue.karaokeNightsLabel && <span className="mk3-info-note">{venue.karaokeNightsLabel}</span>}
           {!cadenceBadges.length && !venue.karaokeNightsLabel && (
-            <span className="mk3-info-note">Cadence pending.</span>
+            <span className="mk3-info-note">Schedule not listed yet.</span>
           )}
         </div>
         <div className="mk3-info-module">
-          <strong>Contact / Info</strong>
+          <strong>Plan your visit</strong>
           <div className="mk3-info-link-row">
             {websiteUrl && (
               <a className="mk3-venue-link" href={websiteUrl} target="_blank" rel="noreferrer">
@@ -234,20 +246,28 @@ const VenuePage = ({ id, route, navigate, session, authFlow }) => {
           ))}
         </div>
 
-        <p>{venue.description || "No venue description provided yet."}</p>
+        <p>{venue.description || "No venue details yet."}</p>
         <DirectoryExperienceSpotlight
           entry={venueExperienceSource}
-          title="Why This Night Works"
-          eyebrow="karaoke personality"
+          title="What to expect"
+          eyebrow="night details"
         />
         <div className="mk3-sub-list">
-          <h3>Upcoming Karaoke Events</h3>
+          <h3>Upcoming karaoke nights</h3>
           {events.length === 0 && <div className="mk3-status">No approved events linked to this venue yet.</div>}
           {events.map((event) => (
-            <button key={event.id} type="button" className="mk3-list-row" onClick={() => navigate("event", event.id)}>
+            <a
+              key={event.id}
+              className="mk3-list-row"
+              href={buildHref ? buildHref("event", event.id) : "#"}
+              onClick={(clickEvent) => {
+                clickEvent.preventDefault();
+                navigate("event", event.id);
+              }}
+            >
               <span>{event.title}</span>
               <span>{formatDateTime(event.startsAtMs)}</span>
-            </button>
+            </a>
           ))}
         </div>
       </article>

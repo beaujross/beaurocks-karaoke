@@ -16,6 +16,9 @@ const StageNowPlayingPanel = ({
     currentSourceLabel,
     currentSourceToneClass,
     appleMusicStatus,
+    autoDj,
+    autoDjSequenceSummary,
+    autoDjStepItems = [],
     togglePlay,
     playAppleMusicTrack,
     stopAppleMusic,
@@ -27,11 +30,18 @@ const StageNowPlayingPanel = ({
     updateStatus,
     onMeasureApplause,
     onEndPerformance,
+    progressStageToNext,
     styles,
     emoji
 }) => (
     <>
-        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 mb-3">
+        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 mb-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">Live Stage</div>
+                <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.15em] border ${current ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100' : 'border-zinc-600 bg-zinc-900/70 text-zinc-300'}`}>
+                    {current ? 'Live' : 'Idle'}
+                </span>
+            </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                     {!!roomCode && (
@@ -58,6 +68,37 @@ const StageNowPlayingPanel = ({
                     {room?.bouncerMode && (<div className="text-red-400 font-bold text-xs">{emoji.lock} LOCKED</div>)}
                 </div>
             </div>
+            {autoDj && (
+                <div className="mt-3 rounded-lg border border-cyan-400/25 bg-black/35 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                        <div className={`text-[10px] uppercase tracking-[0.18em] ${autoDjSequenceSummary?.tone === 'danger' ? 'text-rose-200' : autoDjSequenceSummary?.tone === 'warning' ? 'text-amber-200' : autoDjSequenceSummary?.tone === 'success' ? 'text-emerald-200' : 'text-cyan-200'}`}>
+                            {autoDjSequenceSummary?.title || 'Auto DJ'}
+                        </div>
+                        <div className="text-[10px] text-zinc-300 truncate max-w-[50%]">{autoDjSequenceSummary?.detail || 'Queue runner active'}</div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-4 gap-1">
+                        {autoDjStepItems.map((step) => (
+                            <div
+                                key={step.id}
+                                className={`rounded px-1.5 py-1 text-[9px] uppercase tracking-[0.12em] text-center border ${
+                                    step.status === 'complete'
+                                        ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100'
+                                        : step.status === 'active'
+                                            ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100'
+                                            : step.status === 'retrying'
+                                                ? 'border-amber-300/45 bg-amber-500/15 text-amber-100'
+                                                : step.status === 'error'
+                                                    ? 'border-rose-300/45 bg-rose-500/15 text-rose-100'
+                                                    : 'border-white/15 bg-black/25 text-zinc-300'
+                                }`}
+                                title={step.retries > 0 ? `${step.label} retries: ${step.retries}` : step.label}
+                            >
+                                {step.short}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
         {current ? (
             <div className="relative">
@@ -91,40 +132,92 @@ const StageNowPlayingPanel = ({
                 <div className="text-[11px] text-zinc-300 mb-3 truncate">
                     Up Next: <span className="text-white font-semibold">{nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued'}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                    <button onClick={togglePlay} className={`${styles.btnStd} ${currentSourcePlaying ? styles.btnNeutral : styles.btnPrimary}`}>
-                        <i className={`fa-solid ${currentSourcePlaying ? 'fa-pause' : 'fa-play'} mr-2`}></i>
-                        {currentSourcePlaying ? 'Pause' : 'Play'}
-                    </button>
-                    <button
-                        onClick={async () => {
-                            if (currentUsesAppleBacking) {
-                                await playAppleMusicTrack(current.appleMusicId, { title: current.songTitle, artist: current.artist });
-                                await updateRoom({ mediaUrl: '', videoPlaying: false, videoStartTimestamp: null, pausedAt: null });
-                                return;
-                            }
-                            await stopAppleMusic?.();
-                            await updateRoom({ videoPlaying: true, videoStartTimestamp: Date.now(), pausedAt: null, appleMusicPlayback: null });
-                        }}
-                        className={`${styles.btnStd} ${styles.btnSecondary}`}
-                    >
-                        <i className="fa-solid fa-rotate-left mr-2"></i>Restart
-                    </button>
-                    <button
-                        onClick={() => window.open(current.mediaUrl, '_blank')}
-                        disabled={!currentMediaUrl}
-                        className={`${styles.btnStd} ${styles.btnSecondary} ${!currentMediaUrl ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                        <i className="fa-solid fa-up-right-from-square mr-2"></i>Pop out
-                    </button>
-                    <button
-                        onClick={() => updateRoom({ audienceVideoMode: room?.audienceVideoMode === 'force' ? 'off' : 'force' })}
-                        className={`${styles.btnStd} ${room?.audienceVideoMode === 'force' ? styles.btnHighlight : styles.btnSecondary} ${currentUsesAppleBacking ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        title="Push the stage video to phones"
-                        disabled={currentUsesAppleBacking}
-                    >
-                        <i className="fa-solid fa-tv mr-2"></i>Audience sync
-                    </button>
+                <div className="bg-black/30 border border-white/10 rounded-lg p-3 mb-3">
+                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-400 mb-2">Stage Controls</div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button onClick={togglePlay} className={`${styles.btnStd} ${currentSourcePlaying ? styles.btnNeutral : styles.btnPrimary}`}>
+                            <i className={`fa-solid ${currentSourcePlaying ? 'fa-pause' : 'fa-play'} mr-2`}></i>
+                            {currentSourcePlaying ? 'Pause' : 'Play'}
+                        </button>
+                        <button
+                            onClick={async () => {
+                                if (currentUsesAppleBacking) {
+                                    await playAppleMusicTrack(current.appleMusicId, { title: current.songTitle, artist: current.artist });
+                                    await updateRoom({ mediaUrl: '', videoPlaying: false, videoStartTimestamp: null, pausedAt: null });
+                                    return;
+                                }
+                                await stopAppleMusic?.();
+                                await updateRoom({ videoPlaying: true, videoStartTimestamp: Date.now(), pausedAt: null, appleMusicPlayback: null });
+                            }}
+                            className={`${styles.btnStd} ${styles.btnSecondary}`}
+                        >
+                            <i className="fa-solid fa-rotate-left mr-2"></i>Restart
+                        </button>
+                        <button
+                            onClick={() => window.open(current.mediaUrl, '_blank')}
+                            disabled={!currentMediaUrl}
+                            className={`${styles.btnStd} ${styles.btnSecondary} ${!currentMediaUrl ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            <i className="fa-solid fa-up-right-from-square mr-2"></i>Pop out
+                        </button>
+                        <button
+                            onClick={() => updateRoom({ audienceVideoMode: room?.audienceVideoMode === 'force' ? 'off' : 'force' })}
+                            className={`${styles.btnStd} ${room?.audienceVideoMode === 'force' ? styles.btnHighlight : styles.btnSecondary} ${currentUsesAppleBacking ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            title="Push the stage video to phones"
+                            disabled={currentUsesAppleBacking}
+                        >
+                            <i className="fa-solid fa-tv mr-2"></i>Audience sync
+                        </button>
+                    </div>
+                </div>
+                <div className="bg-black/30 border border-white/10 rounded-lg p-3 mb-3">
+                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-400 mb-2">Performance Controls</div>
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                        <button
+                            onClick={() => {
+                                if (typeof onMeasureApplause === 'function') {
+                                    onMeasureApplause();
+                                    return;
+                                }
+                                updateRoom({ activeMode: room?.activeMode === 'applause' ? 'karaoke' : 'applause_countdown', applausePeak: 0 });
+                            }}
+                            className={`${styles.btnStd} ${styles.btnPrimary}`}
+                        >
+                            <i className="fa-solid fa-microphone-lines mr-2"></i>Applause
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (typeof onEndPerformance === 'function') {
+                                    onEndPerformance(current.id);
+                                    return;
+                                }
+                                updateStatus(current.id, 'performed');
+                            }}
+                            className={`${styles.btnStd} ${styles.btnSecondary}`}
+                            title={Number(current?.hostBonus || 0) > 0 ? 'End performance' : 'End performance'}
+                        >
+                            <i className="fa-solid fa-flag-checkered mr-2"></i>End
+                        </button>
+                        <button
+                            onClick={progressStageToNext}
+                            disabled={!nextQueueSong}
+                            className={`${styles.btnStd} ${styles.btnHighlight} ${!nextQueueSong ? 'opacity-55 cursor-not-allowed' : ''}`}
+                        >
+                            <i className="fa-solid fa-forward-step mr-2"></i>Next
+                        </button>
+                        <div className="flex gap-2">
+                            <input type="number" value={customBonus} onChange={e => setCustomBonus(e.target.value)} className={`${styles.input} w-20`} placeholder="Pts"/>
+                            <button onClick={() => addBonusToCurrent(parseInt(customBonus, 10) || 0)} className={`${styles.btnStd} ${styles.btnSecondary} flex-1`}>
+                                <i className="fa-solid fa-gift mr-2"></i>Bonus
+                            </button>
+                        </div>
+                    </div>
+                    {room?.applausePeak !== undefined && room?.applausePeak !== null && (
+                        <div className="text-xs text-zinc-300 bg-zinc-900/60 border border-zinc-700 rounded-lg px-3 py-2 flex items-center justify-between">
+                            <span className="uppercase tracking-widest text-zinc-400">Last Applause</span>
+                            <span className="text-[#00C4D9] font-bold">{Math.round(room.applausePeak)} dB</span>
+                        </div>
+                    )}
                 </div>
                 <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-3">
                     <div className="text-sm uppercase tracking-[0.3em] text-zinc-400 mb-2">TV Display Mode</div>
@@ -189,45 +282,6 @@ const StageNowPlayingPanel = ({
                 <button onClick={() => startEdit(current)} className={`${styles.btnStd} ${styles.btnNeutral} w-full mt-3`}>
                     <i className="fa-solid fa-pen-to-square mr-2"></i>Edit current song
                 </button>
-                {room?.applausePeak !== undefined && room?.applausePeak !== null && (
-                    <div className="mt-3 text-xs text-zinc-300 bg-zinc-900/60 border border-zinc-700 rounded-lg px-3 py-2 flex items-center justify-between">
-                        <span className="uppercase tracking-widest text-zinc-400">Last Applause</span>
-                        <span className="text-[#00C4D9] font-bold">{Math.round(room.applausePeak)} dB</span>
-                    </div>
-                )}
-                <div className="mt-3 pt-3 border-t border-white/10 flex gap-2 items-center">
-                    <input type="number" value={customBonus} onChange={e => setCustomBonus(e.target.value)} className={`${styles.input} w-20`} placeholder="Pts"/>
-                    <button onClick={() => addBonusToCurrent(parseInt(customBonus, 10) || 0)} className={`${styles.btnStd} ${styles.btnSecondary} w-1/2`}>
-                        <i className="fa-solid fa-gift mr-2"></i>Bonus
-                    </button>
-                </div>
-                <div className="grid grid-cols-2 gap-2 mt-3">
-                    <button
-                        onClick={() => {
-                            if (typeof onMeasureApplause === 'function') {
-                                onMeasureApplause();
-                                return;
-                            }
-                            updateRoom({ activeMode: room?.activeMode === 'applause' ? 'karaoke' : 'applause_countdown', applausePeak: 0 });
-                        }}
-                        className={`${styles.btnStd} ${styles.btnPrimary}`}
-                    >
-                        <i className="fa-solid fa-microphone-lines mr-2"></i>Measure applause
-                    </button>
-                    <button
-                        onClick={() => {
-                            if (typeof onEndPerformance === 'function') {
-                                onEndPerformance(current.id);
-                                return;
-                            }
-                            updateStatus(current.id, 'performed');
-                        }}
-                        className={`${styles.btnStd} ${styles.btnSecondary}`}
-                        title={Number(current?.hostBonus || 0) > 0 ? 'End performance' : 'No host bonus added yet'}
-                    >
-                        <i className="fa-solid fa-flag-checkered mr-2"></i>{Number(current?.hostBonus || 0) > 0 ? 'End performance' : 'End (bonus?)'}
-                    </button>
-                </div>
             </div>
         ) : (
             <div className="text-center py-4 text-zinc-500">Stage Empty</div>
