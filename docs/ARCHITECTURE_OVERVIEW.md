@@ -96,6 +96,11 @@ Global and historical catalog/leaderboard data:
 - `?mode=recap&room=CODE` -> Recap view
 - `/karaoke/terms` -> Terms screen
 
+Operational note:
+
+- Custom surface domains can be redirected by Hosting to marketing-looking paths such as `/for-fans`.
+- Route resolution must continue to prioritize explicit interactive intent (`mode=*`, `room=*`) ahead of marketing path detection.
+
 ## Primary Request and Event Flow
 
 ```mermaid
@@ -133,6 +138,23 @@ Key trigger-owned automations in `functions/index.js`:
 - `autoPopTrivia`: creates Pop Trivia when a karaoke song doc is created
 - scheduled pending recovery for stranded `popTriviaStatus: "pending"` songs
 - room-level backfill when Pop Trivia is enabled after songs already exist
+- `sendOutboundEmail`: sends normalized outbound email jobs from `outboundMessages`
+
+## Email Delivery Architecture
+
+There are two email systems in play:
+
+- Firebase Auth-managed emails for password reset and email-link sign-in
+- BeauRocks-managed SMTP emails for operational and notification flows
+
+BeauRocks-managed email flow:
+
+1. Clients or functions create a normalized email payload
+2. Payload is queued into `outboundMessages`
+3. `sendOutboundEmail` sends via SMTP
+4. Delivery state is written back onto the message doc
+
+The shared BeauRocks email shell and template registry live in `functions/index.js`.
 
 ## Game Architecture
 

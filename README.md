@@ -11,6 +11,7 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 - Marketing operating playbook: `docs/marketing/MARKETING_OPERATING_PLAYBOOK.md`
 - Demo surface integration notes: `docs/marketing/DEMO_SURFACE_INTEGRATION.md`
 - Hosting release checklist: `docs/releases/HOSTING_RELEASE_CHECKLIST.md`
+- Email and domain operations runbook: `docs/EMAIL_AND_DOMAIN_OPERATIONS.md`
 - Billing notes (web Stripe + iOS IAP foundation): `docs/billing-iap.md`
 - VIP SMS auth runbook: `docs/VIP_SMS_AUTH_RUNBOOK.md`
 - QuickBooks Self-Employed invoicing flow: `docs/QUICKBOOKS_SELF_EMPLOYED_INVOICE_FLOW.md`

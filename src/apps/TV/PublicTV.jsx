@@ -3920,50 +3920,59 @@ const PublicTV = ({ roomCode }) => {
         const triviaAnswers = Math.max(0, Number(popTriviaSummary?.answerCount || 0));
         const topFanGifted = Math.max(0, Number(topFan?.pointsGifted || 0));
         const recapProgressPct = Math.max(16, Math.min(100, Math.round((totalPoints / 300) * 100)));
-        const recapHighlights = [
+        const scoreBreakdownCards = [
             {
                 key: 'vibe',
-                label: 'Vibe',
+                label: 'Vibe Score',
                 value: vibeScore,
-                tone: 'border-fuchsia-400/25 bg-fuchsia-400/10 text-fuchsia-100'
+                accent: 'from-fuchsia-400/30 via-fuchsia-400/14 to-transparent',
+                tone: 'border-fuchsia-400/30 bg-fuchsia-400/12 text-fuchsia-100'
             },
             {
                 key: 'applause',
                 label: 'Applause',
                 value: applauseScore,
-                tone: 'border-amber-300/25 bg-amber-300/10 text-amber-100'
+                accent: 'from-amber-300/30 via-amber-300/14 to-transparent',
+                tone: 'border-amber-300/30 bg-amber-300/12 text-amber-100'
             },
             hostBonus > 0 ? {
                 key: 'bonus',
-                label: 'Bonus',
+                label: 'Host Bonus',
                 value: hostBonus,
-                tone: 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100'
-            } : null,
+                accent: 'from-emerald-300/30 via-emerald-300/14 to-transparent',
+                tone: 'border-emerald-300/30 bg-emerald-300/12 text-emerald-100'
+            } : null
+        ].filter(Boolean);
+        const crowdMomentCards = [
             topFanGifted > 0 ? {
                 key: 'fan',
-                label: 'Fan Gift',
+                label: 'Top Fan Gift',
                 value: `${topFanGifted} pts`,
-                tone: 'border-cyan-300/25 bg-cyan-300/10 text-cyan-100'
+                detail: `${topFan?.avatar || EMOJI.sparkle} ${topFan?.name || 'Crowd favorite'}`,
+                tone: 'border-cyan-300/24 bg-cyan-300/10 text-cyan-100'
             } : null,
             guitarHits > 0 ? {
                 key: 'guitar',
                 label: 'Guitar Hits',
                 value: guitarHits,
-                tone: 'border-orange-300/25 bg-orange-300/10 text-orange-100'
+                detail: 'Audience play landed on beat',
+                tone: 'border-orange-300/24 bg-orange-300/10 text-orange-100'
             } : null,
             beatTaps > 0 ? {
                 key: 'beat',
                 label: 'Beat Taps',
                 value: beatTaps,
-                tone: 'border-pink-300/25 bg-pink-300/10 text-pink-100'
+                detail: 'Crowd kept the pulse moving',
+                tone: 'border-pink-300/24 bg-pink-300/10 text-pink-100'
             } : null,
             triviaPlayers > 0 ? {
                 key: 'trivia',
                 label: 'Trivia Players',
                 value: triviaPlayers,
-                tone: 'border-sky-300/25 bg-sky-300/10 text-sky-100'
+                detail: triviaQuestions > 0 ? `${triviaQuestions} prompt${triviaQuestions === 1 ? '' : 's'} in play` : 'Audience joined the trivia recap',
+                tone: 'border-sky-300/24 bg-sky-300/10 text-sky-100'
             } : null
-        ].filter(Boolean).slice(0, 4);
+        ].filter(Boolean).slice(0, 3);
         return (
             <div className="fixed inset-0 z-[200] overflow-hidden bg-[#05070f] text-white animate-in fade-in duration-500">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(139,92,246,0.28),_transparent_32%),radial-gradient(circle_at_18%_30%,_rgba(244,114,182,0.18),_transparent_24%),radial-gradient(circle_at_82%_24%,_rgba(34,211,238,0.22),_transparent_22%),linear-gradient(180deg,_rgba(9,12,22,0.96),_rgba(3,5,10,0.98))]" />
@@ -3972,7 +3981,7 @@ const PublicTV = ({ roomCode }) => {
                 <div className="absolute bottom-[-5rem] left-[28%] h-64 w-64 rounded-full bg-amber-300/12 blur-3xl" />
 
                 <div className="relative z-10 flex min-h-full items-center justify-center p-4 md:p-8 2xl:p-12">
-                    <div className="w-full max-w-7xl overflow-hidden rounded-[2rem] border border-white/12 bg-[linear-gradient(145deg,rgba(16,20,35,0.95),rgba(8,10,20,0.92))] shadow-[0_30px_120px_rgba(0,0,0,0.6)]">
+                    <div className="w-full max-w-[1800px] overflow-hidden rounded-[2.4rem] border border-white/12 bg-[linear-gradient(145deg,rgba(16,20,35,0.95),rgba(8,10,20,0.92))] shadow-[0_30px_120px_rgba(0,0,0,0.6)]">
                         <div className="relative overflow-hidden border-b border-white/10 px-5 py-4 md:px-8 md:py-5">
                             <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(251,191,36,0.16),rgba(244,114,182,0.08),rgba(34,211,238,0.12))]" />
                             <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
@@ -3998,107 +4007,104 @@ const PublicTV = ({ roomCode }) => {
                                             New Global High Score
                                         </div>
                                     )}
-                                    <img
-                                        src={room?.logoUrl || ASSETS.logo}
-                                        alt="BeauRocks Karaoke"
-                                        className="h-12 w-auto object-contain opacity-90 drop-shadow-[0_0_22px_rgba(34,211,238,0.28)]"
-                                    />
                                 </div>
                             </div>
                         </div>
 
-                        <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.75fr)] md:gap-7 md:p-8 2xl:p-10">
-                            <div className="space-y-5">
-                                <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(16,18,34,0.94),rgba(26,11,37,0.9),rgba(5,28,40,0.9))] p-6 md:p-8 2xl:p-10">
+                        <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1.2fr)_minmax(460px,0.95fr)] md:gap-8 md:p-8 2xl:p-10">
+                            <div className="space-y-6">
+                                <div className="relative overflow-hidden rounded-[2.2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(16,18,34,0.94),rgba(26,11,37,0.9),rgba(5,28,40,0.9))] p-6 md:p-8 2xl:p-10">
                                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_16%,rgba(250,204,21,0.18),transparent_24%),radial-gradient(circle_at_84%_18%,rgba(34,211,238,0.18),transparent_18%)]" />
-                                    <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:gap-8">
+                                    <div className="relative z-10 flex flex-col gap-8 xl:flex-row xl:items-center xl:gap-10">
                                         <div className="relative shrink-0">
                                             {recap.albumArtUrl ? (
                                                 <img
                                                     src={recap.albumArtUrl}
                                                     alt={recap.songTitle}
-                                                    className="h-32 w-32 rounded-[1.6rem] object-cover border border-white/15 shadow-[0_18px_45px_rgba(0,0,0,0.4)] md:h-44 md:w-44 2xl:h-52 2xl:w-52"
+                                                    className="h-40 w-40 rounded-[1.8rem] border border-white/15 object-cover shadow-[0_18px_45px_rgba(0,0,0,0.4)] md:h-52 md:w-52 2xl:h-64 2xl:w-64"
                                                 />
                                             ) : (
-                                                <div className="flex h-32 w-32 items-center justify-center rounded-[1.6rem] border border-white/15 bg-white/6 text-5xl text-yellow-200 shadow-[0_18px_45px_rgba(0,0,0,0.35)] md:h-44 md:w-44 2xl:h-52 2xl:w-52 2xl:text-7xl">
+                                                <div className="flex h-40 w-40 items-center justify-center rounded-[1.8rem] border border-white/15 bg-white/6 text-6xl text-yellow-200 shadow-[0_18px_45px_rgba(0,0,0,0.35)] md:h-52 md:w-52 2xl:h-64 2xl:w-64 2xl:text-8xl">
                                                     <i className="fa-solid fa-microphone-lines" />
                                                 </div>
                                             )}
                                         </div>
                                         <div className="min-w-0 flex-1 text-left">
-                                            <div className="flex flex-wrap items-center gap-2 text-[12px] uppercase tracking-[0.34em] text-zinc-300">
-                                                <span>Room Spotlight</span>
-                                                <span className="inline-flex h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.9)]"></span>
-                                                <span>Powered by BeauRocks</span>
+                                            <div className="text-[12px] uppercase tracking-[0.36em] text-cyan-100/90 md:text-sm">
+                                                Just finished on stage
                                             </div>
-                                            <div className="mt-3 text-4xl font-black leading-[0.92] text-white md:text-6xl 2xl:text-[5.2rem]">
+                                            <div className="mt-4 text-5xl font-black leading-[0.9] text-white md:text-7xl xl:text-[5.8rem] 2xl:text-[7.2rem]">
                                                 {recapSongMeta.title}
                                             </div>
                                             {(recapSongMeta.artist || recapSongMeta.source) && (
-                                                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-base uppercase tracking-[0.22em] text-cyan-100 md:text-lg 2xl:text-xl">
+                                                <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-lg uppercase tracking-[0.22em] text-cyan-100 md:text-xl 2xl:text-[1.75rem]">
                                                     {recapSongMeta.artist && <span>{recapSongMeta.artist}</span>}
                                                     {recapSongMeta.artist && recapSongMeta.source && <span className="text-white/30">/</span>}
                                                     {recapSongMeta.source && <span>{recapSongMeta.source}</span>}
                                                 </div>
                                             )}
-                                            <div className="mt-5 text-2xl font-black text-fuchsia-200 md:text-4xl 2xl:text-[3.4rem]">
+                                            <div className="mt-6 text-4xl font-black leading-none text-fuchsia-200 md:text-6xl xl:text-[4.5rem] 2xl:text-[5.5rem]">
                                                 {recap.singerName}
                                             </div>
-                                            <div className="mt-2 text-sm uppercase tracking-[0.3em] text-zinc-300 md:text-base 2xl:text-lg">
-                                                Singer just closed the round
-                                            </div>
-                                            <div className="mt-4 text-base uppercase tracking-[0.26em] text-zinc-300 md:text-lg 2xl:text-xl">
+                                            <div className="mt-3 text-lg uppercase tracking-[0.28em] text-zinc-300 md:text-xl 2xl:text-[1.65rem]">
                                                 {performanceTier}
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="rounded-[1.8rem] border border-white/10 bg-black/20 p-4 md:p-5 2xl:p-6">
-                                    <div className="flex flex-wrap items-center gap-3">
-                                        {recapHighlights.map((item) => (
+                                <div className="grid gap-4 md:grid-cols-3">
+                                    {scoreBreakdownCards.map((item) => (
+                                        <div
+                                            key={item.key}
+                                            className={`relative overflow-hidden rounded-[1.8rem] border px-5 py-5 md:px-6 md:py-6 2xl:px-8 2xl:py-8 ${item.tone}`}
+                                        >
+                                            <div className={`absolute inset-0 bg-gradient-to-br ${item.accent}`} />
+                                            <div className="relative z-10">
+                                                <div className="text-[12px] uppercase tracking-[0.28em] text-white/80">{item.label}</div>
+                                                <div className="mt-4 text-6xl font-black leading-none text-white md:text-7xl 2xl:text-[6.4rem]">{item.value}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {crowdMomentCards.length > 0 && (
+                                    <div className="grid gap-4 md:grid-cols-3">
+                                        {crowdMomentCards.map((item) => (
                                             <div
                                                 key={item.key}
-                                                className={`inline-flex min-w-[180px] flex-1 items-center justify-between gap-4 rounded-[1.2rem] border px-4 py-3 md:px-5 md:py-4 ${item.tone}`}
+                                                className={`rounded-[1.6rem] border px-5 py-5 md:px-6 md:py-6 ${item.tone}`}
                                             >
-                                                <span className="text-[11px] uppercase tracking-[0.28em]">{item.label}</span>
-                                                <span className="text-2xl font-black text-white md:text-3xl">{item.value}</span>
+                                                <div className="text-[11px] uppercase tracking-[0.28em] text-white/75">{item.label}</div>
+                                                <div className="mt-3 text-4xl font-black leading-none text-white md:text-5xl">{item.value}</div>
+                                                {item.detail && (
+                                                    <div className="mt-3 text-base font-semibold text-white/80 md:text-lg">{item.detail}</div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
-                                    {(triviaQuestions > 0 || triviaAnswers > 0 || topFanGifted > 0) && (
-                                        <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm uppercase tracking-[0.22em] text-zinc-300 md:text-base">
-                                            {topFanGifted > 0 && (
-                                                <span className="truncate">
-                                                    Top fan {topFan?.avatar || EMOJI.sparkle} {topFan?.name || 'Crowd favorite'}
-                                                </span>
-                                            )}
-                                            {triviaQuestions > 0 && <span>{triviaQuestions} trivia prompts</span>}
-                                            {triviaAnswers > 0 && <span>{triviaAnswers} total trivia answers</span>}
-                                        </div>
-                                    )}
-                                </div>
+                                )}
                             </div>
 
-                            <div className="space-y-5">
-                                <div className="relative overflow-hidden rounded-[2rem] border border-yellow-300/24 bg-[linear-gradient(180deg,rgba(255,214,102,0.10),rgba(255,255,255,0.03),rgba(255,255,255,0.02))] p-6 md:p-7 2xl:p-8">
+                            <div className="space-y-6">
+                                <div className="relative overflow-hidden rounded-[2.2rem] border border-yellow-300/24 bg-[linear-gradient(180deg,rgba(255,214,102,0.10),rgba(255,255,255,0.03),rgba(255,255,255,0.02))] p-6 md:p-8 2xl:p-10">
                                     <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-yellow-200/60 to-transparent" />
                                     <div className="absolute right-5 top-5 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100">
                                         BeauRocks Score
                                     </div>
                                     <div className="text-[12px] uppercase tracking-[0.38em] text-yellow-100">Final Score</div>
-                                    <div className="mt-5 text-7xl font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-white to-yellow-300 md:text-[8rem] 2xl:text-[10rem]">
+                                    <div className="mt-4 text-[7rem] font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-white to-yellow-300 md:text-[11rem] xl:text-[13rem] 2xl:text-[15rem]">
                                         {totalPoints}
                                     </div>
-                                    <div className="mt-3 text-lg font-bold uppercase tracking-[0.3em] text-yellow-100/90 md:text-xl">
+                                    <div className="mt-3 text-2xl font-black uppercase tracking-[0.34em] text-yellow-100/90 md:text-3xl 2xl:text-[2.2rem]">
                                         Total Points
                                     </div>
-                                    <div className="mt-6 rounded-[1.5rem] border border-white/10 bg-black/25 p-4 md:p-5">
-                                        <div className="flex items-center justify-between text-base text-zinc-200 md:text-lg">
+                                    <div className="mt-8 rounded-[1.8rem] border border-white/10 bg-black/25 p-5 md:p-6 2xl:p-7">
+                                        <div className="flex items-center justify-between gap-4 text-lg text-zinc-200 md:text-xl 2xl:text-[1.6rem]">
                                             <span>Room energy</span>
                                             <span className="font-black text-white">{performanceTier}</span>
                                         </div>
-                                        <div className="mt-4 h-4 overflow-hidden rounded-full bg-white/8">
+                                        <div className="mt-5 h-5 overflow-hidden rounded-full bg-white/8 2xl:h-6">
                                             <div
                                                 className="h-full rounded-full bg-gradient-to-r from-fuchsia-400 via-amber-300 to-cyan-300"
                                                 style={{ width: `${recapProgressPct}%` }}
@@ -4107,34 +4113,35 @@ const PublicTV = ({ roomCode }) => {
                                     </div>
                                 </div>
 
-                                <div className="rounded-[2rem] border border-white/10 bg-black/20 p-5 md:p-6">
+                                <div className="rounded-[2rem] border border-white/10 bg-black/20 p-5 md:p-6 2xl:p-7">
                                     <div className="flex items-center justify-between gap-4">
                                         <div>
-                                            <div className="text-[11px] uppercase tracking-[0.34em] text-zinc-300">BeauRocks Room Signal</div>
-                                            <div className="mt-2 text-lg font-black text-white md:text-2xl">One room. One score. Shared energy.</div>
+                                            <div className="text-[11px] uppercase tracking-[0.34em] text-zinc-300">Crowd Snapshot</div>
+                                            <div className="mt-2 text-2xl font-black text-white md:text-3xl 2xl:text-[2.5rem]">Room moments from this performance</div>
                                         </div>
                                         <img
                                             src={room?.logoUrl || ASSETS.logo}
                                             alt="BeauRocks Karaoke"
-                                            className="h-14 w-auto object-contain opacity-90 drop-shadow-[0_0_24px_rgba(34,211,238,0.2)]"
+                                            className="h-14 w-auto object-contain opacity-90 drop-shadow-[0_0_24px_rgba(34,211,238,0.2)] 2xl:h-16"
                                         />
                                     </div>
-                                    <div className="mt-4 grid grid-cols-1 gap-3">
+                                    <div className="mt-5 grid grid-cols-1 gap-3">
                                         {topFanGifted > 0 && (
                                             <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-4">
-                                                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Top fan gift</div>
-                                                <div className="mt-2 text-2xl font-black text-white md:text-3xl">
-                                                    {topFan?.avatar || EMOJI.sparkle} {topFan?.name || 'Crowd favorite'} · {topFanGifted} pts
+                                                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Top fan</div>
+                                                <div className="mt-2 text-3xl font-black text-white md:text-4xl 2xl:text-[2.75rem]">
+                                                    {topFan?.avatar || EMOJI.sparkle} {topFan?.name || 'Crowd favorite'} - {topFanGifted} pts
                                                 </div>
                                             </div>
                                         )}
                                         {(guitarHits > 0 || beatTaps > 0 || triviaPlayers > 0) && (
                                             <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-4">
-                                                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Audience play</div>
-                                                <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-lg font-black text-white md:text-2xl">
+                                                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Live interaction</div>
+                                                <div className="mt-2 flex flex-wrap gap-x-6 gap-y-3 text-xl font-black text-white md:text-3xl 2xl:text-[2.25rem]">
                                                     {guitarHits > 0 && <span>{guitarHits} guitar hits</span>}
                                                     {beatTaps > 0 && <span>{beatTaps} beat taps</span>}
                                                     {triviaPlayers > 0 && <span>{triviaPlayers} trivia players</span>}
+                                                    {triviaAnswers > 0 && <span>{triviaAnswers} trivia answers</span>}
                                                 </div>
                                             </div>
                                         )}

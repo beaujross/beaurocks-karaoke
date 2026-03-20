@@ -5,6 +5,7 @@ const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const jwt = require("jsonwebtoken");
+const nodemailer = require("nodemailer");
 const Stripe = require("stripe");
 const {
   BASE_CAPABILITIES,
@@ -61,6 +62,10 @@ const GOOGLE_MAPS_SERVER_API_KEY = defineSecret("GOOGLE_MAPS_SERVER_API_KEY");
 const YELP_API_KEY = defineSecret("YELP_API_KEY");
 const REMINDER_EMAIL_WEBHOOK_URL = defineSecret("REMINDER_EMAIL_WEBHOOK_URL");
 const REMINDER_SMS_WEBHOOK_URL = defineSecret("REMINDER_SMS_WEBHOOK_URL");
+const EMAIL_WEBHOOK_TOKEN = defineSecret("EMAIL_WEBHOOK_TOKEN");
+const SMTP_USER = defineSecret("SMTP_USER");
+const SMTP_PASS = defineSecret("SMTP_PASS");
+const SMTP_FROM = defineSecret("SMTP_FROM");
 const LYRICS_PIPELINE_V2_ENABLED_DEFAULT = String(process.env.LYRICS_PIPELINE_V2_ENABLED || "true")
   .trim()
   .toLowerCase() === "true";
@@ -77,7 +82,7 @@ const SECURITY_ALERT_WINDOW_MS = 15 * 60 * 1000;
 const youtubeSearchCache = new Map();
 const YOUTUBE_SEARCH_CACHE_TTL_MS = 30000;
 const YOUTUBE_SEARCH_CACHE_MAX_KEYS = 120;
-const SUPER_ADMIN_EMAIL_DEFAULT = "hello@beauross.com";
+const SUPER_ADMIN_EMAIL_DEFAULT = "hello@beauross.com,hello@beaurocks.app";
 
 const parseCsvEnvTokens = (value = "") =>
   String(value || "")
@@ -2000,6 +2005,9 @@ const MARKETING_PRIVATE_HOST_ACCESS_ENFORCED = String(process.env.MARKETING_PRIV
 const MARKETING_PRIVATE_INVITE_CODES = parseMarketingPrivateInviteCodes(
   process.env.MARKETING_PRIVATE_INVITE_CODES || process.env.MARKETING_PRIVATE_INVITE_CODE || ""
 );
+const SMTP_HOST = String(process.env.SMTP_HOST || "smtp.gmail.com").trim().slice(0, 180) || "smtp.gmail.com";
+const SMTP_PORT = Math.max(1, Number(process.env.SMTP_PORT || 465) || 465);
+const SMTP_SECURE = parseBooleanInput(process.env.SMTP_SECURE, SMTP_PORT === 465);
 const DIRECTORY_CLAIM_LISTING_TYPES = new Set(["host", "venue", "performer", "event", "room_session"]);
 const DIRECTORY_RSVP_STATUSES = new Set(["going", "interested", "not_going", "cancelled"]);
 const DIRECTORY_REMINDER_CHANNELS = new Set(["email", "sms"]);
@@ -8707,6 +8715,7 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
     if (hostApplicationRef) {
       const applicationData = hostApplicationSnap?.data?.() || {};
       const status = sanitizeHostApplicationStatus(applicationData.status || "", "pending");
+      const submissionCount = Math.max(0, Number(applicationData.submissionCount || 0) || 0);
       tx.set(hostApplicationRef, {
         uid: uid || "",
         email,
@@ -8718,6 +8727,8 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
         submittedAt: applicationData.submittedAt || now,
         createdAt: applicationData.createdAt || now,
         updatedAt: now,
+        lastSubmittedAt: now,
+        submissionCount: submissionCount + 1,
         lastUid: uid || "",
         lastIp: ip,
         userAgent,
@@ -8725,6 +8736,27 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
       }, { merge: true });
     }
   });
+
+  if (hostApplicationRef && email) {
+    const queueResult = await queueOutboundEmail(
+      buildEmailTemplatePayload("host_application_applicant_received", {
+        applicationId: hostApplicationRef.id,
+        targetEmail: email,
+        name,
+        linePosition,
+        isNewSignup,
+      }),
+      { source: "submit_marketing_waitlist" },
+    );
+    if (!queueResult.sent) {
+      console.error("Failed to queue host application applicant confirmation email", {
+        applicationId: hostApplicationRef.id,
+        email,
+        isNewSignup,
+        error: queueResult.responseText || "queue_failed",
+      });
+    }
+  }
 
   return {
     ok: true,
@@ -8739,7 +8771,7 @@ exports.submitMarketingWaitlist = onCall({ cors: true }, async (request) => {
 exports.notifyOnHostApplicationCreated = onDocumentCreated(
   {
     document: "host_access_applications/{applicationId}",
-    secrets: [REMINDER_EMAIL_WEBHOOK_URL],
+    retry: true,
   },
   async (event) => {
     const application = event.data?.data();
@@ -8751,17 +8783,41 @@ exports.notifyOnHostApplicationCreated = onDocumentCreated(
       application,
     });
 
-    await admin.firestore().collection("host_application_notifications").doc(`created_${applicationId || nowMs()}`).set({
+    await logHostApplicationNotification({
       applicationId,
-      status: hookResult.status || "unknown",
-      sent: !!hookResult.sent,
-      providerUrl: hookResult.url || "",
-      providerHttpStatus: Number(hookResult.httpStatus || 0),
-      providerResponse: safeDirectoryString(hookResult.responseText || "", 600),
-      createdAt: buildDirectoryNow(),
       eventType: "host_application_created",
-      recipients: Array.from(SUPER_ADMIN_EMAILS).filter(Boolean),
-    }, { merge: true });
+      hookResult,
+    });
+  }
+);
+
+exports.notifyOnHostApplicationResubmitted = onDocumentUpdated(
+  {
+    document: "host_access_applications/{applicationId}",
+    retry: true,
+  },
+  async (event) => {
+    const before = event.data?.before?.data() || null;
+    const after = event.data?.after?.data() || null;
+    if (!before || !after) return;
+
+    const beforeSubmissionCount = Math.max(0, Number(before.submissionCount || 0) || 0);
+    const afterSubmissionCount = Math.max(0, Number(after.submissionCount || 0) || 0);
+    if (afterSubmissionCount <= beforeSubmissionCount) return;
+
+    const applicationId = safeDirectoryString(event.params?.applicationId || "", 180);
+    const hookResult = await dispatchHostApplicationAlert({
+      applicationId,
+      application: after,
+      eventType: "host_application_resubmitted",
+    });
+
+    await logHostApplicationNotification({
+      applicationId,
+      eventType: "host_application_resubmitted",
+      hookResult,
+      suffix: String(afterSubmissionCount || ""),
+    });
   }
 );
 
@@ -8977,6 +9033,29 @@ exports.resolveHostApplication = onCall({ cors: true }, async (request) => {
     }));
   }
   await Promise.all(writes);
+  if (targetEmail) {
+    const templateName = action === "approve"
+      ? "host_application_applicant_approved"
+      : "host_application_applicant_rejected";
+    const decisionResult = await queueOutboundEmail(
+      buildEmailTemplatePayload(templateName, {
+        applicationId,
+        targetEmail,
+        name: appData.name || "",
+        notes,
+        reviewedAt: Date.now(),
+      }),
+      { source: "host_application_review" },
+    );
+    if (!decisionResult.sent) {
+      console.error("Failed to queue host application decision email", {
+        applicationId,
+        action,
+        targetEmail,
+        error: decisionResult.responseText || "queue_failed",
+      });
+    }
+  }
   return {
     ok: true,
     applicationId,
@@ -10157,6 +10236,17 @@ exports.setDirectoryReminderPreferences = onCall({ cors: true }, async (request)
   if (smsOptIn && !MARKETING_SMS_REMINDERS_ENABLED) {
     throw new HttpsError("failed-precondition", "SMS reminders are disabled.");
   }
+  let email = "";
+  if (emailOptIn) {
+    email = sanitizeOptionalWaitlistEmail(request.auth?.token?.email || "");
+    if (!email) {
+      const userRecord = await admin.auth().getUser(uid).catch(() => null);
+      email = sanitizeOptionalWaitlistEmail(userRecord?.email || "");
+    }
+    if (!email) {
+      throw new HttpsError("failed-precondition", "Signed-in account needs an email address for email reminders.");
+    }
+  }
   const phone = normalizeDirectoryPhone(request.data?.phone || "");
   if (smsOptIn && !phone) {
     throw new HttpsError("invalid-argument", "Valid phone is required for smsOptIn.");
@@ -10179,6 +10269,7 @@ exports.setDirectoryReminderPreferences = onCall({ cors: true }, async (request)
     targetId,
     emailOptIn,
     smsOptIn,
+    email: emailOptIn ? email : "",
     phone: smsOptIn ? phone : "",
     channels,
     status: "active",
@@ -10190,6 +10281,7 @@ exports.setDirectoryReminderPreferences = onCall({ cors: true }, async (request)
     docId,
     emailOptIn,
     smsOptIn,
+    email: emailOptIn ? email : "",
     phone: smsOptIn ? phone : "",
     channels,
   };
@@ -11053,8 +11145,452 @@ const dispatchDirectoryReminderHook = async ({ channel = "", payload = {} }) => 
       httpStatus: 0,
       responseText: safeDirectoryString(error?.message || "dispatch failed", 600),
       url,
+      };
+    }
+  };
+
+const normalizeEmailRecipientList = (input = [], maxItems = 12) => {
+  const list = Array.isArray(input) ? input : [input];
+  const unique = new Set();
+  for (const value of list) {
+    const safeEmail = sanitizeOptionalWaitlistEmail(value);
+    if (!safeEmail) continue;
+    unique.add(safeEmail);
+    if (unique.size >= maxItems) break;
+  }
+  return Array.from(unique);
+};
+
+const formatDirectoryEmailDateTime = (value = 0) => {
+  const ms = Number(value || 0);
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      dateStyle: "full",
+      timeStyle: "short",
+      timeZone: "America/Los_Angeles",
+    }).format(new Date(ms));
+  } catch {
+    return new Date(ms).toISOString();
+  }
+};
+
+const buildDirectoryReminderEmailSummary = ({
+  targetType = "",
+  title = "",
+  venueName = "",
+  hostName = "",
+  roomCode = "",
+  startsAtMs = 0,
+  slotId = "",
+} = {}) => {
+  const safeTargetType = normalizeDirectoryToken(targetType || "event", 30) || "event";
+  const safeTitle = safeDirectoryString(title || venueName || "Upcoming karaoke reminder", 180) || "Upcoming karaoke reminder";
+  const safeVenueName = safeDirectoryString(venueName || "", 180);
+  const safeHostName = safeDirectoryString(hostName || "", 180);
+  const safeRoomCode = safeDirectoryString(roomCode || "", 40);
+  const safeSlotId = normalizeDirectoryToken(slotId || "", 20);
+  const whenLabel = formatDirectoryEmailDateTime(startsAtMs);
+  const targetLabel = safeTargetType === "room_session"
+    ? "public room"
+    : safeTargetType === "venue"
+      ? "venue"
+      : "event";
+  const leadLabel = safeSlotId === "2h"
+    ? "Starting soon"
+    : safeSlotId === "24h"
+      ? "Coming up tomorrow"
+      : "Coming up";
+  const text = [
+    `${leadLabel}: ${safeTitle}`,
+    safeVenueName ? `Venue: ${safeVenueName}` : "",
+    safeHostName ? `Host: ${safeHostName}` : "",
+    safeRoomCode ? `Room code: ${safeRoomCode}` : "",
+    whenLabel ? `When: ${whenLabel}` : "",
+    `Type: ${targetLabel}`,
+  ].filter(Boolean).join("\n");
+  const html = `
+    <div style="font-size:18px;font-weight:700;color:#f8fafc;margin-bottom:18px">${escapeAlertHtml(safeTitle)}</div>
+    <div style="display:grid;gap:10px;margin-bottom:18px">
+      ${safeVenueName ? `<div><strong>Venue:</strong> ${escapeAlertHtml(safeVenueName)}</div>` : ""}
+      ${safeHostName ? `<div><strong>Host:</strong> ${escapeAlertHtml(safeHostName)}</div>` : ""}
+      ${safeRoomCode ? `<div><strong>Room code:</strong> ${escapeAlertHtml(safeRoomCode)}</div>` : ""}
+      ${whenLabel ? `<div><strong>When:</strong> ${escapeAlertHtml(whenLabel)}</div>` : ""}
+      <div><strong>Type:</strong> ${escapeAlertHtml(targetLabel)}</div>
+    </div>
+    <p style="margin:0;color:#c3c9da;font-size:16px;line-height:1.7">Keep your room moving. Open BeauRocks to check event details, queue flow, and live room activity.</p>
+  `;
+  return {
+    safeTitle,
+    whenLabel,
+    targetLabel,
+    leadLabel,
+    text,
+    html,
+  };
+};
+
+const buildEmailTemplatePayload = (templateName = "", data = {}) => {
+  const template = normalizeDirectoryToken(templateName || "", 80);
+  switch (template) {
+  case "host_application_applicant_received": {
+    const targetEmail = sanitizeOptionalWaitlistEmail(data.targetEmail || data.email || "");
+    const hostInfoUrl = normalizeDirectoryOptionalUrl(data.hostInfoUrl || "https://beaurocks.app/for-hosts") || "https://beaurocks.app/for-hosts";
+    const name = sanitizeWaitlistName(data.name || "") || "there";
+    const safePosition = Math.max(0, Number(data.linePosition || 0) || 0);
+    const isNewSignup = data.isNewSignup !== false;
+    const queueLabel = safePosition > 0 ? `#${safePosition}` : "active";
+    const intro = isNewSignup
+      ? "Your BeauRocks host access request is in line for review."
+      : "Your BeauRocks host access request is still in line for review.";
+    const text = [
+      `Hi ${name},`,
+      "",
+      intro,
+      safePosition > 0 ? `Queue position: ${queueLabel}` : "",
+      "We review host access requests by hand before approving dashboard access.",
+      "If approved, this email/account will be able to sign in on host.beaurocks.app and open Host Dashboard.",
+      "No further action is needed right now.",
+      `Host access info: ${hostInfoUrl}`,
+    ].filter(Boolean).join("\n");
+    const html = `
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">Hi ${escapeAlertHtml(name)},</p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">${escapeAlertHtml(intro)}</p>
+      ${safePosition > 0 ? `<p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Queue position:</strong> ${escapeAlertHtml(queueLabel)}</p>` : ""}
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">We review host access requests by hand before approving dashboard access.</p>
+      <p style="margin:0;color:#d6d9e5;font-size:16px;line-height:1.7">If approved, this email/account will be able to sign in on <strong>host.beaurocks.app</strong> and open Host Dashboard. No further action is needed right now.</p>
+    `;
+    return {
+      eventType: isNewSignup ? "host_application_applicant_received" : "host_application_applicant_reconfirmed",
+      to: [targetEmail],
+      subject: isNewSignup
+        ? "Your BeauRocks host request is in line"
+        : "Your BeauRocks host request is still in line",
+      text,
+      html,
+      eyebrow: "Host Access Request",
+      title: isNewSignup ? "You are in the host review line" : "Your host request is still in line",
+      preheader: safePosition > 0
+        ? `Your BeauRocks host request is queued at ${queueLabel}.`
+        : "Your BeauRocks host request is queued for review.",
+      ctaLabel: "View Host Access Info",
+      ctaUrl: hostInfoUrl,
+      applicationId: safeDirectoryString(data.applicationId || "", 180),
     };
   }
+  case "host_application_admin_alert": {
+    const applicationId = safeDirectoryString(data.applicationId || "", 180);
+    const name = sanitizeWaitlistName(data.name || "");
+    const email = sanitizeOptionalWaitlistEmail(data.email || "");
+    const uid = normalizeUidToken(data.uid || "");
+    const source = sanitizeWaitlistSource(data.source || "unknown");
+    const status = sanitizeHostApplicationStatus(data.status || "", "pending");
+    const linePosition = Math.max(0, Number(data.linePosition || 0) || 0);
+    const submittedAtMs = valueToMillis(data.submittedAtMs || data.submittedAt || data.createdAt) || Date.now();
+    const submittedAtIso = new Date(submittedAtMs).toISOString();
+    const adminUrl = normalizeDirectoryOptionalUrl(data.adminUrl || "https://beaurocks.app/admin/moderation") || "https://beaurocks.app/admin/moderation";
+    const safeEventType = safeDirectoryString(data.eventType || "host_application_created", 80) || "host_application_created";
+    const isResubmission = safeEventType === "host_application_resubmitted";
+    const headline = isResubmission ? "Host application resubmitted" : "New host application received";
+    const introLine = isResubmission
+      ? "A BeauRocks host application was submitted again."
+      : "New BeauRocks host application received.";
+    const summaryLabel = name || email || uid || applicationId || "Unknown applicant";
+    const text = [
+      introLine,
+      `Applicant: ${summaryLabel}`,
+      email ? `Email: ${email}` : "",
+      uid ? `UID: ${uid}` : "",
+      linePosition > 0 ? `Queue position: #${linePosition}` : "",
+      `Status: ${status}`,
+      `Source: ${source}`,
+      `Submitted: ${submittedAtIso}`,
+      `Review: ${adminUrl}`,
+    ].filter(Boolean).join("\n");
+    const html = `
+      <div style="font-size:18px;font-weight:700;color:#f9a8d4;margin-bottom:18px">${escapeAlertHtml(summaryLabel)}</div>
+      <div style="display:grid;gap:10px;margin-bottom:18px">
+        ${email ? `<div><strong>Email:</strong> ${escapeAlertHtml(email)}</div>` : ""}
+        ${uid ? `<div><strong>UID:</strong> ${escapeAlertHtml(uid)}</div>` : ""}
+        ${linePosition > 0 ? `<div><strong>Queue position:</strong> #${linePosition}</div>` : ""}
+        <div><strong>Status:</strong> ${escapeAlertHtml(status)}</div>
+        <div><strong>Source:</strong> ${escapeAlertHtml(source)}</div>
+        <div><strong>Submitted:</strong> ${escapeAlertHtml(submittedAtIso)}</div>
+      </div>
+      <p style="margin:0;color:#c3c9da;font-size:16px;line-height:1.7">Open the moderation queue to review and approve this host access request.</p>
+    `;
+    return {
+      eventType: safeEventType,
+      to: data.to || [],
+      subject: `${isResubmission ? "Host application resubmitted" : "New BeauRocks host application"}: ${summaryLabel}`,
+      text,
+      html,
+      eyebrow: "BeauRocks Host Access",
+      title: headline,
+      preheader: isResubmission
+        ? "A host application was submitted again and is ready for review."
+        : "A new host application is waiting in moderation.",
+      ctaLabel: "Open moderation",
+      ctaUrl: adminUrl,
+      applicationId,
+      adminUrl,
+    };
+  }
+  case "host_application_applicant_approved": {
+    const targetEmail = sanitizeOptionalWaitlistEmail(data.targetEmail || "");
+    const hostUrl = normalizeDirectoryOptionalUrl(data.hostUrl || "https://host.beaurocks.app/?mode=host") || "https://host.beaurocks.app/?mode=host";
+    const hostInfoUrl = normalizeDirectoryOptionalUrl(data.hostInfoUrl || "https://beaurocks.app/for-hosts") || "https://beaurocks.app/for-hosts";
+    const name = sanitizeWaitlistName(data.name || "") || "Host";
+    const notes = normalizeDirectoryTextBlock(data.notes || "", 500);
+    const reviewLabel = formatDirectoryEmailDateTime(valueToMillis(data.reviewedAtMs || data.reviewedAt || Date.now()) || Date.now());
+    const text = [
+      `Hi ${name},`,
+      "",
+      "Welcome to BEAUROCKS hosting. Your host access request has been approved.",
+      "You can now sign in to Host Dashboard, start a room, and run the full host / audience / TV flow.",
+      reviewLabel ? `Approved: ${reviewLabel}` : "",
+      notes ? `Admin notes: ${notes}` : "",
+      "",
+      "How testing works:",
+      "1. Sign in to Host Dashboard and start a room.",
+      "2. Open the public TV on a second screen and confirm the room code is visible.",
+      "3. Join from your phone as an audience member and test queue adds, reactions, selfies, vibe sync, and room controls.",
+      "4. Run at least one private test session before inviting a venue or a broader crowd.",
+      "",
+      "How monetization works:",
+      "BeauRocks is structured around recurring host access plans (Host Monthly / Host Annual) plus audience-side paid features where enabled.",
+      "For your testing window, the main goal is proving the room flow, TV experience, and repeat usage. Once you are close to live venue use, we can help map you onto the right paid setup.",
+      "",
+      "Suggested next steps:",
+      "- Run 1-2 private test nights with a second device for TV and at least one phone joining as a guest.",
+      "- Note any friction in room launch, join flow, queue management, or recap screens.",
+      "- Reply with your venue setup, devices, and what kind of host night you want to run so we can help shape the rollout.",
+      `Open Host Dashboard: ${hostUrl}`,
+      `Host access info: ${hostInfoUrl}`,
+      "Questions or feedback: reply to this email.",
+    ].filter(Boolean).join("\n");
+    const html = `
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">Hi ${escapeAlertHtml(name)},</p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Welcome to BEAUROCKS hosting.</strong> Your host access request has been approved, and you can now sign in to Host Dashboard, start a room, and run the full host / audience / TV flow.</p>
+      ${reviewLabel ? `<p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Approved:</strong> ${escapeAlertHtml(reviewLabel)}</p>` : ""}
+      ${notes ? `<p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Admin notes:</strong> ${escapeAlertHtml(notes)}</p>` : ""}
+      <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>How testing works</strong></p>
+      <ol style="margin:0 0 18px 22px;padding:0;color:#d6d9e5;font-size:16px;line-height:1.8">
+        <li style="margin:0 0 8px">Sign in to Host Dashboard and start a room.</li>
+        <li style="margin:0 0 8px">Open the public TV on a second screen and confirm the room code is visible.</li>
+        <li style="margin:0 0 8px">Join from your phone as an audience member and test queue adds, reactions, selfies, vibe sync, and room controls.</li>
+        <li style="margin:0">Run at least one private test session before inviting a venue or a broader crowd.</li>
+      </ol>
+      <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>How monetization works</strong></p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">BeauRocks is structured around recurring host access plans (<strong>Host Monthly</strong> / <strong>Host Annual</strong>) plus audience-side paid features where enabled. For your testing window, the main goal is proving the room flow, TV experience, and repeat usage. Once you are close to live venue use, we can help map you onto the right paid setup.</p>
+      <p style="margin:0 0 10px;color:#f8fafc;font-size:16px;line-height:1.7"><strong>Suggested next steps</strong></p>
+      <ul style="margin:0 0 18px 22px;padding:0;color:#d6d9e5;font-size:16px;line-height:1.8">
+        <li style="margin:0 0 8px">Run 1-2 private test nights with a second device for TV and at least one phone joining as a guest.</li>
+        <li style="margin:0 0 8px">Note any friction in room launch, join flow, queue management, or recap screens.</li>
+        <li style="margin:0">Reply with your venue setup, devices, and what kind of host night you want to run so we can help shape the rollout.</li>
+      </ul>
+      <p style="margin:0;color:#d6d9e5;font-size:16px;line-height:1.7">You can also review host access info here: <a href="${escapeAlertHtml(hostInfoUrl)}">${escapeAlertHtml(hostInfoUrl)}</a></p>
+    `;
+    return {
+      eventType: "host_application_applicant_approved",
+      to: [targetEmail],
+      subject: "Welcome to BEAUROCKS hosting",
+      text,
+      html,
+      eyebrow: "Host Access Approved",
+      title: "Your host account is live",
+      preheader: "You are approved for BeauRocks hosting and ready to test the full room flow.",
+      ctaLabel: "Open Host Dashboard",
+      ctaUrl: hostUrl,
+      applicationId: safeDirectoryString(data.applicationId || "", 180),
+    };
+  }
+  case "host_application_applicant_rejected": {
+    const targetEmail = sanitizeOptionalWaitlistEmail(data.targetEmail || "");
+    const infoUrl = normalizeDirectoryOptionalUrl(data.infoUrl || "https://beaurocks.app/for-hosts") || "https://beaurocks.app/for-hosts";
+    const name = sanitizeWaitlistName(data.name || "") || "there";
+    const notes = normalizeDirectoryTextBlock(data.notes || "", 500);
+    const text = [
+      `Hi ${name},`,
+      "",
+      "Thanks for applying for BeauRocks host access.",
+      "Your current application was not approved.",
+      notes ? `Admin notes: ${notes}` : "",
+      "You can review the host access information and apply again later if your setup changes.",
+      `Host access info: ${infoUrl}`,
+    ].filter(Boolean).join("\n");
+    const html = `
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">Hi ${escapeAlertHtml(name)},</p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">Thanks for applying for BeauRocks host access. Your current application was not approved.</p>
+      ${notes ? `<p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Admin notes:</strong> ${escapeAlertHtml(notes)}</p>` : ""}
+      <p style="margin:0;color:#d6d9e5;font-size:16px;line-height:1.7">You can review the host access information and apply again later if your setup changes.</p>
+    `;
+    return {
+      eventType: "host_application_applicant_rejected",
+      to: [targetEmail],
+      subject: "Update on your BeauRocks host application",
+      text,
+      html,
+      eyebrow: "Host Access Update",
+      title: "Your application is not approved yet",
+      preheader: "Here is the latest decision on your BeauRocks host access request.",
+      ctaLabel: "View Host Access Info",
+      ctaUrl: infoUrl,
+      applicationId: safeDirectoryString(data.applicationId || "", 180),
+    };
+  }
+  case "directory_reminder": {
+    const recipientEmail = sanitizeOptionalWaitlistEmail(data.to || data.email || "");
+    const targetType = normalizeDirectoryToken(data.targetType || "event", 30) || "event";
+    const summary = buildDirectoryReminderEmailSummary({
+      targetType,
+      title: data.title,
+      venueName: data.venueName,
+      hostName: data.hostName,
+      roomCode: data.roomCode,
+      startsAtMs: data.startsAtMs,
+      slotId: data.slotId,
+    });
+    const targetUrl = normalizeDirectoryOptionalUrl(data.targetUrl || EMAIL_BRAND_HOME_URL) || EMAIL_BRAND_HOME_URL;
+    return {
+      eventType: `directory_reminder_${targetType}`,
+      to: [recipientEmail],
+      subject: `${summary.leadLabel}: ${summary.safeTitle}`,
+      text: summary.text,
+      html: summary.html,
+      eyebrow: "BeauRocks Reminder",
+      title: summary.leadLabel,
+      preheader: summary.whenLabel
+        ? `${summary.safeTitle} starts ${summary.whenLabel}.`
+        : `${summary.safeTitle} is coming up soon.`,
+      ctaLabel: "Open BeauRocks",
+      ctaUrl: targetUrl,
+    };
+  }
+  default:
+    throw new HttpsError("invalid-argument", `Unknown email template: ${templateName}`);
+  }
+};
+
+const buildOutboundEmailPayload = (payload = {}) => {
+  const to = normalizeEmailRecipientList(payload.to);
+  const subject = safeDirectoryString(payload.subject || "BeauRocks notification", 220);
+  const text = String(payload.text || "").trim().slice(0, 40000);
+  const rawHtml = String(payload.html || "").trim().slice(0, 120000);
+  const replyTo = sanitizeOptionalWaitlistEmail(payload.replyTo || "");
+  const eventType = normalizeDirectoryToken(payload.eventType || "generic_email", 80) || "generic_email";
+  const eyebrow = safeDirectoryString(payload.eyebrow || "BeauRocks", 120) || "BeauRocks";
+  const title = safeDirectoryString(payload.title || subject || "BeauRocks notification", 220) || "BeauRocks notification";
+  const preheader = safeDirectoryString(payload.preheader || "", 220);
+  const ctaLabel = safeDirectoryString(payload.ctaLabel || "", 80);
+  const ctaUrl = normalizeDirectoryOptionalUrl(payload.ctaUrl || "");
+  if (!to.length) {
+    throw new HttpsError("invalid-argument", "At least one email recipient is required.");
+  }
+  if (!subject) {
+    throw new HttpsError("invalid-argument", "Email subject is required.");
+  }
+  if (!text && !rawHtml) {
+    throw new HttpsError("invalid-argument", "Email text or html body is required.");
+  }
+  const html = buildBeauRocksEmailHtml({
+    subject,
+    eyebrow,
+    title,
+    preheader,
+    bodyHtml: rawHtml,
+    bodyText: text,
+    ctaLabel,
+    ctaUrl,
+    eventType,
+  }).slice(0, 120000);
+  return {
+    channel: "email",
+    to,
+    subject,
+    text,
+    html,
+    replyTo,
+    eventType,
+    meta: {
+      adminUrl: normalizeDirectoryOptionalUrl(payload.adminUrl || ""),
+      applicationId: safeDirectoryString(payload.applicationId || "", 180),
+    },
+  };
+};
+
+const queueOutboundEmail = async (payload = {}, extra = {}) => {
+  try {
+    const normalizedPayload = buildOutboundEmailPayload(payload);
+    const messageRef = await admin.firestore().collection("outboundMessages").add({
+      ...normalizedPayload,
+      status: "queued",
+      provider: "smtp",
+      attempts: 0,
+      lastError: "",
+      providerMessageId: "",
+      source: safeDirectoryString(extra.source || payload.source || "internal", 120) || "internal",
+      createdAt: buildDirectoryNow(),
+      updatedAt: buildDirectoryNow(),
+      ...extra,
+    });
+    return {
+      sent: true,
+      status: "queued",
+      httpStatus: 202,
+      responseText: `queued:${messageRef.id}`,
+      url: `internal://outboundMessages/${messageRef.id}`,
+      messageId: messageRef.id,
+    };
+  } catch (error) {
+    return {
+      sent: false,
+      status: "queue_failed",
+      httpStatus: 0,
+      responseText: safeDirectoryString(error?.message || "Could not queue outbound email.", 600),
+      url: "",
+      messageId: "",
+    };
+  }
+};
+
+const getEmailWebhookToken = () => String(EMAIL_WEBHOOK_TOKEN.value() || "").trim();
+
+const isUnsetEmailSecretValue = (value = "") => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return true;
+  return normalized.startsWith("__unset__") || normalized.endsWith("@example.invalid");
+};
+
+const resolveSmtpConfig = () => {
+  const user = String(SMTP_USER.value() || "").trim();
+  const pass = String(SMTP_PASS.value() || "").trim();
+  const from = String(SMTP_FROM.value() || "").trim() || user;
+  if (
+    isUnsetEmailSecretValue(user) ||
+    isUnsetEmailSecretValue(pass) ||
+    isUnsetEmailSecretValue(from)
+  ) {
+    return null;
+  }
+  return {
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: { user, pass },
+    from,
+  };
+};
+
+const buildMailTransport = () => {
+  const config = resolveSmtpConfig();
+  if (!config) return null;
+  return nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: config.auth,
+  });
 };
 
 const escapeAlertHtml = (value = "") =>
@@ -11065,7 +11601,154 @@ const escapeAlertHtml = (value = "") =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const dispatchHostApplicationAlert = async ({ applicationId = "", application = {} } = {}) => {
+const EMAIL_BRAND_HOME_URL = "https://beaurocks.app";
+const EMAIL_BRAND_WORDMARK = "BeauRocks";
+const EMAIL_BRAND_LOGO_URL = `${EMAIL_BRAND_HOME_URL}/images/logo-library/beaurocks-logo-neon%20trasnparent.png`;
+const EMAIL_BRAND_LINK_COLOR = "#7dd3fc";
+const EMAIL_BRAND_FONT_DISPLAY = "\"Bebas Neue\", \"Arial Narrow\", Impact, sans-serif";
+const EMAIL_BRAND_FONT_UI = "\"Plus Jakarta Sans\", \"Segoe UI\", Arial, sans-serif";
+
+const autoLinkPlainText = (value = "") =>
+  String(value || "").replace(
+    /(https?:\/\/[^\s<]+)/g,
+    (match) => `<a href="${match}" style="color:${EMAIL_BRAND_LINK_COLOR};text-decoration:none;border-bottom:1px solid rgba(125,211,252,0.45)">${escapeAlertHtml(match)}</a>`,
+  );
+
+const applyEmailLinkStyling = (value = "") =>
+  String(value || "").replace(
+    /<a\b([^>]*)>/gi,
+    (_match, attrs = "") => {
+      const cleanedAttrs = String(attrs || "").replace(/\sstyle=(['"]).*?\1/gi, "");
+      return `<a${cleanedAttrs} style="color:${EMAIL_BRAND_LINK_COLOR};text-decoration:none;border-bottom:1px solid rgba(125,211,252,0.45)">`;
+    },
+  );
+
+const convertEmailTextToHtml = (value = "") =>
+  String(value || "")
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) =>
+      `<p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">${autoLinkPlainText(escapeAlertHtml(block)).replace(/\n/g, "<br />")}</p>`,
+    )
+    .join("");
+
+const buildBeauRocksEmailHtml = ({
+  subject = "",
+  eyebrow = "",
+  title = "",
+  preheader = "",
+  bodyHtml = "",
+  bodyText = "",
+  ctaLabel = "",
+  ctaUrl = "",
+  eventType = "",
+} = {}) => {
+  const safeSubject = safeDirectoryString(subject || "BeauRocks notification", 220) || "BeauRocks notification";
+  const safeEyebrow = safeDirectoryString(eyebrow || "BeauRocks", 120) || "BeauRocks";
+  const safeTitle = safeDirectoryString(title || safeSubject, 220) || safeSubject;
+  const safePreheader = safeDirectoryString(preheader || "", 220);
+  const safeEventType = normalizeDirectoryToken(eventType || "generic_email", 80) || "generic_email";
+  const safeCtaLabel = safeDirectoryString(ctaLabel || "", 80);
+  const safeCtaUrl = normalizeDirectoryOptionalUrl(ctaUrl || "");
+  const innerHtml = applyEmailLinkStyling(String(bodyHtml || "").trim() || convertEmailTextToHtml(bodyText));
+  const preheaderText = safePreheader || safeTitle;
+  const accentLabel = safeEventType.replace(/_/g, " ");
+  return `
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>${escapeAlertHtml(safeSubject)}</title>
+      </head>
+      <body style="margin:0;padding:0;background:#070a14;font-family:${EMAIL_BRAND_FONT_UI};color:#f8fafc">
+        <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${escapeAlertHtml(preheaderText)}</div>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:
+          radial-gradient(circle at top, rgba(236,72,153,0.22), transparent 36%),
+          radial-gradient(circle at 20% 20%, rgba(34,211,238,0.18), transparent 28%),
+          linear-gradient(180deg,#080b16 0%,#0b1020 55%,#060810 100%);
+          padding:32px 14px;">
+          <tr>
+            <td align="center">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px">
+                <tr>
+                  <td style="padding:0 0 18px 0">
+                    <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
+                      <tr>
+                        <td style="vertical-align:middle;padding-right:14px">
+                          <img src="${EMAIL_BRAND_LOGO_URL}" alt="${EMAIL_BRAND_WORDMARK}" width="76" style="display:block;width:76px;height:auto;border:0;outline:none;text-decoration:none" />
+                        </td>
+                        <td style="vertical-align:middle">
+                          <div style="color:#fff6e9;font-family:${EMAIL_BRAND_FONT_DISPLAY};font-size:34px;line-height:0.92;letter-spacing:0.05em;text-transform:uppercase">${EMAIL_BRAND_WORDMARK}</div>
+                          <div style="color:#97a1c0;font-family:${EMAIL_BRAND_FONT_UI};font-size:13px;letter-spacing:0.14em;text-transform:uppercase;margin-top:7px">Modern karaoke for loud rooms and good nights</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="border:1px solid rgba(103,232,249,0.20);border-radius:24px;background:rgba(10,14,28,0.92);box-shadow:0 20px 60px rgba(0,0,0,0.35);overflow:hidden">
+                    <div style="height:6px;background:linear-gradient(90deg,#22d3ee 0%,#f59e0b 40%,#ec4899 100%)"></div>
+                    <div style="padding:28px 28px 24px">
+                      <div style="color:#67e8f9;font-family:${EMAIL_BRAND_FONT_UI};font-size:12px;font-weight:800;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:16px">${escapeAlertHtml(safeEyebrow)}</div>
+                      <h1 style="margin:0 0 12px 0;color:#ffffff;font-family:${EMAIL_BRAND_FONT_DISPLAY};font-size:48px;line-height:0.94;font-weight:400;letter-spacing:0.03em;text-transform:uppercase">${escapeAlertHtml(safeTitle)}</h1>
+                      ${safePreheader ? `<p style="margin:0 0 22px 0;color:#c3c9da;font-family:${EMAIL_BRAND_FONT_UI};font-size:17px;line-height:1.65">${escapeAlertHtml(safePreheader)}</p>` : ""}
+                      <div style="color:#d6d9e5;font-family:${EMAIL_BRAND_FONT_UI};font-size:16px;line-height:1.7">${innerHtml}</div>
+                      ${safeCtaLabel && safeCtaUrl ? `
+                        <div style="margin-top:24px">
+                          <a href="${safeCtaUrl}" style="display:inline-block;padding:13px 20px;border-radius:999px;background:linear-gradient(90deg,#22d3ee,#ec4899);color:#050816;text-decoration:none;font-family:${EMAIL_BRAND_FONT_UI};font-weight:800;letter-spacing:0.08em;text-transform:uppercase;font-size:12px">${escapeAlertHtml(safeCtaLabel)}</a>
+                        </div>
+                      ` : ""}
+                    </div>
+                    <div style="border-top:1px solid rgba(151,161,192,0.16);padding:16px 28px 22px;color:#8f98b0;font-family:${EMAIL_BRAND_FONT_UI};font-size:12px;line-height:1.6">
+                      <div>${escapeAlertHtml(EMAIL_BRAND_WORDMARK)} notifications</div>
+                      <div style="margin-top:4px">${escapeAlertHtml(accentLabel)}</div>
+                      <div style="margin-top:10px"><a href="${EMAIL_BRAND_HOME_URL}" style="color:${EMAIL_BRAND_LINK_COLOR};text-decoration:none;border-bottom:1px solid rgba(125,211,252,0.45)">${EMAIL_BRAND_HOME_URL}</a></div>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `;
+};
+
+const isHostApplicationAdminAlertEventType = (value = "") =>
+  ["host_application_created", "host_application_resubmitted"].includes(
+    normalizeDirectoryToken(value || "", 80) || "",
+  );
+
+const logHostApplicationNotification = async ({
+  applicationId = "",
+  eventType = "",
+  hookResult = {},
+  suffix = "",
+} = {}) => {
+  const safeApplicationId = safeDirectoryString(applicationId || "", 180);
+  const safeEventType = safeDirectoryString(eventType || "host_application_created", 80) || "host_application_created";
+  const safeSuffix = safeDirectoryString(suffix || "", 80);
+  const docId = `${safeEventType}_${safeApplicationId || nowMs()}${safeSuffix ? `_${safeSuffix}` : ""}`;
+  await admin.firestore().collection("host_application_notifications").doc(docId).set({
+    applicationId: safeApplicationId,
+    status: hookResult.status || "unknown",
+    sent: !!hookResult.sent,
+    providerUrl: hookResult.url || "",
+    providerHttpStatus: Number(hookResult.httpStatus || 0),
+    providerResponse: safeDirectoryString(hookResult.responseText || "", 600),
+    outboundMessageId: safeDirectoryString(hookResult.messageId || "", 180),
+    deliveryStatus: hookResult.status || "unknown",
+    deliveryUpdatedAt: buildDirectoryNow(),
+    createdAt: buildDirectoryNow(),
+    eventType: safeEventType,
+    recipients: Array.from(SUPER_ADMIN_EMAILS).filter(Boolean),
+  }, { merge: true });
+};
+
+const dispatchHostApplicationAlert = async ({ applicationId = "", application = {}, eventType = "host_application_created" } = {}) => {
   const recipients = Array.from(SUPER_ADMIN_EMAILS).filter(Boolean);
   if (!recipients.length) {
     return {
@@ -11076,72 +11759,181 @@ const dispatchHostApplicationAlert = async ({ applicationId = "", application = 
       url: "",
     };
   }
-
-  const safeApplicationId = safeDirectoryString(applicationId || "", 180);
-  const name = sanitizeWaitlistName(application?.name || "");
-  const email = sanitizeOptionalWaitlistEmail(application?.email || "");
-  const uid = normalizeUidToken(application?.uid || "");
-  const source = sanitizeWaitlistSource(application?.source || "unknown");
-  const status = sanitizeHostApplicationStatus(application?.status || "", "pending");
-  const linePosition = Math.max(0, Number(application?.linePosition || 0) || 0);
-  const submittedAtMs = valueToMillis(application?.submittedAt || application?.createdAt) || Date.now();
-  const submittedAtIso = new Date(submittedAtMs).toISOString();
-  const adminUrl = "https://beaurocks.app/admin/moderation";
-
-  const summaryLabel = name || email || uid || safeApplicationId || "Unknown applicant";
-  const text = [
-    "New BeauRocks host application received.",
-    `Applicant: ${summaryLabel}`,
-    email ? `Email: ${email}` : "",
-    uid ? `UID: ${uid}` : "",
-    linePosition > 0 ? `Queue position: #${linePosition}` : "",
-    `Status: ${status}`,
-    `Source: ${source}`,
-    `Submitted: ${submittedAtIso}`,
-    `Review: ${adminUrl}`,
-  ].filter(Boolean).join("\n");
-
-  const html = `
-    <div style="font-family:Arial,sans-serif;background:#0b1020;color:#f4f4f5;padding:24px">
-      <div style="max-width:640px;margin:0 auto;background:#12182a;border:1px solid rgba(103,232,249,0.22);border-radius:18px;padding:24px">
-        <div style="font-size:12px;letter-spacing:0.28em;text-transform:uppercase;color:#67e8f9;margin-bottom:12px">BeauRocks Host Access</div>
-        <h1 style="font-size:28px;line-height:1.1;margin:0 0 16px;color:#ffffff">New host application received</h1>
-        <div style="font-size:18px;font-weight:700;color:#f9a8d4;margin-bottom:16px">${escapeAlertHtml(summaryLabel)}</div>
-        <div style="display:grid;gap:10px;margin-bottom:20px">
-          ${email ? `<div><strong>Email:</strong> ${escapeAlertHtml(email)}</div>` : ""}
-          ${uid ? `<div><strong>UID:</strong> ${escapeAlertHtml(uid)}</div>` : ""}
-          ${linePosition > 0 ? `<div><strong>Queue position:</strong> #${linePosition}</div>` : ""}
-          <div><strong>Status:</strong> ${escapeAlertHtml(status)}</div>
-          <div><strong>Source:</strong> ${escapeAlertHtml(source)}</div>
-          <div><strong>Submitted:</strong> ${escapeAlertHtml(submittedAtIso)}</div>
-        </div>
-        <a href="${adminUrl}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:linear-gradient(90deg,#22d3ee,#ec4899);color:#050816;text-decoration:none;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">Open moderation</a>
-      </div>
-    </div>
-  `;
-
-  return dispatchDirectoryReminderHook({
-    channel: "email",
-    payload: {
-      eventType: "host_application_created",
+  return queueOutboundEmail(
+    buildEmailTemplatePayload("host_application_admin_alert", {
+      eventType,
       to: recipients,
-      subject: `New BeauRocks host application: ${summaryLabel}`,
-      text,
-      html,
-      applicationId: safeApplicationId,
-      application: {
-        uid,
-        email,
-        name,
-        source,
-        status,
-        linePosition,
-        submittedAtMs,
-      },
-      adminUrl,
-    },
-  });
+      applicationId,
+      name: application?.name || "",
+      email: application?.email || "",
+      uid: application?.uid || "",
+      source: application?.source || "unknown",
+      status: application?.status || "pending",
+      linePosition: application?.linePosition || 0,
+      submittedAtMs: application?.lastSubmittedAt || application?.submittedAt || application?.createdAt || Date.now(),
+      adminUrl: "https://beaurocks.app/admin/moderation",
+    }),
+    { source: "host_application_alert" },
+  );
 };
+
+exports.emailReminderWebhook = onRequest(
+  {
+    cors: true,
+    secrets: [EMAIL_WEBHOOK_TOKEN],
+  },
+  async (request, response) => {
+    if (request.method !== "POST") {
+      response.status(405).json({ ok: false, error: "method_not_allowed" });
+      return;
+    }
+
+    const expectedToken = getEmailWebhookToken();
+    const providedToken = String(request.query?.token || request.get("x-webhook-token") || "").trim();
+    if (expectedToken && providedToken !== expectedToken) {
+      response.status(403).json({ ok: false, error: "invalid_token" });
+      return;
+    }
+
+    try {
+      const queued = await queueOutboundEmail(
+        request.body && typeof request.body === "object" ? request.body : {},
+        { source: "email_webhook" },
+      );
+      if (!queued.sent) {
+        response.status(400).json({
+          ok: false,
+          error: safeDirectoryString(queued.responseText || "Could not queue outbound email.", 240),
+        });
+        return;
+      }
+      response.status(202).json({ ok: true, messageId: queued.messageId });
+    } catch (error) {
+      const code = String(error?.code || "").toLowerCase();
+      const status = code === "invalid-argument" ? 400 : 500;
+      response.status(status).json({
+        ok: false,
+        error: safeDirectoryString(error?.message || "Could not queue outbound email.", 240),
+      });
+    }
+  }
+);
+
+exports.syncHostApplicationNotificationDelivery = onDocumentUpdated(
+  {
+    document: "outboundMessages/{messageId}",
+    retry: true,
+  },
+  async (event) => {
+    const before = event.data?.before?.data?.() || null;
+    const after = event.data?.after?.data?.() || null;
+    if (!after) return;
+    const previousStatus = String(before?.status || "").trim();
+    const nextStatus = String(after.status || "").trim();
+    if (!nextStatus || previousStatus === nextStatus) return;
+    const eventType = normalizeDirectoryToken(after.eventType || "", 80) || "";
+    if (!isHostApplicationAdminAlertEventType(eventType)) return;
+    const applicationId = safeDirectoryString(after?.meta?.applicationId || "", 180);
+    if (!applicationId) return;
+    const notificationId = `${eventType}_${applicationId}`;
+    await admin.firestore().collection("host_application_notifications").doc(notificationId).set({
+      outboundMessageId: safeDirectoryString(event.params?.messageId || "", 180),
+      deliveryStatus: nextStatus,
+      deliveryUpdatedAt: buildDirectoryNow(),
+      providerMessageId: safeDirectoryString(after.providerMessageId || "", 320),
+      provider: safeDirectoryString(after.provider || "", 40),
+      lastError: safeDirectoryString(after.lastError || "", 600),
+      subject: safeDirectoryString(after.subject || "", 220),
+      recipients: normalizeEmailRecipientList(after.to || []),
+      sent: nextStatus === "sent",
+    }, { merge: true });
+  },
+);
+
+exports.sendOutboundEmail = onDocumentCreated(
+  {
+    document: "outboundMessages/{messageId}",
+    secrets: [SMTP_USER, SMTP_PASS, SMTP_FROM],
+  },
+  async (event) => {
+    const message = event.data?.data();
+    if (!message) return;
+
+    const messageId = safeDirectoryString(event.params?.messageId || "", 180);
+    const messageRef = admin.firestore().collection("outboundMessages").doc(messageId);
+    const channel = normalizeDirectoryToken(message.channel || "email", 20);
+    if (channel !== "email") return;
+
+    const smtpConfig = resolveSmtpConfig();
+    if (!smtpConfig) {
+      await messageRef.set({
+        status: "failed_config",
+        updatedAt: buildDirectoryNow(),
+        lastError: "SMTP secrets are not configured.",
+        attempts: admin.firestore.FieldValue.increment(1),
+      }, { merge: true });
+      return;
+    }
+
+    const transport = buildMailTransport();
+    if (!transport) {
+      await messageRef.set({
+        status: "failed_config",
+        updatedAt: buildDirectoryNow(),
+        lastError: "SMTP transport could not be created.",
+        attempts: admin.firestore.FieldValue.increment(1),
+      }, { merge: true });
+      return;
+    }
+
+    const to = normalizeEmailRecipientList(message.to);
+    const subject = safeDirectoryString(message.subject || "", 220);
+    const text = String(message.text || "").trim().slice(0, 40000);
+    const html = String(message.html || "").trim().slice(0, 120000);
+    const replyTo = sanitizeOptionalWaitlistEmail(message.replyTo || "");
+    if (!to.length || !subject || (!text && !html)) {
+      await messageRef.set({
+        status: "failed_invalid",
+        updatedAt: buildDirectoryNow(),
+        lastError: "Outbound email payload is missing to/subject/body.",
+        attempts: admin.firestore.FieldValue.increment(1),
+      }, { merge: true });
+      return;
+    }
+
+    await messageRef.set({
+      status: "sending",
+      updatedAt: buildDirectoryNow(),
+    }, { merge: true });
+
+    try {
+      const info = await transport.sendMail({
+        from: smtpConfig.from,
+        to,
+        subject,
+        text: text || undefined,
+        html: html || undefined,
+        replyTo: replyTo || undefined,
+      });
+
+      await messageRef.set({
+        status: "sent",
+        updatedAt: buildDirectoryNow(),
+        sentAt: buildDirectoryNow(),
+        attempts: admin.firestore.FieldValue.increment(1),
+        providerMessageId: safeDirectoryString(info?.messageId || "", 240),
+        lastError: "",
+      }, { merge: true });
+    } catch (error) {
+      await messageRef.set({
+        status: "failed",
+        updatedAt: buildDirectoryNow(),
+        attempts: admin.firestore.FieldValue.increment(1),
+        lastError: safeDirectoryString(error?.message || "SMTP send failed.", 1000),
+      }, { merge: true });
+    }
+  }
+);
 
 exports.dispatchDirectoryReminders = onSchedule(
   {
@@ -11149,7 +11941,7 @@ exports.dispatchDirectoryReminders = onSchedule(
     timeZone: "UTC",
     timeoutSeconds: 120,
     memory: "512MiB",
-    secrets: [REMINDER_EMAIL_WEBHOOK_URL, REMINDER_SMS_WEBHOOK_URL],
+    secrets: [REMINDER_SMS_WEBHOOK_URL],
   },
   async () => {
     if (!MARKETING_RSVP_ENABLED) return;
@@ -11170,6 +11962,7 @@ exports.dispatchDirectoryReminders = onSchedule(
       failed: 0,
       providerNotConfigured: 0,
     };
+    const reminderEmailCache = new Map();
 
     for (const reminderDoc of remindersSnap.docs) {
       const reminder = reminderDoc.data() || {};
@@ -11251,7 +12044,51 @@ exports.dispatchDirectoryReminders = onSchedule(
           phone: channel === "sms" ? normalizeDirectoryPhone(reminder.phone || "") : "",
           requestedAtMs: nowMsValue,
         };
-        const hookResult = await dispatchDirectoryReminderHook({ channel, payload });
+        let hookResult = null;
+        if (channel === "email") {
+          let recipientEmail = sanitizeOptionalWaitlistEmail(reminder.email || "");
+          if (!recipientEmail) {
+            if (reminderEmailCache.has(uid)) {
+              recipientEmail = reminderEmailCache.get(uid) || "";
+            } else {
+              const userRecord = await admin.auth().getUser(uid).catch(() => null);
+              recipientEmail = sanitizeOptionalWaitlistEmail(userRecord?.email || "");
+              reminderEmailCache.set(uid, recipientEmail || "");
+            }
+          }
+          if (!recipientEmail) {
+            hookResult = {
+              sent: false,
+              status: "missing_email",
+              httpStatus: 0,
+              responseText: "Reminder email recipient is missing.",
+              url: "",
+            };
+          } else {
+            hookResult = await queueOutboundEmail(
+              buildEmailTemplatePayload("directory_reminder", {
+                to: recipientEmail,
+                targetType,
+                title: payload.title,
+                venueName: payload.venueName,
+                hostName: payload.hostName,
+                roomCode: payload.roomCode,
+                startsAtMs,
+                slotId: slot.id,
+                targetUrl: EMAIL_BRAND_HOME_URL,
+              }),
+              { source: "directory_reminder_scheduler" },
+            );
+            if (recipientEmail !== sanitizeOptionalWaitlistEmail(reminder.email || "")) {
+              await reminderDoc.ref.set({
+                email: recipientEmail,
+                updatedAt: buildDirectoryNow(),
+              }, { merge: true });
+            }
+          }
+        } else {
+          hookResult = await dispatchDirectoryReminderHook({ channel, payload });
+        }
         if (hookResult.sent) counters.sent += 1;
         else if (hookResult.status === "provider_not_configured") counters.providerNotConfigured += 1;
         else counters.failed += 1;
