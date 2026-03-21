@@ -10,6 +10,7 @@ const navItem = (id, label) => ({ id, label });
 const cloneItems = (items = []) => items.map((item) => ({ ...item }));
 
 export const MARKETING_CANONICAL_ROUTE_MAP = Object.freeze({
+  [MARKETING_ROUTE_PAGES.forFans]: "/",
   [MARKETING_ROUTE_PAGES.forHosts]: "/for-hosts",
   [MARKETING_ROUTE_PAGES.hostAccess]: "/host-access",
   [MARKETING_ROUTE_PAGES.demo]: "/demo",
@@ -19,7 +20,6 @@ export const MARKETING_CANONICAL_ROUTE_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.join]: "/join",
   [MARKETING_ROUTE_PAGES.forVenues]: "/for-venues",
   [MARKETING_ROUTE_PAGES.forPerformers]: "/for-performers",
-  [MARKETING_ROUTE_PAGES.forFans]: "/for-fans",
   [MARKETING_ROUTE_PAGES.venue]: "/venues/:id",
   [MARKETING_ROUTE_PAGES.event]: "/events/:id",
   [MARKETING_ROUTE_PAGES.host]: "/hosts/:id",
@@ -157,26 +157,24 @@ export const MARKETING_ROUTE_OWNERSHIP = Object.freeze({
 
 export const MARKETING_NAV_CONFIG = Object.freeze({
   publicPrimary: Object.freeze([
-    navItem(MARKETING_ROUTE_PAGES.forFans, "For Fans"),
-    navItem(MARKETING_ROUTE_PAGES.forHosts, "For Hosts"),
-    navItem(MARKETING_ROUTE_PAGES.forVenues, "For Venues"),
+    navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
     navItem(MARKETING_ROUTE_PAGES.demo, "Demo"),
+    navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
   publicSecondary: Object.freeze([
-    navItem(MARKETING_ROUTE_PAGES.forPerformers, "For Performers"),
-    navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
-    navItem(MARKETING_ROUTE_PAGES.join, "Join"),
-  ]),
-  homePrimary: Object.freeze([
-    navItem(MARKETING_ROUTE_PAGES.forFans, "For Fans"),
     navItem(MARKETING_ROUTE_PAGES.forHosts, "For Hosts"),
     navItem(MARKETING_ROUTE_PAGES.forVenues, "For Venues"),
+    navItem(MARKETING_ROUTE_PAGES.forPerformers, "For Performers"),
+  ]),
+  homePrimary: Object.freeze([
+    navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
     navItem(MARKETING_ROUTE_PAGES.demo, "Demo"),
+    navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
   homeSecondary: Object.freeze([
+    navItem(MARKETING_ROUTE_PAGES.forHosts, "For Hosts"),
+    navItem(MARKETING_ROUTE_PAGES.forVenues, "For Venues"),
     navItem(MARKETING_ROUTE_PAGES.forPerformers, "For Performers"),
-    navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
-    navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
   authenticatedSecondary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.profile, "Dashboard"),
@@ -227,7 +225,7 @@ export const getMarketingNavModel = ({
 };
 
 export const MARKETING_ZERO_BREAK_REDIRECT_PLAN = Object.freeze([
-  Object.freeze({ from: "/marketing?page=for_fans", to: "/for-fans", strategy: "alias_keep_live" }),
+  Object.freeze({ from: "/marketing?page=for_fans", to: "/", strategy: "alias_keep_live" }),
   Object.freeze({ from: "/marketing?page=for_hosts", to: "/for-hosts", strategy: "alias_keep_live" }),
   Object.freeze({ from: "/marketing?page=discover", to: "/discover", strategy: "alias_keep_live" }),
   Object.freeze({ from: "/marketing?page=join", to: "/join", strategy: "alias_keep_live" }),

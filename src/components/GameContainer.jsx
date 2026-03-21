@@ -13,17 +13,17 @@ const GAME_RULES = {
     vocal_challenge: {
         title: 'Vocal Challenge',
         lines: [
-            'Follow the melody notes as they change.',
-            'Hold each pitch to build your streak.',
-            'Smooth vocals = max points.'
+            'Follow the glowing melody note as it shifts.',
+            'Close matches still score, perfect holds build streak.',
+            'Host can trigger Harmony Boost to widen the window.'
         ]
     },
     riding_scales: {
         title: 'Riding Scales',
         lines: [
-            'Listen to the sequence, then repeat it.',
-            'The pattern grows each round.',
-            'Three strikes and the round ends.'
+            'Listen to the sequence, then repeat it note by note.',
+            'The pattern grows each round, but misses no longer hard-reset immediately.',
+            'Host can trigger Scale Save to replay the pattern and protect a miss.'
         ]
     },
     team_pong: {

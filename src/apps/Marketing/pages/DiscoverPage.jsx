@@ -1254,6 +1254,9 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref }) =>
         disableAutoPan: true,
         maxWidth: 240,
       });
+      selectedInfoWindowRef.current.addListener("closeclick", () => {
+        setSelectedKey("");
+      });
     }
     const infoWindow = selectedInfoWindowRef.current;
     if (!selectedListingInMap) {

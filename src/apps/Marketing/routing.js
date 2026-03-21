@@ -272,7 +272,7 @@ export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.discover, id =
   if (page === MARKETING_ROUTE_PAGES.forHosts) return applyBasePath("/for-hosts");
   if (page === MARKETING_ROUTE_PAGES.forVenues) return applyBasePath("/for-venues");
   if (page === MARKETING_ROUTE_PAGES.forPerformers) return applyBasePath("/for-performers");
-  if (page === MARKETING_ROUTE_PAGES.forFans) return applyBasePath("/for-fans");
+  if (page === MARKETING_ROUTE_PAGES.forFans) return applyBasePath("/");
   if (page === MARKETING_ROUTE_PAGES.host && safeId) return applyBasePath(`/hosts/${encodeURIComponent(safeId)}`);
   if (page === MARKETING_ROUTE_PAGES.venue && safeId) return applyBasePath(`/venues/${encodeURIComponent(safeId)}`);
   if (page === MARKETING_ROUTE_PAGES.event && safeId) return applyBasePath(`/events/${encodeURIComponent(safeId)}`);

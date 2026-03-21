@@ -1255,6 +1255,11 @@ const HOST_ROOM_DOTTED_KEY_RULES = [
     label: "bingoSuggestions.<slot>.lastNote",
     validate: (value) => typeof value === "string" && value.length <= HOST_UPDATE_MAX_STRING_LENGTH,
   },
+  {
+    pattern: /^gameData\.hostAssist$/,
+    label: "gameData.hostAssist",
+    validate: (value) => value === null || isPlainObject(value),
+  },
 ];
 
 const isPlainObject = (value) =>

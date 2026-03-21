@@ -27,15 +27,17 @@ const NOTE_Y = {
 
 const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
 const centsBetween = (freqA, freqB) => (freqA > 0 && freqB > 0 ? (1200 * Math.log2(freqA / freqB)) : 9999);
+const VOCAL_ASSIST_DEFAULT_MS = 4500;
+const VOCAL_ASSIST_BANNER_MS = 2400;
 
 const difficultyConfig = (difficulty) => {
     if (difficulty === 'easy') {
-        return { intervalMs: 1400, holdMs: 260, minConfidence: 0.5, minStability: 0.5 };
+        return { intervalMs: 1550, holdMs: 220, minConfidence: 0.42, minStability: 0.38 };
     }
     if (difficulty === 'hard') {
-        return { intervalMs: 850, holdMs: 160, minConfidence: 0.7, minStability: 0.7 };
+        return { intervalMs: 980, holdMs: 150, minConfidence: 0.58, minStability: 0.54 };
     }
-    return { intervalMs: 1100, holdMs: 210, minConfidence: 0.6, minStability: 0.6 };
+    return { intervalMs: 1250, holdMs: 180, minConfidence: 0.5, minStability: 0.46 };
 };
 
 const buildMelody = (length, difficulty) => {
@@ -66,6 +68,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
 
     const [localState, setLocalState] = useState(null);
     const [remoteVoice, setRemoteVoice] = useState({ note: '-', confidence: 0, volumeNormalized: 0, stableNote: '-', stability: 0 });
+    const [hostAssistBanner, setHostAssistBanner] = useState(null);
 
     const stateRef = useRef(null);
     const matchRef = useRef({ note: '-', quality: 'none', since: 0 });
@@ -77,6 +80,8 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     const oscRef = useRef(null);
     const lastToneIndexRef = useRef(null);
     const pitchRef = useRef(pitch);
+    const lastHostAssistIdRef = useRef('');
+    const hostAssistBannerTimeoutRef = useRef(null);
 
     const difficulty = data.difficulty || 'standard';
     const guideTone = data.guideTone !== false;
@@ -111,6 +116,8 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             targetNote: sequence[0],
             turnEndsAt: Date.now() + turnDurationMs,
             summaryUntil: null,
+            assistUntil: null,
+            lastTargetChangeAt: Date.now(),
             lastUpdated: Date.now()
         };
         stateRef.current = init;
@@ -137,6 +144,40 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     useEffect(() => {
         pitchRef.current = pitch;
     }, [pitch]);
+
+    useEffect(() => {
+        const hostAssist = data?.hostAssist;
+        const assistId = String(hostAssist?.id || '').trim();
+        if (!assistId || assistId === lastHostAssistIdRef.current) return;
+        const nextState = stateRef.current ? { ...stateRef.current } : null;
+        if (!nextState) {
+            lastHostAssistIdRef.current = assistId;
+            return;
+        }
+        const durationMs = Math.max(1200, Number(hostAssist?.durationMs || VOCAL_ASSIST_DEFAULT_MS));
+        const triggeredAt = Number(hostAssist?.triggeredAt || Date.now());
+        if (Date.now() - triggeredAt > durationMs + VOCAL_ASSIST_BANNER_MS + 1500) {
+            lastHostAssistIdRef.current = assistId;
+            return;
+        }
+        lastHostAssistIdRef.current = assistId;
+        nextState.hostAssist = hostAssist;
+        nextState.assistUntil = triggeredAt + durationMs;
+        nextState.nextNoteAt = Math.max(Number(nextState.nextNoteAt || 0), Date.now() + 900);
+        nextState.lastUpdated = Date.now();
+        stateRef.current = nextState;
+        setLocalState(nextState);
+        setHostAssistBanner({
+            label: hostAssist?.label || 'HARMONY BOOST',
+            by: hostAssist?.by || 'Host'
+        });
+        if (hostAssistBannerTimeoutRef.current) clearTimeout(hostAssistBannerTimeoutRef.current);
+        hostAssistBannerTimeoutRef.current = setTimeout(() => setHostAssistBanner(null), VOCAL_ASSIST_BANNER_MS);
+    }, [data]);
+
+    useEffect(() => () => {
+        if (hostAssistBannerTimeoutRef.current) clearTimeout(hostAssistBannerTimeoutRef.current);
+    }, []);
 
     useEffect(() => {
         if (!isController) {
@@ -179,6 +220,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                     state.phase = 'over';
                 }
             } else if (state.phase === 'playing') {
+                const assistActive = Number(state.assistUntil || 0) > now;
                 if (now >= state.turnEndsAt) {
                     state.phase = 'summary';
                     state.summaryUntil = now + summaryDurationMs;
@@ -186,17 +228,18 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                     const nextIndex = (state.targetIndex + 1) % state.sequence.length;
                     state.targetIndex = nextIndex;
                     state.targetNote = state.sequence[nextIndex];
-                    state.nextNoteAt = now + intervalMs + Math.floor((Math.random() * 140) - 70);
+                    state.nextNoteAt = now + intervalMs + Math.floor((Math.random() * 140) - 70) + (assistActive ? 180 : 0);
+                    state.lastTargetChangeAt = now;
                 }
 
                 const targetNote = state.sequence[state.targetIndex];
                 const targetFreq = NOTE_FREQ[targetNote] || 0;
                 const centsOff = targetFreq ? centsBetween(pitchRef.current || 0, targetFreq) : 9999;
-                const inTune = Math.abs(centsOff) <= 95;
-                const nearTune = Math.abs(centsOff) <= 160;
+                const inTune = Math.abs(centsOff) <= (assistActive ? 145 : 118);
+                const nearTune = Math.abs(centsOff) <= (assistActive ? 220 : 185);
                 const exactNote = (displayNote === targetNote) || (stableNote === targetNote);
-                const relaxedConfidence = Math.max(0.42, minConfidence - 0.18);
-                const relaxedStability = Math.max(0.32, minStability - 0.22);
+                const relaxedConfidence = Math.max(0.34, minConfidence - (assistActive ? 0.24 : 0.18));
+                const relaxedStability = Math.max(0.24, minStability - (assistActive ? 0.26 : 0.2));
                 const nearConfidence = Math.max(0.32, relaxedConfidence - 0.1);
                 const nearStability = Math.max(0.18, relaxedStability - 0.12);
                 const fullMatch = isSinging
@@ -209,7 +252,9 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                     && stability >= nearStability
                     && nearTune;
                 const matchQuality = fullMatch ? 'full' : (nearMatch ? 'near' : 'none');
-                const requiredHoldMs = matchQuality === 'full' ? holdMs : Math.round(holdMs * 1.3);
+                const requiredHoldMs = Math.max(90, matchQuality === 'full'
+                    ? Math.round(holdMs * (assistActive ? 0.72 : 1))
+                    : Math.round(holdMs * (assistActive ? 1.02 : 1.22)));
 
                 if (matchQuality !== 'none') {
                     if (matchRef.current.note !== targetNote || matchRef.current.quality !== matchQuality) {
@@ -378,6 +423,15 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     const renderNowMs = Number(localState.lastUpdated || localState.turnEndsAt || 0);
     const lastAwardAgeMs = lastAward?.at ? Math.max(0, renderNowMs - Number(lastAward.at || 0)) : Number.POSITIVE_INFINITY;
     const showAwardBanner = lastAward && lastAwardAgeMs < 1700;
+    const assistActive = Number(localState.assistUntil || 0) > renderNowMs;
+    const noteCycleMs = Math.max(1, Number(localState.nextNoteAt || 0) - Number(localState.lastTargetChangeAt || renderNowMs));
+    const noteProgressPct = localState.phase === 'playing'
+        ? clamp(((Number(localState.nextNoteAt || renderNowMs) - renderNowMs) / noteCycleMs) * 100, 0, 100)
+        : 0;
+    const roundProgressPct = localState.phase === 'playing'
+        ? clamp(((Number(localState.turnEndsAt || renderNowMs) - renderNowMs) / Math.max(1, turnDurationMs)) * 100, 0, 100)
+        : 0;
+    const showNoteShiftPulse = localState.phase === 'playing' && renderNowMs - Number(localState.lastTargetChangeAt || 0) < 800;
 
     return (
         <div className="relative w-full h-full bg-indigo-950 overflow-hidden font-saira text-white">
@@ -410,8 +464,17 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                     )}
                 </div>
             </div>
+            {hostAssistBanner && (
+                <div className="absolute top-[104px] left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+                    <div className="rounded-2xl border border-emerald-200/50 bg-gradient-to-r from-emerald-400/95 via-cyan-300/95 to-sky-400/90 px-6 py-3 text-center shadow-[0_0_32px_rgba(52,211,153,0.35)] animate-pulse">
+                        <div className="text-xs uppercase tracking-[0.35em] text-black/70">Host Assist</div>
+                        <div className="text-2xl md:text-3xl font-black text-black">{hostAssistBanner.label}</div>
+                        <div className="text-sm md:text-base font-bold text-black/80">Wider match window from {hostAssistBanner.by}</div>
+                    </div>
+                </div>
+            )}
             {showAwardBanner && (
-                <div className="absolute top-[112px] left-1/2 -translate-x-1/2 z-30">
+                <div className="absolute top-[168px] left-1/2 -translate-x-1/2 z-30">
                     <div
                         className={`rounded-2xl border px-5 py-2.5 text-center shadow-[0_0_30px_rgba(0,0,0,0.35)] ${
                             lastAward.quality === 'perfect'
@@ -428,6 +491,30 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             )}
 
             <div className="absolute inset-x-10 top-28 bottom-24 flex flex-col gap-6">
+                <div className="grid grid-cols-1 xl:grid-cols-[1.35fr,0.65fr] gap-4">
+                    <div className="rounded-3xl border border-white/10 bg-black/40 p-4">
+                        <div className="flex items-center justify-between text-sm uppercase tracking-[0.2em] text-zinc-300 mb-2">
+                            <span>Current Note</span>
+                            <span>{Math.max(0, Math.ceil((Number(localState.nextNoteAt || renderNowMs) - renderNowMs) / 1000))}s</span>
+                        </div>
+                        <div className="h-4 rounded-full border border-white/10 bg-white/10 overflow-hidden">
+                            <div className={`h-full transition-all duration-150 ${assistActive ? 'bg-gradient-to-r from-emerald-300 via-cyan-300 to-sky-300' : 'bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-pink-300'}`} style={{ width: `${noteProgressPct}%` }} />
+                        </div>
+                        <div className="mt-2 text-sm text-zinc-300 uppercase tracking-[0.16em]">
+                            {showNoteShiftPulse ? 'Note changed. Lock in fast.' : assistActive ? 'Harmony boost active.' : 'Match or get close to the note.'}
+                        </div>
+                    </div>
+                    <div className="rounded-3xl border border-white/10 bg-black/40 p-4">
+                        <div className="flex items-center justify-between text-sm uppercase tracking-[0.2em] text-zinc-300 mb-2">
+                            <span>Round Time</span>
+                            <span>{Math.max(0, Math.ceil((Number(localState.turnEndsAt || renderNowMs) - renderNowMs) / 1000))}s</span>
+                        </div>
+                        <div className="h-4 rounded-full border border-white/10 bg-white/10 overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-fuchsia-300 via-pink-300 to-orange-300 transition-all duration-150" style={{ width: `${roundProgressPct}%` }} />
+                        </div>
+                        <div className="mt-2 text-sm text-zinc-300 uppercase tracking-[0.16em]">Keep the streak alive</div>
+                    </div>
+                </div>
                 <div className="bg-black/50 border border-white/10 rounded-3xl p-6">
                     <div className="flex items-center justify-between text-base md:text-lg uppercase tracking-[0.16em] text-zinc-300 mb-3">
                         <span>Melody</span>
@@ -442,7 +529,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                                 <div key={n} className="absolute left-0 text-base md:text-lg font-semibold text-zinc-300" style={{ top: `${NOTE_Y[n]}%` }}>{n}</div>
                             ))}
                             {targetNote && (
-                                <div className="absolute left-1/2 w-8 h-8 rounded-full bg-cyan-400 shadow-[0_0_24px_rgba(34,211,238,0.78)]" style={{ top: `${NOTE_Y[targetNote]}%`, transform: 'translate(-50%, -50%)' }}></div>
+                                <div className={`absolute left-1/2 w-8 h-8 rounded-full shadow-[0_0_24px_rgba(34,211,238,0.78)] ${showNoteShiftPulse ? 'bg-yellow-300 scale-125' : 'bg-cyan-400'} ${assistActive ? 'ring-4 ring-emerald-300/40' : ''}`} style={{ top: `${NOTE_Y[targetNote]}%`, transform: 'translate(-50%, -50%)' }}></div>
                             )}
                             {detected && detected !== '-' && (
                                 <div className="absolute left-[60%] w-7 h-7 rounded-full bg-pink-400 shadow-[0_0_18px_rgba(236,72,153,0.68)]" style={{ top: `${NOTE_Y[detected] || 50}%`, transform: 'translate(-50%, -50%)' }}></div>

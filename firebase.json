@@ -57,8 +57,8 @@
     ],
     "redirects": [
       {
-        "source": "/",
-        "destination": "/for-fans",
+        "source": "/for-fans",
+        "destination": "/",
         "type": 301
       },
       {

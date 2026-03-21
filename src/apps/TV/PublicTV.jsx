@@ -372,7 +372,10 @@ const LOBBY_ORB_EVENT_CAP = 14;
 const LOBBY_PARTICLE_MAX = 10;
 const LOBBY_ORB_MIN_TOP_PCT = 24;
 const LOBBY_GROUND_LINE_TOP_PCT = 92;
-const TV_REACTION_VISIBILITY_MS = 5200;
+const TV_REACTION_VISIBILITY_MS = 6400;
+const FEATURED_REACTION_SPOTLIGHT_MS = 4200;
+const SELFIE_ARRIVAL_SPOTLIGHT_MS = 5200;
+const SELFIE_RECENT_BADGE_MS = 18000;
 const GUITAR_SYNC_DECAY_PER_SECOND = 14;
 const GUITAR_SYNC_GAIN_PER_HIT = 11;
 const GUITAR_SYNC_GROUND_THRESHOLD = 12;
@@ -876,9 +879,13 @@ const PublicTV = ({ roomCode }) => {
     const [bonusDropBurst, setBonusDropBurst] = useState(null);
     const [popTriviaVotes, setPopTriviaVotes] = useState([]);
     const [popTriviaNow, setPopTriviaNow] = useState(nowMs());
+    const [popTriviaQuestionAnnounceUntilMs, setPopTriviaQuestionAnnounceUntilMs] = useState(0);
+    const [popTriviaUrgencyPulseUntilMs, setPopTriviaUrgencyPulseUntilMs] = useState(0);
     const [previewNowMs, setPreviewNowMs] = useState(nowMs());
     const [previewSession, setPreviewSession] = useState({ key: '', startMs: 0 });
     const [reactionScoreTotalsByPerformance, setReactionScoreTotalsByPerformance] = useState(() => new Map());
+    const [featuredReaction, setFeaturedReaction] = useState(null);
+    const [selfieArrivalSpotlight, setSelfieArrivalSpotlight] = useState(null);
 
     useEffect(() => {
         if (!isMarketingDemoEmbed) return;
@@ -928,6 +935,8 @@ const PublicTV = ({ roomCode }) => {
     const stormFlashCooldownRef = useRef(0);
     const stormThunderRefs = useRef([]);
     const stormAnalyserUnavailableRef = useRef(false);
+    const popTriviaPrevQuestionIdRef = useRef('');
+    const popTriviaPrevTimeLeftRef = useRef(null);
     const playStormLayerPulseRef = useRef(() => {});
     const playLobbyVolleyCueRef = useRef(() => {});
     const lobbyVolleySceneRef = useRef(null);
@@ -966,12 +975,88 @@ const PublicTV = ({ roomCode }) => {
     const lobbyTransitionTimerRef = useRef(null);
     const chatFullscreenScrollRef = useRef(null);
     const chatSidebarScrollRef = useRef(null);
+    const featuredReactionQueueRef = useRef([]);
+    const featuredReactionTimerRef = useRef(null);
+    const selfieArrivalQueueRef = useRef([]);
+    const selfieArrivalTimerRef = useRef(null);
+    const visibleSelfieSubmissionIdsRef = useRef(new Set());
+    const lastSelfiePromptIdRef = useRef('');
+    const currentPerformanceIdRef = useRef('');
+    const enqueueFeaturedReaction = useCallback((entry) => {
+        if (!entry?.id) return;
+        featuredReactionQueueRef.current.push(entry);
+        if (featuredReactionTimerRef.current) return;
+        const showNext = () => {
+            const next = featuredReactionQueueRef.current.shift();
+            if (!next) {
+                featuredReactionTimerRef.current = null;
+                setFeaturedReaction(null);
+                return;
+            }
+            setFeaturedReaction(next);
+            featuredReactionTimerRef.current = setTimeout(() => {
+                setFeaturedReaction(null);
+                featuredReactionTimerRef.current = null;
+                showNext();
+            }, FEATURED_REACTION_SPOTLIGHT_MS);
+        };
+        showNext();
+    }, []);
+    const enqueueSelfieArrivalSpotlight = useCallback((entry) => {
+        if (!entry?.id || !entry?.url) return;
+        selfieArrivalQueueRef.current.push(entry);
+        if (selfieArrivalTimerRef.current) return;
+        const showNext = () => {
+            const next = selfieArrivalQueueRef.current.shift();
+            if (!next) {
+                selfieArrivalTimerRef.current = null;
+                setSelfieArrivalSpotlight(null);
+                return;
+            }
+            setSelfieArrivalSpotlight(next);
+            selfieArrivalTimerRef.current = setTimeout(() => {
+                setSelfieArrivalSpotlight(null);
+                selfieArrivalTimerRef.current = null;
+                showNext();
+            }, SELFIE_ARRIVAL_SPOTLIGHT_MS);
+        };
+        showNext();
+    }, []);
+    useEffect(() => () => {
+        if (featuredReactionTimerRef.current) clearTimeout(featuredReactionTimerRef.current);
+        if (selfieArrivalTimerRef.current) clearTimeout(selfieArrivalTimerRef.current);
+    }, []);
     const selfieVoteCounts = useMemo(() => {
         return selfieVotes.reduce((acc, v) => {
             acc[v.targetUid] = (acc[v.targetUid] || 0) + 1;
             return acc;
         }, {});
     }, [selfieVotes]);
+    const visibleSelfieSubmissions = useMemo(() => {
+        const source = room?.selfieChallenge?.requireApproval
+            ? selfieSubmissions.filter((submission) => submission?.approved)
+            : selfieSubmissions;
+        return [...source].sort((a, b) => toEpochMs(b?.timestamp) - toEpochMs(a?.timestamp));
+    }, [room?.selfieChallenge?.requireApproval, selfieSubmissions]);
+    const maxSelfieVotes = useMemo(
+        () => Math.max(1, ...Object.values(selfieVoteCounts), 1),
+        [selfieVoteCounts]
+    );
+    const selfieLeadingSubmission = useMemo(() => {
+        return [...visibleSelfieSubmissions].sort((a, b) => {
+            const voteDelta = (selfieVoteCounts[b?.uid] || 0) - (selfieVoteCounts[a?.uid] || 0);
+            if (voteDelta !== 0) return voteDelta;
+            return toEpochMs(b?.timestamp) - toEpochMs(a?.timestamp);
+        })[0] || null;
+    }, [selfieVoteCounts, visibleSelfieSubmissions]);
+    const selfieRecentSubmissionIds = useMemo(() => {
+        const cutoff = nowMs() - SELFIE_RECENT_BADGE_MS;
+        return new Set(
+            visibleSelfieSubmissions
+                .filter((submission) => toEpochMs(submission?.timestamp) >= cutoff)
+                .map((submission) => submission.id)
+        );
+    }, [visibleSelfieSubmissions]);
     const groupedChatMessages = useMemo(
         () => groupChatMessages(chatMessages, { mergeWindowMs: 12 * 60 * 1000 }),
         [chatMessages]
@@ -2056,6 +2141,17 @@ const PublicTV = ({ roomCode }) => {
                                       }]);
                                   }, i * 80);
                               }
+                              if (currentPerformanceIdRef.current && d.performanceId === currentPerformanceIdRef.current) {
+                                  enqueueFeaturedReaction({
+                                      id: `featured-${c.doc.id}`,
+                                      type: d.type,
+                                      count: totalCount,
+                                      userName: d.userName || d.user || 'Guest',
+                                      avatar: d.avatar || EMOJI.sparkle,
+                                      isVip,
+                                      points: totalVal * Math.max(1, Number(multiplier || 1))
+                                  });
+                              }
                               setCombo(prev => Math.min(100, prev + totalVal));
                               lastHypeAtRef.current = nowMs();
                               setShowHypeMeter(true);
@@ -2131,7 +2227,7 @@ const PublicTV = ({ roomCode }) => {
             messageTimeoutsRef.current.forEach(t => clearTimeout(t));
             messageTimeoutsRef.current = [];
         };
-    }, [roomCode, isMarketingDemoFixture, pushLobbyLiveEvent, awardRoomPointsOnce, upsertReactionScoreContribution]);
+    }, [roomCode, isMarketingDemoFixture, pushLobbyLiveEvent, awardRoomPointsOnce, upsertReactionScoreContribution, enqueueFeaturedReaction]);
 
     useEffect(() => {
         if (isMarketingDemoFixture) {
@@ -2234,6 +2330,51 @@ const PublicTV = ({ roomCode }) => {
         });
         return () => { unsubSubs(); unsubVotes(); };
     }, [room?.activeMode, room?.selfieChallenge?.promptId, roomCode]);
+    useEffect(() => {
+        const promptId = String(room?.selfieChallenge?.promptId || '').trim();
+        if (room?.activeMode !== 'selfie_challenge' || !promptId) {
+            lastSelfiePromptIdRef.current = '';
+            visibleSelfieSubmissionIdsRef.current = new Set();
+            selfieArrivalQueueRef.current = [];
+            if (selfieArrivalTimerRef.current) {
+                clearTimeout(selfieArrivalTimerRef.current);
+                selfieArrivalTimerRef.current = null;
+            }
+            setSelfieArrivalSpotlight(null);
+            return;
+        }
+        if (lastSelfiePromptIdRef.current !== promptId) {
+            lastSelfiePromptIdRef.current = promptId;
+            visibleSelfieSubmissionIdsRef.current = new Set(visibleSelfieSubmissions.map((submission) => submission.id));
+            selfieArrivalQueueRef.current = [];
+            if (selfieArrivalTimerRef.current) {
+                clearTimeout(selfieArrivalTimerRef.current);
+                selfieArrivalTimerRef.current = null;
+            }
+            setSelfieArrivalSpotlight(null);
+            return;
+        }
+        const seenIds = visibleSelfieSubmissionIdsRef.current;
+        const freshSubmissions = visibleSelfieSubmissions.filter((submission) => submission?.id && !seenIds.has(submission.id));
+        freshSubmissions.forEach((submission) => seenIds.add(submission.id));
+        freshSubmissions
+            .sort((a, b) => toEpochMs(a?.timestamp) - toEpochMs(b?.timestamp))
+            .forEach((submission) => {
+                enqueueSelfieArrivalSpotlight({
+                    id: submission.id,
+                    url: submission.url,
+                    userName: submission.userName || 'Guest',
+                    avatar: submission.avatar || EMOJI.camera,
+                    votes: selfieVoteCounts[submission.uid] || 0
+                });
+            });
+    }, [
+        room?.activeMode,
+        room?.selfieChallenge?.promptId,
+        visibleSelfieSubmissions,
+        selfieVoteCounts,
+        enqueueSelfieArrivalSpotlight
+    ]);
 
     useEffect(() => {
         if (!room) return;
@@ -2706,6 +2847,7 @@ const PublicTV = ({ roomCode }) => {
     }, [applauseStep, celebrateCountdown, countdown, measure, applauseMax, roomCode, triggerTipPulse]);
 
     const current = songs.find(s => s.status === 'performing');
+    currentPerformanceIdRef.current = current?.id || '';
     const applauseSubject = current || room?.lastPerformance || null;
     const applausePerformerName = String(
         applauseSubject?.singerName
@@ -2814,6 +2956,31 @@ const PublicTV = ({ roomCode }) => {
         });
         return () => unsub();
     }, [demoFixture?.popTriviaVotes, isMarketingDemoFixture, roomCode, popTriviaQuestionId]);
+    useEffect(() => {
+        if (!popTriviaQuestionId) {
+            popTriviaPrevQuestionIdRef.current = '';
+            setPopTriviaQuestionAnnounceUntilMs(0);
+            return;
+        }
+        const previousId = popTriviaPrevQuestionIdRef.current;
+        if (previousId && previousId !== popTriviaQuestionId) {
+            setPopTriviaQuestionAnnounceUntilMs(nowMs() + 1800);
+        }
+        popTriviaPrevQuestionIdRef.current = popTriviaQuestionId;
+    }, [popTriviaQuestionId]);
+    useEffect(() => {
+        const timeLeftSec = Math.max(0, Number(popTriviaState?.timeLeftSec || 0));
+        if (!popTriviaQuestionId || !timeLeftSec) {
+            popTriviaPrevTimeLeftRef.current = timeLeftSec;
+            setPopTriviaUrgencyPulseUntilMs(0);
+            return;
+        }
+        const previous = Number(popTriviaPrevTimeLeftRef.current ?? timeLeftSec);
+        if (timeLeftSec <= 5 && previous !== timeLeftSec) {
+            setPopTriviaUrgencyPulseUntilMs(nowMs() + 900);
+        }
+        popTriviaPrevTimeLeftRef.current = timeLeftSec;
+    }, [popTriviaQuestionId, popTriviaState?.timeLeftSec]);
 
     const handleVolume = (vol) => {
         const level = Math.min(100, Math.round(vol / 1.5));
@@ -4166,15 +4333,16 @@ const PublicTV = ({ roomCode }) => {
     const isCinema = exploreSimple || exploreCinema || roomLayoutMode === 'cinema';
     const isMinimal = !exploreSimple && !exploreCinema && roomLayoutMode === 'minimal';
     const hasActivePopTriviaPanel = !!(popTriviaQuestion || showPopTriviaEndState);
-    const popTriviaOptionCount = Array.isArray(popTriviaQuestion?.options) ? popTriviaQuestion.options.length : 0;
+    const popTriviaProgressPct = popTriviaQuestion
+        ? Math.max(0, Math.min(100, (Number(popTriviaState?.timeLeftSec || 0) / Math.max(1, Number(popTriviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC))) * 100))
+        : 100;
+    const popTriviaQuestionFlashVisible = popTriviaQuestionAnnounceUntilMs > popTriviaNow;
+    const popTriviaUrgencyPulseVisible = popTriviaUrgencyPulseUntilMs > popTriviaNow;
+    const popTriviaUrgent = !!popTriviaQuestion && Number(popTriviaState?.timeLeftSec || 0) <= 5;
     const popTriviaStageSpanClass = isCinema
         ? 'col-span-12'
-        : hasActivePopTriviaPanel
-            ? (lobbyCompactHudMode ? 'col-span-12 lg:col-span-8' : 'col-span-12 lg:col-span-7')
-            : (lobbyCompactHudMode ? 'col-span-12 lg:col-span-9' : 'col-span-12 lg:col-span-8');
-    const popTriviaSidebarSpanClass = hasActivePopTriviaPanel
-        ? (lobbyCompactHudMode ? 'col-span-12 lg:col-span-4' : 'col-span-12 lg:col-span-5')
-        : (lobbyCompactHudMode ? 'col-span-12 lg:col-span-3' : 'col-span-12 lg:col-span-4');
+        : (lobbyCompactHudMode ? 'col-span-12 lg:col-span-9' : 'col-span-12 lg:col-span-8');
+    const popTriviaSidebarSpanClass = lobbyCompactHudMode ? 'col-span-12 lg:col-span-3' : 'col-span-12 lg:col-span-4';
     const showAmbientFx = !exploreSimple;
     const showVisualizerTv = !!room?.showVisualizerTv;
     const visualizerBaseMode = room?.visualizerMode || 'ribbon';
@@ -4691,6 +4859,133 @@ const PublicTV = ({ roomCode }) => {
             
             {multiplier >= 4 && <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_20%,#000_120%)] opacity-50 mix-blend-overlay pointer-events-none"></div>}
 
+            {!isCinema && hasActivePopTriviaPanel && (
+                <div className="absolute inset-y-3 left-3 right-3 md:inset-y-5 md:left-auto md:right-5 md:w-[min(42vw,760px)] 2xl:inset-y-8 2xl:right-8 z-[125] pointer-events-none">
+                    <div
+                        data-feature-id="tv-pop-trivia-overlay"
+                        className={`h-full rounded-[1.75rem] md:rounded-[2.2rem] border backdrop-blur-xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.45)] ${
+                            popTriviaQuestion
+                                ? 'border-cyan-300/55 bg-gradient-to-br from-[#030714]/96 via-[#07111f]/95 to-[#17091f]/94'
+                                : 'border-emerald-300/35 bg-gradient-to-br from-[#07141a]/96 via-[#08151f]/96 to-[#102115]/96'
+                        }`}
+                    >
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.22),transparent_36%),radial-gradient(circle_at_bottom_left,rgba(236,72,153,0.18),transparent_34%)] pointer-events-none"></div>
+                        <div className={`relative h-full flex flex-col ${popTriviaQuestionFlashVisible ? 'animate-pulse' : ''}`}>
+                            <div className={`px-4 py-4 md:px-5 md:py-5 border-b text-[11px] md:text-xs uppercase tracking-[0.22em] flex items-start justify-between gap-4 ${
+                                popTriviaQuestion ? 'border-cyan-300/15' : 'border-emerald-300/15'
+                            }`}>
+                                <div className="min-w-0">
+                                    <div className={popTriviaQuestion ? 'text-cyan-200' : 'text-emerald-200'}>
+                                        {popTriviaQuestion ? 'Pop-up Trivia' : 'Pop-up Trivia Complete'}
+                                    </div>
+                                    <div className="mt-2 text-[10px] md:text-[11px] text-zinc-300 tracking-[0.18em]">
+                                        {popTriviaQuestion
+                                            ? `Question ${Number(popTriviaState?.index || 0) + 1} of ${popTriviaState?.total || 0}`
+                                            : `${popTriviaState?.total || 0} questions finished`}
+                                    </div>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                    {popTriviaQuestion ? (
+                                        <>
+                                            <div className={`text-4xl md:text-6xl font-black font-mono leading-none ${popTriviaUrgent ? 'text-yellow-200 drop-shadow-[0_0_18px_rgba(253,224,71,0.55)]' : 'text-white'} ${popTriviaUrgencyPulseVisible ? 'animate-pulse' : ''}`}>
+                                                {Math.max(0, Number(popTriviaState?.timeLeftSec || 0))}
+                                            </div>
+                                            <div className={`mt-1 text-[10px] md:text-[11px] tracking-[0.18em] ${popTriviaUrgent ? 'text-yellow-200' : 'text-cyan-100'}`}>
+                                                {popTriviaUrgent ? 'Answer now' : 'Seconds left'}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="text-3xl md:text-5xl font-black text-emerald-100 leading-none">
+                                                Done
+                                            </div>
+                                            <div className="mt-1 text-[10px] md:text-[11px] tracking-[0.18em] text-emerald-100">
+                                                Back to karaoke
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                            {popTriviaQuestion ? (
+                                <>
+                                    <div className="px-4 md:px-5 pt-3 md:pt-4">
+                                        <div className="h-2 md:h-2.5 w-full rounded-full bg-white/10 overflow-hidden border border-white/10">
+                                            <div
+                                                className={`h-full rounded-full transition-all duration-700 ${popTriviaUrgent ? 'bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500' : 'bg-gradient-to-r from-cyan-300 via-sky-400 to-fuchsia-400'}`}
+                                                style={{ width: `${popTriviaProgressPct}%` }}
+                                            ></div>
+                                        </div>
+                                        {popTriviaQuestionFlashVisible && (
+                                            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/12 px-3 py-1 text-[10px] md:text-xs font-black uppercase tracking-[0.2em] text-cyan-100">
+                                                <span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.9)]"></span>
+                                                New Question
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="px-4 py-4 md:px-5 md:py-5 flex min-h-0 flex-1 flex-col">
+                                        <div className="text-[1.55rem] md:text-[2.5rem] 2xl:text-[2.9rem] font-black text-white leading-[1.02]">
+                                            {popTriviaQuestion.q}
+                                        </div>
+                                        <div className="mt-5 grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pr-1">
+                                            {popTriviaQuestion.options?.map((option, idx) => {
+                                                const optionVotes = popTriviaVoteCounts[idx] || 0;
+                                                const optionPct = popTriviaTotalVotes > 0
+                                                    ? Math.max(6, Math.round((optionVotes / popTriviaTotalVotes) * 100))
+                                                    : 0;
+                                                return (
+                                                    <div
+                                                        key={`${popTriviaQuestion.id}_${idx}`}
+                                                        className="relative rounded-2xl border border-white/12 bg-black/38 px-4 py-4 md:px-5 md:py-5 overflow-hidden"
+                                                    >
+                                                        <div
+                                                            className="absolute inset-y-0 left-0 bg-gradient-to-r from-cyan-300/22 via-cyan-200/12 to-transparent transition-all duration-500"
+                                                            style={{ width: `${optionPct}%` }}
+                                                        ></div>
+                                                        <div className="relative flex items-start justify-between gap-4">
+                                                            <div className="flex items-start gap-3 min-w-0">
+                                                                <span className="shrink-0 text-cyan-300 font-black text-lg md:text-2xl tracking-[0.16em]">
+                                                                    {String.fromCharCode(65 + idx)}
+                                                                </span>
+                                                                <span className="min-w-0 flex-1 text-lg md:text-[1.28rem] 2xl:text-[1.45rem] font-bold leading-snug text-white">
+                                                                    {option}
+                                                                </span>
+                                                            </div>
+                                                            <div className="shrink-0 text-right">
+                                                                <div className="text-xl md:text-3xl font-black font-mono text-white">
+                                                                    {optionVotes}
+                                                                </div>
+                                                                <div className="mt-1 text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-zinc-300">
+                                                                    {popTriviaTotalVotes > 0 ? `${optionPct}%` : 'No votes'}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="mt-4 flex items-center justify-between gap-4 text-[11px] md:text-sm uppercase tracking-[0.18em] text-zinc-200">
+                                            <span>{popTriviaTotalVotes} answers locked</span>
+                                            <span className={popTriviaUrgent ? 'text-yellow-200' : 'text-cyan-100'}>
+                                                {popTriviaUrgent ? 'Question closing' : 'Vote in Party app'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="px-5 py-6 md:px-6 md:py-8 flex min-h-0 flex-1 flex-col justify-center">
+                                    <div className="text-3xl md:text-[3.1rem] font-black text-white leading-[1.02]">
+                                        Trivia complete. Karaoke keeps moving.
+                                    </div>
+                                    <div className="mt-4 text-lg md:text-[1.3rem] text-emerald-100/90 leading-relaxed">
+                                        The side round is done. Watch for the next question burst during the song.
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className={`relative z-10 h-full grid grid-cols-1 lg:grid-cols-12 ${gridSpacingClass} ${isCinema ? 'pt-0 pb-0' : `${effectiveGridTopPaddingClass} ${gridBottomPaddingClass}`}`}>
                 {/* STAGE AREA */}
                 <div className={`${popTriviaStageSpanClass} flex flex-col transition-all duration-500`}>
@@ -4774,62 +5069,7 @@ const PublicTV = ({ roomCode }) => {
                 {/* SIDEBAR: Hidden in Cinema Mode */}
                 {!isCinema && (
                     <div className={`${popTriviaSidebarSpanClass} flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden transition-all duration-500`}>
-                         {(popTriviaQuestion || showPopTriviaEndState) && (
-                            <div
-                                data-feature-id="tv-pop-trivia-card"
-                                className={`rounded-2xl md:rounded-3xl border shadow-[0_0_30px_rgba(34,211,238,0.18)] backdrop-blur overflow-hidden ${
-                                    popTriviaQuestion
-                                        ? 'border-cyan-300/55 bg-gradient-to-br from-[#050916]/98 via-[#0b1220]/98 to-[#160a21]/98 shadow-[0_0_42px_rgba(34,211,238,0.24)]'
-                                        : 'border-emerald-300/35 bg-gradient-to-br from-[#07141a]/96 via-[#08151f]/96 to-[#102115]/96'
-                                }`}
-                            >
-                                <div className={`${lobbyCompactHudMode ? 'px-3 py-3' : 'px-4 py-4 md:px-5 md:py-5'} flex items-center justify-between gap-3 border-b ${popTriviaQuestion ? 'border-cyan-300/15' : 'border-emerald-300/15'} text-[11px] md:text-xs uppercase tracking-[0.2em]`}>
-                                    <span className={popTriviaQuestion ? 'text-cyan-200' : 'text-emerald-200'}>
-                                        {popTriviaQuestion ? 'Pop-up Trivia' : 'Pop-up Trivia Complete'}
-                                    </span>
-                                    <span className={popTriviaQuestion ? 'text-cyan-100' : 'text-emerald-100'}>
-                                        {popTriviaQuestion
-                                            ? `${popTriviaState?.index + 1}/${popTriviaState?.total} | ${popTriviaState?.timeLeftSec}s`
-                                            : `${popTriviaState?.total || 0} questions`}
-                                    </span>
-                                </div>
-                                {popTriviaQuestion ? (
-                                    <div className={`${lobbyCompactHudMode ? 'px-3 py-3' : 'px-4 py-4 md:px-5 md:py-5'} flex min-h-[34vh] md:min-h-[42vh] 2xl:min-h-[46vh] flex-col`}>
-                                        <div className="text-[1.35rem] md:text-[2rem] 2xl:text-[2.3rem] font-black text-white leading-[1.02]">
-                                            {popTriviaQuestion.q}
-                                        </div>
-                                        <div className="mt-4 grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2 gap-3 pr-1">
-                                            {popTriviaQuestion.options?.map((option, idx) => (
-                                                <div
-                                                    key={`${popTriviaQuestion.id}_${idx}`}
-                                                    className={`rounded-2xl border border-white/12 bg-black/36 px-4 py-3 md:px-4 md:py-4 text-white flex items-start justify-between gap-3 ${
-                                                        popTriviaOptionCount >= 4 ? 'min-h-[110px] md:min-h-[132px]' : ''
-                                                    }`}
-                                                >
-                                                    <span className="shrink-0 text-cyan-300 font-black text-base md:text-lg tracking-[0.16em]">{String.fromCharCode(65 + idx)}</span>
-                                                    <span className="min-w-0 flex-1 text-base md:text-[1.08rem] 2xl:text-[1.22rem] font-bold leading-snug">{option}</span>
-                                                    <span className="shrink-0 text-zinc-200 font-mono text-base md:text-lg">{popTriviaVoteCounts[idx] || 0}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <div className="mt-4 flex items-center justify-between gap-3 text-[11px] md:text-sm uppercase tracking-[0.16em] text-zinc-200">
-                                            <span>{popTriviaTotalVotes} answers locked</span>
-                                            <span className="text-cyan-100">Vote in Party app</span>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className={`${lobbyCompactHudMode ? 'px-3 py-4' : 'px-4 py-5 md:px-5 md:py-6'} min-h-[28vh] flex flex-col justify-center`}>
-                                        <div className="text-2xl md:text-[2rem] 2xl:text-[2.3rem] font-black text-white leading-[1.02]">
-                                            Trivia complete. Back to karaoke.
-                                        </div>
-                                        <div className="mt-3 text-base md:text-lg text-emerald-100/90 leading-relaxed">
-                                            The side round is done. Keep the lyrics clean, let the next singer land, and open the Party app for the next song request.
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                         )}
-                         <div className={`${lobbyCompactHudMode ? 'p-2 md:p-3' : 'p-3 md:p-4'} rounded-2xl md:rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20`}>
+                        <div className={`${lobbyCompactHudMode ? 'p-2 md:p-3' : 'p-3 md:p-4'} rounded-2xl md:rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20`}>
                             <div className={`${lobbyCompactHudMode ? 'text-lg md:text-xl 2xl:text-2xl' : 'text-xl md:text-2xl 2xl:text-3xl'} font-black text-cyan-100 mb-1 uppercase tracking-[0.14em] md:tracking-[0.18em]`}>JOIN</div>
                             <div className={`bg-white ${lobbyCompactHudMode ? 'p-1.5 md:p-2' : 'p-2 md:p-3'} rounded-2xl md:rounded-3xl inline-block shadow-[0_0_45px_rgba(255,255,255,0.2)]`}>
                                 <LocalQrImage
@@ -5108,38 +5348,165 @@ const PublicTV = ({ roomCode }) => {
             </div>
 
             {room?.activeMode === 'selfie_challenge' && (
-                <div data-feature-id="tv-selfie-challenge" className="absolute inset-0 z-[120] bg-black/70 backdrop-blur-sm flex flex-col p-4 md:p-6 2xl:p-10">
-                    <div className="text-center mb-4 md:mb-6">
-                        <div className="text-xs md:text-sm uppercase tracking-[0.2em] md:tracking-[0.4em] text-zinc-300">Selfie Challenge</div>
-                        <div className="text-2xl md:text-4xl font-bebas text-white">{room?.selfieChallenge?.prompt || 'Get ready'}</div>
-                        {room?.selfieChallenge?.status && (
-                            <div className="text-xs md:text-sm text-cyan-300 mt-2">Status: {room.selfieChallenge.status}</div>
+                <div data-feature-id="tv-selfie-challenge" className="absolute inset-0 z-[120] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.22),rgba(0,0,0,0)_34%),radial-gradient(circle_at_20%_0%,rgba(236,72,153,0.24),rgba(0,0,0,0)_30%),linear-gradient(180deg,rgba(2,6,23,0.82),rgba(1,3,10,0.94))] backdrop-blur-sm flex flex-col p-4 md:p-6 2xl:p-10">
+                    <div className="absolute inset-0 pointer-events-none opacity-75" aria-hidden="true">
+                        <div className="selfie-grid-sheen absolute inset-x-0 top-0 h-[45%]" />
+                        <div className="absolute left-[8%] top-[16%] h-56 w-56 rounded-full bg-fuchsia-500/18 blur-3xl" />
+                        <div className="absolute right-[10%] top-[8%] h-64 w-64 rounded-full bg-cyan-400/16 blur-3xl" />
+                        <div className="absolute left-[30%] bottom-[10%] h-72 w-72 rounded-full bg-amber-300/10 blur-3xl" />
+                    </div>
+                    <div className="relative z-10 mb-4 md:mb-6">
+                        <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3 text-center">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-4 py-2 text-[10px] md:text-xs font-black uppercase tracking-[0.3em] text-cyan-100">
+                                <span className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.85)]" />
+                                Selfie Challenge
+                            </div>
+                            <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[10px] md:text-xs font-black uppercase tracking-[0.26em] text-zinc-100">
+                                {visibleSelfieSubmissions.length} live on screen
+                            </div>
+                            {room?.selfieChallenge?.status && (
+                                <div className="inline-flex items-center rounded-full border border-fuchsia-300/20 bg-fuchsia-400/10 px-4 py-2 text-[10px] md:text-xs font-black uppercase tracking-[0.26em] text-fuchsia-100">
+                                    {room.selfieChallenge.status}
+                                </div>
+                            )}
+                        </div>
+                        <div className="mt-3 text-center text-2xl md:text-4xl 2xl:text-5xl font-bebas text-white">
+                            {room?.selfieChallenge?.prompt || 'Get ready'}
+                        </div>
+                        {selfieLeadingSubmission && room?.selfieChallenge?.status === 'voting' && (
+                            <div className="mt-3 text-center text-sm md:text-base text-cyan-200">
+                                Leading right now: <span className="font-black text-white">{selfieLeadingSubmission.userName || 'Guest'}</span> with <span className="font-black text-fuchsia-200">{selfieVoteCounts[selfieLeadingSubmission.uid] || 0}</span> votes
+                            </div>
                         )}
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3 md:gap-6 flex-1">
-                        {(room?.selfieChallenge?.requireApproval ? selfieSubmissions.filter(s => s.approved) : selfieSubmissions).map(s => (
-                            <div key={s.id} className="bg-zinc-900/80 border border-zinc-700 rounded-2xl overflow-hidden shadow-xl flex flex-col">
-                                <div className="relative">
-                                    <img src={s.url} alt={s.userName} className="w-full h-40 md:h-52 object-cover" />
-                                    <div className="absolute top-2 right-2 md:top-3 md:right-3 bg-black/70 px-2 py-1 md:px-3 rounded-full text-xs md:text-sm font-bold text-cyan-300">
-                                        {selfieVoteCounts[s.uid] || 0} votes
+                    <div className="relative z-10 grid flex-1 min-h-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.95fr)]">
+                        <div className="grid auto-rows-[minmax(160px,1fr)] grid-cols-1 gap-3 md:grid-cols-2 md:gap-5">
+                            {visibleSelfieSubmissions.map((submission, idx) => {
+                                const voteCount = selfieVoteCounts[submission.uid] || 0;
+                                const isLeader = selfieLeadingSubmission?.id === submission.id && room?.selfieChallenge?.status === 'voting';
+                                const isFresh = selfieRecentSubmissionIds.has(submission.id);
+                                return (
+                                    <div
+                                        key={submission.id}
+                                        className={`selfie-wall-card group relative overflow-hidden rounded-[1.8rem] border bg-zinc-950/72 shadow-[0_18px_60px_rgba(0,0,0,0.35)] ${idx === 0 ? 'md:col-span-2 md:min-h-[320px]' : ''} ${isLeader ? 'border-fuchsia-300/60' : 'border-white/10'} ${isFresh ? 'selfie-wall-card-fresh' : ''}`}
+                                        style={{ transform: idx === 0 ? 'rotate(-1deg)' : idx % 2 === 0 ? 'rotate(-0.65deg)' : 'rotate(0.85deg)' }}
+                                    >
+                                        <img
+                                            src={submission.url}
+                                            alt={submission.userName || 'Guest selfie'}
+                                            className={`h-full w-full object-cover transition-transform duration-700 ${idx === 0 ? 'min-h-[320px]' : 'min-h-[190px]'} ${isFresh ? 'scale-[1.04]' : 'group-hover:scale-[1.03]'}`}
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/18 to-transparent" />
+                                        <div className="absolute left-3 top-3 flex flex-wrap items-center gap-2">
+                                            {isFresh && (
+                                                <div className="rounded-full border border-cyan-300/40 bg-cyan-300/12 px-3 py-1 text-[10px] md:text-xs font-black uppercase tracking-[0.24em] text-cyan-100">
+                                                    Just dropped
+                                                </div>
+                                            )}
+                                            {isLeader && (
+                                                <div className="rounded-full border border-fuchsia-300/45 bg-fuchsia-400/15 px-3 py-1 text-[10px] md:text-xs font-black uppercase tracking-[0.24em] text-fuchsia-100">
+                                                    Leading
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="absolute right-3 top-3 rounded-full border border-white/10 bg-black/65 px-3 py-1.5 text-xs md:text-sm font-black text-cyan-200">
+                                            {voteCount} votes
+                                        </div>
+                                        <div className="absolute inset-x-0 bottom-0 p-4 md:p-5">
+                                            <div className="flex items-end justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-2 md:gap-3">
+                                                        <span className="text-2xl md:text-3xl">{submission.avatar || EMOJI.camera}</span>
+                                                        <div className="min-w-0 text-lg md:text-2xl font-black text-white truncate">
+                                                            {submission.userName || 'Guest'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-2 h-2.5 w-28 md:w-36 overflow-hidden rounded-full bg-white/10">
+                                                        <div className={`h-full rounded-full ${isLeader ? 'bg-gradient-to-r from-fuchsia-300 to-amber-200' : 'bg-gradient-to-r from-cyan-300 to-fuchsia-300'}`} style={{ width: `${Math.min(100, (voteCount / maxSelfieVotes) * 100)}%` }} />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
+                                );
+                            })}
+                            {visibleSelfieSubmissions.length === 0 && (
+                                <div className="md:col-span-2 flex items-center justify-center rounded-[2rem] border border-white/10 bg-black/30 text-zinc-400 text-base md:text-xl">
+                                    Waiting for selfies...
                                 </div>
-                                <div className="p-3 md:p-4 flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2 md:gap-3 min-w-0">
-                                        <span className="text-2xl md:text-3xl">{s.avatar || 'O'}</span>
-                                        <div className="text-sm md:text-lg font-bold text-white truncate max-w-[220px]">{s.userName}</div>
+                            )}
+                        </div>
+                        <div className="grid grid-rows-[auto_minmax(0,1fr)] gap-4">
+                            <div className="rounded-[1.8rem] border border-white/10 bg-black/35 p-4 md:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                                <div className="text-[10px] md:text-xs font-black uppercase tracking-[0.3em] text-zinc-400">Big screen energy</div>
+                                <div className="mt-2 text-xl md:text-2xl font-black text-white">
+                                    New arrivals punch in live, then the room votes the wall.
+                                </div>
+                                <div className="mt-3 grid grid-cols-3 gap-2 md:gap-3">
+                                    <div className="rounded-2xl border border-cyan-300/15 bg-cyan-400/10 px-3 py-3 text-center">
+                                        <div className="text-[10px] md:text-xs uppercase tracking-[0.24em] text-cyan-100">Submitted</div>
+                                        <div className="mt-1 text-xl md:text-3xl font-black text-white">{visibleSelfieSubmissions.length}</div>
                                     </div>
-                                    <div className="h-2 w-24 bg-white/10 rounded-full overflow-hidden">
-                                        <div className="h-full bg-cyan-400" style={{ width: `${Math.min(100, ((selfieVoteCounts[s.uid] || 0) / Math.max(1, ...Object.values(selfieVoteCounts), 1)) * 100)}%` }}></div>
+                                    <div className="rounded-2xl border border-fuchsia-300/15 bg-fuchsia-400/10 px-3 py-3 text-center">
+                                        <div className="text-[10px] md:text-xs uppercase tracking-[0.24em] text-fuchsia-100">Top votes</div>
+                                        <div className="mt-1 text-xl md:text-3xl font-black text-white">{selfieLeadingSubmission ? (selfieVoteCounts[selfieLeadingSubmission.uid] || 0) : 0}</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-amber-200/15 bg-amber-300/10 px-3 py-3 text-center">
+                                        <div className="text-[10px] md:text-xs uppercase tracking-[0.24em] text-amber-100">Fresh</div>
+                                        <div className="mt-1 text-xl md:text-3xl font-black text-white">{selfieRecentSubmissionIds.size}</div>
                                     </div>
                                 </div>
                             </div>
-                        ))}
-                        {(room?.selfieChallenge?.requireApproval ? selfieSubmissions.filter(s => s.approved) : selfieSubmissions).length === 0 && (
-                            <div className="2xl:col-span-3 md:col-span-2 col-span-1 flex items-center justify-center text-zinc-400 text-base md:text-xl">Waiting for selfies...</div>
-                        )}
+                            <div className="rounded-[1.8rem] border border-white/10 bg-black/28 p-4 md:p-5">
+                                <div className="text-[10px] md:text-xs font-black uppercase tracking-[0.3em] text-zinc-400">Arrival queue</div>
+                                <div className="mt-3 grid gap-3">
+                                    {visibleSelfieSubmissions.slice(0, 4).map((submission, idx) => (
+                                        <div key={`rail-${submission.id}`} className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/5 p-2.5">
+                                            <img src={submission.url} alt={submission.userName || 'Guest selfie'} className="h-14 w-14 rounded-2xl object-cover" />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xl">{submission.avatar || EMOJI.camera}</span>
+                                                    <div className="truncate text-sm md:text-base font-black text-white">{submission.userName || 'Guest'}</div>
+                                                </div>
+                                                <div className="mt-1 text-[10px] md:text-xs uppercase tracking-[0.2em] text-zinc-400">
+                                                    {idx === 0 ? 'Latest on the wall' : selfieRecentSubmissionIds.has(submission.id) ? 'Fresh arrival' : 'In the running'}
+                                                </div>
+                                            </div>
+                                            <div className="text-sm md:text-base font-black text-cyan-200">{selfieVoteCounts[submission.uid] || 0}</div>
+                                        </div>
+                                    ))}
+                                    {visibleSelfieSubmissions.length === 0 && (
+                                        <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-8 text-center text-zinc-500">
+                                            New selfies will slam into the wall here.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
                     </div>
+                    {selfieArrivalSpotlight && (
+                        <div className="absolute inset-0 z-[130] flex items-center justify-center bg-black/55 backdrop-blur-[2px] pointer-events-none">
+                            <div className="selfie-arrival-spotlight relative w-[min(92vw,920px)]">
+                                <div className="absolute inset-0 rounded-[2.4rem] bg-[radial-gradient(circle,rgba(34,211,238,0.28),rgba(236,72,153,0.2)_42%,rgba(0,0,0,0)_72%)] blur-2xl" />
+                                <div className="relative mx-auto w-fit max-w-full -rotate-2 rounded-[2rem] border border-white/15 bg-[#fff7ef] p-3 md:p-4 shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
+                                    <img src={selfieArrivalSpotlight.url} alt={selfieArrivalSpotlight.userName || 'New selfie'} className="max-h-[62vh] w-auto max-w-[82vw] rounded-[1.5rem] border border-black/8 object-cover" />
+                                    <div className="absolute right-4 top-4 rounded-full bg-black/72 px-3 py-1.5 text-[10px] md:text-xs font-black uppercase tracking-[0.28em] text-cyan-200">
+                                        New on screen
+                                    </div>
+                                    <div className="absolute bottom-0 left-0 right-0 px-5 pb-5 pt-8 text-center">
+                                        <div className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/88 px-4 py-2 text-xs md:text-sm font-black uppercase tracking-[0.24em] text-fuchsia-700">
+                                            <span className="text-xl md:text-2xl">{selfieArrivalSpotlight.avatar || EMOJI.camera}</span>
+                                            Fresh crowd shot
+                                        </div>
+                                        <div className="mt-3 text-2xl md:text-5xl font-black text-zinc-950">{selfieArrivalSpotlight.userName || 'Guest'}</div>
+                                        <div className="mt-1 text-sm md:text-lg font-semibold text-zinc-600">
+                                            {selfieArrivalSpotlight.votes ? `${selfieArrivalSpotlight.votes} early votes` : 'Just landed on the wall'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     {room?.selfieChallenge?.status === 'ended' && room?.selfieChallenge?.winner && (!room?.selfieChallenge?.winnerExpiresAt || nowMs() < room.selfieChallenge.winnerExpiresAt) && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/70">
                             <div className="bg-zinc-900 border border-[#00C4D9]/40 rounded-3xl p-4 md:p-8 text-center shadow-2xl">
@@ -5811,6 +6178,38 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             {/* Reactions */}
+            {featuredReaction && currentPerformanceIdRef.current && (
+                <div className="absolute left-1/2 top-5 z-[210] w-[min(92vw,880px)] -translate-x-1/2 pointer-events-none">
+                    <div className={`featured-reaction-spotlight relative overflow-hidden rounded-[2rem] border px-5 py-4 md:px-7 md:py-5 ${featuredReaction.isVip ? 'border-yellow-300/65 bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.32),rgba(17,24,39,0.95)_55%,rgba(3,7,18,0.98)_100%)] shadow-[0_0_48px_rgba(251,191,36,0.24)]' : 'border-cyan-300/35 bg-[radial-gradient(circle_at_top,rgba(236,72,153,0.24),rgba(17,24,39,0.95)_55%,rgba(3,7,18,0.98)_100%)] shadow-[0_0_44px_rgba(34,211,238,0.18)]'}`}>
+                        <div className="absolute inset-0 featured-reaction-sheen opacity-70" aria-hidden="true" />
+                        <div className="relative flex items-center gap-4 md:gap-6">
+                            <div className={`featured-reaction-avatar flex h-20 w-20 md:h-24 md:w-24 items-center justify-center rounded-[1.6rem] border text-4xl md:text-5xl ${featuredReaction.isVip ? 'border-yellow-300/55 bg-yellow-300/12' : 'border-white/12 bg-white/6'}`}>
+                                {featuredReaction.avatar || EMOJI.sparkle}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className={`text-[10px] md:text-xs font-black uppercase tracking-[0.34em] ${featuredReaction.isVip ? 'text-yellow-200' : 'text-cyan-200'}`}>
+                                    Crowd moment
+                                </div>
+                                <div className="mt-1 text-[clamp(1.6rem,4vw,3.35rem)] font-black leading-[0.92] text-white drop-shadow-[0_0_22px_rgba(255,255,255,0.12)]">
+                                    {featuredReaction.userName || 'Guest'}
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-2 md:gap-3">
+                                    <div className={`inline-flex items-center rounded-full px-3 py-1.5 md:px-4 md:py-2 text-sm md:text-lg font-black uppercase tracking-[0.22em] ${featuredReaction.isVip ? 'bg-yellow-300/12 text-yellow-100 border border-yellow-300/45' : 'bg-cyan-400/10 text-cyan-100 border border-cyan-300/30'}`}>
+                                        {getLobbyReactionLabel(featuredReaction.type)}
+                                        {featuredReaction.count > 1 ? ` x${featuredReaction.count}` : ''}
+                                    </div>
+                                    <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs md:text-sm font-semibold text-zinc-100">
+                                        +{featuredReaction.points || 0} hype
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="featured-reaction-emoji shrink-0 text-[3.8rem] leading-none md:text-[5.6rem] drop-shadow-[0_0_20px_rgba(255,255,255,0.18)]">
+                                {getEmojiChar(featuredReaction.type)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className="absolute inset-0 z-[200] pointer-events-none overflow-hidden">
                 {showAmbientFx && reactions.map(r => (
                     <div key={r.id} className="absolute bottom-0 flex flex-col items-center reaction-stack" style={{left: `${r.left}%`}}>
@@ -5825,11 +6224,12 @@ const PublicTV = ({ roomCode }) => {
                                 )}
                             </div>
                             <div className="mt-3 flex flex-col items-center gap-1 reaction-label">
-                                <div className={`px-4 py-1.5 md:px-6 md:py-2 rounded-full text-lg md:text-3xl font-black flex items-center gap-2 ${r.isVip ? 'text-yellow-200 border-2 border-yellow-300 bg-black/72 shadow-[0_0_22px_rgba(253,224,71,0.55)]' : 'text-white border-2 border-white/25 bg-black/64 shadow-[0_0_18px_rgba(255,255,255,0.08)]'}`}>
-                                    <span className="truncate max-w-[11rem] md:max-w-[15rem]">{r.userName || 'Guest'}</span>
+                                <div className={`px-4 py-2 md:px-6 md:py-3 rounded-[1.5rem] text-xl md:text-4xl font-black flex items-center gap-2.5 ${r.isVip ? 'text-yellow-200 border-2 border-yellow-300 bg-black/76 shadow-[0_0_22px_rgba(253,224,71,0.55)]' : 'text-white border-2 border-white/25 bg-black/68 shadow-[0_0_18px_rgba(255,255,255,0.08)]'}`}>
+                                    <span className="text-2xl md:text-4xl leading-none">{r.avatar || EMOJI.sparkle}</span>
+                                    <span className="truncate max-w-[13rem] md:max-w-[18rem]">{r.userName || 'Guest'}</span>
                                     {r.isVip && <span className="text-xs font-black tracking-widest">VIP</span>}
                                 </div>
-                                <div className={`px-3 py-1 md:px-4 md:py-1.5 rounded-full text-xs md:text-lg font-bold tracking-[0.24em] uppercase ${r.isVip ? 'text-cyan-100 border border-cyan-300/45 bg-cyan-500/10' : 'text-cyan-200 border border-cyan-400/40 bg-black/60'}`}>
+                                <div className={`px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-xl font-bold tracking-[0.24em] uppercase ${r.isVip ? 'text-cyan-100 border border-cyan-300/45 bg-cyan-500/10' : 'text-cyan-200 border border-cyan-400/40 bg-black/60'}`}>
                                     {getLobbyReactionLabel(r.type)}
                                 </div>
                                 <div className={`px-3 py-1 rounded-full text-[11px] md:text-sm font-semibold ${r.isVip ? 'text-yellow-200/90 bg-yellow-400/10 border border-yellow-300/35' : 'text-zinc-200 bg-white/5 border border-white/10'}`}>
@@ -5927,6 +6327,11 @@ const PublicTV = ({ roomCode }) => {
               @keyframes vip-jolt { 0%, 100% { transform: rotate(0deg) scale(1); } 25% { transform: rotate(-2deg) scale(1.05); } 50% { transform: rotate(2deg) scale(1.08); } 75% { transform: rotate(-1deg) scale(1.04); } }
               @keyframes vip-spin { 0% { transform: rotate(0deg) scale(1); } 100% { transform: rotate(360deg) scale(1.2); } }
               @keyframes reaction-label-in { 0% { opacity: 0; transform: translateY(10px) scale(0.95); } 40% { opacity: 1; } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+              @keyframes featured-reaction-enter { 0% { opacity: 0; transform: translateY(-12px) scale(0.96); } 18% { opacity: 1; transform: translateY(0) scale(1.02); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+              @keyframes featured-reaction-sheen { 0% { transform: translateX(-120%); opacity: 0; } 18% { opacity: 0.5; } 55% { opacity: 0.18; } 100% { transform: translateX(130%); opacity: 0; } }
+              @keyframes selfie-grid-sheen { 0% { transform: translateX(-30%) translateY(0%); opacity: 0.12; } 50% { transform: translateX(4%) translateY(8%); opacity: 0.32; } 100% { transform: translateX(-30%) translateY(0%); opacity: 0.12; } }
+              @keyframes selfie-card-fresh { 0%, 100% { box-shadow: 0 0 0 rgba(34,211,238,0.0), 0 18px 60px rgba(0,0,0,0.35); } 50% { box-shadow: 0 0 36px rgba(34,211,238,0.18), 0 22px 70px rgba(0,0,0,0.42); } }
+              @keyframes selfie-arrival-enter { 0% { opacity: 0; transform: scale(0.86) rotate(-4deg); } 22% { opacity: 1; transform: scale(1.03) rotate(-1deg); } 100% { opacity: 1; transform: scale(1) rotate(-2deg); } }
               @keyframes tv-sweep { 0% { transform: translateX(-120%); opacity: 0; } 20% { opacity: 0.45; } 50% { opacity: 0.12; } 100% { transform: translateX(120%); opacity: 0; } }
               @keyframes bonus-pop { 0% { opacity: 0; transform: scale(0.7); } 20% { opacity: 1; transform: scale(1.02); } 100% { opacity: 0; transform: scale(1.08); } }
               @keyframes bonus-sheen { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
@@ -5968,11 +6373,19 @@ const PublicTV = ({ roomCode }) => {
               .points-burst-a { top: -6px; left: 18px; }
               .points-burst-b { top: 6px; right: 10px; background: #22d3ee; box-shadow: 0 0 12px rgba(34, 211, 238, 0.7); }
               .points-burst-c { bottom: -4px; left: 40px; background: #f472b6; box-shadow: 0 0 12px rgba(244, 114, 182, 0.7); }
-              .reaction-stack { animation: float-up 4.6s ease-out forwards; will-change: transform, opacity; }
+              .reaction-stack { animation: float-up 5.8s ease-out forwards; will-change: transform, opacity; }
               .reaction-label { animation: reaction-label-in 0.35s ease-out forwards; }
               .animate-vip-glow { animation: vip-glow 1.2s ease-in-out infinite; }
               .vip-reaction-emoji { animation: vip-jolt 0.6s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(250, 204, 21, 0.75)); }
               .animate-vip-spin { animation: vip-spin 1.2s linear infinite; }
+              .featured-reaction-spotlight { animation: featured-reaction-enter 0.36s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+              .featured-reaction-sheen { animation: featured-reaction-sheen 3s ease-in-out infinite; }
+              .featured-reaction-avatar { backdrop-filter: blur(14px); }
+              .featured-reaction-emoji { animation: vip-jolt 0.9s ease-in-out infinite; }
+              .selfie-grid-sheen { background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.14) 40%, transparent 72%); animation: selfie-grid-sheen 8s ease-in-out infinite; mix-blend-mode: screen; }
+              .selfie-wall-card { transition: transform 450ms ease, box-shadow 450ms ease, border-color 450ms ease; }
+              .selfie-wall-card-fresh { animation: selfie-card-fresh 2.8s ease-in-out infinite; }
+              .selfie-arrival-spotlight { animation: selfie-arrival-enter 0.38s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
               .tv-light-sweep { background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.12) 45%, transparent 80%); animation: tv-sweep 10s ease-in-out infinite; mix-blend-mode: screen; }
               .lobby-burst-anchor { transform: translate(-50%, -50%); }
               .lobby-burst-motion { animation: lobby-burst-rise 3.6s cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }

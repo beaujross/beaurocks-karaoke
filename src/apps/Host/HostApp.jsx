@@ -2293,19 +2293,19 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
             description: 'Trigger a bracket bonus drop + crowd vote pulse.'
         },
         flappy_bird: {
-            icon: 'fa-feather-pointed',
-            label: 'Bird Blitz FX',
-            description: 'Hit the room with a strobe burst.'
+            icon: 'fa-life-ring',
+            label: 'Host Rescue',
+            description: 'Give the bird an instant lift plus a short safety shield.'
         },
         vocal_challenge: {
-            icon: 'fa-wave-square',
-            label: 'Power Note Aura',
-            description: 'Trigger a temporary ballad glow.'
+            icon: 'fa-music',
+            label: 'Harmony Boost',
+            description: 'Widen the match window and steady the round for a few seconds.'
         },
         riding_scales: {
-            icon: 'fa-cloud-bolt',
-            label: 'Scale Storm',
-            description: 'Trigger storm lighting during the round.'
+            icon: 'fa-repeat',
+            label: 'Scale Save',
+            description: 'Replay the pattern and protect the next mistake.'
         },
         team_pong: {
             icon: 'fa-table-tennis-paddle-ball',
@@ -2474,21 +2474,43 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
             if (activeMode === 'flappy_bird') {
                 const now = nowMs();
                 await updateRoom({
+                    'gameData.hostAssist': {
+                        id: `host_rescue_${now}`,
+                        kind: 'rescue',
+                        label: 'HOST RESCUE',
+                        by: hostName || 'Host',
+                        triggeredAt: now,
+                        durationMs: 3200
+                    },
                     lightMode: 'strobe',
-                    strobeSessionId: `host_fx_${now}`,
+                    strobeSessionId: `host_rescue_${now}`,
                     strobeCountdownUntil: now,
-                    strobeEndsAt: now + 7000,
+                    strobeEndsAt: now + 2500,
                     strobeResults: null
                 });
-                toast('Bird Blitz FX triggered.');
-                await logHostInteraction('triggered Bird Blitz FX.');
+                toast('Host rescue sent.');
+                await logHostInteraction('sent a Flappy Bird rescue.');
                 return;
             }
 
             if (activeMode === 'vocal_challenge') {
-                await triggerTemporaryLightMode('ballad', 9000);
-                toast('Power Note Aura triggered.');
-                await logHostInteraction('triggered Power Note Aura.');
+                const now = nowMs();
+                await updateRoom({
+                    'gameData.hostAssist': {
+                        id: `vocal_boost_${now}`,
+                        kind: 'vocal_boost',
+                        label: 'HARMONY BOOST',
+                        by: hostName || 'Host',
+                        triggeredAt: now,
+                        durationMs: 4500
+                    },
+                    lightMode: 'ballad'
+                });
+                setTimeout(() => {
+                    updateRoom({ lightMode: 'off' }).catch(() => {});
+                }, 4500);
+                toast('Harmony boost sent.');
+                await logHostInteraction('sent a Vocal Challenge harmony boost.');
                 return;
             }
 
@@ -2496,14 +2518,22 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                 const now = nowMs();
                 const totalMs = STORM_SEQUENCE.approachMs + STORM_SEQUENCE.peakMs + STORM_SEQUENCE.passMs + STORM_SEQUENCE.clearMs;
                 await updateRoom({
+                    'gameData.hostAssist': {
+                        id: `scale_save_${now}`,
+                        kind: 'scale_save',
+                        label: 'SCALE SAVE',
+                        by: hostName || 'Host',
+                        triggeredAt: now,
+                        durationMs: 5000
+                    },
                     lightMode: 'storm',
                     stormStartedAt: now,
                     stormPhase: 'approach',
                     stormConfig: STORM_SEQUENCE,
                     stormEndsAt: now + totalMs
                 });
-                toast('Scale Storm triggered.');
-                await logHostInteraction('triggered Scale Storm FX.');
+                toast('Scale save sent.');
+                await logHostInteraction('sent a Riding Scales save.');
                 return;
             }
 

@@ -25,6 +25,9 @@ const NOTE_Y = {
 };
 
 const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+const centsBetween = (freqA, freqB) => (freqA > 0 && freqB > 0 ? (1200 * Math.log2(freqA / freqB)) : 9999);
+const SCALE_ASSIST_DEFAULT_MS = 5000;
+const SCALE_ASSIST_BANNER_MS = 2400;
 
 const pickStepMs = (round, difficulty) => {
     const baseByDifficulty = {
@@ -78,10 +81,11 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
     const isRoomControlled = controlSource === 'ambient' || controlSource === 'crowd' || controlSource === 'local';
     const isController = isPlayer && (isRoomControlled ? view === 'tv' : view !== 'tv');
     const isLocalInput = isController && inputSource !== 'remote';
-    const { stableNote, note, confidence, isSinging } = usePitch(isLocalInput);
+    const { pitch, stableNote, note, confidence, isSinging } = usePitch(isLocalInput);
 
     const [localState, setLocalState] = useState(null);
     const [rewarded, setRewarded] = useState(false);
+    const [hostAssistBanner, setHostAssistBanner] = useState(null);
 
     const stateRef = useRef(null);
     const matchRef = useRef({ note: '-', since: 0 });
@@ -92,12 +96,15 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
     const rewardRef = useRef(false);
     const endRef = useRef(false);
     const advanceRef = useRef(false);
+    const pitchRef = useRef(pitch);
+    const lastHostAssistIdRef = useRef('');
+    const hostAssistBannerTimeoutRef = useRef(null);
 
     const maxStrikes = Number(gameData.maxStrikes || 3);
     const rewardPerRound = Number(gameData.rewardPerRound || 50);
     const difficulty = gameData.difficulty || 'standard';
     const guideTone = gameData.guideTone !== false;
-    const holdMs = difficulty === 'hard' ? 160 : difficulty === 'easy' ? 300 : 220;
+    const holdMs = difficulty === 'hard' ? 135 : difficulty === 'easy' ? 240 : 170;
     const isTurnsMode = gameData.mode === 'turns';
     const summaryDurationMs = 2500;
 
@@ -133,6 +140,10 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
             nextAt: Date.now() + stepMsList[0],
             detectedNote: '-',
             summaryUntil: null,
+            assistUntil: null,
+            assistCharges: 0,
+            lastPhaseChangeAt: Date.now(),
+            lastNoteAdvanceAt: Date.now(),
             lastUpdated: Date.now()
         };
         syncState(init);
@@ -151,6 +162,52 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         const t = setTimeout(() => syncState(gameData), 0);
         return () => clearTimeout(t);
     }, [isController, gameData, syncState]);
+
+    useEffect(() => {
+        pitchRef.current = pitch;
+    }, [pitch]);
+
+    useEffect(() => {
+        const hostAssist = gameData?.hostAssist;
+        const assistId = String(hostAssist?.id || '').trim();
+        if (!assistId || assistId === lastHostAssistIdRef.current) return;
+        const nextState = stateRef.current ? { ...stateRef.current } : null;
+        if (!nextState) {
+            lastHostAssistIdRef.current = assistId;
+            return;
+        }
+        const durationMs = Math.max(1200, Number(hostAssist?.durationMs || SCALE_ASSIST_DEFAULT_MS));
+        const triggeredAt = Number(hostAssist?.triggeredAt || Date.now());
+        if (Date.now() - triggeredAt > durationMs + SCALE_ASSIST_BANNER_MS + 1500) {
+            lastHostAssistIdRef.current = assistId;
+            return;
+        }
+        lastHostAssistIdRef.current = assistId;
+        nextState.hostAssist = hostAssist;
+        nextState.assistUntil = triggeredAt + durationMs;
+        nextState.assistCharges = Math.max(0, Number(nextState.assistCharges || 0)) + 1;
+        if (nextState.phase === 'input') {
+            nextState.phase = 'playback';
+            nextState.playbackIndex = 0;
+            nextState.inputIndex = 0;
+            nextState.nextAt = Date.now() + clamp((nextState.stepMsList?.[0] || 900) + 220, 900, 1900);
+            nextState.lastPhaseChangeAt = Date.now();
+            nextState.lastNoteAdvanceAt = Date.now();
+        }
+        nextState.lastUpdated = Date.now();
+        stateRef.current = nextState;
+        setLocalState(nextState);
+        setHostAssistBanner({
+            label: hostAssist?.label || 'SCALE SAVE',
+            by: hostAssist?.by || 'Host'
+        });
+        if (hostAssistBannerTimeoutRef.current) clearTimeout(hostAssistBannerTimeoutRef.current);
+        hostAssistBannerTimeoutRef.current = setTimeout(() => setHostAssistBanner(null), SCALE_ASSIST_BANNER_MS);
+    }, [gameData]);
+
+    useEffect(() => () => {
+        if (hostAssistBannerTimeoutRef.current) clearTimeout(hostAssistBannerTimeoutRef.current);
+    }, []);
 
     useEffect(() => {
         if (!isController) return;
@@ -184,6 +241,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
             const current = Date.now();
             const displayNote = stableNote !== '-' ? stableNote : note;
             state.detectedNote = displayNote;
+            const assistActive = Number(state.assistUntil || 0) > current;
 
             if (state.phase === 'summary') {
                 if (state.summaryUntil && current >= state.summaryUntil) {
@@ -195,57 +253,84 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                     if (nextIndex >= state.sequence.length) {
                         state.phase = 'input';
                         state.inputIndex = 0;
-                        state.nextAt = current + clamp(state.stepMsList[0] + 400, 900, 2200);
+                        state.nextAt = current + clamp(state.stepMsList[0] + (assistActive ? 720 : 560), 1050, 2500);
+                        state.lastPhaseChangeAt = current;
+                        state.lastNoteAdvanceAt = current;
                         matchRef.current = { note: '-', since: 0 };
                     } else {
                         state.playbackIndex = nextIndex;
-                        state.nextAt = current + (state.stepMsList[nextIndex] || pickStepMs(state.round));
+                        state.nextAt = current + (state.stepMsList[nextIndex] || pickStepMs(state.round, difficulty));
+                        state.lastNoteAdvanceAt = current;
                     }
                 }
             } else if (state.phase === 'input') {
                 const targetNote = state.sequence[state.inputIndex];
-                const isMatch = isSinging && confidence >= 0.6 && displayNote === targetNote;
+                const targetFreq = NOTE_FREQ[targetNote] || 0;
+                const centsOff = targetFreq ? centsBetween(pitchRef.current || 0, targetFreq) : 9999;
+                const tuneWindow = assistActive ? 145 : 112;
+                const relaxedConfidence = assistActive ? 0.34 : 0.46;
+                const exactNote = displayNote === targetNote || stableNote === targetNote;
+                const isMatch = isSinging
+                    && confidence >= relaxedConfidence
+                    && (exactNote || Math.abs(centsOff) <= tuneWindow);
                 if (isMatch) {
                     if (matchRef.current.note !== targetNote) {
                         matchRef.current = { note: targetNote, since: current };
-                    } else if (current - matchRef.current.since >= holdMs) {
+                    } else if (current - matchRef.current.since >= Math.max(90, Math.round(holdMs * (assistActive ? 0.72 : 1)))) {
                         const nextInput = state.inputIndex + 1;
                         if (nextInput >= state.sequence.length) {
                             const nextRound = state.round + 1;
                             const nextLen = state.sequence.length + nextLengthIncrement(state.round, difficulty);
                             const nextSeq = buildSequence(nextLen, difficulty);
-                        const nextSteps = buildStepMsList(nextLen, nextRound, difficulty);
-                        state.round = nextRound;
-                        state.bestRound = Math.max(state.bestRound || 1, state.round);
-                        state.sequence = nextSeq;
-                        state.stepMsList = nextSteps;
-                        state.playbackIndex = 0;
-                        state.inputIndex = 0;
-                        state.phase = 'playback';
-                        state.nextAt = current + nextSteps[0];
+                            const nextSteps = buildStepMsList(nextLen, nextRound, difficulty);
+                            state.round = nextRound;
+                            state.bestRound = Math.max(state.bestRound || 1, state.round);
+                            state.sequence = nextSeq;
+                            state.stepMsList = nextSteps;
+                            state.playbackIndex = 0;
+                            state.inputIndex = 0;
+                            state.phase = 'playback';
+                            state.nextAt = current + nextSteps[0];
+                            state.lastPhaseChangeAt = current;
+                            state.lastNoteAdvanceAt = current;
                         } else {
                             state.inputIndex = nextInput;
-                            state.nextAt = current + clamp(state.stepMsList[nextInput] + 400, 900, 2200);
+                            state.nextAt = current + clamp(state.stepMsList[nextInput] + (assistActive ? 780 : 620), 1050, 2500);
+                            state.lastNoteAdvanceAt = current;
                         }
                         matchRef.current = { note: '-', since: 0 };
                     }
                 } else if (current >= state.nextAt) {
-                    state.strikes = (state.strikes || 0) + 1;
-                    if (state.strikes >= maxStrikes) {
-                        state.phase = 'summary';
-                        state.summaryUntil = current + summaryDurationMs;
-                    } else {
-                        const resetLen = 3;
-                        const resetSeq = buildSequence(resetLen, difficulty);
-                        const resetSteps = buildStepMsList(resetLen, 1, difficulty);
-                        state.round = 1;
-                        state.sequence = resetSeq;
-                        state.stepMsList = resetSteps;
+                    if ((state.assistCharges || 0) > 0) {
+                        state.assistCharges = Math.max(0, Number(state.assistCharges || 0) - 1);
+                        state.phase = 'playback';
                         state.playbackIndex = 0;
                         state.inputIndex = 0;
-                        state.phase = 'playback';
-                        state.nextAt = current + resetSteps[0];
+                        state.nextAt = current + clamp((state.stepMsList?.[0] || 900) + 220, 900, 1900);
+                        state.lastPhaseChangeAt = current;
+                        state.lastNoteAdvanceAt = current;
                         matchRef.current = { note: '-', since: 0 };
+                    } else {
+                        state.strikes = (state.strikes || 0) + 1;
+                        if (state.strikes >= maxStrikes) {
+                            state.phase = 'summary';
+                            state.summaryUntil = current + summaryDurationMs;
+                        } else {
+                            const fallbackRound = state.strikes >= 2 ? Math.max(1, state.round - 1) : state.round;
+                            const fallbackLen = state.strikes >= 2 ? Math.max(3, state.sequence.length - 1) : state.sequence.length;
+                            const resetSeq = buildSequence(fallbackLen, difficulty);
+                            const resetSteps = buildStepMsList(fallbackLen, fallbackRound, difficulty);
+                            state.round = fallbackRound;
+                            state.sequence = resetSeq;
+                            state.stepMsList = resetSteps;
+                            state.playbackIndex = 0;
+                            state.inputIndex = 0;
+                            state.phase = 'playback';
+                            state.nextAt = current + resetSteps[0];
+                            state.lastPhaseChangeAt = current;
+                            state.lastNoteAdvanceAt = current;
+                            matchRef.current = { note: '-', since: 0 };
+                        }
                     }
                 }
             }
@@ -381,6 +466,14 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         : null;
     const showSummary = localState.phase === 'summary';
     const earnedPoints = (localState.bestRound || 1) * rewardPerRound;
+    const renderNowMs = Number(localState.lastUpdated || localState.nextAt || 0);
+    const assistActive = Number(localState.assistUntil || 0) > renderNowMs;
+    const phaseWindowMs = Math.max(1, Number(localState.nextAt || 0) - Number(localState.lastNoteAdvanceAt || renderNowMs));
+    const phaseProgressPct = (localState.phase === 'playback' || localState.phase === 'input')
+        ? clamp(((Number(localState.nextAt || renderNowMs) - renderNowMs) / phaseWindowMs) * 100, 0, 100)
+        : 0;
+    const showCuePulse = (localState.phase === 'playback' || localState.phase === 'input')
+        && renderNowMs - Number(localState.lastNoteAdvanceAt || 0) < 850;
 
     return (
         <div className="relative w-full h-full bg-black text-white font-saira overflow-hidden">
@@ -415,6 +508,15 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                     )}
                 </div>
             </div>
+            {hostAssistBanner && (
+                <div className="absolute top-[104px] left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+                    <div className="rounded-2xl border border-cyan-200/50 bg-gradient-to-r from-cyan-300/95 via-sky-300/95 to-emerald-300/90 px-6 py-3 text-center shadow-[0_0_32px_rgba(34,211,238,0.35)] animate-pulse">
+                        <div className="text-xs uppercase tracking-[0.35em] text-black/70">Host Assist</div>
+                        <div className="text-2xl md:text-3xl font-black text-black">{hostAssistBanner.label}</div>
+                        <div className="text-sm md:text-base font-bold text-black/80">Pattern replay and save from {hostAssistBanner.by}</div>
+                    </div>
+                </div>
+            )}
             <div className="absolute top-[112px] left-1/2 -translate-x-1/2 z-30">
                 <div className={`rounded-2xl border px-5 py-2.5 text-center text-sm md:text-base uppercase tracking-[0.18em] shadow-[0_0_24px_rgba(0,0,0,0.35)] ${
                     localState.phase === 'playback'
@@ -426,6 +528,30 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
             </div>
 
             <div className="absolute inset-x-10 top-28 bottom-24 flex flex-col gap-6">
+                <div className="grid grid-cols-1 xl:grid-cols-[1.35fr,0.65fr] gap-4">
+                    <div className="rounded-3xl border border-white/10 bg-black/40 p-4">
+                        <div className="flex items-center justify-between text-sm uppercase tracking-[0.2em] text-zinc-300 mb-2">
+                            <span>{localState.phase === 'playback' ? 'Sequence Pace' : 'Response Window'}</span>
+                            <span>{Math.max(0, Math.ceil((Number(localState.nextAt || renderNowMs) - renderNowMs) / 1000))}s</span>
+                        </div>
+                        <div className="h-4 rounded-full border border-white/10 bg-white/10 overflow-hidden">
+                            <div className={`h-full transition-all duration-150 ${localState.phase === 'playback' ? 'bg-gradient-to-r from-cyan-300 via-sky-300 to-indigo-300' : 'bg-gradient-to-r from-pink-300 via-fuchsia-300 to-amber-300'}`} style={{ width: `${phaseProgressPct}%` }} />
+                        </div>
+                        <div className="mt-2 text-sm text-zinc-300 uppercase tracking-[0.16em]">
+                            {assistActive ? 'Scale save armed.' : showCuePulse ? 'Cue changed. Stay with it.' : localState.phase === 'playback' ? 'Listen for the next note.' : 'Match the current note.'}
+                        </div>
+                    </div>
+                    <div className="rounded-3xl border border-white/10 bg-black/40 p-4">
+                        <div className="flex items-center justify-between text-sm uppercase tracking-[0.2em] text-zinc-300 mb-2">
+                            <span>Assist Shield</span>
+                            <span>{Math.max(0, Number(localState.assistCharges || 0))}</span>
+                        </div>
+                        <div className="h-4 rounded-full border border-white/10 bg-white/10 overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-emerald-300 via-cyan-300 to-sky-300 transition-all duration-150" style={{ width: `${Math.min(100, Number(localState.assistCharges || 0) * 100)}%` }} />
+                        </div>
+                        <div className="mt-2 text-sm text-zinc-300 uppercase tracking-[0.16em]">Next miss gets replayed</div>
+                    </div>
+                </div>
                 <div className="bg-black/50 border border-white/10 rounded-3xl p-6">
                     <div className="flex items-center justify-between text-base md:text-lg uppercase tracking-[0.16em] text-zinc-300 mb-3">
                         <span>{localState.phase === 'playback' ? 'Listen' : 'Repeat'}</span>
@@ -440,7 +566,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                                 <div key={n} className="absolute left-0 text-base md:text-lg font-semibold text-zinc-300" style={{ top: `${NOTE_Y[n]}%` }}>{n}</div>
                             ))}
                             {targetNote && (
-                                <div className="absolute left-1/2 w-8 h-8 rounded-full bg-cyan-400 shadow-[0_0_22px_rgba(34,211,238,0.68)]" style={{ top: `${NOTE_Y[targetNote]}%`, transform: 'translate(-50%, -50%)' }}></div>
+                                <div className={`absolute left-1/2 w-8 h-8 rounded-full shadow-[0_0_22px_rgba(34,211,238,0.68)] ${showCuePulse ? 'bg-yellow-300 scale-125' : 'bg-cyan-400'} ${assistActive ? 'ring-4 ring-emerald-300/40' : ''}`} style={{ top: `${NOTE_Y[targetNote]}%`, transform: 'translate(-50%, -50%)' }}></div>
                             )}
                             {detected && detected !== '-' && (
                                 <div className="absolute left-[60%] w-7 h-7 rounded-full bg-pink-400 shadow-[0_0_16px_rgba(236,72,153,0.6)]" style={{ top: `${NOTE_Y[detected] || 50}%`, transform: 'translate(-50%, -50%)' }}></div>
