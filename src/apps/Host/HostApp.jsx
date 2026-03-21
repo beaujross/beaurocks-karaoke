@@ -152,6 +152,26 @@ const HOST_UPDATE_DEPLOYMENT_WARNING = "Host control updates are unavailable bec
 const HOST_ROOM_PROVISION_DEPLOYMENT_WARNING = "Room provisioning is unavailable because the backend callable `provisionHostRoom` is not deployed. Deploy functions and reload Host.";
 const HOST_UPDATE_OP_FIELD = '__hostOp';
 const HOST_UPDATE_SERVER_TIMESTAMP = 'serverTimestamp';
+const HOST_PORTAL_RELEASE_BRIEF = Object.freeze({
+    headline: 'Host portal refresh',
+    dateLabel: 'March 21, 2026',
+    summary: 'Launch, reopen, and room management now live closer to one operator board instead of a single start card.',
+    shipped: Object.freeze([
+        'New-room launch stays primary, but recent-room reopen and diagnostics are easier to reach.',
+        'The landing view now supports room management as a first-class task instead of a hidden fallback.',
+        'Release notes, known issues, and QA focus now stay visible from the host entry screen.'
+    ]),
+    knownIssues: Object.freeze([
+        'TV screens may need a hard refresh right after deploy so old cached bundles clear.',
+        'Large host bundles still make first-load heavier than ideal on weak venue hardware.',
+        'Deep diagnostics, cleanup, and discovery listing edits still open separate workspace sections.'
+    ]),
+    qaFocus: Object.freeze([
+        'Create room -> open TV -> join audience loop',
+        'Resume recent room from room library and from direct room code',
+        'Archive, restore, cleanup, and permanent delete paths for older rooms'
+    ])
+});
 const decodeUriComponentSafe = (value = '') => {
     try {
         return decodeURIComponent(value);
@@ -213,6 +233,56 @@ const normalizeOrbSkinUrl = (rawValue = '') => {
         }
     }
     return '';
+};
+
+const stripKaraokeDecorators = (value = '') =>
+    String(value || '')
+        .replace(/\s*-\s*Karaoke Version(?:\s+from\s+.*)?$/i, '')
+        .replace(/\s*\((?:official\s+)?(?:karaoke|instrumental)(?:\s+version|\s+track|\s+video)?\)\s*$/i, '')
+        .replace(/\s*\[(?:official\s+)?(?:karaoke|instrumental).*?\]\s*$/i, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+const parseDecoratedSongTitle = (value = '') => {
+    const raw = String(value || '').trim();
+    if (!raw) return { title: '', artist: '' };
+
+    const karaokeVersionMatch = raw.match(/^(.*?)\s*-\s*(.*?)\s*-\s*Karaoke Version(?: from (.*))?$/i);
+    if (karaokeVersionMatch) {
+        return {
+            title: stripKaraokeDecorators(String(karaokeVersionMatch[2] || '').trim() || raw),
+            artist: String(karaokeVersionMatch[1] || '').trim()
+        };
+    }
+
+    const instrumentalPipeMatch = raw.match(/^(.*?)\s*\((?:karaoke|instrumental)\)\s*\|\s*(.*)$/i);
+    if (instrumentalPipeMatch) {
+        return {
+            title: stripKaraokeDecorators(String(instrumentalPipeMatch[1] || '').trim() || raw),
+            artist: String(instrumentalPipeMatch[2] || '').trim()
+        };
+    }
+
+    return {
+        title: stripKaraokeDecorators(raw),
+        artist: ''
+    };
+};
+
+const getRecapDisplayMeta = (song = {}) => {
+    const rawSongTitle = String(song?.songTitle || song?.title || '').trim();
+    const parsed = parseDecoratedSongTitle(rawSongTitle);
+    const explicitArtist = String(song?.canonicalArtist || song?.artist || '').trim();
+    const shouldPreferParsedArtist = !explicitArtist || /karaoke|instrumental|youtube/i.test(explicitArtist);
+
+    return {
+        songTitle: stripKaraokeDecorators(
+            String(song?.canonicalTitle || song?.displaySongTitle || parsed.title || rawSongTitle).trim()
+        ) || 'Featured Performance',
+        artist: shouldPreferParsedArtist ? (parsed.artist || explicitArtist) : explicitArtist,
+        singerName: String(song?.singerName || song?.performerName || song?.displayName || '').trim() || 'Guest',
+        sourceSongTitle: rawSongTitle || null
+    };
 };
 
 const isPlainObject = (value) =>
@@ -3876,10 +3946,17 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                         hostLogger.warn('Pop trivia recap summary failed', { songId: id, error });
                     }
                 }
+                const recapDisplayMeta = getRecapDisplayMeta({ ...s, ...latestSong });
                 const recapPayload = {
                     ...s,
                     ...latestSong,
                     id,
+                    songTitle: recapDisplayMeta.songTitle,
+                    artist: recapDisplayMeta.artist,
+                    singerName: recapDisplayMeta.singerName,
+                    displaySongTitle: recapDisplayMeta.songTitle,
+                    displayArtist: recapDisplayMeta.artist,
+                    sourceSongTitle: recapDisplayMeta.sourceSongTitle,
                     hypeScore: resolvedHypeScore,
                     applauseScore: finalApplauseScore,
                     hostBonus: resolvedHostBonus,
@@ -3906,7 +3983,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 await logPerformance(recapPayload);
                 pushAutoDjEvent(AUTO_DJ_EVENTS.SCORING_COMPLETE, { songId: id });
                 pushAutoDjEvent(AUTO_DJ_EVENTS.TRANSITION_COMPLETE, { songId: id });
-                logActivity(roomCode, s.singerName, `crushed ${s.songTitle}!`, EMOJI.star);
+                logActivity(roomCode, recapDisplayMeta.singerName, `crushed ${recapDisplayMeta.songTitle}!`, EMOJI.star);
                 toast("Performance Finished"); 
             } 
         } 
@@ -7929,6 +8006,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     }, [autoBgMusic, currentSong, playingBg, setBgMusicState]);
 
+    useEffect(() => {
+        if (!autoBgMusic) return;
+        if (!currentSong) return;
+        if (!playingBgRef.current) return;
+        setBgMusicState(false);
+    }, [autoBgMusic, currentSong, setBgMusicState]);
+
     const fadeMixFader = useCallback((targetPercent, durationMs = 800) => {
         if (mixFadeRef.current) {
             clearInterval(mixFadeRef.current);
@@ -9366,9 +9450,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 source: String(baseSong?.popTriviaSource || 'ai').trim() || 'ai'
             };
         })();
+        const recapDisplayMeta = getRecapDisplayMeta({
+            ...baseSong,
+            singerName: baseSong.singerName || room?.hostName || 'Guest'
+        });
         const recapPreview = {
-            songTitle: baseSong.songTitle || 'Featured Performance',
-            singerName: baseSong.singerName || room?.hostName || 'Guest',
+            songTitle: recapDisplayMeta.songTitle,
+            artist: recapDisplayMeta.artist,
+            singerName: recapDisplayMeta.singerName,
+            displaySongTitle: recapDisplayMeta.songTitle,
+            displayArtist: recapDisplayMeta.artist,
+            sourceSongTitle: recapDisplayMeta.sourceSongTitle,
             hypeScore: baseSong.hypeScore || 120,
             applauseScore: baseSong.applauseScore || 85,
             hostBonus: baseSong.hostBonus || 25,
@@ -11922,6 +12014,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 detail: 'Recovery, listing details, and cleanup.'
             }
         };
+        const marketingChangelogUrl = typeof window !== 'undefined'
+            ? `${String(getSurfaceBaseHref('marketing', window.location) || '/').replace(/\/$/, '')}/changelog`
+            : '/changelog';
+        const recentRoomSnapshot = recentHostRooms.slice(0, 4);
+        const recentArchivedRoomCount = recentHostRooms.filter((roomItem) => roomItem.archived).length;
+        const portalMetrics = [
+            {
+                label: 'Current build',
+                value: RELEASE_VERSION,
+                detail: APP_BUILD ? APP_BUILD.split('.').slice(-2).join('.') : 'host surface'
+            },
+            {
+                label: 'Recent rooms',
+                value: recentHostRoomsLoading ? '...' : String(recentHostRooms.length).padStart(2, '0'),
+                detail: recentHostRoomsLoading ? 'Syncing library' : `${recentArchivedRoomCount} archived`
+            },
+            {
+                label: 'Room state',
+                value: launchState,
+                detail: hasLaunchRoomCode ? `Room ${launchRoomCodeCandidate}` : 'No room selected'
+            }
+        ];
         const renderRecentRoomList = ({ managementMode = false } = {}) => (
             <div className="mt-4 rounded-xl border border-cyan-400/25 bg-gradient-to-br from-[#120f22]/90 via-[#11152a]/90 to-[#13151f]/90 px-3 py-3 text-left">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">
@@ -12081,12 +12195,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <div className="absolute -right-10 top-10 h-64 w-64 rounded-full bg-pink-500/28 blur-3xl"></div>
                 <div className="absolute bottom-[-5rem] left-1/3 h-56 w-56 rounded-full bg-fuchsia-400/16 blur-3xl"></div>
             </div>
-            <div className="relative z-10 w-full max-w-2xl">
-                <div className="bg-gradient-to-br from-[#151125]/90 via-[#10182a]/90 to-[#0b111b]/95 p-5 md:p-6 rounded-[2rem] border border-cyan-300/35 backdrop-blur-xl w-full shadow-[0_30px_90px_rgba(0,0,0,0.5),0_0_60px_rgba(236,72,153,0.18)] relative overflow-hidden">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <div className="relative z-10 w-full max-w-6xl">
+                <div className="bg-[radial-gradient(circle_at_top_left,rgba(255,194,104,0.16),transparent_24%),radial-gradient(circle_at_85%_14%,rgba(236,72,153,0.18),transparent_30%),radial-gradient(circle_at_74%_78%,rgba(61,228,255,0.14),transparent_28%),linear-gradient(145deg,rgba(14,18,34,0.94),rgba(11,17,28,0.96))] p-5 md:p-6 lg:p-7 rounded-[2.1rem] border border-cyan-300/30 backdrop-blur-xl w-full shadow-[0_30px_90px_rgba(0,0,0,0.5),0_0_80px_rgba(236,72,153,0.12)] relative overflow-hidden">
+                <div className="pointer-events-none absolute inset-0 opacity-60">
+                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/45 to-transparent" />
+                    <div className="absolute right-[-3rem] top-[-2rem] h-40 w-40 rounded-full bg-pink-400/14 blur-3xl" />
+                    <div className="absolute left-[-2rem] bottom-[-3rem] h-48 w-48 rounded-full bg-cyan-300/12 blur-3xl" />
+                </div>
+                <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100">
                         <span className="h-2 w-2 rounded-full bg-cyan-300 animate-pulse"></span>
-                        Host Dashboard
+                        Host Portal
                     </div>
                     <div className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.2em] ${
                         isFirstHostRun
@@ -12096,23 +12215,40 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         {isFirstHostRun ? 'First Room Setup' : 'Ready To Host'}
                     </div>
                 </div>
-                <div className="mb-4 flex flex-col items-center gap-3 md:flex-row md:items-center md:text-left">
+                <div className="relative z-10 mb-5 flex flex-col items-center gap-3 md:flex-row md:items-center md:text-left">
                     <img
                         src={ASSETS.logo}
                         className="w-44 md:w-52 shrink-0 object-contain drop-shadow-[0_0_30px_rgba(0,196,217,0.34)]"
                         alt="BeauRocks Karaoke"
                     />
                     <div className="max-w-xl">
-                        <h1 className="text-[1.85rem] md:text-[2.65rem] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] via-[#84e7f4] to-[#EC4899] leading-tight">
-                            {isFirstHostRun ? 'Set Up + Start' : 'Start Tonight'}
+                        <div className="inline-flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-amber-100/90">
+                            Operator briefing
+                        </div>
+                        <h1 className="mt-3 text-[2.1rem] md:text-[3rem] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ffc56a] via-[#75e7ff] to-[#EC4899] leading-[0.96]">
+                            {isFirstHostRun ? 'Build your host base, then launch' : 'Run tonight from one host portal'}
                         </h1>
-                        <div className="text-sm text-cyan-100/85 mt-2">
+                        <div className="text-sm text-cyan-100/85 mt-2 max-w-2xl">
                             {isFirstHostRun
-                                ? 'Finish setup once, then launch every night from here.'
-                                : 'Create a room or reopen a recent one.'}
+                                ? 'Finish setup once, then create rooms, manage old ones, and track what changed without leaving the landing screen.'
+                                : 'Create a room, reopen a recent one, manage older rooms, and keep release notes in view before you go live.'}
                         </div>
                     </div>
                 </div>
+                <div className="relative z-10 mb-5 grid gap-3 md:grid-cols-3">
+                    {portalMetrics.map((metric) => (
+                        <div
+                            key={metric.label}
+                            className="rounded-[1.4rem] border border-white/10 bg-[linear-gradient(145deg,rgba(8,18,30,0.82),rgba(17,10,31,0.72))] px-4 py-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                        >
+                            <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/68">{metric.label}</div>
+                            <div className="mt-2 text-[1.35rem] md:text-[1.6rem] font-black text-white leading-none">{metric.value}</div>
+                            <div className="mt-1 text-[11px] text-cyan-100/65">{metric.detail}</div>
+                        </div>
+                    ))}
+                </div>
+                <div className="relative z-10 grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
+                <div className="space-y-3">
                 <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-2.5 text-left" data-host-room-state>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100/75">Status</div>
@@ -12489,6 +12625,160 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         {hostUpdateDeploymentBanner}
                     </div>
                 )}
+                </div>
+                <div className="space-y-4 text-left">
+                    <div className="rounded-[1.6rem] border border-cyan-300/22 bg-[linear-gradient(145deg,rgba(10,17,29,0.92),rgba(21,11,34,0.82))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.22)]">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/68">Room Library</div>
+                                <div className="mt-1 text-xl font-black text-white">Manage old rooms without leaving launch.</div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setLandingLaunchMode('advanced')}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[10px] uppercase tracking-[0.18em] border-cyan-300/28 bg-cyan-500/10 text-cyan-100`}
+                            >
+                                Open Full Tools
+                            </button>
+                        </div>
+                        <div className="mt-2 text-xs text-cyan-100/72">
+                            Keep reopen and recovery visible. This side rail is the fast path for recent rooms, while Advanced still holds deeper cleanup and diagnostics.
+                        </div>
+                        {recentHostRoomsLoading ? (
+                            <div className="mt-4 rounded-xl border border-cyan-400/18 bg-cyan-500/8 px-3 py-3 text-xs text-cyan-100/72">
+                                Syncing recent rooms...
+                            </div>
+                        ) : recentRoomSnapshot.length > 0 ? (
+                            <div className="mt-4 space-y-2.5">
+                                {recentRoomSnapshot.map((roomItem) => {
+                                    const modifiedMs = roomItem.updatedAtMs || roomItem.createdAtMs || nowMs();
+                                    return (
+                                        <div
+                                            key={`portal-${roomItem.code}`}
+                                            className="rounded-[1.15rem] border border-white/10 bg-[linear-gradient(145deg,rgba(9,18,30,0.86),rgba(24,11,34,0.72))] px-3 py-3"
+                                        >
+                                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <div className="text-base font-black tracking-[0.08em] text-white">{roomItem.code}</div>
+                                                        {roomItem.archived && (
+                                                            <span className="rounded-full border border-amber-300/35 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-100">
+                                                                Archived
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="mt-1 text-[11px] text-cyan-100/70">
+                                                        {(roomItem.orgName || 'Workspace')}
+                                                        {' | '}
+                                                        {(roomItem.activeMode || 'karaoke')}
+                                                    </div>
+                                                    <div className="mt-1 text-[11px] text-cyan-100/55">
+                                                        {new Date(modifiedMs).toLocaleString()}
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openExistingRoomWorkspace(roomItem.code, 'queue.live_run')}
+                                                        disabled={joiningRoom || !!roomManagerBusyCode}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[10px] px-2.5 py-1 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        Open
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openExistingRoomWorkspace(roomItem.code, 'advanced.diagnostics')}
+                                                        disabled={joiningRoom || !!roomManagerBusyCode}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[10px] px-2.5 py-1 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        Manage
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="mt-4 rounded-[1.15rem] border border-cyan-400/18 bg-cyan-500/8 px-3 py-3">
+                                <div className="text-sm font-semibold text-white">No previous rooms yet.</div>
+                                <div className="mt-1 text-xs text-cyan-100/72">Create your first room and this library becomes your reopen and cleanup shelf.</div>
+                                <button
+                                    type="button"
+                                    onClick={() => setLandingLaunchMode('start')}
+                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 text-[10px] uppercase tracking-[0.18em] px-3 py-1.5`}
+                                >
+                                    Start Tonight
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    <div className="rounded-[1.6rem] border border-fuchsia-300/20 bg-[radial-gradient(circle_at_top,rgba(255,198,108,0.12),transparent_30%),linear-gradient(145deg,rgba(20,10,31,0.92),rgba(8,18,30,0.9))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.26)]">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-amber-100/78">Release Desk</div>
+                                <div className="mt-1 text-xl font-black text-white">{HOST_PORTAL_RELEASE_BRIEF.headline}</div>
+                            </div>
+                            <div className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-100/84">
+                                {VERSION}
+                            </div>
+                        </div>
+                        <div className="mt-2 text-xs text-cyan-100/72">{HOST_PORTAL_RELEASE_BRIEF.dateLabel}</div>
+                        <div className="mt-2 text-sm text-cyan-50/88">{HOST_PORTAL_RELEASE_BRIEF.summary}</div>
+                        <div className="mt-4 rounded-[1.15rem] border border-white/10 bg-black/18 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Latest update</div>
+                            <div className="mt-2 space-y-2">
+                                {HOST_PORTAL_RELEASE_BRIEF.shipped.map((item) => (
+                                    <div key={`release-${item}`} className="flex gap-2 text-xs text-cyan-50/88">
+                                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300" />
+                                        <span>{item}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            <div className="rounded-[1.15rem] border border-amber-300/18 bg-amber-500/8 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-amber-100/80">Known issues</div>
+                                <div className="mt-2 space-y-2">
+                                    {HOST_PORTAL_RELEASE_BRIEF.knownIssues.map((item) => (
+                                        <div key={`issue-${item}`} className="flex gap-2 text-xs text-amber-50/88">
+                                            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300" />
+                                            <span>{item}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="rounded-[1.15rem] border border-emerald-300/18 bg-emerald-500/8 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-100/80">Test focus</div>
+                                <div className="mt-2 space-y-2">
+                                    {HOST_PORTAL_RELEASE_BRIEF.qaFocus.map((item) => (
+                                        <div key={`qa-${item}`} className="flex gap-2 text-xs text-emerald-50/88">
+                                            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-300" />
+                                            <span>{item}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => window.open(marketingChangelogUrl, '_blank', 'noopener,noreferrer')}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-[10px] uppercase tracking-[0.18em]`}
+                            >
+                                Open Public Changelog
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setLandingLaunchMode('advanced')}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[10px] uppercase tracking-[0.18em]`}
+                            >
+                                Review Diagnostics
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                </div>
             </div>
             {showOnboardingWizard && (
                 <div className="fixed inset-0 z-[95] bg-black/85 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
@@ -13180,7 +13470,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     return (
             <div
                 data-host-tablet-touch={tabletTouchViewport ? 'true' : 'false'}
-                className={`host-app min-h-screen ${tabletTouchViewport ? '' : 'md:h-screen'} flex flex-col relative bg-zinc-950 text-white font-saira overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? '' : 'md:overflow-hidden'}`}
+                className={`host-app min-h-screen ${tabletTouchViewport ? 'h-[100dvh]' : 'md:h-screen'} flex flex-col relative bg-zinc-950 text-white font-saira overflow-x-hidden ${tabletTouchViewport ? 'overflow-y-hidden' : 'overflow-y-auto md:overflow-hidden'}`}
             >
                 {/* Header */}
                 <HostTopChrome
@@ -13307,6 +13597,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     onDismissStageQuickStart={dismissStageQuickStartChecklist}
                     audiencePreviewVisible={audiencePreviewVisible}
                     setAudiencePreviewVisible={setAudiencePreviewVisible}
+                    tabletTouchViewport={tabletTouchViewport}
                 />
                 <ModerationInboxDrawer
                     open={showModerationInbox}
@@ -13330,7 +13621,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
             )}
 
-            <div className={`flex-1 min-h-0 p-3 sm:p-4 md:p-5 lg:p-6 overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? '' : 'md:overflow-hidden'}`}>
+            <div
+                data-host-main-scroll="true"
+                className={`flex-1 min-h-0 p-3 sm:p-4 md:p-5 lg:p-6 overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : 'md:overflow-hidden'}`}
+            >
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <HostGameControlPad
                         roomCode={roomCode}

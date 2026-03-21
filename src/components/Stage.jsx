@@ -4,7 +4,7 @@ import { EMOJI } from '../lib/emoji';
 
 const nowMs = () => Date.now();
 
-const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
+const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVideo = true }) => {
     const mediaUrl = current?.mediaUrl || room?.mediaUrl;
     const isBackingAudioOnly = current?.backingAudioOnly || false;
     const applePlayback = room?.appleMusicPlayback || null;
@@ -50,6 +50,33 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
     const nativeVideoRef = useRef(null);
     const audioRef = useRef(null);
     const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+    const idleMicSizeClass = fitToWindow ? 'text-[clamp(4.5rem,15vw,8.5rem)]' : 'text-[12rem]';
+    const idleHeadingSizeClass = fitToWindow ? 'text-[clamp(2.75rem,8vw,6rem)]' : 'text-8xl';
+    const idleCtaSizeClass = fitToWindow ? 'text-[clamp(1rem,3vw,2rem)] px-5 py-2 md:px-7' : 'text-4xl px-8 py-2';
+    const autoDjHeadingSizeClass = fitToWindow ? 'text-[clamp(3.5rem,10vw,7rem)]' : 'text-9xl';
+    const autoDjCtaSizeClass = fitToWindow ? 'text-[clamp(1.1rem,3vw,2rem)] px-5 py-2 md:px-8' : 'text-4xl px-8 py-2';
+    const heroWrapClass = fitToWindow ? 'max-w-[min(90vw,68rem)]' : 'max-w-5xl';
+    const artSizeClass = fitToWindow
+        ? 'w-[min(20vh,18vw)] h-[min(20vh,18vw)] min-w-[6.5rem] min-h-[6.5rem] max-w-[13rem] max-h-[13rem]'
+        : 'w-[30vh] h-[30vh]';
+    const titleSizeClass = fitToWindow
+        ? (minimalUI ? 'text-[clamp(2.25rem,6.8vw,5.4rem)]' : 'text-[clamp(2.8rem,7.5vw,6.6rem)]')
+        : (minimalUI ? 'text-[8vw]' : 'text-[10vw]');
+    const artistSizeClass = fitToWindow
+        ? (minimalUI ? 'text-[clamp(1rem,2.7vw,2.25rem)]' : 'text-[clamp(1.25rem,3.6vw,3.2rem)]')
+        : (minimalUI ? 'text-[3vw]' : 'text-[5vw]');
+    const cornerWrapClass = fitToWindow
+        ? 'absolute bottom-4 left-4 md:bottom-6 md:left-6 z-50 bg-black/65 p-4 md:p-5 rounded-2xl border border-white/20 flex gap-4 md:gap-5 items-center animate-slide-in-from-bottom max-w-[min(88vw,44rem)] pointer-events-none'
+        : 'absolute bottom-8 left-8 z-50 bg-black/65 p-6 rounded-2xl border border-white/20 flex gap-6 items-center animate-slide-in-from-bottom max-w-[86vw] pointer-events-none';
+    const cornerArtClass = fitToWindow
+        ? 'w-20 h-20 md:w-24 md:h-24 rounded-xl shadow-lg object-cover'
+        : 'w-24 h-24 sm:w-32 sm:h-32 rounded-xl shadow-lg';
+    const cornerSingerSizeClass = fitToWindow
+        ? 'text-[clamp(1.9rem,5.6vw,4.75rem)]'
+        : 'text-5xl sm:text-8xl';
+    const cornerSongSizeClass = fitToWindow
+        ? 'text-[clamp(1.05rem,2.8vw,2.3rem)]'
+        : 'text-2xl sm:text-4xl';
 
     useEffect(() => {
         const resetTimer = setTimeout(() => setAutoplayBlocked(false), 0);
@@ -137,19 +164,22 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
         if (showVisualizerTv) {
             return null;
         }
+        if (minimalUI) {
+            return null;
+        }
         if (room?.autoDjMode) { 
             return (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center z-50 bg-gradient-to-r from-purple-900 to-blue-900 animate-gradient">
-                    <h1 className="text-9xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-purple-200 to-pink-200 drop-shadow-xl animate-pulse">AUTO DJ</h1>
-                    <div className="text-4xl font-bold text-white mt-4 tracking-widest bg-black/50 px-8 py-2 rounded-full animate-bounce">SCAN QR TO REQUEST!</div>
+                    <h1 className={`${autoDjHeadingSizeClass} font-bebas text-transparent bg-clip-text bg-gradient-to-r from-purple-200 to-pink-200 drop-shadow-xl animate-pulse`}>AUTO DJ</h1>
+                    <div className={`${autoDjCtaSizeClass} font-bold text-white mt-4 tracking-widest bg-black/50 rounded-full animate-bounce`}>SCAN QR TO REQUEST!</div>
                 </div>
             ); 
         } 
         return (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center opacity-80">
-                <div className="text-[12rem] mb-4 animate-bounce">{EMOJI.mic}</div>
-                <div className="text-8xl font-bebas text-white drop-shadow-xl">STAGE OPEN</div>
-                <div className="text-4xl font-black text-white bg-fuchsia-700 border-2 border-fuchsia-300/70 px-8 py-2 rounded-full mt-4 shadow-[0_0_24px_rgba(232,121,249,0.45)] animate-pulse">SCAN TO SING</div>
+                <div className={`${idleMicSizeClass} mb-4 animate-bounce`}>{EMOJI.mic}</div>
+                <div className={`${idleHeadingSizeClass} font-bebas text-white drop-shadow-xl`}>STAGE OPEN</div>
+                <div className={`${idleCtaSizeClass} font-black text-white bg-fuchsia-700 border-2 border-fuchsia-300/70 rounded-full mt-4 shadow-[0_0_24px_rgba(232,121,249,0.45)] animate-pulse`}>SCAN TO SING</div>
             </div>
         ); 
     }
@@ -233,13 +263,13 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
             
             {/* LAYER 3: HUD / INFO (Z-Index 50+) */}
             {!room?.hideOverlay && current && layout !== 'cinema' && !room?.showLyricsTv && !showVisualizerTv && ( 
-                <div className="absolute inset-0 pointer-events-none flex flex-col justify-center items-center z-10 p-8">
-                    {!minimalUI && <div className="bg-pink-600 text-white px-6 py-2 rounded-full font-bold tracking-widest inline-block mb-8 shadow-lg">NOW PERFORMING</div>}
-                    <div className="flex flex-col items-center gap-4 max-w-5xl mx-auto w-full">
-                        {current.albumArtUrl && !minimalUI && <img src={current.albumArtUrl} className="w-[30vh] h-[30vh] rounded-2xl shadow-2xl border-4 border-white/20 object-cover" alt="Art"/>}
+                <div className="absolute inset-0 pointer-events-none flex flex-col justify-center items-center z-10 p-4 sm:p-6 md:p-8 lg:p-10">
+                    {!minimalUI && <div className={`${fitToWindow ? 'bg-pink-600 text-white px-4 py-2 md:px-5 rounded-full font-bold tracking-[0.18em] text-xs md:text-sm inline-block mb-5 md:mb-7 shadow-lg' : 'bg-pink-600 text-white px-6 py-2 rounded-full font-bold tracking-widest inline-block mb-8 shadow-lg'}`}>NOW PERFORMING</div>}
+                    <div className={`flex flex-col items-center gap-3 md:gap-4 ${heroWrapClass} mx-auto w-full`}>
+                        {current.albumArtUrl && !minimalUI && <img src={current.albumArtUrl} className={`${artSizeClass} rounded-2xl shadow-2xl border-4 border-white/20 object-cover`} alt="Art"/>}
                         <div className="text-center relative z-20 w-full">
-                            <h1 className={`${minimalUI ? 'text-[8vw]' : 'text-[10vw]'} font-bebas text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 leading-none mb-2 drop-shadow-xl px-4 truncate`}>{current.songTitle}</h1>
-                            <h2 className={`${minimalUI ? 'text-[3vw]' : 'text-[5vw]'} text-zinc-300 font-light truncate`}>{current.artist}</h2>
+                            <h1 className={`${titleSizeClass} font-bebas text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 leading-[0.92] mb-2 drop-shadow-xl px-4 truncate`}>{current.songTitle}</h1>
+                            <h2 className={`${artistSizeClass} text-zinc-300 font-light truncate px-4`}>{current.artist}</h2>
                         </div>
                     </div>
                 </div> 
@@ -262,8 +292,8 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
             
             {/* CORNER INFO */}
             {!room?.hideCornerOverlay && current && !layout.includes('cinema') && !room?.showLyricsTv && (
-                <div className="absolute bottom-8 left-8 z-50 bg-black/65 p-6 rounded-2xl border border-white/20 flex gap-6 items-center animate-slide-in-from-bottom max-w-[86vw] pointer-events-none">
-                    {current.albumArtUrl && <img src={current.albumArtUrl} className="w-24 h-24 sm:w-32 sm:h-32 rounded-xl shadow-lg" alt="Corner Art"/>}
+                <div className={cornerWrapClass}>
+                    {current.albumArtUrl && <img src={current.albumArtUrl} className={cornerArtClass} alt="Corner Art"/>}
                     <div className="min-w-0">
                         <div className="text-xl sm:text-2xl text-zinc-300 uppercase tracking-[0.14em] font-bold mb-1">On Stage</div>
                         <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -284,8 +314,8 @@ const Stage = ({ room, current, minimalUI = false, showVideo = true }) => {
                                 </div>
                             )}
                         </div>
-                        <div className="text-5xl sm:text-8xl font-black text-white leading-none mb-1 truncate">{current.singerName}</div>
-                        <div className="text-2xl sm:text-4xl text-fuchsia-400 leading-none truncate">{current.songTitle}</div>
+                        <div className={`${cornerSingerSizeClass} font-black text-white leading-none mb-1 truncate`}>{current.singerName}</div>
+                        <div className={`${cornerSongSizeClass} text-fuchsia-400 leading-none truncate`}>{current.songTitle}</div>
                     </div>
                 </div>
             )}

@@ -464,6 +464,117 @@ const getLobbyOrbTopPct = ({
     );
 };
 
+const LOBBY_ALTITUDE_CAMERA_TARGET_TOP_PCT = 18;
+const LOBBY_ALTITUDE_MAX_CAMERA_SHIFT_PCT = 54;
+const LOBBY_ALTITUDE_MAX_TRACKED_FT = 140;
+const LOBBY_ALTITUDE_MILESTONES = Object.freeze([
+    Object.freeze({ id: 'roofbreak', minFt: 24, label: 'Roof Break', pointsBudget: 16, maxPointsPerUser: 6 }),
+    Object.freeze({ id: 'skyline', minFt: 48, label: 'Skyline', pointsBudget: 24, maxPointsPerUser: 9 }),
+    Object.freeze({ id: 'cloudline', minFt: 72, label: 'Cloudline', pointsBudget: 36, maxPointsPerUser: 12 }),
+    Object.freeze({ id: 'stratosphere', minFt: 96, label: 'Stratosphere', pointsBudget: 52, maxPointsPerUser: 16 })
+]);
+
+const getLobbyVolleyAltitudeState = ({
+    hasActiveVolley = false,
+    state = null,
+    now = nowMs(),
+    energy = 0,
+    levelSpeed = 1,
+    baseTopPct = LOBBY_GROUND_LINE_TOP_PCT,
+    restCenterTopPct = LOBBY_GROUND_LINE_TOP_PCT,
+    shrinkActive = false
+} = {}) => {
+    if (!hasActiveVolley || !state) {
+        return {
+            climbPct: 0,
+            altitudeFt: 0,
+            worldTopPct: baseTopPct,
+            cameraShiftPct: 0,
+            renderTopPct: clampLobby(baseTopPct, 0, restCenterTopPct)
+        };
+    }
+    const airborneMs = deriveAirborneMs(state, now);
+    const teamworkMultiplier = deriveTeamworkMultiplier(state, now);
+    const streakCount = Math.max(0, Number(state?.streakCount || 0));
+    const energyNorm = clampLobby(energy, 0, 100) / 100;
+    const climbPct = clampLobby(
+        (Math.max(0, airborneMs - 1200) / 1000) * (0.86 + (energyNorm * 0.44))
+        + (Math.max(0, teamworkMultiplier - 1) * 4.9)
+        + (Math.max(0, streakCount - 4) * 0.46)
+        + (energyNorm * 6.5)
+        + (Math.max(0, Number(levelSpeed || 1) - 1) * 10)
+        + (shrinkActive ? 4 : 0),
+        0,
+        64
+    );
+    const worldTopPct = baseTopPct - climbPct;
+    const desiredVisibleTopPct = clampLobby(
+        LOBBY_ALTITUDE_CAMERA_TARGET_TOP_PCT + ((1 - energyNorm) * 3.5),
+        16,
+        22
+    );
+    const cameraShiftPct = clampLobby(
+        desiredVisibleTopPct - worldTopPct,
+        0,
+        LOBBY_ALTITUDE_MAX_CAMERA_SHIFT_PCT
+    );
+    const altitudeFt = Math.round(Math.min(LOBBY_ALTITUDE_MAX_TRACKED_FT, climbPct * 2.3));
+    return {
+        climbPct,
+        altitudeFt,
+        worldTopPct,
+        cameraShiftPct,
+        renderTopPct: clampLobby(worldTopPct + cameraShiftPct, 5, restCenterTopPct)
+    };
+};
+
+const buildLobbyAltitudeAwardPayloads = ({
+    state = null,
+    peakAltitudeFt = 0,
+    now = nowMs()
+} = {}) => {
+    const safeState = state || createLobbyVolleyState();
+    const streakId = Number(safeState?.streakId || 0);
+    const paidAltitudeKeys = { ...(safeState?.paidAltitudeKeys || {}) };
+    const payloads = [];
+    const activeParticipants = getActiveParticipants(safeState, now)
+        .filter((participant) => !!participant?.uid)
+        .slice(0, 6);
+
+    LOBBY_ALTITUDE_MILESTONES.forEach((milestone) => {
+        if (peakAltitudeFt < Number(milestone.minFt || 0)) return;
+        const awardKey = `lobby_altitude_${streakId}_${milestone.id}`;
+        if (paidAltitudeKeys[awardKey]) return;
+        paidAltitudeKeys[awardKey] = true;
+
+        const awards = [];
+        let remainingBudget = Math.max(0, Number(milestone.pointsBudget || 0));
+        activeParticipants.forEach((participant, idx) => {
+            const slotsLeft = Math.max(1, activeParticipants.length - idx);
+            const points = Math.min(
+                Math.max(1, Math.floor(remainingBudget / slotsLeft)),
+                Math.max(0, Number(milestone.maxPointsPerUser || 0))
+            );
+            if (points > 0) {
+                awards.push({ uid: participant.uid, points });
+                remainingBudget = Math.max(0, remainingBudget - points);
+            }
+        });
+
+        payloads.push({
+            milestone,
+            awardKey,
+            awards,
+            visualOnly: awards.length === 0
+        });
+    });
+
+    return {
+        paidAltitudeKeys,
+        payloads
+    };
+};
+
 const getLobbyBurstParticleCount = ({ reduceMotion = false, loadFactor = 0 }) => {
     const maxCount = reduceMotion ? 8 : 14;
     const loadedCount = maxCount - Math.floor(clampLobby(loadFactor, 0, 1.5) * (reduceMotion ? 4 : 7));
@@ -578,69 +689,114 @@ const AnimatedPoints = ({ value }) => {
     );
 };
 
+const LEADERBOARD_MODE_DEFS = Object.freeze([
+    Object.freeze({ key: 'performances', label: 'Most Performances', unit: 'PERF', getValue: (u) => u.performances }),
+    Object.freeze({ key: 'totalEmojis', label: 'Most Emojis Sent', unit: 'EMOJIS', getValue: (u) => u.totalEmojis }),
+    Object.freeze({ key: 'loudest', label: 'Loudest Performance', unit: 'dB', getValue: (u) => u.loudest }),
+    Object.freeze({ key: 'totalPoints', label: 'Most Points', unit: 'PTS', getValue: (u) => u.totalPoints }),
+]);
+
+const sortLeaderboardEntriesForMode = (entries = [], mode = LEADERBOARD_MODE_DEFS[0]) => (
+    [...entries]
+        .sort((a, b) =>
+            (Number(mode?.getValue?.(b) || 0) - Number(mode?.getValue?.(a) || 0))
+            || (Number(b?.totalPoints || 0) - Number(a?.totalPoints || 0))
+            || (Number(b?.performances || 0) - Number(a?.performances || 0))
+            || (Number(b?.totalEmojis || 0) - Number(a?.totalEmojis || 0))
+            || (Number(b?.loudest || 0) - Number(a?.loudest || 0))
+        )
+        .map((entry, index) => ({ ...entry, rank: index + 1 }))
+);
+
+const buildRecapLeaderboardWindow = (entries = [], performerUid = '') => {
+    if (!entries.length) return [];
+    const performerIndex = entries.findIndex((entry) => String(entry?.uid || '') === String(performerUid || ''));
+    if (performerIndex < 0) return entries.slice(0, 5);
+    if (performerIndex < 5) return entries.slice(0, 5);
+    const start = Math.max(0, Math.min(entries.length - 5, performerIndex - 2));
+    return entries.slice(start, start + 5);
+};
+
+const LeaderboardCardStack = ({
+    entries = [],
+    mode = LEADERBOARD_MODE_DEFS[0],
+    highlightedUid = '',
+    rankDeltaByUid = null,
+    animated = false
+}) => {
+    const [ready, setReady] = useState(!animated);
+
+    useEffect(() => {
+        if (!animated) {
+            setReady(true);
+            return undefined;
+        }
+        setReady(false);
+        const frame = requestAnimationFrame(() => setReady(true));
+        return () => cancelAnimationFrame(frame);
+    }, [animated, entries, highlightedUid]);
+
+    return (
+        <div className="space-y-2 md:space-y-4 2xl:space-y-6 w-full max-w-5xl">
+            {entries.map((u, i) => {
+                const delta = Number(rankDeltaByUid?.[u.uid] || 0);
+                const isHighlighted = String(highlightedUid || '') === String(u.uid || '');
+                const rankTone = i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-300' : i === 2 ? 'text-amber-700' : 'text-zinc-600';
+                const highlightedShell = isHighlighted
+                    ? 'border-yellow-300 bg-[linear-gradient(135deg,rgba(250,204,21,0.2),rgba(236,72,153,0.12),rgba(39,39,42,0.94))] shadow-[0_0_48px_rgba(250,204,21,0.18)]'
+                    : 'border-zinc-700 bg-zinc-800';
+                return (
+                    <div
+                        key={u.uid || u.name || i}
+                        className={`flex items-center justify-between p-3 md:p-5 2xl:p-8 rounded-2xl 2xl:rounded-3xl border-2 2xl:border-4 shadow-2xl relative overflow-hidden gap-3 transition-[transform,opacity,box-shadow] duration-[900ms] ease-[cubic-bezier(.2,.8,.2,1)] ${highlightedShell}`}
+                        style={animated ? {
+                            transform: ready
+                                ? 'translate3d(0,0,0) scale(1)'
+                                : `translate3d(0, ${Math.max(-4, Math.min(4, delta)) * 122}%, 0) scale(${isHighlighted ? 1.04 : 0.98})`,
+                            opacity: ready ? 1 : 0.76,
+                            transitionDelay: `${i * 90}ms`
+                        } : undefined}
+                    >
+                        <div className="flex items-center gap-2 md:gap-4 2xl:gap-8 relative z-10 min-w-0">
+                            <div className={`text-2xl md:text-4xl 2xl:text-7xl font-mono w-10 md:w-16 2xl:w-32 text-left ${rankTone}`}>#{u.rank || i + 1}</div>
+                            <div className="text-3xl md:text-5xl 2xl:text-8xl">{u.avatar}</div>
+                            <div className="text-lg md:text-3xl 2xl:text-6xl font-bold text-white truncate max-w-[48vw] 2xl:max-w-lg flex items-center gap-2 md:gap-4">
+                                <span className="truncate">{u.name}</span>
+                                {u.isVip && (
+                                    <span className="px-2 py-0.5 md:px-3 md:py-1 rounded-full text-xs md:text-sm font-black tracking-widest bg-yellow-400 text-black shadow-[0_0_18px_rgba(253,224,71,0.6)]">VIP</span>
+                                )}
+                                {isHighlighted && (
+                                    <span className="px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[10px] md:text-xs font-black tracking-[0.18em] uppercase bg-yellow-200 text-black shadow-[0_0_22px_rgba(250,204,21,0.5)]">Just sang</span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="text-right relative z-10 flex-shrink-0">
+                            <div className="text-2xl md:text-4xl 2xl:text-7xl font-black text-yellow-400">
+                                {mode.getValue(u)} <span className="text-sm md:text-xl 2xl:text-3xl text-yellow-600">{mode.unit}</span>
+                            </div>
+                            <div className="text-xs md:text-sm 2xl:text-xl text-zinc-300 mt-1 md:mt-2">{u.performances} perf | {u.totalEmojis} emojis | {u.loudest} dB</div>
+                        </div>
+                        {i === 0 && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-yellow-400/20 to-transparent animate-shimmer"></div>}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
 const LeaderboardOverlay = ({ users, songs }) => {
-    const leaderboardModes = useMemo(() => ([
-        { key: 'performances', label: 'Most Performances', unit: 'PERF', getValue: (u) => u.performances },
-        { key: 'totalEmojis', label: 'Most Emojis Sent', unit: 'EMOJIS', getValue: (u) => u.totalEmojis },
-        { key: 'loudest', label: 'Loudest Performance', unit: 'dB', getValue: (u) => u.loudest },
-        { key: 'totalPoints', label: 'Most Points', unit: 'PTS', getValue: (u) => u.totalPoints },
-    ]), []);
     const [modeIndex, setModeIndex] = useState(0);
 
     useEffect(() => {
         const timer = setInterval(() => {
-            setModeIndex(prev => (prev + 1) % leaderboardModes.length);
+            setModeIndex(prev => (prev + 1) % LEADERBOARD_MODE_DEFS.length);
         }, 8000);
         return () => clearInterval(timer);
-    }, [leaderboardModes.length]);
+    }, []);
 
-    const leaderboardStats = useMemo(() => {
-        const stats = new Map();
-        users.forEach(u => {
-            const key = u.uid || u.name;
-            stats.set(key, {
-                uid: u.uid || key,
-                name: u.name,
-                avatar: u.avatar,
-                isVip: !!u.isVip || (u.vipLevel || 0) > 0,
-                totalEmojis: u.totalEmojis || 0,
-                performances: 0,
-                loudest: 0,
-                totalPoints: 0
-            });
-        });
-        songs.filter(s => s.status === 'performed').forEach(s => {
-            const matched = users.find(u => u.uid === s.singerUid || u.name === s.singerName);
-            const key = matched?.uid || s.singerUid || s.singerName;
-            if (!stats.has(key)) {
-                stats.set(key, {
-                    uid: key,
-                    name: s.singerName,
-                    avatar: s.emoji || 'O',
-                    isVip: false,
-                    totalEmojis: 0,
-                    performances: 0,
-                    loudest: 0,
-                    totalPoints: 0
-                });
-            }
-            const entry = stats.get(key);
-            entry.performances += 1;
-            entry.loudest = Math.max(entry.loudest, s.applauseScore || 0);
-            entry.totalPoints += (s.hypeScore || 0) + (s.applauseScore || 0) + (s.hostBonus || 0);
-        });
-        return Array.from(stats.values());
-    }, [users, songs]);
-
-    const leaderboard = (() => {
-        const mode = leaderboardModes[modeIndex];
-        return [...leaderboardStats].sort((a, b) =>
-            (mode.getValue(b) - mode.getValue(a)) ||
-            (b.performances - a.performances) ||
-            (b.totalEmojis - a.totalEmojis)
-        ).slice(0, 5);
-    })();
-    const activeMode = leaderboardModes[modeIndex];
+    const leaderboardStats = useMemo(() => buildRoomLeaderboardStats(users, songs), [users, songs]);
+    const activeMode = LEADERBOARD_MODE_DEFS[modeIndex];
+    const leaderboard = sortLeaderboardEntriesForMode(leaderboardStats, activeMode).slice(0, 5);
 
     return (
         <div className="public-tv fixed inset-0 z-[200] bg-zinc-900 flex flex-col items-center justify-center p-4 md:p-8 2xl:p-12 text-center animate-in zoom-in">
@@ -648,29 +804,53 @@ const LeaderboardOverlay = ({ users, songs }) => {
                 <h1 className="text-[clamp(2.5rem,10vw,6rem)] 2xl:text-9xl font-bebas text-yellow-400 tracking-[0.12em] md:tracking-widest drop-shadow-[0_0_50px_rgba(234,179,8,0.5)]">LEADERBOARD</h1>
                 <div className="text-sm md:text-2xl 2xl:text-3xl text-zinc-300 uppercase tracking-[0.24em] md:tracking-[0.4em] mt-2 md:mt-3">{activeMode.label}</div>
             </div>
-            <div className="space-y-2 md:space-y-4 2xl:space-y-6 w-full max-w-5xl">
-                {leaderboard.map((u, i) => (
-                    <div key={u.uid || u.name || i} className="flex items-center justify-between bg-zinc-800 p-3 md:p-5 2xl:p-8 rounded-2xl 2xl:rounded-3xl border-2 2xl:border-4 border-zinc-700 shadow-2xl relative overflow-hidden gap-3">
-                        <div className="flex items-center gap-2 md:gap-4 2xl:gap-8 relative z-10 min-w-0">
-                            <div className={`text-2xl md:text-4xl 2xl:text-7xl font-mono w-10 md:w-16 2xl:w-32 text-left ${i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-amber-700':'text-zinc-600'}`}>#{i+1}</div>
-                            <div className="text-3xl md:text-5xl 2xl:text-8xl">{u.avatar}</div>
-                            <div className="text-lg md:text-3xl 2xl:text-6xl font-bold text-white truncate max-w-[48vw] 2xl:max-w-lg flex items-center gap-2 md:gap-4">
-                                <span className="truncate">{u.name}</span>
-                                {u.isVip && (
-                                    <span className="px-2 py-0.5 md:px-3 md:py-1 rounded-full text-xs md:text-sm font-black tracking-widest bg-yellow-400 text-black shadow-[0_0_18px_rgba(253,224,71,0.6)]">VIP</span>
-                                )}
-                            </div>
-                        </div>
-                        <div className="text-right relative z-10 flex-shrink-0">
-                            <div className="text-2xl md:text-4xl 2xl:text-7xl font-black text-yellow-400">{activeMode.getValue(u)} <span className="text-sm md:text-xl 2xl:text-3xl text-yellow-600">{activeMode.unit}</span></div>
-                            <div className="text-xs md:text-sm 2xl:text-xl text-zinc-300 mt-1 md:mt-2">{u.performances} perf | {u.totalEmojis} emojis | {u.loudest} dB</div>
-                        </div>
-                        {i === 0 && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-yellow-400/20 to-transparent animate-shimmer"></div>}
-                    </div>
-                ))}
-            </div>
+            <LeaderboardCardStack entries={leaderboard} mode={activeMode} />
         </div>
     );
+};
+
+const PERFORMANCE_RECAP_BREAKDOWN_MS = 7000;
+const PERFORMANCE_RECAP_LEADERBOARD_MS = 7000;
+const PERFORMANCE_RECAP_TOTAL_MS = PERFORMANCE_RECAP_BREAKDOWN_MS + PERFORMANCE_RECAP_LEADERBOARD_MS;
+
+const buildRoomLeaderboardStats = (users = [], songs = []) => {
+    const stats = new Map();
+    users.forEach((u) => {
+        const key = u.uid || u.name;
+        if (!key) return;
+        stats.set(key, {
+            uid: u.uid || key,
+            name: u.name || 'Guest',
+            avatar: u.avatar || u.emoji || EMOJI.sparkle,
+            isVip: !!u.isVip || (u.vipLevel || 0) > 0,
+            totalEmojis: u.totalEmojis || 0,
+            performances: 0,
+            loudest: 0,
+            totalPoints: 0,
+        });
+    });
+    songs.filter((s) => s.status === 'performed').forEach((s) => {
+        const matched = users.find((u) => u.uid === s.singerUid || u.name === s.singerName);
+        const key = matched?.uid || s.singerUid || s.singerName;
+        if (!key) return;
+        if (!stats.has(key)) {
+            stats.set(key, {
+                uid: key,
+                name: s.singerName || 'Guest',
+                avatar: s.emoji || EMOJI.sparkle,
+                isVip: false,
+                totalEmojis: 0,
+                performances: 0,
+                loudest: 0,
+                totalPoints: 0,
+            });
+        }
+        const entry = stats.get(key);
+        entry.performances += 1;
+        entry.loudest = Math.max(entry.loudest, s.applauseScore || 0);
+        entry.totalPoints += (s.hypeScore || 0) + (s.applauseScore || 0) + (s.hostBonus || 0);
+    });
+    return Array.from(stats.values());
 };
 
 const TipOverlay = ({ room }) => {
@@ -879,8 +1059,10 @@ const PublicTV = ({ roomCode }) => {
     const [bonusDropBurst, setBonusDropBurst] = useState(null);
     const [popTriviaVotes, setPopTriviaVotes] = useState([]);
     const [popTriviaNow, setPopTriviaNow] = useState(nowMs());
+    const [recapNowMs, setRecapNowMs] = useState(nowMs());
     const [popTriviaQuestionAnnounceUntilMs, setPopTriviaQuestionAnnounceUntilMs] = useState(0);
     const [popTriviaUrgencyPulseUntilMs, setPopTriviaUrgencyPulseUntilMs] = useState(0);
+    const [popTriviaRevealSnapshot, setPopTriviaRevealSnapshot] = useState(null);
     const [previewNowMs, setPreviewNowMs] = useState(nowMs());
     const [previewSession, setPreviewSession] = useState({ key: '', startMs: 0 });
     const [reactionScoreTotalsByPerformance, setReactionScoreTotalsByPerformance] = useState(() => new Map());
@@ -2613,6 +2795,17 @@ const PublicTV = ({ roomCode }) => {
     useEffect(() => {
         const i = setInterval(() => {
             const tickNow = nowMs();
+            const tickCurrentSong = songs.find((song) => song.status === 'performing');
+            const tickLobbyObjectiveMode = getCrowdObjectiveModeFromLightMode(room?.lightMode)
+                || getCrowdObjectiveModeById(CROWD_OBJECTIVE_DEFAULT_MODE_ID);
+            const tickLobbyObjectiveIsTeamPong = tickLobbyObjectiveMode?.id === 'team_pong';
+            const tickLobbySceneActive = isVolleyOrbSceneActive({
+                hasCurrentSinger: !!tickCurrentSong,
+                activeMode: room?.activeMode,
+                lightMode: room?.lightMode
+            });
+            const tickGroundLineBottomPct = tickLobbySceneActive ? 3.2 : 4.4;
+            const tickGroundLineTopPct = 100 - tickGroundLineBottomPct;
             setReactions(prev => prev.filter((r) => (tickNow - Number(r?.createdAtMs || toEpochMs(r?.timestamp) || 0)) < TV_REACTION_VISIBILITY_MS));
             setLobbyPlayBursts((prev) => prev.filter((burst) => (tickNow - Number(burst?.createdAt || 0)) < LOBBY_BURST_WINDOW_MS));
             setLobbyPlayScreenFx((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAt || 0)) < LOBBY_SCREEN_FX_WINDOW_MS));
@@ -2621,6 +2814,7 @@ const PublicTV = ({ roomCode }) => {
             setLobbyVolleyLinks((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAt || 0)) < LOBBY_LINK_WINDOW_MS));
             setLobbyTierChips((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAt || 0)) < LOBBY_AWARD_VISUAL_WINDOW_MS));
             let groundedVolleySummary = null;
+            let altitudeRewardPayloads = [];
             setLobbyVolleyState((prev) => {
                 if (!prev) return prev;
                 const lastAt = Number(prev.lastInteractionAtMs || 0);
@@ -2638,7 +2832,8 @@ const PublicTV = ({ roomCode }) => {
                     };
                     groundedVolleySummary = {
                         streakCount: Number(prev.streakCount || 0),
-                        teamworkMultiplier: Number(prev.teamworkMultiplier || 1)
+                        teamworkMultiplier: Number(prev.teamworkMultiplier || 1),
+                        peakAltitudeFt: Number(prev.peakAltitudeFt || 0)
                     };
                     lobbyVolleyStateRef.current = resetState;
                     lobbyLastAnchorRef.current = null;
@@ -2646,21 +2841,69 @@ const PublicTV = ({ roomCode }) => {
                 }
                 const airborneMs = deriveAirborneMs(prev, tickNow);
                 const teamworkMultiplier = deriveTeamworkMultiplier(prev, tickNow);
+                const tickLobbyLevelMeta = getLobbyVolleyLevelMeta(prev, tickNow);
+                const tickActiveUltimates = Array.isArray(prev?.activeUltimates)
+                    ? prev.activeUltimates.filter((entry) => Number(entry?.expiresAtMs || 0) > tickNow)
+                    : [];
+                const tickOrbLensActive = tickActiveUltimates.some((entry) => entry?.type === 'ultimate_lens');
+                const tickOrbDiameterPx = clampLobby((Number(viewportSize?.width || 1920) * 0.2), 198, 292);
+                const tickOrbShrinkScale = tickOrbLensActive ? 0.76 : 1;
+                const tickOrbRadiusPct = ((tickOrbDiameterPx * tickOrbShrinkScale) * 0.5 / Math.max(1, Number(viewportSize?.height || 1080))) * 100;
+                const tickOrbRestCenterTopPct = clampLobby(
+                    tickGroundLineTopPct - tickOrbRadiusPct,
+                    LOBBY_ORB_MIN_TOP_PCT,
+                    tickGroundLineTopPct - 1
+                );
+                const altitudeState = !tickLobbyObjectiveIsTeamPong
+                    ? getLobbyVolleyAltitudeState({
+                        hasActiveVolley: Number(prev.streakCount || 0) > 0,
+                        state: prev,
+                        now: tickNow,
+                        energy: liveEnergy,
+                        levelSpeed: Number(tickLobbyLevelMeta.speedMultiplier || 1),
+                        baseTopPct: getLobbyOrbTopPct({
+                            hasStreak: Number(prev.streakCount || 0) > 0,
+                            streakDecayPct: clampLobby(
+                                100 - ((elapsedMs / Math.max(1, getLobbyVolleyDynamicTimeoutMs(prev, tickNow))) * 100),
+                                0,
+                                100
+                            ),
+                            groundTopPct: tickGroundLineTopPct,
+                            restCenterTopPct: tickOrbRestCenterTopPct
+                        }),
+                        restCenterTopPct: tickOrbRestCenterTopPct,
+                        shrinkActive: tickOrbLensActive
+                    })
+                    : { altitudeFt: 0 };
+                const peakAltitudeFt = Math.max(Number(prev.peakAltitudeFt || 0), Number(altitudeState.altitudeFt || 0));
+                const altitudeAwards = !tickLobbyObjectiveIsTeamPong
+                    ? buildLobbyAltitudeAwardPayloads({
+                        state: prev,
+                        peakAltitudeFt,
+                        now: tickNow
+                    })
+                    : { paidAltitudeKeys: prev.paidAltitudeKeys || {}, payloads: [] };
+                altitudeRewardPayloads = altitudeAwards.payloads || [];
                 const needsEnergyUpdate = Math.abs(liveEnergy - Number(prev.energy || 0)) >= 0.05;
                 const needsAirborneUpdate = Math.abs(airborneMs - Number(prev.airborneMs || 0)) >= 40;
                 const needsMultiplierUpdate = Math.abs(teamworkMultiplier - Number(prev.teamworkMultiplier || 1)) >= 0.1;
-                if (!needsEnergyUpdate && !needsAirborneUpdate && !needsMultiplierUpdate) return prev;
+                const needsPeakUpdate = peakAltitudeFt > Number(prev.peakAltitudeFt || 0);
+                const needsAltitudeKeyUpdate = JSON.stringify(Object.keys(altitudeAwards.paidAltitudeKeys || {}).sort())
+                    !== JSON.stringify(Object.keys(prev.paidAltitudeKeys || {}).sort());
+                if (!needsEnergyUpdate && !needsAirborneUpdate && !needsMultiplierUpdate && !needsPeakUpdate && !needsAltitudeKeyUpdate) return prev;
                 const next = {
                     ...prev,
                     energy: liveEnergy,
                     airborneMs,
-                    teamworkMultiplier
+                    peakAltitudeFt,
+                    teamworkMultiplier,
+                    paidAltitudeKeys: altitudeAwards.paidAltitudeKeys || prev.paidAltitudeKeys || {}
                 };
                 lobbyVolleyStateRef.current = next;
                 return next;
             });
             if (groundedVolleySummary) {
-                const groundedMode = getCrowdObjectiveModeFromLightMode(room?.lightMode);
+                const groundedMode = tickLobbyObjectiveMode;
                 const groundedModeLabel = groundedMode?.label || 'Volley Orb';
                 const groundedCountLabel = groundedMode?.id === 'team_pong' ? 'rallies' : 'saves';
                 setLobbyTierChips((prev) => {
@@ -2670,7 +2913,9 @@ const PublicTV = ({ roomCode }) => {
                     const groundChip = {
                         id: `lobby-ground-${tickNow}`,
                         label: groundedMode?.id === 'team_pong' ? 'Rally dropped' : 'Orb touched the ground',
-                        subtitle: `${groundedModeLabel} ended at ${groundedVolleySummary.streakCount} ${groundedCountLabel}`,
+                        subtitle: groundedMode?.id === 'team_pong'
+                            ? `${groundedModeLabel} ended at ${groundedVolleySummary.streakCount} ${groundedCountLabel}`
+                            : `${groundedModeLabel} ended at ${groundedVolleySummary.streakCount} ${groundedCountLabel} | peak ${Math.round(groundedVolleySummary.peakAltitudeFt || 0)}ft`,
                         tier: 0,
                         createdAt: tickNow,
                         durationMs: LOBBY_AWARD_VISUAL_WINDOW_MS,
@@ -2686,6 +2931,46 @@ const PublicTV = ({ roomCode }) => {
                         ? `rally dropped at x${Number(groundedVolleySummary.teamworkMultiplier || 1).toFixed(1)} teamwork. Restart the rally!`
                         : `touched the ground at x${Number(groundedVolleySummary.teamworkMultiplier || 1).toFixed(1)} teamwork. Rally again!`,
                     timestampMs: tickNow
+                });
+            }
+            if (altitudeRewardPayloads.length) {
+                setLobbyTierChips((prev) => {
+                    const active = (prev || []).filter(
+                        (entry) => (tickNow - Number(entry?.createdAt || 0)) < LOBBY_AWARD_VISUAL_WINDOW_MS
+                    );
+                    const additions = altitudeRewardPayloads.map((payload, idx) => ({
+                        id: `lobby-altitude-${payload.milestone.id}-${tickNow}-${idx}`,
+                        label: `${payload.milestone.label} reached`,
+                        subtitle: payload.visualOnly
+                            ? `${payload.milestone.minFt}ft peak unlocked`
+                            : `${payload.milestone.minFt}ft peak: points to the active rally crew`,
+                        tier: 0,
+                        createdAt: tickNow + idx,
+                        durationMs: LOBBY_AWARD_VISUAL_WINDOW_MS,
+                        accent: payload.visualOnly
+                            ? 'from-cyan-300/65 to-indigo-300/65'
+                            : 'from-amber-300/70 to-emerald-300/70'
+                    }));
+                    return [...additions, ...active].slice(0, LOBBY_TIER_CHIP_CAP);
+                });
+                altitudeRewardPayloads.forEach((payload) => {
+                    const pointsLocked = lobbyVisualOnlyRef.current || lobbyAwardAuthLockedRef.current;
+                    pushLobbyLiveEvent({
+                        id: `lobby-altitude-live-${payload.milestone.id}-${tickNow}`,
+                        avatar: emoji(0x1F31F),
+                        user: payload.milestone.label,
+                        text: (payload.visualOnly || pointsLocked)
+                            ? `the orb broke through ${payload.milestone.minFt}ft`
+                            : `the orb broke through ${payload.milestone.minFt}ft and rewarded the active rally crew`,
+                        timestampMs: tickNow
+                    });
+                    if (!pointsLocked && !payload.visualOnly && payload.awards.length) {
+                        void awardRoomPointsOnce({
+                            awardKey: payload.awardKey,
+                            awards: payload.awards,
+                            source: `${LOBBY_PLAYGROUND_REWARD_SOURCE}_altitude`
+                        });
+                    }
                 });
             }
             setCombo(prev => {
@@ -2706,7 +2991,16 @@ const PublicTV = ({ roomCode }) => {
             }
         }, 100);
         return () => clearInterval(i);
-    }, [showHypeMeter, pushLobbyLiveEvent, room?.lightMode]);
+    }, [
+        showHypeMeter,
+        pushLobbyLiveEvent,
+        room?.activeMode,
+        room?.lightMode,
+        songs,
+        viewportSize?.height,
+        viewportSize?.width,
+        awardRoomPointsOnce
+    ]);
     
     const getTimestampMs = (value) => {
         if (!value) return 0;
@@ -2747,22 +3041,26 @@ const PublicTV = ({ roomCode }) => {
     useEffect(() => {
         if (room?.activeMode && room.activeMode !== 'karaoke') return;
         if (room?.activeScreen && room.activeScreen !== 'stage') return;
+        if (room?.showPerformanceRecap === false) {
+            if (recap && !recap.preview) setRecap(null);
+            return;
+        }
         if(room?.lastPerformance) {
             const lastTs = getTimestampMs(room.lastPerformance.timestamp);
             if (!lastTs) return undefined;
             const timeSinceEnd = nowMs() - lastTs;
-            if (timeSinceEnd < 10000) {
+            if (timeSinceEnd < PERFORMANCE_RECAP_TOTAL_MS) {
                 if (!recap || room.lastPerformance.timestamp !== recap.timestamp) {
                     setRecap(room.lastPerformance);
                 }
-                const remaining = 10000 - timeSinceEnd;
+                const remaining = PERFORMANCE_RECAP_TOTAL_MS - timeSinceEnd;
                 const t = setTimeout(() => setRecap(null), remaining);
                 return () => clearTimeout(t);
             } else {
                 if(recap) setRecap(null);
             }
         }
-    }, [room?.lastPerformance, room?.activeMode, room?.activeScreen, recap]);
+    }, [room?.lastPerformance, room?.activeMode, room?.activeScreen, room?.showPerformanceRecap, recap]);
 
     useEffect(() => {
         if (!room?.recapPreview?.timestamp) return;
@@ -2771,9 +3069,16 @@ const PublicTV = ({ roomCode }) => {
         if (recapPreviewRef.current === previewTs) return;
         recapPreviewRef.current = previewTs;
         setRecap(room.recapPreview);
-        const t = setTimeout(() => setRecap(null), 10000);
+        const t = setTimeout(() => setRecap(null), PERFORMANCE_RECAP_TOTAL_MS);
         return () => clearTimeout(t);
     }, [room?.recapPreview?.timestamp, room?.recapPreview]);
+
+    useEffect(() => {
+        if (!recap) return undefined;
+        setRecapNowMs(nowMs());
+        const timer = setInterval(() => setRecapNowMs(nowMs()), 120);
+        return () => clearInterval(timer);
+    }, [recap]);
 
     const triggerTipPulse = useCallback((key) => {
         if (!room?.tipUrl && !room?.tipQrUrl) return;
@@ -2891,6 +3196,30 @@ const PublicTV = ({ roomCode }) => {
         return count;
     }, [popTriviaVotes, popTriviaQuestion?.options?.length]);
     const popTriviaTotalVotes = popTriviaVoteCounts.reduce((sum, val) => sum + val, 0);
+    const popTriviaRevealQuestion = showPopTriviaEndState
+        ? (popTriviaRevealSnapshot?.question || null)
+        : null;
+    const popTriviaRevealVotes = showPopTriviaEndState
+        ? (Array.isArray(popTriviaRevealSnapshot?.votes) ? popTriviaRevealSnapshot.votes : [])
+        : [];
+    const popTriviaRevealCorrectIndex = Number.isInteger(popTriviaRevealQuestion?.correct)
+        ? Number(popTriviaRevealQuestion.correct)
+        : -1;
+    const popTriviaRevealCorrectOption = popTriviaRevealCorrectIndex >= 0
+        ? String(popTriviaRevealQuestion?.options?.[popTriviaRevealCorrectIndex] || '').trim()
+        : '';
+    const popTriviaRevealCorrectResponders = useMemo(() => {
+        if (!showPopTriviaEndState || popTriviaRevealCorrectIndex < 0) return [];
+        return popTriviaRevealVotes
+            .filter((vote) => Number(vote?.val) === popTriviaRevealCorrectIndex)
+            .map((vote, idx) => ({
+                id: vote?.uid || `${vote?.userName || 'guest'}_${idx}`,
+                name: String(vote?.userName || vote?.user || 'Guest').trim() || 'Guest',
+                avatar: String(vote?.avatar || EMOJI.sparkle || '').trim() || EMOJI.sparkle
+            }))
+            .slice(0, 12);
+    }, [showPopTriviaEndState, popTriviaRevealCorrectIndex, popTriviaRevealVotes]);
+    const popTriviaRevealAnswerCount = popTriviaRevealVotes.length;
     const marqueeItems = (room?.marqueeItems || []).filter(i => i.enabled !== false);
 
     useEffect(() => {
@@ -2956,6 +3285,14 @@ const PublicTV = ({ roomCode }) => {
         });
         return () => unsub();
     }, [demoFixture?.popTriviaVotes, isMarketingDemoFixture, roomCode, popTriviaQuestionId]);
+    useEffect(() => {
+        if (!popTriviaQuestion) return;
+        setPopTriviaRevealSnapshot({
+            question: popTriviaQuestion,
+            votes: Array.isArray(popTriviaVotes) ? [...popTriviaVotes] : [],
+            capturedAtMs: popTriviaNow
+        });
+    }, [popTriviaNow, popTriviaQuestion, popTriviaVotes]);
     useEffect(() => {
         if (!popTriviaQuestionId) {
             popTriviaPrevQuestionIdRef.current = '';
@@ -3086,6 +3423,7 @@ const PublicTV = ({ roomCode }) => {
         () => normalizeLobbyOrbSkinUrl(room?.lobbyOrbSkinUrl || ''),
         [room?.lobbyOrbSkinUrl]
     );
+    const lobbyHasCustomOrbSkin = !!lobbyOrbSkinUrl;
     const lobbyStreakTimeoutMs = getLobbyVolleyDynamicTimeoutMs(lobbyVolleyState, lobbyNow);
     const lobbyStreakAgeMs = Math.max(0, lobbyNow - Number(lobbyVolleyState?.lastInteractionAtMs || 0));
     const lobbyStreakDecayPct = clampLobby(
@@ -3112,6 +3450,21 @@ const PublicTV = ({ roomCode }) => {
         groundTopPct: lobbyGroundLineTopPct,
         restCenterTopPct: lobbyOrbRestCenterTopPct
     });
+    const lobbyAltitudeLensActive = lobbyActiveUltimates.some((entry) => entry?.type === 'ultimate_lens');
+    const lobbyOrbAltitudeState = getLobbyVolleyAltitudeState({
+        hasActiveVolley: lobbyHasActiveVolley,
+        state: lobbyVolleyState,
+        now: lobbyNow,
+        energy: lobbyOrbEnergy,
+        levelSpeed: Number(lobbyLevelMeta.speedMultiplier || 1),
+        baseTopPct: lobbyOrbTopPct,
+        restCenterTopPct: lobbyOrbRestCenterTopPct,
+        shrinkActive: lobbyAltitudeLensActive
+    });
+    const lobbyPeakAltitudeFt = Math.max(
+        Number(lobbyVolleyState?.peakAltitudeFt || 0),
+        Number(lobbyOrbAltitudeState.altitudeFt || 0)
+    );
     const lobbyOrbFloatDrift = useMemo(() => {
         if (!lobbyHasActiveVolley) {
             return {
@@ -3144,10 +3497,13 @@ const PublicTV = ({ roomCode }) => {
         return { driftX, driftY };
     }, [roomCode, lobbyNow, motionSafeFx, lobbyHasActiveVolley, lobbyLevelMeta.speedMultiplier, lobbyOrbEnergy]);
     const lobbyOrbRenderLeftPct = clampLobby(50 + lobbyOrbFloatDrift.driftX, 16, 84);
+    const lobbyVolleyCameraShiftPct = Number(lobbyOrbAltitudeState.cameraShiftPct || 0);
+    const lobbyGuideVerticalShiftPct = lobbyVolleyCameraShiftPct;
+    const lobbyGroundLineRenderTopPct = clampLobby(lobbyGroundLineTopPct + lobbyGuideVerticalShiftPct, -12, 148);
     const lobbyOrbRenderTopPct = clampLobby(
-        lobbyOrbTopPct + lobbyOrbFloatDrift.driftY - (lobbyActiveUltimates.some((entry) => entry?.type === 'ultimate_lens') ? 4.5 : 0),
-        LOBBY_ORB_MIN_TOP_PCT - 2,
-        lobbyOrbRestCenterTopPct
+        lobbyOrbAltitudeState.renderTopPct + lobbyOrbFloatDrift.driftY - (lobbyAltitudeLensActive ? 4.5 : 0),
+        4,
+        92
     );
     const lobbyPongState = useMemo(() => {
         const seed = String(roomCode || '')
@@ -3210,11 +3566,6 @@ const PublicTV = ({ roomCode }) => {
     const lobbyAirborneMs = deriveAirborneMs(lobbyVolleyState, lobbyNow);
     const lobbyTeamworkMultiplier = deriveTeamworkMultiplier(lobbyVolleyState, lobbyNow);
     const lobbyAirborneSec = Math.floor(lobbyAirborneMs / 1000);
-    const lobbyOrbClearancePct = clampLobby(
-        ((lobbyGroundLineTopPct - lobbyOrbRenderTopPct) / Math.max(1, (lobbyGroundLineTopPct - LOBBY_ORB_MIN_TOP_PCT))) * 100,
-        0,
-        100
-    );
     const lobbyLastInteractionAgeMs = Math.max(0, lobbyNow - Number(lobbyLastInteraction?.timestampMs || 0));
     const lobbyRecentInteractionType = lobbyLastInteractionAgeMs < 3200
         ? normalizeLobbyPlayInteractionType(lobbyLastInteraction?.interactionType || '')
@@ -3222,7 +3573,7 @@ const PublicTV = ({ roomCode }) => {
     const lobbyObjectiveStreakLabel = `${lobbyVolleyState?.streakCount || 0} ${lobbyObjectiveIsTeamPong ? 'rallies' : 'saves'}`;
     const lobbyObjectiveProgressLabel = lobbyObjectiveIsTeamPong
         ? `Pace ${Math.round(lobbyPongState.speedPct)}%`
-        : `Clearance ${Math.round(lobbyOrbClearancePct)}%`;
+        : `Height ${Math.round(lobbyOrbAltitudeState.altitudeFt)} ft`;
     const lobbyWarningState = lobbyHasActiveVolley
         && !room?.lobbyPlaygroundPaused
         && (lobbyRelayObjective?.urgency === 'danger' || lobbyStreakDecayPct <= 24);
@@ -3257,6 +3608,9 @@ const PublicTV = ({ roomCode }) => {
             });
             setLobbyVolleySceneMetrics((prev) => {
                 if (
+                    Number(prev?.sceneWidthPx || 0) === Number(next.sceneWidthPx || 0)
+                    && Number(prev?.sceneHeightPx || 0) === Number(next.sceneHeightPx || 0)
+                    && 
                     Number(prev?.orbSizePx || 0) === next.orbSizePx
                     && Number(prev?.participantSizePx || 0) === next.participantSizePx
                     && Number(prev?.orbScale || 0) === next.orbScale
@@ -3733,10 +4087,10 @@ const PublicTV = ({ roomCode }) => {
                 ? 'w-[120px] h-[120px] md:w-[140px] md:h-[140px] 2xl:w-[196px] 2xl:h-[196px]'
                 : 'w-[132px] h-[132px] md:w-[160px] md:h-[160px] 2xl:w-[220px] 2xl:h-[220px]');
     const lobbyObjectiveHudRight = viewportSize.width >= 1024
-        ? (lobbyCompactHudMode ? '26.4%' : '34.2%')
+        ? (lobbyCompactHudMode ? '26.8%' : '34.6%')
         : '3%';
     const lobbyObjectiveHudWidth = viewportSize.width >= 1024
-        ? (lobbyCompactHudMode ? 'min(25vw,460px)' : 'min(29vw,520px)')
+        ? (lobbyCompactHudMode ? 'min(20vw,360px)' : 'min(23vw,410px)')
         : 'min(90vw,560px)';
     const marqueeHeightClass = isVeryShortViewport ? 'h-14 md:h-16' : isShortViewport ? 'h-16 md:h-20' : 'h-20 md:h-28 2xl:h-36';
     const marqueeTextSize = isVeryShortViewport
@@ -4034,12 +4388,13 @@ const PublicTV = ({ roomCode }) => {
         const vibeStats = recap.vibeStats;
         const popTriviaSummary = recap.popTriviaSummary;
         const rawSongTitle = String(recap.songTitle || '').trim();
-        const parseRecapSongTitle = (value) => {
+        const parseRecapSongTitle = (value, explicitArtist = '') => {
             const raw = String(value || '').trim();
+            const normalizedExplicitArtist = String(explicitArtist || '').trim();
             if (!raw) {
                 return {
                     title: 'Featured Performance',
-                    artist: '',
+                    artist: normalizedExplicitArtist,
                     source: ''
                 };
             }
@@ -4047,7 +4402,7 @@ const PublicTV = ({ roomCode }) => {
             if (zoomMatch) {
                 return {
                     title: String(zoomMatch[2] || '').trim() || raw,
-                    artist: String(zoomMatch[1] || '').trim(),
+                    artist: normalizedExplicitArtist || String(zoomMatch[1] || '').trim(),
                     source: String(zoomMatch[3] || '').trim()
                 };
             }
@@ -4055,7 +4410,7 @@ const PublicTV = ({ roomCode }) => {
             if (pipeMatch) {
                 return {
                     title: String(pipeMatch[1] || '').trim() || raw,
-                    artist: String(pipeMatch[2] || '').trim(),
+                    artist: normalizedExplicitArtist || String(pipeMatch[2] || '').trim(),
                     source: ''
                 };
             }
@@ -4064,11 +4419,11 @@ const PublicTV = ({ roomCode }) => {
                     .replace(/\s*-\s*Karaoke Version.*$/i, '')
                     .replace(/\s*\((?:karaoke|instrumental)\)\s*$/i, '')
                     .trim() || raw,
-                artist: '',
+                artist: normalizedExplicitArtist,
                 source: ''
             };
         };
-        const recapSongMeta = parseRecapSongTitle(rawSongTitle);
+        const recapSongMeta = parseRecapSongTitle(rawSongTitle, recap.artist || recap.displayArtist || '');
         const vibeScore = Math.max(0, Number(recap.hypeScore || 0));
         const applauseScore = Math.max(0, Math.round(recap.applauseScore || 0));
         const hostBonus = Math.max(0, Number(recap.hostBonus || 0));
@@ -4140,6 +4495,107 @@ const PublicTV = ({ roomCode }) => {
                 tone: 'border-sky-300/24 bg-sky-300/10 text-sky-100'
             } : null
         ].filter(Boolean).slice(0, 3);
+        const recapStartMs = getTimestampMs(recap.timestamp) || recapNowMs;
+        const recapAgeMs = Math.max(0, recapNowMs - recapStartMs);
+        const recapLeaderboardPhase = recapAgeMs >= PERFORMANCE_RECAP_BREAKDOWN_MS;
+        const rankedRoomLeaderboard = buildRoomLeaderboardStats(roomUsers, songs)
+            .map((entry) => ({
+                ...entry,
+                isPerformer: (
+                    (recap.singerUid && entry.uid === recap.singerUid)
+                    || (!recap.singerUid && entry.name === recap.singerName)
+                ),
+            }));
+        const rankedRoomLeaderboardWithRanks = sortLeaderboardEntriesForMode(rankedRoomLeaderboard, LEADERBOARD_MODE_DEFS[3])
+            .map((entry) => ({
+                ...entry,
+                isPerformer: (
+                    (recap.singerUid && entry.uid === recap.singerUid)
+                    || (!recap.singerUid && entry.name === recap.singerName)
+                ),
+            }));
+        const performerLeaderboardEntry = rankedRoomLeaderboardWithRanks.find((entry) => entry.isPerformer) || null;
+        const performerRank = performerLeaderboardEntry?.rank || 0;
+        const performerGapToLeader = performerLeaderboardEntry
+            ? Math.max(0, Number(rankedRoomLeaderboardWithRanks[0]?.totalPoints || 0) - Number(performerLeaderboardEntry.totalPoints || 0))
+            : 0;
+        const recapLeaderboardMode = LEADERBOARD_MODE_DEFS.find((mode) => mode.key === 'totalPoints') || LEADERBOARD_MODE_DEFS[3];
+        const preRecapLeaderboard = sortLeaderboardEntriesForMode(
+            rankedRoomLeaderboard.map((entry) => ({
+                ...entry,
+                totalPoints: entry.isPerformer
+                    ? Math.max(0, Number(entry.totalPoints || 0) - totalPoints)
+                    : Number(entry.totalPoints || 0)
+            })),
+            recapLeaderboardMode
+        );
+        const preRankByUid = preRecapLeaderboard.reduce((acc, entry) => {
+            acc[entry.uid] = entry.rank;
+            return acc;
+        }, {});
+        const leaderboardShowcase = buildRecapLeaderboardWindow(
+            rankedRoomLeaderboardWithRanks,
+            performerLeaderboardEntry?.uid || recap.singerUid || ''
+        );
+        const leaderboardRankDeltaByUid = leaderboardShowcase.reduce((acc, entry) => {
+            const previousRank = Number(preRankByUid?.[entry.uid] || entry.rank || 0);
+            acc[entry.uid] = previousRank - Number(entry.rank || 0);
+            return acc;
+        }, {});
+        if (recapLeaderboardPhase) {
+            return (
+                <div className="fixed inset-0 z-[200] overflow-hidden bg-[#04060e] text-white animate-in fade-in duration-500">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_8%,rgba(251,191,36,0.18),transparent_24%),radial-gradient(circle_at_18%_22%,rgba(244,114,182,0.18),transparent_20%),radial-gradient(circle_at_82%_24%,rgba(34,211,238,0.2),transparent_18%),linear-gradient(180deg,rgba(7,10,18,0.98),rgba(4,6,14,1))]" />
+                    <div className="absolute inset-x-[10%] top-[11%] h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
+                    <div className="absolute inset-x-[12%] bottom-[13%] h-px bg-gradient-to-r from-transparent via-fuchsia-300/55 to-transparent" />
+                    <div className="absolute left-[8%] top-[18%] h-56 w-56 rounded-full bg-fuchsia-400/15 blur-3xl" />
+                    <div className="absolute right-[7%] top-[16%] h-64 w-64 rounded-full bg-cyan-400/14 blur-3xl" />
+                    <div className="absolute bottom-[10%] left-[38%] h-56 w-56 rounded-full bg-yellow-300/12 blur-3xl" />
+
+                    <div className="relative z-10 flex min-h-full flex-col justify-center px-6 py-8 md:px-10 2xl:px-14">
+                        <div className="mx-auto w-full max-w-[1840px]">
+                            <div className="flex flex-wrap items-end justify-between gap-6">
+                                <div>
+                                    <div className="inline-flex items-center gap-3 rounded-full border border-cyan-300/28 bg-cyan-300/10 px-4 py-2 text-[12px] uppercase tracking-[0.34em] text-cyan-100">
+                                        <i className="fa-solid fa-ranking-star" />
+                                        Room Leaderboard Update
+                                    </div>
+                                    <div className="mt-5 text-5xl font-black uppercase leading-[0.88] text-white md:text-7xl 2xl:text-[7rem]">
+                                        {performerRank > 0 ? `${recap.singerName} lands at #${performerRank}` : `${recap.singerName} hits the board`}
+                                    </div>
+                                    <div className="mt-4 text-xl uppercase tracking-[0.24em] text-zinc-200 md:text-2xl 2xl:text-[2rem]">
+                                        {performerLeaderboardEntry
+                                            ? `Now at ${performerLeaderboardEntry.totalPoints} room points`
+                                            : 'Room standings refreshed'}
+                                    </div>
+                                </div>
+                                <div className="rounded-[2rem] border border-yellow-300/24 bg-yellow-300/10 px-6 py-5 text-right shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
+                                    <div className="text-[11px] uppercase tracking-[0.32em] text-yellow-100/85">This performance</div>
+                                    <div className="mt-2 text-6xl font-black leading-none text-yellow-200 md:text-7xl 2xl:text-[6rem]">+{totalPoints}</div>
+                                    <div className="mt-2 text-lg uppercase tracking-[0.24em] text-yellow-100/80">
+                                        {performerRank === 1
+                                            ? 'New room leader'
+                                            : performerLeaderboardEntry
+                                                ? `${performerGapToLeader} behind #1`
+                                                : 'Score added'}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-10">
+                                <LeaderboardCardStack
+                                    entries={leaderboardShowcase}
+                                    mode={recapLeaderboardMode}
+                                    highlightedUid={performerLeaderboardEntry?.uid || ''}
+                                    rankDeltaByUid={leaderboardRankDeltaByUid}
+                                    animated
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
         return (
             <div className="fixed inset-0 z-[200] overflow-hidden bg-[#05070f] text-white animate-in fade-in duration-500">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(139,92,246,0.28),_transparent_32%),radial-gradient(circle_at_18%_30%,_rgba(244,114,182,0.18),_transparent_24%),radial-gradient(circle_at_82%_24%,_rgba(34,211,238,0.22),_transparent_22%),linear-gradient(180deg,_rgba(9,12,22,0.96),_rgba(3,5,10,0.98))]" />
@@ -4332,6 +4788,7 @@ const PublicTV = ({ roomCode }) => {
     const exploreCinema = tvPresentationProfile === 'cinema';
     const isCinema = exploreSimple || exploreCinema || roomLayoutMode === 'cinema';
     const isMinimal = !exploreSimple && !exploreCinema && roomLayoutMode === 'minimal';
+    const guitarTakeoverMode = room?.lightMode === 'guitar';
     const hasActivePopTriviaPanel = !!(popTriviaQuestion || showPopTriviaEndState);
     const popTriviaProgressPct = popTriviaQuestion
         ? Math.max(0, Math.min(100, (Number(popTriviaState?.timeLeftSec || 0) / Math.max(1, Number(popTriviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC))) * 100))
@@ -4343,6 +4800,14 @@ const PublicTV = ({ roomCode }) => {
         ? 'col-span-12'
         : (lobbyCompactHudMode ? 'col-span-12 lg:col-span-9' : 'col-span-12 lg:col-span-8');
     const popTriviaSidebarSpanClass = lobbyCompactHudMode ? 'col-span-12 lg:col-span-3' : 'col-span-12 lg:col-span-4';
+    const defaultStageSpanClass = isCinema
+        ? 'col-span-12'
+        : (lobbyCompactHudMode ? 'col-span-12 lg:col-span-9' : 'col-span-12 lg:col-span-8');
+    const defaultSidebarSpanClass = lobbyCompactHudMode ? 'col-span-12 lg:col-span-3' : 'col-span-12 lg:col-span-4';
+    const stageAreaSpanClass = hasActivePopTriviaPanel
+        ? popTriviaStageSpanClass
+        : (guitarTakeoverMode ? 'col-span-12' : defaultStageSpanClass);
+    const sidebarAreaSpanClass = hasActivePopTriviaPanel ? popTriviaSidebarSpanClass : defaultSidebarSpanClass;
     const showAmbientFx = !exploreSimple;
     const showVisualizerTv = !!room?.showVisualizerTv;
     const visualizerBaseMode = room?.visualizerMode || 'ribbon';
@@ -4687,52 +5152,67 @@ const PublicTV = ({ roomCode }) => {
                     </div>
                     <div className="absolute inset-0 z-[85] pointer-events-none flex flex-col justify-between py-4 md:py-6 2xl:py-8">
                         <div className="px-4 md:px-8">
-                            <div className="mx-auto max-w-[1080px] flex flex-col md:flex-row md:items-start md:justify-between gap-3 md:gap-4">
+                            <div className="mx-auto max-w-[1480px] flex flex-col md:flex-row md:items-start md:justify-between gap-4 md:gap-5">
                                 <div className="min-w-0">
-                                    <div className={`${motionSafeFx ? 'text-3xl md:text-5xl' : 'text-[clamp(2.4rem,8.6vw,5.5rem)]'} font-bebas text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 drop-shadow-[0_0_26px_rgba(255,120,0,0.8)] ${motionSafeFx ? '' : 'animate-pulse'}`}>GUITAR VIBE SYNC</div>
-                                    <div className="text-xs md:text-sm uppercase tracking-[0.2em] text-yellow-100/90">The room spotlight follows whoever is jamming hardest right now.</div>
-                                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                                        <div className="bg-black/65 border border-yellow-300/35 rounded-full px-3 py-1 text-[11px] md:text-xs uppercase tracking-[0.16em] text-yellow-100">
+                                    <div className={`${motionSafeFx ? 'text-5xl md:text-7xl' : 'text-[clamp(3.6rem,8.2vw,7.2rem)]'} font-bebas text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 drop-shadow-[0_0_26px_rgba(255,120,0,0.8)] ${motionSafeFx ? '' : 'animate-pulse'}`}>GUITAR VIBE SYNC</div>
+                                    <div className="mt-2 text-base md:text-[1.45rem] uppercase tracking-[0.18em] text-yellow-100/90">The room spotlight follows whoever is jamming hardest right now.</div>
+                                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                                        <div className="bg-black/65 border border-yellow-300/35 rounded-full px-4 py-2 text-[13px] md:text-[15px] uppercase tracking-[0.16em] text-yellow-100">
                                             Top Jammer {guitarTopJammer ? `${guitarTopJammer.name} ${guitarTopJammer.guitarHits}` : 'Waiting'}
                                         </div>
-                                        <div className="bg-black/65 border border-cyan-300/35 rounded-full px-3 py-1 text-[11px] md:text-xs uppercase tracking-[0.16em] text-cyan-100">{guitarActiveCount} Live Jammers</div>
-                                        <div className="bg-black/65 border border-fuchsia-300/35 rounded-full px-3 py-1 text-[11px] md:text-xs uppercase tracking-[0.16em] text-fuchsia-100">{guitarSessionTotalHits} Total Hits</div>
+                                        <div className="bg-black/65 border border-cyan-300/35 rounded-full px-4 py-2 text-[13px] md:text-[15px] uppercase tracking-[0.16em] text-cyan-100">{guitarActiveCount} Live Jammers</div>
+                                        <div className="bg-black/65 border border-fuchsia-300/35 rounded-full px-4 py-2 text-[13px] md:text-[15px] uppercase tracking-[0.16em] text-fuchsia-100">{guitarSessionTotalHits} Total Hits</div>
                                     </div>
                                 </div>
-                                <div className="bg-black/65 border border-white/20 rounded-2xl px-4 py-3 min-w-[220px] md:min-w-[280px]">
-                                    <div className="flex items-center justify-between gap-3 text-[11px] md:text-xs uppercase tracking-[0.2em] text-zinc-200">
+                                <div className="bg-black/65 border border-white/20 rounded-2xl px-4 py-4 min-w-[250px] md:min-w-[320px]">
+                                    <div className="flex items-center justify-between gap-3 text-[12px] md:text-[13px] uppercase tracking-[0.2em] text-zinc-200">
                                         <span>Room Jam Intensity</span>
-                                        <span className="font-black text-white">{guitarSyncPower}%</span>
+                                        <span className="font-black text-white text-lg md:text-2xl">{guitarSyncPower}%</span>
                                     </div>
-                                    <div className="mt-2 h-2.5 w-full bg-white/20 rounded-full overflow-hidden border border-white/20">
+                                    <div className="mt-2 h-3 w-full bg-white/20 rounded-full overflow-hidden border border-white/20">
                                         <div className="h-full bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-400 transition-all duration-200" style={{ width: `${guitarSyncPower}%` }}></div>
                                     </div>
-                                    <div className="mt-2 flex items-center justify-between text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-zinc-200">
+                                    <div className="mt-3 flex items-center justify-between text-[11px] md:text-[13px] uppercase tracking-[0.14em] text-zinc-200">
                                         <span>Accuracy {guitarSyncAccuracy}%</span>
                                         <span>Peak {guitarLeaderMaxHits} hits</span>
                                     </div>
-                                    <div className="mt-1 text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-zinc-300">
+                                    <div className="mt-2 text-[11px] md:text-[13px] uppercase tracking-[0.14em] text-zinc-300">
                                         {guitarTopJammer ? `Now leading: ${guitarTopJammer.name}` : `Energy ${guitarEngagementScore}%`}
+                                    </div>
+                                    <div className="mt-4 flex items-center gap-4">
+                                        <div className="rounded-2xl bg-white p-2 shadow-[0_0_30px_rgba(255,255,255,0.18)]">
+                                            <LocalQrImage
+                                                value={joinUrl}
+                                                size={86}
+                                                alt="QR"
+                                                className="h-[86px] w-[86px]"
+                                            />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100">Join to Jam</div>
+                                            <div className="mt-1 text-3xl md:text-4xl font-bebas text-white tracking-[0.14em]">{roomCode}</div>
+                                            <div className="mt-1 text-[11px] md:text-[12px] uppercase tracking-[0.12em] text-zinc-200">Scan on your phone</div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                         <div className="w-full px-3 md:px-6 pb-2 md:pb-4">
-                            <div className="mx-auto max-w-[1280px] grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_290px] gap-3 md:gap-4 items-stretch">
-                                <div className="bg-black/62 border border-white/10 rounded-2xl md:rounded-3xl px-4 py-3 md:px-6 md:py-5 2xl:px-8 2xl:py-6 backdrop-blur-md min-w-0">
-                                    <div className="flex items-center justify-between gap-3 mb-3 md:mb-4">
+                            <div className="mx-auto max-w-[1560px] grid grid-cols-1 xl:grid-cols-[minmax(0,1.3fr)_340px] gap-4 md:gap-5 items-stretch">
+                                <div className="bg-black/62 border border-white/10 rounded-2xl md:rounded-3xl px-5 py-4 md:px-8 md:py-6 2xl:px-10 2xl:py-8 backdrop-blur-md min-w-0">
+                                    <div className="flex items-center justify-between gap-3 mb-4 md:mb-5">
                                         <div>
-                                            <div className="text-sm text-zinc-200 tracking-[0.28em] uppercase">Crowd Fretboard</div>
-                                            <div className="text-[11px] md:text-xs uppercase tracking-[0.16em] text-zinc-300">Every phone in sync shows up here live.</div>
+                                            <div className="text-[13px] md:text-[15px] text-zinc-200 tracking-[0.28em] uppercase">Crowd Fretboard</div>
+                                            <div className="text-[12px] md:text-[14px] uppercase tracking-[0.16em] text-zinc-300">Every phone in sync shows up here live.</div>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-[11px] md:text-xs uppercase tracking-[0.16em] text-zinc-300">Players</div>
-                                            <div className="text-2xl md:text-3xl font-bebas text-yellow-200">{guitarSessionParticipants.length}</div>
+                                            <div className="text-[11px] md:text-[13px] uppercase tracking-[0.16em] text-zinc-300">Players</div>
+                                            <div className="text-3xl md:text-5xl font-bebas text-yellow-200">{guitarSessionParticipants.length}</div>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-2.5 md:gap-3">
+                                    <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-3.5 md:gap-4">
                                         {guitarDisplayParticipants.length === 0 && (
-                                            <div className="col-span-full text-zinc-400 text-sm md:text-base border border-dashed border-white/15 rounded-2xl px-4 py-8 text-center">
+                                            <div className="col-span-full text-zinc-300 text-xl md:text-[1.85rem] font-semibold border border-dashed border-white/15 rounded-2xl px-6 py-12 text-center">
                                                 Start strumming to light up the crowd wall.
                                             </div>
                                         )}
@@ -4745,7 +5225,7 @@ const PublicTV = ({ roomCode }) => {
                                             return (
                                                 <div
                                                     key={p.uid}
-                                                    className={`relative overflow-hidden rounded-2xl border px-3 py-3 md:px-4 md:py-4 transition-all duration-200 ${isLive ? 'border-cyan-300/45 bg-cyan-400/[0.08] shadow-[0_0_28px_rgba(34,211,238,0.16)]' : 'border-white/10 bg-black/45'}`}
+                                                    className={`relative overflow-hidden rounded-2xl border px-4 py-4 md:px-5 md:py-5 transition-all duration-200 ${isLive ? 'border-cyan-300/45 bg-cyan-400/[0.08] shadow-[0_0_28px_rgba(34,211,238,0.16)]' : 'border-white/10 bg-black/45'}`}
                                                     style={{
                                                         transform: `scale(${1 + Math.min(0.06, intensity * 0.06)})`
                                                     }}
@@ -4758,28 +5238,28 @@ const PublicTV = ({ roomCode }) => {
                                                     ></div>
                                                     <div className="relative flex items-start justify-between gap-3">
                                                         <div className="flex items-center gap-3 min-w-0">
-                                                            <div className={`h-12 w-12 md:h-14 md:w-14 rounded-2xl border border-white/15 bg-black/45 flex items-center justify-center text-3xl md:text-4xl ${isLive ? 'shadow-[0_0_20px_rgba(34,211,238,0.2)]' : ''}`}>
+                                                            <div className={`h-14 w-14 md:h-16 md:w-16 rounded-2xl border border-white/15 bg-black/45 flex items-center justify-center text-4xl md:text-5xl ${isLive ? 'shadow-[0_0_20px_rgba(34,211,238,0.2)]' : ''}`}>
                                                                 {p.avatar || EMOJI.guitar}
                                                             </div>
                                                             <div className="min-w-0">
-                                                                <div className="text-white font-bold text-sm md:text-base truncate">{p.name}</div>
-                                                                <div className="text-[10px] md:text-[11px] uppercase tracking-[0.18em] text-zinc-300">
+                                                                <div className="text-white font-bold text-base md:text-[1.25rem] truncate">{p.name}</div>
+                                                                <div className="text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-zinc-300">
                                                                     {isLive ? 'Live on beat' : 'In session'}
                                                                 </div>
                                                             </div>
                                                         </div>
                                                         <div className="text-right shrink-0">
-                                                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-300">Hits</div>
-                                                            <div className="text-lg md:text-2xl font-bebas text-yellow-200 leading-none">{playerHits}</div>
+                                                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">Hits</div>
+                                                            <div className="text-2xl md:text-3xl font-bebas text-yellow-200 leading-none">{playerHits}</div>
                                                         </div>
                                                     </div>
-                                                    <div className="relative mt-3 h-2.5 w-full rounded-full bg-white/10 overflow-hidden border border-white/10">
+                                                    <div className="relative mt-4 h-3 w-full rounded-full bg-white/10 overflow-hidden border border-white/10">
                                                         <div
                                                             className="h-full rounded-full bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500"
                                                             style={{ width: `${meterPct}%` }}
                                                         ></div>
                                                     </div>
-                                                    <div className="relative mt-2 flex items-center justify-between text-[10px] md:text-[11px] uppercase tracking-[0.16em] text-zinc-300">
+                                                    <div className="relative mt-3 flex items-center justify-between text-[11px] md:text-[13px] uppercase tracking-[0.16em] text-zinc-300">
                                                         <span>{recentBurst > 0 ? `Burst x${recentBurst}` : 'Ready'}</span>
                                                         <span>{isLive ? 'Active' : 'Standing by'}</span>
                                                     </div>
@@ -4788,61 +5268,61 @@ const PublicTV = ({ roomCode }) => {
                                         })}
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-1 gap-3 md:gap-4">
-                                    <div className="bg-black/65 border border-white/15 rounded-2xl p-3 md:p-4 backdrop-blur-md">
-                                        <div className="text-[10px] md:text-xs uppercase tracking-[0.2em] text-zinc-300 text-center">Jam Spotlight</div>
+                                <div className="grid grid-cols-1 gap-4 md:gap-5">
+                                    <div className="bg-black/65 border border-white/15 rounded-2xl p-4 md:p-5 backdrop-blur-md">
+                                        <div className="text-[11px] md:text-[13px] uppercase tracking-[0.2em] text-zinc-300 text-center">Jam Spotlight</div>
                                         {guitarTopJammer ? (
-                                            <div className="mt-3 rounded-2xl border border-yellow-300/30 bg-gradient-to-br from-yellow-300/10 via-orange-400/10 to-fuchsia-400/10 p-4">
+                                            <div className="mt-4 rounded-2xl border border-yellow-300/30 bg-gradient-to-br from-yellow-300/10 via-orange-400/10 to-fuchsia-400/10 p-5">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="h-16 w-16 rounded-2xl border border-white/15 bg-black/45 flex items-center justify-center text-4xl shadow-[0_0_24px_rgba(250,204,21,0.18)]">
+                                                    <div className="h-20 w-20 rounded-2xl border border-white/15 bg-black/45 flex items-center justify-center text-5xl shadow-[0_0_24px_rgba(250,204,21,0.18)]">
                                                         {guitarTopJammer.avatar || EMOJI.guitar}
                                                     </div>
                                                     <div className="min-w-0 flex-1">
-                                                        <div className="text-[10px] md:text-[11px] uppercase tracking-[0.18em] text-yellow-100">Most active right now</div>
-                                                        <div className="text-2xl md:text-3xl font-bebas text-white leading-none truncate">{guitarTopJammer.name}</div>
-                                                        <div className="mt-1 text-sm md:text-base uppercase tracking-[0.16em] text-zinc-200">{guitarTopJammer.guitarHits} hits</div>
+                                                        <div className="text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-yellow-100">Most active right now</div>
+                                                        <div className="text-3xl md:text-4xl font-bebas text-white leading-none truncate">{guitarTopJammer.name}</div>
+                                                        <div className="mt-2 text-base md:text-[1.2rem] uppercase tracking-[0.16em] text-zinc-200">{guitarTopJammer.guitarHits} hits</div>
                                                     </div>
                                                 </div>
-                                                <div className="mt-4 h-3 w-full rounded-full bg-white/10 overflow-hidden border border-white/10">
+                                                <div className="mt-5 h-3.5 w-full rounded-full bg-white/10 overflow-hidden border border-white/10">
                                                     <div className="h-full rounded-full bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500" style={{ width: '100%' }}></div>
                                                 </div>
-                                                <div className="mt-3 flex items-center justify-between text-[10px] md:text-[11px] uppercase tracking-[0.16em] text-zinc-300">
+                                                <div className="mt-4 flex items-center justify-between text-[11px] md:text-[13px] uppercase tracking-[0.16em] text-zinc-300">
                                                     <span>{guitarRunnerUp ? `Next up: ${guitarRunnerUp.name}` : 'No challenger yet'}</span>
                                                     <span>{guitarActiveCount} live</span>
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div className="mt-3 rounded-2xl border border-dashed border-white/15 px-4 py-8 text-center text-sm text-zinc-400">
+                                            <div className="mt-4 rounded-2xl border border-dashed border-white/15 px-5 py-10 text-center text-base md:text-[1.2rem] text-zinc-400">
                                                 Start strumming and the hottest jammer will take this spotlight.
                                             </div>
                                         )}
                                     </div>
-                                    <div className="bg-black/60 border border-white/10 rounded-2xl p-3 md:p-4 backdrop-blur-md min-w-0">
-                                        <div className="flex items-center justify-between gap-3 mb-3">
-                                            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-zinc-200">Jam Leaderboard</div>
-                                            <div className="text-[10px] md:text-[11px] uppercase tracking-[0.16em] text-zinc-300">Hits {guitarSessionTotalHits}</div>
+                                    <div className="bg-black/60 border border-white/10 rounded-2xl p-4 md:p-5 backdrop-blur-md min-w-0">
+                                        <div className="flex items-center justify-between gap-3 mb-4">
+                                            <div className="text-[11px] md:text-[13px] uppercase tracking-[0.2em] text-zinc-200">Jam Leaderboard</div>
+                                            <div className="text-[11px] md:text-[12px] uppercase tracking-[0.16em] text-zinc-300">Hits {guitarSessionTotalHits}</div>
                                         </div>
-                                        <div className="space-y-2.5">
+                                        <div className="space-y-3">
                                             {guitarLeaders.length === 0 && (
-                                                <div className="text-zinc-400 text-sm">No leaders yet.</div>
+                                                <div className="text-zinc-400 text-base">No leaders yet.</div>
                                             )}
                                             {guitarLeaders.map((p, idx) => {
                                                 const meterPct = Math.max(12, Math.round((Number(p?.guitarHits || 0) / Math.max(1, guitarLeaderMaxHits)) * 100));
                                                 return (
-                                                    <div key={p.uid} className="rounded-2xl border border-white/10 bg-black/45 px-3 py-2.5">
+                                                    <div key={p.uid} className="rounded-2xl border border-white/10 bg-black/45 px-4 py-3">
                                                         <div className="flex items-center justify-between gap-3">
                                                             <div className="flex items-center gap-3 min-w-0">
-                                                                <div className="h-10 w-10 rounded-xl border border-white/10 bg-black/55 flex items-center justify-center text-2xl">
+                                                                <div className="h-12 w-12 rounded-xl border border-white/10 bg-black/55 flex items-center justify-center text-3xl">
                                                                     {p.avatar || EMOJI.guitar}
                                                                 </div>
                                                                 <div className="min-w-0">
-                                                                    <div className="text-white font-bold text-sm truncate">{idx + 1}. {p.name}</div>
-                                                                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-300">{p.guitarHits || 0} hits</div>
+                                                                    <div className="text-white font-bold text-base truncate">{idx + 1}. {p.name}</div>
+                                                                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-300">{p.guitarHits || 0} hits</div>
                                                                 </div>
                                                             </div>
-                                                            <div className="text-lg font-bebas text-yellow-200">{p.guitarHits || 0}</div>
+                                                            <div className="text-2xl font-bebas text-yellow-200">{p.guitarHits || 0}</div>
                                                         </div>
-                                                        <div className="mt-2 h-2 w-full rounded-full bg-white/10 overflow-hidden border border-white/10">
+                                                        <div className="mt-3 h-2.5 w-full rounded-full bg-white/10 overflow-hidden border border-white/10">
                                                             <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-fuchsia-400 to-yellow-300" style={{ width: `${meterPct}%` }}></div>
                                                         </div>
                                                     </div>
@@ -4860,7 +5340,7 @@ const PublicTV = ({ roomCode }) => {
             {multiplier >= 4 && <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_20%,#000_120%)] opacity-50 mix-blend-overlay pointer-events-none"></div>}
 
             {!isCinema && hasActivePopTriviaPanel && (
-                <div className="absolute inset-y-3 left-3 right-3 md:inset-y-5 md:left-auto md:right-5 md:w-[min(42vw,760px)] 2xl:inset-y-8 2xl:right-8 z-[125] pointer-events-none">
+                <div className="absolute inset-y-3 left-3 right-3 md:inset-y-5 md:left-auto md:right-5 md:w-[min(46vw,920px)] 2xl:inset-y-8 2xl:right-8 z-[125] pointer-events-none">
                     <div
                         data-feature-id="tv-pop-trivia-overlay"
                         className={`h-full rounded-[1.75rem] md:rounded-[2.2rem] border backdrop-blur-xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.45)] ${
@@ -4871,14 +5351,14 @@ const PublicTV = ({ roomCode }) => {
                     >
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.22),transparent_36%),radial-gradient(circle_at_bottom_left,rgba(236,72,153,0.18),transparent_34%)] pointer-events-none"></div>
                         <div className={`relative h-full flex flex-col ${popTriviaQuestionFlashVisible ? 'animate-pulse' : ''}`}>
-                            <div className={`px-4 py-4 md:px-5 md:py-5 border-b text-[11px] md:text-xs uppercase tracking-[0.22em] flex items-start justify-between gap-4 ${
+                            <div className={`px-5 py-4 md:px-7 md:py-6 border-b text-[11px] md:text-xs uppercase tracking-[0.22em] flex items-start justify-between gap-4 ${
                                 popTriviaQuestion ? 'border-cyan-300/15' : 'border-emerald-300/15'
                             }`}>
                                 <div className="min-w-0">
-                                    <div className={popTriviaQuestion ? 'text-cyan-200' : 'text-emerald-200'}>
+                                    <div className={`text-[12px] md:text-[14px] ${popTriviaQuestion ? 'text-cyan-200' : 'text-emerald-200'}`}>
                                         {popTriviaQuestion ? 'Pop-up Trivia' : 'Pop-up Trivia Complete'}
                                     </div>
-                                    <div className="mt-2 text-[10px] md:text-[11px] text-zinc-300 tracking-[0.18em]">
+                                    <div className="mt-2 text-[11px] md:text-[13px] text-zinc-300 tracking-[0.18em]">
                                         {popTriviaQuestion
                                             ? `Question ${Number(popTriviaState?.index || 0) + 1} of ${popTriviaState?.total || 0}`
                                             : `${popTriviaState?.total || 0} questions finished`}
@@ -4887,10 +5367,10 @@ const PublicTV = ({ roomCode }) => {
                                 <div className="shrink-0 text-right">
                                     {popTriviaQuestion ? (
                                         <>
-                                            <div className={`text-4xl md:text-6xl font-black font-mono leading-none ${popTriviaUrgent ? 'text-yellow-200 drop-shadow-[0_0_18px_rgba(253,224,71,0.55)]' : 'text-white'} ${popTriviaUrgencyPulseVisible ? 'animate-pulse' : ''}`}>
+                                            <div className={`text-5xl md:text-7xl 2xl:text-[5.8rem] font-black font-mono leading-none ${popTriviaUrgent ? 'text-yellow-200 drop-shadow-[0_0_18px_rgba(253,224,71,0.55)]' : 'text-white'} ${popTriviaUrgencyPulseVisible ? 'animate-pulse' : ''}`}>
                                                 {Math.max(0, Number(popTriviaState?.timeLeftSec || 0))}
                                             </div>
-                                            <div className={`mt-1 text-[10px] md:text-[11px] tracking-[0.18em] ${popTriviaUrgent ? 'text-yellow-200' : 'text-cyan-100'}`}>
+                                            <div className={`mt-1 text-[11px] md:text-[13px] tracking-[0.18em] ${popTriviaUrgent ? 'text-yellow-200' : 'text-cyan-100'}`}>
                                                 {popTriviaUrgent ? 'Answer now' : 'Seconds left'}
                                             </div>
                                         </>
@@ -4908,25 +5388,29 @@ const PublicTV = ({ roomCode }) => {
                             </div>
                             {popTriviaQuestion ? (
                                 <>
-                                    <div className="px-4 md:px-5 pt-3 md:pt-4">
-                                        <div className="h-2 md:h-2.5 w-full rounded-full bg-white/10 overflow-hidden border border-white/10">
+                                    <div className="px-5 md:px-7 pt-3 md:pt-4">
+                                        <div className="h-2.5 md:h-3 w-full rounded-full bg-white/10 overflow-hidden border border-white/10">
                                             <div
                                                 className={`h-full rounded-full transition-all duration-700 ${popTriviaUrgent ? 'bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500' : 'bg-gradient-to-r from-cyan-300 via-sky-400 to-fuchsia-400'}`}
                                                 style={{ width: `${popTriviaProgressPct}%` }}
                                             ></div>
                                         </div>
                                         {popTriviaQuestionFlashVisible && (
-                                            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/12 px-3 py-1 text-[10px] md:text-xs font-black uppercase tracking-[0.2em] text-cyan-100">
+                                            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/12 px-3 py-1 text-[11px] md:text-[13px] font-black uppercase tracking-[0.2em] text-cyan-100">
                                                 <span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.9)]"></span>
                                                 New Question
                                             </div>
                                         )}
                                     </div>
-                                    <div className="px-4 py-4 md:px-5 md:py-5 flex min-h-0 flex-1 flex-col">
-                                        <div className="text-[1.55rem] md:text-[2.5rem] 2xl:text-[2.9rem] font-black text-white leading-[1.02]">
+                                    <div className="px-5 py-5 md:px-7 md:py-6 flex min-h-0 flex-1 flex-col">
+                                        <div className="text-[2rem] md:text-[3.25rem] 2xl:text-[4rem] font-black text-white leading-[0.98]">
                                             {popTriviaQuestion.q}
                                         </div>
-                                        <div className="mt-5 grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pr-1">
+                                        <div className="mt-3 flex items-center justify-between gap-4 text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100/90">
+                                            <span>Correct answer wins a TV shoutout</span>
+                                            <span>{popTriviaTotalVotes} answers locked</span>
+                                        </div>
+                                        <div className="mt-5 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto pr-1">
                                             {popTriviaQuestion.options?.map((option, idx) => {
                                                 const optionVotes = popTriviaVoteCounts[idx] || 0;
                                                 const optionPct = popTriviaTotalVotes > 0
@@ -4935,7 +5419,7 @@ const PublicTV = ({ roomCode }) => {
                                                 return (
                                                     <div
                                                         key={`${popTriviaQuestion.id}_${idx}`}
-                                                        className="relative rounded-2xl border border-white/12 bg-black/38 px-4 py-4 md:px-5 md:py-5 overflow-hidden"
+                                                        className="relative rounded-[1.6rem] border border-white/12 bg-black/38 px-5 py-5 md:px-6 md:py-6 overflow-hidden"
                                                     >
                                                         <div
                                                             className="absolute inset-y-0 left-0 bg-gradient-to-r from-cyan-300/22 via-cyan-200/12 to-transparent transition-all duration-500"
@@ -4943,18 +5427,18 @@ const PublicTV = ({ roomCode }) => {
                                                         ></div>
                                                         <div className="relative flex items-start justify-between gap-4">
                                                             <div className="flex items-start gap-3 min-w-0">
-                                                                <span className="shrink-0 text-cyan-300 font-black text-lg md:text-2xl tracking-[0.16em]">
+                                                                <span className="shrink-0 text-cyan-300 font-black text-[1.8rem] md:text-[2.6rem] tracking-[0.16em] leading-none">
                                                                     {String.fromCharCode(65 + idx)}
                                                                 </span>
-                                                                <span className="min-w-0 flex-1 text-lg md:text-[1.28rem] 2xl:text-[1.45rem] font-bold leading-snug text-white">
+                                                                <span className="min-w-0 flex-1 text-[1.55rem] md:text-[2.1rem] 2xl:text-[2.45rem] font-bold leading-[1.04] text-white">
                                                                     {option}
                                                                 </span>
                                                             </div>
                                                             <div className="shrink-0 text-right">
-                                                                <div className="text-xl md:text-3xl font-black font-mono text-white">
+                                                                <div className="text-[1.8rem] md:text-[2.6rem] font-black font-mono text-white leading-none">
                                                                     {optionVotes}
                                                                 </div>
-                                                                <div className="mt-1 text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-zinc-300">
+                                                                <div className="mt-1 text-[11px] md:text-[13px] uppercase tracking-[0.14em] text-zinc-300">
                                                                     {popTriviaTotalVotes > 0 ? `${optionPct}%` : 'No votes'}
                                                                 </div>
                                                             </div>
@@ -4964,7 +5448,7 @@ const PublicTV = ({ roomCode }) => {
                                             })}
                                         </div>
                                         <div className="mt-4 flex items-center justify-between gap-4 text-[11px] md:text-sm uppercase tracking-[0.18em] text-zinc-200">
-                                            <span>{popTriviaTotalVotes} answers locked</span>
+                                            <span>Correct responders get the spotlight next</span>
                                             <span className={popTriviaUrgent ? 'text-yellow-200' : 'text-cyan-100'}>
                                                 {popTriviaUrgent ? 'Question closing' : 'Vote in Party app'}
                                             </span>
@@ -4972,12 +5456,53 @@ const PublicTV = ({ roomCode }) => {
                                     </div>
                                 </>
                             ) : (
-                                <div className="px-5 py-6 md:px-6 md:py-8 flex min-h-0 flex-1 flex-col justify-center">
-                                    <div className="text-3xl md:text-[3.1rem] font-black text-white leading-[1.02]">
-                                        Trivia complete. Karaoke keeps moving.
+                                <div className="px-5 py-6 md:px-7 md:py-8 flex min-h-0 flex-1 flex-col">
+                                    <div className="text-[12px] md:text-[14px] uppercase tracking-[0.22em] text-emerald-100/90">Correct answer</div>
+                                    <div className="mt-3 rounded-[1.8rem] border border-emerald-300/30 bg-emerald-400/12 px-5 py-5 md:px-6 md:py-6">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="min-w-0">
+                                                <div className="text-[11px] md:text-[13px] uppercase tracking-[0.16em] text-emerald-100/75">Winning choice</div>
+                                                <div className="mt-2 text-[2rem] md:text-[3rem] 2xl:text-[3.5rem] font-black text-white leading-[0.96]">
+                                                    {popTriviaRevealCorrectOption || 'Answer reveal unavailable'}
+                                                </div>
+                                            </div>
+                                            <div className="shrink-0 rounded-full border border-emerald-200/40 bg-emerald-300/18 px-4 py-2 text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-emerald-50">
+                                                TV shoutout
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="mt-4 text-lg md:text-[1.3rem] text-emerald-100/90 leading-relaxed">
-                                        The side round is done. Watch for the next question burst during the song.
+                                    <div className="mt-5 flex items-center justify-between gap-4">
+                                        <div>
+                                            <div className="text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-emerald-100/75">Correct responders</div>
+                                            <div className="mt-1 text-[1.3rem] md:text-[2rem] font-black text-white leading-none">
+                                                {popTriviaRevealCorrectResponders.length > 0
+                                                    ? `${popTriviaRevealCorrectResponders.length} nailed it`
+                                                    : 'No correct answers yet'}
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-zinc-300">Answers locked</div>
+                                            <div className="mt-1 text-[1.35rem] md:text-[2rem] font-black text-white leading-none">{popTriviaRevealAnswerCount}</div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+                                        {popTriviaRevealCorrectResponders.length > 0 ? (
+                                            popTriviaRevealCorrectResponders.map((entry) => (
+                                                <div
+                                                    key={entry.id}
+                                                    className="rounded-[1.4rem] border border-white/12 bg-black/28 px-4 py-4 md:px-5 md:py-5"
+                                                >
+                                                    <div className="text-[1.8rem] md:text-[2.4rem] leading-none">{entry.avatar}</div>
+                                                    <div className="mt-2 text-[1.05rem] md:text-[1.45rem] font-black text-white leading-tight break-words">
+                                                        {entry.name}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="col-span-full rounded-[1.5rem] border border-white/10 bg-black/22 px-5 py-5 md:px-6 md:py-6 text-[1.1rem] md:text-[1.4rem] font-semibold text-emerald-100/90">
+                                                Trivia complete. Karaoke keeps moving.
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -4988,7 +5513,7 @@ const PublicTV = ({ roomCode }) => {
 
             <div className={`relative z-10 h-full grid grid-cols-1 lg:grid-cols-12 ${gridSpacingClass} ${isCinema ? 'pt-0 pb-0' : `${effectiveGridTopPaddingClass} ${gridBottomPaddingClass}`}`}>
                 {/* STAGE AREA */}
-                <div className={`${popTriviaStageSpanClass} flex flex-col transition-all duration-500`}>
+                <div className={`${stageAreaSpanClass} flex flex-col transition-all duration-500`}>
                     <div className={`flex-1 ${isMinimal || isCinema ? 'bg-black' : 'bg-black/30 backdrop-blur-md border border-white/10'} rounded-2xl md:rounded-3xl relative shadow-2xl overflow-hidden ${effectiveStageMinHeightClass}`}>
                         <div className="absolute inset-0 pointer-events-none tv-light-sweep"></div>
                           {current && showScoring && (
@@ -5058,7 +5583,8 @@ const PublicTV = ({ roomCode }) => {
                                     current={current}
                                     started={started}
                                     combo={combo}
-                                    minimalUI={isMinimal}
+                                    minimalUI={isMinimal || lobbyVolleySceneActive || guitarTakeoverMode}
+                                    fitToWindow
                                     showVideo={!isMinimal}
                                 />
                             </>
@@ -5067,8 +5593,8 @@ const PublicTV = ({ roomCode }) => {
                 </div>
                 
                 {/* SIDEBAR: Hidden in Cinema Mode */}
-                {!isCinema && (
-                    <div className={`${popTriviaSidebarSpanClass} flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden transition-all duration-500`}>
+                {!isCinema && !guitarTakeoverMode && (
+                    <div className={`${sidebarAreaSpanClass} flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden transition-all duration-500`}>
                         <div className={`${lobbyCompactHudMode ? 'p-2 md:p-3' : 'p-3 md:p-4'} rounded-2xl md:rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20`}>
                             <div className={`${lobbyCompactHudMode ? 'text-lg md:text-xl 2xl:text-2xl' : 'text-xl md:text-2xl 2xl:text-3xl'} font-black text-cyan-100 mb-1 uppercase tracking-[0.14em] md:tracking-[0.18em]`}>JOIN</div>
                             <div className={`bg-white ${lobbyCompactHudMode ? 'p-1.5 md:p-2' : 'p-2 md:p-3'} rounded-2xl md:rounded-3xl inline-block shadow-[0_0_45px_rgba(255,255,255,0.2)]`}>
@@ -5760,9 +6286,9 @@ const PublicTV = ({ roomCode }) => {
                             if (progress >= 1) return null;
                             const opacity = Math.max(0, (1 - progress) * 0.95);
                             const fromX = clampLobby(Number(link?.from?.x || 50), 0, 100);
-                            const fromY = clampLobby(Number(link?.from?.y || 50), 0, 100);
+                            const fromY = clampLobby(Number(link?.from?.y || 50) + lobbyGuideVerticalShiftPct, -14, 136);
                             const toX = clampLobby(Number(link?.to?.x || 50), 0, 100);
-                            const toY = clampLobby(Number(link?.to?.y || 50), 0, 100);
+                            const toY = clampLobby(Number(link?.to?.y || 50) + lobbyGuideVerticalShiftPct, -14, 136);
                             return (
                                 <g key={link.id} style={{ opacity }}>
                                     <line
@@ -5854,7 +6380,7 @@ const PublicTV = ({ roomCode }) => {
                             </>
                         ) : (
                             <>
-                                <div className="absolute left-[6%] right-[6%] lobby-volley-ground-line" style={{ top: 'auto', bottom: `${lobbyGroundLineBottomPct}%` }}>
+                                <div className="absolute left-[6%] right-[6%] lobby-volley-ground-line" style={{ top: `${lobbyGroundLineRenderTopPct}%` }}>
                                     <div className="lobby-volley-ground-core" />
                                 </div>
                                 {LOBBY_PLAY_GUIDE.map((guide) => {
@@ -5876,14 +6402,20 @@ const PublicTV = ({ roomCode }) => {
                                                         ? 'scale-105'
                                                         : 'scale-100'
                                             }`}
-                                            style={{ left: `${anchor.x}%`, top: `${anchor.y}%` }}
+                                            style={{ left: `${anchor.x}%`, top: `${clampLobby(anchor.y + lobbyGuideVerticalShiftPct, -8, 138)}%` }}
                                         >
-                                            <div className={`rounded-full border px-4 py-2 text-[14px] md:text-[18px] font-black uppercase tracking-[0.16em] backdrop-blur shadow-[0_0_28px_rgba(0,0,0,0.2)] ${
+                                            <div className={`rounded-full border font-black uppercase backdrop-blur shadow-[0_0_24px_rgba(0,0,0,0.18)] ${
+                                                lobbyHasCustomOrbSkin
+                                                    ? 'px-2.5 py-1 text-[10px] md:text-[12px] tracking-[0.12em]'
+                                                    : 'px-3 py-1.5 text-[11px] md:text-[14px] tracking-[0.14em]'
+                                            } ${
                                                 isRelayTarget
                                                     ? 'border-emerald-200/80 bg-emerald-400/35 text-emerald-50 shadow-[0_0_20px_rgba(16,185,129,0.45)]'
                                                     : isRecent
                                                         ? 'border-cyan-200/80 bg-cyan-400/30 text-cyan-50 shadow-[0_0_16px_rgba(34,211,238,0.38)]'
-                                                        : 'border-white/30 bg-black/45 text-zinc-100'
+                                                        : lobbyHasCustomOrbSkin
+                                                            ? 'border-white/20 bg-black/28 text-zinc-100/88'
+                                                            : 'border-white/30 bg-black/45 text-zinc-100'
                                             }`}>
                                                 <span className="mr-1">{effect?.icon || EMOJI.sparkle}</span>
                                                 {guide.action}
@@ -5905,14 +6437,16 @@ const PublicTV = ({ roomCode }) => {
                                             '--lobby-volley-participant-size': `${Math.max(18, Number(lobbyVolleySceneMetrics?.participantSizePx || 27))}px`
                                         }}
                                     >
-                                        {!!lobbyOrbSkinUrl && (
-                                            <img
-                                                src={lobbyOrbSkinUrl}
-                                                alt="Orb skin"
-                                                className="lobby-volley-orb-shell-skin"
-                                                loading="lazy"
-                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                            />
+                                        {lobbyHasCustomOrbSkin && (
+                                            <>
+                                                <div className="lobby-volley-orb-custom-halo lobby-volley-orb-custom-halo-a" aria-hidden="true" />
+                                                <div className="lobby-volley-orb-custom-halo lobby-volley-orb-custom-halo-b" aria-hidden="true" />
+                                                <div
+                                                    className="lobby-volley-orb-custom-progress"
+                                                    style={{ '--orb-progress': `${Math.max(0, Math.min(100, lobbyStreakDecayPct))}` }}
+                                                    aria-hidden="true"
+                                                />
+                                            </>
                                         )}
                                         {!lobbyOrbSkinUrl && (
                                             <div className="lobby-volley-orb-slat-overlay" aria-hidden="true">
@@ -5931,42 +6465,69 @@ const PublicTV = ({ roomCode }) => {
                                                 '--orb-scale': `${1 + (lobbyOrbEnergy / 360)}`
                                             }}
                                         >
-                                            {!!lobbyOrbSkinUrl && (
-                                                <>
+                                            {lobbyHasCustomOrbSkin ? (
+                                                <div className="lobby-volley-orb-custom-badge-wrap">
                                                     <img
                                                         src={lobbyOrbSkinUrl}
-                                                        alt="Orb core skin"
-                                                        className="lobby-volley-orb-core-skin"
+                                                        alt="Orb showcase badge"
+                                                        className="lobby-volley-orb-custom-badge"
                                                         loading="lazy"
                                                         onError={(e) => { e.currentTarget.style.display = 'none'; }}
                                                     />
-                                                    <div className="lobby-volley-orb-core-skin-overlay" aria-hidden="true" />
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    {!!lobbyOrbSkinUrl && (
+                                                        <>
+                                                            <img
+                                                                src={lobbyOrbSkinUrl}
+                                                                alt="Orb core skin"
+                                                                className="lobby-volley-orb-core-skin"
+                                                                loading="lazy"
+                                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                            />
+                                                            <div className="lobby-volley-orb-core-skin-overlay" aria-hidden="true" />
+                                                        </>
+                                                    )}
+                                                    <div className="lobby-volley-orb-core-content">
+                                                        <div className="text-[14px] md:text-[16px] uppercase tracking-[0.24em] text-cyan-100">{lobbyObjectiveLabel}</div>
+                                                        <div className="text-[3.5rem] md:text-[4.75rem] font-bebas text-white leading-none">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
+                                                        <div className="text-[12px] md:text-[14px] uppercase tracking-[0.18em] text-white/80">
+                                                            {lobbyHasActiveVolley ? `${lobbyAirborneSec}s airborne` : 'tap to launch'}
+                                                        </div>
+                                                        <div className="text-[11px] md:text-[13px] uppercase tracking-[0.14em] text-white/70">
+                                                            {lobbyObjectiveStreakLabel}
+                                                        </div>
+                                                    </div>
                                                 </>
                                             )}
-                                            <div className="lobby-volley-orb-core-content">
-                                                <div className="text-[14px] md:text-[16px] uppercase tracking-[0.24em] text-cyan-100">{lobbyObjectiveLabel}</div>
-                                                <div className="text-[3.5rem] md:text-[4.75rem] font-bebas text-white leading-none">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
-                                                <div className="text-[12px] md:text-[14px] uppercase tracking-[0.18em] text-white/80">
-                                                    {lobbyHasActiveVolley ? `${lobbyAirborneSec}s airborne` : 'tap to launch'}
+                                        </div>
+                                        {!lobbyHasCustomOrbSkin && (
+                                            <>
+                                                <div className="lobby-volley-orb-ring">
+                                                    <div
+                                                        className="lobby-volley-orb-ring-fill"
+                                                        style={{ '--orb-fill': `${lobbyStreakDecayPct}%` }}
+                                                    />
                                                 </div>
-                                                <div className="text-[11px] md:text-[13px] uppercase tracking-[0.14em] text-white/70">
-                                                    {lobbyObjectiveStreakLabel}
+                                                <div className="lobby-volley-orb-activity">
+                                                    {lobbyActiveParticipants.slice(0, 5).map((participant, idx) => (
+                                                        <span key={`${participant.uid}-${idx}`} className="lobby-volley-participant">
+                                                            {participant.avatar || EMOJI.sparkle}
+                                                        </span>
+                                                    ))}
                                                 </div>
-                                            </div>
-                                        </div>
-                                        <div className="lobby-volley-orb-ring">
-                                            <div
-                                                className="lobby-volley-orb-ring-fill"
-                                                style={{ '--orb-fill': `${lobbyStreakDecayPct}%` }}
-                                            />
-                                        </div>
-                                        <div className="lobby-volley-orb-activity">
-                                            {lobbyActiveParticipants.slice(0, 5).map((participant, idx) => (
-                                                <span key={`${participant.uid}-${idx}`} className="lobby-volley-participant">
-                                                    {participant.avatar || EMOJI.sparkle}
-                                                </span>
-                                            ))}
-                                        </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="absolute left-[4.5%] top-[18%] rounded-[22px] border border-cyan-200/28 bg-black/38 px-4 py-3 shadow-[0_0_26px_rgba(34,211,238,0.16)] backdrop-blur">
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">Orb Height</div>
+                                    <div className="mt-1 text-[34px] md:text-[48px] leading-none font-bebas text-white">
+                                        {Math.round(lobbyOrbAltitudeState.altitudeFt)}ft
+                                    </div>
+                                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-white/70">
+                                        Peak {Math.round(lobbyPeakAltitudeFt)}ft
                                     </div>
                                 </div>
                             </>
@@ -5974,30 +6535,34 @@ const PublicTV = ({ roomCode }) => {
                     </>
                 )}
                 <div
-                    className="absolute top-[4.5%] text-right pointer-events-none"
+                    className="absolute top-[3.6%] text-right pointer-events-none"
                     style={{ right: lobbyObjectiveHudRight, width: lobbyObjectiveHudWidth }}
                 >
-                    <div className="text-[14px] md:text-[18px] uppercase tracking-[0.24em] text-cyan-200/90">
+                    <div className="text-[12px] md:text-[14px] uppercase tracking-[0.22em] text-cyan-200/90">
                         {lobbyObjectiveLabel}
                     </div>
-                    <div className="mt-1 text-[56px] md:text-[86px] 2xl:text-[102px] leading-[0.9] font-bebas text-white drop-shadow-[0_0_16px_rgba(0,0,0,0.52)]">
+                    <div className="mt-1 text-[36px] md:text-[56px] 2xl:text-[68px] leading-[0.9] font-bebas text-white drop-shadow-[0_0_16px_rgba(0,0,0,0.52)]">
                         {lobbyInstructionHeadline}
                     </div>
-                    <div className="mt-2 text-[18px] md:text-[24px] text-cyan-100/90 leading-tight max-w-[34vw] ml-auto">
+                    <div className="mt-1.5 text-[14px] md:text-[18px] text-cyan-100/90 leading-tight max-w-[22vw] ml-auto">
                         {lobbyInstructionSecondary}
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2.5">
+                    <div className="mt-2.5 grid grid-cols-2 gap-2">
                         <div className="rounded-2xl border border-white/18 bg-black/35 px-3 py-2.5 text-left">
                             <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">Team</div>
-                            <div className="mt-1 text-[26px] md:text-[34px] leading-none font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
+                            <div className="mt-1 text-[22px] md:text-[28px] leading-none font-bebas text-white">x{Number(lobbyTeamworkMultiplier || 1).toFixed(1)}</div>
                         </div>
                         <div className="rounded-2xl border border-white/18 bg-black/35 px-3 py-2.5 text-left">
                             <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">Energy</div>
-                            <div className="mt-1 text-[26px] md:text-[34px] leading-none font-bebas text-white">{Math.round(lobbyOrbEnergy)}%</div>
+                            <div className="mt-1 text-[22px] md:text-[28px] leading-none font-bebas text-white">{Math.round(lobbyOrbEnergy)}%</div>
+                        </div>
+                        <div className="rounded-2xl border border-white/18 bg-black/35 px-3 py-2.5 text-left">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">Peak</div>
+                            <div className="mt-1 text-[22px] md:text-[28px] leading-none font-bebas text-white">{Math.round(lobbyPeakAltitudeFt)}ft</div>
                         </div>
                         <div className="rounded-2xl border border-white/18 bg-black/35 px-3 py-2.5 text-left">
                             <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">Relay</div>
-                            <div className="mt-1 text-[26px] md:text-[34px] leading-none font-bebas text-white">
+                            <div className="mt-1 text-[22px] md:text-[28px] leading-none font-bebas text-white">
                                 {lobbyRelayObjective.active ? `${lobbyRelayRemainingSec}s` : 'READY'}
                             </div>
                         </div>
@@ -6016,21 +6581,21 @@ const PublicTV = ({ roomCode }) => {
                         </div>
                     )}
                     <div className="mt-3 space-y-2">
-                        <div className="h-[12px] rounded-full overflow-hidden bg-white/14">
+                        <div className="h-[10px] rounded-full overflow-hidden bg-white/14">
                             <div className="h-full bg-gradient-to-r from-red-300 via-amber-300 to-emerald-300 transition-all duration-200" style={{ width: `${lobbyStreakDecayPct}%` }} />
                         </div>
-                        <div className="text-[12px] uppercase tracking-[0.16em] text-cyan-100/75">
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-cyan-100/75">
                             {lobbyObjectiveProgressLabel}
                         </div>
                     </div>
                 </div>
                 {!lobbyObjectiveIsTeamPong && (
-                    <div className="absolute top-[4.5%] left-[4%] w-[min(40vw,560px)] rounded-[26px] border border-cyan-200/30 bg-black/50 backdrop-blur px-4 py-3.5 shadow-[0_0_28px_rgba(34,211,238,0.22)]">
+                    <div className="absolute left-[3.8%] bottom-[13.5%] w-[min(29vw,420px)] rounded-[22px] border border-cyan-200/26 bg-black/40 backdrop-blur px-3.5 py-3 shadow-[0_0_24px_rgba(34,211,238,0.18)]">
                         <div className="flex items-center justify-between gap-2 mb-2">
-                            <div className="text-[14px] md:text-[16px] uppercase tracking-[0.22em] text-cyan-100/90 font-black">
+                            <div className="text-[12px] md:text-[14px] uppercase tracking-[0.2em] text-cyan-100/90 font-black">
                                 {lobbyRelayObjective.active ? 'Hit This' : 'Tap Any'}
                             </div>
-                            <div className="text-[11px] md:text-[13px] uppercase tracking-[0.16em] text-zinc-200">
+                            <div className="text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-zinc-200">
                                 {lobbyCatchAllActive ? 'Catch-all live' : (lobbyRelayObjective.active ? 'Pass to the glow' : 'Launch the orb')}
                             </div>
                         </div>
@@ -6055,13 +6620,13 @@ const PublicTV = ({ roomCode }) => {
                                         }`}
                                     >
                                         <div className="flex items-center justify-between gap-3">
-                                            <div className="text-[18px] md:text-[24px] uppercase tracking-[0.12em] text-white/90 font-black flex items-center gap-2">
-                                                <span className="text-[22px] md:text-[28px]">{effect?.icon || EMOJI.sparkle}</span>
+                                            <div className="text-[14px] md:text-[18px] uppercase tracking-[0.1em] text-white/90 font-black flex items-center gap-2">
+                                                <span className="text-[18px] md:text-[22px]">{effect?.icon || EMOJI.sparkle}</span>
                                                 <span>{guide.action}</span>
                                             </div>
                                             {isRelayTarget && <span className="text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-emerald-100 font-black">Now</span>}
                                         </div>
-                                        <div className="mt-1.5 text-[12px] md:text-[14px] uppercase tracking-[0.11em] text-zinc-300">
+                                        <div className="mt-1 text-[10px] md:text-[12px] uppercase tracking-[0.1em] text-zinc-300">
                                             {guide.detail}
                                         </div>
                                     </div>
@@ -6351,6 +6916,9 @@ const PublicTV = ({ roomCode }) => {
               @keyframes lobby-orb-float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-6px); } }
               @keyframes lobby-orb-glow { 0%, 100% { filter: drop-shadow(0 0 18px rgba(45,212,191,0.56)); } 50% { filter: drop-shadow(0 0 38px rgba(236,72,153,0.64)); } }
               @keyframes lobby-orb-relay-thrum { 0%, 100% { transform: scale(1); } 35% { transform: scale(1.035); } 70% { transform: scale(1.01); } }
+              @keyframes lobby-orb-custom-aurora { 0%, 100% { opacity: 0.48; transform: scale(0.92); } 50% { opacity: 0.9; transform: scale(1.08); } }
+              @keyframes lobby-orb-custom-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+              @keyframes lobby-orb-custom-badge-drift { 0%, 100% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-4px) scale(1.018); } }
               @keyframes lobby-combo-chip-pop { 0% { transform: translateY(8px) scale(0.92); opacity: 0; } 20% { transform: translateY(0) scale(1.02); opacity: 1; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
               .bonus-drop-burst { 
                 min-width: min(80vw, 980px);
@@ -6565,20 +7133,58 @@ const PublicTV = ({ roomCode }) => {
               }
               .lobby-volley-orb-shell-custom {
                 background:
-                  radial-gradient(circle at 24% 16%, rgba(255,255,255,0.54), rgba(255,255,255,0.08) 36%, rgba(0,0,0,0) 56%),
-                  radial-gradient(circle at 70% 78%, rgba(7,10,26,0.28), rgba(7,10,26,0.06) 48%, rgba(0,0,0,0) 74%);
-                border-color: rgba(236,253,255,0.9);
+                  radial-gradient(circle at 50% 50%, rgba(255,255,255,0.14), rgba(255,255,255,0.02) 48%, rgba(0,0,0,0) 72%),
+                  radial-gradient(circle at 50% 112%, rgba(255,57,149,0.2), rgba(255,57,149,0) 44%),
+                  linear-gradient(180deg, rgba(12,16,29,0.44), rgba(7,11,20,0.76));
+                border-width: 3px;
+                border-color: rgba(234,246,255,0.96);
+                box-shadow:
+                  inset 0 0 26px rgba(255,255,255,0.1),
+                  inset 0 -22px 34px rgba(8,10,24,0.3),
+                  0 0 calc(54px + (56px * var(--orb-energy-norm))) rgba(55,220,255,0.28),
+                  0 0 calc(76px + (72px * var(--orb-energy-norm))) rgba(236,72,153,0.18);
               }
-              .lobby-volley-orb-shell-skin {
+              .lobby-volley-orb-custom-halo {
                 position: absolute;
-                inset: 0;
-                width: 100%;
-                height: 100%;
-                padding: 2.5%;
-                object-fit: contain;
+                inset: -10%;
+                border-radius: 9999px;
+                pointer-events: none;
+                mix-blend-mode: screen;
                 z-index: 0;
-                transform: scale(1.01);
-                filter: saturate(1.12) contrast(1.05) drop-shadow(0 0 12px rgba(236,72,153,0.35));
+              }
+              .lobby-volley-orb-custom-halo-a {
+                background: radial-gradient(circle, rgba(103,232,249,0.42) 0%, rgba(103,232,249,0.18) 34%, rgba(0,0,0,0) 72%);
+                filter: blur(12px);
+                animation: lobby-orb-custom-aurora 2.8s ease-in-out infinite;
+              }
+              .lobby-volley-orb-custom-halo-b {
+                inset: 3%;
+                border: 1px solid rgba(255,255,255,0.2);
+                border-top-color: rgba(255,213,122,0.9);
+                border-right-color: rgba(104,232,255,0.78);
+                border-bottom-color: rgba(236,72,153,0.58);
+                border-left-color: rgba(255,255,255,0.08);
+                opacity: 0.8;
+                animation: lobby-orb-custom-spin 10s linear infinite;
+              }
+              .lobby-volley-orb-custom-progress {
+                --orb-progress: 0;
+                position: absolute;
+                inset: 1.75%;
+                border-radius: 9999px;
+                padding: 3px;
+                background:
+                  conic-gradient(
+                    from -90deg,
+                    rgba(255,205,117,0.98) 0 calc(var(--orb-progress) * 1%),
+                    rgba(255,255,255,0.08) calc(var(--orb-progress) * 1%) 100%
+                  );
+                -webkit-mask:
+                  radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+                mask:
+                  radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+                opacity: 0.92;
+                z-index: 1;
               }
               .lobby-volley-orb-slat-overlay {
                 position: absolute;
@@ -6686,8 +7292,15 @@ const PublicTV = ({ roomCode }) => {
                 z-index: 2;
               }
               .lobby-volley-orb-core-custom {
-                background: radial-gradient(circle at 50% 24%, rgba(18,34,74,0.34), rgba(3,6,18,0.5));
-                border-color: rgba(236,253,255,0.8);
+                width: 76%;
+                height: 76%;
+                background:
+                  radial-gradient(circle at 50% 24%, rgba(255,255,255,0.18), rgba(255,255,255,0.03) 34%, rgba(8,12,24,0.18) 62%, rgba(2,6,18,0.42) 100%);
+                border-color: rgba(236,253,255,0.26);
+                box-shadow:
+                  inset 0 0 26px rgba(255,255,255,0.1),
+                  0 0 32px rgba(103,232,249,0.18);
+                backdrop-filter: blur(12px);
               }
               .lobby-volley-orb-core-skin {
                 position: absolute;
@@ -6717,6 +7330,36 @@ const PublicTV = ({ roomCode }) => {
                 text-shadow: 0 0 10px rgba(0,0,0,0.45);
                 transform: scale(var(--lobby-volley-orb-content-scale));
                 transform-origin: center;
+              }
+              .lobby-volley-orb-custom-badge-wrap {
+                position: absolute;
+                inset: 5%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 2;
+              }
+              .lobby-volley-orb-custom-badge-wrap::before {
+                content: '';
+                position: absolute;
+                inset: 2%;
+                border-radius: 9999px;
+                background:
+                  radial-gradient(circle at 50% 38%, rgba(255,255,255,0.3), rgba(255,255,255,0.08) 36%, rgba(0,0,0,0) 68%);
+                filter: blur(16px);
+                opacity: 0.8;
+              }
+              .lobby-volley-orb-custom-badge {
+                position: relative;
+                width: 92%;
+                height: 92%;
+                object-fit: contain;
+                filter:
+                  saturate(1.08)
+                  contrast(1.04)
+                  drop-shadow(0 16px 24px rgba(0,0,0,0.3))
+                  drop-shadow(0 0 18px rgba(255,221,153,0.22));
+                animation: lobby-orb-custom-badge-drift 3.2s ease-in-out infinite;
               }
               .lobby-volley-orb-ring {
                 position: absolute;

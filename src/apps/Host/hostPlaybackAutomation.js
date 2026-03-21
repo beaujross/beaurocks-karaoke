@@ -31,6 +31,7 @@ export const getAutoEndSchedule = ({
     currentDurationSec = 0,
     now = Date.now()
 } = {}) => {
+    const AUTO_END_POST_TRACK_BUFFER_SEC = 6;
     if (!autoEndEnabled) return null;
     const normalizedCurrentId = String(currentId || '').trim();
     if (!normalizedCurrentId) return null;
@@ -52,7 +53,7 @@ export const getAutoEndSchedule = ({
     if (!Number.isFinite(startedAt) || startedAt <= 0) return null;
     if (!Number.isFinite(durationSec) || durationSec < 20) return null;
 
-    const endAtMs = startedAt + ((durationSec + 1.5) * 1000);
+    const endAtMs = startedAt + ((durationSec + AUTO_END_POST_TRACK_BUFFER_SEC) * 1000);
     const delayMs = Math.max(0, Math.round(endAtMs - Number(now || Date.now())));
     return {
         autoEndKey: `${normalizedCurrentId}:${startedAt}:${Math.round(durationSec)}`,
