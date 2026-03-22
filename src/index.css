@@ -18,6 +18,8 @@ html, body, #root { height: 100%; width: 100%; }
 /* Public TV: avoid whole-surface zoom (causes letterboxing), tune element sizes instead */
 .public-tv {
   isolation: isolate;
+  width: 100%;
+  max-width: 100%;
 }
 
 @media (max-width: 1366px), (max-height: 820px) {
@@ -1069,6 +1071,7 @@ html, body, #root { height: 100%; width: 100%; }
     0 0 22px rgba(34, 211, 238, 0.25);
 }
 .mobile-shell-native .mobile-native-tabbar {
+  position: relative;
   border-top-color: rgba(110, 231, 248, 0.28);
   background: linear-gradient(180deg, rgba(9, 15, 28, 0.72), rgba(12, 21, 40, 0.88));
 }
@@ -1088,10 +1091,39 @@ html, body, #root { height: 100%; width: 100%; }
   gap: 10px;
   padding-top: 8px;
 }
+.mobile-shell-native .mobile-native-tabbar-toggle {
+  position: absolute;
+  top: 9px;
+  right: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(2, 6, 23, 0.56);
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.3);
+  transition: border-color 180ms ease, color 180ms ease, background 180ms ease;
+}
+.mobile-shell-native .mobile-native-tabbar-toggle:hover {
+  border-color: rgba(110, 231, 248, 0.28);
+  color: rgba(240, 249, 255, 0.92);
+}
+.mobile-shell-native .mobile-native-tabbar-toggle:active {
+  transform: scale(0.985);
+}
 .mobile-shell-native .mobile-native-tab-btn {
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.42), rgba(2, 6, 23, 0.24));
+  min-height: 74px;
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 220ms ease;
 }
 .mobile-shell-native .mobile-native-tab-btn i {
@@ -1112,12 +1144,46 @@ html, body, #root { height: 100%; width: 100%; }
 .mobile-shell-native .mobile-native-tab-btn:active {
   transform: scale(0.985);
 }
+.mobile-shell-native .mobile-native-tabbar-collapsed::before {
+  width: 38px;
+  opacity: 0.82;
+}
+.mobile-shell-native .mobile-native-tabbar-collapsed .mobile-native-tabbar-row {
+  gap: 8px;
+  padding-top: 6px;
+}
+.mobile-shell-native .mobile-native-tabbar-collapsed .mobile-native-tab-btn {
+  min-height: 58px;
+  gap: 0.38rem;
+  padding-top: 0.7rem;
+  padding-bottom: 0.7rem;
+  border-radius: 16px;
+}
+.mobile-shell-native .mobile-native-tabbar-collapsed .mobile-native-tab-btn i {
+  font-size: 1.2rem;
+}
+.mobile-shell-native .mobile-native-tabbar-collapsed .mobile-native-tab-btn span {
+  font-size: 0.63rem;
+  letter-spacing: 0.14em;
+}
+.mobile-shell-native .mobile-native-tabbar-collapsed .mobile-native-tab-btn:not(.mobile-native-tab-btn-active) span {
+  display: none;
+}
+.mobile-shell-native .mobile-native-tabbar-collapsed .mobile-native-tab-btn:not(.mobile-native-tab-btn-active) {
+  justify-content: center;
+}
+.mobile-shell-native .mobile-native-tabbar-collapsed .mobile-native-tab-btn-active {
+  box-shadow:
+    0 10px 24px rgba(6, 11, 28, 0.44),
+    0 0 18px rgba(34, 211, 238, 0.22);
+}
 @media (prefers-reduced-motion: reduce) {
   .mobile-shell-native {
     background: #090612;
   }
   .mobile-shell-native .mobile-native-tab-btn,
-  .mobile-shell-native .mobile-native-tab-btn-active {
+  .mobile-shell-native .mobile-native-tab-btn-active,
+  .mobile-shell-native .mobile-native-tabbar-toggle {
     transition: none;
     transform: none;
   }
@@ -1127,14 +1193,22 @@ html, body, #root { height: 100%; width: 100%; }
 @media (min-width: 768px) and (max-width: 1366px) {
   .host-app[data-host-tablet-touch="true"] {
     min-height: 100dvh;
-    height: auto;
-    overflow-y: auto !important;
+    height: 100dvh;
+    overflow: hidden !important;
   }
 
   .host-app[data-host-tablet-touch="true"] [data-host-top-chrome="true"] {
     position: sticky;
     top: 0;
     z-index: 45;
+  }
+
+  .host-app[data-host-tablet-touch="true"] [data-host-main-scroll="true"] {
+    min-height: 0;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
   .host-app[data-host-tablet-touch="true"] .host-btn {
@@ -1161,6 +1235,17 @@ html, body, #root { height: 100%; width: 100%; }
     flex: 0 0 auto;
   }
 
+  .host-app[data-host-tablet-touch="true"] .custom-scrollbar,
+  .host-app[data-host-tablet-touch="true"] .host-touch-scroll-panel {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+
+  .host-app[data-host-tablet-touch="true"] .host-top-menu-panel {
+    max-height: min(78dvh, 720px);
+  }
+
   .singer-tablet-touch[data-singer-view="main"],
   .singer-tablet-touch[data-singer-view="join"] {
     max-width: 1100px;
@@ -1179,6 +1264,11 @@ html, body, #root { height: 100%; width: 100%; }
     padding-top: 10px;
   }
 
+  .singer-tablet-touch[data-singer-view="main"] .mobile-native-tabbar-toggle {
+    top: 10px;
+    right: 16px;
+  }
+
   .singer-tablet-touch[data-singer-view="main"] .mobile-native-tab-btn {
     min-height: 78px;
   }
@@ -1189,6 +1279,10 @@ html, body, #root { height: 100%; width: 100%; }
 
   .singer-tablet-touch[data-singer-view="main"] .mobile-native-tab-btn span {
     font-size: 0.94rem;
+  }
+
+  .singer-tablet-touch[data-singer-view="main"] .mobile-native-tabbar-collapsed .mobile-native-tab-btn {
+    min-height: 64px;
   }
 
   .singer-tablet-touch[data-singer-view="main"] .mobile-native-content {

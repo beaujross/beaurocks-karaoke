@@ -104,7 +104,14 @@ service cloud.firestore {
         'lastSeen',
         'visits',
         'isReady',
-        'tight15Temp'
+        'tight15Temp',
+        'guitarSessionId',
+        'guitarHits',
+        'strobeSessionId',
+        'strobeTaps',
+        'stormLayerHits',
+        'lastStormLayer',
+        'lastVibeAt'
       ];
     }
 
@@ -210,6 +217,43 @@ service cloud.firestore {
         )
         && (
           !nextData.keys().hasAny(['totalFamePoints'])
+          || (
+            nextData.totalFamePoints is number
+            && nextData.totalFamePoints >= 0
+            && nextData.totalFamePoints <= canonicalTotalFamePoints(uid)
+          )
+        );
+    }
+
+    function roomUserPrivilegeProjectionSafeForUpdate(prevData, nextData, uid) {
+      return (
+        !nextData.diff(prevData).affectedKeys().hasAny(['vipLevel'])
+        || (
+          nextData.vipLevel is number
+          && nextData.vipLevel >= 0
+          && nextData.vipLevel <= canonicalVipLevel(uid)
+        )
+      )
+        && (
+          !nextData.diff(prevData).affectedKeys().hasAny(['isVip'])
+          || (
+            nextData.isVip is bool
+            && (
+              nextData.isVip == false
+              || canonicalVipLevel(uid) > 0
+            )
+          )
+        )
+        && (
+          !nextData.diff(prevData).affectedKeys().hasAny(['fameLevel'])
+          || (
+            nextData.fameLevel is number
+            && nextData.fameLevel >= 0
+            && nextData.fameLevel <= canonicalFameLevel(uid)
+          )
+        )
+        && (
+          !nextData.diff(prevData).affectedKeys().hasAny(['totalFamePoints'])
           || (
             nextData.totalFamePoints is number
             && nextData.totalFamePoints >= 0
@@ -813,7 +857,7 @@ service cloud.firestore {
               request.auth.uid == resource.data.uid
               && roomUserSelfChangedKeysAllowed(resource.data, request.resource.data)
               && roomUserPointsDeltaWithinLimit(resource.data, request.resource.data)
-              && roomUserPrivilegeProjectionWithinAccount(request.auth.uid, request.resource.data)
+              && roomUserPrivilegeProjectionSafeForUpdate(resource.data, request.resource.data, request.auth.uid)
             )
             || isRoomHost(resource.data.roomCode)
           );

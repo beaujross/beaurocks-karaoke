@@ -293,6 +293,7 @@ export const createLobbyVolleyState = () => ({
     energy: 0,
     airborneStartedAtMs: 0,
     airborneMs: 0,
+    peakAltitudeFt: 0,
     teamworkMultiplier: 1,
     handoffCount: 0,
     relayChainCount: 0,
@@ -317,6 +318,7 @@ export const createLobbyVolleyState = () => ({
     pendingTierTransitions: [],
     lastPayoutAtMs: 0,
     lastPayoutTier: 0,
+    paidAltitudeKeys: {},
     authFailureLocked: false,
     activeUltimates: []
 });

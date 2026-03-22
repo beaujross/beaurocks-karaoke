@@ -114,7 +114,8 @@ const HostTopChrome = ({
     stageQuickStartItems = [],
     onDismissStageQuickStart,
     audiencePreviewVisible = false,
-    setAudiencePreviewVisible
+    setAudiencePreviewVisible,
+    tabletTouchViewport = false
 }) => {
     const resolvedHostBase = hostBase || appBase;
     const resolvedAudienceBase = audienceBase || appBase;
@@ -229,13 +230,13 @@ const HostTopChrome = ({
     const quickStartPendingCount = Math.max(quickStartTotalCount - (stageQuickStartCompletedCount || 0), 0);
     const quickStartToneClass = quickStartPendingCount === 0 ? styles.btnSuccess : styles.btnInfo;
     const shouldShowQuickStartButton = (stageQuickStartItems?.length || 0) > 0 && (showStageQuickStart || quickStartPendingCount > 0);
-    const quickMenuPanelClass = 'absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[80]';
-    const quickMenuScrollClass = 'overflow-y-auto custom-scrollbar overscroll-contain';
+    const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[80]';
+    const quickMenuScrollClass = 'host-touch-scroll-panel overflow-y-auto custom-scrollbar overscroll-contain';
     const quickMenuSectionTitleClass = 'text-xs uppercase tracking-[0.22em] text-zinc-100';
     const quickMenuSectionHintClass = 'mt-1 text-[11px] leading-relaxed text-zinc-400';
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
     const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
-    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} h-9 px-3 py-1.5 text-[12px] normal-case tracking-[0.04em]`;
+    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} normal-case tracking-[0.04em]`;
     const anyTopMenuOpen = showQuickStartMenu
         || showAutomationMenu
         || showTvQuickMenu
@@ -1253,6 +1254,17 @@ const HostTopChrome = ({
                                             Score HUD
                                         </span>
                                         <span className="text-[11px] uppercase tracking-widest">{room?.showScoring === false ? 'Off' : 'On'}</span>
+                                    </button>
+                                    <button
+                                        onClick={() => updateRoom({ showPerformanceRecap: room?.showPerformanceRecap === false })}
+                                        className={`${styles.btnStd} ${room?.showPerformanceRecap === false ? styles.btnNeutral : styles.btnHighlight} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Show or hide the post-performance recap sequence on Public TV"
+                                    >
+                                        <span className="inline-flex items-center gap-2">
+                                            <i className="fa-solid fa-trophy-star"></i>
+                                            Post Recap
+                                        </span>
+                                        <span className="text-[11px] uppercase tracking-widest">{room?.showPerformanceRecap === false ? 'Off' : 'On'}</span>
                                     </button>
                                     <button
                                         onClick={() => updateRoom({ reduceMotionFx: !room?.reduceMotionFx })}

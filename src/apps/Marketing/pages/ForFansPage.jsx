@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { trackEvent } from "../lib/marketingAnalytics";
 import { formatDateTime } from "./shared";
 import { PersonaPageFrame } from "./PersonaMarketingBlocks";
@@ -62,6 +62,17 @@ const HOST_QUEUE_ITEMS = [
 
 const AUDIENCE_ACTIONS = ["Name", "Emoji", "Request"];
 const HERO_LYRIC_LINE = "\"DON'T STOP BELIEVIN'\"";
+const HERO_TAGLINE_LINE = "THE WHOLE ROOM STAYS IN THE SONG.";
+const HERO_TV_PHASE_BREAKS = Object.freeze({
+  lyricEnd: 0.34,
+  taglineEnd: 0.58,
+});
+
+const clamp01 = (value = 0) => Math.max(0, Math.min(1, Number(value || 0)));
+const getSegmentProgress = (value = 0, start = 0, end = 1) => {
+  const span = Math.max(0.0001, end - start);
+  return clamp01((value - start) / span);
+};
 
 const HOMEPAGE_STORY_BEATS = [
   {
@@ -69,6 +80,7 @@ const HOMEPAGE_STORY_BEATS = [
     kicker: "Scroll-led lyrics",
     title: "The lyric wall keeps moving with the room.",
     body: "Start the scroll by dragging the song across the TV, like the room is still mid-chorus instead of resetting between sections.",
+    tvHeadline: "LYRICS STAY HUGE",
     tvMode: "Lyrics drifting live",
     tvDetail: "Scroll pushes the chorus across the wall",
     tvPill: "Verse flow active",
@@ -86,6 +98,7 @@ const HOMEPAGE_STORY_BEATS = [
     kicker: "Queue clarity",
     title: "Everyone can see what is now, next, and coming later.",
     body: "Once the lyric motion lands, the board turns into a shared room map so nobody loses the thread between performers.",
+    tvHeadline: "NOW NEXT LATER",
     tvMode: "Queue visible",
     tvDetail: "Now, next, and up next stay public",
     tvPill: "Up next: Sarah J.",
@@ -103,6 +116,7 @@ const HOMEPAGE_STORY_BEATS = [
     kicker: "Crowd response",
     title: "Guest phones feed energy back into the room.",
     body: "The homepage story should prove that phones are not a side tool. They change what the wall feels like in real time.",
+    tvHeadline: "THE ROOM HITS BACK",
     tvMode: "Crowd reactions live",
     tvDetail: "Phone taps bounce back onto the wall",
     tvPill: "Room pulse rising",
@@ -120,6 +134,7 @@ const HOMEPAGE_STORY_BEATS = [
     kicker: "Clean handoff",
     title: "The room resets into the next singer without losing momentum.",
     body: "End the homepage story by showing that the system carries people through the handoff instead of making the room start over.",
+    tvHeadline: "NEXT SINGER READY",
     tvMode: "Next singer ready",
     tvDetail: "The next moment is already staged",
     tvPill: "Autodj bridge live",
@@ -134,20 +149,29 @@ const HOMEPAGE_STORY_BEATS = [
   },
 ];
 
-const FansRoomFlowBoard = ({ activeBeat = HOMEPAGE_STORY_BEATS[0], lyricProgress = 0, boardProgress = 0 }) => {
-  const lyricTrackPan = `${20 - lyricProgress * 68}%`;
-  const lyricOpacity = 0.74 + lyricProgress * 0.26;
-  const lyricScale = 1 + lyricProgress * 0.08;
-  const lyricSweep = `${Math.max(6, Math.min(94, 8 + lyricProgress * 84))}%`;
-  const lyricFill = `${Math.max(4, Math.min(100, 4 + lyricProgress * 96))}%`;
+const resolveScrollRoot = (node) => {
+  if (!node || typeof document === "undefined") return null;
+  return node.closest(".mk3-site") || document.scrollingElement || document.documentElement || null;
+};
+
+const FansRoomFlowBoard = ({
+  activeBeat = HOMEPAGE_STORY_BEATS[0],
+  displayLine = HERO_LYRIC_LINE,
+  lyricProgress = 0,
+  boardProgress = 0,
+}) => {
+  const lyricOpacity = 0.52 + lyricProgress * 0.48;
+  const lyricScale = 0.985 + lyricProgress * 0.045;
+  const lyricRise = `${12 - lyricProgress * 12}px`;
+  const lyricFill = `${Math.max(0, Math.min(100, lyricProgress * 100))}%`;
   const topLineShift = `${-8 + lyricProgress * 14}px`;
   const detailShift = `${10 + lyricProgress * -18}px`;
   const pillShift = `${16 + lyricProgress * -28}px`;
-  const boardScale = 0.9 + boardProgress * 0.16;
-  const boardLift = 28 - boardProgress * 40;
-  const boardDepth = -88 + boardProgress * 132;
-  const boardTilt = 7 - boardProgress * 8;
-  const boardGlow = 0.42 + boardProgress * 0.5;
+  const boardScale = 0.88 + boardProgress * 0.14;
+  const boardLift = 36 - boardProgress * 42;
+  const boardDepth = -108 + boardProgress * 144;
+  const boardTilt = 8 - boardProgress * 8.5;
+  const boardGlow = 0.34 + boardProgress * 0.58;
 
   return (
   <div
@@ -179,19 +203,17 @@ const FansRoomFlowBoard = ({ activeBeat = HOMEPAGE_STORY_BEATS[0], lyricProgress
           <strong
             className="mk3-fans-roomflow-tv-lyric"
             style={{
-              "--mk3-lyric-pan": lyricTrackPan,
               "--mk3-lyric-opacity": lyricOpacity,
               "--mk3-lyric-scale": lyricScale,
-              "--mk3-lyric-sweep": lyricSweep,
+              "--mk3-lyric-rise": lyricRise,
               "--mk3-lyric-fill": lyricFill,
             }}
           >
             <span className="mk3-fans-roomflow-tv-lyric-viewport">
-              <span className="mk3-fans-roomflow-tv-lyric-track">
-                <span className="mk3-fans-roomflow-tv-lyric-base">{HERO_LYRIC_LINE}</span>
-                <span className="mk3-fans-roomflow-tv-lyric-fill" aria-hidden="true">{HERO_LYRIC_LINE}</span>
+              <span key={displayLine} className="mk3-fans-roomflow-tv-lyric-track">
+                <span className="mk3-fans-roomflow-tv-lyric-base">{displayLine}</span>
+                <span className="mk3-fans-roomflow-tv-lyric-fill" aria-hidden="true">{displayLine}</span>
               </span>
-              <i aria-hidden="true" />
             </span>
             <span className="mk3-fans-roomflow-tv-lyric-meter" aria-hidden="true">
               <b />
@@ -280,56 +302,42 @@ const FansRoomFlowBoard = ({ activeBeat = HOMEPAGE_STORY_BEATS[0], lyricProgress
 };
 
 const ForFansPage = ({ navigate, heroStats }) => {
-  const storyRailRef = useRef(null);
-  const stepRefs = useRef([]);
-  const [activeBeatId, setActiveBeatId] = useState(HOMEPAGE_STORY_BEATS[0].id);
+  const heroTrackRef = useRef(null);
   const [heroScrollProgress, setHeroScrollProgress] = useState(0);
 
   useEffect(() => {
+    const node = heroTrackRef.current;
+    const scrollRoot = resolveScrollRoot(node);
+
     const measureProgress = () => {
-      const node = storyRailRef.current;
-      if (!node || typeof window === "undefined") return;
-      const rect = node.getBoundingClientRect();
+      const trackNode = heroTrackRef.current;
+      if (!trackNode || typeof window === "undefined") return;
       const viewportHeight = window.innerHeight || 0;
-      const travel = Math.max(node.offsetHeight - viewportHeight * 0.74, 1);
-      const distance = Math.max(0, -rect.top + viewportHeight * 0.12);
+      const containerTop = scrollRoot && scrollRoot !== document.documentElement && scrollRoot !== document.body
+        ? scrollRoot.getBoundingClientRect().top
+        : 0;
+      const rect = trackNode.getBoundingClientRect();
+      const relativeTop = rect.top - containerTop;
+      const travel = Math.max(trackNode.offsetHeight - viewportHeight, 1);
+      const distance = Math.max(0, -relativeTop);
       const next = Math.max(0, Math.min(1, distance / travel));
       setHeroScrollProgress(next);
     };
 
     measureProgress();
-    window.addEventListener("scroll", measureProgress, { passive: true });
+    if (scrollRoot && scrollRoot.addEventListener) {
+      scrollRoot.addEventListener("scroll", measureProgress, { passive: true });
+    } else {
+      window.addEventListener("scroll", measureProgress, { passive: true });
+    }
     window.addEventListener("resize", measureProgress);
     return () => {
-      window.removeEventListener("scroll", measureProgress);
+      if (scrollRoot && scrollRoot.removeEventListener) {
+        scrollRoot.removeEventListener("scroll", measureProgress);
+      } else {
+        window.removeEventListener("scroll", measureProgress);
+      }
       window.removeEventListener("resize", measureProgress);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const nodes = stepRefs.current.filter(Boolean);
-    if (!nodes.length) return undefined;
-    let frameId = 0;
-    const observer = new window.IntersectionObserver((entries) => {
-      const visible = entries
-        .filter((entry) => entry.isIntersecting)
-        .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-      if (!visible.length) return;
-      const nextId = String(visible[0].target.dataset.storyBeat || "").trim();
-      if (!nextId) return;
-      window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(() => {
-        setActiveBeatId((prev) => (prev === nextId ? prev : nextId));
-      });
-    }, {
-      threshold: [0.35, 0.65],
-      rootMargin: "-18% 0px -30% 0px",
-    });
-    nodes.forEach((node) => observer.observe(node));
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
     };
   }, []);
 
@@ -346,85 +354,107 @@ const ForFansPage = ({ navigate, heroStats }) => {
   const discoverUpdatedLabel = heroStats?.generatedAtMs
     ? `Updated ${formatDateTime(heroStats.generatedAtMs)}`
     : "Map and list views keep the latest room mix in one place.";
-  const activeBeat = useMemo(
-    () => HOMEPAGE_STORY_BEATS.find((beat) => beat.id === activeBeatId) || HOMEPAGE_STORY_BEATS[0],
-    [activeBeatId]
+  const lyricOnlyProgress = getSegmentProgress(heroScrollProgress, 0, HERO_TV_PHASE_BREAKS.lyricEnd);
+  const taglineProgress = getSegmentProgress(heroScrollProgress, HERO_TV_PHASE_BREAKS.lyricEnd, HERO_TV_PHASE_BREAKS.taglineEnd);
+  const rotatingPhaseProgress = getSegmentProgress(heroScrollProgress, HERO_TV_PHASE_BREAKS.taglineEnd, 1);
+  const beatPhaseCount = Math.max(1, HOMEPAGE_STORY_BEATS.length);
+  const rawBeatIndex = Math.min(
+    beatPhaseCount - 1,
+    Math.floor(clamp01(rotatingPhaseProgress) * beatPhaseCount)
   );
-  const lyricProgress = Math.max(0, Math.min(1, heroScrollProgress * 6.2));
-  const boardProgress = Math.max(0, Math.min(1, heroScrollProgress * 2.2));
+  const rotatingBeat = HOMEPAGE_STORY_BEATS[rawBeatIndex] || HOMEPAGE_STORY_BEATS[0];
+  const activeBeat = heroScrollProgress < HERO_TV_PHASE_BREAKS.lyricEnd
+    ? {
+        ...HOMEPAGE_STORY_BEATS[0],
+        tvMode: "Chorus live",
+        tvDetail: "Scroll drives the lyric timing across the wall",
+        tvPill: "Karaoke intro",
+        captionTitle: "The TV opens like a live lyric wall.",
+        captionBody: "The first scroll beat should feel like the chorus is already moving, not like the page is leaving the hero.",
+      }
+    : heroScrollProgress < HERO_TV_PHASE_BREAKS.taglineEnd
+      ? {
+          ...HOMEPAGE_STORY_BEATS[0],
+          tvMode: "Brand hit",
+          tvDetail: "One board keeps the singer, queue, and room in one shared moment",
+          tvPill: "Whole room sync",
+          captionTitle: "The room stays locked to one shared screen.",
+          captionBody: "After the lyric sweep lands, the board hits the brand line before the rest of the room flow starts rotating in.",
+        }
+      : rotatingBeat;
+  const activeBeatStart = HERO_TV_PHASE_BREAKS.taglineEnd + ((1 - HERO_TV_PHASE_BREAKS.taglineEnd) / beatPhaseCount) * rawBeatIndex;
+  const activeBeatEnd = HERO_TV_PHASE_BREAKS.taglineEnd + ((1 - HERO_TV_PHASE_BREAKS.taglineEnd) / beatPhaseCount) * (rawBeatIndex + 1);
+  const activeBeatProgress = getSegmentProgress(heroScrollProgress, activeBeatStart, activeBeatEnd);
+  const boardProgress = getSegmentProgress(heroScrollProgress, 0.02, 0.88);
+  const tvLine = heroScrollProgress < HERO_TV_PHASE_BREAKS.lyricEnd
+    ? HERO_LYRIC_LINE
+    : heroScrollProgress < HERO_TV_PHASE_BREAKS.taglineEnd
+      ? HERO_TAGLINE_LINE
+      : activeBeat.tvHeadline;
+  const lyricProgress = heroScrollProgress < HERO_TV_PHASE_BREAKS.lyricEnd
+    ? lyricOnlyProgress
+    : heroScrollProgress < HERO_TV_PHASE_BREAKS.taglineEnd
+      ? taglineProgress
+      : activeBeatProgress;
 
   return (
     <PersonaPageFrame theme="fan">
-      <article ref={storyRailRef} className="mk3-fans-cinematic-hero">
-        <div className="mk3-fans-cinematic-copy">
-          <div className="mk3-fans-cinematic-copy-top">
-            <div className="mk3-rebuild-kicker">Live Karaoke, Better Connected</div>
-            <h1>Karaoke that works for the whole room.</h1>
-            <p>Find live nights, run better events, and keep the TV, queue, and every guest phone moving together.</p>
-            <div className="mk3-rebuild-action-row">
-              <button
-                type="button"
-                className="mk3-rebuild-button is-primary"
-                onClick={() => {
-                  trackPersonaCta("hero_discover");
-                  navigate("discover");
-                }}
-              >
-                Explore Live Nights
-              </button>
-              <button
-                type="button"
-                className="mk3-rebuild-button is-secondary"
-                onClick={() => {
-                  trackPersonaCta("hero_demo_auto");
-                  navigate("demo_auto");
-                }}
-              >
-                Watch Auto Demo
-              </button>
-              <button
-                type="button"
-                className="mk3-rebuild-button is-ghost"
-                onClick={() => {
-                  trackPersonaCta("hero_hosts");
-                  navigate("for_hosts");
-                }}
-              >
-                See Host Tools
-              </button>
-            </div>
-            <div className="mk3-fans-cinematic-pill-row" aria-label="Core features">
-              {HERO_SIGNAL_PILLS.map((item) => (
-                <span key={item}>{item}</span>
-              ))}
+      <article ref={heroTrackRef} className="mk3-fans-cinematic-hero">
+        <div className="mk3-fans-cinematic-stage-sticky">
+          <div className="mk3-fans-cinematic-copy">
+            <div className="mk3-fans-cinematic-copy-top">
+              <div className="mk3-rebuild-kicker">Live Karaoke, Better Connected</div>
+              <h1>Karaoke that works for the whole room.</h1>
+              <p>Find live nights, run better events, and keep the TV, queue, and every guest phone moving together.</p>
+              <div className="mk3-rebuild-action-row">
+                <button
+                  type="button"
+                  className="mk3-rebuild-button is-primary"
+                  onClick={() => {
+                    trackPersonaCta("hero_discover");
+                    navigate("discover");
+                  }}
+                >
+                  Explore Live Nights
+                </button>
+                <button
+                  type="button"
+                  className="mk3-rebuild-button is-secondary"
+                  onClick={() => {
+                    trackPersonaCta("hero_demo_auto");
+                    navigate("demo_auto");
+                  }}
+                >
+                  Watch Auto Demo
+                </button>
+                <button
+                  type="button"
+                  className="mk3-rebuild-button is-ghost"
+                  onClick={() => {
+                    trackPersonaCta("hero_hosts");
+                    navigate("for_hosts");
+                  }}
+                >
+                  See Host Tools
+                </button>
+              </div>
+              <div className="mk3-fans-cinematic-pill-row" aria-label="Core features">
+                {HERO_SIGNAL_PILLS.map((item) => (
+                  <span key={item}>{item}</span>
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="mk3-fans-cinematic-story-rail">
-            {HOMEPAGE_STORY_BEATS.map((beat, index) => (
-              <section
-                key={beat.id}
-                ref={(node) => {
-                  stepRefs.current[index] = node;
-                }}
-                data-story-beat={beat.id}
-                className={`mk3-fans-cinematic-story-step${activeBeat.id === beat.id ? " is-active" : ""}`}
-              >
-                <span>{beat.kicker}</span>
-                <strong>{beat.title}</strong>
-                <p>{beat.body}</p>
-              </section>
-            ))}
-          </div>
-        </div>
-
-        <div className="mk3-fans-cinematic-object">
-          <div className="mk3-fans-cinematic-object-sticky">
-            <FansRoomFlowBoard
-              activeBeat={activeBeat}
-              lyricProgress={lyricProgress}
-              boardProgress={boardProgress}
-            />
+          <div className="mk3-fans-cinematic-object">
+            <div className="mk3-fans-cinematic-object-sticky">
+              <FansRoomFlowBoard
+                activeBeat={activeBeat}
+                displayLine={tvLine}
+                lyricProgress={lyricProgress}
+                boardProgress={boardProgress}
+              />
+            </div>
           </div>
         </div>
       </article>

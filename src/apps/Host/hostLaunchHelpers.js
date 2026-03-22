@@ -16,27 +16,49 @@ export const buildHostProvisionRequestId = (prefix = 'host_launch') => {
     return `${safePrefix}_${Date.now().toString(36)}_${nonce}`.slice(0, 80);
 };
 
+export const DEFAULT_QUICK_LAUNCH_DISCOVERY = Object.freeze({
+    publicRoom: false,
+    virtualOnly: false,
+    title: '',
+    venueName: '',
+    description: '',
+    startsAtLocal: '',
+    address1: '',
+    city: '',
+    state: '',
+    lat: '',
+    lng: ''
+});
+
+export const createQuickLaunchDiscoveryDraft = (draft = {}) => ({
+    ...DEFAULT_QUICK_LAUNCH_DISCOVERY,
+    ...(draft && typeof draft === 'object' ? draft : {})
+});
+
 export const buildProvisionDiscoveryPayload = (draft = {}) => {
-    const startsAtMs = fromDateTimeLocalInput(draft?.startsAtLocal);
-    const lat = Number(draft?.lat);
-    const lng = Number(draft?.lng);
+    const nextDraft = createQuickLaunchDiscoveryDraft(draft);
+    const startsAtMs = fromDateTimeLocalInput(nextDraft?.startsAtLocal);
+    const lat = Number(nextDraft?.lat);
+    const lng = Number(nextDraft?.lng);
     const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
-    const virtualOnly = !!draft?.virtualOnly;
+    const virtualOnly = !!nextDraft?.virtualOnly;
+    const venueName = String(nextDraft?.venueName || '').trim();
+    const title = String(nextDraft?.title || '').trim() || venueName;
     return {
-        publicRoom: !!draft?.publicRoom,
+        publicRoom: !!nextDraft?.publicRoom,
         virtualOnly,
-        title: String(draft?.title || '').trim(),
-        description: String(draft?.description || '').trim(),
+        title,
+        venueName: virtualOnly ? (venueName || 'Virtual Room') : venueName,
+        description: String(nextDraft?.description || '').trim(),
         startsAtMs: startsAtMs || 0,
-        startsAtLocal: String(draft?.startsAtLocal || '').trim(),
-        address1: virtualOnly ? '' : String(draft?.address1 || '').trim(),
-        city: String(draft?.city || '').trim(),
-        state: String(draft?.state || '').trim(),
-        lat: String(draft?.lat || '').trim(),
-        lng: String(draft?.lng || '').trim(),
+        startsAtLocal: String(nextDraft?.startsAtLocal || '').trim(),
+        address1: virtualOnly ? '' : String(nextDraft?.address1 || '').trim(),
+        city: String(nextDraft?.city || '').trim(),
+        state: String(nextDraft?.state || '').trim(),
+        lat: String(nextDraft?.lat || '').trim(),
+        lng: String(nextDraft?.lng || '').trim(),
         location: hasCoords ? { lat, lng } : {},
         sessionMode: virtualOnly ? 'virtual' : 'karaoke',
-        venueName: virtualOnly ? 'Virtual Room' : '',
     };
 };
 

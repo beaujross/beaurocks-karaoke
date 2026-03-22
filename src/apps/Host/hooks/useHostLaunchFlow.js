@@ -5,6 +5,7 @@ import { HOST_ONBOARDING_PLAN_OPTIONS } from '../hostAppData';
 import {
     buildHostProvisionRequestId,
     buildProvisionDiscoveryPayload,
+    createQuickLaunchDiscoveryDraft,
     normalizeProvisionLaunchUrls,
     isProvisionHostRoomCallableUnavailableError,
 } from '../hostLaunchHelpers';
@@ -43,18 +44,7 @@ const useHostLaunchFlow = ({
 }) => {
     const roomProvisionRequestIdRef = useRef('');
     const [creatingRoom, setCreatingRoom] = useState(false);
-    const [quickLaunchDiscovery, setQuickLaunchDiscovery] = useState({
-        publicRoom: false,
-        virtualOnly: false,
-        title: '',
-        description: '',
-        startsAtLocal: '',
-        address1: '',
-        city: '',
-        state: '',
-        lat: '',
-        lng: ''
-    });
+    const [quickLaunchDiscovery, setQuickLaunchDiscovery] = useState(() => createQuickLaunchDiscoveryDraft());
     const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
     const [onboardingStep, setOnboardingStep] = useState(0);
     const [onboardingBusy, setOnboardingBusy] = useState(false);
@@ -71,7 +61,7 @@ const useHostLaunchFlow = ({
         const logoUrlOverride = typeof options?.logoUrl === 'string' ? options.logoUrl.trim() : '';
         const initialNightPresetId = typeof options?.nightPresetId === 'string' ? options.nightPresetId.trim() : '';
         const requestIdOverride = typeof options?.requestId === 'string' ? options.requestId.trim() : '';
-        const discoveryDraft = { ...(quickLaunchDiscovery || {}) };
+        const discoveryDraft = createQuickLaunchDiscoveryDraft(quickLaunchDiscovery);
         const nextHostName = hostNameOverride || (hostName || '').trim() || 'Host';
         const nextOrgName = orgNameOverride || `${nextHostName} Workspace`;
         const nextLogoUrl = logoUrlOverride || (logoUrl || '').trim() || ASSETS.logo;
@@ -138,6 +128,7 @@ const useHostLaunchFlow = ({
             setTab('stage');
             setView('panel');
             setShowOnboardingWizard(false);
+            setQuickLaunchDiscovery(createQuickLaunchDiscoveryDraft());
             roomProvisionRequestIdRef.current = '';
             if (Array.isArray(result?.warnings) && result.warnings.includes('discovery_sync_failed')) {
                 toast(`Room ${nextRoomCode} created. Discovery listing sync needs retry.`);

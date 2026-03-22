@@ -126,6 +126,7 @@ const normalizeYouTubePlaylistItems = (rawItems = []) => (
             title: item?.title || item?.snippet?.title || 'Untitled',
             channel: item?.channelTitle || item?.snippet?.channelTitle || 'YouTube',
             thumbnail: item?.thumbnails?.medium?.url || item?.thumbnails?.default?.url || item?.snippet?.thumbnails?.medium?.url || '',
+            durationSec: Math.max(0, Math.round(Number(item?.durationSec || 0))),
             url: item?.id ? `https://www.youtube.com/watch?v=${item.id}` : ''
         }))
         .filter((item) => item.id)
@@ -179,7 +180,10 @@ const fetchYouTubeEmbeddableStatusMap = async (videoIds = [], { batchSize = 50, 
             try {
                 const statusData = await callFunction('youtubeStatus', { ids: chunkIds });
                 (statusData?.items || []).forEach((entry) => {
-                    statusMap.set(entry.id, !!entry.embeddable);
+                    statusMap.set(entry.id, {
+                        embeddable: !!entry.embeddable,
+                        durationSec: Math.max(0, Math.round(Number(entry?.durationSec || 0)))
+                    });
                 });
             } catch (error) {
                 console.warn('youtubeStatus failed for playlist chunk', error);
@@ -208,6 +212,18 @@ const useQueueSongActions = ({
     getAppleMusicUserToken,
     toast
 }) => {
+    const resolvePreferredDuration = async (url, fallbackDuration, audioOnly = false) => {
+        const resolvedDuration = await resolveDurationForUrl(url, audioOnly).catch(() => null);
+        if (Number.isFinite(Number(resolvedDuration)) && Number(resolvedDuration) > 0) {
+            return Math.round(Number(resolvedDuration));
+        }
+        const numericFallback = Number(fallbackDuration || 0);
+        if (Number.isFinite(numericFallback) && numericFallback > 0) {
+            return Math.round(numericFallback);
+        }
+        return 180;
+    };
+
     const buildLyricsToastFromResult = (result = {}, timedOnly = false) => {
         const status = String(result?.status || '').trim().toLowerCase();
         const resolution = String(result?.resolution || '').trim().toLowerCase();
@@ -299,7 +315,12 @@ const useQueueSongActions = ({
                     playlistItems.map((item) => item.id),
                     { batchSize: 50, concurrency: 4 }
                 );
-                const queueItems = playlistItems.filter((item) => item?.id && item?.url && statusMap.get(item.id) === true);
+                const queueItems = playlistItems
+                    .map((item) => ({
+                        ...item,
+                        status: statusMap.get(item.id) || null
+                    }))
+                    .filter((item) => item?.id && item?.url && !!item?.status?.embeddable);
                 if (!queueItems.length) {
                     toast('Playlist has no verified playable videos.');
                     return;
@@ -330,11 +351,12 @@ const useQueueSongActions = ({
                             let trackId = canonicalMatch?.trackId || null;
                             if (canonicalMatch?.found && !trackId) {
                                 try {
+                                    const playlistDurationSec = Math.max(0, Number(item?.durationSec || item?.status?.durationSec || 0));
                                     const trackRecord = await ensureTrack({
                                         songId,
                                         source: 'youtube',
                                         mediaUrl: item.url,
-                                        duration: 180,
+                                        duration: playlistDurationSec || 180,
                                         audioOnly: false,
                                         backingOnly: false,
                                         addedBy: hostName || 'Host'
@@ -379,7 +401,7 @@ const useQueueSongActions = ({
                             lyricsGenerationStatus: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
                             lyricsGenerationResolution: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
                             lyricsGenerationUpdatedAt: serverTimestamp(),
-                            duration: 180,
+                            duration: Math.max(30, Number(prepared.item?.durationSec || prepared.item?.status?.durationSec || 180)),
                             status: 'requested',
                             timestamp: serverTimestamp(),
                             priorityScore: basePriority + globalIdx,
@@ -433,6 +455,13 @@ const useQueueSongActions = ({
                     : manualUrl
                         ? 'custom'
                         : '';
+            const manualDuration = resolvedAppleMusicId
+                ? (manual.duration ? Math.round(manual.duration) : 180)
+                : await resolvePreferredDuration(
+                    manualUrl,
+                    manual.duration || 180,
+                    manual.audioOnly || isAudioUrl(manualUrl)
+                );
             const hasManualTimedLyrics = Array.isArray(manual.lyricsTimed) && manual.lyricsTimed.length > 0;
             const hasManualLyrics = !!String(manual.lyrics || '').trim();
             const shouldAttemptLyricsEnrichment = !hasManualTimedLyrics && !hasManualLyrics && !!room?.autoLyricsOnQueue;
@@ -462,7 +491,7 @@ const useQueueSongActions = ({
                         : (shouldAttemptLyricsEnrichment ? 'pending' : 'disabled')
                 ),
                 lyricsGenerationUpdatedAt: serverTimestamp(),
-                duration: manual.duration ? Math.round(manual.duration) : 180,
+                duration: manualDuration,
                 status: 'requested',
                 timestamp: serverTimestamp(),
                 priorityScore: Date.now(),
@@ -518,7 +547,7 @@ const useQueueSongActions = ({
                                 source: trackSource,
                                 mediaUrl: manualUrl || '',
                                 appleMusicId: resolvedAppleMusicId,
-                                duration: manual.duration ? Math.round(manual.duration) : null,
+                                duration: manualDuration || null,
                                 audioOnly: manual.audioOnly || isAudioUrl(manualUrl),
                                 backingOnly: !!manual.backingAudioOnly,
                                 addedBy: hostName || 'Host'
@@ -580,6 +609,13 @@ const useQueueSongActions = ({
             ? 'apple'
             : (r.source === 'youtube' ? 'youtube' : r.source === 'local' ? 'custom' : (isApple ? 'apple' : ''));
         const mediaUrl = preferAppleDefault ? '' : (r.source === 'youtube' || r.source === 'local' ? (r.url || '') : '');
+        const resolvedDuration = preferAppleDefault
+            ? selectedDuration
+            : await resolvePreferredDuration(
+                mediaUrl,
+                selectedDuration,
+                r.mediaType === 'audio' || isAudioUrl(r.url)
+            );
         const nextSong = {
             song: r.trackName,
             artist: r.artistName || '',
@@ -587,7 +623,7 @@ const useQueueSongActions = ({
             url: mediaUrl,
             art: r.source === 'itunes' ? itunesArt : r.artworkUrl100 || '',
             appleMusicId: preferAppleDefault ? explicitAppleId : '',
-            duration: selectedDuration,
+            duration: resolvedDuration,
             backingAudioOnly: false,
             audioOnly: trackSource === 'apple' ? true : r.mediaType === 'audio' || isAudioUrl(r.url)
         };
@@ -669,7 +705,7 @@ const useQueueSongActions = ({
                                 source: trackSource,
                                 mediaUrl: mediaUrl || '',
                                 appleMusicId: nextSong.appleMusicId,
-                                duration: selectedDuration,
+                                duration: nextSong.duration,
                                 audioOnly: nextSong.audioOnly,
                                 backingOnly: false,
                                 addedBy: hostName || 'Host'
@@ -773,6 +809,13 @@ const useQueueSongActions = ({
             updates.mediaUrl = normalizedUrl;
             updates.appleMusicId = normalizedAppleMusicId;
             updates.musicSource = normalizedAppleMusicId ? 'apple' : '';
+            if (normalizedUrl && !normalizedAppleMusicId) {
+                updates.duration = await resolvePreferredDuration(
+                    normalizedUrl,
+                    safeDuration,
+                    isAudioUrl(normalizedUrl)
+                );
+            }
         }
         if (lyricsChanged) {
             const nextLyrics = String(editForm.lyrics || '');

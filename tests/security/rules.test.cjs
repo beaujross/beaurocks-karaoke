@@ -472,6 +472,50 @@ async function run() {
       );
     }],
 
+    ["firestore: audience vibe payload can create own room_user doc", async () => {
+      const db = anonymousContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          name: "Guest",
+          avatar: "😀",
+          isVip: false,
+          vipLevel: 0,
+          fameLevel: 0,
+          totalFamePoints: 0,
+          lastActiveAt: new Date(),
+          guitarSessionId: 12345,
+          guitarHits: 7,
+          lastVibeAt: new Date(),
+        }, { merge: true })
+      );
+    }],
+
+    ["firestore: user can update own room_user guitar vibe state", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          name: "Guest",
+          avatar: "😀",
+          isVip: false,
+          vipLevel: 0,
+          fameLevel: 0,
+          totalFamePoints: 0,
+          lastActiveAt: new Date(),
+        })
+      );
+      await assertSucceeds(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          guitarSessionId: 12345,
+          guitarHits: 11,
+          lastVibeAt: new Date(),
+        }, { merge: true })
+      );
+    }],
+
     ["firestore: user cannot self-escalate room_user VIP projection", async () => {
       const db = testEnv.authenticatedContext(GUEST_UID).firestore();
       await assertFails(
@@ -482,6 +526,30 @@ async function run() {
           isVip: true,
           vipLevel: 1,
         })
+      );
+    }],
+
+    ["firestore: stale room_user privilege projection does not block harmless self updates", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          name: "Guest",
+          avatar: "😀",
+          isVip: true,
+          vipLevel: 3,
+          fameLevel: 12,
+          totalFamePoints: 2400,
+          lastActiveAt: new Date(),
+        });
+      });
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          name: "Guest Updated",
+          lastActiveAt: new Date(),
+        }, { merge: true })
       );
     }],
 
@@ -713,6 +781,21 @@ async function run() {
           userName: "Guest",
           avatar: "😀",
           isVote: true,
+        })
+      );
+    }],
+
+    ["firestore: audience user can create selfie photo reaction", async () => {
+      const db = anonymousContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`${ROOT}/reactions/reaction_selfie_photo`).set({
+          roomCode: ROOM_CODE,
+          type: "photo",
+          userName: "Guest",
+          avatar: "😀",
+          url: "https://firebasestorage.googleapis.com/v0/b/demo/o/test.jpg",
+          storagePath: `room_photos/${ROOM_CODE}/${GUEST_UID}/snap.jpg`,
+          timestamp: new Date(),
         })
       );
     }],

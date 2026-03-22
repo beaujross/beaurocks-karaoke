@@ -2,7 +2,7 @@ import React from 'react';
 import { FameLevelProgressBar } from './FameLevelBadge';
 
 const vipBadge = (
-  <span className="inline-flex items-center text-[9px] uppercase tracking-[0.18em] px-1.5 py-0.5 rounded-full border bg-[#00C4D9]/10 text-cyan-200 border-[#00C4D9]/40">
+  <span className="inline-flex items-center text-[10px] uppercase tracking-[0.16em] px-1.5 py-0.5 rounded-full border bg-[#00C4D9]/10 text-cyan-200 border-[#00C4D9]/40">
     VIP
   </span>
 );
@@ -35,7 +35,7 @@ export default function UserMetaCard({
                   <FameLevelProgressBar level={fameLevel} progressToNext={fameProgressToNext} showLabel={false} />
                 </div>
               ) : null}
-              <div className="mt-1 text-xs text-zinc-400">{Number(fameTotal || 0).toLocaleString()} fame points</div>
+              <div className="mt-1 text-sm text-zinc-400">{Number(fameTotal || 0).toLocaleString()} fame points</div>
             </div>
           ) : null}
         </div>
@@ -53,7 +53,7 @@ export default function UserMetaCard({
         </div>
         {showFame ? (
           <div className="mt-1">
-            <div className="text-[10px] text-zinc-300">Lv {fameLevel} - {fameLevelName}</div>
+            <div className="text-[11px] text-zinc-300">Lv {fameLevel} - {fameLevelName}</div>
             {showProgress ? (
               <div className="mt-1">
                 <FameLevelProgressBar level={fameLevel} progressToNext={fameProgressToNext} showLabel={false} />

@@ -4,12 +4,13 @@ import {
     addDoc, collection, query, where, orderBy, limit, deleteDoc, arrayUnion,
     getDoc, getDocs, runTransaction,
     storage, storageRef, uploadBytesResumable, getDownloadURL,
-    auth, ensureUserProfile, EmailAuthProvider, linkWithCredential, onAuthStateChanged,
-    RecaptchaVerifier, signInWithPhoneNumber, PhoneAuthProvider,
+    auth, ensureUserProfile, EmailAuthProvider, linkWithCredential, signInWithCredential, onAuthStateChanged,
+    sendBeauRocksEmailSignInLink, isSignInWithEmailLink,
     trackEvent,
     callFunction,
     ensureAppCheckToken,
     setMyVipAccountStatus,
+    mergeAnonymousAccountData,
     joinRoomAudience
 } from '../../lib/firebase';
 import { APP_ID, ASSETS, STORM_SFX } from '../../lib/assets';
@@ -69,7 +70,7 @@ import {
     summarizeBracketSignup
 } from '../../lib/karaokeBracketSupport';
 
-const PHONE_AUTH_RECAPTCHA_CONTAINER_ID = 'audience-phone-auth-recaptcha';
+const AUDIENCE_EMAIL_LINK_STORAGE_KEY = 'beaurocks_audience_email_link';
 
 // Helper Component for Animated Points
 const AnimatedPoints = ({ value, onClick, className = '' }) => {
@@ -129,6 +130,14 @@ const GUITAR_LANE_THEME = [
     { label: 'IV', accent: 'from-violet-300 via-indigo-400 to-violet-500', border: 'border-violet-300/60', glow: 'shadow-[0_0_20px_rgba(167,139,250,0.35)]' },
     { label: 'V', accent: 'from-emerald-200 via-teal-300 to-cyan-400', border: 'border-emerald-200/60', glow: 'shadow-[0_0_20px_rgba(45,212,191,0.35)]' }
 ];
+const DEFAULT_GUITAR_LANE_THEME = GUITAR_LANE_THEME[0];
+const getSafeGuitarLaneIndex = (laneIndex, laneCount = GUITAR_LANE_THEME.length) => {
+    const normalizedLaneCount = Math.max(1, Math.trunc(Number(laneCount) || GUITAR_LANE_THEME.length || 1));
+    const numericLaneIndex = Math.trunc(Number(laneIndex));
+    if (!Number.isFinite(numericLaneIndex)) return 0;
+    return ((numericLaneIndex % normalizedLaneCount) + normalizedLaneCount) % normalizedLaneCount;
+};
+const getGuitarLaneTheme = (laneIndex) => GUITAR_LANE_THEME[getSafeGuitarLaneIndex(laneIndex)] || DEFAULT_GUITAR_LANE_THEME;
 const getGuitarSessionSeed = (sessionId) => {
     const raw = String(sessionId || 'beaurocks-guitar');
     let hash = 2166136261;
@@ -144,7 +153,7 @@ const getGuitarTargetLane = (sessionId, beatIndex, laneCount = GUITAR_LANE_COUNT
     mixed ^= mixed >>> 15;
     mixed = Math.imul(mixed, 2246822519) >>> 0;
     mixed ^= mixed >>> 13;
-    return mixed % Math.max(1, laneCount);
+    return getSafeGuitarLaneIndex(mixed, laneCount);
 };
 const LOBBY_PLAYGROUND_INTERACTIONS = VOLLEY_ORB_BASE_ACTIONS.map((item) => ({
     ...item,
@@ -834,13 +843,11 @@ const SingerApp = ({ roomCode, uid }) => {
     const [popTriviaSubmitting, setPopTriviaSubmitting] = useState(false);
     const [dismissedPopTriviaCardKey, setDismissedPopTriviaCardKey] = useState('');
 
-    // Phone/SMS account + VIP state
+    // Email-link account + VIP state
     const [showPhoneModal, setShowPhoneModal] = useState(false);
-    const [phoneNumber, setPhoneNumber] = useState('');
-    const [smsSent, setSmsSent] = useState(false);
-    const [verificationId, setVerificationId] = useState(null);
-    const [smsCode, setSmsCode] = useState('');
-    const [phoneLoading, setPhoneLoading] = useState(false);
+    const [accountEmail, setAccountEmail] = useState('');
+    const [emailLinkSent, setEmailLinkSent] = useState(false);
+    const [accountAuthLoading, setAccountAuthLoading] = useState(false);
     const [showAbout, setShowAbout] = useState(false);
     const [showFeedbackForm, setShowFeedbackForm] = useState(false);
     const [feedbackSending, setFeedbackSending] = useState(false);
@@ -874,7 +881,11 @@ const SingerApp = ({ roomCode, uid }) => {
     const [termsAccepted, setTermsAccepted] = useState(false);
     const [showRulesModal, setShowRulesModal] = useState(false);
     const [pendingJoin, setPendingJoin] = useState(null);
-    const openVipUpgrade = () => setShowPhoneModal(true);
+    const openVipUpgrade = () => {
+        setAccountEmail((current) => current || auth.currentUser?.email || profile?.email || '');
+        setEmailLinkSent(false);
+        setShowPhoneModal(true);
+    };
     const [nameFocused, setNameFocused] = useState(false);
     const joinContainerRef = useRef(null);
     const joinRayStageRef = useRef(null);
@@ -932,6 +943,9 @@ const SingerApp = ({ roomCode, uid }) => {
         if (typeof fixture.showAudienceVideo === 'boolean') setShowAudienceVideo(fixture.showAudienceVideo);
         if (typeof fixture.showAudienceVideoFullscreen === 'boolean') setShowAudienceVideoFullscreen(fixture.showAudienceVideoFullscreen);
         if (typeof fixture.stageHomePanelExpanded === 'boolean') setStageHomePanelExpanded(fixture.stageHomePanelExpanded);
+        if (fixture.stagePanelCollapsedByTab && typeof fixture.stagePanelCollapsedByTab === 'object') {
+            setStagePanelCollapsedByTab((prev) => ({ ...prev, ...fixture.stagePanelCollapsedByTab }));
+        }
         if (Array.isArray(fixture.localReactions)) setLocalReactions(fixture.localReactions);
         if (fixture.lobbyVolleyPreview !== undefined) {
             setLobbyVolleyPreview(fixture.lobbyVolleyPreview || createLobbyVolleyState());
@@ -974,6 +988,11 @@ const SingerApp = ({ roomCode, uid }) => {
     const [showAudienceVideo, setShowAudienceVideo] = useState(false);
     const [showAudienceVideoFullscreen, setShowAudienceVideoFullscreen] = useState(false);
     const [stageHomePanelExpanded, setStageHomePanelExpanded] = useState(false);
+    const [stagePanelCollapsedByTab, setStagePanelCollapsedByTab] = useState({
+        home: false,
+        request: true,
+        social: true
+    });
     const [isFormInitialized, setIsFormInitialized] = useState(false);
     const [cooldownFlash, setCooldownFlash] = useState(false);
     const [stormPhase, setStormPhase] = useState('off');
@@ -983,6 +1002,17 @@ const SingerApp = ({ roomCode, uid }) => {
     const [readyTimer, setReadyTimer] = useState(0);
     const [activeBrowseList, setActiveBrowseList] = useState(null);
     const [mobileLayoutMode, setMobileLayoutMode] = useState('native');
+    const [isBottomNavCollapsed, setIsBottomNavCollapsed] = useState(() => {
+        if (typeof window === 'undefined') return true;
+        try {
+            const stored = String(localStorage.getItem('beaurocks_mobile_bottom_nav_compact') || '').trim();
+            if (stored === '0') return false;
+            if (stored === '1') return true;
+        } catch {
+            // Ignore storage read failures.
+        }
+        return true;
+    });
     const [tabletTouchViewport, setTabletTouchViewport] = useState(() => detectTabletTouchViewport());
     const [isStandaloneDisplay, setIsStandaloneDisplay] = useState(() => isStandaloneDisplayMode());
     const stormAudioRef = useRef(null);
@@ -1016,7 +1046,26 @@ const SingerApp = ({ roomCode, uid }) => {
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !isVipAccount;
     const tipCrates = useMemo(() => (Array.isArray(room?.tipCrates) ? room.tipCrates : []), [room?.tipCrates]);
     const availableTipCrates = useMemo(() => (tipCrates.length ? tipCrates : DEFAULT_TIP_CRATES), [tipCrates]);
+    const personalPointOffers = useMemo(() => {
+        if (POINTS_PACKS.length <= 2) return POINTS_PACKS;
+        return [POINTS_PACKS[0], POINTS_PACKS[POINTS_PACKS.length - 1]].filter(Boolean);
+    }, []);
+    const roomBoostOffers = useMemo(() => {
+        const picks = [];
+        const seen = new Set();
+        const pushIfRoomWide = (crate) => {
+            if (!crate?.id || seen.has(crate.id)) return;
+            const rewardScope = String(crate.rewardScope || 'room').toLowerCase();
+            if (rewardScope === 'buyer') return;
+            seen.add(crate.id);
+            picks.push(crate);
+        };
+        availableTipCrates.forEach(pushIfRoomWide);
+        DEFAULT_TIP_CRATES.forEach(pushIfRoomWide);
+        return picks.slice(0, 2);
+    }, [availableTipCrates]);
     const isNativeMobileLayout = mobileLayoutMode === 'native';
+    const isCompactBottomNav = isNativeMobileLayout && isBottomNavCollapsed;
     const mobileSafeTopInset = 'env(safe-area-inset-top)';
     const mobileSafeLeftInset = 'env(safe-area-inset-left)';
     const mobileSafeRightInset = 'env(safe-area-inset-right)';
@@ -1037,7 +1086,7 @@ const SingerApp = ({ roomCode, uid }) => {
         ? `max(0px, ${mobileSafeBottomInset})`
         : (isStandaloneDisplay ? `max(10px, ${mobileSafeBottomInset})` : '10px');
     const mobileFloatingBottomInset = isNativeMobileLayout
-        ? `calc(${mobileBottomInset} + 80px)`
+        ? `calc(${mobileBottomInset} + ${isCompactBottomNav ? '62px' : '80px'})`
         : (isStandaloneDisplay ? `calc(${mobileSafeBottomInset} + 80px)` : '80px');
     const showBallad = room?.lightMode === 'ballad';
     const showBanger = room?.lightMode === 'banger';
@@ -2107,38 +2156,71 @@ const SingerApp = ({ roomCode, uid }) => {
         }, 800);
     };
 
+    const buildPerformanceReactionMeta = useCallback(() => {
+        const payload = {};
+        const performanceId = String(currentSinger?.id || '').trim();
+        const performanceSongId = String(currentSinger?.songId || '').trim();
+        const performanceSingerUid = String(currentSinger?.singerUid || '').trim();
+        const performanceSingerName = String(currentSinger?.singerName || '').trim();
+        const performanceStartedAtMs = timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || 0;
+        if (performanceId) payload.performanceId = performanceId;
+        if (performanceSongId) payload.performanceSongId = performanceSongId;
+        if (performanceSingerUid) payload.performanceSingerUid = performanceSingerUid;
+        if (performanceSingerName) payload.performanceSingerName = performanceSingerName;
+        if (performanceStartedAtMs > 0) payload.performanceStartedAtMs = performanceStartedAtMs;
+        return payload;
+    }, [currentSinger]);
+
+    const mergeRoomUserVibeState = useCallback(async (updates = {}) => {
+        if (!roomCode || !activeUid) return;
+        await setDoc(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`),
+            {
+                ...getRoomUserProjection({
+                    uid: activeUid,
+                    name: user?.name,
+                    avatar: user?.avatar
+                }),
+                ...(updates || {})
+            },
+            { merge: true }
+        );
+    }, [roomCode, activeUid, getRoomUserProjection, user?.name, user?.avatar]);
+
     const flushStrumBuffer = useCallback(async () => {
         if (!roomCode || !user || !activeUid || pendingStrumHits.current <= 0) return;
         const count = pendingStrumHits.current;
         pendingStrumHits.current = 0;
         try {
-            const performanceMeta = {
-                performanceId: currentSinger?.id || null,
-                performanceSongId: currentSinger?.songId || null,
-                performanceSingerUid: currentSinger?.singerUid || null,
-                performanceSingerName: currentSinger?.singerName || null,
-                performanceStartedAtMs: timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || null
-            };
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
-                roomCode,
-                type: 'strum',
-                count,
-                uid: activeUid,
-                userName: user.name,
-                avatar: user.avatar,
-                isVip: !!user.isVip,
-                ...performanceMeta,
-                timestamp: serverTimestamp()
-            });
+            try {
+                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
+                    roomCode,
+                    type: 'strum',
+                    count,
+                    uid: activeUid,
+                    userName: user.name,
+                    avatar: user.avatar,
+                    isVip: !!user.isVip,
+                    ...buildPerformanceReactionMeta(),
+                    timestamp: serverTimestamp()
+                });
+            } catch (reactionError) {
+                console.warn('guitar reaction write failed', reactionError);
+            }
             const sessionId = room?.guitarSessionId || Date.now();
             const isNewSession = user?.guitarSessionId !== sessionId;
-            const payload = { guitarSessionId: sessionId, lastVibeAt: serverTimestamp() };
-            payload.guitarHits = isNewSession ? count : increment(count);
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), payload);
+            const nextHits = isNewSession
+                ? count
+                : Math.max(0, Number(user?.guitarHits || 0)) + count;
+            await mergeRoomUserVibeState({
+                guitarSessionId: sessionId,
+                guitarHits: nextHits,
+                lastVibeAt: serverTimestamp()
+            });
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, room?.guitarSessionId, activeUid, currentSinger]);
+    }, [roomCode, user, room?.guitarSessionId, activeUid, buildPerformanceReactionMeta, mergeRoomUserVibeState]);
 
     const queueStrumWrite = () => {
         pendingStrumHits.current += 1;
@@ -2154,33 +2236,34 @@ const SingerApp = ({ roomCode, uid }) => {
         const count = pendingStrobeTaps.current;
         pendingStrobeTaps.current = 0;
         try {
-            const performanceMeta = {
-                performanceId: currentSinger?.id || null,
-                performanceSongId: currentSinger?.songId || null,
-                performanceSingerUid: currentSinger?.singerUid || null,
-                performanceSingerName: currentSinger?.singerName || null,
-                performanceStartedAtMs: timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || null
-            };
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
-                roomCode,
-                type: 'strobe_tap',
-                count,
-                uid: activeUid,
-                userName: user.name,
-                avatar: user.avatar,
-                isVip: !!user.isVip,
-                ...performanceMeta,
-                timestamp: serverTimestamp()
-            });
+            try {
+                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
+                    roomCode,
+                    type: 'strobe_tap',
+                    count,
+                    uid: activeUid,
+                    userName: user.name,
+                    avatar: user.avatar,
+                    isVip: !!user.isVip,
+                    ...buildPerformanceReactionMeta(),
+                    timestamp: serverTimestamp()
+                });
+            } catch (reactionError) {
+                console.warn('strobe reaction write failed', reactionError);
+            }
             const sessionId = room?.strobeSessionId || Date.now();
             const isNewSession = user?.strobeSessionId !== sessionId;
-            const payload = { strobeSessionId: sessionId, lastVibeAt: serverTimestamp() };
-            payload.strobeTaps = isNewSession ? count : increment(count);
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), payload);
+            await mergeRoomUserVibeState({
+                strobeSessionId: sessionId,
+                strobeTaps: isNewSession
+                    ? count
+                    : Math.max(0, Number(user?.strobeTaps || 0)) + count,
+                lastVibeAt: serverTimestamp()
+            });
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, room?.strobeSessionId, activeUid, currentSinger]);
+    }, [roomCode, user, room?.strobeSessionId, activeUid, buildPerformanceReactionMeta, mergeRoomUserVibeState]);
 
     const queueStrobeTap = () => {
         pendingStrobeTaps.current += 1;
@@ -2198,32 +2281,31 @@ const SingerApp = ({ roomCode, uid }) => {
         pendingStormLayers.current = {};
         pendingStormLayerCount.current = 0;
         try {
-            const performanceMeta = {
-                performanceId: currentSinger?.id || null,
-                performanceSongId: currentSinger?.songId || null,
-                performanceSingerUid: currentSinger?.singerUid || null,
-                performanceSingerName: currentSinger?.singerName || null,
-                performanceStartedAtMs: timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || null
-            };
             const layerEntries = Object.entries(batch).filter(([, count]) => Number(count) > 0);
             if (!layerEntries.length) return;
-            await Promise.all(layerEntries.map(([layer, count]) => addDoc(
-                collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
-                {
-                    roomCode,
-                    type: 'storm_layer',
-                    layer,
-                    count,
-                    uid: activeUid,
-                    userName: user.name,
-                    avatar: user.avatar,
-                    isVip: !!user.isVip,
-                    ...performanceMeta,
-                    timestamp: serverTimestamp()
+            await Promise.all(layerEntries.map(async ([layer, count]) => {
+                try {
+                    await addDoc(
+                        collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
+                        {
+                            roomCode,
+                            type: 'storm_layer',
+                            layer,
+                            count,
+                            uid: activeUid,
+                            userName: user.name,
+                            avatar: user.avatar,
+                            isVip: !!user.isVip,
+                            ...buildPerformanceReactionMeta(),
+                            timestamp: serverTimestamp()
+                        }
+                    );
+                } catch (reactionError) {
+                    console.warn('storm reaction write failed', layer, reactionError);
                 }
-            )));
+            }));
             const [topLayer] = [...layerEntries].sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0] || [];
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), {
+            await mergeRoomUserVibeState({
                 stormLayerHits: increment(totalCount),
                 lastStormLayer: topLayer || null,
                 lastVibeAt: serverTimestamp()
@@ -2232,7 +2314,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, activeUid, currentSinger]);
+    }, [roomCode, user, activeUid, buildPerformanceReactionMeta, mergeRoomUserVibeState]);
 
     const queueStormLayerWrite = (layerId) => {
         const key = String(layerId || '').trim().toLowerCase();
@@ -3006,6 +3088,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
     }, [uid]);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        try {
+            localStorage.setItem('beaurocks_mobile_bottom_nav_compact', isBottomNavCollapsed ? '1' : '0');
+        } catch {
+            // Ignore storage write failures.
+        }
+    }, [isBottomNavCollapsed]);
+
     const updateJoinRayPosition = useCallback(() => {
         const container = joinRayStageRef.current || joinContainerRef.current;
         const logo = joinLogoRef.current;
@@ -3356,12 +3447,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
     };
 
+    const isAudienceSelfieCam = room?.activeMode === 'selfie_cam'
+        && String(room?.selfieMoment?.type || '').trim().toLowerCase() !== 'hall_of_fame';
+
     // Selfie Cam / Selfie Challenge
     useEffect(() => {
         if (!user) return;
         const isChallengeParticipant = room?.activeMode === 'selfie_challenge' && room?.selfieChallenge?.participants?.includes(uid);
         const isVictoryCapture = guitarVictoryOpen || strobeVictoryOpen;
-        const shouldUseCamera = room?.activeMode === 'selfie_cam' || isChallengeParticipant || isVictoryCapture;
+        const shouldUseCamera = isAudienceSelfieCam || isChallengeParticipant || isVictoryCapture;
         if (shouldUseCamera && (!cameraActive || !videoRef.current?.srcObject)) {
             startCamera();
         } else if (!shouldUseCamera && cameraActive) {
@@ -3371,7 +3465,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
             setCameraActive(false);
         }
-    }, [room?.activeMode, room?.selfieChallenge?.participants, guitarVictoryOpen, strobeVictoryOpen, user, cameraActive, uid]);
+    }, [isAudienceSelfieCam, room?.activeMode, room?.selfieChallenge?.participants, guitarVictoryOpen, strobeVictoryOpen, user, cameraActive, uid]);
 
     useEffect(() => {
         const videoEl = videoRef.current;
@@ -3927,17 +4021,23 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
         const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${authUid}`);
         const ensureRoomUserMembership = async () => {
-            await setDoc(roomUserRef, {
+            const membershipSeed = {
                 uid: authUid,
                 roomCode,
                 name: user?.name || form.name || 'Guest',
                 avatar: user?.avatar || form.emoji || DEFAULT_EMOJI,
-                isVip: !!(user?.isVip || profile?.isVip || (profile?.vipLevel || 0) > 0),
-                vipLevel: Math.max(0, Number(profile?.vipLevel || user?.vipLevel || 0)),
-                fameLevel: Math.max(0, Number(profile?.currentLevel || user?.fameLevel || 0)),
-                totalFamePoints: Math.max(0, Number(profile?.totalFamePoints || user?.totalFamePoints || 0)),
                 lastActiveAt: serverTimestamp()
-            }, { merge: true });
+            };
+            const existingRoomUserSnap = await getDoc(roomUserRef);
+            if (!existingRoomUserSnap.exists()) {
+                await setDoc(roomUserRef, membershipSeed, { merge: true });
+            } else {
+                await setDoc(roomUserRef, {
+                    name: membershipSeed.name,
+                    avatar: membershipSeed.avatar,
+                    lastActiveAt: membershipSeed.lastActiveAt
+                }, { merge: true });
+            }
             const roomUserSnap = await getDoc(roomUserRef);
             return roomUserSnap.exists();
         };
@@ -4852,188 +4952,206 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
 
-    const recapVerifierRef = useRef(null);
-    const recapVerifierWidgetIdRef = useRef(null);
-    const recapVerifierInitPromiseRef = useRef(null);
-    const recapReadyRef = useRef(false);
-    const recapContainerIdRef = useRef('');
+    const normalizeAccountEmail = (value = '') => String(value || '').trim().toLowerCase();
 
-    const normalizePhoneNumber = (value = '') => {
-        const trimmed = value.trim();
-        if (!trimmed) return '';
-        const cleaned = trimmed.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
-        return cleaned.startsWith('+') ? cleaned : `+${cleaned}`;
+    const getAccountEmailErrorMessage = (error) => {
+        const code = String(error?.code || '').toLowerCase();
+        const message = String(error?.message || '').toLowerCase();
+        if (code.includes('invalid-email')) return 'Enter a valid email address.';
+        if (code.includes('missing-email')) return 'Enter your email to continue.';
+        if (code.includes('expired-action-code') || code.includes('invalid-action-code')) {
+            return 'That email link expired. Send a fresh one and try again.';
+        }
+        if (code.includes('user-disabled')) return 'This account is disabled.';
+        if (code.includes('email-already-in-use')) return 'That email already has a BeauRocks account. Use the sign-in link from that inbox.';
+        if (code.includes('resource-exhausted')) return 'Too many email link attempts. Wait a minute and try again.';
+        if (code.includes('failed-precondition') && message.includes('app check')) return 'Security token expired. Refresh and try again.';
+        if (code.includes('network-request-failed') || message.includes('network')) return 'Network issue while verifying. Try again.';
+        return 'Email verification failed. Send a fresh link and try again.';
     };
 
-    const ensureSharedRecaptchaContainer = useCallback(() => {
-        if (typeof document === 'undefined') return null;
-        let el = document.getElementById(PHONE_AUTH_RECAPTCHA_CONTAINER_ID);
-        if (el) return el;
-        el = document.createElement('div');
-        el.id = PHONE_AUTH_RECAPTCHA_CONTAINER_ID;
-        el.dataset.owner = 'singer-app';
-        el.setAttribute('aria-hidden', 'true');
-        el.style.position = 'fixed';
-        el.style.left = '-9999px';
-        el.style.top = '0';
-        el.style.width = '1px';
-        el.style.height = '1px';
-        el.style.pointerEvents = 'none';
-        el.style.opacity = '0';
-        document.body.appendChild(el);
-        return el;
-    }, []);
-
-    useEffect(() => () => {
-        if (recapVerifierRef.current) {
-            try { recapVerifierRef.current.clear(); } catch {
-                // Ignore recaptcha cleanup errors.
-            }
+    const readStoredAudienceEmailLinkState = () => {
+        if (typeof window === 'undefined') return null;
+        try {
+            const stored = JSON.parse(localStorage.getItem(AUDIENCE_EMAIL_LINK_STORAGE_KEY) || 'null');
+            return stored && typeof stored === 'object' ? stored : null;
+        } catch {
+            return null;
         }
-        recapVerifierRef.current = null;
-        recapVerifierWidgetIdRef.current = null;
-        recapVerifierInitPromiseRef.current = null;
-        recapReadyRef.current = false;
-        recapContainerIdRef.current = '';
-        if (typeof document !== 'undefined') {
-            const el = document.getElementById(PHONE_AUTH_RECAPTCHA_CONTAINER_ID);
-            if (el?.dataset?.owner === 'singer-app') {
-                el.remove();
-            }
-        }
-    }, []);
-
-    const initRecaptchaVerifier = async () => {
-        if (typeof window === 'undefined') return false;
-        const targetContainerId = PHONE_AUTH_RECAPTCHA_CONTAINER_ID;
-        if (recapReadyRef.current && recapVerifierRef.current && recapContainerIdRef.current === targetContainerId) return true;
-        if (recapVerifierInitPromiseRef.current) {
-            return recapVerifierInitPromiseRef.current;
-        }
-
-        recapVerifierInitPromiseRef.current = (async () => {
-            const el = ensureSharedRecaptchaContainer();
-            if (!el) return false;
-            if (!recapVerifierRef.current) {
-                recapVerifierRef.current = new RecaptchaVerifier(auth, targetContainerId, { size: 'invisible' });
-            }
-            try {
-                const widgetId = await recapVerifierRef.current.render();
-                recapVerifierWidgetIdRef.current = Number.isFinite(widgetId)
-                    ? widgetId
-                    : recapVerifierWidgetIdRef.current;
-                recapReadyRef.current = true;
-                recapContainerIdRef.current = targetContainerId;
-                return true;
-            } catch (e) {
-                console.warn('reCAPTCHA render failed', e);
-                try { recapVerifierRef.current?.clear(); } catch {
-                    // Ignore recaptcha cleanup errors.
-                }
-                recapVerifierRef.current = null;
-                recapVerifierWidgetIdRef.current = null;
-                recapReadyRef.current = false;
-                recapContainerIdRef.current = '';
-                return false;
-            } finally {
-                recapVerifierInitPromiseRef.current = null;
-            }
-        })();
-
-        return recapVerifierInitPromiseRef.current;
     };
 
-    // Phone/SMS account + VIP flow: send SMS and upgrade current anonymous session.
-    const startPhoneAuth = async () => {
-        const normalizedPhone = normalizePhoneNumber(phoneNumber);
-        if (!/^\+\d{7,15}$/.test(normalizedPhone)) {
-            toast('Enter a valid phone number in E.164 format (example: +15555555555)');
+    const buildAudienceEmailLinkTarget = () => {
+        if (typeof window === 'undefined') return '';
+        const url = new URL(window.location.href);
+        ['oobCode', 'mode', 'apiKey', 'lang', 'continueUrl'].forEach((key) => url.searchParams.delete(key));
+        return url.toString();
+    };
+
+    const stripEmailLinkParamsFromUrl = () => {
+        if (typeof window === 'undefined') return;
+        window.history.replaceState({}, document.title, buildAudienceEmailLinkTarget());
+    };
+
+    const completeAudienceAccountUpgrade = useCallback(async ({ verifiedUser, sourceUid, roomUserSeed = null, email, source = 'audience_email_verify' }) => {
+        const linkedUid = String(verifiedUser?.uid || auth.currentUser?.uid || activeUid || '').trim();
+        if (!linkedUid) throw new Error('No active session');
+        const normalizedEmail = normalizeAccountEmail(email || verifiedUser?.email || '');
+        const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${linkedUid}`);
+        const vipStatus = await setMyVipAccountStatus({
+            source,
+            vipLevel: 1
+        });
+        const migratedPoints = Math.max(0, Number(roomUserSeed?.points || 0));
+        const migratedEmojiTotal = Math.max(0, Number(roomUserSeed?.totalEmojis || 0));
+        await ensureUserProfile(linkedUid, {
+            name: profile?.name || user?.name || form.name || (normalizedEmail.split('@')[0] || 'BeauRocks User'),
+            avatar: profile?.avatar || user?.avatar || form.emoji || DEFAULT_EMOJI
+        });
+        await setDoc(roomUserRef, {
+            ...getRoomUserProjection({
+                uid: linkedUid,
+                isVip: !!vipStatus?.isVip,
+                vipLevel: Math.max(1, Number(vipStatus?.vipLevel || 1)),
+                totalEmojis: migratedEmojiTotal
+            }),
+            ...(normalizedEmail ? { email: normalizedEmail } : {}),
+            points: migratedPoints + 5000,
+            lastSeen: serverTimestamp()
+        }, { merge: true });
+        if (sourceUid && linkedUid && sourceUid !== linkedUid) {
+            const previousRoomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${sourceUid}`);
+            await deleteDoc(previousRoomUserRef).catch(() => {});
+        }
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem(AUDIENCE_EMAIL_LINK_STORAGE_KEY);
+        }
+        setEmailLinkSent(false);
+        setAccountEmail('');
+        setShowPhoneModal(false);
+        setShowVipOnboarding(true);
+        setTab('request');
+        setSongsTab('tight15');
+        showRewardToast('BeauRocks account verified by email - VIP perks unlocked! +5000 PTS', 5000, { durationMs: 3600 });
+    }, [activeUid, form.emoji, form.name, getRoomUserProjection, profile?.avatar, profile?.name, roomCode, user?.avatar, user?.name]);
+
+    const sendAccountEmailLink = async () => {
+        const normalizedEmail = normalizeAccountEmail(accountEmail);
+        if (!normalizedEmail) {
+            toast('Enter your email to continue.');
             return;
         }
-        setPhoneLoading(true);
+        setAccountAuthLoading(true);
         try {
-            if (!auth) {
-                toast('Auth unavailable. Reload and try again.');
-                setPhoneLoading(false);
-                return;
+            const sourceUid = String(auth.currentUser?.uid || activeUid || '').trim();
+            await sendBeauRocksEmailSignInLink({
+                email: normalizedEmail,
+                continueUrl: buildAudienceEmailLinkTarget(),
+                roomCode,
+                sourceUid
+            });
+            if (typeof window !== 'undefined') {
+                localStorage.setItem(AUDIENCE_EMAIL_LINK_STORAGE_KEY, JSON.stringify({
+                    email: normalizedEmail,
+                    sourceUid,
+                    roomCode,
+                    sentAt: Date.now()
+                }));
             }
-            const host = typeof window !== 'undefined' ? window.location?.hostname : '';
-            if (auth.settings && (host === 'localhost' || host === '127.0.0.1')) {
-                auth.settings.appVerificationDisabledForTesting = true;
-            }
-            let appVerifier = null;
-            const ready = await initRecaptchaVerifier();
-            if (!ready) {
-                toast('reCAPTCHA failed to initialize. Reload and try again.');
-                setPhoneLoading(false);
-                return;
-            }
-            appVerifier = recapVerifierRef.current;
-            if (typeof window !== 'undefined' && typeof window.grecaptcha?.reset === 'function' && recapVerifierWidgetIdRef.current !== null) {
-                try {
-                    window.grecaptcha.reset(recapVerifierWidgetIdRef.current);
-                } catch {
-                    // Ignore grecaptcha reset errors and continue with the verifier instance.
-                }
-            }
-            const confirmation = await signInWithPhoneNumber(auth, normalizedPhone, appVerifier);
-            // confirmation may expose verificationId
-            const vid = confirmation.verificationId || null;
-            setVerificationId(vid);
-            // save confirmation for fallback confirm
-            window._bross_confirmation = confirmation;
-            setSmsSent(true);
-            setPhoneNumber(normalizedPhone);
-            toast('SMS sent - enter the code');
-        } catch (e) {
-            console.error('SMS send error', e);
-            const code = e?.code || '';
-            if (code.includes('too-many-requests')) {
-                toast('Too many attempts. Wait a few minutes, then try again.');
-            } else if (code.includes('invalid-phone-number')) {
-                toast('Invalid phone number format. Use +countrycode then number.');
-            } else if (code.includes('captcha-check-failed')) {
-                toast('reCAPTCHA check failed. Refresh and retry.');
-            } else {
-                toast('Failed to send SMS');
-            }
-        } finally { setPhoneLoading(false); }
+            setAccountEmail(normalizedEmail);
+            setEmailLinkSent(true);
+            toast('Check your inbox for the BeauRocks sign-in link.');
+        } catch (error) {
+            console.error('email link send error', error);
+            toast(getAccountEmailErrorMessage(error));
+        } finally {
+            setAccountAuthLoading(false);
+        }
     };
 
-    const confirmPhoneCode = async () => {
-        if (!smsCode) return toast('Enter the SMS code');
-        setPhoneLoading(true);
-        try {
-            const vid = verificationId || (window._bross_confirmation && window._bross_confirmation.verificationId);
-            if (!vid) return toast('No verification id available');
-            const cred = PhoneAuthProvider.credential(vid, smsCode);
-            if (!auth.currentUser) return toast('No active session');
-            await linkWithCredential(auth.currentUser, cred);
-            // persist VIP state and phone
-            const linkedUid = String(auth.currentUser?.uid || activeUid || '').trim();
-            if (!linkedUid) return toast('No active session');
-            const roomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${linkedUid}`);
-            const vipStatus = await setMyVipAccountStatus({
-                source: 'audience_phone_verify',
-                vipLevel: 1
-            });
-            await updateDoc(roomUserRef, {
-                ...getRoomUserProjection({
-                    isVip: !!vipStatus?.isVip,
-                    vipLevel: Math.max(1, Number(vipStatus?.vipLevel || 1))
-                }),
-                points: increment(5000)
-            });
-            setShowPhoneModal(false);
-            setShowVipOnboarding(true);
-            setTab('request');
-            setSongsTab('tight15');
-            showRewardToast('BeauRocks account verified - VIP perks unlocked! +5000 PTS', 5000, { durationMs: 3600 });
-        } catch (e) {
-            console.error('confirm error', e);
-            toast('Verification failed');
-        } finally { setPhoneLoading(false); }
-    };
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        if (!isSignInWithEmailLink(auth, window.location.href)) return;
+        const storedState = readStoredAudienceEmailLinkState();
+        const email = normalizeAccountEmail(accountEmail || storedState?.email || '');
+        if (!email) {
+            setShowPhoneModal(true);
+            toast('Open the verification link on the same device where you entered your email.');
+            return;
+        }
+        let cancelled = false;
+
+        const finishEmailLinkSignIn = async () => {
+            setAccountAuthLoading(true);
+            try {
+                const sourceUid = String(auth.currentUser?.uid || storedState?.sourceUid || activeUid || '').trim();
+                let roomUserSeed = null;
+                if (sourceUid) {
+                    const previousRoomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${sourceUid}`);
+                    try {
+                        const previousRoomUserSnap = await getDoc(previousRoomUserRef);
+                        if (previousRoomUserSnap.exists()) {
+                            roomUserSeed = previousRoomUserSnap.data() || null;
+                        }
+                    } catch {
+                        roomUserSeed = null;
+                    }
+                }
+
+                const credential = EmailAuthProvider.credentialWithLink(email, window.location.href);
+                let verifiedUser = auth.currentUser;
+                try {
+                    if (auth.currentUser?.isAnonymous) {
+                        const linked = await linkWithCredential(auth.currentUser, credential);
+                        verifiedUser = linked?.user || auth.currentUser;
+                    } else {
+                        const signedIn = await signInWithCredential(auth, credential);
+                        verifiedUser = signedIn?.user || auth.currentUser;
+                    }
+                } catch (linkError) {
+                    const code = String(linkError?.code || '').toLowerCase();
+                    const recoverableExistingAccountError = (
+                        code.includes('credential-already-in-use')
+                        || code.includes('email-already-in-use')
+                        || code.includes('provider-already-linked')
+                    );
+                    if (!recoverableExistingAccountError) throw linkError;
+
+                    const signedIn = await signInWithCredential(auth, credential);
+                    verifiedUser = signedIn?.user || auth.currentUser;
+                    const targetUid = String(verifiedUser?.uid || '').trim();
+                    if (sourceUid && targetUid && sourceUid !== targetUid) {
+                        await mergeAnonymousAccountData({
+                            sourceUid,
+                            targetUid
+                        }).catch(() => {});
+                    }
+                }
+
+                if (!cancelled) {
+                    await completeAudienceAccountUpgrade({
+                        verifiedUser,
+                        sourceUid,
+                        roomUserSeed,
+                        email,
+                        source: 'audience_email_verify'
+                    });
+                    stripEmailLinkParamsFromUrl();
+                }
+            } catch (error) {
+                console.error('email link verify error', error);
+                toast(getAccountEmailErrorMessage(error));
+            } finally {
+                if (!cancelled) {
+                    setAccountAuthLoading(false);
+                }
+            }
+        };
+
+        finishEmailLinkSignIn();
+        return () => {
+            cancelled = true;
+        };
+    }, [activeUid, accountEmail, completeAudienceAccountUpgrade, roomCode, toast]);
 
     const feedbackOptions = {
         moments: ['the crowd hype', 'the stage vibe', 'the song pick', 'the reactions', 'the games', 'the DJ flow'],
@@ -5623,6 +5741,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const secondsSinceHit = guitarLastHitAt ? Math.floor((guitarNow - guitarLastHitAt) / 1000) : null;
         const nearestBeatIndex = Math.round(guitarNow / beatMs);
         const currentTargetLane = getGuitarTargetLane(sessionId, nearestBeatIndex);
+        const currentLaneTheme = getGuitarLaneTheme(currentTargetLane);
         const upcomingTargets = Array.from({ length: GUITAR_PREVIEW_BEATS }, (_unused, offset) => {
             const beatIndex = nearestBeatIndex + offset;
             return {
@@ -5672,7 +5791,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     </div>
                     <div className="mt-3 grid grid-cols-5 gap-1.5 pointer-events-none">
                         {upcomingTargets.map((target) => {
-                            const laneTheme = GUITAR_LANE_THEME[target.lane];
+                            const laneTheme = getGuitarLaneTheme(target.lane);
                             const isCurrent = target.beatLabel === 'Now';
                             return (
                                 <div
@@ -5695,7 +5814,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     style={{ touchAction: 'none' }}
                 >
                     {[0,1,2,3,4].map(i => {
-                        const laneTheme = GUITAR_LANE_THEME[i];
+                        const laneTheme = getGuitarLaneTheme(i);
                         const isTargetLane = currentTargetLane === i;
                         const laneNotes = upcomingNotes.filter((note) => note.lane === i);
                         return (
@@ -5725,8 +5844,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <div className="h-24 w-[220px] rounded-[28px] border border-white/15 bg-black/65 shadow-[0_0_28px_rgba(34,211,238,0.18)] backdrop-blur-md flex items-center justify-center gap-4 px-5">
                         <div className="flex flex-col items-start">
                             <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-300">Target String</div>
-                            <div className={`mt-2 rounded-full border px-3 py-1.5 text-sm font-black tracking-[0.28em] bg-gradient-to-r ${GUITAR_LANE_THEME[currentTargetLane].accent} ${GUITAR_LANE_THEME[currentTargetLane].border} text-black`}>
-                                {GUITAR_LANE_THEME[currentTargetLane].label}
+                            <div className={`mt-2 rounded-full border px-3 py-1.5 text-sm font-black tracking-[0.28em] bg-gradient-to-r ${currentLaneTheme.accent} ${currentLaneTheme.border} text-black`}>
+                                {currentLaneTheme.label}
                             </div>
                         </div>
                         <div className="h-16 w-16 rounded-full border-2 border-cyan-300/60 bg-black/55 shadow-[0_0_24px_rgba(34,211,238,0.4)] flex items-center justify-center transition-transform duration-120" style={{ transform: `scale(${pulseScale})` }}>
@@ -6121,7 +6240,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         );
     }
 
-    if (room?.activeMode === 'selfie_cam') {
+    if (isAudienceSelfieCam) {
         return (
             <div className="h-screen bg-black flex flex-col relative overflow-hidden">
                 <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover"></video>
@@ -6539,7 +6658,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Account</div>
                     <div className="text-lg font-bold">{user?.name || 'Guest'}</div>
                     <div className="text-sm text-zinc-400">VIP Level: {profile?.vipLevel || 1}</div>
-                    <div className="text-sm text-zinc-400">Phone: {profile?.phone || user?.phone || 'Not linked'}</div>
+                    <div className="text-sm text-zinc-400">Account: {auth.currentUser?.email || profile?.email || profile?.phone || user?.phone || 'Not linked'}</div>
                     <div className="mt-3 flex gap-3 text-sm">
                         <div className="bg-black/30 px-3 py-2 rounded-xl">Performances: <span className="font-bold text-white">{performanceStats.total}</span></div>
                         <div className="bg-black/30 px-3 py-2 rounded-xl">Emojis: <span className="font-bold text-white">{user?.totalEmojis || 0}</span></div>
@@ -6849,7 +6968,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 onClick={() => setPublicProfileOpen(false)}
             >
                 <div
-                    className="relative w-full sm:max-w-lg max-h-[92dvh] overflow-hidden rounded-t-[2rem] sm:rounded-3xl border border-cyan-400/25 bg-gradient-to-br from-[#1a1030] via-[#111827] to-[#0a0d12] shadow-[0_0_55px_rgba(0,196,217,0.22)]"
+                    className="relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[2rem] border border-cyan-400/25 bg-gradient-to-br from-[#1a1030] via-[#111827] to-[#0a0d12] shadow-[0_0_55px_rgba(0,196,217,0.22)] sm:max-w-lg sm:rounded-3xl"
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full bg-fuchsia-500/20 blur-3xl pointer-events-none"></div>
@@ -6870,62 +6989,62 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             X
                         </button>
                     </div>
-                    <div className="overflow-y-auto custom-scrollbar px-4 py-4">
+                    <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar touch-scroll-y px-4 py-4">
                         {publicProfileLoading ? (
                             <div className="text-lg text-zinc-300">Loading profile...</div>
                         ) : (
                             <>
                                 <div className="bg-black/40 border border-cyan-300/20 rounded-2xl p-4 mb-4">
-                                    <div className="text-[10px] uppercase tracking-[0.45em] text-zinc-400 mb-2">Fame Level</div>
+                                    <div className="text-[11px] uppercase tracking-[0.35em] text-zinc-400 mb-2">Fame Level</div>
                                     <div className="text-xl text-zinc-100 font-bold mb-2">Level {fameLevel} - {fame.levelName}</div>
                                     <FameLevelProgressBar level={fameLevel} progressToNext={fameProgress} showLabel={false} />
-                                    <div className="mt-2 text-xs text-zinc-300">{fame.total} fame points</div>
+                                    <div className="mt-2 text-sm text-zinc-300">{fame.total} fame points</div>
                                     {nextUnlock ? (
                                         <div className="mt-3 bg-black/30 border border-fuchsia-400/20 rounded-xl px-3 py-2">
-                                            <div className="text-[10px] uppercase tracking-widest text-zinc-400">Next Unlock</div>
+                                            <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-400">Next Unlock</div>
                                             <div className="text-sm text-zinc-100 mt-1">Lv {nextUnlock.level}: {nextUnlock.unlockLabel}</div>
-                                            <div className="text-[11px] text-zinc-300 mt-1">
+                                            <div className="text-xs text-zinc-300 mt-1 leading-relaxed">
                                                 {nextUnlock.pointsNeeded > 0
                                                     ? `${nextUnlock.pointsNeeded.toLocaleString()} fame points to go`
                                                     : 'Unlocked - refresh in-room stats if this does not show yet.'}
                                             </div>
                                         </div>
                                     ) : (
-                                        <div className="mt-3 bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-[11px] text-zinc-300">
+                                        <div className="mt-3 bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-xs text-zinc-300">
                                             Max fame tier reached. No further unlocks.
                                         </div>
                                     )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 mb-4">
                                     <div className="bg-black/35 border border-white/10 rounded-xl p-3">
-                                        <div className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Location</div>
+                                        <div className="text-[11px] text-zinc-400 uppercase tracking-[0.24em] mb-1">Location</div>
                                         <div className="text-white text-base font-bold">{data.vipProfile?.location || '-'}</div>
                                     </div>
                                     <div className="bg-black/35 border border-white/10 rounded-xl p-3">
-                                        <div className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Birthday</div>
+                                        <div className="text-[11px] text-zinc-400 uppercase tracking-[0.24em] mb-1">Birthday</div>
                                         <div className="text-white text-base font-bold">{data.vipProfile?.birthMonth && data.vipProfile?.birthDay ? `${data.vipProfile.birthMonth} ${data.vipProfile.birthDay}` : '-'}</div>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 mb-4">
                                     <div className="bg-black/35 border border-white/10 rounded-xl p-3">
-                                        <div className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Performances</div>
+                                        <div className="text-[11px] text-zinc-400 uppercase tracking-[0.24em] mb-1">Performances</div>
                                         <div className="text-white font-black text-xl">{publicStats.performances || 0}</div>
                                     </div>
                                     <div className="bg-black/35 border border-white/10 rounded-xl p-3">
-                                        <div className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Total Points</div>
+                                        <div className="text-[11px] text-zinc-400 uppercase tracking-[0.24em] mb-1">Total Points</div>
                                         <div className="text-white font-black text-xl">{publicStats.totalPoints || 0}</div>
                                     </div>
                                     <div className="bg-black/35 border border-white/10 rounded-xl p-3">
-                                        <div className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Loudest dB</div>
+                                        <div className="text-[11px] text-zinc-400 uppercase tracking-[0.24em] mb-1">Loudest dB</div>
                                         <div className="text-white font-black text-xl">{publicStats.loudest || 0}</div>
                                     </div>
                                     <div className="bg-black/35 border border-white/10 rounded-xl p-3">
-                                        <div className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Emojis</div>
+                                        <div className="text-[11px] text-zinc-400 uppercase tracking-[0.24em] mb-1">Emojis</div>
                                         <div className="text-white font-black text-xl">{publicStats.totalEmojis || 0}</div>
                                     </div>
                                 </div>
                                 <div className="bg-black/35 border border-white/10 rounded-2xl p-4 mb-4">
-                                    <div className="text-[10px] uppercase tracking-[0.45em] text-zinc-400 mb-2">Top 3 From Tight 15</div>
+                                    <div className="text-[11px] uppercase tracking-[0.35em] text-zinc-400 mb-2">Top 3 From Tight 15</div>
                                     {topTight15.length === 0 ? (
                                         <div className="text-sm text-zinc-300">No Tight 15 yet. Set one up to show your signature songs.</div>
                                     ) : (
@@ -6947,7 +7066,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     )}
                                 </div>
                                 <div className="bg-black/35 border border-white/10 rounded-2xl p-4">
-                                    <div className="text-[10px] uppercase tracking-[0.45em] text-zinc-400 mb-2">Performance Stats</div>
+                                    <div className="text-[11px] uppercase tracking-[0.35em] text-zinc-400 mb-2">Performance Stats</div>
                                     <div className="text-sm text-zinc-200 mb-2">Total performances: {leaderboardStats.find(s => s.uid === publicProfileUser?.uid)?.performances || 0}</div>
                                     {performanceBest ? (
                                         <div className="text-sm text-zinc-300">Best moment: {performanceBest.songTitle} - {performanceBest.score} pts</div>
@@ -6969,20 +7088,22 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     if (showPhoneModal) return (
         <div className="fixed inset-0 bg-black/80 z-[130] flex items-center justify-center p-6">
             <div className="bg-zinc-900 p-6 rounded-xl w-full max-w-md">
-                <h2 className="text-2xl font-bold mb-2">Create BeauRocks Account via SMS</h2>
-                <p className="text-sm text-zinc-400 mb-4">Enter your phone number (include country code). We will text a verification code to create your BeauRocks account and unlock VIP perks. Your VIP status is part of your BeauRocks account.</p>
-                <input value={phoneNumber} onChange={e=>setPhoneNumber(e.target.value)} placeholder="+1 555 555 5555" className="w-full p-3 mb-3 rounded bg-zinc-800 border border-zinc-700" />
-                {!smsSent ? (
+                <h2 className="text-2xl font-bold mb-2">Create BeauRocks Account by Email</h2>
+                <p className="text-sm text-zinc-400 mb-4">Enter your email and we will send a secure sign-in link. Open it on this device to finish creating your BeauRocks account and unlock VIP perks.</p>
+                <input value={accountEmail} onChange={e=>setAccountEmail(e.target.value)} placeholder="you@example.com" className="w-full p-3 mb-3 rounded bg-zinc-800 border border-zinc-700" />
+                {!emailLinkSent ? (
                     <div className="flex gap-2">
                         <button onClick={()=>setShowPhoneModal(false)} className="flex-1 bg-zinc-700 py-3 rounded">Cancel</button>
-                        <button onClick={startPhoneAuth} className="flex-1 bg-cyan-500 py-3 rounded font-bold">{phoneLoading ? 'Sending...' : 'Send SMS'}</button>
+                        <button onClick={sendAccountEmailLink} className="flex-1 bg-cyan-500 py-3 rounded font-bold">{accountAuthLoading ? 'Sending...' : 'Send Link'}</button>
                     </div>
                 ) : (
                     <>
-                        <input value={smsCode} onChange={e=>setSmsCode(e.target.value)} placeholder="6-digit code" className="w-full p-3 mb-3 rounded bg-zinc-800 border border-zinc-700" />
+                        <div className="mb-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                            Verification link sent to <span className="font-bold text-white">{accountEmail}</span>. Open it on this device and the app will finish automatically.
+                        </div>
                         <div className="flex gap-2">
-                            <button onClick={()=>{ setSmsSent(false); setSmsCode(''); }} className="flex-1 bg-zinc-700 py-3 rounded">Back</button>
-                            <button onClick={confirmPhoneCode} className="flex-1 bg-[#00C4D9] text-black py-3 rounded font-bold">{phoneLoading ? 'Verifying...' : 'Verify Code'}</button>
+                            <button onClick={()=>{ setEmailLinkSent(false); }} className="flex-1 bg-zinc-700 py-3 rounded">Use Different Email</button>
+                            <button onClick={sendAccountEmailLink} className="flex-1 bg-[#00C4D9] text-black py-3 rounded font-bold">{accountAuthLoading ? 'Sending...' : 'Resend Link'}</button>
                         </div>
                     </>
                 )}
@@ -7180,69 +7301,73 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     </>
                 ) : (
                     <>
-                        <div className="text-sm uppercase tracking-widest text-zinc-300 mb-2">Get more points</div>
-                        <div className="grid gap-3">
-                            {POINTS_PACKS.slice(0, 2).map((pack, idx) => {
-                                const amount = pack.amount ? `$${pack.amount}` : '$';
-                                const points = pack.points ? `+${pack.points} pts` : '';
-                                const isBest = idx === 1;
-                                return (
-                                    <button
-                                        key={pack.id || `${pack.label}-${idx}`}
-                                        onClick={() => startPersonalPackCheckout(pack)}
-                                        className={`w-full rounded-2xl px-5 py-4 text-left border transition-colors ${isBest ? 'bg-pink-500/20 border-pink-400/60 hover:border-pink-300/80' : 'bg-zinc-900/70 border-zinc-700 hover:border-zinc-500/60'}`}
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <div className="text-sm uppercase tracking-widest text-zinc-300">{isBest ? 'Best value' : 'Quick boost'}</div>
-                                                <div className="text-2xl font-bold text-white flex items-center gap-2">
-                                                    <span className="text-2xl">{EMOJI.gift}</span>
-                                                    {pack.label}
+                        <div className="space-y-5">
+                            <div>
+                                <div className="text-sm uppercase tracking-widest text-zinc-300 mb-1">For you</div>
+                                <div className="text-base text-zinc-400 mb-3">Two clear top-off options for your own points.</div>
+                                <div className="grid gap-3">
+                                    {personalPointOffers.map((pack, idx) => {
+                                        const amount = pack.amount ? `$${pack.amount}` : '$';
+                                        const points = pack.points ? `+${pack.points} pts` : '';
+                                        const isBest = idx === personalPointOffers.length - 1;
+                                        return (
+                                            <button
+                                                key={pack.id || `${pack.label}-${idx}`}
+                                                onClick={() => startPersonalPackCheckout(pack)}
+                                                className={`w-full rounded-2xl px-5 py-4 text-left border transition-colors ${isBest ? 'bg-pink-500/20 border-pink-400/60 hover:border-pink-300/80' : 'bg-zinc-900/70 border-zinc-700 hover:border-zinc-500/60'}`}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <div className="text-sm uppercase tracking-widest text-zinc-300">{isBest ? 'Big refill' : 'Quick boost'}</div>
+                                                        <div className="text-2xl font-bold text-white flex items-center gap-2">
+                                                            <span className="text-2xl">{EMOJI.gift}</span>
+                                                            {pack.label}
+                                                        </div>
+                                                        <div className="text-base text-zinc-200">You get {points}</div>
+                                                    </div>
+                                                    <div className="text-pink-200 font-black text-2xl">{amount}</div>
                                                 </div>
-                                                <div className="text-base text-zinc-200">You get {points}</div>
-                                            </div>
-                                            <div className="text-pink-200 font-black text-2xl">{amount}</div>
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                        <div className="text-sm uppercase tracking-widest text-zinc-300 mt-5 mb-2">Room boosts</div>
-                        <div className="grid gap-3">
-                            {availableTipCrates.slice(0, 3).map((crate, idx) => {
-                                const label = crate.label || `Room Boost ${idx + 1}`;
-                                const amount = crate.amount ? `$${crate.amount}` : '$';
-                                const points = crate.points ? `+${crate.points} pts` : '';
-                                const rewardScope = String(crate.rewardScope || 'room').toLowerCase();
-                                const rewardsRoom = rewardScope !== 'buyer';
-                                const earnsBadge = crate.awardBadge !== false;
-                                return (
-                                    <button
-                                        key={crate.id || `${label}-${idx}`}
-                                        onClick={() => startTipCrateCheckout(crate)}
-                                        className="w-full bg-[#00C4D9]/15 border border-[#00C4D9]/50 rounded-2xl px-5 py-4 text-left hover:border-[#00C4D9]/80"
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <div className="text-sm uppercase tracking-widest text-cyan-200">
-                                                    {rewardsRoom ? 'Room boost' : 'Personal boost'}
-                                                    {earnsBadge ? ' - Earns a badge' : ''}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-sm uppercase tracking-widest text-zinc-300 mb-1">For everyone</div>
+                                <div className="text-base text-zinc-400 mb-3">Buy a room-wide points burst for the whole crowd.</div>
+                                <div className="grid gap-3">
+                                    {roomBoostOffers.map((crate, idx) => {
+                                        const label = crate.label || `Room Boost ${idx + 1}`;
+                                        const amount = crate.amount ? `$${crate.amount}` : '$';
+                                        const points = crate.points ? `+${crate.points} pts` : '';
+                                        const earnsBadge = crate.awardBadge !== false;
+                                        return (
+                                            <button
+                                                key={crate.id || `${label}-${idx}`}
+                                                onClick={() => startTipCrateCheckout(crate)}
+                                                className="w-full bg-[#00C4D9]/15 border border-[#00C4D9]/50 rounded-2xl px-5 py-4 text-left hover:border-[#00C4D9]/80"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <div className="text-sm uppercase tracking-widest text-cyan-200">
+                                                            Room boost
+                                                            {earnsBadge ? ' - Earns a badge' : ''}
+                                                        </div>
+                                                        <div className="text-2xl font-bold text-white flex items-center gap-2">
+                                                            <span className="text-2xl">{EMOJI.crown}</span>
+                                                            {label}
+                                                        </div>
+                                                        <div className="text-base text-zinc-200">
+                                                            Everyone gets {points || 'a boost'}{earnsBadge ? ' + Crowd Hero badge' : ''}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-cyan-300 font-black text-2xl">{amount}</div>
                                                 </div>
-                                                <div className="text-2xl font-bold text-white flex items-center gap-2">
-                                                    <span className="text-2xl">{EMOJI.crown}</span>
-                                                    {label}
-                                                </div>
-                                                <div className="text-base text-zinc-200">
-                                                    {rewardsRoom
-                                                        ? `Everyone gets ${points || 'a boost'}${earnsBadge ? ' + Crowd Hero badge' : ''}`
-                                                        : `You get ${points || 'a boost'}${earnsBadge ? ' + Crowd Hero badge' : ''}`}
-                                                </div>
-                                            </div>
-                                            <div className="text-cyan-300 font-black text-2xl">{amount}</div>
-                                        </div>
-                                    </button>
-                                );
-                            })}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
                         <div className="flex flex-col gap-2 mt-4">
                             <button onClick={() => setShowPointsShop(false)} className="bg-zinc-800 px-6 py-2 rounded-xl font-bold text-base tracking-wide min-h-[44px]">Back</button>
@@ -7284,14 +7409,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             onClick={() => setShowFameLevels(false)}
         >
             <div
-                className="relative w-full sm:max-w-xl max-h-[94dvh] overflow-hidden rounded-t-[2rem] sm:rounded-3xl border border-cyan-300/35 bg-gradient-to-br from-[#1a1130] via-[#0f1726] to-[#0a0d12] shadow-[0_0_60px_rgba(34,211,238,0.22)]"
+                className="relative flex max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-[2rem] border border-cyan-300/35 bg-gradient-to-br from-[#1a1130] via-[#0f1726] to-[#0a0d12] shadow-[0_0_60px_rgba(34,211,238,0.22)] sm:max-w-xl sm:rounded-3xl"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="absolute -top-28 -left-20 w-72 h-72 rounded-full bg-fuchsia-500/20 blur-3xl pointer-events-none"></div>
                 <div className="absolute -bottom-24 -right-16 w-72 h-72 rounded-full bg-cyan-500/20 blur-3xl pointer-events-none"></div>
                 <div className="sticky top-0 z-20 bg-black/45 backdrop-blur border-b border-white/10 px-5 py-4 flex items-start justify-between gap-3">
                     <div>
-                        <div className="text-[10px] uppercase tracking-[0.45em] text-zinc-400">Fame System</div>
+                        <div className="text-[11px] uppercase tracking-[0.34em] text-zinc-400">Fame System</div>
                         <h2 className="text-3xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-fuchsia-300 mt-1">FAME LEVELS</h2>
                         <div className="text-sm text-zinc-300">{totalFameLevels} total levels</div>
                     </div>
@@ -7303,14 +7428,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         X
                     </button>
                 </div>
-                <div className="overflow-y-auto custom-scrollbar px-5 py-4 space-y-3">
+                <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar touch-scroll-y px-5 py-4 space-y-3">
                     <div className="bg-black/40 border border-cyan-300/25 rounded-2xl p-4">
                         <div className="flex items-center gap-3">
                             <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(34,211,238,0.35)]" style={{ background: '#0f172a', border: '1px solid #22d3ee' }}>
                                 {getFameIcon(currentFameLevel)}
                             </div>
                             <div className="min-w-0">
-                                <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">Current Level</div>
+                                <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-400">Current Level</div>
                                 <div className="text-xl font-bold text-white">Level {currentFameLevel} - {FAME_LEVELS?.[currentFameLevel]?.name || 'Rising Star'}</div>
                                 <div className="text-sm text-zinc-300">{currentFameTotal} Fame Points</div>
                             </div>
@@ -7336,11 +7461,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </div>
                                         <div className="min-w-0 flex-1">
                                             <div className="flex items-center justify-between gap-2">
-                                                <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">Level {level.level}</div>
-                                                {isCurrent && <div className="text-[10px] uppercase tracking-widest text-cyan-200 bg-cyan-500/15 border border-cyan-400/30 px-2 py-0.5 rounded-full">Current</div>}
+                                                <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-400">Level {level.level}</div>
+                                                {isCurrent && <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-200 bg-cyan-500/15 border border-cyan-400/30 px-2 py-0.5 rounded-full">Current</div>}
                                             </div>
                                             <div className="text-base font-bold text-white">{level.name}</div>
-                                            <div className="text-xs text-zinc-300">Unlocks at {level.minFame} FP - Next {nextLabel}</div>
+                                            <div className="text-sm text-zinc-300">Unlocks at {level.minFame} FP - Next {nextLabel}</div>
                                         </div>
                                     </div>
                                     <div className="mt-3 grid gap-2">
@@ -7532,6 +7657,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         || (autoCrowdMomentType === 'volley'
             ? 'Audience relay is live between singers.'
             : 'Audience check-in is live before the next singer.');
+    const primaryStageTabs = ['home', 'request', 'social'];
+    const activePrimaryStageTab = primaryStageTabs.includes(tab) ? tab : 'home';
+    const activePrimaryStageTabLabel = activePrimaryStageTab === 'request'
+        ? 'Songs'
+        : activePrimaryStageTab === 'social'
+            ? 'Social'
+            : 'Party';
+    const stagePanelCollapsed = !!stagePanelCollapsedByTab[activePrimaryStageTab];
     const forceExpandedHomeStageCard = showAudienceVideoInline || showAudienceVideoFullscreen || inlineLyrics || viewLyrics;
     const homeStageInteractionState = showPopTriviaCard
         ? 'trivia'
@@ -7541,7 +7674,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 ? 'voting'
                 : '';
     const shouldOfferCompactHomeStageCard = tab === 'home' && !!currentSinger && !!homeStageInteractionState;
-    const showCompactHomeStageCard = shouldOfferCompactHomeStageCard && !forceExpandedHomeStageCard && !stageHomePanelExpanded;
+    const autoCompactHomeStageCard = shouldOfferCompactHomeStageCard && !forceExpandedHomeStageCard && !stageHomePanelExpanded;
+    const showCompactHomeStageCard = !!currentSinger && !forceExpandedHomeStageCard && (stagePanelCollapsed || autoCompactHomeStageCard);
+    const shouldOfferCompactEmptyStageCard = tab === 'home' && !currentSinger;
+    const autoCompactEmptyStageCard = shouldOfferCompactEmptyStageCard && (lobbyVolleySceneActive || !stageHomePanelExpanded);
+    const showCompactEmptyStageCard = !currentSinger && (stagePanelCollapsed || autoCompactEmptyStageCard);
     const compactHomeStageStatusLabel = homeStageInteractionState === 'trivia'
         ? (
             popTriviaQuestion
@@ -7557,6 +7694,84 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         : 'Volley Orb · Tap to launch'
             )
             : 'Performance voting open';
+
+    const compactHomeStageBadgeLabel = homeStageInteractionState === 'trivia'
+        ? (
+            popTriviaQuestion
+                ? (popTriviaMyVote !== null ? 'Trivia Locked' : `Answer Trivia - ${popTriviaState?.timeLeftSec || 0}s`)
+                : 'Trivia Recap'
+        )
+        : homeStageInteractionState === 'volley'
+            ? (
+                lobbyPlaygroundPaused
+                    ? 'Volley Paused'
+                    : lobbyRelayObjective.active
+                        ? 'Volley Target'
+                        : 'Launch Volley'
+            )
+            : 'Vote Now';
+    const compactHomeStageBadgeIcon = homeStageInteractionState === 'trivia'
+        ? 'fa-brain'
+        : homeStageInteractionState === 'volley'
+            ? 'fa-bolt'
+            : 'fa-check-to-slot';
+    const compactHomeStageBadgeClass = homeStageInteractionState === 'trivia'
+        ? 'border-cyan-300/45 bg-cyan-500/16 text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.25)]'
+        : homeStageInteractionState === 'volley'
+            ? 'border-fuchsia-300/45 bg-fuchsia-500/16 text-fuchsia-50 shadow-[0_0_18px_rgba(217,70,239,0.22)]'
+            : 'border-amber-300/45 bg-amber-500/18 text-amber-50 shadow-[0_0_18px_rgba(251,191,36,0.2)]';
+    const compactStageStatusLabel = homeStageInteractionState
+        ? compactHomeStageStatusLabel
+        : `${activePrimaryStageTabLabel} tab · Stage compact`;
+    const compactStageBadgeLabel = homeStageInteractionState
+        ? compactHomeStageBadgeLabel
+        : activePrimaryStageTab === 'request'
+            ? 'Songs Below'
+            : activePrimaryStageTab === 'social'
+                ? 'Social Below'
+                : 'Expand Stage';
+    const compactStageBadgeIcon = homeStageInteractionState
+        ? compactHomeStageBadgeIcon
+        : activePrimaryStageTab === 'request'
+            ? 'fa-music'
+            : activePrimaryStageTab === 'social'
+                ? 'fa-comments'
+                : 'fa-up-right-and-down-left-from-center';
+    const compactStageBadgeClass = homeStageInteractionState
+        ? compactHomeStageBadgeClass
+        : 'border-cyan-300/35 bg-cyan-500/14 text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.18)]';
+    const compactEmptyStageModeIcon = lobbyVolleySceneActive
+        ? 'fa-bolt'
+        : activePrimaryStageTab === 'request'
+            ? 'fa-music'
+            : activePrimaryStageTab === 'social'
+                ? 'fa-comments'
+                : 'fa-table-cells';
+    const compactEmptyStageModeLabel = lobbyVolleySceneActive
+        ? 'Controls Below'
+        : `${activePrimaryStageTabLabel} Below`;
+    const compactEmptyStageTitle = lobbyVolleySceneActive
+        ? 'Stage collapsed for volley mode'
+        : stagePanelCollapsed
+            ? 'Stage collapsed for more room'
+            : 'Stage is empty';
+    const compactEmptyStageDetail = lobbyVolleySceneActive
+        ? 'Use the volley buttons below without the stage taking over the screen.'
+        : stagePanelCollapsed
+            ? `${activePrimaryStageTabLabel} content is below. Expand anytime to see the full stage card.`
+            : 'Find a song or join the queue.';
+    const compactEmptyStageMetaLabel = lobbyVolleySceneActive
+        ? 'Mode'
+        : stagePanelCollapsed
+            ? 'View'
+            : 'Room';
+    const compactEmptyStageMetaValue = lobbyVolleySceneActive
+        ? 'VOLLEY'
+        : stagePanelCollapsed
+            ? activePrimaryStageTabLabel.toUpperCase()
+            : roomCode;
+    const compactEmptyStageMetaHint = 'Tap to expand';
+    const canCollapseStagePanel = primaryStageTabs.includes(tab) && !forceExpandedHomeStageCard;
 
     const chatTitle = socialTab === 'host' ? 'DM Host' : 'VIP Lounge';
     const chatStatusLabel = !room?.chatEnabled
@@ -7590,6 +7805,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const openLoungeChat = () => {
         setTab('social');
         setSocialTab('lounge');
+    };
+    const setStagePanelCollapsedForTab = (collapsed, targetTab = tab) => {
+        if (!primaryStageTabs.includes(targetTab)) return;
+        setStagePanelCollapsedByTab((prev) => ({ ...prev, [targetTab]: collapsed }));
+    };
+    const expandActiveStagePanel = () => {
+        if (tab === 'home') setStageHomePanelExpanded(true);
+        setStagePanelCollapsedForTab(false, tab);
+    };
+    const collapseActiveStagePanel = () => {
+        if (tab === 'home') setStageHomePanelExpanded(false);
+        setStagePanelCollapsedForTab(true, tab);
     };
 
     return (
@@ -7848,7 +8075,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     type="button"
                                     onClick={() => {
                                         pulseNativeUiFeedback();
-                                        setStageHomePanelExpanded(true);
+                                        expandActiveStagePanel();
                                     }}
                                     className="w-full px-4 py-3 text-left border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70"
                                 >
@@ -7861,12 +8088,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="min-w-0 flex-1">
                                             <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-indigo-200">
                                                 <span>Now performing</span>
-                                                <span className="rounded-full border border-cyan-300/35 bg-cyan-500/14 px-2 py-0.5 text-cyan-100">
-                                                    {compactHomeStageStatusLabel}
+                                                <span className={`inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${compactStageBadgeClass}`}>
+                                                    <i className={`fa-solid ${compactStageBadgeIcon} text-[9px]`}></i>
+                                                    <span className="truncate">{compactStageBadgeLabel}</span>
                                                 </span>
                                             </div>
                                             <div className="mt-1 text-base font-black leading-tight text-white truncate">{currentSinger.singerName}</div>
                                             <div className="text-sm text-indigo-100/85 italic truncate">{currentSinger.songTitle}</div>
+                                            <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-indigo-200/75 truncate">{compactStageStatusLabel}</div>
                                         </div>
                                         <div className="shrink-0 text-right">
                                             <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">Room</div>
@@ -7897,18 +8126,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        {shouldOfferCompactHomeStageCard && (
+                                        {canCollapseStagePanel && (
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     pulseNativeUiFeedback();
-                                                    setStageHomePanelExpanded(false);
+                                                    collapseActiveStagePanel();
                                                 }}
                                                 className="flex items-center gap-1 text-base font-bold text-cyan-100 bg-cyan-500/15 border border-cyan-300/35 px-3 py-1.5 rounded-full leading-none hover:bg-cyan-500/25"
                                             >
                                                 <i className="fa-solid fa-minimize stage-icon text-cyan-100"></i>
-                                                Focus
+                                                Collapse
                                             </button>
                                         )}
                                         {room?.hostName && (
@@ -7937,9 +8166,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             Bingo Live
                                         </button>
                                     )}
-                                    {shouldOfferCompactHomeStageCard && (
-                                        <span className="rounded-full border border-cyan-300/35 bg-cyan-500/12 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                                            {compactHomeStageStatusLabel}
+                                    {showCompactHomeStageCard && (
+                                        <span className={`inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${compactStageBadgeClass}`}>
+                                            <i className={`fa-solid ${compactStageBadgeIcon} text-[9px]`}></i>
+                                            <span className="truncate">{compactStageBadgeLabel}</span>
                                         </span>
                                     )}
                                 </div>
@@ -8106,7 +8336,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                 )}
                                 {showPopTriviaCard && (
-                                    <div data-feature-id="pop-trivia-card" className="mt-3 rounded-3xl border-2 border-cyan-300/55 bg-gradient-to-br from-[#070b1a]/95 via-[#11162b]/95 to-[#180a1f]/95 shadow-[0_16px_44px_rgba(0,0,0,0.45)] backdrop-blur p-4">
+                                    <div data-feature-id="pop-trivia-card" className="mt-3 overflow-hidden rounded-3xl border-2 border-cyan-300/55 bg-gradient-to-br from-[#070b1a]/95 via-[#11162b]/95 to-[#180a1f]/95 shadow-[0_16px_44px_rgba(0,0,0,0.45)] backdrop-blur p-4">
                                         <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-[0.22em] text-cyan-100">
                                             <span>{popTriviaQuestion ? 'Pop-up Trivia' : 'Pop-up Trivia Complete'}</span>
                                             <div className="flex items-center gap-2">
@@ -8128,34 +8358,36 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </div>
                                         {popTriviaQuestion ? (
                                             <>
-                                                <div className="mt-2 text-base font-black text-white leading-snug">{popTriviaQuestion.q}</div>
-                                                <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                                                    {popTriviaQuestion.options?.map((option, idx) => {
-                                                        const isSelected = popTriviaMyVote === idx;
-                                                        const optionVotes = popTriviaVoteCounts[idx] || 0;
-                                                        return (
-                                                            <button
-                                                                key={`${popTriviaQuestion.id}_${idx}`}
-                                                                data-feature-id={`pop-trivia-option-${idx}`}
-                                                                onClick={() => submitPopTriviaVote(idx)}
-                                                                disabled={popTriviaMyVote !== null || popTriviaSubmitting}
-                                                                className={`rounded-2xl border-2 px-3 py-3 text-left transition-all min-h-[72px] ${
-                                                                    isSelected
-                                                                        ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.25)]'
-                                                                        : 'border-white/20 bg-black/45 text-white hover:border-cyan-300/75 hover:bg-black/60'
-                                                                } ${(popTriviaMyVote !== null || popTriviaSubmitting) ? 'opacity-90' : 'active:scale-[0.99]'}`}
-                                                            >
-                                                                <div className="flex items-center justify-between gap-2">
-                                                                    <span className="text-xs font-black tracking-[0.24em] text-cyan-300">{String.fromCharCode(65 + idx)}</span>
-                                                                    <span className="text-xs font-mono text-zinc-300">{optionVotes}</span>
-                                                                </div>
-                                                                <div className="mt-1.5 text-sm font-bold leading-snug">{option}</div>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                                <div className="mt-2 text-xs uppercase tracking-[0.22em] text-zinc-300">
-                                                    {popTriviaMyVote !== null ? 'Answer locked' : 'Tap an answer to join the recap'}
+                                                <div className="mt-3 max-h-[min(42dvh,25rem)] overflow-y-auto overscroll-contain pr-1 touch-scroll-y custom-scrollbar">
+                                                    <div className="text-base font-black text-white leading-snug">{popTriviaQuestion.q}</div>
+                                                    <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                                                        {popTriviaQuestion.options?.map((option, idx) => {
+                                                            const isSelected = popTriviaMyVote === idx;
+                                                            const optionVotes = popTriviaVoteCounts[idx] || 0;
+                                                            return (
+                                                                <button
+                                                                    key={`${popTriviaQuestion.id}_${idx}`}
+                                                                    data-feature-id={`pop-trivia-option-${idx}`}
+                                                                    onClick={() => submitPopTriviaVote(idx)}
+                                                                    disabled={popTriviaMyVote !== null || popTriviaSubmitting}
+                                                                    className={`rounded-2xl border-2 px-3 py-2.5 text-left transition-all min-h-[64px] ${
+                                                                        isSelected
+                                                                            ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.25)]'
+                                                                            : 'border-white/20 bg-black/45 text-white hover:border-cyan-300/75 hover:bg-black/60'
+                                                                    } ${(popTriviaMyVote !== null || popTriviaSubmitting) ? 'opacity-90' : 'active:scale-[0.99]'}`}
+                                                                >
+                                                                    <div className="flex items-center justify-between gap-2">
+                                                                        <span className="text-xs font-black tracking-[0.24em] text-cyan-300">{String.fromCharCode(65 + idx)}</span>
+                                                                        <span className="text-xs font-mono text-zinc-300">{optionVotes}</span>
+                                                                    </div>
+                                                                    <div className="mt-1.5 text-sm font-bold leading-snug">{option}</div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                    <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-300">
+                                                        {popTriviaMyVote !== null ? 'Answer locked' : 'Tap an answer to join the recap'}
+                                                    </div>
                                                 </div>
                                             </>
                                         ) : (
@@ -8171,14 +8403,66 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             </div>
                         </div>
                     ) : (
-                        <div onClick={()=>setTab('request')} className="bg-zinc-800 rounded-2xl border border-dashed border-zinc-600 text-center text-zinc-400 cursor-pointer hover:bg-zinc-700 active:scale-95 transition-all overflow-hidden">
-                            <div className="px-4 py-3 border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70">
+                        <div className="bg-zinc-800 rounded-2xl border border-dashed border-zinc-600 text-center text-zinc-400 transition-all overflow-hidden">
+                            {showCompactEmptyStageCard && (
+                                <button
+                                    type="button"
+                                    disabled={lobbyVolleySceneActive}
+                                    onClick={() => {
+                                        if (lobbyVolleySceneActive) return;
+                                        pulseNativeUiFeedback();
+                                        expandActiveStagePanel();
+                                    }}
+                                    className={`w-full px-4 py-3 text-left border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70 ${lobbyVolleySceneActive ? 'cursor-default' : ''}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-12 h-12 rounded-xl bg-indigo-700/40 flex items-center justify-center text-2xl shadow-md flex-shrink-0">
+                                            {lobbyVolleySceneActive ? String.fromCodePoint(0x26A1) : String.fromCodePoint(0x1F3A4)}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-indigo-200">
+                                                <span>{lobbyVolleySceneActive ? 'Volley orb live' : 'Stage ready'}</span>
+                                                <span className="inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border border-pink-300/35 bg-pink-500/14 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-pink-50 shadow-[0_0_18px_rgba(236,72,153,0.22)]">
+                                                    <i className={`fa-solid ${compactEmptyStageModeIcon} text-[9px]`}></i>
+                                                    <span className="truncate">{compactEmptyStageModeLabel}</span>
+                                                </span>
+                                            </div>
+                                            <div className="mt-1 text-base font-black leading-tight text-white">
+                                                {compactEmptyStageTitle}
+                                            </div>
+                                            <div className="text-sm text-indigo-100/85">
+                                                {compactEmptyStageDetail}
+                                            </div>
+                                        </div>
+                                        <div className="shrink-0 text-right">
+                                            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">{compactEmptyStageMetaLabel}</div>
+                                            <div className="font-bebas text-xl tracking-[0.2em] text-cyan-200">{compactEmptyStageMetaValue}</div>
+                                            <div className="mt-1 text-[11px] text-zinc-300">{compactEmptyStageMetaHint}</div>
+                                        </div>
+                                    </div>
+                                </button>
+                            )}
+                            <div className={`${showCompactEmptyStageCard ? 'hidden ' : ''}px-4 py-3 border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70`}>
                                 <div className="flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2">
                                         <div className="text-sm font-bebas text-[#00C4D9] tracking-[0.3em] leading-none">ROOM</div>
                                         <div className="text-[1.45rem] font-bebas text-[#00C4D9] tracking-[0.3em] font-bold leading-none">{roomCode}</div>
                                     </div>
                                     <div className="flex items-center gap-2">
+                                        {canCollapseStagePanel && !lobbyVolleySceneActive && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    pulseNativeUiFeedback();
+                                                    collapseActiveStagePanel();
+                                                }}
+                                                className="flex items-center gap-1 text-base font-bold text-cyan-100 bg-cyan-500/15 border border-cyan-300/35 px-3 py-1.5 rounded-full leading-none hover:bg-cyan-500/25"
+                                            >
+                                                <i className="fa-solid fa-minimize stage-icon text-cyan-100"></i>
+                                                Collapse
+                                            </button>
+                                        )}
                                         {room?.hostName && (
                                             <button
                                                 onClick={() => { setTab('social'); setSocialTab('host'); }}
@@ -8188,7 +8472,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 <span className="text-white/85">{room.hostName}</span>
                                             </button>
                                         )}
-                                        <button onClick={(e)=>{ e.stopPropagation(); copyInviteLink(); }} className="flex items-center gap-1 text-base font-bold text-white/85 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full leading-none hover:bg-white/10">
+                                        <button onClick={copyInviteLink} className="flex items-center gap-1 text-base font-bold text-white/85 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full leading-none hover:bg-white/10">
                                             <i className="fa-solid fa-link stage-icon text-white/70"></i>
                                             Share
                                         </button>
@@ -8208,20 +8492,39 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <div className="flex flex-wrap items-center gap-2 justify-end">
                                         {room?.activeMode === 'bingo' && !showBingoOverlay && room?.bingoAudienceReopenEnabled !== false && (
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); setShowBingoOverlay(true); }}
+                                                onClick={() => setShowBingoOverlay(true)}
                                                 className="flex items-center gap-1 bg-purple-500/20 text-purple-200 border border-purple-400/40 px-3 py-1.5 rounded-full text-base font-bold min-h-[28px] leading-none hover:bg-purple-500/30"
                                                 title="View Bingo board"
                                             >
-                                            <i className="fa-solid fa-table-cells stage-icon"></i>
-                                            Bingo Live
-                                        </button>
+                                                <i className="fa-solid fa-table-cells stage-icon"></i>
+                                                Bingo Live
+                                            </button>
                                         )}
                                     </div>
                                 </div>
                             </div>
-                            <div className="p-4 border-t border-white/10">
-                                <div className="text-2xl mb-1">{String.fromCodePoint(0x1F3A4)} Stage is Empty</div>
-                                <div className="text-sm font-bold text-pink-500">TAP TO REQUEST A SONG</div>
+                            <div className={`${showCompactEmptyStageCard ? 'hidden ' : ''}p-4 border-t border-white/10`}>
+                                <div className="text-2xl mb-1 text-white">{String.fromCodePoint(0x1F3A4)} Stage is Empty</div>
+                                <div className="text-sm text-zinc-300">Use the extra space to browse, then come back here when the next singer goes live.</div>
+                                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setTab('request')}
+                                        className="rounded-2xl border border-pink-400/35 bg-pink-500/18 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-pink-100 hover:bg-pink-500/28"
+                                    >
+                                        Browse Songs
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setTab('request');
+                                            setSongsTab('queue');
+                                        }}
+                                        className="rounded-2xl border border-cyan-400/30 bg-cyan-500/12 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-cyan-100 hover:bg-cyan-500/22"
+                                    >
+                                        View Queue
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -8411,7 +8714,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          </button>
                                      );
                                  })}</div>
-                                 {!user.isVip && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">CREATE BEAUROCKS ACCOUNT +5000 PTS {EMOJI.phone}</button>}
+                                 {!user.isVip && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">CREATE BEAUROCKS ACCOUNT +5000 PTS {emoji(0x1F4E7)}</button>}
                              </>
                          )}
                          {room?.multiplier >= 4 && <button onClick={()=>submitSong("Secret Track", "The Host", "")} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 p-4 rounded-xl font-bold animate-pulse shadow-lg border-2 border-white">SECRET SONG UNLOCKED! {EMOJI.gift}</button>}
@@ -8810,22 +9113,23 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </ul>
                                 </div>
                                 <div className="text-left bg-zinc-900/70 border border-zinc-700 rounded-xl p-4 mb-4">
-                                    <label className="text-xs uppercase tracking-widest text-zinc-400">Phone Number</label>
-                                    <input value={phoneNumber} onChange={e=>setPhoneNumber(e.target.value)} placeholder="+1 555 555 5555" className="w-full p-3 mt-2 rounded bg-zinc-800 border border-zinc-700 text-white" />
-                                    {!smsSent ? (
-                                        <button onClick={startPhoneAuth} className="w-full bg-cyan-500 text-black py-3 rounded-lg font-bold mt-3">{phoneLoading ? 'Sending...' : 'Send SMS'}</button>
+                                    <label className="text-xs uppercase tracking-widest text-zinc-400">Email Address</label>
+                                    <input value={accountEmail} onChange={e=>setAccountEmail(e.target.value)} placeholder="you@example.com" className="w-full p-3 mt-2 rounded bg-zinc-800 border border-zinc-700 text-white" />
+                                    {!emailLinkSent ? (
+                                        <button onClick={sendAccountEmailLink} className="w-full bg-cyan-500 text-black py-3 rounded-lg font-bold mt-3">{accountAuthLoading ? 'Sending...' : 'Send Sign-In Link'}</button>
                                     ) : (
                                         <>
-                                            <label className="text-xs uppercase tracking-widest text-zinc-400 mt-4 block">Verification Code</label>
-                                            <input value={smsCode} onChange={e=>setSmsCode(e.target.value)} placeholder="6-digit code" className="w-full p-3 mt-2 rounded bg-zinc-800 border border-zinc-700 text-white" />
+                                            <div className="mt-4 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                                                Check <span className="font-bold text-white">{accountEmail}</span> and open the BeauRocks sign-in link on this device.
+                                            </div>
                                             <div className="flex gap-2 mt-3">
-                                                <button onClick={()=>{ setSmsSent(false); setSmsCode(''); }} className="flex-1 bg-zinc-700 py-3 rounded">Back</button>
-                                                <button onClick={confirmPhoneCode} className="flex-1 bg-[#00C4D9] text-black py-3 rounded font-bold">{phoneLoading ? 'Verifying...' : 'Verify Code'}</button>
+                                                <button onClick={()=>setEmailLinkSent(false)} className="flex-1 bg-zinc-700 py-3 rounded">Use Different Email</button>
+                                                <button onClick={sendAccountEmailLink} className="flex-1 bg-[#00C4D9] text-black py-3 rounded font-bold">{accountAuthLoading ? 'Sending...' : 'Resend Link'}</button>
                                             </div>
                                         </>
                                     )}
                                 </div>
-                                <p className="text-xs text-zinc-400 mb-3">Fast SMS verification. No password needed.</p>
+                                <p className="text-xs text-zinc-400 mb-3">Email link verification for now. No SMS required.</p>
                                 <button onClick={()=>setTab('home')} className="text-zinc-500 underline block">Maybe Later</button>
                             </>
                         ) : (
@@ -9766,10 +10070,25 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 </button>
             )}
             <div
-                className={`relative border-t border-pink-400/30 flex-none z-20 ${isNativeMobileLayout ? 'backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)] mobile-native-tabbar' : ''}`}
+                className={`relative border-t border-pink-400/30 flex-none z-20 ${isNativeMobileLayout ? `backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)] mobile-native-tabbar ${isCompactBottomNav ? 'mobile-native-tabbar-collapsed' : ''}` : ''}`}
                 style={{ paddingBottom: isNativeMobileLayout ? mobileBottomInset : (isStandaloneDisplay ? 'env(safe-area-inset-bottom)' : '0px') }}
             >
                 <div className="absolute inset-0" style={{ background: MOBILE_NAV_GRADIENT }}></div>
+                {isNativeMobileLayout && (
+                    <button
+                        type="button"
+                        aria-label={isCompactBottomNav ? 'Expand bottom navigation' : 'Collapse bottom navigation'}
+                        aria-pressed={!isCompactBottomNav}
+                        onClick={() => {
+                            pulseNativeUiFeedback();
+                            setIsBottomNavCollapsed((current) => !current);
+                        }}
+                        className="mobile-native-tabbar-toggle"
+                    >
+                        <i className={`fa-solid ${isCompactBottomNav ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
+                        <span>{isCompactBottomNav ? 'Expand' : 'Compact'}</span>
+                    </button>
+                )}
                 <div
                     className={`relative py-1.5 flex ${isNativeMobileLayout ? 'mobile-native-tabbar-row' : ''}`}
                     style={{
@@ -9781,18 +10100,34 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             : (isStandaloneDisplay ? 'max(8px, env(safe-area-inset-right))' : '8px')
                     }}
                 >
-                    <button onClick={()=>{ pulseNativeUiFeedback(); setTab('home'); }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='home' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]` : 'text-zinc-300'}`}><i className="fa-solid fa-champagne-glasses text-[28px]"></i><span className="text-base font-semibold">PARTY</span></button>
-                    <button data-feature-id="singer-nav-songs" onClick={()=>{ pulseNativeUiFeedback(); setTab('request'); }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='request' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]` : 'text-zinc-300'}`}><i className="fa-solid fa-music text-[28px]"></i><span className="text-base font-semibold">SONGS</span></button>
-                    <button onClick={() => {
-                        pulseNativeUiFeedback();
-                        setTab('social');
-                        setSocialTab('lounge');
-                        const newest = getNewestRelevantChatTimestamp(chatMessages);
-                        if (newest) chatLastSeenRef.current = newest;
-                        setChatUnread(false);
-                    }} className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='social' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]` : 'text-zinc-300'} relative`}>
+                    <button
+                        onClick={() => { pulseNativeUiFeedback(); setTab('home'); }}
+                        className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='home' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]` : 'text-zinc-300'}`}
+                    >
+                        <i className="fa-solid fa-champagne-glasses text-[28px]"></i>
+                        <span className="text-base font-semibold">PARTY</span>
+                    </button>
+                    <button
+                        data-feature-id="singer-nav-songs"
+                        onClick={() => { pulseNativeUiFeedback(); setTab('request'); }}
+                        className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='request' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]` : 'text-zinc-300'}`}
+                    >
+                        <i className="fa-solid fa-music text-[28px]"></i>
+                        <span className="text-base font-semibold">SONGS</span>
+                    </button>
+                    <button
+                        onClick={() => {
+                            pulseNativeUiFeedback();
+                            setTab('social');
+                            setSocialTab('lounge');
+                            const newest = getNewestRelevantChatTimestamp(chatMessages);
+                            if (newest) chatLastSeenRef.current = newest;
+                            setChatUnread(false);
+                        }}
+                        className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='social' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]` : 'text-zinc-300'} relative`}
+                    >
                         <i className="fa-solid fa-comments text-[28px]"></i>
-                        {chatUnread && <span className="absolute top-2 right-8 w-2.5 h-2.5 rounded-full bg-pink-400 ring-2 ring-pink-300/60 shadow-[0_0_10px_rgba(255,103,182,0.8)]"></span>}
+                        {chatUnread && <span className={`absolute w-2.5 h-2.5 rounded-full bg-pink-400 ring-2 ring-pink-300/60 shadow-[0_0_10px_rgba(255,103,182,0.8)] ${isCompactBottomNav ? 'top-3 right-5' : 'top-2 right-8'}`}></span>}
                         <span className="text-base font-semibold">SOCIAL</span>
                     </button>
                 </div>

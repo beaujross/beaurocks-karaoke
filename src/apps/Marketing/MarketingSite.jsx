@@ -45,6 +45,15 @@ const PRODUCT_BRAND = {
   host: "Host Deck",
 };
 
+const MARKETING_STANDARD_ROOM_CODE_LENGTH = 4;
+const MARKETING_MAX_ROOM_CODE_LENGTH = 10;
+const normalizeMarketingJoinCode = (value = "") =>
+  String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, MARKETING_MAX_ROOM_CODE_LENGTH);
+
 const PageShellLoader = () => (
   <div className="mk3-status">
     <strong>Loading page...</strong>
@@ -240,6 +249,8 @@ const MarketingSite = () => {
   const [hostApplicationNotice, setHostApplicationNotice] = useState("");
   const [pendingHostApplicationsCount, setPendingHostApplicationsCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [navJoinCode, setNavJoinCode] = useState("");
+  const [navJoinStatus, setNavJoinStatus] = useState("");
   const authPanelRef = useRef(null);
   const moreMenuRef = useRef(null);
   const { session, actions } = useDirectorySession();
@@ -375,6 +386,26 @@ const MarketingSite = () => {
     return `${targetUrl.pathname}${targetUrl.search}`;
   }, [buildRelativeHref]);
 
+  const openAudienceJoin = useCallback((rawCode = "", source = "marketing_nav_join") => {
+    if (typeof window === "undefined") return false;
+    const code = normalizeMarketingJoinCode(rawCode);
+    if (!code) {
+      setNavJoinStatus(`Enter a room code. Standard codes are ${MARKETING_STANDARD_ROOM_CODE_LENGTH} characters.`);
+      return false;
+    }
+    if (code.length < MARKETING_STANDARD_ROOM_CODE_LENGTH) {
+      setNavJoinStatus(`Room codes are typically ${MARKETING_STANDARD_ROOM_CODE_LENGTH} characters.`);
+      return false;
+    }
+    setNavJoinStatus("");
+    trackEvent("mk_quick_join_submit", {
+      source: String(source || "marketing_nav_join"),
+      room_code_length: code.length,
+    });
+    window.location.href = buildSurfaceUrl({ surface: "app", params: { room: code } }, window.location);
+    return true;
+  }, []);
+
   const navigate = useCallback((pageOrRoute = MARKETING_ROUTE_PAGES.discover, id = "", params = {}, options = {}) => {
     if (typeof window === "undefined") return;
     const nextRoute = normalizeRouteInput(pageOrRoute, id, params);
@@ -410,6 +441,11 @@ const MarketingSite = () => {
     event.preventDefault();
     navigate(pageOrRoute, id, params, options);
   }, [navigate]);
+
+  const onNavJoinSubmit = useCallback((event, source = "marketing_nav_join") => {
+    event.preventDefault();
+    openAudienceJoin(navJoinCode, source);
+  }, [navJoinCode, openAudienceJoin]);
 
   const scrollAuthPanelIntoView = useCallback(() => {
     authPanelRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
@@ -922,6 +958,30 @@ const MarketingSite = () => {
               </nav>
             </div>
             <div className="mk3-account">
+              <form className="mk3-nav-join" onSubmit={(event) => onNavJoinSubmit(event, "marketing_nav_join_desktop")}>
+                <div className="mk3-nav-join-shell">
+                  <label className="mk3-nav-join-field">
+                    <span className="mk3-nav-join-label">Join Room</span>
+                    <input
+                      value={navJoinCode}
+                      onChange={(event) => {
+                        setNavJoinCode(normalizeMarketingJoinCode(event.target.value || ""));
+                        if (navJoinStatus) setNavJoinStatus("");
+                      }}
+                      placeholder="A1B2"
+                      inputMode="text"
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      maxLength={MARKETING_MAX_ROOM_CODE_LENGTH}
+                      aria-label="Enter room code"
+                    />
+                  </label>
+                  <button type="submit" className="mk3-nav-join-button">
+                    Join
+                  </button>
+                </div>
+              </form>
               <button
                 type="button"
                 className="mk3-account-action"
@@ -960,7 +1020,31 @@ const MarketingSite = () => {
               </button>
             </div>
           </div>
+          {navJoinStatus && <div className="mk3-nav-join-status">{navJoinStatus}</div>}
           <div id="mk3-mobile-menu" className={mobileMenuOpen ? "mk3-mobile-menu is-open" : "mk3-mobile-menu"}>
+            <form className="mk3-mobile-join" onSubmit={(event) => onNavJoinSubmit(event, "marketing_nav_join_mobile")}>
+              <div className="mk3-mobile-join-copy">
+                <strong>Join Room Fast</strong>
+                <span>Most BeauRocks rooms use a 4-character code.</span>
+              </div>
+              <div className="mk3-mobile-join-row">
+                <input
+                  value={navJoinCode}
+                  onChange={(event) => {
+                    setNavJoinCode(normalizeMarketingJoinCode(event.target.value || ""));
+                    if (navJoinStatus) setNavJoinStatus("");
+                  }}
+                  placeholder="A1B2"
+                  inputMode="text"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  maxLength={MARKETING_MAX_ROOM_CODE_LENGTH}
+                  aria-label="Enter room code"
+                />
+                <button type="submit">Join</button>
+              </div>
+            </form>
             <div className="mk3-mobile-link-grid">
               {navPrimaryOptions.map((item) => (
                 <a

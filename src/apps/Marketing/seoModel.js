@@ -21,21 +21,21 @@ export const SeoRouteRecordShape = Object.freeze({
 });
 
 const STATIC_SOCIAL_CARD_PATHS = Object.freeze({
-  default: "/images/social/default.png",
-  [MARKETING_ROUTE_PAGES.discover]: "/images/social/discover.png",
-  [MARKETING_ROUTE_PAGES.demo]: "/images/social/demo.png",
-  [MARKETING_ROUTE_PAGES.demoAuto]: "/images/social/demo-auto.png",
-  [MARKETING_ROUTE_PAGES.changelog]: "/images/social/changelog.png",
-  [MARKETING_ROUTE_PAGES.forHosts]: "/images/social/for-hosts.png",
-  [MARKETING_ROUTE_PAGES.forVenues]: "/images/social/for-venues.png",
-  [MARKETING_ROUTE_PAGES.forPerformers]: "/images/social/for-performers.png",
-  [MARKETING_ROUTE_PAGES.forFans]: "/images/social/for-fans.png",
-  [MARKETING_ROUTE_PAGES.geoCity]: "/images/social/geo.png",
-  [MARKETING_ROUTE_PAGES.geoRegion]: "/images/social/geo.png",
-  [MARKETING_ROUTE_PAGES.venue]: "/images/social/venue.png",
-  [MARKETING_ROUTE_PAGES.event]: "/images/social/event.png",
-  [MARKETING_ROUTE_PAGES.host]: "/images/social/host.png",
-  [MARKETING_ROUTE_PAGES.performer]: "/images/social/performer.png",
+  default: "/images/marketing/CLEAN 1.png",
+  [MARKETING_ROUTE_PAGES.discover]: "/images/marketing/app-landing-live.png",
+  [MARKETING_ROUTE_PAGES.demo]: "/images/marketing/tv-surface-live.png",
+  [MARKETING_ROUTE_PAGES.demoAuto]: "/images/marketing/app-landing-live.png",
+  [MARKETING_ROUTE_PAGES.changelog]: "/images/marketing/CLEAN 1.png",
+  [MARKETING_ROUTE_PAGES.forHosts]: "/images/marketing/BeauRocks-HostPanel.png",
+  [MARKETING_ROUTE_PAGES.forVenues]: "/images/marketing/CLEAN 1.png",
+  [MARKETING_ROUTE_PAGES.forPerformers]: "/images/marketing/BeauRocks-Audienceapp.png",
+  [MARKETING_ROUTE_PAGES.forFans]: "/images/logo-library/beaurocks-logo-background.png",
+  [MARKETING_ROUTE_PAGES.geoCity]: "/images/marketing/CLEAN 1.png",
+  [MARKETING_ROUTE_PAGES.geoRegion]: "/images/marketing/CLEAN 1.png",
+  [MARKETING_ROUTE_PAGES.venue]: "/images/marketing/CLEAN 1.png",
+  [MARKETING_ROUTE_PAGES.event]: "/images/marketing/CLEAN 1.png",
+  [MARKETING_ROUTE_PAGES.host]: "/images/marketing/BeauRocks-HostPanel.png",
+  [MARKETING_ROUTE_PAGES.performer]: "/images/marketing/BeauRocks-Audienceapp.png",
 });
 
 const PAGE_TITLE_MAP = Object.freeze({

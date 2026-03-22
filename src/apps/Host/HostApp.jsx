@@ -134,6 +134,7 @@ import {
     getAutoEndSchedule,
     getTrackDurationSecFromSearchResult
 } from './hostPlaybackAutomation';
+import { createQuickLaunchDiscoveryDraft } from './hostLaunchHelpers';
 
 // --- CONSTANTS & CONFIG ---
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || '';
@@ -2981,7 +2982,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoDjDelaySec, setAutoDjDelaySec, autoEndOnTrackFinish, setAutoEndOnTrackFinish, autoBonusEnabled, setAutoBonusEnabled, autoBonusPoints, setAutoBonusPoints, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoDjDelaySec, setAutoDjDelaySec, autoEndOnTrackFinish, setAutoEndOnTrackFinish, autoBonusEnabled, setAutoBonusEnabled, autoBonusPoints, setAutoBonusPoints, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, holdAutoBgDuringStageActivation, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3068,6 +3069,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     const autoDjApplausePendingSongRef = useRef('');
     const autoDjApplauseFallbackTimerRef = useRef(null);
     const autoDjAutoEndKeyRef = useRef('');
+    const currentPlaybackDurationSyncKeyRef = useRef('');
     const updateStatusRef = useRef(null);
     const mediaOverrideStopRef = useRef('');
     const commandInputRef = useRef(null);
@@ -4062,6 +4064,55 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 hostLogger.warn('Auto-DJ applause finalization failed', error);
             });
     }, [autoDj, clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
+
+    useEffect(() => {
+        const currentId = String(current?.id || '').trim();
+        const activeMode = String(room?.activeMode || '').trim().toLowerCase();
+        if (!currentId || activeMode !== 'karaoke') return;
+        const stageMediaUrl = resolveStageMediaUrl(current, room);
+        const currentPlayback = normalizeBackingChoice({
+            mediaUrl: stageMediaUrl,
+            appleMusicId: current?.appleMusicId
+        });
+        if (currentPlayback.usesAppleBacking || !currentPlayback.mediaUrl) return;
+
+        const syncKey = `${currentId}:${currentPlayback.mediaUrl}`;
+        if (currentPlaybackDurationSyncKeyRef.current === syncKey) return;
+        currentPlaybackDurationSyncKeyRef.current = syncKey;
+
+        let cancelled = false;
+        void (async () => {
+            try {
+                const resolvedDuration = await resolveDurationForUrl(
+                    currentPlayback.mediaUrl,
+                    isAudioUrl(currentPlayback.mediaUrl)
+                );
+                if (cancelled) return;
+                const nextDuration = Math.max(0, Math.round(Number(resolvedDuration || 0)));
+                const existingDuration = Math.max(0, Math.round(Number(current?.duration || 0)));
+                if (nextDuration < 20 || Math.abs(nextDuration - existingDuration) < 3) return;
+                await updateDoc(
+                    doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', currentId),
+                    { duration: nextDuration }
+                );
+            } catch (error) {
+                currentPlaybackDurationSyncKeyRef.current = '';
+                hostLogger.debug('Current playback duration sync failed', error);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        current?.id,
+        current?.duration,
+        current?.appleMusicId,
+        current?.mediaUrl,
+        room?.activeMode,
+        room?.mediaUrl,
+        resolveDurationForUrl
+    ]);
 
     useEffect(() => {
         const schedule = getAutoEndSchedule({
@@ -6945,8 +6996,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     ? 'resume'
                     : 'advanced'
             );
-            setQuickLaunchDiscovery((prev) => ({
-                ...prev,
+            setQuickLaunchDiscovery(createQuickLaunchDiscoveryDraft({
                 ...(launchTitle ? { title: launchTitle } : {}),
                 ...(launchDescription ? { description: launchDescription } : {}),
                 ...(launchStartsAt ? { startsAtLocal: launchStartsAt } : {}),
@@ -11978,10 +12028,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ? resolveLaunchUrlsForRoomCode(launchRoomCodeCandidate)
             : { hostUrl: '', tvUrl: '', audienceUrl: '', provisioned: false };
         const launchAudienceUrl = launchUrls.audienceUrl;
+        const discoveryListingEnabled = !!quickLaunchDiscovery.publicRoom;
+        const discoveryListingVirtualOnly = !!quickLaunchDiscovery.virtualOnly;
+        const discoveryLocationSummary = discoveryListingVirtualOnly
+            ? 'Online only'
+            : [String(quickLaunchDiscovery.city || '').trim(), String(quickLaunchDiscovery.state || '').trim()].filter(Boolean).join(', ');
+        const discoveryLaunchSummary = discoveryListingEnabled
+            ? (
+                String(quickLaunchDiscovery.venueName || '').trim()
+                || String(quickLaunchDiscovery.title || '').trim()
+                || discoveryLocationSummary
+                || 'Guests will be able to find this room in Discover.'
+            )
+            : 'Private by default. Publish only if you want this room to appear in Discover.';
+        const setDiscoveryListingMode = (enabled) => {
+            if (enabled) {
+                setQuickLaunchDiscovery((prev) => createQuickLaunchDiscoveryDraft({
+                    ...prev,
+                    publicRoom: true
+                }));
+                return;
+            }
+            setQuickLaunchDiscovery(createQuickLaunchDiscoveryDraft());
+        };
         const hasDiscoveryDraft = Boolean(
             quickLaunchDiscovery.publicRoom
             || quickLaunchDiscovery.virtualOnly
             || String(quickLaunchDiscovery.title || '').trim()
+            || String(quickLaunchDiscovery.venueName || '').trim()
             || String(quickLaunchDiscovery.description || '').trim()
             || String(quickLaunchDiscovery.startsAtLocal || '').trim()
             || String(quickLaunchDiscovery.address1 || '').trim()
@@ -12315,7 +12389,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="mt-1 text-xs text-cyan-100/72">
                                 {shouldShowSetupCard
                                     ? 'Keep the first launch simple.'
-                                    : 'Discovery and recovery stay under Advanced.'}
+                                    : 'Private by default. Publish to Discover only if you want tonight\'s room listed.'}
                             </div>
                             {shouldShowSetupCard && (
                                 <div className="mt-3 rounded-xl border border-pink-300/30 bg-gradient-to-r from-cyan-500/10 via-sky-500/10 to-pink-500/10 px-3 py-3">
@@ -12337,6 +12411,146 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             )}
                         </div>
+                        {!shouldShowSetupCard && (
+                            <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left" data-host-discovery-quick-toggle>
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Discover Listing</div>
+                                        <div className="mt-1 text-sm font-semibold text-white">Decide now if this room should be visible in Discover.</div>
+                                        <div className="mt-1 text-xs text-cyan-100/72">
+                                            No street address is required to publish. Venue name plus city/state is enough for a first pass, and exact map placement can be added later.
+                                        </div>
+                                    </div>
+                                    <div className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.18em] ${
+                                        discoveryListingEnabled
+                                            ? 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100'
+                                            : 'border-zinc-300/20 bg-white/5 text-zinc-200'
+                                    }`}>
+                                        {discoveryListingEnabled ? 'Discover On' : 'Private Default'}
+                                    </div>
+                                </div>
+                                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDiscoveryListingMode(false)}
+                                        className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                                            !discoveryListingEnabled
+                                                ? 'border-cyan-300/35 bg-cyan-500/12 text-white'
+                                                : 'border-white/10 bg-black/25 text-cyan-100/78 hover:border-cyan-300/25 hover:bg-cyan-500/8'
+                                        }`}
+                                    >
+                                        <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/70">Keep Private</div>
+                                        <div className="mt-1 text-sm font-semibold">Start the room without listing it</div>
+                                        <div className="mt-1 text-xs text-cyan-100/68">Best default for test runs, invite-only rooms, or quick venue setup.</div>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDiscoveryListingMode(true)}
+                                        className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                                            discoveryListingEnabled
+                                                ? 'border-pink-300/45 bg-gradient-to-r from-cyan-500/16 via-sky-500/14 to-pink-500/14 text-white'
+                                                : 'border-white/10 bg-black/25 text-cyan-100/78 hover:border-pink-300/35 hover:bg-pink-500/8'
+                                        }`}
+                                    >
+                                        <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/70">Show In Discover</div>
+                                        <div className="mt-1 text-sm font-semibold">Publish this room for drop-in guests</div>
+                                        <div className="mt-1 text-xs text-cyan-100/68">Use a light listing now, then refine map details later if needed.</div>
+                                    </button>
+                                </div>
+                                <div className={`mt-3 rounded-xl border px-3 py-2.5 ${
+                                    discoveryListingEnabled
+                                        ? 'border-emerald-300/30 bg-emerald-500/10'
+                                        : 'border-white/10 bg-black/20'
+                                }`}>
+                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/70">
+                                        {discoveryListingEnabled ? 'Discover Summary' : 'Launch Default'}
+                                    </div>
+                                    <div className="mt-1 text-xs text-white/88">{discoveryLaunchSummary}</div>
+                                </div>
+                                {discoveryListingEnabled && (
+                                    <>
+                                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            <input
+                                                value={quickLaunchDiscovery.venueName}
+                                                onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, venueName: e.target.value }))}
+                                                className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
+                                                placeholder="Venue name or room label"
+                                            />
+                                            <input
+                                                value={quickLaunchDiscovery.title}
+                                                onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, title: e.target.value }))}
+                                                className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
+                                                placeholder="Public listing title (optional)"
+                                            />
+                                            <input
+                                                value={quickLaunchDiscovery.city}
+                                                onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, city: e.target.value }))}
+                                                className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
+                                                placeholder="City"
+                                            />
+                                            <input
+                                                value={quickLaunchDiscovery.state}
+                                                onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, state: e.target.value }))}
+                                                className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
+                                                placeholder="State"
+                                            />
+                                            <input
+                                                type="datetime-local"
+                                                value={quickLaunchDiscovery.startsAtLocal}
+                                                onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
+                                                className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
+                                            />
+                                            <label className="inline-flex items-center gap-2 rounded-md border border-cyan-400/25 bg-black/25 px-3 py-2 text-xs text-cyan-100/90">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={!!quickLaunchDiscovery.virtualOnly}
+                                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, virtualOnly: e.target.checked }))}
+                                                />
+                                                Online-only room
+                                            </label>
+                                            <textarea
+                                                value={quickLaunchDiscovery.description}
+                                                onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, description: e.target.value }))}
+                                                className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50 sm:col-span-2"
+                                                rows={2}
+                                                placeholder="Short listing description (optional)"
+                                            />
+                                        </div>
+                                        {!quickLaunchDiscovery.virtualOnly && (
+                                            <details className="mt-3 rounded-xl border border-cyan-400/20 bg-black/20 px-3 py-3 text-left">
+                                                <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-cyan-100/78">
+                                                    <span>Exact Map Placement</span>
+                                                    <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
+                                                </summary>
+                                                <div className="mt-2 text-[11px] text-cyan-100/72">
+                                                    Street address and coordinates are optional. Use them only when you want a more precise map pin.
+                                                </div>
+                                                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                    <input
+                                                        value={quickLaunchDiscovery.address1}
+                                                        onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, address1: e.target.value }))}
+                                                        className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50 sm:col-span-2"
+                                                        placeholder="Street address (optional)"
+                                                    />
+                                                    <input
+                                                        value={quickLaunchDiscovery.lat}
+                                                        onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lat: e.target.value }))}
+                                                        className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
+                                                        placeholder="Latitude (optional)"
+                                                    />
+                                                    <input
+                                                        value={quickLaunchDiscovery.lng}
+                                                        onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lng: e.target.value }))}
+                                                        className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
+                                                        placeholder="Longitude (optional)"
+                                                    />
+                                                </div>
+                                            </details>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        )}
                         <button
                             data-host-create-room-primary
                             onClick={() => {
@@ -12359,7 +12573,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 ? 'Checking Access...'
                                 : creatingRoom
                                     ? 'Starting Room...'
-                                    : (shouldShowSetupCard && !canQuickStartRoom ? 'Finish Setup First' : 'Start New Room')}
+                                    : (shouldShowSetupCard && !canQuickStartRoom
+                                        ? 'Finish Setup First'
+                                        : discoveryListingEnabled
+                                            ? 'Start + Publish Room'
+                                            : 'Start New Room')}
                         </button>
                         <button
                             type="button"
@@ -12565,32 +12783,55 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             onToggle={(event) => setShowLandingListingOptions(event.currentTarget.open)}
                         >
                             <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">
-                                <span>Optional: Help Guests Find This Room</span>
+                                <span>Discover Listing Refinements</span>
                                 <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
                             </summary>
-                            <div className="mt-2 text-[11px] text-cyan-100/75">Add a public listing only if you want this room to appear on the discover map.</div>
+                            <div className="mt-2 text-[11px] text-cyan-100/75">
+                                Private remains the default. Use this drawer to publish the room, add a venue label, or tighten map placement without slowing down the main launch path.
+                            </div>
                             <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
-                                <input type="checkbox" checked={!!quickLaunchDiscovery.publicRoom} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, publicRoom: e.target.checked }))} />
-                                Show this room on the map
+                                <input type="checkbox" checked={!!quickLaunchDiscovery.publicRoom} onChange={(e) => setDiscoveryListingMode(e.target.checked)} />
+                                Publish this room in Discover
                             </label>
-                            <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
-                                <input type="checkbox" checked={!!quickLaunchDiscovery.virtualOnly} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, virtualOnly: e.target.checked }))} />
-                                Online-only room
-                            </label>
-                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <input value={quickLaunchDiscovery.title} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, title: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Room title (optional)" />
-                                <input type="datetime-local" value={quickLaunchDiscovery.startsAtLocal} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, startsAtLocal: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" />
-                                {!quickLaunchDiscovery.virtualOnly && (
-                                    <>
-                                        <input value={quickLaunchDiscovery.address1} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, address1: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2" placeholder="Address (optional)" />
+                            {quickLaunchDiscovery.publicRoom ? (
+                                <>
+                                    <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
+                                        <input type="checkbox" checked={!!quickLaunchDiscovery.virtualOnly} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, virtualOnly: e.target.checked }))} />
+                                        Online-only room
+                                    </label>
+                                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <input value={quickLaunchDiscovery.venueName} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, venueName: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Venue name or room label" />
+                                        <input value={quickLaunchDiscovery.title} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, title: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Public title (optional)" />
                                         <input value={quickLaunchDiscovery.city} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, city: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="City" />
                                         <input value={quickLaunchDiscovery.state} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, state: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="State" />
-                                        <input value={quickLaunchDiscovery.lat} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lat: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Latitude (optional)" />
-                                        <input value={quickLaunchDiscovery.lng} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lng: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Longitude (optional)" />
-                                    </>
-                                )}
-                                <textarea value={quickLaunchDiscovery.description} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, description: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2" rows={2} placeholder="Short description (optional)" />
-                            </div>
+                                        <input type="datetime-local" value={quickLaunchDiscovery.startsAtLocal} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, startsAtLocal: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" />
+                                        <div className="rounded-md border border-cyan-400/18 bg-black/20 px-3 py-2 text-[11px] text-cyan-100/72">
+                                            Street address is optional. Venue plus city/state is enough for a lightweight Discover listing.
+                                        </div>
+                                        <textarea value={quickLaunchDiscovery.description} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, description: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2" rows={2} placeholder="Short description (optional)" />
+                                    </div>
+                                    {!quickLaunchDiscovery.virtualOnly && (
+                                        <details className="mt-3 rounded-xl border border-cyan-400/20 bg-black/20 px-3 py-3 text-left">
+                                            <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-cyan-100/78">
+                                                <span>Exact Map Placement</span>
+                                                <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
+                                            </summary>
+                                            <div className="mt-2 text-[11px] text-cyan-100/72">
+                                                Add a street address or coordinates only when you want a tighter map pin.
+                                            </div>
+                                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                <input value={quickLaunchDiscovery.address1} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, address1: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2" placeholder="Street address (optional)" />
+                                                <input value={quickLaunchDiscovery.lat} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lat: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Latitude (optional)" />
+                                                <input value={quickLaunchDiscovery.lng} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lng: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Longitude (optional)" />
+                                            </div>
+                                        </details>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="mt-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-cyan-100/72">
+                                    Rooms stay unlisted until you explicitly turn publishing on.
+                                </div>
+                            )}
                         </details>
                         <details className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/8 px-3 py-3 text-left" data-host-troubleshooting>
                             <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-amber-100/85">
@@ -13373,6 +13614,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setAutoBgMusic,
         playingBg,
         setBgMusicState,
+        holdAutoBgDuringStageActivation,
         startReadyCheck,
         chatShowOnTv,
         setChatShowOnTv,

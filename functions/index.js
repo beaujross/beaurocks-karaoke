@@ -3084,6 +3084,13 @@ const normalizeDirectoryPhone = (value = "") => {
   return `+${digits}`;
 };
 
+const normalizeDirectoryEmail = (value = "") => {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) return "";
+  return raw;
+};
+
 const normalizeDirectoryReviewTags = (input = []) => {
   const source = Array.isArray(input) ? input : [];
   const deduped = [];
@@ -9108,6 +9115,7 @@ exports.setMyVipAccountStatus = onCall({ cors: true }, async (request) => {
   const vipLevel = clampNumber(request.data?.vipLevel, 1, 5, 1);
 
   let phone = "";
+  let email = "";
   if (qaBypass) {
     const isSuper = await isSuperAdminUid(uid);
     if (!isSuper) {
@@ -9116,8 +9124,10 @@ exports.setMyVipAccountStatus = onCall({ cors: true }, async (request) => {
   } else {
     const userRecord = await admin.auth().getUser(uid);
     phone = normalizeDirectoryPhone(userRecord?.phoneNumber || "");
-    if (!phone) {
-      throw new HttpsError("failed-precondition", "Phone verification required before VIP unlock.");
+    email = normalizeDirectoryEmail(userRecord?.email || "");
+    const emailVerified = !!userRecord?.emailVerified;
+    if (!phone && !(email && emailVerified)) {
+      throw new HttpsError("failed-precondition", "Phone or email verification required before VIP unlock.");
     }
   }
 
@@ -9125,6 +9135,7 @@ exports.setMyVipAccountStatus = onCall({ cors: true }, async (request) => {
     vipLevel,
     isVip: vipLevel > 0,
     ...(phone ? { phone } : {}),
+    ...(!phone && email ? { email } : {}),
     vipStatusSource: source,
     vipStatusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -9136,7 +9147,8 @@ exports.setMyVipAccountStatus = onCall({ cors: true }, async (request) => {
     vipLevel,
     isVip: vipLevel > 0,
     phoneVerified: !!phone,
-    mode: qaBypass ? "qa_bypass" : "phone_verified",
+    emailVerified: !phone && !!email,
+    mode: qaBypass ? "qa_bypass" : (phone ? "phone_verified" : "email_verified"),
     source,
   };
 });
@@ -9477,7 +9489,7 @@ const upsertHostRoomDiscoveryListingInternal = async ({
     ? { lat: parsedLat, lng: parsedLng }
     : normalizeDirectoryLatLng(nextListingInput.location || nextListingInput.latLng || {});
   const title = safeDirectoryString(
-    nextListingInput.title || `${hostName} Karaoke Room ${resolvedRoomCode}`,
+    nextListingInput.title || nextListingInput.venueName || `${hostName} Karaoke Room ${resolvedRoomCode}`,
     180
   ) || `${hostName} Karaoke Room ${resolvedRoomCode}`;
   const sessionMode = safeDirectoryString(
@@ -10894,6 +10906,58 @@ exports.previewDirectoryRoomSessionByCode = onCall({ cors: true }, async (reques
   };
 });
 
+exports.sendBeauRocksEmailSignInLink = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "send_beaurocks_email_signin_link", { perMinute: 6, perHour: 30 });
+  await checkDurableRateLimit(request.rawRequest, "send_beaurocks_email_signin_link", { perMinute: 6, perHour: 30 });
+  enforceAppCheckIfEnabled(request, "send_beaurocks_email_signin_link");
+
+  const payload = request.data || {};
+  const email = sanitizeOptionalWaitlistEmail(payload.email || payload.targetEmail || "");
+  const continueUrl = normalizeDirectoryOptionalUrl(payload.continueUrl || payload.url || "");
+  const roomCode = normalizeRoomCode(payload.roomCode || "");
+
+  if (!email) {
+    throw new HttpsError("invalid-argument", "A valid email address is required.");
+  }
+  if (!continueUrl) {
+    throw new HttpsError("invalid-argument", "A valid continue URL is required.");
+  }
+
+  const signInLink = await admin.auth().generateSignInWithEmailLink(email, {
+    url: continueUrl,
+    handleCodeInApp: true,
+  });
+
+  const queueResult = await queueOutboundEmail(
+    buildEmailTemplatePayload("auth_email_signin_link", {
+      targetEmail: email,
+      targetUrl: signInLink,
+      roomCode,
+      contextLabel: roomCode ? "sign in and rejoin your room" : "sign in",
+    }),
+    {
+      source: "auth_email_signin_link",
+      requesterUid: safeDirectoryString(request.auth?.uid || "", 180),
+      targetEmail: email,
+      roomCode,
+      continueUrl,
+    },
+  );
+
+  if (!queueResult?.sent) {
+    throw new HttpsError(
+      "internal",
+      safeDirectoryString(queueResult?.responseText || "Could not queue sign-in email.", 240),
+    );
+  }
+
+  return {
+    ok: true,
+    queued: true,
+    messageId: safeDirectoryString(queueResult.messageId || "", 180),
+  };
+});
+
 exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "join_room_audience", { perMinute: 50, perHour: 300 });
   enforceAppCheckIfEnabled(request, "join_room_audience");
@@ -11444,6 +11508,44 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
       applicationId: safeDirectoryString(data.applicationId || "", 180),
     };
   }
+  case "auth_email_signin_link": {
+    const targetEmail = sanitizeOptionalWaitlistEmail(data.targetEmail || data.email || "");
+    const targetUrl = normalizeDirectoryOptionalUrl(data.targetUrl || EMAIL_BRAND_HOME_URL) || EMAIL_BRAND_HOME_URL;
+    const roomCode = normalizeRoomCode(data.roomCode || "");
+    const contextLabel = safeDirectoryString(data.contextLabel || "sign in", 80) || "sign in";
+    const roomLine = roomCode ? `Room code: ${roomCode}` : "";
+    const text = [
+      "We received a request to sign in to BeauRocks with this email address.",
+      "",
+      "Open the secure link below to finish signing in.",
+      roomLine,
+      `Sign-in link: ${targetUrl}`,
+      "",
+      "For the smoothest handoff, open the link on the same device where you entered your email.",
+      "If you did not request this link, you can ignore this email.",
+    ].filter(Boolean).join("\n");
+    const html = `
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">We received a request to ${escapeAlertHtml(contextLabel)} to BeauRocks with this email address.</p>
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">Open the secure link below to finish signing in.</p>
+      ${roomCode ? `<p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Room code:</strong> ${escapeAlertHtml(roomCode)}</p>` : ""}
+      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">For the smoothest handoff, open the link on the same device where you entered your email.</p>
+      <p style="margin:0;color:#d6d9e5;font-size:16px;line-height:1.7">If you did not request this link, you can ignore this email.</p>
+    `;
+    return {
+      eventType: "auth_email_signin_link",
+      to: [targetEmail],
+      subject: "Your BeauRocks sign-in link",
+      text,
+      html,
+      eyebrow: "Secure Sign-In",
+      title: "Finish your BeauRocks sign-in",
+      preheader: roomCode
+        ? `Open this secure link to sign in and rejoin room ${roomCode}.`
+        : "Open this secure link to finish signing in to BeauRocks.",
+      ctaLabel: "Finish Sign-In",
+      ctaUrl: targetUrl,
+    };
+  }
   case "directory_reminder": {
     const recipientEmail = sanitizeOptionalWaitlistEmail(data.to || data.email || "");
     const targetType = normalizeDirectoryToken(data.targetType || "event", 30) || "event";
@@ -11570,14 +11672,23 @@ const isUnsetEmailSecretValue = (value = "") => {
 const resolveSmtpConfig = () => {
   const user = String(SMTP_USER.value() || "").trim();
   const pass = String(SMTP_PASS.value() || "").trim();
-  const from = String(SMTP_FROM.value() || "").trim() || user;
+  const configuredFrom = String(SMTP_FROM.value() || "").trim();
+  const fromAddress = configuredFrom || user;
   if (
     isUnsetEmailSecretValue(user) ||
     isUnsetEmailSecretValue(pass) ||
-    isUnsetEmailSecretValue(from)
+    isUnsetEmailSecretValue(fromAddress)
   ) {
     return null;
   }
+  const from = (() => {
+    const trimmed = configuredFrom.trim();
+    if (trimmed.includes("<") && trimmed.includes(">")) return trimmed;
+    const emailMatch = String(fromAddress || "").trim().match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    const safeEmail = emailMatch ? emailMatch[0] : "";
+    if (!safeEmail) return trimmed || fromAddress;
+    return `BeauRocks Karaoke <${safeEmail}>`;
+  })();
   return {
     host: SMTP_HOST,
     port: SMTP_PORT,
@@ -13361,6 +13472,24 @@ exports.createTipCrateCheckout = onCall(
       cancel_url: `${origin}/?room=${encodeURIComponent(roomCode)}&tip=cancel`,
     });
 
+    await getRootRef().collection("stripe_checkouts").doc(session.id).set({
+      checkoutType: "tip_crate",
+      sessionId: session.id,
+      roomCode,
+      crateId,
+      label: crate.label || "Room Boost",
+      amount,
+      amountCents: Math.round(amount * 100),
+      points,
+      rewardScope: crate.rewardScope || "room",
+      awardBadge: !!crate.awardBadge,
+      buyerUid,
+      buyerName,
+      paymentStatus: String(session.payment_status || "").trim() || null,
+      checkoutStatus: "created",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
     return { url: session.url, id: session.id };
   }
 );
@@ -13411,12 +13540,30 @@ exports.createPointsCheckout = onCall(
         points: `${points}`,
         packId,
         label,
+        rewardScope: "buyer",
         buyerUid: callerUid,
         buyerName,
       },
       success_url: `${origin}/?room=${encodeURIComponent(roomCode)}&points=success`,
       cancel_url: `${origin}/?room=${encodeURIComponent(roomCode)}&points=cancel`,
     });
+
+    await getRootRef().collection("stripe_checkouts").doc(session.id).set({
+      checkoutType: "points_pack",
+      sessionId: session.id,
+      roomCode,
+      packId,
+      label,
+      amount,
+      amountCents: Math.round(amount * 100),
+      points,
+      rewardScope: "buyer",
+      buyerUid: callerUid,
+      buyerName,
+      paymentStatus: String(session.payment_status || "").trim() || null,
+      checkoutStatus: "created",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
 
     return { url: session.url, id: session.id };
   }
@@ -13535,7 +13682,7 @@ exports.stripeWebhook = onRequest(
 
       const roomCode = metadata.roomCode;
       const points = Number(metadata.points || 0);
-      const rewardScope = metadata.rewardScope || "room";
+      const rewardScope = metadata.rewardScope || (metadata.packId ? "buyer" : "room");
       const awardBadge = metadata.awardBadge === "1";
       const buyerUid = metadata.buyerUid || "";
       const buyerName = metadata.buyerName || "Guest";
@@ -13559,6 +13706,24 @@ exports.stripeWebhook = onRequest(
         amount: session.amount_total || 0,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
+      await rootRef.collection("stripe_checkouts").doc(eventId).set({
+        checkoutType: metadata.packId ? "points_pack" : "tip_crate",
+        sessionId: eventId,
+        roomCode,
+        packId: metadata.packId || null,
+        crateId: metadata.crateId || null,
+        label,
+        amountCents: session.amount_total || 0,
+        points,
+        rewardScope,
+        awardBadge,
+        buyerUid: buyerUid || null,
+        buyerName,
+        paymentStatus: String(session.payment_status || "").trim() || null,
+        checkoutStatus: "completed",
+        webhookEventId: event.id,
+        fulfilledAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
 
       if (rewardScope === "buyer" && buyerUid) {
         const buyerRef = rootRef.collection("room_users").doc(`${roomCode}_${buyerUid}`);

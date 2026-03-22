@@ -7,7 +7,7 @@
 import { useCallback, useState } from 'react';
 import { 
   auth,
-  sendSignInLinkToEmail,
+  sendBeauRocksEmailSignInLink,
   signInWithPhoneNumber,
   RecaptchaVerifier,
   isSignInWithEmailLink,
@@ -77,12 +77,12 @@ export function usePasswordlessAuth() {
     setError(null);
     
     try {
-      const actionCodeSettings = {
-        url: `${window.location.origin}/auth/email-link`,
-        handleCodeInApp: true
-      };
+      const continueUrl = `${window.location.origin}/auth/email-link`;
 
-      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+      await sendBeauRocksEmailSignInLink({
+        email,
+        continueUrl
+      });
       
       // Save email to localStorage for later verification
       window.localStorage.setItem('emailForSignIn', email);

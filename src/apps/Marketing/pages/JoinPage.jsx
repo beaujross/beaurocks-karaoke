@@ -4,18 +4,27 @@ import { formatDateTime } from "./shared";
 import { buildSurfaceUrl } from "../../../lib/surfaceDomains";
 import { getJoinPreviewFallback } from "./joinFallback";
 
+const STANDARD_ROOM_CODE_LENGTH = 4;
+const MAX_ROOM_CODE_LENGTH = 10;
+const normalizeJoinEntryCode = (value = "") =>
+  String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, MAX_ROOM_CODE_LENGTH);
+
 const JoinPage = ({ navigate, id = "" }) => {
-  const [roomCode, setRoomCode] = useState(String(id || "").trim().toUpperCase());
+  const [roomCode, setRoomCode] = useState(normalizeJoinEntryCode(id));
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [statusTone, setStatusTone] = useState("error");
-  const resolvedJoinCode = String(roomCode || id || "").trim().toUpperCase();
+  const resolvedJoinCode = normalizeJoinEntryCode(roomCode || id || "");
 
   const joinOnMobile = () => {
-    const code = String(resolvedJoinCode || "").trim().toUpperCase();
+    const code = normalizeJoinEntryCode(resolvedJoinCode || "");
     if (!code) {
-      setStatus("Enter a room code first.");
+      setStatus(`Enter a room code first. Standard codes are ${STANDARD_ROOM_CODE_LENGTH} characters.`);
       setStatusTone("error");
       return;
     }
@@ -24,17 +33,17 @@ const JoinPage = ({ navigate, id = "" }) => {
 
   const onSubmit = (event) => {
     event.preventDefault();
-    const token = String(roomCode || "").trim().toUpperCase();
+    const token = normalizeJoinEntryCode(roomCode || "");
     if (!token) return;
     navigate({ page: "join", params: { roomCode: token } });
   };
 
   useEffect(() => {
-    setRoomCode(String(id || "").trim().toUpperCase());
+    setRoomCode(normalizeJoinEntryCode(id));
   }, [id]);
 
   useEffect(() => {
-    const token = String(id || "").trim().toUpperCase();
+    const token = normalizeJoinEntryCode(id);
     if (!token) {
       setPreview(null);
       setStatus("");
@@ -76,16 +85,22 @@ const JoinPage = ({ navigate, id = "" }) => {
       <article className="mk3-detail-card">
         <div className="mk3-chip">join private room</div>
         <h2>Enter Room Code</h2>
-        <p>Private rooms stay off the public pages. If you have the code, you are basically at the velvet rope already.</p>
+        <p>Private rooms stay off the public pages. If you have the code, you are basically at the velvet rope already. Most BeauRocks rooms use a 4-character code.</p>
         <form className="mk3-actions-block" onSubmit={onSubmit}>
           <label>
             Room Code
             <input
               value={roomCode}
-              onChange={(event) => setRoomCode(String(event.target.value || "").toUpperCase())}
-              placeholder="ABC123"
+              onChange={(event) => setRoomCode(normalizeJoinEntryCode(event.target.value || ""))}
+              placeholder="A1B2"
+              maxLength={MAX_ROOM_CODE_LENGTH}
+              inputMode="text"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </label>
+          <div className="mk3-field-hint">Standard room codes are 4 characters and use letters or numbers.</div>
           <button type="submit">Open Join Page</button>
           <button type="button" onClick={joinOnMobile}>
             Join On Mobile

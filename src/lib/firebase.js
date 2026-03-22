@@ -20,6 +20,7 @@ import {
   signInWithPopup,
   EmailAuthProvider,
   linkWithCredential,
+  signInWithCredential,
   updateProfile,
   setPersistence,
   browserLocalPersistence,
@@ -563,6 +564,12 @@ const previewDirectoryRoomSessionByCode = async (payload = {}) => {
   return data || null;
 };
 
+const sendBeauRocksEmailSignInLink = async (payload = {}) => {
+  await requireAppCheckToken("sendBeauRocksEmailSignInLink");
+  const data = await callFunction("sendBeauRocksEmailSignInLink", payload || {});
+  return data || null;
+};
+
 const joinRoomAudience = async (payload = {}) => {
   await requireAppCheckToken("joinRoomAudience");
   const data = await callFunction("joinRoomAudience", payload || {});
@@ -920,6 +927,7 @@ export {
   listCatalogContributionQueue,
   resolveCatalogContribution,
   previewDirectoryRoomSessionByCode,
+  sendBeauRocksEmailSignInLink,
   joinRoomAudience,
   mergeAnonymousAccountData,
   ensureOrganization,
@@ -959,6 +967,7 @@ export {
   signInWithPopup,
   EmailAuthProvider,
   linkWithCredential,
+  signInWithCredential,
   updateProfile,
   RecaptchaVerifier,
   signInWithPhoneNumber,

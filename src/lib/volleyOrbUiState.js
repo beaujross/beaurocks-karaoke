@@ -163,6 +163,8 @@ export const getVolleyOrbResponsiveMetrics = ({
     const height = Math.max(0, Number(sceneHeight || 0));
     if (width <= 0 || height <= 0) {
         return {
+            sceneWidthPx: width,
+            sceneHeightPx: height,
             orbSizePx: 280,
             orbScale: 0.78,
             orbContentScale: 0.84,
@@ -181,6 +183,8 @@ export const getVolleyOrbResponsiveMetrics = ({
     const orbScale = clampNumber(orbSizePx / 360, 0.34, 1);
 
     return {
+        sceneWidthPx: width,
+        sceneHeightPx: height,
         orbSizePx,
         orbScale: Number(orbScale.toFixed(4)),
         orbContentScale: Number(clampNumber(orbSizePx / 320, 0.52, 1).toFixed(4)),
